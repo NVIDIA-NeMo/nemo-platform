@@ -120,13 +120,14 @@ class TestLoadPlatformSkills:
             assert not unknown, f"{name} has unknown preconditions: {sorted(unknown)}"
         assert skills_with_preconditions
 
-    def test_build_agent_templates_are_packaged(self):
+    def test_build_agent_evaluation_assets_are_packaged(self):
         skill = load_skills()["nemo-build-agent"]
         assert skill.source_dir is not None
-
-        templates_dir = skill.source_dir / "references" / "templates"
-        assert (templates_dir / "agent.yml").is_file()
-        assert (templates_dir / "eval-job.json").is_file()
+        assert (skill.source_dir / "BENCHMARK.md").is_file()
+        assert (skill.source_dir / "evals" / "evals.json").is_file()
+        assert (skill.source_dir / "references" / "fabric-deep-agents.md").is_file()
+        assert (skill.source_dir / "references" / "testing-and-signoff.md").is_file()
+        assert (skill.source_dir / "references" / "packaging.md").is_file()
 
     def test_model_selection_benchmark_cache_is_packaged(self):
         skill = load_skills()["nemo-model-selection"]

@@ -1,75 +1,21 @@
 {
   "skill": "nemo-build-agent",
   "tests": [
-    {
-      "type": "explicit",
-      "prompt": "Use nemo-build-agent to scaffold and deploy an IT helpdesk agent.",
-      "expected_skill": "nemo-build-agent"
-    },
-    {
-      "type": "explicit",
-      "prompt": "Use nemo-build-agent to implement and deploy the approved support-triage Ethos.",
-      "expected_skill": "nemo-build-agent"
-    },
-    {
-      "type": "explicit",
-      "prompt": "Invoke nemo-build-agent for the customer-faq agent we designed.",
-      "expected_skill": "nemo-build-agent"
-    },
-    {
-      "type": "implicit",
-      "prompt": "The IT helpdesk agent Ethos is approved. Build and deploy it for password resets, VPN issues, and software access requests.",
-      "expected_skill": "nemo-build-agent"
-    },
-    {
-      "type": "implicit",
-      "prompt": "Scaffold and deploy the support agent we just specced out on NeMo Platform.",
-      "expected_skill": "nemo-build-agent"
-    },
-    {
-      "type": "implicit",
-      "prompt": "Take the approved Ethos in agents/ and ship the agent to NeMo Platform.",
-      "expected_skill": "nemo-build-agent"
-    },
-    {
-      "type": "implicit",
-      "prompt": "Spec is signed off. Build the agent, deploy it, and run the eval pass.",
-      "expected_skill": "nemo-build-agent"
-    },
-    {
-      "type": "implicit",
-      "prompt": "Deploy my existing NAT workflow YAML as a NeMo Platform agent, then smoke test it.",
-      "expected_skill": "nemo-build-agent"
-    },
-    {
-      "type": "implicit",
-      "prompt": "I have an old NAT agent workflow and an approved Ethos. Build and deploy it while preserving the legacy config.",
-      "expected_skill": "nemo-build-agent"
-    },
-    {
-      "type": "negative-control",
-      "prompt": "Write an agent.yaml with a Codex harness, but do not register or deploy anything.",
-      "expected_skill_not": "nemo-build-agent"
-    },
-    {
-      "type": "negative-control",
-      "prompt": "Convert this old NAT workflow YAML to nemo-agents-spec-v1, but do not deploy it.",
-      "expected_skill_not": "nemo-build-agent"
-    },
-    {
-      "type": "negative-control",
-      "prompt": "Let's design a system for routing customer queries across teams before any implementation.",
-      "expected_skill_not": "nemo-build-agent"
-    },
-    {
-      "type": "negative-control",
-      "prompt": "Fix the CSS spacing in the React settings page.",
-      "expected_skill_not": "nemo-build-agent"
-    },
-    {
-      "type": "negative-control",
-      "prompt": "Help me write a CrewAI agent from scratch in a fresh Python environment outside NeMo Platform.",
-      "expected_skill_not": "nemo-build-agent"
-    }
+    {"type":"explicit","prompt":"Use nemo-build-agent to build and onboard an IT helpdesk agent through Fabric.","expected_skill":"nemo-build-agent"},
+    {"type":"explicit","prompt":"Invoke nemo-build-agent for the approved support-triage Ethos.","expected_skill":"nemo-build-agent"},
+    {"type":"explicit","prompt":"Run nemo-build-agent to package, deploy, and verify the claims agent.","expected_skill":"nemo-build-agent"},
+    {"type":"implicit","prompt":"The IT helpdesk Ethos is approved. Build its tools and tests, create the explicit Fabric config, and onboard it to NeMo Platform.","expected_skill":"nemo-build-agent"},
+    {"type":"implicit","prompt":"Build a customer support agent from my answers. Save the Ethos, show it to me for approval, then implement and register the agent through Fabric.","expected_skill":"nemo-build-agent"},
+    {"type":"implicit","prompt":"Turn this approved refund agent design into a tested Deep Agents deployment and prove the refund tool is reachable after packaging.","expected_skill":"nemo-build-agent"},
+    {"type":"implicit","prompt":"The Ethos is approved. Build the agent and its mock based tests now. The production API credential is unavailable, so record the live test as skipped and do not register or deploy.","expected_skill":"nemo-build-agent"},
+    {"type":"contextual","prompt":"We approved the support triage Ethos yesterday and the NeMo workspace is ready now. Implement the approved agent, test it and onboard it through Fabric.","expected_skill":"nemo-build-agent"},
+    {"type":"contextual","prompt":"The prototype works locally, but its CRM tool never appears after deployment. Finish packaging the custom tool through the supported NeMo agent path and verify it in Fabric.","expected_skill":"nemo-build-agent"},
+    {"type":"contextual","prompt":"Legal approved the refund agent design. Implement the approved agent, prove identity verification happens before refunds, and stop before deployment for my review.","expected_skill":"nemo-build-agent"},
+    {"type":"negative-control","prompt":"Use nemo-explore for a design conversation about the audience, scope, constraints, and success criteria.","expected_skill_not":"nemo-build-agent"},
+    {"type":"negative-control","prompt":"Write the approved agent design into ETHOS.md, but stop before creating code or agent.yaml.","expected_skill_not":"nemo-build-agent"},
+    {"type":"negative-control","prompt":"Use nemo-agent-config to author and validate a nemo-agents-spec-v1 YAML with the Codex harness.","expected_skill_not":"nemo-build-agent"},
+    {"type":"negative-control","prompt":"Invoke the already deployed claims agent with these five questions and show me the responses.","expected_skill_not":"nemo-build-agent"},
+    {"type":"negative-control","prompt":"Keep this existing NAT workflow running and add another NAT function to it.","expected_skill_not":"nemo-build-agent"},
+    {"type":"negative-control","prompt":"Help me write a CrewAI agent in a separate Python project outside NeMo Platform.","expected_skill_not":"nemo-build-agent"}
   ]
 }
