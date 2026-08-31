@@ -15,18 +15,21 @@ import { FormModal, type FormModalProps } from '@nemo/common/src/components/Form
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { getListExperimentsQueryKey, useCreateExperiment } from '@nemo/sdk/generated/platform/api';
-import { FormField, Stack, TextArea, TextInput } from '@nvidia/foundations-react-core';
+import { FormField, Stack, TextInput } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
-import { DefaultSortControl } from '@studio/components/DefaultSortControl';
-import { DEFAULT_SORT } from '@studio/components/DefaultSortControl/util';
 import {
+  EXPERIMENT_SETTINGS_NAMES,
+  experimentSettingsPayload,
+} from '@studio/components/evaluation/shared/experimentSettings';
+import { ExperimentSettingsFields } from '@studio/components/evaluation/shared/ExperimentSettingsFields';
+import {
+  experimentCreateDefaults,
   experimentCreateSchema,
   type ExperimentCreateFormFields,
 } from '@studio/components/ExperimentCreateModal/constants';
-import { ExperimentFlagSwitch } from '@studio/components/ExperimentFlagSwitch';
 import { AxiosError } from 'axios';
-import { useState, type FC } from 'react';
-import { Controller, useForm, type SubmitHandler } from 'react-hook-form';
+import { type FC } from 'react';
+import { useForm, type SubmitHandler } from 'react-hook-form';
 
 export interface ExperimentCreateModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   workspace: string;
@@ -48,16 +51,10 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
   } = useForm<ExperimentCreateFormFields>({
     resolver: zodResolver(experimentCreateSchema),
     mode: 'onChange',
-    defaultValues: {
-      is_favorite: false,
-      show_evaluations_over_time: false,
-    },
+    defaultValues: experimentCreateDefaults,
   });
 
   const formDisabled = isSubmitting;
-  // Default sort is a single `sort`-param string driven by a custom control (not a registered input),
-  // so it's managed outside react-hook-form and merged into the payload in onSubmit.
-  const [defaultSort, setDefaultSort] = useState<string>(DEFAULT_SORT);
 
   const toast = useToast();
 
@@ -70,8 +67,7 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
   });
 
   const resetAndClose = () => {
-    reset();
-    setDefaultSort(DEFAULT_SORT);
+    reset(experimentCreateDefaults);
     onClose();
   };
 
@@ -79,13 +75,7 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
     try {
       await createExperiment({
         workspace,
-        data: {
-          name: data.name,
-          description: data.description,
-          default_sort: defaultSort,
-          is_favorite: data.is_favorite,
-          show_evaluations_over_time: data.show_evaluations_over_time,
-        },
+        data: { name: data.name, ...experimentSettingsPayload(data) },
       });
       resetAndClose();
     } catch (error) {
@@ -151,36 +141,11 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
           />
         </FormField>
 
-        <FormField
-          slotLabel="Description (optional)"
-          slotError={errors.description?.message}
-          status={errors.description && 'error'}
-        >
-          <TextArea
-            disabled={formDisabled}
-            status={errors.description && 'error'}
-            {...register('description')}
-          />
-        </FormField>
-
-        <DefaultSortControl value={defaultSort} onChange={setDefaultSort} disabled={formDisabled} />
-
-        {(['show_evaluations_over_time', 'is_favorite'] as const).map((flag) => (
-          <Controller
-            key={flag}
-            name={flag}
-            control={control}
-            render={({ field }) => (
-              <ExperimentFlagSwitch
-                flag={flag}
-                checked={Boolean(field.value)}
-                onCheckedChange={field.onChange}
-                onBlur={field.onBlur}
-                disabled={formDisabled}
-              />
-            )}
-          />
-        ))}
+        <ExperimentSettingsFields
+          control={control}
+          names={EXPERIMENT_SETTINGS_NAMES}
+          disabled={formDisabled}
+        />
       </Stack>
     </FormModal>
   );
