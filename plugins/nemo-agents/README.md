@@ -299,8 +299,10 @@ secrets service and are not wired up.
 
 `published` then carries the remote tag. The default remote reference is
 `<registry>/<image>` — and because the local image is namespaced, that is
-`<registry>/nemo-agents/<workspace>/<tag>`. Set `push_tag` to override it
-entirely; it requires `registry`.
+`<registry>/nemo-agents/<workspace>/<tag>`. Set `push_tag` to rename the
+destination; it requires `registry` and must stay nested under
+`nemo-agents/<workspace>/` — an unscoped `push_tag` would let one workspace
+overwrite another's image on the shared host.
 
 The job downloads the agent's spec fileset into a temporary build context,
 writes `agent.yaml` from the stored config, and runs the same Fabric build the
@@ -315,7 +317,7 @@ local packaging flags above.
 |---|---|
 | Host build | The step runs as a **host subprocess**, not in a container — the Fabric Dockerfile needs a real Docker CLI for its BuildKit cache mounts. Submissions are rejected at POST time wherever no subprocess execution profile is registered (notably `runtime = kubernetes`). |
 | Fabric only | `nemo-agents-spec-v1` agents only. NAT workflows build from a source checkout, so they stay on the CLI. |
-| Shared registry identity | Pushing uses the platform host's own `docker login`, so it is not per-workspace. Omit `registry` to leave the image in the host daemon. |
+| Shared registry identity | Pushing uses the platform host's own `docker login`, so it is not per-workspace. Omit `registry` to leave the image in the host daemon. `push_tag` is restricted to the caller's own `nemo-agents/{workspace}/` namespace so one workspace cannot overwrite another's tag on that shared host, but the underlying registry credentials remain shared across all workspaces on the host. |
 | Constrained base image | `base_image_url`, `base_image_tag`, `python_version`, and `uv_version` are interpolated into the Dockerfile unescaped, so the API restricts them to a strict grammar: an optional registry host with port followed by `/`-separated path components for `base_image_url`, `[A-Za-z0-9_][A-Za-z0-9._-]{0,127}` for `base_image_tag`, and up to three dot-separated numbers for the two versions. `PackageAgentInput` in `openapi/openapi.yaml` is the source of truth. The CLI, whose caller already owns the host, is unrestricted. |
 | Namespaced tags | Every image lands at `nemo-agents/{workspace}/{tag}`, derived or submitted, and `tag` may not contain `/`. Docker tags are daemon-global while the auth boundary here is the workspace, so an unqualified tag would let one workspace repoint another's image on the shared host. A workspace whose name is outside the Docker path grammar (entity names still allow `@` and `+`) is rejected at POST. |
 | Managed `.dockerignore` | A `.dockerignore` in the spec fileset is discarded. Validation reads the staged tree off disk and Docker applies exclusions afterwards, so a user-supplied one could exclude `agent.yaml` or a referenced skill, pass validation, build, and fail only at container start. The CLI still honours a `.dockerignore` you wrote yourself. |

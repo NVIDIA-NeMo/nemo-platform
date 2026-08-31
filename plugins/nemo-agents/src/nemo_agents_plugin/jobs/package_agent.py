@@ -135,9 +135,10 @@ class PackageAgentInput(BaseModel):
         default=None,
         pattern=IMAGE_REPOSITORY_PATTERN,
         description=(
-            "Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host running "
-            "this command must already be authenticated to it; credentials are never accepted "
-            "over this API."
+            "Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host executing "
+            "the push must already be authenticated to it — the local machine for `run`, the "
+            "platform's job-execution host for `submit`/the REST API. Credentials are never "
+            "accepted over this API."
         ),
     )
     push_tag: str | None = Field(
@@ -145,7 +146,10 @@ class PackageAgentInput(BaseModel):
         pattern=IMAGE_REFERENCE_PATTERN,
         description=(
             "Fully-qualified remote tag. Defaults to '<registry>/<image>', where <image> is the "
-            "namespaced local reference 'nemo-agents/{workspace}/{tag}'. Requires 'registry'."
+            "namespaced local reference 'nemo-agents/{workspace}/{tag}'. Requires 'registry'. Must "
+            "stay nested under 'nemo-agents/{workspace}/' — Docker tags are daemon-global while the "
+            "auth boundary here is the workspace, so an unscoped push_tag would let this workspace "
+            "overwrite another workspace's image on the shared host."
         ),
     )
 
@@ -161,6 +165,23 @@ class PackageAgentSpec(PackageAgentInput):
 
     workspace: str = Field(default="", description="Workspace owning the agent and its spec fileset.")
     agent_config: dict[str, Any] = Field(default_factory=dict, description="Resolved agent config.")
+
+    @model_validator(mode="after")
+    def _push_tag_stays_in_the_workspace_namespace(self) -> PackageAgentSpec:
+        # 'workspace' isn't known on PackageAgentInput (it comes from the URL / --workspace,
+        # not the request body), so this check can only run here, once to_spec()/run_local()
+        # has stamped it onto the spec.
+        if self.push_tag and self.workspace:
+            scoped_pattern = rf"(^|/){re.escape(TAG_NAMESPACE)}/{re.escape(self.workspace)}/[^/]+$"
+            if not re.search(scoped_pattern, self.push_tag):
+                raise ValueError(
+                    f"'push_tag' must be nested under '{TAG_NAMESPACE}/{self.workspace}/' (e.g. "
+                    f"'<registry>/{TAG_NAMESPACE}/{self.workspace}/<name>'). Docker tags are "
+                    "daemon-global while the auth boundary here is the workspace; an unscoped "
+                    "push_tag would let this workspace overwrite another workspace's image on "
+                    "the shared host."
+                )
+        return self
 
 
 class PackageAgentJob(NemoJob):

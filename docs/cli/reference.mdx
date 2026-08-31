@@ -7227,8 +7227,8 @@ nemo agents package-agent run [OPTIONS]
 * `--agent-version`: OCI image version label override.
 * `--agent-author`: OCI image authors label override.
 * `--skip-validation`: Bypass Fabric package validation before building.
-* `--registry`: Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host running this command must already be authenticated to it; credentials are never accepted over this API.
-* `--push-tag`: Fully-qualified remote tag. Defaults to '\<registry>/\<image>', where \<image> is the namespaced local reference 'nemo-agents/\{workspace}/\{tag}'. Requires 'registry'.
+* `--registry`: Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host executing the push must already be authenticated to it — the local machine for `run`, the platform's job-execution host for `submit`/the REST API. Credentials are never accepted over this API.
+* `--push-tag`: Fully-qualified remote tag. Defaults to '\<registry>/\<image>', where \<image> is the namespaced local reference 'nemo-agents/\{workspace}/\{tag}'. Requires 'registry'. Must stay nested under 'nemo-agents/\{workspace}/' — Docker tags are daemon-global while the auth boundary here is the workspace, so an unscoped push_tag would let this workspace overwrite another workspace's image on the shared host.
 
 **Spec Source:**
 
@@ -7262,8 +7262,8 @@ nemo agents package-agent submit [OPTIONS]
 * `--agent-version`: OCI image version label override.
 * `--agent-author`: OCI image authors label override.
 * `--skip-validation`: Bypass Fabric package validation before building.
-* `--registry`: Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host running this command must already be authenticated to it; credentials are never accepted over this API.
-* `--push-tag`: Fully-qualified remote tag. Defaults to '\<registry>/\<image>', where \<image> is the namespaced local reference 'nemo-agents/\{workspace}/\{tag}'. Requires 'registry'.
+* `--registry`: Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host executing the push must already be authenticated to it — the local machine for `run`, the platform's job-execution host for `submit`/the REST API. Credentials are never accepted over this API.
+* `--push-tag`: Fully-qualified remote tag. Defaults to '\<registry>/\<image>', where \<image> is the namespaced local reference 'nemo-agents/\{workspace}/\{tag}'. Requires 'registry'. Must stay nested under 'nemo-agents/\{workspace}/' — Docker tags are daemon-global while the auth boundary here is the workspace, so an unscoped push_tag would let this workspace overwrite another workspace's image on the shared host.
 
 **Spec Source:**
 

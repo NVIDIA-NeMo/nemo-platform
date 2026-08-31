@@ -6357,16 +6357,20 @@ components:
           default: false
         registry:
           title: Registry
-          description: Push the built image to this registry (e.g. 'nvcr.io/my-org').
-            The host running this command must already be authenticated to it; credentials
-            are never accepted over this API.
+          description: "Push the built image to this registry (e.g. 'nvcr.io/my-org').\
+            \ The host executing the push must already be authenticated to it \u2014\
+            \ the local machine for `run`, the platform's job-execution host for `submit`/the\
+            \ REST API. Credentials are never accepted over this API."
           type: string
           pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$
         push_tag:
           title: Push Tag
-          description: Fully-qualified remote tag. Defaults to '<registry>/<image>',
-            where <image> is the namespaced local reference 'nemo-agents/{workspace}/{tag}'.
-            Requires 'registry'.
+          description: "Fully-qualified remote tag. Defaults to '<registry>/<image>',\
+            \ where <image> is the namespaced local reference 'nemo-agents/{workspace}/{tag}'.\
+            \ Requires 'registry'. Must stay nested under 'nemo-agents/{workspace}/'\
+            \ \u2014 Docker tags are daemon-global while the auth boundary here is\
+            \ the workspace, so an unscoped push_tag would let this workspace overwrite\
+            \ another workspace's image on the shared host."
           type: string
           pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$
       additionalProperties: false
@@ -6572,16 +6576,20 @@ components:
           default: false
         registry:
           title: Registry
-          description: Push the built image to this registry (e.g. 'nvcr.io/my-org').
-            The host running this command must already be authenticated to it; credentials
-            are never accepted over this API.
+          description: "Push the built image to this registry (e.g. 'nvcr.io/my-org').\
+            \ The host executing the push must already be authenticated to it \u2014\
+            \ the local machine for `run`, the platform's job-execution host for `submit`/the\
+            \ REST API. Credentials are never accepted over this API."
           type: string
           pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$
         push_tag:
           title: Push Tag
-          description: Fully-qualified remote tag. Defaults to '<registry>/<image>',
-            where <image> is the namespaced local reference 'nemo-agents/{workspace}/{tag}'.
-            Requires 'registry'.
+          description: "Fully-qualified remote tag. Defaults to '<registry>/<image>',\
+            \ where <image> is the namespaced local reference 'nemo-agents/{workspace}/{tag}'.\
+            \ Requires 'registry'. Must stay nested under 'nemo-agents/{workspace}/'\
+            \ \u2014 Docker tags are daemon-global while the auth boundary here is\
+            \ the workspace, so an unscoped push_tag would let this workspace overwrite\
+            \ another workspace's image on the shared host."
           type: string
           pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$
         workspace:
