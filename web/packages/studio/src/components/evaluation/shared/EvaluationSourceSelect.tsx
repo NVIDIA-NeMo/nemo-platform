@@ -6,8 +6,10 @@ import { Text } from '@nvidia/foundations-react-core';
 import type { UseEvaluationSourcesResult } from '@studio/components/evaluation/shared/useEvaluationSources';
 import type { FieldPath, FieldValues } from 'react-hook-form';
 
-interface EvaluationSourceSelectProps<T extends FieldValues>
-  extends Pick<UseEvaluationSourcesResult, 'options' | 'groupLabels' | 'byName' | 'isLoading'> {
+interface EvaluationSourceSelectProps<T extends FieldValues> extends Pick<
+  UseEvaluationSourcesResult,
+  'options' | 'groupLabels' | 'byName' | 'isLoading'
+> {
   name: FieldPath<T>;
   /** Name of the evaluation currently selected, used to name its experiment beneath the field. */
   selectedName: string;

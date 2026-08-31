@@ -113,7 +113,7 @@ describe('SubmitEvaluationModal', () => {
     expect(screen.getByRole('switch', { name: /favorite/i })).toBeInTheDocument();
   });
 
-  it('does not carry the re-run path\'s derived name onto a new experiment', async () => {
+  it("does not carry the re-run path's derived name onto a new experiment", async () => {
     mockLists();
     const user = userEvent.setup();
     renderModal();
@@ -147,6 +147,40 @@ describe('SubmitEvaluationModal', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
   });
 
+  it('names every step under its dot, not just the one in progress', async () => {
+    mockLists();
+    const user = userEvent.setup();
+    renderModal();
+
+    // Re-running has no experiment to set up, so it is two steps.
+    expect(await screen.findByText('Begin')).toBeInTheDocument();
+    expect(screen.getByText('Create evaluation')).toBeInTheDocument();
+    expect(screen.queryByText('Create experiment')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Create a new experiment/ }));
+
+    // The new-experiment path gains its own step, and all three are named up front.
+    expect(await screen.findByText('Create experiment')).toBeInTheDocument();
+    expect(screen.getByText('Begin')).toBeInTheDocument();
+    expect(screen.getByText('Create evaluation')).toBeInTheDocument();
+  });
+
+  it("puts the new run's name under the picker it is derived from", async () => {
+    mockLists();
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(await screen.findByRole('radio', { name: /Re-run an existing evaluation/ }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    // One screen: pick the run to re-run, then name the run that pick produces.
+    const picker = await screen.findByRole('combobox', { name: /evaluation to re-run/i });
+    const nameField = screen.getByLabelText('New evaluation name');
+    expect(
+      picker.compareDocumentPosition(nameField) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it('routes the re-run path to a picker grouped by experiment', async () => {
     mockLists();
     const user = userEvent.setup();
@@ -177,7 +211,11 @@ describe('SubmitEvaluationModal', () => {
     // Straight to naming the run — the first two answers came in with the source.
     const nameField = await screen.findByLabelText<HTMLInputElement>('New evaluation name');
     await waitFor(() => expect(nameField.value).toBe('nemotron-super-3-temp-point5-2'));
-    expect(screen.getByText('primary-use-cases-benchmark')).toBeInTheDocument();
+    // The picker sits on this step too, so the name appears in its options as well; the point is
+    // that the help text under it states which experiment the chosen run belongs to.
+    expect(
+      screen.getByRole('combobox', { name: /evaluation to re-run/i })
+    ).toHaveAccessibleDescription(/Experiment: primary-use-cases-benchmark/);
 
     const user = userEvent.setup();
     await user.clear(nameField);
@@ -193,6 +231,6 @@ describe('SubmitEvaluationModal', () => {
     await screen.findByLabelText('New evaluation name');
     await user.click(screen.getByRole('button', { name: 'Back' }));
 
-    expect(await screen.findByRole('combobox', { name: /evaluation to re-run/i })).toBeInTheDocument();
+    expect(await screen.findByText('How do you want to start?')).toBeInTheDocument();
   });
 });

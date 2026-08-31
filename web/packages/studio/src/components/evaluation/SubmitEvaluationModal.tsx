@@ -48,6 +48,7 @@ import {
   findEvalConfigFile,
 } from '@studio/components/evaluation/experimentEvalConfig';
 import { JudgeModelSelect } from '@studio/components/evaluation/JudgeModelSelect';
+import '@studio/components/evaluation/SubmitEvaluationModal.css';
 import {
   entityNameField,
   nameCheckStatus,
@@ -85,7 +86,6 @@ import {
   isLastStep,
   nextStep,
   previousStep,
-  stepDescription,
   stepHeading,
   stepIndex,
   stepsFor,
@@ -132,7 +132,7 @@ const START_ITEMS = [
 const DATASET_BASENAME = 'dataset';
 
 const NO_EVALUATIONS_MESSAGE =
-  'No evaluations with a reusable eval config yet. Go back and create an experiment to run one; it is re-runnable from here afterwards.';
+  'No evaluations with a reusable eval config yet. Go back and create an experiment instead — its run is re-runnable from here afterwards.';
 
 const submitEvaluationBaseSchema = z.object({
   agent: z.string().min(1, 'Agent is required'),
@@ -788,10 +788,13 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     if (step === 'experiment') {
       if (!experimentPreview) return 'Name the experiment to continue.';
       if (experimentNameStatus === 'checking') return 'Checking the name...';
-      if (experimentNameStatus === 'conflict') return `An experiment named ${experimentPreview} already exists.`;
+      if (experimentNameStatus === 'conflict')
+        return `An experiment named ${experimentPreview} already exists.`;
       return errors.newName?.message;
     }
-    if (step === 'source') {
+    // The re-run path picks its source on this step too, so the source's own problems are
+    // reported here rather than swallowed by a Submit that quietly does nothing.
+    if (step === 'evaluation' && mode === MODE_EXPERIMENT) {
       if (hasNoEvaluations) return NO_EVALUATIONS_MESSAGE;
       if (!selectedEvaluation) return 'Pick an evaluation to re-run.';
       if (isValidatingEvaluation) return 'Checking the saved eval config...';
@@ -880,12 +883,9 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
         <Stack gap="density-xl">
           <Stepper
             aria-label="Run evaluation progress"
-            kind="compact"
+            className="eval-wizard-stepper"
             activeStep={stepIndex(steps, step)}
-            items={steps.map((item) => ({
-              slotHeading: stepHeading(item, mode),
-              slotDescription: stepDescription(item, mode),
-            }))}
+            items={steps.map((item) => ({ slotHeading: stepHeading(item) }))}
           />
 
           {step === 'start' && (
@@ -961,47 +961,33 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
             </>
           )}
 
-          {step === 'source' &&
-            (hasNoEvaluations ? (
-              <Text kind="body/regular/md" color="secondary">
-                {NO_EVALUATIONS_MESSAGE}
-              </Text>
-            ) : (
-              <EvaluationSourceSelect<SubmitEvaluationFormData>
-                name="evaluationName"
-                options={sources.options}
-                groupLabels={sources.groupLabels}
-                byName={sources.byName}
-                isLoading={sources.isLoading}
-                selectedName={evaluationName}
-                slotError={evaluationFieldError}
-                disabled={isPending}
-              />
-            ))}
-
           {step === 'evaluation' && (
             <>
-              {mode === MODE_EXPERIMENT && selectedSource && (
-                <Text kind="body/regular/md" color="secondary">
-                  Re-running{' '}
-                  <Text kind="body/semibold/md" className="text-primary">
-                    {selectedSource.evaluation.name}
+              {/* Which run to base this one on, and what to call the result, are one decision:
+                  the name is derived from the pick, so the two belong on the same screen. */}
+              {mode === MODE_EXPERIMENT &&
+                (hasNoEvaluations ? (
+                  <Text kind="body/regular/md" color="secondary">
+                    {NO_EVALUATIONS_MESSAGE}
                   </Text>
-                  {selectedSource.experimentName ? (
-                    <>
-                      {' from experiment '}
-                      <Text kind="body/semibold/md" className="text-primary">
-                        {selectedSource.experimentName}
-                      </Text>
-                    </>
-                  ) : null}
-                  . The new run publishes under the name below, beside it on the same leaderboard.
-                </Text>
-              )}
+                ) : (
+                  <EvaluationSourceSelect<SubmitEvaluationFormData>
+                    name="evaluationName"
+                    options={sources.options}
+                    groupLabels={sources.groupLabels}
+                    byName={sources.byName}
+                    isLoading={sources.isLoading}
+                    selectedName={evaluationName}
+                    slotError={evaluationFieldError}
+                    disabled={isPending}
+                  />
+                ))}
 
               <ControlledTextInput
                 useControllerProps={{ control, name: 'evaluationRecordName' }}
-                placeholder={isCreateMode ? 'e.g. initial-baseline' : 'e.g. nemotron-super-3-temp-1'}
+                placeholder={
+                  isCreateMode ? 'e.g. initial-baseline' : 'e.g. nemotron-super-3-temp-1'
+                }
                 formFieldProps={{
                   slotLabel: isCreateMode ? 'Evaluation Name' : 'New evaluation name',
                   ...recordNameSlots,

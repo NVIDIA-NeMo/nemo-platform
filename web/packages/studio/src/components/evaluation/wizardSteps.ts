@@ -4,7 +4,7 @@
 import { MODE_DEFAULT, MODE_EXPERIMENT } from '@studio/components/evaluation/submitEvaluationJob';
 
 /** One screen of the Run Evaluation wizard. */
-export type WizardStep = 'start' | 'experiment' | 'source' | 'evaluation';
+export type WizardStep = 'start' | 'experiment' | 'evaluation';
 
 export type EvaluationMode = typeof MODE_DEFAULT | typeof MODE_EXPERIMENT;
 
@@ -14,37 +14,22 @@ export type EvaluationMode = typeof MODE_DEFAULT | typeof MODE_EXPERIMENT;
  * Creating an experiment and re-running an existing evaluation ask for different things, and a
  * single page that shows both sets — most of them irrelevant — is what made the old form hard to
  * read. Splitting the choice out front means each later step only ever shows fields that apply.
+ *
+ * Re-running has no experiment to set up, so it skips that step: which run to base this one on
+ * and what to call the new run are one decision, made on one screen.
  */
 export const stepsFor = (mode: EvaluationMode): WizardStep[] =>
-  mode === MODE_DEFAULT
-    ? ['start', 'experiment', 'evaluation']
-    : ['start', 'source', 'evaluation'];
+  mode === MODE_DEFAULT ? ['start', 'experiment', 'evaluation'] : ['start', 'evaluation'];
 
-/** Heading shown for each step in the stepper, per path. */
-export const stepHeading = (step: WizardStep, mode: EvaluationMode): string => {
+/** Label shown under each step's dot in the stepper. */
+export const stepHeading = (step: WizardStep): string => {
   switch (step) {
     case 'start':
-      return 'Start';
+      return 'Begin';
     case 'experiment':
-      return 'Experiment';
-    case 'source':
-      return 'Evaluation to re-run';
+      return 'Create experiment';
     case 'evaluation':
-      return mode === MODE_DEFAULT ? 'Evaluation' : 'New evaluation';
-  }
-};
-
-/** One-line description under each step's heading. */
-export const stepDescription = (step: WizardStep, mode: EvaluationMode): string => {
-  switch (step) {
-    case 'start':
-      return 'How to begin';
-    case 'experiment':
-      return 'Name and settings';
-    case 'source':
-      return 'Its config is reused';
-    case 'evaluation':
-      return mode === MODE_DEFAULT ? 'Name, dataset, config' : 'Name this run';
+      return 'Create evaluation';
   }
 };
 
