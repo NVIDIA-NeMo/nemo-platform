@@ -13,6 +13,7 @@ import uuid
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -278,10 +279,16 @@ def create_fabric_serving_app(
                 await session_manager.close_all_sessions()
 
     app = FastAPI(title="NeMo Agents Fabric Server", lifespan=lifespan)
+    runtime_instance_id = str(uuid.uuid4())
+    runtime_started_at = datetime.now(UTC)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "runtime_instance_id": runtime_instance_id,
+            "runtime_started_at": runtime_started_at.isoformat(),
+        }
 
     @app.post("/v1/chat/completions", response_model=None, response_model_exclude_none=True)
     async def chat_completions(
@@ -389,6 +396,8 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_MAX_CONCURRENT_INVOCATIONS,
         help="Maximum concurrent Fabric invocations; use 0 for unlimited.",
     )
+    # Overrides must stay aligned with the gateway timeout used to compute
+    # persisted ``expires_at``; ideally both come from the deployment config.
     parser.add_argument(
         "--idle-session-timeout-seconds",
         type=float,
