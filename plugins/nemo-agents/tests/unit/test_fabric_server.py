@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -130,6 +131,8 @@ def test_startup_loads_and_validates_agent_config(
         assert health["status"] == "ok"
         assert uuid.UUID(health["runtime_instance_id"])
         assert repeated_response.json()["runtime_instance_id"] == health["runtime_instance_id"]
+        assert datetime.fromisoformat(health["runtime_started_at"]).tzinfo is not None
+        assert repeated_response.json()["runtime_started_at"] == health["runtime_started_at"]
         assert app.state.agent_config.name == "test-agent"
         assert app.state.base_dir == tmp_path
         assert app.state.validation_result is not None

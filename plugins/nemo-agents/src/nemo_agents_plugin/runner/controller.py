@@ -356,13 +356,19 @@ class AgentDeploymentController(NemoController):
         for attempt in range(2):
             if session_to_update.status is not SessionStatus.ACTIVE:
                 return session_to_update
-            if session_to_update.last_active_at is None and session_to_update.expires_at is None:
+            if (
+                session_to_update.first_active_at is None
+                and session_to_update.last_active_at is None
+                and session_to_update.expires_at is None
+            ):
                 return None
-            if session_to_update.last_active_at is not None:
-                last_active_at = session_to_update.last_active_at
-                if last_active_at.tzinfo is None or last_active_at.utcoffset() is None:
-                    last_active_at = last_active_at.replace(tzinfo=UTC)
-                if last_active_at >= at:
+            if session_to_update.first_active_at is not None:
+                first_active_at = session_to_update.first_active_at
+                if first_active_at.tzinfo is None or first_active_at.utcoffset() is None:
+                    first_active_at = first_active_at.replace(tzinfo=UTC)
+                else:
+                    first_active_at = first_active_at.astimezone(UTC)
+                if first_active_at >= at:
                     return None
 
             new_status = (
@@ -394,9 +400,11 @@ class AgentDeploymentController(NemoController):
         if dep.id is None:
             logger.warning("Cannot reconcile sessions for deployment '%s' without an entity ID.", dep.name)
             return False
-        reconciliation_time = self._pending_restart_reconciliations.get(dep.id)
+        reconciliation_time = (
+            at.astimezone(UTC) if at is not None else self._pending_restart_reconciliations.get(dep.id)
+        )
         if reconciliation_time is None:
-            reconciliation_time = (at or datetime.now(UTC)).astimezone(UTC)
+            reconciliation_time = datetime.now(UTC)
         reconciled = await self._reconcile_sessions_after_restart(
             deployment_id=dep.id,
             at=reconciliation_time,
@@ -404,7 +412,7 @@ class AgentDeploymentController(NemoController):
         if reconciled:
             self._pending_restart_reconciliations.pop(dep.id, None)
         else:
-            self._pending_restart_reconciliations.setdefault(dep.id, reconciliation_time)
+            self._pending_restart_reconciliations[dep.id] = reconciliation_time
         return reconciled
 
     async def _retry_pending_restart_reconciliations(self) -> None:
@@ -422,9 +430,10 @@ class AgentDeploymentController(NemoController):
         """Detect a Fabric server process replacement from its health identity."""
         if not _is_fabric_deployment(dep):
             return
-        current_instance_id = await self._read_runtime_instance_id(dep)
-        if current_instance_id is None:
+        current_runtime = await self._read_runtime_instance(dep)
+        if current_runtime is None:
             return
+        current_instance_id, runtime_started_at = current_runtime
 
         key = (dep.workspace, dep.name)
         previous_instance_id = self._runtime_instance_ids.get(key)
@@ -435,14 +444,14 @@ class AgentDeploymentController(NemoController):
             return
 
         self._runtime_instance_ids[key] = current_instance_id
-        if await self._reconcile_deployment_sessions_after_restart(dep):
+        if await self._reconcile_deployment_sessions_after_restart(dep, at=runtime_started_at):
             logger.warning(
                 "Fabric runtime instance changed for deployment '%s/%s'; active sessions were reconciled.",
                 dep.workspace,
                 dep.name,
             )
 
-    async def _read_runtime_instance_id(self, dep: AgentDeployment) -> str | None:
+    async def _read_runtime_instance(self, dep: AgentDeployment) -> tuple[str, datetime] | None:
         """Read the current Fabric server process identity without persisting it."""
         from nemo_agents_plugin.deployment_routing import get_deployment_endpoint
 
@@ -459,7 +468,9 @@ class AgentDeploymentController(NemoController):
         try:
             response = await self._runtime_health_client.get(f"{endpoint.rstrip('/')}/health")
             response.raise_for_status()
-            runtime_instance_id = response.json().get("runtime_instance_id")
+            health = response.json()
+            runtime_instance_id = health.get("runtime_instance_id")
+            runtime_started_at = datetime.fromisoformat(health.get("runtime_started_at", ""))
         except Exception:
             logger.debug(
                 "Could not read Fabric runtime instance for deployment '%s/%s'.",
@@ -468,7 +479,11 @@ class AgentDeploymentController(NemoController):
                 exc_info=True,
             )
             return None
-        return runtime_instance_id if isinstance(runtime_instance_id, str) and runtime_instance_id else None
+        if not isinstance(runtime_instance_id, str) or not runtime_instance_id:
+            return None
+        if runtime_started_at.tzinfo is None or runtime_started_at.utcoffset() is None:
+            return None
+        return runtime_instance_id, runtime_started_at.astimezone(UTC)
 
     async def _expire_session_if_due(
         self,

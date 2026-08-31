@@ -88,6 +88,7 @@ async def test_startup_session_reconciliation_retries_after_entity_list_failure(
 async def test_startup_retry_preserves_activity_from_current_runtime() -> None:
     ctrl, _ = _make_controller()
     current_generation = _make_session(
+        first_active_at=EXPIRATION_NOW,
         last_active_at=EXPIRATION_NOW,
         expires_at=EXPIRATION_NOW + timedelta(minutes=30),
     )
@@ -168,6 +169,7 @@ def _make_session(
     *,
     name: str = "session-one",
     deployment_id: str = "deployment-id",
+    first_active_at: datetime | None = None,
     last_active_at: datetime | None = None,
     expires_at: datetime | None = None,
     status: SessionStatus = SessionStatus.ACTIVE,
@@ -177,6 +179,7 @@ def _make_session(
         workspace="default",
         deployment_id=deployment_id,
         status=status,
+        first_active_at=first_active_at,
         last_active_at=last_active_at,
         expires_at=expires_at,
     )
@@ -227,11 +230,13 @@ async def test_restart_reconciliation_expires_loses_and_preserves_never_invoked_
     ctrl, _ = _make_controller()
     lost = _make_session(
         name="lost",
+        first_active_at=EXPIRATION_NOW - timedelta(minutes=10),
         last_active_at=EXPIRATION_NOW - timedelta(minutes=5),
         expires_at=EXPIRATION_NOW + timedelta(minutes=25),
     )
     expired = _make_session(
         name="expired",
+        first_active_at=EXPIRATION_NOW - timedelta(hours=1),
         last_active_at=EXPIRATION_NOW - timedelta(minutes=31),
         expires_at=EXPIRATION_NOW - timedelta(minutes=1),
     )
@@ -279,6 +284,7 @@ async def test_restart_wins_activity_conflict_for_refetched_invoked_session() ->
 async def test_activity_from_current_runtime_wins_restart_reconciliation() -> None:
     ctrl, _ = _make_controller()
     current_generation = _make_session(
+        first_active_at=EXPIRATION_NOW,
         last_active_at=EXPIRATION_NOW,
         expires_at=EXPIRATION_NOW + timedelta(minutes=30),
     )
@@ -290,6 +296,48 @@ async def test_activity_from_current_runtime_wins_restart_reconciliation() -> No
     assert current_generation.status is SessionStatus.ACTIVE
     ctrl.entities.update.assert_not_called()
     cleanup.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_activity_between_runtime_start_and_controller_observation_stays_active() -> None:
+    ctrl, _ = _make_controller()
+    runtime_started_at = EXPIRATION_NOW
+    first_activity_at = runtime_started_at + timedelta(seconds=1)
+    controller_observed_at = runtime_started_at + timedelta(seconds=2)
+    current_generation = _make_session(
+        first_active_at=first_activity_at,
+        last_active_at=first_activity_at,
+        expires_at=first_activity_at + timedelta(minutes=30),
+    )
+    cleanup = _mock_runtime_cleanup(ctrl)
+
+    result = await ctrl._transition_session_after_restart(current_generation, at=runtime_started_at)
+
+    assert first_activity_at < controller_observed_at
+    assert result is None
+    assert current_generation.status is SessionStatus.ACTIVE
+    ctrl.entities.update.assert_not_called()
+    cleanup.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_new_runtime_activity_does_not_rebind_old_session() -> None:
+    ctrl, _ = _make_controller()
+    runtime_started_at = EXPIRATION_NOW
+    old_session = _make_session(
+        first_active_at=runtime_started_at - timedelta(minutes=5),
+        last_active_at=runtime_started_at + timedelta(seconds=1),
+        expires_at=runtime_started_at + timedelta(minutes=30),
+    )
+    ctrl.entities.update = AsyncMock(side_effect=lambda entity: entity)
+    cleanup = _mock_runtime_cleanup(ctrl)
+
+    result = await ctrl._transition_session_after_restart(old_session, at=runtime_started_at)
+
+    assert result is old_session
+    assert old_session.status is SessionStatus.LOST
+    ctrl.entities.update.assert_awaited_once_with(old_session)
+    cleanup.assert_called_once_with(old_session)
 
 
 @pytest.mark.asyncio
@@ -344,8 +392,13 @@ async def test_terminal_state_wins_restart_conflict(terminal_status: SessionStat
 async def test_runtime_instance_change_reconciles_bound_sessions() -> None:
     ctrl, _ = _make_controller()
     deployment = _make_fabric_deployment()
-    ctrl._read_runtime_instance_id = AsyncMock(  # type: ignore[method-assign]
-        side_effect=["runtime-1", "runtime-1", "runtime-2"]
+    runtime_started_at = EXPIRATION_NOW - timedelta(seconds=2)
+    ctrl._read_runtime_instance = AsyncMock(  # type: ignore[method-assign]
+        side_effect=[
+            ("runtime-1", EXPIRATION_NOW - timedelta(minutes=10)),
+            ("runtime-1", EXPIRATION_NOW - timedelta(minutes=10)),
+            ("runtime-2", runtime_started_at),
+        ]
     )
     ctrl._reconcile_deployment_sessions_after_restart = AsyncMock(  # type: ignore[method-assign]
         return_value=True
@@ -356,7 +409,10 @@ async def test_runtime_instance_change_reconciles_bound_sessions() -> None:
     await ctrl._observe_runtime_instance(deployment)
 
     assert ctrl._runtime_instance_ids[(deployment.workspace, deployment.name)] == "runtime-2"
-    ctrl._reconcile_deployment_sessions_after_restart.assert_awaited_once_with(deployment)
+    ctrl._reconcile_deployment_sessions_after_restart.assert_awaited_once_with(
+        deployment,
+        at=runtime_started_at,
+    )
 
 
 @pytest.mark.asyncio
@@ -365,7 +421,10 @@ async def test_runtime_instance_change_is_recorded_before_retry() -> None:
     deployment = _make_fabric_deployment()
     key = (deployment.workspace, deployment.name)
     ctrl._runtime_instance_ids[key] = "runtime-1"
-    ctrl._read_runtime_instance_id = AsyncMock(return_value="runtime-2")  # type: ignore[method-assign]
+    runtime_started_at = EXPIRATION_NOW
+    ctrl._read_runtime_instance = AsyncMock(  # type: ignore[method-assign]
+        return_value=("runtime-2", runtime_started_at)
+    )
     ctrl._reconcile_deployment_sessions_after_restart = AsyncMock(  # type: ignore[method-assign]
         return_value=False
     )
@@ -375,22 +434,30 @@ async def test_runtime_instance_change_is_recorded_before_retry() -> None:
 
     await ctrl._observe_runtime_instance(deployment)
     assert ctrl._runtime_instance_ids[key] == "runtime-2"
-    ctrl._reconcile_deployment_sessions_after_restart.assert_awaited_once_with(deployment)
+    ctrl._reconcile_deployment_sessions_after_restart.assert_awaited_once_with(
+        deployment,
+        at=runtime_started_at,
+    )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
-        ({"runtime_instance_id": "runtime-1"}, "runtime-1"),
-        ({"runtime_instance_id": ""}, None),
-        ({"runtime_instance_id": 1}, None),
+        (
+            {"runtime_instance_id": "runtime-1", "runtime_started_at": EXPIRATION_NOW.isoformat()},
+            ("runtime-1", EXPIRATION_NOW),
+        ),
+        ({"runtime_instance_id": "", "runtime_started_at": EXPIRATION_NOW.isoformat()}, None),
+        ({"runtime_instance_id": 1, "runtime_started_at": EXPIRATION_NOW.isoformat()}, None),
+        ({"runtime_instance_id": "runtime-1", "runtime_started_at": "not-a-timestamp"}, None),
+        ({"runtime_instance_id": "runtime-1", "runtime_started_at": "2026-08-26T12:00:00"}, None),
         ({}, None),
     ],
 )
-async def test_read_runtime_instance_id_validates_health_response(
+async def test_read_runtime_instance_validates_health_response(
     payload: dict[str, object],
-    expected: str | None,
+    expected: tuple[str, datetime] | None,
 ) -> None:
     ctrl, _ = _make_controller()
     deployment = _make_fabric_deployment()
@@ -400,7 +467,7 @@ async def test_read_runtime_instance_id_validates_health_response(
     client.get = AsyncMock(return_value=response)
     ctrl._runtime_health_client = client
 
-    assert await ctrl._read_runtime_instance_id(deployment) == expected
+    assert await ctrl._read_runtime_instance(deployment) == expected
     client.get.assert_awaited_once_with("http://localhost:9001/health")
     response.raise_for_status.assert_called_once_with()
 
@@ -423,6 +490,27 @@ async def test_failed_restart_reconciliation_is_queued_and_retried() -> None:
         call(deployment_id=deployment.id, at=EXPIRATION_NOW),
         call(deployment_id=deployment.id, at=EXPIRATION_NOW),
     ]
+
+
+@pytest.mark.asyncio
+async def test_newer_runtime_replacement_supersedes_pending_reconciliation_cutoff() -> None:
+    ctrl, _ = _make_controller()
+    deployment = _make_fabric_deployment()
+    newer_runtime_started_at = EXPIRATION_NOW + timedelta(minutes=1)
+    ctrl._pending_restart_reconciliations[deployment.id] = EXPIRATION_NOW
+    ctrl._reconcile_sessions_after_restart = AsyncMock(return_value=False)  # type: ignore[method-assign]
+
+    reconciled = await ctrl._reconcile_deployment_sessions_after_restart(
+        deployment,
+        at=newer_runtime_started_at,
+    )
+
+    assert reconciled is False
+    assert ctrl._pending_restart_reconciliations[deployment.id] == newer_runtime_started_at
+    ctrl._reconcile_sessions_after_restart.assert_awaited_once_with(
+        deployment_id=deployment.id,
+        at=newer_runtime_started_at,
+    )
 
 
 @pytest.mark.asyncio

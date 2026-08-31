@@ -493,6 +493,7 @@ class TestSessionAwareRouting:
             )
 
         assert response.status_code == 200
+        assert [update.first_active_at for update in updates] == [timestamps[0], timestamps[0]]
         assert [update.last_active_at for update in updates] == timestamps
         assert [update.expires_at for update in updates] == [
             timestamp + timedelta(seconds=30 * 60) for timestamp in timestamps

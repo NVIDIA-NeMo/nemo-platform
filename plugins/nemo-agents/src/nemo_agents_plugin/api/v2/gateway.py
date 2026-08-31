@@ -548,6 +548,8 @@ async def _persist_session_activity(
             raise _session_expired(session_to_update)
 
         last_active_at = session_to_update.last_active_at
+        if session_to_update.first_active_at is None and last_active_at is None:
+            session_to_update.first_active_at = timestamp
         if last_active_at is not None:
             if last_active_at.tzinfo is None or last_active_at.utcoffset() is None:
                 last_active_at = last_active_at.replace(tzinfo=UTC)

@@ -206,6 +206,7 @@ class TestAgentSessionEntity:
         session = AgentSession(name="session", workspace="default", deployment_id="deployment-id")
 
         assert session.status is SessionStatus.ACTIVE
+        assert session.first_active_at is None
         assert session.last_active_at is None
         assert session.expires_at is None
 
@@ -276,10 +277,12 @@ class TestAgentSessionEntity:
             name="session",
             workspace="default",
             deployment_id="deployment-id",
+            first_active_at=NOW,
             last_active_at=NOW,
             expires_at=NOW,
         )
 
+        assert session.first_active_at == NOW
         assert session.last_active_at == NOW
         assert session.expires_at == NOW
 

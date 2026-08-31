@@ -473,6 +473,11 @@ class AgentSession(NemoEntity, entity_type="agent_session"):
         default=SessionStatus.ACTIVE,
         description="Lifecycle status: active | expired | lost | closed.",
     )
+    first_active_at: datetime | None = Field(
+        default=None,
+        description="UTC timestamp of the first accepted invocation; immutable once set.",
+        json_schema_extra={"nullable": True},
+    )
     last_active_at: datetime | None = Field(
         default=None,
         description=(

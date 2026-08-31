@@ -4261,6 +4261,13 @@ components:
           - $ref: '#/components/schemas/SessionStatus'
           description: 'Lifecycle status: active | expired | lost | closed.'
           default: active
+        first_active_at:
+          title: First Active At
+          description: UTC timestamp of the first accepted invocation; immutable once
+            set.
+          nullable: true
+          type: string
+          format: date-time
         last_active_at:
           title: Last Active At
           description: UTC timestamp of the latest accepted or completed invocation;
