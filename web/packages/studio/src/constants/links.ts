@@ -21,6 +21,9 @@ export const LINK_DOCS_SAFE_SYNTHESIZER = `${DOCS_BASE_URL}synthesize-safe-data`
 // SDK documentation links
 export const LINK_DOCS_SDK = `${DOCS_BASE_URL}reference/python-sdk`;
 
+// GRPO documentation links
+export const LINK_DOCS_GRPO_TRAINING = `${DOCS_BASE_URL}customizer-reference/grpo-and-reward-environments`;
+
 // Fine Tune documentation links
 export const LINK_DOCS_FINE_TUNE_CONFIGURATION_DECISIONS = `${DOCS_BASE_URL}customizer-reference/tutorials/understanding-models-and-training#making-configuration-decisions`;
 export const LINK_DOCS_FINE_TUNE_DATASET_FORMAT_REQUIREMENTS = `${DOCS_BASE_URL}customizer-reference/models/dataset-format`;
