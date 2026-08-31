@@ -216,8 +216,9 @@ async def publish_to_intake(
                 # The SDK's ATIF read model accepts shapes ingest does not, so a trajectory that
                 # parsed locally can still be refused. Losing the trial's scores over a trace
                 # detail is the wrong trade — fall back to the single-step trajectory a runner
-                # with no trace would have sent.
-                if recorded_steps is None:
+                # with no trace would have sent. Guard on emptiness rather than ``is None``: with no
+                # steps to drop, the retry would resend the body ingest just refused.
+                if not recorded_steps:
                     raise
                 logger.warning(
                     "Intake rejected the recorded trajectory for trial %s (%s); publishing its final output instead.",
