@@ -18,8 +18,15 @@ from nemo_deployments_plugin.backends.labels import (
     k8s_deployment_resource_name,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import Container, ContainerPort, Deployment, DeploymentConfig
+from nemo_deployments_plugin.entities import (
+    Container,
+    ContainerPort,
+    Deployment,
+    DeploymentConfig,
+    WorkloadIdentitySpec,
+)
 from nemo_deployments_plugin.types import RestartPolicy
+from nemo_platform_plugin.auth import AuthContext
 
 
 def sample_config(*, restart_policy: RestartPolicy = "Never") -> DeploymentConfig:
@@ -58,6 +65,42 @@ def sample_always_config(*, with_port: bool = True) -> DeploymentConfig:
             )
         ],
     ).model_copy(update={"restart_policy": "Always"})
+
+
+def workload_auth_context() -> AuthContext:
+    return AuthContext(
+        principal_id="user:alice",
+        principal_email="alice@example.com",
+        principal_groups=["research"],
+    )
+
+
+def with_workload_identity(
+    config: DeploymentConfig,
+    *,
+    workload_kind: str = "agent_deployment",
+    workload_id: str = "logical-task",
+    service_account_name: str = "dep-sa",
+) -> DeploymentConfig:
+    return config.model_copy(
+        update={
+            "workload_identity": WorkloadIdentitySpec(
+                enabled=True,
+                workloadKind=workload_kind,
+                workloadId=workload_id,
+                serviceAccountName=service_account_name,
+                tokenExpirationSeconds=900,
+            )
+        }
+    )
+
+
+def live_pod(pod_uid: str, *, phase: str = "Running", name: str = "task-pod-1") -> MagicMock:
+    pod = mock_pod(phase=phase)
+    pod.metadata.name = name
+    pod.metadata.uid = pod_uid
+    pod.metadata.deletion_timestamp = None
+    return pod
 
 
 def always_identity_labels(

@@ -31,6 +31,11 @@ from nemo_deployments_plugin.backends.k8s.status import (
     resource_labels_match,
     status_from_job,
 )
+from nemo_deployments_plugin.backends.k8s.workload_identity import (
+    reconcile_pod_uid_delegations,
+    revoke_workload_delegations,
+    workload_identity_activation_error,
+)
 from nemo_deployments_plugin.backends.labels import (
     CONFIG_NAME_LABEL,
     DEFAULT_RESOURCE_SCOPE,
@@ -47,6 +52,8 @@ from nemo_deployments_plugin.backends.labels import (
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import DeploymentConfig, K8sDeploymentConfig
 from nemo_deployments_plugin.types import RestartPolicy
+from nemo_platform_plugin.auth import AuthContext
+from nemo_platform_plugin.auth.workload_delegations import WorkloadDelegationStore
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +191,31 @@ async def read_pod_exit_code(
         return None
 
 
+async def read_job_pods(
+    clients: KubernetesClients,
+    *,
+    namespace: str,
+    job_name: str,
+) -> list[Any]:
+    """Best-effort list of pods owned by a Job."""
+    timeout = clients.request_timeout
+    core_v1 = clients.core_v1
+
+    def _read() -> list[Any]:
+        pods = core_v1.list_namespaced_pod(
+            namespace=namespace,
+            label_selector=f"job-name={job_name}",
+            _request_timeout=timeout,
+        )
+        return list(pods.items or [])
+
+    try:
+        return await asyncio.to_thread(_read)
+    except Exception:
+        logger.debug("Could not list pods for Job %s", job_name, exc_info=True)
+        return []
+
+
 async def create_job(
     clients: KubernetesClients,
     *,
@@ -196,12 +228,17 @@ async def create_job(
     config: DeploymentConfig,
     executor_image_pull_secrets: list | None = None,
     secret_env: dict[str, str] | None = None,
+    auth_context: AuthContext | None = None,
+    workload_delegation_store: WorkloadDelegationStore | None = None,
 ) -> BackendStatusUpdate:
     job_name = k8s_deployment_resource_name(workspace, name)
     try:
         validate_config_for_job(config)
         k8s_config = resolve_k8s_deployment_config(backend_config)
         namespace = resolve_deployment_namespace(default_namespace=default_namespace, k8s_config=k8s_config)
+        identity_error = workload_identity_activation_error(config=config, auth_context=auth_context)
+        if identity_error is not None:
+            return BackendStatusUpdate(status="FAILED", status_message=identity_error)
         identity_labels = deployment_identity_labels(
             workspace,
             name,
@@ -291,6 +328,17 @@ async def create_job(
 
         job = await asyncio.to_thread(_create)
         update = status_from_job(job=job, job_name=job_name, expected_labels=identity_labels)
+        pods = await read_job_pods(clients, namespace=namespace, job_name=job_name)
+        await reconcile_pod_uid_delegations(
+            workload_delegation_store,
+            config=config,
+            auth_context=auth_context,
+            workspace=workspace,
+            deployment_name=name,
+            namespace=namespace,
+            k8s_config=k8s_config,
+            pods=pods,
+        )
         if update.status in ("SUCCEEDED", "FAILED"):
             exit_code = await read_pod_exit_code(clients, namespace=namespace, job_name=job_name)
             if exit_code is not None:
@@ -313,6 +361,9 @@ async def read_job_status(
     config_name: str,
     restart_policy: RestartPolicy,
     backoff_limit: int,
+    config: DeploymentConfig | None = None,
+    auth_context: AuthContext | None = None,
+    workload_delegation_store: WorkloadDelegationStore | None = None,
 ) -> BackendStatusUpdate:
     job_name = k8s_deployment_resource_name(workspace, name)
     expected_labels = deployment_identity_labels(
@@ -325,6 +376,10 @@ async def read_job_status(
     try:
         k8s_config = resolve_k8s_deployment_config(backend_config)
         namespace = resolve_deployment_namespace(default_namespace=default_namespace, k8s_config=k8s_config)
+        if config is not None:
+            identity_error = workload_identity_activation_error(config=config, auth_context=auth_context)
+            if identity_error is not None:
+                return BackendStatusUpdate(status="FAILED", status_message=identity_error)
         timeout = clients.request_timeout
         batch_v1 = clients.batch_v1
 
@@ -343,6 +398,18 @@ async def read_job_status(
                 status_message=f"Job {job_name} is missing deployment config identity labels",
             )
         update = status_from_job(job=job, job_name=job_name, expected_labels=expected_labels)
+        if config is not None:
+            pods = await read_job_pods(clients, namespace=namespace, job_name=job_name)
+            await reconcile_pod_uid_delegations(
+                workload_delegation_store,
+                config=config,
+                auth_context=auth_context,
+                workspace=workspace,
+                deployment_name=name,
+                namespace=namespace,
+                k8s_config=k8s_config,
+                pods=pods,
+            )
         if update.status in ("SUCCEEDED", "FAILED"):
             exit_code = await read_pod_exit_code(clients, namespace=namespace, job_name=job_name)
             if exit_code is not None:
@@ -364,6 +431,8 @@ async def delete_job(
     name: str,
     backend_config: dict[str, Any],
     expected_labels: dict[str, str],
+    config: DeploymentConfig | None = None,
+    workload_delegation_store: WorkloadDelegationStore | None = None,
 ) -> BackendStatusUpdate:
     job_name = k8s_deployment_resource_name(workspace, name)
     try:
@@ -435,6 +504,12 @@ async def delete_job(
                 status="FAILED",
                 status_message=f"Job {job_name} exists but is not managed by this plugin",
             )
+        await revoke_workload_delegations(
+            workload_delegation_store,
+            config=config,
+            workspace=workspace,
+            deployment_name=name,
+        )
         return BackendStatusUpdate(status="SUCCEEDED", status_message=f"Job {job_name} deleted")
     except Exception as exc:
         return BackendStatusUpdate(status="FAILED", status_message=f"Failed to delete Job: {exc}")

@@ -22,6 +22,8 @@ from nemo_deployments_plugin.backends.k8s.config import K8sExecutorConfig
 from nemo_deployments_plugin.backends.labels import deployment_identity_labels
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_secret_env
+from nemo_platform_plugin.auth import AuthContext
+from nemo_platform_plugin.auth.workload_delegations import WorkloadDelegationStore
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
@@ -62,6 +64,7 @@ class K8sDeploymentBackend(DeploymentBackend):
             request_timeout=self._executor_config.request_timeout,
         )
         self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
+        self._workload_delegations = WorkloadDelegationStore(self._entities)
         logger.debug(
             "K8sDeploymentBackend initialized (default_namespace=%s)",
             self._executor_config.effective_namespace,
@@ -100,6 +103,7 @@ class K8sDeploymentBackend(DeploymentBackend):
         config_name: str,
         labels: dict[str, str],
         backend_config: dict[str, Any],
+        auth_context: AuthContext | None = None,
     ) -> BackendStatusUpdate:
         try:
             config = await self._load_deployment_config(workspace, config_name)
@@ -130,6 +134,8 @@ class K8sDeploymentBackend(DeploymentBackend):
                 config=config,
                 executor_image_pull_secrets=self._executor_config.image_pull_secrets,
                 secret_env=secret_env,
+                auth_context=auth_context,
+                workload_delegation_store=self._workload_delegations,
             )
 
         return await job_ops.create_job(
@@ -143,11 +149,13 @@ class K8sDeploymentBackend(DeploymentBackend):
             config=config,
             executor_image_pull_secrets=self._executor_config.image_pull_secrets,
             secret_env=secret_env,
+            auth_context=auth_context,
+            workload_delegation_store=self._workload_delegations,
         )
 
     async def read_status(self, *, workspace: str, name: str) -> BackendStatusUpdate:
         try:
-            _, config, backend_config = await self._load_deployment_context(workspace, name)
+            deployment, config, backend_config = await self._load_deployment_context(workspace, name)
         except NemoEntityNotFoundError:
             return BackendStatusUpdate(
                 status="FAILED",
@@ -171,6 +179,9 @@ class K8sDeploymentBackend(DeploymentBackend):
                 restart_policy=config.restart_policy,
                 backoff_limit=config.backoff_limit,
                 containers=tuple(config.containers),
+                config=config,
+                auth_context=deployment.auth_context,
+                workload_delegation_store=self._workload_delegations,
             )
 
         return await job_ops.read_job_status(
@@ -182,11 +193,14 @@ class K8sDeploymentBackend(DeploymentBackend):
             config_name=config.name,
             restart_policy=config.restart_policy,
             backoff_limit=config.backoff_limit,
+            config=config,
+            auth_context=deployment.auth_context,
+            workload_delegation_store=self._workload_delegations,
         )
 
     async def delete_deployment(self, workspace: str, name: str) -> BackendStatusUpdate:
         try:
-            _, config, backend_config = await self._load_deployment_context(workspace, name)
+            _deployment, config, backend_config = await self._load_deployment_context(workspace, name)
         except NemoEntityNotFoundError:
             scope_labels = job_ops.deployment_scope_labels(workspace, name)
             deployment_result = await deployment_ops.delete_deployment(
@@ -224,6 +238,8 @@ class K8sDeploymentBackend(DeploymentBackend):
                 name=name,
                 backend_config=backend_config,
                 expected_labels=expected_labels,
+                config=config,
+                workload_delegation_store=self._workload_delegations,
             )
 
         return await job_ops.delete_job(
@@ -233,6 +249,8 @@ class K8sDeploymentBackend(DeploymentBackend):
             name=name,
             backend_config=backend_config,
             expected_labels=expected_labels,
+            config=config,
+            workload_delegation_store=self._workload_delegations,
         )
 
     async def list_managed_deployment_names(self) -> list[str]:

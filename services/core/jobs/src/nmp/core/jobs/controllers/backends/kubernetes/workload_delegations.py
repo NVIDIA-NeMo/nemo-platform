@@ -9,14 +9,15 @@ from dataclasses import dataclass
 
 from kubernetes import client
 from nemo_platform_plugin.jobs.types import PlatformJobStepWithContext
-from nmp.common.auth import AuthContext
-from nmp.common.auth.workload_delegations import (
-    KUBERNETES_POD_UID_REFERENCE_NAME,
+from nmp.common.auth import (
+    AuthContext,
     WorkloadDelegationConflictError,
     WorkloadDelegationEntity,
-    reference_delegation_name,
+    build_kubernetes_pod_uid_workload_delegation,
+    is_workload_identity_token_exchange_enabled,
+    kubernetes_pod_uid_delegation_name,
+    kubernetes_service_account_subject,
 )
-from nmp.common.entities import SYSTEM_WORKSPACE
 from nmp.core.jobs.app.constants import (
     JOB_ATTEMPT_ID_LABEL,
     JOB_ID_LABEL,
@@ -26,10 +27,8 @@ from nmp.core.jobs.app.constants import (
     JOB_TYPE_LABEL,
     JOB_WORKSPACE_ID_LABEL,
 )
-from nmp.core.jobs.controllers.backends.base import is_workload_identity_token_exchange_enabled
 from nmp.core.jobs.controllers.backends.exceptions import JobStorageError
 from nmp.core.jobs.controllers.backends.kubernetes.common import list_pods_by_labels
-from nmp.core.jobs.controllers.backends.workload_tokens import workload_delegation_expires_at
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +143,10 @@ class KubernetesPodBoundWorkloadDelegationManager:
 
     @staticmethod
     def _workload_subject_for_target(target: KubernetesPodBoundWorkloadDelegationTarget) -> str:
-        return f"system:serviceaccount:{target.namespace}:{target.service_account_name}"
+        return kubernetes_service_account_subject(
+            namespace=target.namespace,
+            service_account_name=target.service_account_name,
+        )
 
     def _selector_labels(self, target: KubernetesPodBoundWorkloadDelegationTarget) -> dict[str, str] | None:
         selector_labels = {key: target.labels[key] for key in _REQUIRED_POD_SELECTOR_LABELS if key in target.labels}
@@ -170,11 +172,10 @@ class KubernetesPodBoundWorkloadDelegationManager:
         pod_uid = getattr(pod.metadata, "uid", None)
         if not pod_uid:
             return None
-        return reference_delegation_name(
+        return kubernetes_pod_uid_delegation_name(
             workload_audience=self._workload_audience(),
             workload_subject=self._workload_subject_for_target(target),
-            bound_reference_name=KUBERNETES_POD_UID_REFERENCE_NAME,
-            bound_reference_value=pod_uid,
+            pod_uid=pod_uid,
         )
 
     def _build_workload_delegation(
@@ -195,21 +196,24 @@ class KubernetesPodBoundWorkloadDelegationManager:
             raise JobStorageError("Kubernetes workload identity requires a Pod UID for on-behalf-of delegation")
 
         auth_context = AuthContext.model_validate(step.auth_context.model_dump(mode="python", exclude_none=True))
-        expires_at = workload_delegation_expires_at(ttl_seconds_active=self._ttl_seconds_active())
-        return WorkloadDelegationEntity(
-            name=delegation_name,
-            workspace=SYSTEM_WORKSPACE,
-            workload_subject=self._workload_subject_for_target(target),
-            workload_audience=self._workload_audience(),
+        delegation = build_kubernetes_pod_uid_workload_delegation(
             workload_workspace=step.workspace,
+            workload_audience=self._workload_audience(),
+            workload_kind="job",
+            workload_id=step.job,
+            workload_generation=f"{step.attempt_id}/{step.id}/{pod_uid}",
+            namespace=target.namespace,
+            service_account_name=target.service_account_name,
+            pod_uid=pod_uid,
             job_id=step.job,
             attempt_id=step.attempt_id,
             step_id=step.id,
             auth_context=auth_context,
-            bound_reference_name=KUBERNETES_POD_UID_REFERENCE_NAME,
-            bound_reference_value=pod_uid,
-            expires_at=expires_at,
+            ttl_seconds_active=self._ttl_seconds_active(),
         )
+        if delegation.name != delegation_name:
+            raise JobStorageError("Kubernetes workload identity delegation name changed during build")
+        return delegation
 
     def _revoke_names(self, *, target_key: str, delegation_names: set[str]) -> None:
         failed_delegations: set[str] = set()

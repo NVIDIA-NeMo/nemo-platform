@@ -18,6 +18,14 @@ LEGACY_MODELS_DOCKER_NETWORK_ENV_VAR = "MODELS_DOCKER_NETWORK"
 DockerEndpointMode = Literal["host", "network"]
 
 
+class DockerAdditionalVolumeMount(BaseModel):
+    """Executor-level Docker volume or bind mount applied to every deployment container."""
+
+    volume_name: str = Field(min_length=1, description="Docker volume name or host path to mount.")
+    mount_path: str = Field(min_length=1, description="Container path where the volume is mounted.")
+    read_only: bool = Field(default=False, description="Mount the source read-only when true.")
+
+
 def _default_network() -> str | None:
     for env_var in (DOCKER_NETWORK_ENV_VAR, LEGACY_MODELS_DOCKER_NETWORK_ENV_VAR):
         value = os.getenv(env_var)
@@ -78,6 +86,13 @@ class DockerExecutorConfig(BaseModel):
             "processes that run inside a container on the same Docker network. Can also "
             f"be set with {DOCKER_ENDPOINT_MODE_ENV_VAR}; "
             f"{LEGACY_MODELS_DOCKER_NETWORKING_MODE_ENV_VAR}=dond selects 'network' for compatibility."
+        ),
+    )
+    additional_volume_mounts: list[DockerAdditionalVolumeMount] = Field(
+        default_factory=list,
+        description=(
+            "Executor-level Docker volume mounts applied to every deployment container. "
+            "Useful for shared platform assets such as gateway CA bundles."
         ),
     )
     resource_scope: str = Field(

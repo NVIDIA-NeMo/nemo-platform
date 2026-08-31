@@ -27,6 +27,12 @@ class TokenSet:
     claims: dict[str, object]
 
 
+@dataclass(frozen=True)
+class DeploymentWorkloadRuntimeConfig:
+    env: tuple[dict[str, str], ...] = ()
+    config_files: tuple[dict[str, object], ...] = ()
+
+
 class AuthIdpRuntime(Protocol):
     case: AuthIdpCase
     gateway_base_url: str
@@ -47,6 +53,12 @@ class AuthIdpRuntime(Protocol):
         raise NotImplementedError
 
     def exchange_workload_token(self, subject_token: str) -> TokenSet:
+        raise NotImplementedError
+
+    def workload_platform_token(self) -> TokenSet:
+        raise NotImplementedError
+
+    def deployment_workload_runtime_config(self) -> DeploymentWorkloadRuntimeConfig:
         raise NotImplementedError
 
     def e2e_setup_sdk(self) -> NeMoPlatform:

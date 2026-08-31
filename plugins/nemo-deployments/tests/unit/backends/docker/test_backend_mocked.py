@@ -24,12 +24,15 @@ from nemo_deployments_plugin.backends.docker import ports as ports_mod
 from nemo_deployments_plugin.backends.docker.backend import (
     _PORT_CONFLICT_ATTEMPTS,
     _PORT_CONFLICT_MARKER,
+    DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL,
+    DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL,
     DockerDeploymentBackend,
 )
 from nemo_deployments_plugin.backends.labels import (
     BACKOFF_LIMIT_LABEL,
     CONFIG_NAME_LABEL,
     CONTAINER_ROLE_LABEL,
+    CONTAINER_ROLE_SERVER,
     DEFAULT_RESOURCE_SCOPE,
     DEPLOYMENT_NAME_LABEL,
     DEPLOYMENT_WORKSPACE_LABEL,
@@ -41,10 +44,44 @@ from nemo_deployments_plugin.backends.labels import (
     deployment_key,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import Deployment
+from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, WorkloadIdentitySpec
 from nemo_deployments_plugin.types import RestartPolicy
+from nemo_platform_plugin.auth import AuthContext
+from nemo_platform_plugin.auth.workload_identity import WORKLOAD_IDENTITY_TOKEN_FILE_PATH, WORKLOAD_IDENTITY_VOLUME_PATH
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
+
+
+def _workload_auth_context() -> AuthContext:
+    return AuthContext(
+        principal_id="user:alice",
+        principal_email="alice@example.com",
+        principal_groups=["research"],
+    )
+
+
+def _workload_identity_config() -> DeploymentConfig:
+    return sample_config().model_copy(
+        update={
+            "workload_identity": WorkloadIdentitySpec(
+                enabled=True,
+                workloadKind="agent_deployment",
+                workloadId="logical-srv",
+                tokenExpirationSeconds=900,
+            )
+        }
+    )
+
+
+def _workload_store() -> MagicMock:
+    store = MagicMock()
+    store.register = AsyncMock()
+    store.revoke = AsyncMock()
+    store.revoke_by_workload = AsyncMock(return_value=[])
+    store.list_by_workload = AsyncMock(return_value=[])
+    store.update = AsyncMock()
+    return store
 
 
 def test_init_raises_missing_dependency_when_docker_daemon_unavailable(mock_sdk: MagicMock) -> None:
@@ -92,6 +129,146 @@ async def test_create_deployment_starts_container(
     assert update.status == "STARTING"
     mock_docker_client.containers.create.assert_called_once()
     mock_entities.get.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_mounts_executor_additional_volumes(
+    mock_sdk: MagicMock,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    with (
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
+        patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=mock_entities),
+        patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
+        patch("docker.from_env", return_value=mock_docker_client),
+    ):
+        backend = DockerDeploymentBackend(
+            mock_sdk,
+            {
+                "docker_timeout": 60,
+                "pull_images": False,
+                "additional_volume_mounts": [
+                    {
+                        "volume_name": "gateway-tls",
+                        "mount_path": "/etc/nmp/gateway-tls",
+                        "read_only": True,
+                    }
+                ],
+            },
+        )
+
+    mock_entities.get.return_value = sample_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
+
+    update = await backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    _, create_kwargs = mock_docker_client.containers.create.call_args
+    assert create_kwargs["volumes"]["gateway-tls"] == {"bind": "/etc/nmp/gateway-tls", "mode": "ro"}
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_injects_workload_identity_volume_and_delegation(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    config = _workload_identity_config()
+    workload_store = _workload_store()
+    docker_backend._workload_delegations = workload_store
+    writer = AsyncMock()
+    mock_entities.get.return_value = config
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
+    mock_docker_client.volumes.get.side_effect = NotFound("missing")
+
+    with (
+        patch(
+            "nemo_deployments_plugin.backends.workload_identity.is_workload_identity_token_exchange_enabled",
+            return_value=True,
+        ),
+        patch.object(docker_backend, "_write_workload_identity_subject_token", writer),
+    ):
+        update = await docker_backend.create_deployment(
+            workspace="default",
+            name="srv",
+            config_name="cfg1",
+            labels={"managed-by": MANAGED_BY_LABEL},
+            backend_config={},
+            auth_context=_workload_auth_context(),
+        )
+
+    assert update.status == "STARTING"
+    volume_name = docker_backend._workload_identity_volume_name(
+        workspace="default",
+        name="srv",
+        role=CONTAINER_ROLE_SERVER,
+    )
+    mock_docker_client.volumes.create.assert_called_once()
+    assert mock_docker_client.volumes.create.call_args.kwargs["name"] == volume_name
+    volume_labels = mock_docker_client.volumes.create.call_args.kwargs["labels"]
+    assert volume_labels[DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+    assert volume_labels[DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL] == volume_name
+    _, create_kwargs = mock_docker_client.containers.create.call_args
+    assert create_kwargs["environment"][WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+    assert create_kwargs["volumes"][volume_name] == {"bind": WORKLOAD_IDENTITY_VOLUME_PATH, "mode": "ro"}
+    assert create_kwargs["labels"][CONTAINER_ROLE_LABEL] == CONTAINER_ROLE_SERVER
+    writer.assert_awaited_once()
+    workload_store.register.assert_awaited_once()
+    delegation = workload_store.register.await_args.args[0]
+    assert delegation.workload_workspace == "default"
+    assert delegation.workload_kind == "agent_deployment"
+    assert delegation.workload_id == "logical-srv"
+    assert delegation.workload_generation == CONTAINER_ROLE_SERVER
+    assert delegation.workload_subject == delegation.name
+    assert delegation.opaque_subject_token_hash
+    assert workload_store.register.await_args.kwargs["require_opaque_subject_token_hash"] is True
+
+
+@pytest.mark.asyncio
+async def test_delete_deployment_revokes_workload_identity_delegations_and_volumes(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    config = _workload_identity_config()
+    workload_store = _workload_store()
+    docker_backend._workload_delegations = workload_store
+    mock_entities.get.side_effect = [
+        Deployment(name="srv", workspace="default", deployment_config="cfg1"),
+        config,
+    ]
+    mock_docker_client.containers.list.return_value = []
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    volume = MagicMock()
+    volume.name = "wi-volume"
+    volume.attrs = {
+        "Labels": {
+            MANAGED_BY_KEY: MANAGED_BY_LABEL,
+            DEPLOYMENT_WORKSPACE_LABEL: "default",
+            DEPLOYMENT_NAME_LABEL: "srv",
+            RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
+        }
+    }
+    mock_docker_client.volumes.list.return_value = [volume]
+
+    update = await docker_backend.delete_deployment("default", "srv")
+
+    assert update.status == "SUCCEEDED"
+    workload_store.revoke_by_workload.assert_awaited_once_with(
+        workload_workspace="default",
+        workload_kind="agent_deployment",
+        workload_id="logical-srv",
+    )
+    volume.remove.assert_called_once_with(force=True)
 
 
 @pytest.mark.asyncio

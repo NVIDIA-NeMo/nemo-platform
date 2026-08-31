@@ -40,6 +40,28 @@ def test_create_deployment_config_201(client: TestClient, mock_entity_client: As
     assert resp.json()["name"] == "cfg1"
 
 
+def test_create_deployment_config_accepts_camel_case_restart_policy(
+    client: TestClient,
+    mock_entity_client: AsyncMock,
+) -> None:
+    mock_entity_client.create.side_effect = lambda config: config
+
+    resp = client.post(
+        "/apis/deployments/v2/workspaces/default/deployment-configs",
+        json={
+            "name": "cfg1",
+            "containers": [{"name": "main", "image": "nginx"}],
+            "restartPolicy": "Never",
+            "backoffLimit": 3,
+        },
+    )
+
+    assert resp.status_code == 201
+    created_config = mock_entity_client.create.await_args.args[0]
+    assert created_config.restart_policy == "Never"
+    assert created_config.backoff_limit == 3
+
+
 def test_create_deployment_config_rejects_zero_backoff_limit(
     client: TestClient,
     mock_entity_client: AsyncMock,

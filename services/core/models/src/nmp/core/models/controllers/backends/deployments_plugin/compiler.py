@@ -22,10 +22,12 @@ from nemo_deployments_plugin.entities import (
     Volume,
     VolumeBackendConfig,
     VolumeMount,
+    WorkloadIdentitySpec,
 )
 from nemo_deployments_plugin.secrets import platform_ngc_secret_ref
 from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nmp.common.auth import DEFAULT_WORKLOAD_AUDIENCE, is_workload_identity_token_exchange_enabled
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
@@ -114,6 +116,27 @@ def _weighted(resolved: ResolvedPluginDeployment, engine: str) -> bool:
     if engine == ENGINE_NIM:
         return is_files
     return is_files or bool(resolved.model_entity and resolved.model_entity.fileset)
+
+
+def _model_deployment_workload_id(resolved: ResolvedPluginDeployment) -> str:
+    base_name = getattr(resolved.deployment, "base_name", None) or resolved.deployment.name
+    entity_version = getattr(resolved.deployment, "entity_version", None)
+    if entity_version is None:
+        return str(base_name)
+    return f"{base_name}/v{entity_version}"
+
+
+def _workload_identity_for_model(resolved: ResolvedPluginDeployment) -> WorkloadIdentitySpec | None:
+    if getattr(resolved.deployment, "auth_context", None) is None:
+        return None
+    if not is_workload_identity_token_exchange_enabled():
+        return None
+    return WorkloadIdentitySpec(
+        enabled=True,
+        workloadKind="model_deployment",
+        workloadId=_model_deployment_workload_id(resolved),
+        tokenAudience=DEFAULT_WORKLOAD_AUDIENCE,
+    )
 
 
 def _env(values: dict[str, str]) -> list[EnvVar]:
@@ -234,6 +257,7 @@ def compile_model_deployment(
         else None
     )
     backend_config = k8s_backend if k8s_backend is not None and k8s_backend.k8s is not None else None
+    workload_identity = _workload_identity_for_model(resolved)
     volume = None
     scratch_volume = None
     puller_config = None
@@ -278,6 +302,7 @@ def compile_model_deployment(
             restartPolicy="OnFailure",
             backoffLimit=config.max_restart_count,
             backendConfig=backend_config or DeploymentBackendConfig(),
+            workloadIdentity=workload_identity,
         )
 
     tool_call_inits = tool_call_plugin_init_containers(
@@ -389,6 +414,7 @@ def compile_model_deployment(
         labels=_labels(resolved, engine, "server"),
         restartPolicy="Always",
         backendConfig=backend_config or DeploymentBackendConfig(),
+        workloadIdentity=workload_identity,
     )
     if engine == ENGINE_NIM:
         apply_nim_override_config(

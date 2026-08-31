@@ -553,6 +553,7 @@ class AgentDeploymentController(NemoController):
                 image=dep.image or None,
                 deployment_mode=dep.deployment_mode,
                 created_by=dep.created_by,
+                auth_context=dep.auth_context,
                 resources=dep.compute.resources if dep.compute is not None else None,
                 secrets=dep.secrets or None,
                 use_image_entrypoint=dep.use_image_entrypoint,

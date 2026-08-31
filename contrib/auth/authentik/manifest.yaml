@@ -72,6 +72,8 @@ test_runtimes:
       - workspace_rbac
       - workload_job
       - managed_workload_job_obo
+      - workload_deployment
+      - managed_workload_deployment_obo
       - device_flow
   - id: authentik-kubernetes
     backend: kubernetes
@@ -87,5 +89,7 @@ test_runtimes:
       - workspace_rbac
       - workload_job
       - managed_workload_job_obo
+      - workload_deployment
+      - managed_workload_deployment_obo
       - device_flow
       - kubernetes_token_review

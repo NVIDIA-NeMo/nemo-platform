@@ -18,6 +18,20 @@ from tests.auth_idp.runtime_compose import (
 from tests.auth_idp.runtime_contract import AuthIdpCase
 
 
+def test_compose_deployment_workload_runtime_config_targets_compose_gateway() -> None:
+    runtime = ComposeAuthIdpRuntime.__new__(ComposeAuthIdpRuntime)
+
+    config = runtime.deployment_workload_runtime_config()
+
+    assert config.config_files == ()
+    assert config.env == (
+        {"name": "NMP_BASE_URL", "value": "https://nemo-gateway:8080"},
+        {"name": "NMP_CLIENT_SSL_CERT_FILE", "value": "/etc/nmp/gateway-tls/tls.crt"},
+        {"name": "SSL_CERT_FILE", "value": "/etc/nmp/gateway-tls/tls.crt"},
+        {"name": "REQUESTS_CA_BUNDLE", "value": "/etc/nmp/gateway-tls/tls.crt"},
+    )
+
+
 def _jwt(claims: dict[str, object]) -> str:
     def encode(value: dict[str, object]) -> str:
         payload = json.dumps(value, separators=(",", ":")).encode("utf-8")

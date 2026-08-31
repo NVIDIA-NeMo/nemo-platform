@@ -6,10 +6,9 @@ import uuid
 
 import httpx
 import pytest
-from nemo_platform_ext.client.tls import client_verify_from_env
 from nmp.testing import grant_workspace_role
 
-from tests.auth_idp.common import jwt_claims, require_capability
+from tests.auth_idp.common import jwt_claims, require_capability, runtime_verify
 
 pytestmark = [
     pytest.mark.auth_idp,
@@ -22,10 +21,6 @@ GATEWAY_REQUEST_TIMEOUT_SECONDS = 10.0
 GATEWAY_TRANSIENT_RETRY_TIMEOUT_SECONDS = 20.0
 GATEWAY_TRANSIENT_RETRY_SLEEP_SECONDS = 1.0
 GATEWAY_TRANSIENT_STATUS_CODES = {502, 503, 504}
-
-
-def _runtime_verify(auth_idp_runtime) -> str | bool:
-    return getattr(auth_idp_runtime, "verify", client_verify_from_env())
 
 
 def _gateway_get_with_transient_retries(
@@ -65,7 +60,7 @@ def test_provider_gateway_rejects_unauthenticated_requests(auth_idp_case, auth_i
     response = httpx.get(
         f"{auth_idp_runtime.gateway_base_url}/apis/entities/v2/workspaces",
         timeout=10.0,
-        verify=_runtime_verify(auth_idp_runtime),
+        verify=runtime_verify(auth_idp_runtime),
     )
 
     assert response.status_code in {401, 403}
@@ -79,7 +74,7 @@ def test_provider_gateway_accepts_e2e_setup_token(auth_idp_case, auth_idp_runtim
     response = _gateway_get_with_transient_retries(
         f"{auth_idp_runtime.gateway_base_url}/apis/entities/v2/workspaces/{auth_idp_workspace}",
         headers={"Authorization": f"Bearer {token}"},
-        verify=_runtime_verify(auth_idp_runtime),
+        verify=runtime_verify(auth_idp_runtime),
     )
 
     assert 200 <= response.status_code < 300, response.text
@@ -99,7 +94,7 @@ def test_provider_gateway_rejects_spoofed_principal_headers(auth_idp_case, auth_
         "X-NMP-Principal-Id": "service:bootstrap",
         "X-NMP-Principal-Email": "attacker@example.com",
     }
-    verify = _runtime_verify(auth_idp_runtime)
+    verify = runtime_verify(auth_idp_runtime)
 
     try:
         create_response = httpx.post(
@@ -160,7 +155,7 @@ def test_provider_gateway_forwards_workload_groups(
     response = _gateway_get_with_transient_retries(
         f"{auth_idp_runtime.gateway_base_url}/apis/entities/v2/workspaces/{auth_idp_workspace}",
         headers={"Authorization": f"Bearer {workload_token}"},
-        verify=_runtime_verify(auth_idp_runtime),
+        verify=runtime_verify(auth_idp_runtime),
     )
 
     assert response.status_code == 200, response.text

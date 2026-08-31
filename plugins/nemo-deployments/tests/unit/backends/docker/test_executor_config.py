@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from nemo_deployments_plugin.backends.docker.config import DockerExecutorConfig
+from nemo_deployments_plugin.backends.docker.config import DockerAdditionalVolumeMount, DockerExecutorConfig
 from nemo_deployments_plugin.backends.labels import DEFAULT_RESOURCE_SCOPE
 from pydantic import ValidationError
 
@@ -72,3 +72,21 @@ def test_docker_executor_config_rejects_network_endpoint_mode_without_network(
 def test_docker_executor_config_rejects_inverted_port_range() -> None:
     with pytest.raises(ValidationError, match="port_range_start must not exceed port_range_end"):
         DockerExecutorConfig(port_range_start=9200, port_range_end=9100)
+
+
+def test_docker_executor_config_parses_additional_volume_mounts() -> None:
+    cfg = DockerExecutorConfig(
+        additional_volume_mounts=[
+            DockerAdditionalVolumeMount(
+                volume_name="gateway-tls",
+                mount_path="/etc/nmp/gateway-tls",
+                read_only=True,
+            )
+        ]
+    )
+
+    assert len(cfg.additional_volume_mounts) == 1
+    mount = cfg.additional_volume_mounts[0]
+    assert mount.volume_name == "gateway-tls"
+    assert mount.mount_path == "/etc/nmp/gateway-tls"
+    assert mount.read_only is True

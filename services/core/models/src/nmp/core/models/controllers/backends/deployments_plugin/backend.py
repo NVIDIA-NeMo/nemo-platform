@@ -8,6 +8,7 @@ from typing import Any
 
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Prerequisite, Volume
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.auth import AuthContext as DeploymentAuthContext
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
@@ -33,6 +34,17 @@ logger = logging.getLogger(__name__)
 _DEPLOYMENT_WORKSPACE_LABEL = "nmp.nvidia.com/deployment-workspace"
 _DEPLOYMENT_NAME_LABEL = "nmp.nvidia.com/deployment-name"
 _MODELS_ROLE_LABEL = "nmp.nvidia.com/models-role"
+
+
+def _deployment_auth_context(source: Any) -> DeploymentAuthContext | None:
+    auth_context = getattr(source, "auth_context", None)
+    if auth_context is None:
+        return None
+    if isinstance(auth_context, DeploymentAuthContext):
+        return auth_context
+    if hasattr(auth_context, "model_dump"):
+        return DeploymentAuthContext.model_validate(auth_context.model_dump(mode="python", exclude_none=True))
+    return DeploymentAuthContext.model_validate(auth_context)
 
 
 class DeploymentsPluginServiceBackend(ServiceBackend):
@@ -94,6 +106,7 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
             )
         try:
             compiled = compile_model_deployment(resolved, self._cfg)
+            auth_context = _deployment_auth_context(resolved.deployment)
             entities = self._entity_client()
             if compiled.volume is not None:
                 await entities.create(compiled.volume)
@@ -109,7 +122,7 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
                         executor=executor,
                         desired_state="READY",
                         status="PENDING",
-                    )
+                    ).with_auth_context(auth_context)
                 )
             await entities.create(compiled.server_config)
             await entities.create(
@@ -125,7 +138,7 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
                         if compiled.puller_prerequisite
                         else []
                     ),
-                )
+                ).with_auth_context(auth_context)
             )
         except Exception as exc:
             await self._rollback_create(ctx)

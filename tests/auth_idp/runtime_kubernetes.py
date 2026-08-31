@@ -25,13 +25,15 @@ from nemo_platform import DefaultHttpxClient, NeMoPlatform
 from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 from tests.auth_idp.common import jwt_claims
-from tests.auth_idp.runtime_contract import AuthIdpCase, TokenSet
+from tests.auth_idp.runtime_contract import AuthIdpCase, DeploymentWorkloadRuntimeConfig, TokenSet
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NAMESPACE = os.environ.get("NMP_AUTHENTIK_K8S_NAMESPACE", "nemo-authentik")
 HELM_RELEASE = os.environ.get("NMP_AUTHENTIK_K8S_HELM_RELEASE", "authentik-demo")
 HELM_CHART = Path("contrib/auth/authentik/helm")
 ENVOY_TLS_SECRET = "nemo-platform-envoy-tls"
+IN_CLUSTER_ENVOY_BASE_URL = f"https://nemo-platform-envoy.{NAMESPACE}.svc.cluster.local:8080"
+DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE = "/etc/nmp/workload-token-ca/ca.crt"
 WORKLOAD_AUDIENCE = "nemo-platform"
 WORKLOAD_CLIENT_ID = "nemo-platform-workload"
 AUTHENTIK_K8S_WORKLOAD_IDENTITY_PASSWORD = "workload-identity-dev-only"
@@ -885,6 +887,28 @@ class KubernetesAuthIdpRuntime:
         assert token_response.get("token_type", "").lower() == "bearer"
         return TokenSet(access_token=access_token, claims=jwt_claims(access_token))
 
+    def workload_platform_token(self) -> TokenSet:
+        return self.exchange_workload_token(self.workload_subject_token())
+
+    def deployment_workload_runtime_config(self) -> DeploymentWorkloadRuntimeConfig:
+        assert self.ca_bundle is not None
+        ca_bundle = self.ca_bundle.read_text(encoding="utf-8")
+        return DeploymentWorkloadRuntimeConfig(
+            env=(
+                {"name": "NMP_BASE_URL", "value": IN_CLUSTER_ENVOY_BASE_URL},
+                {"name": "NMP_CLIENT_SSL_CERT_FILE", "value": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE},
+                {"name": "SSL_CERT_FILE", "value": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE},
+                {"name": "REQUESTS_CA_BUNDLE", "value": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE},
+            ),
+            config_files=(
+                {
+                    "path": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE,
+                    "content": ca_bundle,
+                    "mode": 0o644,
+                },
+            ),
+        )
+
     def e2e_setup_sdk(self) -> NeMoPlatform:
         return self._sdk_for_token(self.e2e_setup_token().access_token)
 
@@ -892,7 +916,7 @@ class KubernetesAuthIdpRuntime:
         return self._sdk_for_token(self.interactive_user_token().access_token)
 
     def workload_provider_sdk(self) -> NeMoPlatform:
-        return self._sdk_for_token(self.exchange_workload_token(self.workload_subject_token()).access_token)
+        return self._sdk_for_token(self.workload_platform_token().access_token)
 
     def workload_role_principals(self) -> list[str]:
         return [f"system:serviceaccounts:{NAMESPACE}"]

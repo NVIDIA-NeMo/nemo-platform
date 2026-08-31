@@ -37,6 +37,13 @@ from nemo_deployments_plugin.entities import (
     VolumeMount,
 )
 from nemo_deployments_plugin.types import RestartPolicy
+from nemo_platform_plugin.auth.workload_identity import (
+    WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+    WORKLOAD_IDENTITY_VOLUME_NAME,
+    WORKLOAD_IDENTITY_VOLUME_PATH,
+    get_workload_identity_token_audience,
+    workload_identity_env,
+)
 from nemo_platform_plugin.config import ImagePullSecret, get_platform_config
 
 CONFIG_FILES_VOLUME = "config-files"
@@ -58,7 +65,7 @@ def merged_volume_mounts(config: DeploymentConfig, container: Container) -> list
     return list(mounts_by_name.values())
 
 
-def build_env_vars(container: Container) -> list[Any]:
+def build_env_vars(container: Container, *, extra_env: dict[str, str] | None = None) -> list[Any]:
     """Build plaintext ``V1EnvVar`` entries for a container.
 
     Env vars carrying a ``secret_ref`` are intentionally skipped here — their
@@ -67,7 +74,10 @@ def build_env_vars(container: Container) -> list[Any]:
     appears in the pod manifest.
     """
     k8s = k8s_client_module()
-    return [k8s.client.V1EnvVar(name=item.name, value=item.value) for item in container.env if item.value is not None]
+    env = [k8s.client.V1EnvVar(name=item.name, value=item.value) for item in container.env if item.value is not None]
+    for name, value in (extra_env or {}).items():
+        env.append(k8s.client.V1EnvVar(name=name, value=value))
+    return env
 
 
 def build_secret_env_from(secret_name: str | None) -> list[Any]:
@@ -122,12 +132,13 @@ def build_container_spec(
     *,
     volume_mounts: list[VolumeMount] | None = None,
     secret_name: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> Any:
     k8s = k8s_client_module()
     kwargs: dict[str, Any] = {
         "name": container.name,
         "image": container.image,
-        "env": build_env_vars(container) or None,
+        "env": build_env_vars(container, extra_env=extra_env) or None,
         "env_from": build_secret_env_from(secret_name) or None,
         "resources": build_resource_requirements(container),
     }
@@ -278,19 +289,69 @@ def _collect_pvc_mounts(config: DeploymentConfig) -> list[VolumeMount]:
     return list(mounts_by_name.values())
 
 
+def workload_identity_enabled(config: DeploymentConfig) -> bool:
+    spec = config.workload_identity
+    return spec is not None and spec.enabled
+
+
+def build_workload_identity_volume(config: DeploymentConfig) -> Any:
+    if config.workload_identity is None:
+        raise DeploymentConfigError("workload_identity is required to build a workload identity volume")
+    k8s = k8s_client_module()
+    audience = config.workload_identity.token_audience or get_workload_identity_token_audience()
+    return k8s.client.V1Volume(
+        name=WORKLOAD_IDENTITY_VOLUME_NAME,
+        projected=k8s.client.V1ProjectedVolumeSource(
+            sources=[
+                k8s.client.V1VolumeProjection(
+                    service_account_token=k8s.client.V1ServiceAccountTokenProjection(
+                        path="token",
+                        expiration_seconds=config.workload_identity.token_expiration_seconds,
+                        audience=audience,
+                    )
+                )
+            ]
+        ),
+    )
+
+
+def _workload_identity_mount() -> VolumeMount:
+    return VolumeMount(
+        name=WORKLOAD_IDENTITY_VOLUME_NAME,
+        mountPath=WORKLOAD_IDENTITY_VOLUME_PATH,
+        readOnly=True,
+    )
+
+
+def _workload_identity_env_for_container(
+    config: DeploymentConfig, *, include_workload_identity: bool
+) -> dict[str, str]:
+    if not include_workload_identity or not workload_identity_enabled(config):
+        return {}
+    return workload_identity_env(token_file_path=WORKLOAD_IDENTITY_TOKEN_FILE_PATH)
+
+
 def build_container(
     container: Container,
     *,
     config: DeploymentConfig,
     include_probes: bool,
     secret_name: str | None = None,
+    include_workload_identity: bool = True,
 ) -> Any:
     """Build a V1Container from a plugin Container."""
     k8s = k8s_client_module()
     mounts = merged_volume_mounts(config, container)
     if config.config_files:
         mounts = [*mounts, *_config_file_mounts(config.config_files)]
-    base = build_container_spec(container, volume_mounts=mounts or None, secret_name=secret_name)
+    if include_workload_identity and workload_identity_enabled(config):
+        mounts = [*mounts, _workload_identity_mount()]
+    base = build_container_spec(
+        container,
+        volume_mounts=mounts or None,
+        secret_name=secret_name,
+        extra_env=_workload_identity_env_for_container(config, include_workload_identity=include_workload_identity),
+    )
     kwargs: dict[str, Any] = {
         "name": base.name,
         "image": base.image,
@@ -446,6 +507,8 @@ def compile_workload(
     configmap_name = configmap_body.metadata.name if configmap_body is not None else None
     if configmap_name is not None:
         volumes = [*volumes, _build_config_file_volume(configmap_name, config.config_files)]
+    if workload_identity_enabled(config):
+        volumes = [*volumes, build_workload_identity_volume(config)]
 
     secret_body = build_secret_body(
         workspace=workspace,
@@ -471,7 +534,9 @@ def compile_workload(
     # container and deliberately does NOT receive the workload's secret envFrom.
     auth_proxy = build_auth_proxy_container(config)
     if auth_proxy is not None:
-        init_containers.append(build_container(auth_proxy, config=config, include_probes=True))
+        init_containers.append(
+            build_container(auth_proxy, config=config, include_probes=True, include_workload_identity=False)
+        )
     main_containers = [
         build_container(container, config=config, include_probes=True, secret_name=secret_name)
         for container in config.containers

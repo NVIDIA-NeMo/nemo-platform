@@ -20,11 +20,21 @@ from nmp.common.auth.workload_delegations import (
     WorkloadDelegationValidationError,
     create_opaque_docker_proof_token,
     docker_delegation_name,
+    docker_deployment_delegation_name,
+    docker_workload_delegation_name,
+    kubernetes_pod_uid_delegation_name,
     parse_opaque_docker_proof_token,
     reference_delegation_name,
     verify_opaque_docker_proof_token_hash,
 )
-from nmp.common.entities import SYSTEM_WORKSPACE, EntityClient, EntityConflictError, EntityNotFoundError
+from nmp.common.entities import (
+    SYSTEM_WORKSPACE,
+    EntityClient,
+    EntityConflictError,
+    EntityNotFoundError,
+    ListResponse,
+    PaginationInfo,
+)
 
 
 def _expires_at() -> datetime:
@@ -72,6 +82,74 @@ def _reference_entity(**overrides) -> WorkloadDelegationEntity:
     }
     values.update(overrides)
     return _entity(**values)
+
+
+def _generic_docker_entity(**overrides) -> WorkloadDelegationEntity:
+    name = docker_workload_delegation_name(
+        workload_workspace="default",
+        workload_kind="deployment",
+        workload_id="deployment-123",
+        workload_generation="container-abc",
+    )
+    values = {
+        "name": name,
+        "workspace": SYSTEM_WORKSPACE,
+        "workload_subject": name,
+        "workload_audience": "nemo-platform",
+        "workload_workspace": "default",
+        "workload_kind": "deployment",
+        "workload_id": "deployment-123",
+        "workload_generation": "container-abc",
+        "auth_context": AuthContext.from_principal(Principal(id="creator@example.com")),
+        "opaque_subject_token_hash": "v1:sha256:test",
+        "expires_at": _expires_at(),
+    }
+    values.update(overrides)
+    return WorkloadDelegationEntity(**values)
+
+
+def _generic_reference_entity(**overrides) -> WorkloadDelegationEntity:
+    workload_subject = "system:serviceaccount:deployments:runner"
+    pod_uid = "pod-uid-456"
+    values = {
+        "name": kubernetes_pod_uid_delegation_name(
+            workload_audience="nemo-platform",
+            workload_subject=workload_subject,
+            pod_uid=pod_uid,
+        ),
+        "workspace": SYSTEM_WORKSPACE,
+        "workload_subject": workload_subject,
+        "workload_audience": "nemo-platform",
+        "workload_workspace": "default",
+        "workload_kind": "deployment",
+        "workload_id": "deployment-123",
+        "workload_generation": pod_uid,
+        "auth_context": AuthContext.from_principal(Principal(id="creator@example.com")),
+        "bound_reference_name": "authentication.kubernetes.io/pod-uid",
+        "bound_reference_value": pod_uid,
+        "expires_at": _expires_at(),
+    }
+    values.update(overrides)
+    return WorkloadDelegationEntity(**values)
+
+
+def _list_response(
+    data: list[WorkloadDelegationEntity],
+    *,
+    page: int = 1,
+    page_size: int = 100,
+    total_pages: int = 1,
+) -> ListResponse[WorkloadDelegationEntity]:
+    return ListResponse(
+        data=data,
+        pagination=PaginationInfo(
+            page=page,
+            page_size=page_size,
+            current_page_size=len(data),
+            total_pages=total_pages,
+            total_results=len(data),
+        ),
+    )
 
 
 def _entity_client() -> AsyncMock:
@@ -355,3 +433,129 @@ async def test_register_conflict_rejects_stale_expected_db_version_for_replaceme
         await WorkloadDelegationStore(entity_client).register(replacement, expected_db_version=11)
 
     entity_client.update.assert_not_called()
+
+
+def test_docker_workload_delegation_name_is_deterministic() -> None:
+    expected_input = '["default","deployment","deployment-123","container-abc"]'.encode()
+    expected = "docker-" + hashlib.sha256(expected_input).hexdigest()[:48]
+
+    name = docker_workload_delegation_name(
+        workload_workspace="default",
+        workload_kind="deployment",
+        workload_id="deployment-123",
+        workload_generation="container-abc",
+    )
+
+    assert name == expected
+    assert (
+        docker_deployment_delegation_name(
+            workload_workspace="default",
+            deployment_id="deployment-123",
+            container_name="container-abc",
+        )
+        == name
+    )
+
+
+def test_kubernetes_pod_uid_delegation_name_uses_verified_reference_key() -> None:
+    name = kubernetes_pod_uid_delegation_name(
+        workload_audience="nemo-platform",
+        workload_subject="system:serviceaccount:ns:runner",
+        pod_uid="pod-uid-123",
+    )
+
+    assert name == reference_delegation_name(
+        workload_audience="nemo-platform",
+        workload_subject="system:serviceaccount:ns:runner",
+        bound_reference_name="authentication.kubernetes.io/pod-uid",
+        bound_reference_value="pod-uid-123",
+    )
+
+
+@pytest.mark.asyncio
+async def test_register_accepts_generic_docker_workload_delegation() -> None:
+    entity_client = _entity_client()
+    entity = _generic_docker_entity()
+    entity_client.add.return_value = entity
+
+    saved = await WorkloadDelegationStore(entity_client).register(
+        entity,
+        require_opaque_subject_token_hash=True,
+    )
+
+    assert saved == entity
+    entity_client.add.assert_awaited_once_with(entity)
+
+
+@pytest.mark.asyncio
+async def test_register_accepts_generic_verified_reference_workload_delegation() -> None:
+    entity_client = _entity_client()
+    entity = _generic_reference_entity()
+    entity_client.add.return_value = entity
+
+    saved = await WorkloadDelegationStore(entity_client).register(entity)
+
+    assert saved == entity
+    entity_client.add.assert_awaited_once_with(entity)
+
+
+@pytest.mark.asyncio
+async def test_register_rejects_partial_generic_workload_metadata() -> None:
+    with pytest.raises(WorkloadDelegationValidationError):
+        await WorkloadDelegationStore(_entity_client()).register(_generic_docker_entity(workload_generation=None))
+
+
+@pytest.mark.asyncio
+async def test_list_by_workload_pages_through_matching_delegations() -> None:
+    entity_client = _entity_client()
+    first = _generic_docker_entity(workload_generation="container-a")
+    second = _generic_reference_entity(workload_generation="pod-uid-b", bound_reference_value="pod-uid-b")
+    second.name = kubernetes_pod_uid_delegation_name(
+        workload_audience=second.workload_audience,
+        workload_subject=second.workload_subject,
+        pod_uid="pod-uid-b",
+    )
+    entity_client.list.side_effect = [
+        _list_response([first], page=1, page_size=1, total_pages=2),
+        _list_response([second], page=2, page_size=1, total_pages=2),
+    ]
+
+    result = await WorkloadDelegationStore(entity_client).list_by_workload(
+        workload_workspace="default",
+        workload_kind="deployment",
+        workload_id="deployment-123",
+        page_size=1,
+    )
+
+    assert result == [first, second]
+    assert entity_client.list.await_count == 2
+    first_call = entity_client.list.await_args_list[0]
+    assert first_call.kwargs["workspace"] == SYSTEM_WORKSPACE
+    assert first_call.kwargs["page"] == 1
+    assert first_call.kwargs["page_size"] == 1
+    filter_operation = first_call.kwargs["filter_operation"]
+    assert {operation.field: operation.value for operation in filter_operation.operations} == {
+        "data.workload_workspace": "default",
+        "data.workload_kind": "deployment",
+        "data.workload_id": "deployment-123",
+    }
+
+
+@pytest.mark.asyncio
+async def test_revoke_by_workload_updates_each_matching_delegation_with_one_timestamp() -> None:
+    entity_client = _entity_client()
+    first = _generic_docker_entity(workload_generation="container-a")
+    second = _generic_reference_entity()
+    now = datetime(2026, 8, 31, 10, 0, tzinfo=timezone.utc)
+    entity_client.list.return_value = _list_response([first, second])
+    entity_client.update.side_effect = lambda entity: entity
+
+    revoked = await WorkloadDelegationStore(entity_client).revoke_by_workload(
+        workload_workspace="default",
+        workload_kind="deployment",
+        workload_id="deployment-123",
+        now=now,
+    )
+
+    assert revoked == [first, second]
+    assert [call.args[0].revoked_at for call in entity_client.update.await_args_list] == [now, now]

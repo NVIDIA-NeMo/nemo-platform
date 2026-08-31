@@ -4,10 +4,19 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from backends.k8s.k8s_helpers import job_identity_labels, job_list_item, mock_job, sample_config, sample_deployment
+from backends.k8s.k8s_helpers import (
+    job_identity_labels,
+    job_list_item,
+    live_pod,
+    mock_job,
+    sample_config,
+    sample_deployment,
+    with_workload_identity,
+    workload_auth_context,
+)
 from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.k8s import jobs as job_ops
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
@@ -111,6 +120,52 @@ async def test_create_job_emits_batch_job(k8s_backend, mock_k8s_clients: MagicMo
     assert body.spec.backoff_limit == 0
     assert body.spec.template.spec.restart_policy == "Never"
     assert body.spec.template.spec.containers[0].image == "alpine:latest"
+
+
+@pytest.mark.asyncio
+async def test_create_job_registers_live_pod_uid_workload_delegation(
+    job_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    config = with_workload_identity(sample_config(restart_policy="Never"))
+    auth_context = workload_auth_context()
+    workload_store = MagicMock()
+    workload_store.list_by_workload = AsyncMock(return_value=[])
+    workload_store.register = AsyncMock()
+    workload_store.revoke = AsyncMock()
+    mock_k8s_clients.batch_v1.create_namespaced_job.return_value = mock_job(active=1)
+    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(items=[live_pod("job-pod-uid")])
+
+    with patch(
+        "nemo_deployments_plugin.backends.workload_identity.is_workload_identity_token_exchange_enabled",
+        return_value=True,
+    ):
+        update = await job_ops.create_job(
+            job_ops_clients,
+            default_namespace="default",
+            workspace="default",
+            name="task",
+            config_name="config1",
+            labels={},
+            backend_config={"k8s": {"namespace": "dep-ns"}},
+            config=config,
+            auth_context=auth_context,
+            workload_delegation_store=workload_store,
+        )
+
+    assert update.status == "STARTING"
+    workload_store.list_by_workload.assert_awaited_once_with(
+        workload_workspace="default",
+        workload_kind="agent_deployment",
+        workload_id="logical-task",
+    )
+    workload_store.register.assert_awaited_once()
+    await_args = workload_store.register.await_args
+    assert await_args is not None
+    delegation = await_args.args[0]
+    assert delegation.workload_generation == "job-pod-uid"
+    assert delegation.workload_subject == "system:serviceaccount:dep-ns:dep-sa"
+    assert delegation.bound_reference_value == "job-pod-uid"
+    assert delegation.auth_context == auth_context
 
 
 @pytest.mark.asyncio

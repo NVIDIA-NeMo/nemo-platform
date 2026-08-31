@@ -130,3 +130,29 @@ def test_delete_deployment_conflict_409(client: TestClient, mock_entity_client: 
     mock_entity_client.update.side_effect = NemoEntityConflictError("conflict")
     resp = client.delete("/apis/deployments/v2/workspaces/default/deployments/dep1")
     assert resp.status_code == 409
+
+
+def test_create_deployment_captures_auth_context_headers(client: TestClient, mock_entity_client: AsyncMock) -> None:
+    mock_entity_client.get.return_value = make_deployment_config()
+    mock_entity_client.list.return_value = list_response([])
+
+    async def _create(deployment):
+        return deployment
+
+    mock_entity_client.create.side_effect = _create
+    resp = client.post(
+        "/apis/deployments/v2/workspaces/default/deployments",
+        json={"name": "dep1", "deployment_config": "cfg1"},
+        headers={
+            "X-NMP-Principal-Id": "user:alice",
+            "X-NMP-Principal-Email": "alice@example.com",
+            "X-NMP-Principal-Groups": "research,platform",
+        },
+    )
+
+    assert resp.status_code == 201
+    created = mock_entity_client.create.await_args.args[0]
+    assert created.auth_context is not None
+    assert created.auth_context.principal_id == "user:alice"
+    assert created.auth_context.principal_email == "alice@example.com"
+    assert created.auth_context.principal_groups == ["research", "platform"]

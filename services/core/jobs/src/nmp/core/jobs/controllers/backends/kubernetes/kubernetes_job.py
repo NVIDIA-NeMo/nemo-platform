@@ -8,6 +8,7 @@ from kubernetes import client
 from kubernetes.client.models import V1Job, V1JobStatus
 from kubernetes.client.rest import ApiException
 from nemo_platform_plugin.jobs.types import PlatformJobStepWithContext, PlatformJobTaskUpdate
+from nmp.common.auth import get_workload_delegation_audience
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.app.constants import (
     JOB_EXECUTION_BACKEND_LABEL,
@@ -106,7 +107,7 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
             core_v1=self._core_v1,
             namespace=self.namespace,
             ttl_seconds_active=lambda: self._execution_profile_config.ttl_seconds_active,
-            workload_audience=self._workload_delegation_audience,
+            workload_audience=get_workload_delegation_audience,
             register_workload_delegation=self._workload_delegation_store.register,
             revoke_workload_delegation=self._workload_delegation_store.revoke,
         )
@@ -115,17 +116,6 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
         self._batch_v1.api_client.close()
         self._core_v1.api_client.close()
         return
-
-    @staticmethod
-    def _workload_delegation_audience() -> str:
-        try:
-            from nmp.common.config import get_auth_config
-
-            oidc_config = get_auth_config().oidc
-        except Exception:
-            logger.debug("Could not resolve auth config for Kubernetes workload delegation audience", exc_info=True)
-            return "nemo-platform"
-        return oidc_config.workload_audience or oidc_config.audience or "nemo-platform"
 
     def _workload_delegation_target_for_job(self, job: V1Job) -> KubernetesPodBoundWorkloadDelegationTarget | None:
         metadata = job.metadata

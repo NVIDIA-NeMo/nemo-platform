@@ -20,6 +20,7 @@ from nemo_agents_plugin.entities import (
     AgentDeployment,
     AgentEnvironment,
     AgentEnvironmentSpec,
+    ComputeResources,
     DeploymentStatus,
 )
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
@@ -145,6 +146,35 @@ class TestCreateDeployment:
         assert created_deployment.image == "hand-built-agent:latest"
         assert created_deployment.use_image_entrypoint is True
 
+    def test_create_captures_auth_context_headers(self) -> None:
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={"agent": "fabric-agent", "name": "fabric-dep", "deployment_mode": "docker"},
+            headers={
+                "X-NMP-Principal-Id": "user:alice",
+                "X-NMP-Principal-Email": "alice@example.com",
+                "X-NMP-Principal-Groups": "research,platform",
+            },
+        )
+
+        assert resp.status_code == 201
+        created_deployment: AgentDeployment = mock_entity_client.create.call_args[0][0]
+        assert created_deployment.auth_context is not None
+        assert created_deployment.auth_context.principal_id == "user:alice"
+        assert created_deployment.auth_context.principal_email == "alice@example.com"
+        assert created_deployment.auth_context.principal_groups == ["research", "platform"]
+
     def test_create_rejects_image_entrypoint_for_subprocess(self) -> None:
         mock_entity_client = AsyncMock()
         mock_entity_client.get = AsyncMock(return_value=_make_agent())
@@ -173,7 +203,11 @@ class TestCreateDeployment:
             env={"CUSTOM": "from-spec"},
             secrets={"APP_TOKEN": "default/app-token"},
         )
-        cspec = AgentComputeSpec(name="cspec", workspace="default", resources={"limits": {"cpu": "2"}})
+        cspec = AgentComputeSpec(
+            name="cspec",
+            workspace="default",
+            resources=ComputeResources.model_validate({"limits": {"cpu": "2"}}),
+        )
 
         mock_entity_client = AsyncMock()
         # get order: agent (route), then AgentEnvironment, env spec, compute spec (resolver).

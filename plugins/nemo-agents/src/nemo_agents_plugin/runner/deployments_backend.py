@@ -52,8 +52,13 @@ from nemo_deployments_plugin.entities import (
     ResourceRequirements,
     SecretRef,
     VolumeMount,
+    WorkloadIdentitySpec,
 )
-from nemo_platform_plugin.auth import platform_auth_enabled
+from nemo_platform_plugin.auth import AuthContext, platform_auth_enabled
+from nemo_platform_plugin.auth.workload_identity import (
+    DEFAULT_WORKLOAD_AUDIENCE,
+    is_workload_identity_token_exchange_enabled,
+)
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entities.base import parse_qualified_name
@@ -382,6 +387,7 @@ def build_deployment_config(
     resources: ComputeResources | None = None,
     secrets: dict[str, str] | None = None,
     use_image_entrypoint: bool = False,
+    workload_identity_enabled: bool = False,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -496,6 +502,17 @@ def build_deployment_config(
         }
     )
 
+    workload_identity = (
+        WorkloadIdentitySpec(
+            enabled=True,
+            workloadKind="agent_deployment",
+            workloadId=name,
+            tokenAudience=DEFAULT_WORKLOAD_AUDIENCE,
+        )
+        if workload_identity_enabled
+        else None
+    )
+
     # Request the auth-proxy sidecar via the DeploymentConfig flags; the
     # deployments plugin compiles and injects it (and no-ops when auth is off).
     return DeploymentConfig(
@@ -511,6 +528,7 @@ def build_deployment_config(
             "auth_proxy_sidecar": auth_proxy_identity is not None,
             "auth_proxy_sidecar_identity": auth_proxy_identity,
             "auth_proxy_sidecar_on_behalf_of": auth_proxy_on_behalf_of,
+            "workload_identity": workload_identity,
         }
     )
 
@@ -539,6 +557,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
         image: str | None = None,
         deployment_mode: DeploymentMode = "docker",
         created_by: str | None = None,
+        auth_context: AuthContext | None = None,
         resources: ComputeResources | None = None,
         secrets: dict[str, str] | None = None,
         use_image_entrypoint: bool = False,
@@ -649,6 +668,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 resources=resources,
                 secrets=secrets,
                 use_image_entrypoint=use_image_entrypoint,
+                workload_identity_enabled=auth_context is not None and is_workload_identity_token_exchange_enabled(),
             )
         except ReservedSecretEnvVarError as exc:
             logger.error("Refusing to deploy agent %r: %s", name, exc)
@@ -662,7 +682,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 executor=executor_for_mode(self._config, deployment_mode),
                 desired_state="READY",
                 status="PENDING",
-            )
+            ).with_auth_context(auth_context)
             await entities.create(deployment)
         except Exception:
             # Avoid orphaning the config if Deployment create fails.

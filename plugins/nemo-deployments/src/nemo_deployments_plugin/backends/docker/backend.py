@@ -10,6 +10,7 @@ import io
 import logging
 import os
 import tarfile
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from nemo_deployments_plugin.backends.base import (
@@ -67,6 +68,12 @@ from nemo_deployments_plugin.backends.labels import (
     deployment_key,
     managed_by_filter,
 )
+from nemo_deployments_plugin.backends.workload_identity import (
+    workload_id,
+    workload_identity_activation_error,
+    workload_identity_requested,
+    workload_kind,
+)
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import (
     ConfigFile,
@@ -79,6 +86,17 @@ from nemo_deployments_plugin.secrets import (
     resolve_deployment_config_secrets,
 )
 from nemo_deployments_plugin.types import NON_TERMINAL_DEPLOYMENT_STATUSES, Endpoint, RestartPolicy
+from nemo_platform_plugin.auth import AuthContext
+from nemo_platform_plugin.auth.workload_delegations import WorkloadDelegationStore
+from nemo_platform_plugin.auth.workload_identity import (
+    WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+    WORKLOAD_IDENTITY_VOLUME_PATH,
+    build_docker_opaque_workload_delegation,
+    build_token_archive,
+    get_workload_delegation_audience,
+    workload_delegation_expires_at,
+    workload_identity_env,
+)
 from nemo_platform_plugin.capabilities import docker_from_env_kwargs, probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
@@ -87,6 +105,7 @@ from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
     NemoEntityNotFoundError,
 )
+from nemo_platform_plugin.k8s_naming import k8s_safe_name
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
 from requests.exceptions import Timeout as RequestsTimeout
@@ -108,6 +127,9 @@ _PORT_CONFLICT_MARKER = "port is already allocated"
 _PORT_CONFLICT_ATTEMPTS = 3
 NGC_IMAGE_REGISTRY = os.getenv("NGC_IMAGE_REGISTRY", "nvcr.io")
 NGC_IMAGE_REGISTRY_USER_NAME = os.getenv("NGC_IMAGE_REGISTRY_USER_NAME", "$oauthtoken")
+DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL = "nemo.nvidia.com/workload-identity-token-file"
+DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL = "nemo.nvidia.com/workload-identity-volume"
+DOCKER_WORKLOAD_TOKEN_WRITER_IMAGE = "docker.io/library/busybox"
 
 
 def _is_ngc_image(image: str) -> bool:
@@ -183,6 +205,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         self._docker_errors = docker_errors
         self._executor_config = DockerExecutorConfig.model_validate(self._config)
         self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
+        self._workload_delegations = WorkloadDelegationStore(self._entities)
         self._gpu_pool = get_shared_gpu_pool()
         docker_host = self._executor_config.docker_host
         probe = probe_docker(docker_host=docker_host)
@@ -231,6 +254,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         config_name: str,
         labels: dict[str, str],
         backend_config: dict[str, Any],
+        auth_context: AuthContext | None = None,
     ) -> BackendStatusUpdate:
         c_name = container_name(workspace, name)
         try:
@@ -364,6 +388,11 @@ class DockerDeploymentBackend(DeploymentBackend):
                 resource_scope=self._executor_config.resource_scope,
             ),
         }
+        identity_error = workload_identity_activation_error(config=config, auth_context=auth_context)
+        if identity_error is not None:
+            if gpu_ids and gpu_pool is not None:
+                gpu_pool.release_gpu(dep_key)
+            return BackendStatusUpdate(status="FAILED", status_message=identity_error)
 
         # 1) Init containers run to completion, in order, before the group starts.
         for init in plan.init_containers:
@@ -375,22 +404,46 @@ class DockerDeploymentBackend(DeploymentBackend):
                 base_labels=base_labels,
                 dep_key=dep_key,
                 gpu_ids=gpu_ids,
+                auth_context=auth_context,
             )
             if init_status is not None:
                 return init_status
 
         # 2) Primary (server) container: publishes ports, owns GPUs.
+        primary_identity: tuple[str, str] | None = None
+        primary_labels = {**base_labels, CONTAINER_ROLE_LABEL: CONTAINER_ROLE_SERVER}
+        try:
+            primary_identity = await self._prepare_workload_identity_for_container(
+                workspace=workspace,
+                deployment_name=name,
+                config=config,
+                role=CONTAINER_ROLE_SERVER,
+                base_labels=primary_labels,
+                auth_context=auth_context,
+            )
+        except Exception as exc:
+            if gpu_ids and gpu_pool is not None:
+                gpu_pool.release_gpu(dep_key)
+            return BackendStatusUpdate(status="FAILED", status_message=f"Failed to prepare workload identity: {exc}")
+        if primary_identity is not None:
+            primary_labels = self._workload_identity_volume_labels(
+                base_labels=base_labels,
+                role=CONTAINER_ROLE_SERVER,
+                volume_name=primary_identity[0],
+            )
         server_container, host_ports, run_error = await self._run_server_container(
             workspace=workspace,
             config=config,
             container_spec=container_spec,
             name=c_name,
-            labels={**base_labels, CONTAINER_ROLE_LABEL: CONTAINER_ROLE_SERVER},
+            labels=primary_labels,
             host_ports=host_ports,
             gpu_ids=gpu_ids,
             network=docker_cfg.network,
+            workload_identity_volume_name=primary_identity[0] if primary_identity is not None else None,
         )
         if server_container is None:
+            await self._cleanup_prepared_workload_identity(primary_identity, reason="server start failure")
             if gpu_ids and gpu_pool is not None:
                 gpu_pool.release_gpu(dep_key)
             return BackendStatusUpdate(status="FAILED", status_message=run_error)
@@ -409,21 +462,39 @@ class DockerDeploymentBackend(DeploymentBackend):
         # recreate the whole group to stay consistent.
         for sidecar in plan.sidecars:
             sidecar_name = companion_container_name(workspace, name, sidecar.name)
-            sidecar_create_kwargs = self._build_run_kwargs(
-                workspace=workspace,
-                config=config,
-                container=sidecar,
-                name=sidecar_name,
-                labels={**base_labels, CONTAINER_ROLE_LABEL: sidecar.name},
-                host_ports={},
-                gpu_ids=[],
-                network=f"container:{c_name}",
-            )
+            sidecar_identity: tuple[str, str] | None = None
+            sidecar_labels = {**base_labels, CONTAINER_ROLE_LABEL: sidecar.name}
             try:
+                sidecar_identity = await self._prepare_workload_identity_for_container(
+                    workspace=workspace,
+                    deployment_name=name,
+                    config=config,
+                    role=sidecar.name,
+                    base_labels=sidecar_labels,
+                    auth_context=auth_context,
+                )
+                if sidecar_identity is not None:
+                    sidecar_labels = self._workload_identity_volume_labels(
+                        base_labels=base_labels,
+                        role=sidecar.name,
+                        volume_name=sidecar_identity[0],
+                    )
+                sidecar_create_kwargs = self._build_run_kwargs(
+                    workspace=workspace,
+                    config=config,
+                    container=sidecar,
+                    name=sidecar_name,
+                    labels=sidecar_labels,
+                    host_ports={},
+                    gpu_ids=[],
+                    network=f"container:{c_name}",
+                    workload_identity_volume_name=sidecar_identity[0] if sidecar_identity is not None else None,
+                )
                 sidecar_container = await asyncio.to_thread(self._client.containers.create, **sidecar_create_kwargs)
                 await asyncio.to_thread(sidecar_container.start)
             except Exception as exc:
                 logger.exception("Failed to start sidecar container %s", sidecar_name)
+                await self._cleanup_prepared_workload_identity(sidecar_identity, reason="sidecar start failure")
                 # Tear the whole group down so we don't leave a half-started deployment.
                 await self.delete_deployment(workspace, name)
                 return BackendStatusUpdate(
@@ -473,6 +544,276 @@ class DockerDeploymentBackend(DeploymentBackend):
             host_ports[port_spec.container_port] = host_port
         return host_ports
 
+    def _workload_identity_volume_name(self, *, workspace: str, name: str, role: str) -> str:
+        return k8s_safe_name(
+            f"dep-wi-{workspace}-{name}-{role}",
+            hash_input=f"{deployment_key(workspace, name)}/{role}/workload-identity",
+        )
+
+    def _workload_identity_volume_labels(
+        self,
+        *,
+        base_labels: dict[str, str],
+        role: str,
+        volume_name: str,
+    ) -> dict[str, str]:
+        return {
+            **base_labels,
+            CONTAINER_ROLE_LABEL: role,
+            DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL: WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+            DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL: volume_name,
+        }
+
+    def _volume_matches_deployment_group(self, volume: Any, workspace: str, name: str) -> bool:
+        attrs = getattr(volume, "attrs", None) or {}
+        labels = attrs.get("Labels") or getattr(volume, "labels", None) or {}
+        return (
+            labels.get(DEPLOYMENT_WORKSPACE_LABEL) == workspace
+            and labels.get(DEPLOYMENT_NAME_LABEL) == name
+            and labels.get(MANAGED_BY_KEY) == MANAGED_BY_LABEL
+            and self._labels_match_resource_scope(labels)
+        )
+
+    async def _ensure_workload_identity_volume(self, *, volume_name: str, labels: dict[str, str]) -> None:
+        def _ensure() -> None:
+            try:
+                volume = self._client.volumes.get(volume_name)
+                reload = getattr(volume, "reload", None)
+                if reload is not None:
+                    reload()
+                existing_labels = (getattr(volume, "attrs", None) or {}).get("Labels") or getattr(volume, "labels", {})
+                if not all(existing_labels.get(key) == value for key, value in labels.items()):
+                    raise RuntimeError(f"Docker volume {volume_name} exists with different labels")
+            except self._docker_errors.NotFound:
+                self._client.volumes.create(name=volume_name, labels=labels)
+
+        await asyncio.to_thread(_ensure)
+
+    async def _remove_workload_identity_volume(self, volume_name: str) -> None:
+        def _remove() -> None:
+            try:
+                volume = self._client.volumes.get(volume_name)
+                volume.remove(force=True)
+            except self._docker_errors.NotFound:
+                return
+
+        try:
+            await asyncio.to_thread(_remove)
+        except Exception:
+            logger.warning("Failed to remove workload identity volume %s", volume_name, exc_info=True)
+
+    async def _cleanup_workload_identity_volumes(self, *, workspace: str, name: str) -> None:
+        def _delete() -> None:
+            try:
+                volumes = self._client.volumes.list(
+                    filters={
+                        "label": [
+                            f"{MANAGED_BY_KEY}={MANAGED_BY_LABEL}",
+                            f"{DEPLOYMENT_WORKSPACE_LABEL}={workspace}",
+                            f"{DEPLOYMENT_NAME_LABEL}={name}",
+                            *self._resource_scope_filter_label(),
+                        ]
+                    }
+                )
+            except Exception:
+                logger.warning("Failed to list workload identity volumes for %s/%s", workspace, name, exc_info=True)
+                return
+            for volume in volumes:
+                if not self._volume_matches_deployment_group(volume, workspace, name):
+                    continue
+                try:
+                    volume.remove(force=True)
+                except self._docker_errors.NotFound:
+                    continue
+                except Exception:
+                    logger.warning(
+                        "Failed to remove workload identity volume %s",
+                        getattr(volume, "name", "unknown"),
+                        exc_info=True,
+                    )
+
+        await asyncio.to_thread(_delete)
+
+    async def _try_revoke_workload_delegation(self, delegation_name: str | None, *, reason: str) -> None:
+        if not delegation_name:
+            return
+        try:
+            await self._workload_delegations.revoke(delegation_name)
+        except Exception:
+            logger.warning(
+                "Failed to revoke Docker workload delegation",
+                extra={"delegation_name": delegation_name, "reason": reason},
+                exc_info=True,
+            )
+
+    async def _revoke_workload_delegations_for_config(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        config: DeploymentConfig | None,
+    ) -> None:
+        if config is None or not workload_identity_requested(config):
+            return
+        await self._workload_delegations.revoke_by_workload(
+            workload_workspace=workspace,
+            workload_kind=workload_kind(config),
+            workload_id=workload_id(config, name),
+        )
+
+    async def _refresh_workload_delegations_for_config(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        config: DeploymentConfig | None,
+    ) -> None:
+        if config is None or config.workload_identity is None or not workload_identity_requested(config):
+            return
+        try:
+            delegations = await self._workload_delegations.list_by_workload(
+                workload_workspace=workspace,
+                workload_kind=workload_kind(config),
+                workload_id=workload_id(config, name),
+            )
+            for delegation in delegations:
+                if delegation.revoked_at is not None or not delegation.opaque_subject_token_hash:
+                    continue
+                delegation.expires_at = workload_delegation_expires_at(
+                    ttl_seconds_active=config.workload_identity.token_expiration_seconds
+                )
+                await self._workload_delegations.update(delegation)
+        except Exception:
+            logger.warning("Failed to refresh Docker workload delegations for %s/%s", workspace, name, exc_info=True)
+
+    async def _sync_workload_identity_for_status(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        config: DeploymentConfig | None,
+        status_update: BackendStatusUpdate,
+    ) -> None:
+        if status_update.status in NON_TERMINAL_DEPLOYMENT_STATUSES:
+            await self._refresh_workload_delegations_for_config(workspace=workspace, name=name, config=config)
+            return
+        await self._revoke_workload_delegations_for_config(workspace=workspace, name=name, config=config)
+        await self._cleanup_workload_identity_volumes(workspace=workspace, name=name)
+
+    async def _cleanup_missing_workload_identity(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        config: DeploymentConfig | None,
+    ) -> None:
+        try:
+            await self._revoke_workload_delegations_for_config(workspace=workspace, name=name, config=config)
+            await self._cleanup_workload_identity_volumes(workspace=workspace, name=name)
+        except Exception:
+            logger.warning(
+                "Failed to clean up missing Docker workload identity for %s/%s", workspace, name, exc_info=True
+            )
+
+    async def _prepare_workload_identity_for_container(
+        self,
+        *,
+        workspace: str,
+        deployment_name: str,
+        config: DeploymentConfig,
+        role: str,
+        base_labels: dict[str, str],
+        auth_context: AuthContext | None,
+    ) -> tuple[str, str] | None:
+        if not workload_identity_requested(config):
+            return None
+        error = workload_identity_activation_error(config=config, auth_context=auth_context)
+        if error is not None:
+            raise RuntimeError(error)
+        if auth_context is None or config.workload_identity is None:
+            return None
+
+        volume_name = self._workload_identity_volume_name(workspace=workspace, name=deployment_name, role=role)
+        delegation, proof_token = build_docker_opaque_workload_delegation(
+            workload_workspace=workspace,
+            workload_audience=get_workload_delegation_audience(),
+            workload_kind=workload_kind(config),
+            workload_id=workload_id(config, deployment_name),
+            workload_generation=role,
+            auth_context=auth_context,
+            ttl_seconds_active=config.workload_identity.token_expiration_seconds,
+        )
+        await self._ensure_workload_identity_volume(
+            volume_name=volume_name,
+            labels=self._workload_identity_volume_labels(
+                base_labels=base_labels,
+                role=role,
+                volume_name=volume_name,
+            ),
+        )
+        registered = False
+        try:
+            await self._workload_delegations.register(delegation, require_opaque_subject_token_hash=True)
+            registered = True
+            await self._write_workload_identity_subject_token(volume_name, proof_token)
+        except Exception:
+            if registered:
+                await self._try_revoke_workload_delegation(delegation.name, reason="token provisioning failure")
+            await self._remove_workload_identity_volume(volume_name)
+            raise
+        return volume_name, delegation.name
+
+    async def _cleanup_prepared_workload_identity(
+        self,
+        material: tuple[str, str] | None,
+        *,
+        reason: str,
+    ) -> None:
+        if material is None:
+            return
+        volume_name, delegation_name = material
+        await self._try_revoke_workload_delegation(delegation_name, reason=reason)
+        await self._remove_workload_identity_volume(volume_name)
+
+    async def _write_workload_identity_subject_token(self, volume_name: str, token: str) -> None:
+        token_volume_path = "/workload-identity-vol"
+        container_name_for_write = f"deployment-workload-token-write-{uuid.uuid4().hex[:8]}"
+        finalize_token_command = (
+            f"mv {token_volume_path}/token.tmp {token_volume_path}/token && chmod 0444 {token_volume_path}/token"
+        )
+        container_args = {
+            "name": container_name_for_write,
+            "image": DOCKER_WORKLOAD_TOKEN_WRITER_IMAGE,
+            "command": ["sh", "-c", finalize_token_command],
+            "volumes": {volume_name: {"bind": token_volume_path, "mode": "rw"}},
+            "labels": {MANAGED_BY_KEY: MANAGED_BY_LABEL, RESOURCE_SCOPE_LABEL: self._executor_config.resource_scope},
+        }
+        container = await self._create_container_with_image_pull(
+            container_args=container_args,
+            image=DOCKER_WORKLOAD_TOKEN_WRITER_IMAGE,
+        )
+        try:
+            await asyncio.to_thread(container.put_archive, token_volume_path, build_token_archive(token))
+            await asyncio.to_thread(container.start)
+            result = await asyncio.to_thread(container.wait, timeout=self._executor_config.docker_timeout)
+            exit_code = self._exit_code_from_wait_result(result)
+            if exit_code != 0:
+                raise RuntimeError(f"workload identity token writer exited with code {exit_code}")
+        finally:
+            try:
+                await asyncio.to_thread(container.remove, force=True)
+            except Exception:
+                logger.warning("Failed to remove workload identity token writer container", exc_info=True)
+
+    async def _create_container_with_image_pull(self, *, container_args: dict[str, Any], image: str) -> DockerContainer:
+        try:
+            return await asyncio.to_thread(self._client.containers.create, **container_args)
+        except (self._docker_errors.ImageNotFound, self._docker_errors.NotFound):
+            pull_error = await self._pull_image(image, ngc_api_key=None)
+            if pull_error is not None:
+                raise RuntimeError(pull_error)
+            return await asyncio.to_thread(self._client.containers.create, **container_args)
+
     async def _remove_container_by_name(self, name: str) -> None:
         """Best-effort removal of a container this call just created."""
         try:
@@ -494,6 +835,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         host_ports: dict[int, int],
         gpu_ids: list[int],
         network: str | None,
+        workload_identity_volume_name: str | None = None,
     ) -> tuple[DockerContainer | None, dict[int, int], str]:
         """Start the primary container, reallocating host ports on Docker port conflicts.
 
@@ -513,6 +855,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                 host_ports=host_ports,
                 gpu_ids=gpu_ids,
                 network=network,
+                workload_identity_volume_name=workload_identity_volume_name,
             )
             created: DockerContainer | None = None
             try:
@@ -572,13 +915,17 @@ class DockerDeploymentBackend(DeploymentBackend):
         host_ports: dict[int, int],
         gpu_ids: list[int],
         network: str | None,
+        workload_identity_volume_name: str | None = None,
     ) -> dict[str, Any]:
         """Build docker ``containers.run`` kwargs for one container in a group."""
+        environment = env_dict(container)
+        if workload_identity_volume_name is not None:
+            environment.update(workload_identity_env(token_file_path=WORKLOAD_IDENTITY_TOKEN_FILE_PATH))
         run_kwargs: dict[str, Any] = {
             "image": container.image,
             "name": name,
             "labels": labels,
-            "environment": env_dict(container),
+            "environment": environment,
             **restart_policy_kwargs(config.restart_policy, config.backoff_limit),
         }
         # Mirror Kubernetes semantics (see the k8s compiler): a container spec's
@@ -592,7 +939,15 @@ class DockerDeploymentBackend(DeploymentBackend):
         if container.args:
             run_kwargs["command"] = list(container.args)
 
-        volume_bindings = build_volume_bindings(workspace, merged_volume_mounts(config, container))
+        volume_bindings = {
+            **self._executor_volume_bindings(),
+            **build_volume_bindings(workspace, merged_volume_mounts(config, container)),
+        }
+        if workload_identity_volume_name is not None:
+            volume_bindings = {
+                **volume_bindings,
+                workload_identity_volume_name: {"bind": WORKLOAD_IDENTITY_VOLUME_PATH, "mode": "ro"},
+            }
         if volume_bindings:
             run_kwargs["volumes"] = volume_bindings
 
@@ -630,6 +985,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         base_labels: dict[str, str],
         dep_key: str,
         gpu_ids: list[int],
+        auth_context: AuthContext | None = None,
     ) -> BackendStatusUpdate | None:
         """Run one init container to completion. Return an error status or None on success."""
         init_name = companion_container_name(workspace, name, f"init-{init.name}")
@@ -648,17 +1004,49 @@ class DockerDeploymentBackend(DeploymentBackend):
         # (lora-cache-init prepares the scratch dir). If the models compiler ever
         # emits a GPU-needing init container, this would need to plumb GPUs
         # through here.
+        role = f"init-{init.name}"
+        init_identity: tuple[str, str] | None = None
+        labels = {**base_labels, CONTAINER_ROLE_LABEL: role}
+        environment = env_dict(init)
+        try:
+            init_identity = await self._prepare_workload_identity_for_container(
+                workspace=workspace,
+                deployment_name=name,
+                config=config,
+                role=role,
+                base_labels=labels,
+                auth_context=auth_context,
+            )
+        except Exception as exc:
+            if gpu_ids and self._gpu_pool is not None:
+                self._gpu_pool.release_gpu(dep_key)
+            return BackendStatusUpdate(status="FAILED", status_message=f"Failed to prepare workload identity: {exc}")
+        if init_identity is not None:
+            labels = self._workload_identity_volume_labels(
+                base_labels=base_labels,
+                role=role,
+                volume_name=init_identity[0],
+            )
+            environment.update(workload_identity_env(token_file_path=WORKLOAD_IDENTITY_TOKEN_FILE_PATH))
         create_kwargs: dict[str, Any] = {
             "image": init.image,
             "name": init_name,
-            "labels": {**base_labels, CONTAINER_ROLE_LABEL: f"init-{init.name}"},
-            "environment": env_dict(init),
+            "labels": labels,
+            "environment": environment,
         }
         if init.command:
             create_kwargs["entrypoint"] = list(init.command)
         if init.args:
             create_kwargs["command"] = list(init.args)
-        volume_bindings = build_volume_bindings(workspace, merged_volume_mounts(config, init))
+        volume_bindings = {
+            **self._executor_volume_bindings(),
+            **build_volume_bindings(workspace, merged_volume_mounts(config, init)),
+        }
+        if init_identity is not None:
+            volume_bindings = {
+                **volume_bindings,
+                init_identity[0]: {"bind": WORKLOAD_IDENTITY_VOLUME_PATH, "mode": "ro"},
+            }
         if volume_bindings:
             create_kwargs["volumes"] = volume_bindings
 
@@ -684,6 +1072,8 @@ class DockerDeploymentBackend(DeploymentBackend):
                 status="FAILED",
                 status_message=f"Init container {init.name} failed: {exc}",
             )
+        finally:
+            await self._cleanup_prepared_workload_identity(init_identity, reason="init container completed")
 
         if exit_code != 0:
             if gpu_ids and self._gpu_pool is not None:
@@ -702,6 +1092,8 @@ class DockerDeploymentBackend(DeploymentBackend):
             if not self._container_matches_deployment_group(container, workspace, name):
                 restart_policy = await self._resolve_restart_policy(workspace, name)
                 status_update = missing_container_status(restart_policy, container_name=c_name)
+                config = await self._load_config_for_deployment_entity(workspace, name)
+                await self._cleanup_missing_workload_identity(workspace=workspace, name=name, config=config)
                 if status_update.status not in NON_TERMINAL_DEPLOYMENT_STATUSES and self._gpu_pool is not None:
                     self._gpu_pool.release_gpu(dep_key)
                 return status_update
@@ -709,6 +1101,8 @@ class DockerDeploymentBackend(DeploymentBackend):
         except self._docker_errors.NotFound:
             restart_policy = await self._resolve_restart_policy(workspace, name)
             status_update = missing_container_status(restart_policy, container_name=c_name)
+            config = await self._load_config_for_deployment_entity(workspace, name)
+            await self._cleanup_missing_workload_identity(workspace=workspace, name=name, config=config)
             if status_update.status not in NON_TERMINAL_DEPLOYMENT_STATUSES and self._gpu_pool is not None:
                 self._gpu_pool.release_gpu(dep_key)
             return status_update
@@ -745,6 +1139,7 @@ class DockerDeploymentBackend(DeploymentBackend):
             host_url = self._primary_host_url(tcp_host_ports, target_name=c_name)
             probe_ports = self._probe_ports(tcp_host_ports)
             config = await self._load_config_from_labels(workspace, labels)
+            await self._refresh_workload_delegations_for_config(workspace=workspace, name=name, config=config)
             probe = None
             if config is not None and config.containers:
                 probe = config.containers[0].readiness_probe
@@ -782,7 +1177,8 @@ class DockerDeploymentBackend(DeploymentBackend):
         if state in ("exited", "dead"):
             exit_code = _docker_inspect_exit_code(container)
             restart_count = _docker_inspect_restart_count(container)
-            return self._status_from_exited_container(
+            config = await self._load_config_from_labels(workspace, labels)
+            status_update = self._status_from_exited_container(
                 exit_code=exit_code,
                 restart_policy=restart_policy,
                 labels=labels,
@@ -790,6 +1186,13 @@ class DockerDeploymentBackend(DeploymentBackend):
                 restart_count=restart_count,
                 endpoints=endpoints,
             )
+            await self._sync_workload_identity_for_status(
+                workspace=workspace,
+                name=name,
+                config=config,
+                status_update=status_update,
+            )
+            return status_update
 
         if state == "removing":
             return BackendStatusUpdate(
@@ -901,13 +1304,20 @@ class DockerDeploymentBackend(DeploymentBackend):
                     status="FAILED",
                     status_message=f"Failed waiting for container to exit: {exc}",
                 )
-            return self._status_from_exited_container(
+            status_update = self._status_from_exited_container(
                 exit_code=exit_code,
                 restart_policy=restart_policy,
                 labels=labels,
                 dep_key=dep_key,
                 endpoints=endpoints,
             )
+            await self._sync_workload_identity_for_status(
+                workspace=workspace,
+                name=name,
+                config=config,
+                status_update=status_update,
+            )
+            return status_update
 
         try:
             await asyncio.to_thread(container.reload)
@@ -925,7 +1335,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         if container.status in _EXITED_CONTAINER_STATES:
             exit_code = _docker_inspect_exit_code(container)
             restart_count = _docker_inspect_restart_count(container)
-            return self._status_from_exited_container(
+            status_update = self._status_from_exited_container(
                 exit_code=exit_code,
                 restart_policy=restart_policy,
                 labels=labels,
@@ -933,6 +1343,13 @@ class DockerDeploymentBackend(DeploymentBackend):
                 restart_count=restart_count,
                 endpoints=endpoints,
             )
+            await self._sync_workload_identity_for_status(
+                workspace=workspace,
+                name=name,
+                config=config,
+                status_update=status_update,
+            )
+            return status_update
 
         container_name_label = container.name or "primary"
         return BackendStatusUpdate(
@@ -1039,6 +1456,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                 except self._docker_errors.NotFound:
                     continue
 
+        config = await self._load_config_for_deployment_entity(workspace, name)
         try:
             await asyncio.to_thread(_delete)
         except Exception as exc:
@@ -1046,6 +1464,15 @@ class DockerDeploymentBackend(DeploymentBackend):
         finally:
             if self._gpu_pool is not None:
                 self._gpu_pool.release_gpu(dep_key)
+
+        try:
+            await self._revoke_workload_delegations_for_config(workspace=workspace, name=name, config=config)
+            await self._cleanup_workload_identity_volumes(workspace=workspace, name=name)
+        except Exception as exc:
+            return BackendStatusUpdate(
+                status="FAILED",
+                status_message=f"Container {c_name} deleted, but workload identity cleanup failed: {exc}",
+            )
 
         return BackendStatusUpdate(status="SUCCEEDED", status_message=f"Container {c_name} deleted")
 
@@ -1072,6 +1499,15 @@ class DockerDeploymentBackend(DeploymentBackend):
             if ws and dep_name:
                 seen.add(f"{ws}/{dep_name}")
         return sorted(seen)
+
+    def _executor_volume_bindings(self) -> dict[str, dict[str, str]]:
+        return {
+            mount.volume_name: {
+                "bind": mount.mount_path,
+                "mode": "ro" if mount.read_only else "rw",
+            }
+            for mount in self._executor_config.additional_volume_mounts
+        }
 
     def _resource_scope_filter_label(self) -> list[str]:
         return [f"{RESOURCE_SCOPE_LABEL}={self._executor_config.resource_scope}"]
@@ -1215,9 +1651,10 @@ class DockerDeploymentBackend(DeploymentBackend):
                 labels.get(DEPLOYMENT_NAME_LABEL, ""),
             )
         try:
-            return await self._entities.get(DeploymentConfig, config_name, workspace=workspace)
+            config = await self._entities.get(DeploymentConfig, config_name, workspace=workspace)
         except Exception:
             return None
+        return config if isinstance(config, DeploymentConfig) else None
 
     async def _load_config_for_deployment_entity(
         self,
@@ -1228,13 +1665,17 @@ class DockerDeploymentBackend(DeploymentBackend):
             return None
         try:
             deployment = await self._entities.get(Deployment, deployment_name, workspace=workspace)
-            return await self._entities.get(
+            config_name = getattr(deployment, "deployment_config", None)
+            if not isinstance(config_name, str) or not config_name:
+                return None
+            config = await self._entities.get(
                 DeploymentConfig,
-                deployment.deployment_config,
+                config_name,
                 workspace=workspace,
             )
         except Exception:
             return None
+        return config if isinstance(config, DeploymentConfig) else None
 
     def _extract_host_ports(self, container: DockerContainer, *, protocol: str | None = None) -> dict[int, int]:
         """Map container port -> published host port.

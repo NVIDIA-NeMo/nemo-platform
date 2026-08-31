@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, DeploymentsRunnerConfig
-from nemo_agents_plugin.entities import ComputeResources, Endpoint
+from nemo_agents_plugin.entities import ComputeResources, DeploymentMode, Endpoint
 from nemo_agents_plugin.fabric.gateway_credentials import PLATFORM_IGW_API_KEY_ENV, PLATFORM_IGW_API_KEY_PLACEHOLDER
 from nemo_agents_plugin.runner.deployments_backend import (
     DeploymentsRunnerBackend,
@@ -28,6 +28,7 @@ from nemo_agents_plugin.runner.deployments_backend import (
 from nemo_agents_plugin.runner.fabric_artifact_staging import FabricArtifactStagingError
 from nemo_deployments_plugin.entities import ConfigFile, Deployment, DeploymentConfig
 from nemo_deployments_plugin.types import Endpoint as PluginEndpoint
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
@@ -358,12 +359,33 @@ def test_build_deployment_config_no_secrets_adds_no_secret_env() -> None:
     assert all(e.secret_ref is None for e in cfg.containers[0].env)
 
 
+def test_build_deployment_config_adds_workload_identity_when_requested() -> None:
+    cfg = build_deployment_config(
+        name="hello-dep",
+        workspace="default",
+        image="nat-runtime:latest",
+        port=8000,
+        agent_config={},
+        platform_base_url="http://nmp-api:8080",
+        config_mount_path="/workspace/config.yaml",
+        mode="k8s",
+        workload_identity_enabled=True,
+    )
+
+    assert cfg.workload_identity is not None
+    assert cfg.workload_identity.enabled is True
+    assert cfg.workload_identity.workload_kind == "agent_deployment"
+    assert cfg.workload_identity.workload_id == "hello-dep"
+
+
 @pytest.mark.parametrize("mode", ["docker", "k8s"])
 @pytest.mark.parametrize(
     "reserved_name",
     ["NMP_WORKSPACE", "NMP_AGENT_NAME", "NMP_BASE_URL", "PYTHONPATH", "AGENT_CONFIG_PATH", "NAT_CONFIG_PATH"],
 )
-def test_build_deployment_config_rejects_secret_name_colliding_with_reserved(reserved_name: str, mode: str) -> None:
+def test_build_deployment_config_rejects_secret_name_colliding_with_reserved(
+    reserved_name: str, mode: DeploymentMode
+) -> None:
     # A secret env var whose name collides with a platform-generated container
     # env var is rejected up front (behavior would otherwise differ by substrate).
     with pytest.raises(ReservedSecretEnvVarError, match=reserved_name):
@@ -1282,3 +1304,35 @@ async def test_create_deployment_fabric_staging_error_fails_before_entity_create
     assert info.status == "failed"
     assert "skills/review" in info.error
     entities.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_enables_workload_identity_with_auth_context() -> None:
+    backend = _backend(default_image="nat:latest", default_executor="local-docker")
+    entities = AsyncMock()
+    backend._entities = entities
+    auth_context = AuthContext(principal_id="user:alice", principal_groups=["research"])
+
+    with (
+        patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://127.0.0.1:8080"),
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.is_workload_identity_token_exchange_enabled",
+            return_value=True,
+        ),
+    ):
+        info = await backend.create_deployment(
+            workspace="default",
+            name="hello-dep",
+            config={"workflow": {"_type": "react_agent"}},
+            port=0,
+            deployment_mode="docker",
+            auth_context=auth_context,
+        )
+
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+    created_dep = entities.create.await_args_list[1].args[0]
+    assert created_config.workload_identity is not None
+    assert created_config.workload_identity.enabled is True
+    assert created_config.workload_identity.workload_id == "hello-dep"
+    assert created_dep.auth_context == auth_context

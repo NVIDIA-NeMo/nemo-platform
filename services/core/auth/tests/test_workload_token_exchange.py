@@ -22,6 +22,8 @@ from nmp.common.auth.workload_delegations import (
     WorkloadDelegationEntity,
     create_opaque_docker_proof_token,
     docker_delegation_name,
+    docker_workload_delegation_name,
+    kubernetes_pod_uid_delegation_name,
     reference_delegation_name,
 )
 from nmp.common.config import AuthConfig, Configuration
@@ -154,6 +156,34 @@ def _delegation_entity(**overrides: Any) -> WorkloadDelegationEntity:
     return entity.model_copy(update=overrides)
 
 
+def _deployment_docker_delegation_name() -> str:
+    return docker_workload_delegation_name(
+        workload_workspace="default",
+        workload_kind="deployment",
+        workload_id="deployment-123",
+        workload_generation="container-abc",
+    )
+
+
+def _deployment_delegation_entity(**overrides: Any) -> WorkloadDelegationEntity:
+    delegation_name = _deployment_docker_delegation_name()
+    entity = WorkloadDelegationEntity(
+        name=delegation_name,
+        workspace=SYSTEM_WORKSPACE,
+        workload_subject=delegation_name,
+        workload_audience="nemo-platform",
+        workload_workspace="default",
+        workload_kind="deployment",
+        workload_id="deployment-123",
+        workload_generation="container-abc",
+        auth_context=AuthContext.from_principal(
+            Principal(id="creator@example.com", email="creator@example.com", groups=["workspace-editors"])
+        ),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+    )
+    return entity.model_copy(update=overrides)
+
+
 def _reference_delegation_entity(**overrides: Any) -> WorkloadDelegationEntity:
     values = {
         "name": reference_delegation_name(
@@ -168,6 +198,32 @@ def _reference_delegation_entity(**overrides: Any) -> WorkloadDelegationEntity:
     }
     values.update(overrides)
     return _delegation_entity(**values)
+
+
+def _deployment_reference_delegation_entity(**overrides: Any) -> WorkloadDelegationEntity:
+    workload_subject = "system:serviceaccount:nemo-deployments:deployment-runner"
+    pod_uid = "deployment-pod-uid-123"
+    entity = WorkloadDelegationEntity(
+        name=kubernetes_pod_uid_delegation_name(
+            workload_audience="nemo-platform",
+            workload_subject=workload_subject,
+            pod_uid=pod_uid,
+        ),
+        workspace=SYSTEM_WORKSPACE,
+        workload_subject=workload_subject,
+        workload_audience="nemo-platform",
+        workload_workspace="default",
+        workload_kind="deployment",
+        workload_id="deployment-123",
+        workload_generation=pod_uid,
+        auth_context=AuthContext.from_principal(
+            Principal(id="creator@example.com", email="creator@example.com", groups=["workspace-editors"])
+        ),
+        bound_reference_name=exchange.KUBERNETES_POD_UID_REFERENCE_NAME,
+        bound_reference_value=pod_uid,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+    )
+    return entity.model_copy(update=overrides)
 
 
 def _pod_uid_bound_reference(value: str = "pod-uid-123") -> exchange.VerifiedWorkloadReference:
@@ -806,6 +862,27 @@ def test_opaque_docker_proof_token_mints_delegated_access_token(
     assert claims["act"] == {"sub": delegation.name}
 
 
+def test_opaque_docker_proof_token_mints_delegated_access_token_for_deployment_row(
+    client: TestClient,
+    exchange_config: AuthConfig,
+    exchange_service: exchange.WorkloadTokenExchangeService,
+    entity_client: _FakeEntityClient,
+) -> None:
+    subject_token, token_hash = create_opaque_docker_proof_token(_deployment_docker_delegation_name())
+    delegation = _deployment_delegation_entity(opaque_subject_token_hash=token_hash)
+    entity_client.entities[delegation.name] = delegation
+
+    response = client.post(
+        "/token",
+        data=_exchange_form(subject_token, subject_token_type=DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE),
+    )
+
+    assert response.status_code == 200
+    claims = _decode_access_token(response.json()["access_token"], exchange_config, exchange_service)
+    assert claims["sub"] == "creator@example.com"
+    assert claims["act"] == {"sub": delegation.name}
+
+
 def test_opaque_docker_proof_token_requires_private_subject_token_type(
     client: TestClient,
     entity_client: _FakeEntityClient,
@@ -965,6 +1042,41 @@ def test_kubernetes_reference_row_mints_delegated_access_token(
     assert claims["sub"] == "creator@example.com"
     assert claims["act"] == {
         "sub": "system:serviceaccount:nemo-runs:job-runner",
+        "groups": "system:serviceaccounts",
+    }
+
+
+def test_kubernetes_reference_row_mints_delegated_access_token_for_deployment_row(
+    client: TestClient,
+    exchange_config: AuthConfig,
+    exchange_service: exchange.WorkloadTokenExchangeService,
+    entity_client: _FakeEntityClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    delegation = _deployment_reference_delegation_entity()
+    entity_client.entities[delegation.name] = delegation
+
+    async def decode_subject_token(
+        config: AuthConfig, subject_token: str, audience: str
+    ) -> exchange.DecodedSubjectToken:
+        return _decoded_subject_token(
+            {
+                "sub": "system:serviceaccount:nemo-deployments:deployment-runner",
+                "groups": ["system:serviceaccounts"],
+            },
+            bound_reference=_pod_uid_bound_reference("deployment-pod-uid-123"),
+        )
+
+    monkeypatch.setattr(exchange_service, "decode_subject_token", decode_subject_token)
+
+    response = client.post("/token", data=_exchange_form("kubernetes-token"))
+
+    assert response.status_code == 200
+    claims = _decode_access_token(response.json()["access_token"], exchange_config, exchange_service)
+    assert entity_client.get_calls == [delegation.name]
+    assert claims["sub"] == "creator@example.com"
+    assert claims["act"] == {
+        "sub": "system:serviceaccount:nemo-deployments:deployment-runner",
         "groups": "system:serviceaccounts",
     }
 
