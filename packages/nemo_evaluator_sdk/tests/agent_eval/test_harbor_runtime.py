@@ -2226,3 +2226,38 @@ def test_legacy_harbor_trial_contract_import_resolves_to_source_module(source_na
     assert legacy.__file__ is not None
 
     assert Path(legacy.__file__).resolve() == Path(source.__file__).resolve()
+
+
+def test_atif_trajectory_supplies_the_final_answer(tmp_path: Path) -> None:
+    trial = _trial_with_trajectory(tmp_path, _atif_trajectory_payload())
+
+    assert trial.output.output_text == "204"
+
+
+def test_non_atif_trajectory_yields_no_final_answer(tmp_path: Path) -> None:
+    trial = _trial_with_trajectory(tmp_path, {"not": "atif"})
+
+    assert trial.output.output_text is None
+
+
+def test_final_answer_ignores_trailing_non_agent_steps(tmp_path: Path) -> None:
+    payload = _atif_trajectory_payload()
+    payload["steps"].append(  # type: ignore[attr-defined]
+        {"step_id": 4, "source": "system", "message": "cleanup", "timestamp": "2026-01-01T00:00:03+00:00"}
+    )
+
+    trial = _trial_with_trajectory(tmp_path, payload)
+
+    assert trial.output.output_text == "204"
+
+
+def test_empty_final_agent_message_is_not_backfilled_from_earlier_reasoning(tmp_path: Path) -> None:
+    # Only the last agent step can be the answer; an earlier one is intermediate reasoning.
+    payload = _atif_trajectory_payload()
+    payload["steps"].append(  # type: ignore[attr-defined]
+        {"step_id": 4, "source": "agent", "message": "", "timestamp": "2026-01-01T00:00:03+00:00"}
+    )
+
+    trial = _trial_with_trajectory(tmp_path, payload)
+
+    assert trial.output.output_text is None
