@@ -128,7 +128,7 @@ export const AgentDetailRoute: FC = () => {
   const modelNames = getAgentModelNames(agent?.config);
   const canDeploy = !!agent?.config;
 
-  const canRunEvaluation = !!agentName && canDeploy && healthyDeployments.length > 0;
+  const canRunEvaluation = !!agentName && canDeploy;
 
   const status = healthyDeployments.length > 0 ? 'running' : agentDeployments[0]?.status;
   const statusPillLabel =
