@@ -3,20 +3,15 @@
 
 """EvaluateSuiteJob — run a directory of containerized eval tasks against an agent.
 
-Registered under ``nemo.jobs`` as ``agents.evaluate-suite``. Invoke as
+Registered under ``nemo.jobs`` as ``agents.evaluate-suite``. The CLI command
+``nemo agents evaluate-suite --spec '{...}'`` submits it to the platform; the
+jobs controller dispatches a subprocess on the same host that runs the
+platform (today: the user's laptop) and the result lands in ``nemo jobs list``
+/ Studio's Jobs view.
 
-Two invocation paths share the same ``run(config)`` body:
+For repeatable runs, use a YAML spec file:
 
-* ``nemo agents evaluate-suite run --spec '{...}'`` — local, in-process, no
-  platform job row (good for offline iteration / no platform required).
-* ``nemo agents evaluate-suite submit --spec '{...}'`` — POSTs to the
-  platform; the jobs controller dispatches a subprocess on the same host that
-  runs the platform (today: the user's laptop) and the result lands in
-  ``nemo jobs list`` / Studio's Jobs view.
-
-or, preferred for repeatable runs, with a YAML spec file:
-
-    nemo agents evaluate-suite run --spec-file .agent-improver.yml
+    nemo agents evaluate-suite --spec-file .agent-improver.yml
 """
 
 from __future__ import annotations
@@ -81,10 +76,18 @@ class EvaluateSuiteConfig(BaseModel):
     anthropic_api_key_secret: str | None = Field(
         default=None,
         description=(
-            "Name of a platform Secret holding the Anthropic API key.  When set on a submit, "
+            "Name of a platform Secret holding the Anthropic API key.  When set on a platform submission, "
             "the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess so "
             "the Harbor eval tasks' LLM-judge calls reach Anthropic.  Local (in-process) runs "
             "read ``ANTHROPIC_API_KEY`` from the calling shell as before."
+        ),
+    )
+    anthropic_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Anthropic-compatible API base URL injected as ``ANTHROPIC_BASE_URL`` for platform "
+            "submissions.  Local (in-process) runs read ``ANTHROPIC_BASE_URL`` from the calling "
+            "shell as before."
         ),
     )
 
@@ -111,11 +114,12 @@ class EvaluateSuiteJob(NemoJob):
     name: ClassVar[str] = "evaluate-suite"
     description: ClassVar[str] = "Run a directory of containerized eval tasks (Harbor or NAT) against an agent."
     container: ClassVar[str] = "cpu-tasks"
+    generate_legacy_verbs: ClassVar[bool] = False
     spec_schema: ClassVar[type[BaseModel]] = EvaluateSuiteConfig
     input_spec_schema: ClassVar[type[BaseModel]] = EvaluateSuiteSubmitConfig
 
     @classmethod
-    async def to_spec(  # type: ignore[override]
+    async def to_spec(  # ty: ignore[invalid-method-override]
         cls,
         input_spec: EvaluateSuiteSubmitConfig,
         *,
@@ -129,7 +133,7 @@ class EvaluateSuiteJob(NemoJob):
         return EvaluateSuiteConfig.model_validate(input_spec.model_dump())
 
     @classmethod
-    async def compile(  # type: ignore[override]
+    async def compile(  # ty: ignore[invalid-method-override]
         cls,
         *,
         workspace: str,
@@ -195,6 +199,8 @@ class EvaluateSuiteJob(NemoJob):
                     from_secret=EnvironmentVariableFromSecret(name=spec.anthropic_api_key_secret),
                 )
             )
+        if spec.anthropic_base_url:
+            environment.append(EnvironmentVariable(name="ANTHROPIC_BASE_URL", value=spec.anthropic_base_url))
 
         return PlatformJobSpec(
             steps=[

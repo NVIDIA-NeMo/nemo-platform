@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 
 class Difficulty(str, Enum):
@@ -278,7 +279,7 @@ class LoopState:
 # --- Serialization helpers ---
 
 
-def _serialize(obj: object) -> object:
+def _serialize(obj: object) -> Any:
     """JSON serialization helper for dataclasses."""
     if isinstance(obj, datetime):
         return obj.isoformat()
@@ -295,6 +296,19 @@ def _serialize(obj: object) -> object:
     if isinstance(obj, tuple):
         return [_serialize(item) for item in obj]
     return obj
+
+
+def _serialize_dict(obj: object) -> dict[str, Any]:
+    """Serialize a dataclass-like object that is expected to produce a mapping."""
+    serialized = _serialize(obj)
+    if not isinstance(serialized, dict):
+        raise TypeError(f"Expected serialized {type(obj).__name__} to be a mapping, got {type(serialized).__name__}.")
+    result: dict[str, Any] = {}
+    for key, value in serialized.items():
+        if not isinstance(key, str):
+            raise TypeError(f"Expected serialized {type(obj).__name__} key to be str, got {type(key).__name__}.")
+        result[key] = value
+    return result
 
 
 def to_json(obj: object, indent: int = 2) -> str:

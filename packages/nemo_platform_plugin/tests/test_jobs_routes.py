@@ -406,7 +406,7 @@ async def test_compile_adapter_omits_empty_controls_for_legacy_compile() -> None
             return config
 
         @classmethod
-        async def compile(
+        async def compile(  # ty: ignore[invalid-method-override]
             cls,
             *,
             workspace: str,
@@ -450,7 +450,7 @@ async def test_compile_adapter_rejects_unsupported_submitted_controls_for_legacy
             return config
 
         @classmethod
-        async def compile(
+        async def compile(  # ty: ignore[invalid-method-override]
             cls,
             *,
             workspace: str,

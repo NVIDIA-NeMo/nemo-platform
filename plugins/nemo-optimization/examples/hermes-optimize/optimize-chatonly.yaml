@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # --optimize-config: chat-only Hermes package (proven CLI smoke).
-# Pass an absolute path to `nemo agents optimize run`.
+# Stage this bundle with:
+#   nemo agents optimize prepare-fileset --source examples/hermes-optimize --optimize-config optimize-chatonly.yaml --fileset hermes-optimize-chatonly --workspace default
+# Then launch it with:
+#   nemo agents optimize --optimize-config-fileset default/hermes-optimize-chatonly --optimize-config optimize-chatonly.yaml --workspace default
 #
 # See README.md in this directory for install + run steps.
 schema_version: fabric.agent/v1alpha1

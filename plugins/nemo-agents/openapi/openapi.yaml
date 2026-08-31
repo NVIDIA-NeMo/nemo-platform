@@ -4425,9 +4425,15 @@ components:
         anthropic_api_key_secret:
           title: Anthropic Api Key Secret
           description: Name of a platform Secret holding the Anthropic API key.  When
-            set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the
-            dispatched subprocess so the LLM gap-analysis pass can call Anthropic.  Ignored
+            set on a platform submission, the value is injected as ``ANTHROPIC_API_KEY``
+            into the dispatched subprocess so the LLM gap-analysis pass can call Anthropic.  Ignored
             when ``mechanical_only=True``.  Local (in-process) runs read ``ANTHROPIC_API_KEY``
+            from the calling shell as before.
+          type: string
+        anthropic_base_url:
+          title: Anthropic Base Url
+          description: Anthropic-compatible API base URL injected as ``ANTHROPIC_BASE_URL``
+            for platform submissions.  Local (in-process) runs read ``ANTHROPIC_BASE_URL``
             from the calling shell as before.
           type: string
       type: object
@@ -5262,10 +5268,16 @@ components:
         anthropic_api_key_secret:
           title: Anthropic Api Key Secret
           description: Name of a platform Secret holding the Anthropic API key.  When
-            set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the
-            dispatched subprocess so the Harbor eval tasks' LLM-judge calls reach
-            Anthropic.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from the
-            calling shell as before.
+            set on a platform submission, the value is injected as ``ANTHROPIC_API_KEY``
+            into the dispatched subprocess so the Harbor eval tasks' LLM-judge calls
+            reach Anthropic.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from
+            the calling shell as before.
+          type: string
+        anthropic_base_url:
+          title: Anthropic Base Url
+          description: Anthropic-compatible API base URL injected as ``ANTHROPIC_BASE_URL``
+            for platform submissions.  Local (in-process) runs read ``ANTHROPIC_BASE_URL``
+            from the calling shell as before.
           type: string
       type: object
       required:
@@ -5486,10 +5498,16 @@ components:
         anthropic_api_key_secret:
           title: Anthropic Api Key Secret
           description: Name of a platform Secret holding the Anthropic API key.  When
-            set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the
-            dispatched subprocess so the Harbor eval tasks' LLM-judge calls reach
-            Anthropic.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from the
-            calling shell as before.
+            set on a platform submission, the value is injected as ``ANTHROPIC_API_KEY``
+            into the dispatched subprocess so the Harbor eval tasks' LLM-judge calls
+            reach Anthropic.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from
+            the calling shell as before.
+          type: string
+        anthropic_base_url:
+          title: Anthropic Base Url
+          description: Anthropic-compatible API base URL injected as ``ANTHROPIC_BASE_URL``
+            for platform submissions.  Local (in-process) runs read ``ANTHROPIC_BASE_URL``
+            from the calling shell as before.
           type: string
       type: object
       required:
@@ -6050,7 +6068,7 @@ components:
           title: Project
           type: string
         spec:
-          $ref: '#/components/schemas/OptimizeSpec'
+          $ref: '#/components/schemas/OptimizeSubmitSpec'
         profile:
           title: Profile
           type: string
@@ -6204,10 +6222,16 @@ components:
         anthropic_api_key_secret:
           title: Anthropic Api Key Secret
           description: Name of a platform Secret holding the Anthropic API key.  When
-            set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the
-            dispatched subprocess so the loop's ``check_anthropic_api`` / Claude analyzer
-            preflights pass.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from
-            the calling shell as before.
+            set on a platform submission, the value is injected as ``ANTHROPIC_API_KEY``
+            into the dispatched subprocess so the loop's ``check_anthropic_api`` /
+            Claude analyzer preflights pass.  Local (in-process) runs read ``ANTHROPIC_API_KEY``
+            from the calling shell as before.
+          type: string
+        anthropic_base_url:
+          title: Anthropic Base Url
+          description: Anthropic-compatible API base URL injected as ``ANTHROPIC_BASE_URL``
+            for platform submissions.  Local (in-process) runs read ``ANTHROPIC_BASE_URL``
+            from the calling shell as before.
           type: string
       type: object
       required:
@@ -6369,16 +6393,16 @@ components:
           minLength: 1
           title: Optimize Config
           description: "Location of the Fabric-native optimization YAML.  With optimize_config_fileset\
-            \ set \u2014 required for `submit` \u2014 this is a path relative to the\
-            \ fileset root.  Without it (local `nemo agents optimize run` only) it\
-            \ is an absolute path on the host running the CLI."
+            \ set \u2014 required for remote submission \u2014 this is a path relative\
+            \ to the fileset root.  Without it (programmatic local runs only) it is\
+            \ an absolute path on the host running the job."
         optimize_config_fileset:
           title: Optimize Config Fileset
           description: 'Fileset holding the optimization bundle: the config named
             by optimize_config plus every asset it references (Agent under Test package,
             dataset, eval.fabric.base_dir tree, hooks and MCP configs).  Stage one
-            with `nemo agents optimize prepare-fileset`.  Required for `submit`, where
-            the job has no access to the client''s filesystem.'
+            with `nemo agents optimize prepare-fileset`. Required for remote submissions,
+            where the job has no access to the client''s filesystem.'
           type: string
         workspace:
           type: string
@@ -6408,6 +6432,53 @@ components:
       - optimize_config
       title: OptimizeSpec
       description: Spec for an Agents optimize study (``nemo agents optimize``).
+    OptimizeSubmitSpec:
+      properties:
+        optimize_config:
+          type: string
+          minLength: 1
+          title: Optimize Config
+          description: "Location of the Fabric-native optimization YAML.  With optimize_config_fileset\
+            \ set \u2014 required for remote submission \u2014 this is a path relative\
+            \ to the fileset root.  Without it (programmatic local runs only) it is\
+            \ an absolute path on the host running the job."
+        optimize_config_fileset:
+          title: Optimize Config Fileset
+          description: 'Fileset holding the optimization bundle: the config named
+            by optimize_config plus every asset it references (Agent under Test package,
+            dataset, eval.fabric.base_dir tree, hooks and MCP configs).  Stage one
+            with `nemo agents optimize prepare-fileset`. Required for remote submissions,
+            where the job has no access to the client''s filesystem. Programmatic
+            local runs may omit it and use an absolute host path for optimize_config.'
+          type: string
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace used to fetch a platform agent and for VirtualModel
+            preflight.
+          default: default
+        agent:
+          title: Agent
+          description: Optional platform agent reference ('name' or 'workspace/name').
+            When omitted, the optimization config must include an inline Fabric agent
+            package.
+          type: string
+          minLength: 1
+        output:
+          title: Output
+          description: "Where to publish the study artifacts (optimized config, trials\
+            \ dataframe, pareto plots, ATIF evidence) once the study succeeds \u2014\
+            \ either a local directory (path-shaped: starts with '/', './', '../',\
+            \ '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').\
+            \  Filesets are created on demand if missing.  This is in addition to\
+            \ the per-job artifacts that ``ctx.results.save`` always registers; it\
+            \ gives remote clients a stable, addressable location to read from."
+          type: string
+      type: object
+      required:
+      - optimize_config
+      title: OptimizeSubmitSpec
+      description: Submitter-facing optimize spec for remote platform submissions.
     PackageAgentInput:
       properties:
         agent:
@@ -6464,10 +6535,11 @@ components:
           default: false
         registry:
           title: Registry
-          description: "Push the built image to this registry (e.g. 'nvcr.io/my-org').\
-            \ The host executing the push must already be authenticated to it \u2014\
-            \ the local machine for `run`, the platform's job-execution host for `submit`/the\
-            \ REST API. Credentials are never accepted over this API."
+          description: 'Push the built image to this registry (e.g. ''nvcr.io/my-org'').
+            The host executing the push must already be authenticated to it: the local
+            machine for direct CLI invocation, or the platform''s job-execution host
+            for remote execution or the REST API. Credentials are never accepted over
+            this API.'
           type: string
           pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$
         push_tag:
@@ -6691,10 +6763,11 @@ components:
           default: false
         registry:
           title: Registry
-          description: "Push the built image to this registry (e.g. 'nvcr.io/my-org').\
-            \ The host executing the push must already be authenticated to it \u2014\
-            \ the local machine for `run`, the platform's job-execution host for `submit`/the\
-            \ REST API. Credentials are never accepted over this API."
+          description: 'Push the built image to this registry (e.g. ''nvcr.io/my-org'').
+            The host executing the push must already be authenticated to it: the local
+            machine for direct CLI invocation, or the platform''s job-execution host
+            for remote execution or the REST API. Credentials are never accepted over
+            this API.'
           type: string
           pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$
         push_tag:
