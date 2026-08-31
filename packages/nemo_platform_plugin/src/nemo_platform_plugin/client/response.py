@@ -98,7 +98,7 @@ class NemoResponse(Generic[ResponseT]):
         own attributes (``body``, ``http_response``, ``request``, ``data``)
         always win.
         """
-        body = self.__dict__.get("body")
+        body = object.__getattribute__(self, "body")
         if body is None:
             raise AttributeError(name)
         return getattr(body, name)
