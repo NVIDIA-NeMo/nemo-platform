@@ -80,6 +80,17 @@ class RetrievalGenerateStepConfig(BaseModel):
     embed_provider_name: str
 
 
+class RetrievalMiningOptions(BaseModel):
+    """Automodel hard-negative mining knobs not covered by the prepare job's common fields."""
+
+    hard_neg_margin_type: Literal["perc", "abs"] = "perc"
+    query_embedding_batch_size: int = Field(default=16, ge=1)
+    document_embedding_batch_size: int = Field(default=16, ge=1)
+    corpus_chunk_size: int = Field(default=50000, ge=1)
+    load_embeddings_from_cache: bool = False
+    use_negatives_from_file: bool = False
+
+
 class RetrievalPrepareJobConfig(BaseModel):
     """Submitter-facing spec for Stage 1 conversion and optional GPU mining."""
 
@@ -102,8 +113,10 @@ class RetrievalPrepareJobConfig(BaseModel):
     use_group_id_in_eval: bool = False
     split_strategy: Literal["random", "dedupped", "cluster"] = "random"
     skip_mining: bool = True
-    base_model: str = "nvidia/Nemotron-3-Embed-1B-BF16"
-    trust_remote_code: bool = True
+    model: str = Field(
+        default="nvidia/Nemotron-3-Embed-1B-BF16",
+        description="Platform model entity whose fileset contains the mining encoder and tokenizer.",
+    )
     hard_negatives_to_mine: int = Field(default=5, ge=1)
     hard_neg_margin: float = Field(default=0.95, gt=0.0, le=1.0)
     mining_batch_size: int = Field(default=128, ge=1)
@@ -112,12 +125,19 @@ class RetrievalPrepareJobConfig(BaseModel):
     query_max_length: int = Field(default=512, ge=1)
     passage_max_length: int = Field(default=512, ge=1)
     attn_implementation: Literal["sdpa", "flash_attention_2", "eager"] = "sdpa"
+    add_bos_token: bool | None = True
+    add_eos_token: bool | None = False
+    dist_backend: str = "nccl"
+    dist_timeout_minutes: int = Field(default=30, ge=1)
+    mining: RetrievalMiningOptions = Field(default_factory=RetrievalMiningOptions)
     hf_token_secret: str | None = None
 
 
 class RetrievalPrepareStepConfig(BaseModel):
     job_config: RetrievalPrepareJobConfig
     phase: Literal["convert", "mine"] = "convert"
+    model_fileset: str | None = None
+    model_trust_remote_code: bool = False
 
 
 class RetrievalRunJobConfig(BaseModel):

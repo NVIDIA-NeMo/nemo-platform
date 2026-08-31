@@ -24,6 +24,7 @@ class DataDesignerService(NemoService):
     dependencies: ClassVar[list[str]] = ["entities", "auth", "jobs", "secrets", "files", "inference-gateway"]
 
     def get_routers(self) -> list[RouterSpec]:
+        from nemo_data_designer_plugin.config import get_config
         from nemo_data_designer_plugin.functions.preview import PreviewFunction
         from nemo_data_designer_plugin.functions.retrieval_preview import RetrievalPreviewFunction
         from nemo_data_designer_plugin.jobs.create import CreateJob
@@ -36,6 +37,7 @@ class DataDesignerService(NemoService):
 
         scope = AuthzScope("data-designer")
         prefix = "/v2/workspaces/{workspace}"
+        job_profile = get_config().job_executor_profile
         return [
             RouterSpec(
                 add_function_routes(
@@ -64,19 +66,19 @@ class DataDesignerService(NemoService):
                 description="Job endpoints",
             ),
             RouterSpec(
-                add_job_routes(RetrievalGenerateJob, authz=scope),
+                add_job_routes(RetrievalGenerateJob, default_profile=job_profile, authz=scope),
                 prefix=prefix,
                 tag="Data Designer",
                 description="Retrieval synthetic data generation job endpoints.",
             ),
             RouterSpec(
-                add_job_routes(RetrievalPrepareJob, authz=scope),
+                add_job_routes(RetrievalPrepareJob, default_profile=job_profile, authz=scope),
                 prefix=prefix,
                 tag="Data Designer",
                 description="Retrieval dataset preparation job endpoints.",
             ),
             RouterSpec(
-                add_job_routes(RetrievalRunJob, authz=scope),
+                add_job_routes(RetrievalRunJob, default_profile=job_profile, authz=scope),
                 prefix=prefix,
                 tag="Data Designer",
                 description="Retrieval generation and preparation job endpoints.",

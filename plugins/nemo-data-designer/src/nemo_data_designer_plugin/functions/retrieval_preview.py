@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -59,48 +60,51 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
             yield Error(message=str(exc), details={"type": type(exc).__name__})
             return
 
-        sdk = async_sdk if isinstance(async_sdk, NeMoPlatform) else async_to_sync_sdk(async_sdk)
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            corpus_dir = materialize_corpus(
-                job.corpus,
-                dest=tmp_path / "corpus",
-                sdk=sdk,
-                workspace=ctx.workspace,
-            )
-            run_config = build_generation_run_config(
-                corpus_dir=corpus_dir,
-                output_dir=tmp_path / "out",
-                artifact_path=tmp_path / "artifacts",
-                dataset_name=job.dataset_name or job.corpus_id,
-                chat_provider_name=job.chat_provider or job.provider,
-                embed_provider_name=job.embed_provider or job.provider,
-                model_providers=model_providers,
-                profile=job.profile,
-                file_extensions=job.file_extensions,
-                min_text_length=job.min_text_length,
-                sentences_per_chunk=job.sentences_per_chunk,
-                num_sections=job.num_sections,
-                num_files=job.num_files,
-                max_artifacts_per_type=job.max_artifacts_per_type,
-                num_pairs=job.num_pairs,
-                query_counts=job.query_counts,
-                min_hops=job.min_hops,
-                max_hops=job.max_hops,
-                reasoning_counts=job.reasoning_counts,
-                min_complexity=job.min_complexity,
-                similarity_threshold=job.similarity_threshold,
-                buffer_size=job.buffer_size,
-                resume=job.resume,
-                num_records=spec.num_records,
-                artifact_extraction_model=job.artifact_extraction_model,
-                qa_generation_model=job.qa_generation_model,
-                quality_judge_model=job.quality_judge_model,
-                embed_model=job.embed_model,
-            )
-            result = execute_generation(run_config, preview=True)
-            yield RetrievalPreviewFrame(
-                num_seed_records=getattr(result, "num_seed_records", 0),
-                num_preview_records=getattr(result, "num_preview_records", spec.num_records),
-            )
+        def run_preview() -> BaseModel:
+            sdk = async_sdk if isinstance(async_sdk, NeMoPlatform) else async_to_sync_sdk(async_sdk)
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                corpus_dir = materialize_corpus(
+                    job.corpus,
+                    dest=tmp_path / "corpus",
+                    sdk=sdk,
+                    workspace=ctx.workspace,
+                )
+                run_config = build_generation_run_config(
+                    corpus_dir=corpus_dir,
+                    output_dir=tmp_path / "out",
+                    artifact_path=tmp_path / "artifacts",
+                    dataset_name=job.dataset_name or job.corpus_id,
+                    chat_provider_name=job.chat_provider or job.provider,
+                    embed_provider_name=job.embed_provider or job.provider,
+                    model_providers=model_providers,
+                    profile=job.profile,
+                    file_extensions=job.file_extensions,
+                    min_text_length=job.min_text_length,
+                    sentences_per_chunk=job.sentences_per_chunk,
+                    num_sections=job.num_sections,
+                    num_files=job.num_files,
+                    max_artifacts_per_type=job.max_artifacts_per_type,
+                    num_pairs=job.num_pairs,
+                    query_counts=job.query_counts,
+                    min_hops=job.min_hops,
+                    max_hops=job.max_hops,
+                    reasoning_counts=job.reasoning_counts,
+                    min_complexity=job.min_complexity,
+                    similarity_threshold=job.similarity_threshold,
+                    buffer_size=job.buffer_size,
+                    resume=job.resume,
+                    num_records=spec.num_records,
+                    artifact_extraction_model=job.artifact_extraction_model,
+                    qa_generation_model=job.qa_generation_model,
+                    quality_judge_model=job.quality_judge_model,
+                    embed_model=job.embed_model,
+                )
+                result = execute_generation(run_config, preview=True)
+                return RetrievalPreviewFrame(
+                    num_seed_records=getattr(result, "num_seed_records", 0),
+                    num_preview_records=getattr(result, "num_preview_records", spec.num_records),
+                )
+
+        yield await asyncio.to_thread(run_preview)
         yield Done()

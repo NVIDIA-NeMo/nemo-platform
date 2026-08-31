@@ -10,6 +10,7 @@ authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
 dependencies = [
     "nemo-platform-plugin",
     "nemo-platform",
+    "nmp-customization-common",
     "data-designer==0.9.1",
     "data-designer-retrieval-sdg==0.2.1",
     "huggingface-hub",
@@ -85,15 +86,13 @@ path = "hatch_build.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/nemo_data_designer_plugin"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/nemo_data_designer_plugin/retrieval/mining_config.yaml" = "nemo_data_designer_plugin/retrieval/mining_config.yaml"
-
 
 [tool.uv.sources]
 nemo-platform = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 data-designer-nemo = { workspace = true }
 nmp-build-tools = { workspace = true }
+nmp-customization-common = { workspace = true }
 data-designer-retrieval-sdg = { index = "data-designer-plugins" }
 
 [[tool.uv.index]]

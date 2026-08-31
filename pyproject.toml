@@ -670,6 +670,7 @@ exclude = [
   # GPU-container training drivers import torch/peft/nemo_automodel/unsloth/nemo_rl at runtime only.
   "services/automodel/src/nmp/automodel/tasks/training/backends/",
   "services/automodel/src/nmp/automodel/tasks/training/utils.py",
+  "services/automodel/src/nmp/automodel/tasks/retrieval_mine/mine_hard_negatives.py",
   "services/unsloth/src/nmp/unsloth/tasks/training/backends/",
   "services/rl/src/nmp/rl/tasks/training/backends/",
   "services/rl/src/nmp/rl/tasks/training/utils.py",

@@ -19,6 +19,7 @@ from nemo_data_designer_plugin.jobs.retrieval_run import RetrievalRunJob
 from nemo_data_designer_plugin.jobs.retrieval_spec import (
     RetrievalGenerateJobConfig,
     RetrievalGenerateStepConfig,
+    RetrievalMiningOptions,
     RetrievalPrepareJobConfig,
     RetrievalPrepareStepConfig,
     RetrievalPreviewSpec,
@@ -81,51 +82,53 @@ async def test_retrieval_generate_compile_is_cpu() -> None:
 
 
 @pytest.mark.asyncio
-async def test_retrieval_generate_compile_uses_subprocess_when_profile_exists() -> None:
+async def test_retrieval_generate_compile_ignores_subprocess_profiles() -> None:
     spec = RetrievalGenerateStepConfig(
         job_config=_generate_config(),
         model_providers=[dd.ModelProvider(name="default/nvidia-build", endpoint="http://igw")],
         chat_provider_name="default/nvidia-build",
         embed_provider_name="default/nvidia-build",
     )
-    listed = SimpleNamespace(data=lambda: [SimpleNamespace(provider="subprocess", profile="default")])
-    sdk = AsyncMock()
-    with patch(
-        "nemo_data_designer_plugin.jobs.retrieval_common.client_from_platform",
-        return_value=SimpleNamespace(get_execution_profiles=AsyncMock(return_value=listed)),
-    ):
-        compiled = await RetrievalGenerateJob.compile(
-            workspace="default",
-            spec=spec,
-            entity_client=Mock(),
-            job_name=None,
-            async_sdk=sdk,
-        )
+    compiled = await RetrievalGenerateJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=Mock(),
+        job_name=None,
+        async_sdk=AsyncMock(),
+    )
     executor = _executor(_steps(compiled)[0])
-    assert executor["provider"] == "subprocess"
-    assert executor["command"] == ["python", "-m", "nemo_data_designer_plugin.jobs.retrieval_generate"]
+    assert executor["provider"] == "cpu"
+    assert executor["container"]["command"] == ["nemo_data_designer_plugin.jobs.retrieval_generate"]
 
 
 @pytest.mark.asyncio
-async def test_retrieval_prepare_compile_uses_subprocess_for_convert_and_mine() -> None:
+async def test_retrieval_prepare_compile_uses_one_container_profile() -> None:
     spec = RetrievalPrepareStepConfig(
         job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", skip_mining=False),
         phase="convert",
+        model_fileset="default/retrieval-model",
+        model_trust_remote_code=True,
     )
-    listed = SimpleNamespace(data=lambda: [SimpleNamespace(provider="subprocess", profile="default")])
-    with patch(
-        "nemo_data_designer_plugin.jobs.retrieval_common.client_from_platform",
-        return_value=SimpleNamespace(get_execution_profiles=AsyncMock(return_value=listed)),
-    ):
-        compiled = await RetrievalPrepareJob.compile(
-            workspace="default",
-            spec=spec,
-            entity_client=Mock(),
-            job_name=None,
-            async_sdk=AsyncMock(),
-        )
+    compiled = await RetrievalPrepareJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=Mock(),
+        job_name=None,
+        async_sdk=AsyncMock(),
+        profile="gpu",
+    )
     steps = _steps(compiled)
-    assert [_executor(step)["provider"] for step in steps] == ["subprocess", "subprocess"]
+    assert [_executor(step)["provider"] for step in steps] == ["cpu", "cpu", "gpu"]
+    assert [_executor(step)["profile"] for step in steps] == ["gpu", "gpu", "gpu"]
+    assert "nmp-automodel-training" in _executor(steps[2])["container"]["image"]
+    assert _executor(steps[2])["container"]["command"] == ["nmp.automodel.tasks.retrieval_mine"]
+    assert _executor(steps[1])["container"]["command"] == [
+        "nmp.customization_common.tasks.file_io",
+        "--service-source",
+        "automodel",
+        "--service-name",
+        "customizer",
+    ]
     providers = [dd.ModelProvider(name="default/nvidia-build", endpoint="http://igw")]
     dd_ctx = AsyncMock()
     dd_ctx.get_model_providers = AsyncMock(return_value=providers)
@@ -191,10 +194,38 @@ async def test_retrieval_prepare_convert_only_is_cpu() -> None:
 
 
 @pytest.mark.asyncio
+async def test_retrieval_prepare_resolves_model_fileset_for_mining() -> None:
+    model = SimpleNamespace(
+        workspace="nvidia",
+        name="Nemotron-3-Embed-1B-BF16",
+        fileset="nvidia/nemotron-3-embed-1b-bf16",
+        trust_remote_code=True,
+    )
+    with patch(
+        "nemo_data_designer_plugin.jobs.retrieval_prepare.fetch_model_entity",
+        new=AsyncMock(return_value=model),
+    ) as fetch:
+        step = await RetrievalPrepareJob.to_spec(
+            RetrievalPrepareJobConfig(sdg_input="default/stage0", skip_mining=False),
+            workspace="default",
+            entity_client=Mock(),
+            async_sdk=AsyncMock(),
+            is_local=False,
+        )
+
+    fetch.assert_awaited_once()
+    assert isinstance(step, RetrievalPrepareStepConfig)
+    assert step.model_fileset == model.fileset
+    assert step.model_trust_remote_code is True
+
+
+@pytest.mark.asyncio
 async def test_retrieval_prepare_compile_adds_gpu_mining_step() -> None:
     spec = RetrievalPrepareStepConfig(
         job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", skip_mining=False),
         phase="convert",
+        model_fileset="default/retrieval-model",
+        model_trust_remote_code=True,
     )
     compiled = await RetrievalPrepareJob.compile(
         workspace="default",
@@ -204,10 +235,24 @@ async def test_retrieval_prepare_compile_adds_gpu_mining_step() -> None:
         async_sdk=AsyncMock(),
     )
     steps = _steps(compiled)
-    assert len(steps) == 2
+    assert len(steps) == 3
     assert _executor(steps[0])["provider"] == "cpu"
-    assert _executor(steps[1])["provider"] == "gpu"
+    assert _executor(steps[1])["provider"] == "cpu"
     assert "nmp-customizer-tasks" in _executor(steps[1])["container"]["image"]
+    assert steps[1]["config"]["download"] == [
+        {"src": {"workspace": "default", "name": "retrieval-model"}, "dest": "model"}
+    ]
+    assert _executor(steps[2])["provider"] == "gpu"
+    assert "nmp-automodel-training" in _executor(steps[2])["container"]["image"]
+    assert _executor(steps[2])["container"]["command"] == ["nmp.automodel.tasks.retrieval_mine"]
+    for step in steps:
+        environment = {item["name"]: item["value"] for item in step["environment"]}
+        assert environment["NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH"] == "/var/run/scratch/job"
+    assert {item["name"]: item["value"] for item in steps[2]["environment"]} == {
+        "NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH": "/var/run/scratch/job",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+    }
 
 
 def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
@@ -249,39 +294,14 @@ def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
     assert (staged / "train.json").exists()
 
 
-def test_retrieval_prepare_mine_calls_mining(tmp_path: Path) -> None:
+def test_retrieval_prepare_rejects_mine_phase(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
-    out = ctx.storage.persistent / "stage1_data_prep"
-    out.mkdir()
-    (out / "train.json").write_text(json.dumps({"corpus": {}, "data": []}), encoding="utf-8")
     spec = RetrievalPrepareStepConfig(
         job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", skip_mining=False),
         phase="mine",
     )
-    mined = out / "train_mined.automodel.json"
-    unrolled = out / "train_mined.automodel_unrolled.json"
-
-    def _fake_mine(**kwargs: Any) -> Path:
-        output_file = Path(kwargs["output_file"])
-        output_file.write_text(json.dumps({"corpus": {}, "data": []}), encoding="utf-8")
-        return output_file
-
-    with (
-        patch(
-            "nemo_data_designer_plugin.jobs.retrieval_prepare.run_hard_negative_mining", side_effect=_fake_mine
-        ) as mine,
-        patch(
-            "nemo_data_designer_plugin.jobs.retrieval_prepare.unroll_training_file",
-            return_value=unrolled,
-        ) as unroll,
-        patch("nemo_data_designer_plugin.jobs.retrieval_prepare.wrapped_to_inline_jsonl") as inline,
-    ):
-        unrolled.write_text(json.dumps({"corpus": {}, "data": []}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="retrieval_mine"):
         RetrievalPrepareJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=Mock())
-    mine.assert_called_once()
-    unroll.assert_called_once()
-    inline.assert_called_once()
-    assert mined.exists()
 
 
 @pytest.mark.asyncio
@@ -327,6 +347,16 @@ def test_preview_spec_reuses_generate_config() -> None:
     spec = RetrievalPreviewSpec(generate=_generate_config(), num_records=2)
     assert spec.num_records == 2
     assert spec.generate.profile == "embed"
+
+
+def test_prepare_mining_options_are_typed() -> None:
+    spec = RetrievalPrepareJobConfig(sdg_input="default/stage0", mining=RetrievalMiningOptions(corpus_chunk_size=10000))
+    assert spec.mining.corpus_chunk_size == 10000
+    assert spec.mining.hard_neg_margin_type == "perc"
+    with pytest.raises(ValidationError):
+        RetrievalPrepareJobConfig.model_validate(
+            {"sdg_input": "default/stage0", "mining": {"hard_neg_margin_type": "relative"}}
+        )
 
 
 def test_unroll_and_inline_jsonl(tmp_path: Path) -> None:

@@ -6,94 +6,79 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_data_designer_plugin.config import get_config
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
+    EnvironmentVariable,
     GPUExecutionProviderSpec,
     PlatformJobStep,
-    SubprocessExecutionProviderSpec,
 )
-from nemo_platform_plugin.jobs.client import AsyncJobsClient
+from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nmp.customization_common.schemas.file_io import DownloadItem, FileIOTaskConfig, FileSetRef
 from pydantic import BaseModel
 
 _ENTRYPOINT = ["python", "-m"]
+RETRIEVAL_MINE_MODULE = "nmp.automodel.tasks.retrieval_mine"
+_FILE_IO_MODULE = "nmp.customization_common.tasks.file_io"
+_FILE_IO_ARGS = ["--service-source", "automodel", "--service-name", "customizer"]
 
 
-async def subprocess_profile_available(async_sdk: object, profile: str) -> bool:
-    """True when the jobs service has a subprocess backend for *profile*.
-
-    Local ``nemo services run`` registers ``provider=subprocess, profile=default`` and
-    remaps CPU container steps onto it. Prefer emitting subprocess directly so generate
-    and convert run in the host venv (no ``nmp-cpu-tasks`` image, and mining can use
-    host GPUs instead of ``nmp-customizer-tasks``).
-    """
-    if async_sdk is None:
-        return False
-    try:
-        jobs = client_from_platform(cast(AsyncNeMoPlatform, async_sdk), AsyncJobsClient)
-        listed = await jobs.get_execution_profiles()
-        profiles = listed.data() if hasattr(listed, "data") else listed
-    except Exception:
-        return False
-    if not isinstance(profiles, (list, tuple)):
-        return False
-    for item in profiles:
-        provider = item.get("provider") if isinstance(item, dict) else getattr(item, "provider", None)
-        name = item.get("profile") if isinstance(item, dict) else getattr(item, "profile", None)
-        if provider == "subprocess" and name == profile:
-            return True
-    return False
+def _persistent_storage_environment() -> list[EnvironmentVariable]:
+    return [EnvironmentVariable(name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR, value=DEFAULT_JOB_STORAGE_PATH)]
 
 
-def _subprocess_step(name: str, module: str, spec: BaseModel, profile: str) -> PlatformJobStep:
-    return PlatformJobStep(
-        name=name,
-        executor=SubprocessExecutionProviderSpec(
-            provider="subprocess",
-            profile=profile,
-            command=[*_ENTRYPOINT, module],
-        ),
-        config=spec.model_dump(mode="json"),
-        environment=[],
-    )
-
-
-def cpu_retrieval_step(name: str, module: str, spec: BaseModel, profile: str | None) -> PlatformJobStep:
+def cpu_retrieval_step(
+    name: str,
+    module: str,
+    spec: BaseModel,
+    profile: str | None,
+    *,
+    module_args: list[str] | None = None,
+    image: str = "nmp-cpu-tasks",
+) -> PlatformJobStep:
     return PlatformJobStep(
         name=name,
         executor=CPUExecutionProviderSpec(
-            profile=profile or "default",
+            profile=profile or get_config().job_executor_profile,
             provider="cpu",
             container=ContainerSpec(
-                image=get_qualified_image("nmp-cpu-tasks"),
+                image=get_qualified_image(image),
                 entrypoint=_ENTRYPOINT,
-                command=[module],
+                command=[module, *(module_args or [])],
             ),
         ),
         config=spec.model_dump(mode="json"),
-        environment=[],
+        environment=_persistent_storage_environment(),
     )
 
 
 def gpu_retrieval_step(name: str, module: str, spec: BaseModel, profile: str | None) -> PlatformJobStep:
+    """GPU step in the automodel training image.
+
+    Falls back to the plugin's ``job_executor_profile``. The profile must name a
+    registered GPU executor: the jobs API rejects a spec whose (provider, profile) is unknown.
+    """
     return PlatformJobStep(
         name=name,
         executor=GPUExecutionProviderSpec(
-            profile=profile or "default",
+            profile=profile or get_config().job_executor_profile,
             provider="gpu",
             container=ContainerSpec(
-                image=get_qualified_image("nmp-customizer-tasks"),
+                image=get_qualified_image("nmp-automodel-training"),
                 entrypoint=_ENTRYPOINT,
                 command=[module],
             ),
         ),
         config=spec.model_dump(mode="json"),
-        environment=[],
+        environment=[
+            *_persistent_storage_environment(),
+            EnvironmentVariable(name="HF_HUB_OFFLINE", value="1"),
+            EnvironmentVariable(name="TRANSFORMERS_OFFLINE", value="1"),
+        ],
     )
 
 
@@ -106,12 +91,29 @@ async def retrieval_step(
     async_sdk: object,
     gpu: bool = False,
 ) -> PlatformJobStep:
-    resolved = profile or "default"
-    if await subprocess_profile_available(async_sdk, resolved):
-        return _subprocess_step(name, module, spec, resolved)
+    del async_sdk
     if gpu:
-        return gpu_retrieval_step(name, module, spec, resolved)
-    return cpu_retrieval_step(name, module, spec, resolved)
+        return gpu_retrieval_step(name, module, spec, profile)
+    return cpu_retrieval_step(name, module, spec, profile)
+
+
+async def model_download_step(
+    fileset: str,
+    *,
+    profile: str | None,
+    async_sdk: object,
+) -> PlatformJobStep:
+    """Download a model fileset into the job's shared ``model`` directory."""
+    del async_sdk
+    config = FileIOTaskConfig(download=[DownloadItem(src=FileSetRef.model_validate(fileset), dest="model")])
+    return cpu_retrieval_step(
+        "retrieval-model-download",
+        _FILE_IO_MODULE,
+        config,
+        profile,
+        module_args=_FILE_IO_ARGS,
+        image="nmp-customizer-tasks",
+    )
 
 
 def work_dir(ctx: Any, name: str) -> Path:

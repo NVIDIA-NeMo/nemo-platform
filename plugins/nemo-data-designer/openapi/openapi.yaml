@@ -4277,6 +4277,42 @@ components:
       - chat_provider_name
       - embed_provider_name
       title: RetrievalGenerateStepConfig
+    RetrievalMiningOptions:
+      properties:
+        hard_neg_margin_type:
+          type: string
+          enum:
+          - perc
+          - abs
+          title: Hard Neg Margin Type
+          default: perc
+        query_embedding_batch_size:
+          type: integer
+          minimum: 1.0
+          title: Query Embedding Batch Size
+          default: 16
+        document_embedding_batch_size:
+          type: integer
+          minimum: 1.0
+          title: Document Embedding Batch Size
+          default: 16
+        corpus_chunk_size:
+          type: integer
+          minimum: 1.0
+          title: Corpus Chunk Size
+          default: 50000
+        load_embeddings_from_cache:
+          type: boolean
+          title: Load Embeddings From Cache
+          default: false
+        use_negatives_from_file:
+          type: boolean
+          title: Use Negatives From File
+          default: false
+      type: object
+      title: RetrievalMiningOptions
+      description: Automodel hard-negative mining knobs not covered by the prepare
+        job's common fields.
     RetrievalPrepareJob:
       properties:
         id:
@@ -4384,14 +4420,12 @@ components:
           type: boolean
           title: Skip Mining
           default: true
-        base_model:
+        model:
           type: string
-          title: Base Model
+          title: Model
+          description: Platform model entity whose fileset contains the mining encoder
+            and tokenizer.
           default: nvidia/Nemotron-3-Embed-1B-BF16
-        trust_remote_code:
-          type: boolean
-          title: Trust Remote Code
-          default: true
         hard_negatives_to_mine:
           type: integer
           minimum: 1.0
@@ -4434,6 +4468,25 @@ components:
           - eager
           title: Attn Implementation
           default: sdpa
+        add_bos_token:
+          title: Add Bos Token
+          default: true
+          type: boolean
+        add_eos_token:
+          title: Add Eos Token
+          default: false
+          type: boolean
+        dist_backend:
+          type: string
+          title: Dist Backend
+          default: nccl
+        dist_timeout_minutes:
+          type: integer
+          minimum: 1.0
+          title: Dist Timeout Minutes
+          default: 30
+        mining:
+          $ref: '#/components/schemas/RetrievalMiningOptions'
         hf_token_secret:
           title: Hf Token Secret
           type: string
@@ -4542,6 +4595,13 @@ components:
           - mine
           title: Phase
           default: convert
+        model_fileset:
+          title: Model Fileset
+          type: string
+        model_trust_remote_code:
+          type: boolean
+          title: Model Trust Remote Code
+          default: false
       type: object
       required:
       - job_config

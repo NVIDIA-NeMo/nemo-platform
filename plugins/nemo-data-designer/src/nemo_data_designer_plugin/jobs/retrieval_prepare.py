@@ -7,17 +7,21 @@ import shutil
 from pathlib import Path
 from typing import ClassVar, cast
 
-from nemo_data_designer_plugin.jobs.retrieval_common import retrieval_step, work_dir
+from nemo_data_designer_plugin.jobs.retrieval_common import (
+    RETRIEVAL_MINE_MODULE,
+    model_download_step,
+    retrieval_step,
+    work_dir,
+)
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalPrepareJobConfig, RetrievalPrepareStepConfig
 from nemo_data_designer_plugin.retrieval.conversion import execute_conversion
 from nemo_data_designer_plugin.retrieval.corpus import materialize_corpus
 from nemo_data_designer_plugin.retrieval.inline import wrapped_to_inline_jsonl
-from nemo_data_designer_plugin.retrieval.mining import run_hard_negative_mining
-from nemo_data_designer_plugin.retrieval.unroll import unroll_training_file
-from nemo_platform import NeMoPlatform
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nmp.customization_common.service.platform_client import fetch_model_entity
 from pydantic import BaseModel
 
 
@@ -45,7 +49,21 @@ class RetrievalPrepareJob(NemoJob):
             raise ValueError("One of sdg_input or train_input_file is required.")
         if job_config.sdg_input and job_config.train_input_file:
             raise ValueError("sdg_input and train_input_file are mutually exclusive.")
-        return RetrievalPrepareStepConfig(job_config=job_config, phase="convert")
+        if job_config.skip_mining:
+            return RetrievalPrepareStepConfig(job_config=job_config, phase="convert")
+
+        model = await fetch_model_entity(job_config.model, workspace, cast(AsyncNeMoPlatform, async_sdk))
+        if not model.fileset:
+            raise ValueError(
+                f"Model '{model.workspace}/{model.name}' has no fileset. "
+                "Attach model weights before enabling retrieval mining."
+            )
+        return RetrievalPrepareStepConfig(
+            job_config=job_config,
+            phase="convert",
+            model_fileset=model.fileset,
+            model_trust_remote_code=model.trust_remote_code or False,
+        )
 
     @classmethod
     async def compile(
@@ -70,11 +88,20 @@ class RetrievalPrepareJob(NemoJob):
             )
         ]
         if not spec.job_config.skip_mining:
+            if not spec.model_fileset:
+                raise ValueError("Retrieval mining requires a resolved model fileset")
             mine_spec = spec.model_copy(update={"phase": "mine"})
+            steps.append(
+                await model_download_step(
+                    spec.model_fileset,
+                    profile=profile,
+                    async_sdk=async_sdk,
+                )
+            )
             steps.append(
                 await retrieval_step(
                     "retrieval-prepare-mine",
-                    "nemo_data_designer_plugin.jobs.retrieval_prepare",
+                    RETRIEVAL_MINE_MODULE,
                     mine_spec,
                     profile=profile,
                     async_sdk=async_sdk,
@@ -85,10 +112,9 @@ class RetrievalPrepareJob(NemoJob):
 
     def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform, is_local: bool = False) -> dict:
         step = RetrievalPrepareStepConfig.model_validate(config)
-        output_dir = work_dir(ctx, "stage1_data_prep")
         if step.phase == "mine":
-            return _run_mine(step.job_config, output_dir, ctx)
-        return _run_convert(step.job_config, output_dir, ctx, sdk)
+            raise RuntimeError("Mining runs as nmp.automodel.tasks.retrieval_mine, not this module")
+        return _run_convert(step.job_config, work_dir(ctx, "stage1_data_prep"), ctx, sdk)
 
 
 def _materialize_input(ref: str, dest: Path, ctx: JobContext, sdk: NeMoPlatform) -> Path:
@@ -145,40 +171,6 @@ def _run_convert(job: RetrievalPrepareJobConfig, output_dir: Path, ctx: JobConte
         "exit_code": 0,
         "workspace": ctx.workspace,
         "train_file": str(train_file),
-        "results": {"artifacts": artifacts.model_dump()},
-    }
-
-
-def _run_mine(job: RetrievalPrepareJobConfig, output_dir: Path, ctx: JobContext) -> dict:
-    train_file = output_dir / "train.json"
-    if not train_file.exists():
-        matches = list(output_dir.rglob("train.json"))
-        if not matches:
-            raise FileNotFoundError(f"train.json not found under {output_dir}")
-        train_file = matches[0]
-    mined = output_dir / "train_mined.automodel.json"
-    run_hard_negative_mining(
-        train_file=train_file,
-        output_file=mined,
-        cache_dir=output_dir / "cache_embeddings",
-        base_model=job.base_model,
-        hard_negatives_to_mine=job.hard_negatives_to_mine,
-        hard_neg_margin=job.hard_neg_margin,
-        mining_batch_size=job.mining_batch_size,
-        query_prefix=job.query_prefix,
-        passage_prefix=job.passage_prefix,
-        query_max_length=job.query_max_length,
-        passage_max_length=job.passage_max_length,
-        attn_implementation=job.attn_implementation,
-        trust_remote_code=job.trust_remote_code,
-    )
-    unrolled = unroll_training_file(mined, output_dir / "train_mined.automodel_unrolled.json")
-    wrapped_to_inline_jsonl(unrolled, output_dir / "training.jsonl")
-    artifacts = ctx.results.save(name="artifacts", local_path=output_dir)
-    return {
-        "exit_code": 0,
-        "workspace": ctx.workspace,
-        "train_file": str(unrolled),
         "results": {"artifacts": artifacts.model_dump()},
     }
 

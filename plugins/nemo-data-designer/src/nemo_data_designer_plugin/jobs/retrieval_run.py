@@ -94,7 +94,16 @@ class RetrievalRunJob(NemoJob):
         prepare_input = spec.prepare
         if prepare_input.sdg_input is None and prepare_input.train_input_file is None:
             prepare_input = prepare_input.model_copy(update={"sdg_input": "stage0_sdg"})
-        prepare_step = RetrievalPrepareStepConfig(job_config=prepare_input, phase="convert")
+        prepare_step = cast(
+            RetrievalPrepareStepConfig,
+            await RetrievalPrepareJob.to_spec(
+                prepare_input,
+                workspace=workspace,
+                entity_client=entity_client,
+                async_sdk=async_sdk,
+                is_local=False,
+            ),
+        )
         prepare_job = await RetrievalPrepareJob.compile(
             workspace=workspace,
             spec=prepare_step,
