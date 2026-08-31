@@ -42,11 +42,13 @@ import re
 import sys
 import tempfile
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from pkgutil import resolve_name
 from typing import Any, ClassVar, Literal, Optional, cast
 
+import click
 import httpx
 import typer
 import yaml
@@ -77,11 +79,13 @@ from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform import NeMoPlatform
 from nemo_platform_ext.cli.core.formatters import Column, format_output
+from nemo_platform_ext.cli.core.help_formatter import NmpGroup
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
-from nemo_platform_plugin.discovery import discover_agent_cli
+from nemo_platform_plugin.discovery import AGENT_CLI_GROUP, discover_entry_points
 from nemo_platform_plugin.job import NemoJob
+from typer.main import get_command as _typer_get_command
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +129,79 @@ _COMPUTE_SPEC_LIST_COLUMNS = [
 ]
 
 
+_AGENT_CLI_PANEL = "Platform agents"
+
+
+@dataclass(frozen=True)
+class _LazyAgentCliEntry:
+    """Metadata-only stand-in for a not-yet-imported agent CLI extension.
+
+    ``help`` is a generic placeholder (entry-point metadata carries no
+    description) — same trade-off the top-level ``nemo`` CLI already makes
+    for lazily-loaded plugin commands (see ``functional_plugin_entry`` in
+    ``nemo_platform_ext.cli.manifest``).
+    """
+
+    import_path: str
+    help: str
+    panel: str = _AGENT_CLI_PANEL
+    hidden: bool = False
+
+
+class _LazyAgentCliGroup(NmpGroup):
+    """Group that defers importing plugin agent-CLI extensions until needed.
+
+    ``discover_agent_cli()`` (``nemo_platform_plugin.discovery``) fully imports
+    every ``nemo.cli.agents`` entry point up front, which makes plain ``nemo
+    agents -h`` pay the import cost of every contributing plugin (e.g. the
+    nemo-insights analyst stack) even though none of them is being invoked.
+    This group instead lists subcommand names from cheap entry-point metadata
+    and only imports/builds a given plugin's Typer app when that specific
+    subcommand name is resolved by Click — including when rendering its own
+    one-line help, which ``NmpGroup.format_commands`` reads from
+    ``_lazy_entries`` instead of calling ``get_command`` for every row.
+    Mirrors ``ManifestBackedNmpGroup`` (top-level lazy loading in
+    ``nemo_platform_ext.cli.core.lazy_load``) one level down.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        callback = getattr(self, "callback", None)
+        self._lazy_entries: dict[str, _LazyAgentCliEntry] = getattr(callback, "__nmp_lazy_agent_cli__", {})
+
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        names = list(self.commands)
+        for name in self._lazy_entries:
+            if name not in self.commands:
+                names.append(name)
+        return names
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        command = super().get_command(ctx, cmd_name)
+        if command is not None:
+            return command
+
+        entry = self._lazy_entries.get(cmd_name)
+        if entry is None:
+            return None
+
+        try:
+            cli_cls = resolve_name(entry.import_path)
+            cli = cli_cls().get_cli()
+        except Exception:
+            logger.warning("Failed to load agent CLI extension %r; skipping", cmd_name, exc_info=True)
+            return None
+
+        loaded = self._patch_command(_typer_get_command(cli))
+        loaded.name = cmd_name
+        loaded.hidden = loaded.hidden or entry.hidden
+        panel = getattr(loaded, "rich_help_panel", None)
+        if panel is None or type(panel).__name__ == "DefaultPlaceholder":
+            loaded.rich_help_panel = entry.panel
+        self.commands[cmd_name] = loaded
+        return loaded
+
+
 class AgentsCLI(NemoCLI):
     """CLI commands for the Agents plugin."""
 
@@ -136,6 +213,7 @@ class AgentsCLI(NemoCLI):
             name="agents",
             help=self.description,
             no_args_is_help=False,
+            cls=_LazyAgentCliGroup,
         )
 
         @app.callback(invoke_without_command=True)
@@ -144,19 +222,23 @@ class AgentsCLI(NemoCLI):
                 typer.echo(ctx.get_help())
                 raise typer.Exit(0)
 
+        # Metadata-only discovery: reads entry-point names without importing
+        # the plugin modules they point at. Actual imports happen lazily in
+        # ``_LazyAgentCliGroup.get_command`` only for the subcommand resolved.
+        agents_callback.__nmp_lazy_agent_cli__ = {
+            name: _LazyAgentCliEntry(
+                import_path=entry_point.value,
+                help=f"Agent CLI commands contributed by the {name!r} plugin.",
+            )
+            for name, entry_point in discover_entry_points(AGENT_CLI_GROUP).items()
+        }
+
         _register_local_commands(app)
         _register_package_command(app)
         _register_platform_commands(app)
         _register_environment_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
-        for name, cli_cls in discover_agent_cli().items():
-            try:
-                cli = cli_cls().get_cli()
-            except Exception:
-                logger.warning("Failed to load agent CLI extension %r; skipping", name, exc_info=True)
-                continue
-            app.add_typer(cli, name=name, rich_help_panel="Platform agents")
         return app
 
     def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
