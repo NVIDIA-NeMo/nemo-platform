@@ -78,9 +78,9 @@ class _WaitLogCollector:
     def accept_logs(self, current_logs: list[dict[str, str]]) -> None:
         for log in current_logs[len(self.seen_logs) :]:
             self.seen_logs.append(log)
-            if not log["name"].startswith("data_designer"):
+            if not log.get("name", "").startswith("data_designer"):
                 continue
-            level = log["levelname"].lower()
+            level = log.get("levelname", "").lower()
             if level == "info":
                 logger.info(log["message"])
             elif level in {"warning", "warn"}:
