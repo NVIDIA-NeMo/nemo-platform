@@ -20,9 +20,9 @@ from typing import (
     Generic,
     Literal,
     Type,
+    TypeGuard,
     TypeVar,
     Union,
-    cast,
     get_args,
     get_origin,
     overload,
@@ -287,6 +287,10 @@ def _validate_job_spec(job: PlatformJobSpec) -> None:
     validate_gpu_available_for_docker(job)
 
 
+def _is_platform_job_spec(job: object) -> TypeGuard[PlatformJobSpec]:
+    return isinstance(job, dict) and "steps" in job
+
+
 class BaseResultSerializer(BaseModel, ABC):
     def route_kwargs(self) -> dict:
         """
@@ -331,7 +335,7 @@ class JSONLResultSerializer(BaseResultSerializer):
         }
         return ret
 
-    async def _file_lines_iterator(self, file_path: str, limit: int | None = None):
+    async def _file_lines_iterator(self, file_path: Path, limit: int | None = None):
         async with await open_file(file_path, mode="r", encoding="utf-8") as f:
             lines = 0
             async for line in f:
@@ -340,7 +344,7 @@ class JSONLResultSerializer(BaseResultSerializer):
                 if limit and lines >= limit:
                     return
 
-    def serialize(self, output_path: Path, limit: int | None = None) -> StreamingResponse:
+    def serialize(self, output_path: Path, limit: int | None = None, **_kwargs: object) -> StreamingResponse:
         """
         Stream a DataFrame row by row as JSON objects
         """
@@ -395,7 +399,7 @@ class PydanticJSONLResultSerializer(BaseResultSerializer):
                 if limit and lines >= limit:
                     return
 
-    def serialize(self, output_path: Path, limit: int | None = None) -> StreamingResponse:
+    def serialize(self, output_path: Path, limit: int | None = None, **_kwargs: object) -> StreamingResponse:
         return StreamingResponse(
             self._validated_lines_iterator(str(output_path), limit), media_type="application/jsonl"
         )
@@ -680,31 +684,32 @@ async def _compile_platform_spec(
     """
     try:
         submit_control_kwargs = _submit_control_kwargs(compiler, profile=profile, options=options)
+        compile_result: PlatformJobSpec | Awaitable[PlatformJobSpec]
         if inspect.iscoroutinefunction(compiler):
-            platform_spec = cast(
-                PlatformJobSpec,
-                await compiler(
-                    workspace, original_spec, transformed_spec, entity_client, job_name, sdk, **submit_control_kwargs
-                ),
+            compile_result = compiler(
+                workspace, original_spec, transformed_spec, entity_client, job_name, sdk, **submit_control_kwargs
             )
         else:
             # Run sync compilers in a thread pool to avoid blocking the event loop.
-            platform_spec = cast(
-                PlatformJobSpec,
-                await to_thread.run_sync(
-                    partial(
-                        compiler,
-                        workspace,
-                        original_spec,
-                        transformed_spec,
-                        entity_client,
-                        job_name,
-                        sdk,
-                        **submit_control_kwargs,
-                    )
-                ),
+            compile_result = await to_thread.run_sync(
+                partial(
+                    compiler,
+                    workspace,
+                    original_spec,
+                    transformed_spec,
+                    entity_client,
+                    job_name,
+                    sdk,
+                    **submit_control_kwargs,
+                )
             )
+        if inspect.isawaitable(compile_result):
+            platform_spec = await compile_result
+        else:
+            platform_spec = compile_result
 
+        if not _is_platform_job_spec(platform_spec):
+            raise PlatformJobCompilationError("compiled job spec must be a mapping with steps")
         _validate_job_spec(platform_spec)
         return platform_spec
     except PermissionError as e:
@@ -871,12 +876,13 @@ def job_route_factory(
     # When job_output is not provided, they are the same type.
     # Type ignore is safe here because _validate_basemodel_or_union already validated these types
     # are either BaseModel subclasses or unions of BaseModel subclasses.
-    TypedJobRequest = type(f"{job_type}JobRequest", (BaseJobRequest[job_input],), {})
-    TypedJobResponse = type(f"{job_type}Job", (BaseJob[job_output],), {})
+    TypedJobRequest = type(f"{job_type}JobRequest", (BaseJobRequest[job_input],), {})  # ty: ignore[invalid-type-form]
+    TypedJobResponse = type(f"{job_type}Job", (BaseJob[job_output],), {})  # ty: ignore[invalid-type-form]
     TypedJobsListFilter = type(f"{job_type}JobsListFilter", (BaseJobsListFilter,), {})
 
     TypedJobsSortField = StrEnum(
-        f"{job_type}JobsSortField", {name: member.value for name, member in BaseJobsSortField.__members__.items()}
+        f"{job_type}JobsSortField",  # ty: ignore[mismatched-type-name]
+        {name: member.value for name, member in BaseJobsSortField.__members__.items()},
     )
 
     def from_response(job_resp: PlatformJob) -> TypedJobResponse:
@@ -890,7 +896,7 @@ def job_route_factory(
             created_at=job_resp.created_at,
             updated_at=job_resp.updated_at,
             spec=handle_job_spec_mismatch(job_output, job_resp.spec),
-            status=job_resp.status,  # type: ignore
+            status=job_resp.status,
             status_details=job_resp.status_details,
             error_details=job_resp.error_details,
             ownership=job_resp.ownership,
@@ -993,8 +999,8 @@ def job_route_factory(
             sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
             page: int = Query(default=1, description="Page number.", gt=0),
             page_size: int = Query(default=10, description="Page size.", gt=0),
-            sort: TypedJobsSortField = Query(  # type: ignore[valid-type]
-                default=TypedJobsSortField.CREATED_AT_DESC,
+            sort: TypedJobsSortField = Query(  # ty: ignore[invalid-type-form]
+                default=TypedJobsSortField(BaseJobsSortField.CREATED_AT_DESC.value),
                 description="The field to sort by. To sort in decreasing order, use `-` in front of the field name.",
             ),
             parsed: ParsedFilter = Depends(make_filter_dep(TypedJobsListFilter)),
