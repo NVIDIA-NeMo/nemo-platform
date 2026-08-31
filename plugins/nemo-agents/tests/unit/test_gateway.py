@@ -482,6 +482,38 @@ class TestSessionAwareRouting:
         assert stream_call.kwargs["url"] == "http://localhost:9002/v1/chat/completions"
         assert stream_call.kwargs["headers"][SESSION_ID_HEADER] == "session-2"
 
+    def test_noauth_route_resolves_service_owned_session_without_owner_filter(
+        self, client: TestClient, test_app: FastAPI, mock_entity_client: AsyncMock
+    ) -> None:
+        test_app.dependency_overrides[get_effective_principal_id] = lambda: ""
+        session = _make_session(
+            session_id="session-2",
+            deployment_id="deployment-2",
+            created_by="service:platform",
+        )
+        bound_deployment = _make_deployment(
+            name="calc-v2",
+            agent="calc",
+            endpoint="http://localhost:9002",
+            deployment_id="deployment-2",
+        )
+        mock_entity_client.find_one = AsyncMock(side_effect=[session, bound_deployment])
+        httpx_mock = _make_httpx_mock(200, b'{"ok": true}')
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            response = client.post(
+                "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+                headers={SESSION_ID_HEADER: "session-2"},
+                json={"messages": []},
+            )
+
+        assert response.status_code == 200
+        assert mock_entity_client.find_one.await_args_list[0] == call(
+            AgentSession,
+            workspace="default",
+            filter_obj={"id": "session-2"},
+        )
+
     def test_direct_route_accepts_session_for_same_deployment(
         self, client: TestClient, mock_entity_client: AsyncMock
     ) -> None:

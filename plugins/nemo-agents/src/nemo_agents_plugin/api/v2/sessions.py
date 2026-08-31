@@ -110,7 +110,8 @@ async def list_sessions(
 ) -> SessionPage:
     """List the current principal's sessions, optionally filtered by deployment ID."""
     filter_dict = dict(filter) if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
-    filter_dict["created_by"] = effective_principal_id
+    if effective_principal_id:
+        filter_dict["created_by"] = effective_principal_id
     try:
         result = await entity_client.list(
             AgentSession,
