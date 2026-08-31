@@ -32,12 +32,14 @@ ARG NEMO_RL_REPO=https://github.com/soluwalana/RL.git
 ARG NEMO_RL_REF=nmp/customizer
 
 # uv 0.11.18 bundles a vulnerable quinn-proto (0.12 has breaking changes, so stay on 0.11.x).
-# Official CPython 3.13.15 is copied from python:3.13.15-slim-trixie. uv's catalog has no
+# Official CPython 3.13.15 is copied from python:3.13.15-slim-bookworm. uv's catalog has no
 # cpython-3.13.15-linux-*-gnu download; do not use `uv python install` for this patch.
+# Donor must be bookworm (OpenSSL 3.0), not trixie: cuda-dl-base is Ubuntu 24.04
+# (OpenSSL 3.0.13). Trixie-built _ssl needs OPENSSL_3.3.0 and fails to import.
 # UV_PYTHON must still point at the copied binary so RL's `.python-version` cannot pin 3.13.14.
 ARG UV_VERSION=0.11.33
 ARG PYTHON_VERSION=3.13.15
-ARG CPYTHON_IMAGE=python:${PYTHON_VERSION}-slim-trixie
+ARG CPYTHON_IMAGE=python:${PYTHON_VERSION}-slim-bookworm
 ARG CMAKE_VERSION=4.0.3
 
 FROM ${CPYTHON_IMAGE} AS cpython
