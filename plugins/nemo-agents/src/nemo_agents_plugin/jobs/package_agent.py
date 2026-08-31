@@ -147,9 +147,10 @@ class PackageAgentInput(BaseModel):
         description=(
             "Fully-qualified remote tag. Defaults to '<registry>/<image>', where <image> is the "
             "namespaced local reference 'nemo-agents/{workspace}/{tag}'. Requires 'registry'. Must "
-            "stay nested under 'nemo-agents/{workspace}/' — Docker tags are daemon-global while the "
-            "auth boundary here is the workspace, so an unscoped push_tag would let this workspace "
-            "overwrite another workspace's image on the shared host."
+            "start with '<registry>/nemo-agents/{workspace}/' — Docker tags are daemon-global while "
+            "the auth boundary here is the workspace, so an unscoped push_tag would let this "
+            "workspace overwrite another workspace's image, or redirect the push to a registry "
+            "other than the one declared."
         ),
     )
 
@@ -171,15 +172,18 @@ class PackageAgentSpec(PackageAgentInput):
         # 'workspace' isn't known on PackageAgentInput (it comes from the URL / --workspace,
         # not the request body), so this check can only run here, once to_spec()/run_local()
         # has stamped it onto the spec.
-        if self.push_tag and self.workspace:
-            scoped_pattern = rf"(^|/){re.escape(TAG_NAMESPACE)}/{re.escape(self.workspace)}/[^/]+$"
-            if not re.search(scoped_pattern, self.push_tag):
+        if self.push_tag and self.registry and self.workspace:
+            # Anchored on 'registry' too, not just the 'nemo-agents/{workspace}/' segment —
+            # otherwise push_tag could silently redirect to a registry other than the one
+            # the caller declared (and is presumably authenticated to).
+            expected_prefix = f"{self.registry.rstrip('/')}/{TAG_NAMESPACE}/{self.workspace}/"
+            remote_name = self.push_tag.removeprefix(expected_prefix)
+            if not self.push_tag.startswith(expected_prefix) or not remote_name or "/" in remote_name:
                 raise ValueError(
-                    f"'push_tag' must be nested under '{TAG_NAMESPACE}/{self.workspace}/' (e.g. "
-                    f"'<registry>/{TAG_NAMESPACE}/{self.workspace}/<name>'). Docker tags are "
-                    "daemon-global while the auth boundary here is the workspace; an unscoped "
-                    "push_tag would let this workspace overwrite another workspace's image on "
-                    "the shared host."
+                    f"'push_tag' must be nested under '{expected_prefix}' (e.g. "
+                    f"'{expected_prefix}<name>'). Docker tags are daemon-global while the "
+                    "auth boundary here is the workspace; an unscoped push_tag would let this "
+                    "workspace overwrite another workspace's image on the shared host."
                 )
         return self
 

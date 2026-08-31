@@ -593,7 +593,7 @@ class TestPublishInputValidation:
 
 class TestPushTagWorkspaceScoping:
     def test_push_tag_outside_the_workspace_namespace_is_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="must be nested under 'nemo-agents/default/'"):
+        with pytest.raises(ValidationError, match="must be nested under 'nvcr.io/my-org/nemo-agents/default/'"):
             PackageAgentSpec(
                 agent="my-agent",
                 workspace="default",
@@ -603,13 +603,38 @@ class TestPushTagWorkspaceScoping:
             )
 
     def test_push_tag_under_another_workspace_is_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="must be nested under 'nemo-agents/default/'"):
+        with pytest.raises(ValidationError, match="must be nested under 'nvcr.io/my-org/nemo-agents/default/'"):
             PackageAgentSpec(
                 agent="my-agent",
                 workspace="default",
                 agent_config=FABRIC_CONFIG,
                 registry="nvcr.io/my-org",
                 push_tag="nvcr.io/my-org/nemo-agents/other-workspace/my-agent:1.0",
+            )
+
+    def test_push_tag_under_a_different_registry_is_rejected(self) -> None:
+        """The workspace-namespace segment alone isn't enough — push_tag must also start
+
+        with the declared 'registry', or it could silently redirect to a different
+        registry the host happens to also be authenticated to.
+        """
+        with pytest.raises(ValidationError, match="must be nested under 'nvcr.io/my-org/nemo-agents/default/'"):
+            PackageAgentSpec(
+                agent="my-agent",
+                workspace="default",
+                agent_config=FABRIC_CONFIG,
+                registry="nvcr.io/my-org",
+                push_tag="other-registry.example.com/nemo-agents/default/renamed:2.0",
+            )
+
+    def test_push_tag_with_extra_nesting_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be nested under 'nvcr.io/my-org/nemo-agents/default/'"):
+            PackageAgentSpec(
+                agent="my-agent",
+                workspace="default",
+                agent_config=FABRIC_CONFIG,
+                registry="nvcr.io/my-org",
+                push_tag="nvcr.io/my-org/nemo-agents/default/nested/renamed:2.0",
             )
 
     def test_push_tag_scoped_to_the_workspace_is_accepted(self) -> None:
