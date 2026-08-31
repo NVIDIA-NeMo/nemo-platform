@@ -395,6 +395,89 @@ async def test_compile_adapter_forwards_submitted_profile_and_options() -> None:
 
 
 @pytest.mark.asyncio
+async def test_compile_adapter_omits_empty_controls_for_legacy_compile() -> None:
+    seen: dict[str, object] = {}
+
+    class LegacyCompile(NemoJob):
+        name = "legacy-compile"
+        spec_schema = _WidgetSpec
+
+        def run(self, config: dict) -> dict:
+            return config
+
+        @classmethod
+        async def compile(
+            cls,
+            *,
+            workspace: str,
+            spec: BaseModel,
+            entity_client,
+            job_name,
+            async_sdk,
+        ):
+            seen.update(workspace=workspace, spec=spec, entity_client=entity_client, job_name=job_name, sdk=async_sdk)
+            return _FakePlatformSpec(steps=[_FakeStep(profile=None)])
+
+    adapter = _adapt_compile(LegacyCompile, default_profile="default")
+    platform_spec = await adapter(
+        "ws",
+        None,
+        _WidgetSpec(name="x"),
+        "ec",
+        "job-1",
+        "sdk",
+        profile=None,
+        options={},
+    )
+
+    assert seen == {
+        "workspace": "ws",
+        "spec": _WidgetSpec(name="x"),
+        "entity_client": "ec",
+        "job_name": "job-1",
+        "sdk": "sdk",
+    }
+    assert platform_spec.steps[0].executor.profile == "default"
+
+
+@pytest.mark.asyncio
+async def test_compile_adapter_rejects_unsupported_submitted_controls_for_legacy_compile() -> None:
+    class LegacyCompile(NemoJob):
+        name = "legacy-compile"
+        spec_schema = _WidgetSpec
+
+        def run(self, config: dict) -> dict:
+            return config
+
+        @classmethod
+        async def compile(
+            cls,
+            *,
+            workspace: str,
+            spec: BaseModel,
+            entity_client,
+            job_name,
+            async_sdk,
+        ):
+            del workspace, spec, entity_client, job_name, async_sdk
+            return _FakePlatformSpec(steps=[_FakeStep(profile=None)])
+
+    adapter = _adapt_compile(LegacyCompile, default_profile="default")
+
+    with pytest.raises(PlatformJobCompilationError, match="does not support submit field\\(s\\): profile, options"):
+        await adapter(
+            "ws",
+            None,
+            _WidgetSpec(name="x"),
+            "ec",
+            None,
+            "sdk",
+            profile="research",
+            options={"slurm": {"nodes": 4}},
+        )
+
+
+@pytest.mark.asyncio
 async def test_compile_adapter_preserves_profile_set_by_plugin_compile() -> None:
     class CompileSetsProfile(NemoJob):
         name = "pre-stamped"

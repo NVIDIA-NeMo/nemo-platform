@@ -50,6 +50,7 @@ from nemo_platform_plugin.job import job_collection_path_for
 from nemo_platform_plugin.jobs.api_factory import (
     JobRouteOption,
     PlatformJobResultRoute,
+    _submit_control_kwargs,
     job_route_factory,
 )
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
@@ -287,14 +288,14 @@ def _adapt_compile(
     ) -> Any:
         del original_spec  # NemoJob.compile only needs the canonical (transformed) spec
         try:
+            submit_control_kwargs = _submit_control_kwargs(job_cls.compile, profile=profile, options=options)
             result = await job_cls.compile(
                 workspace=workspace,
                 spec=transformed_spec,
                 entity_client=entity_client,
                 job_name=job_name,
                 async_sdk=sdk,
-                profile=profile,
-                options=options,
+                **submit_control_kwargs,
             )
         except NotImplementedError as exc:
             raise PlatformJobCompilationError(str(exc)) from exc
