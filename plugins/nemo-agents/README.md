@@ -285,7 +285,13 @@ curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/package/<job>/results
 ```
 
 Add `registry` to push the built image, which is what `--mode k8s` needs since a
-cluster cannot pull from the build host's local daemon:
+cluster cannot pull from the build host's local daemon.
+
+**The platform host must already be authenticated to the registry** — run
+`docker login` there once, as an operator, before submitting a push. Credentials
+are deliberately not accepted over this API, so every workspace pushing from a
+given host shares that host's identity. Per-workspace credentials would need the
+secrets service and are not wired up.
 
 ```bash
 -d '{"spec": {"agent": "my-agent", "registry": "nvcr.io/my-org"}}'
@@ -295,12 +301,6 @@ cluster cannot pull from the build host's local daemon:
 `<registry>/<image>` — and because the local image is namespaced, that is
 `<registry>/nemo-agents/<workspace>/<tag>`. Set `push_tag` to override it
 entirely; it requires `registry`.
-
-**The platform host must already be authenticated to the registry** — run
-`docker login` there once, as an operator. Credentials are deliberately not
-accepted over this API, so every workspace pushing from a given host shares that
-host's identity. Per-workspace credentials would need the secrets service and
-are not wired up.
 
 The job downloads the agent's spec fileset into a temporary build context,
 writes `agent.yaml` from the stored config, and runs the same Fabric build the

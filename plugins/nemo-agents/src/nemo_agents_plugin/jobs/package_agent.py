@@ -135,8 +135,9 @@ class PackageAgentInput(BaseModel):
         default=None,
         pattern=IMAGE_REPOSITORY_PATTERN,
         description=(
-            "Push the built image to this registry (e.g. 'nvcr.io/my-org'). The platform host "
-            "must already be authenticated to it; credentials are never accepted over this API."
+            "Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host running "
+            "this command must already be authenticated to it; credentials are never accepted "
+            "over this API."
         ),
     )
     push_tag: str | None = Field(
