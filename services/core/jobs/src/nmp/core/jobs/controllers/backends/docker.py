@@ -1857,14 +1857,18 @@ chmod -R 777 {job_vol}/{storage_subpath}
             attrs = container.attrs or {}
             exit_code = attrs.get("State", {}).get("ExitCode", 0)
             status_details["exit_code"] = exit_code
+            if is_cancelling:
+                # Docker stop/kill exit codes vary with the container entrypoint and
+                # signal handling (for example 0, 1, 137, 143, or 255). Once the
+                # persisted step is cancelling, the user's cancellation intent is
+                # authoritative; the observed post-stop exit code remains diagnostic.
+                return (
+                    PlatformJobStatus.CANCELLED,
+                    {"message": f"Job was cancelled successfully with exit code {exit_code}"},
+                    error_stack,
+                )
             if exit_code == 0:
-                if is_cancelling:
-                    return (
-                        PlatformJobStatus.CANCELLED,
-                        {"message": f"Job was cancelled successfully with exit code {exit_code}"},
-                        error_stack,
-                    )
-                elif is_pausing:
+                if is_pausing:
                     return (
                         PlatformJobStatus.PAUSED,
                         {"message": f"Job paused successfully with exit code {exit_code}"},
@@ -1876,13 +1880,6 @@ chmod -R 777 {job_vol}/{storage_subpath}
                         {"message": f"Job completed successfully with exit code {exit_code}"},
                         error_stack,
                     )
-            elif exit_code == 137 and is_cancelling:
-                # 137 is SIGKILL, which is what Docker sends after the grace period expires
-                return (
-                    PlatformJobStatus.CANCELLED,
-                    {"message": f"Job was cancelled successfully with exit code {exit_code}"},
-                    error_stack,
-                )
             else:
                 # Get logs for error stack
                 try:

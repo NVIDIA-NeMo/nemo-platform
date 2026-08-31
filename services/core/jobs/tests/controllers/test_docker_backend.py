@@ -562,14 +562,17 @@ def test_docker_job_sync_cancelling_sigterm(docker_job, docker_client_mock, test
     container_mock.remove.assert_not_called()
 
 
-def test_docker_job_sync_cancelling_sigkill(docker_job, docker_client_mock, test_job_step):
-    """Test that the cancel method stops the container."""
+@pytest.mark.parametrize("exit_code", [1, 137, 143, 255])
+def test_docker_job_sync_cancelling_nonzero_exit(
+    docker_job, docker_client_mock, mock_jobs_client, test_job_step, exit_code
+):
+    """Cancellation intent wins over entrypoint-specific post-stop exit codes."""
 
     test_job_step.status = PlatformJobStatus.CANCELLING
     container_mock = MagicMock()
     container_mock.id = "16-character-uid"
     container_mock.status = "exited"
-    container_mock.attrs = {"State": {"ExitCode": 137}}  # SIGKILL will set exit code 137
+    container_mock.attrs = {"State": {"ExitCode": exit_code}}
     task_id = uuid.uuid4().hex
     container_mock.labels = owned_container_labels(
         {
@@ -586,7 +589,12 @@ def test_docker_job_sync_cancelling_sigkill(docker_job, docker_client_mock, test
     # Test sync with running container
     update = docker_job.sync(test_job_step)
     assert update.status == "cancelled"
+    assert update.status_details == {"message": f"Job was cancelled successfully with exit code {exit_code}"}
+    assert update.error_details == {}
     docker_client_mock.containers.get.assert_called_with("job-test-job-id-test-step")
+    task_update = mock_jobs_client.update_job_step_task.call_args.kwargs["body"]
+    assert task_update.status == PlatformJobStatus.CANCELLED
+    assert task_update.error_stack == ""
     # Container removed as part of cleanup_steps
     container_mock.remove.assert_not_called()
 
