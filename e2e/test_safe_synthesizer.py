@@ -28,6 +28,7 @@ import traceback
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import suppress
+from enum import Enum
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
@@ -38,6 +39,7 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 
 pytestmark = [
     pytest.mark.timeout(600),
@@ -408,6 +410,12 @@ def _status_details(sdk: NeMoPlatform, workspace: str, job_name: str) -> str:
     return "\n".join(details)
 
 
+def _status_value(status: object) -> str:
+    if isinstance(status, Enum):
+        return str(status.value)
+    return str(status or "")
+
+
 def _wait_for_status(
     sdk: NeMoPlatform,
     workspace: str,
@@ -426,7 +434,7 @@ def _wait_for_status(
     while time.monotonic() < deadline:
         try:
             status_info = jobs.get_job_status(name=job_name, workspace=workspace).data()
-            status = str(status_info.status)
+            status = _status_value(status_info.status)
             if not history or history[-1] != status:
                 history.append(status)
                 _write_nss_debug_json(job_name, "status-history.json", {"history": history})
@@ -592,6 +600,11 @@ def test_safe_synthesizer_api_health(sdk: NeMoPlatform, workspace: str) -> None:
 
     jobs = _list_nss_jobs(sdk, workspace)
     assert isinstance(jobs.get("data"), list)
+
+
+def test_safe_synthesizer_status_value_accepts_sdk_status_enum() -> None:
+    assert _status_value(PlatformJobStatus.CANCELLED) == "cancelled"
+    assert _status_value("completed") == "completed"
 
 
 def test_safe_synthesizer_fileset_upload_download_round_trips(
