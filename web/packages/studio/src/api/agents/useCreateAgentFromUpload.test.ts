@@ -13,7 +13,7 @@ import {
   AgentSpecFilesetOrphanError,
   createAgentFromUpload,
 } from '@studio/api/agents/useCreateAgentFromUpload';
-import type { UploadAgentEntry } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
+import type { UploadAgentEntry } from '@studio/routes/agents/AgentsListRoute/NewAgentModal/type';
 
 vi.mock('@nemo/sdk/generated/agents/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@nemo/sdk/generated/agents/api')>()),

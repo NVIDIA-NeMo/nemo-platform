@@ -59,7 +59,10 @@ describe('Agent overview before the agent reports anything', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Get coding agent prompt for importing traces' })
     );
-    await user.click(await screen.findByRole('button', { name: 'Copy to clipboard' }));
+    // The prompt editor is a lazily imported chunk, so it can miss the default find timeout.
+    await user.click(
+      await screen.findByRole('button', { name: 'Copy to clipboard' }, { timeout: 10_000 })
+    );
 
     const prompt = await navigator.clipboard.readText();
     expect(prompt).toContain('nemo-intake');
