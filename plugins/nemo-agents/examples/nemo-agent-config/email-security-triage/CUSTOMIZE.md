@@ -33,11 +33,12 @@ Each capability is a `##` section in the one system prompt. Three rules the
 existing ones follow:
 
 - **Give it a crisp output contract**, and let it differ per capability. Where a
-  deterministic metric has to read the answer, line one carries it — a single
-  lowercase token (`triage_message`), a fixed header word (`review_messages`) —
-  with any reasoning or structured detail after. Capabilities whose output has no
-  single correct form need no such token: `draft_warning` emits warning prose only,
-  and is graded by a rubric judge instead.
+  deterministic metric has to read the answer, line one carries it: `triage_message`
+  emits a single lowercase verdict (`phishing` or `benign`), `review_messages` opens
+  with the fixed header `ANALYSIS` and then one block per message — with any reasoning
+  or structured detail after. Capabilities whose output has no single correct form need
+  no such token: `draft_warning` emits warning prose only, and is graded by a rubric
+  judge instead.
 - **Make the contracts mutually exclusive.** Routing is measured by output shape:
   if two capabilities can open with the same line, no check can tell them apart, and
   a misroute becomes invisible in your scores.
@@ -164,9 +165,12 @@ Couplings that break silently if you change one side only:
   containing that substring, so a `prompt_template` stops producing a string and `{{ prompt }}`
   in the target body goes undefined. It bites judge prompts the same way. Assemble text with a
   `{% for %}` loop instead.
-- **Contract and judge:** every capability's first-line contract is duplicated in
-  the eval's judge prompt and in its routing `string-check`. Change one, change the
-  others — the judge silently scores 0 against a contract the agent no longer emits.
+- **Contract and judge:** wherever a capability _has_ a first-line contract, that
+  contract is duplicated in the eval's judge prompt and in its routing `string-check`.
+  Change one, change the others — the judge silently scores 0 against a contract the
+  agent no longer emits. A capability with no fixed shape is asserted by exclusion
+  instead: `draft_warning`'s check only proves line one is _not_ another capability's
+  token, so its rubric judge is what actually grades the answer.
 - **Per-run fields:** the eval configs ship without `target`, `params`, or a
   resolved `dataset`. Studio injects them at submit time; a CLI run must add them
   by hand (see README Step 5). Do not commit them into the config, or Studio runs

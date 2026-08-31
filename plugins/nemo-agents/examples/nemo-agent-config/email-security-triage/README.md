@@ -107,6 +107,13 @@ Both ship **without** `target`, `params`, or a resolved `dataset` — those are
 per-run, and Studio's Run Evaluation flow injects them. From the CLI you supply
 them yourself.
 
+> **The task-driven config is CLI-only today.** Studio's Run Evaluation modal
+> requires a dataset file, and bakes a `dataset:` reference into whatever config
+> you upload — a task-driven config has neither, since its inputs live in
+> `tasks[]`. The submission layer and the runner both handle the task shape
+> (`nemo evaluator agent-evaluate run` scores it end to end); only the upload form
+> rejects it. Run it from the CLI, as below.
+
 Upload the dataset once, so the config can reference it:
 
 ```bash
