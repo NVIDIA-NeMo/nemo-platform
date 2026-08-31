@@ -212,7 +212,7 @@ const series = (values: number[]) =>
 
 /**
  * Names taken from the golden test pinning NeMo-RL's logged dict, since the whole GRPO overview
- * reads through them. `train_total_reward/stddev` is absent because a real run has no history.
+ * reads through them.
  */
 export const grpoStatusDetails = {
   phase: 'completed',
@@ -225,8 +225,14 @@ export const grpoStatusDetails = {
   train_reward: 0.617,
   val_accuracy: 0.58,
   train_truncation_rate: 0.041,
+  train_sampling_importance_ratio: 1.002,
+  'train_timing/total_step_time': 35.4,
   'train_total_reward/mean': 0.617,
+  // Pinned to what the backend's golden dict reports, degenerate values and all: on a 0/1 reward
+  // the quartiles land on 0 and 1 and the stddev is √(0.617·0.383).
   'train_total_reward/stddev': 0.486,
+  'train_total_reward/p25': 0,
+  'train_total_reward/p75': 1,
   metrics: {
     train_loss: [],
     val_loss: [],
@@ -239,19 +245,13 @@ export const grpoStatusDetails = {
     train_truncation_rate: series([0.09, 0.072, 0.061, 0.05, 0.044, 0.041]),
     train_gen_kl_error: series([0.00012, 0.00028, 0.00039, 0.00047, 0.00051, 0.00054]),
     train_token_mult_prob_error: series([1.001, 1.002, 1.003, 1.004, 1.004, 1.004]),
+    train_sampling_importance_ratio: series([1.0004, 1.0009, 1.0013, 1.0017, 1.0019, 1.002]),
     train_approx_entropy: series([0.98, 0.74, 0.55, 0.43, 0.36, 0.31]),
+    // Rises with the responses: longer generations cost more wall clock per step.
+    'train_timing/total_step_time': series([29.8, 31.6, 33.6, 35, 34.8, 35.4]),
     'train_advantages/mean': series([0.001, 0.002, 0.003, 0.002, 0.004, 0.003]),
     train_kl_penalty: series([0, 0, 0, 0, 0, 0]),
     'train_gen_tokens_per_sample/mean': series([412.5, 498.1, 561.4, 612.9, 664.2, 689.3]),
-  },
-};
-
-/** The same run, once the backend also records the reward spread — the chart then draws a band. */
-export const grpoStatusDetailsWithSpread = {
-  ...grpoStatusDetails,
-  metrics: {
-    ...grpoStatusDetails.metrics,
-    'train_total_reward/stddev': series([0.09, 0.14, 0.17, 0.19, 0.2, 0.21]),
   },
 };
 

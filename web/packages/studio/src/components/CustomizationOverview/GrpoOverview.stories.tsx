@@ -9,7 +9,6 @@ import { RunConfigurationPanel } from '@studio/components/CustomizationOverview/
 import {
   grpoCustomizationJob,
   grpoStatusDetails,
-  grpoStatusDetailsWithSpread,
 } from '@studio/mocks/customizer/customization-jobs';
 import type { CustomizationStatusDetailsWithMetrics } from '@studio/types/customization';
 import { getGrpoProgressTiles, getGrpoSummaryTiles } from '@studio/util/customizations';
@@ -37,7 +36,7 @@ const overview = (details: CustomizationStatusDetailsWithMetrics) => (
     <GrpoRewardPanel
       reward={buildRewardChartData(details)}
       metrics={getGrpoSummaryTiles(details, true)}
-      progress={getGrpoProgressTiles(telemetry, { isTerminal: true, duration: '05:46:41' })}
+      progress={getGrpoProgressTiles(telemetry, { isTerminal: true, duration: '2h 15m' })}
     />
     <GrpoTrainingHealthPanel statusDetails={details} />
     <RunConfigurationPanel
@@ -48,14 +47,9 @@ const overview = (details: CustomizationStatusDetailsWithMetrics) => (
   </Stack>
 );
 
-/** What a real completed run looks like today: two reward lines, no band. */
+/** A completed run: the mean and the validation overlay. */
 export const Completed: Story = {
   render: () => overview(grpoStatusDetails as CustomizationStatusDetailsWithMetrics),
-};
-
-/** The same run once the backend keeps a history for `total_reward/stddev` — no Studio change. */
-export const WithRewardSpread: Story = {
-  render: () => overview(grpoStatusDetailsWithSpread as CustomizationStatusDetailsWithMetrics),
 };
 
 /** Reward reported, diagnostics not — the health panel drops out rather than opening onto nothing. */
