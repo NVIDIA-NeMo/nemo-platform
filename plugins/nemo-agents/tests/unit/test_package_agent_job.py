@@ -485,22 +485,30 @@ class TestTagNamespace:
 
 class TestPublish:
     @staticmethod
-    def _run(spec: PackageAgentSpec, push: Any) -> dict:
+    def _run(spec: PackageAgentSpec, push: Any, *, image_id: str = "sha256:deadbeef", resolve_id: Any = None) -> dict:
         async def _stage(**kwargs: Any) -> None:
             return None
 
         with (
             patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage),
             patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", lambda p, **k: "my-agent:1.0"),
+            patch("nemo_agents_plugin.container.builder.resolve_image_id", resolve_id or (lambda tag: image_id)),
             patch("nemo_agents_plugin.container.publisher.docker_push", push),
         ):
             return PackageAgentJob().run(spec.model_dump(mode="json"))
 
     def test_no_registry_skips_the_push(self) -> None:
         push = MagicMock()
-        result = self._run(PackageAgentSpec(agent="my-agent", workspace="default", agent_config=FABRIC_CONFIG), push)
+        resolve_id = MagicMock()
+        result = self._run(
+            PackageAgentSpec(agent="my-agent", workspace="default", agent_config=FABRIC_CONFIG),
+            push,
+            resolve_id=resolve_id,
+        )
 
         push.assert_not_called()
+        # No registry to push to, so there's nothing to resolve an image ID for either.
+        resolve_id.assert_not_called()
         assert result["published"] == ""
         assert result["image"] == "my-agent:1.0"
 
@@ -516,6 +524,25 @@ class TestPublish:
         assert push.call_args.kwargs["local_tag"] == "my-agent:1.0"
         assert push.call_args.kwargs["registry"] == "nvcr.io/my-org"
         assert result["published"] == "nvcr.io/my-org/my-agent:1.0"
+
+    def test_push_publishes_by_resolved_image_id_not_the_mutable_tag(self) -> None:
+        """Guards the tag/push race: a concurrent job could rebind the shared local tag
+
+        between build and push, so the push must address the image by the ID resolved
+        right after *this* job's own build — not by the (daemon-global) tag name.
+        """
+        push = MagicMock(return_value="nvcr.io/my-org/my-agent:1.0")
+        self._run(
+            PackageAgentSpec(
+                agent="my-agent", workspace="default", agent_config=FABRIC_CONFIG, registry="nvcr.io/my-org"
+            ),
+            push,
+            image_id="sha256:abc123",
+        )
+
+        assert push.call_args.kwargs["source_ref"] == "sha256:abc123"
+        # local_tag is still forwarded — used for the default push_tag / progress text.
+        assert push.call_args.kwargs["local_tag"] == "my-agent:1.0"
 
     def test_explicit_push_tag_is_forwarded(self) -> None:
         push = MagicMock(return_value="nvcr.io/my-org/nemo-agents/default/renamed:2.0")

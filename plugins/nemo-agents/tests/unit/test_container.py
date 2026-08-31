@@ -1477,6 +1477,63 @@ class TestDockerPush:
         )
         mock_docker.tag.assert_called_once_with("img:v1", "nvcr.io/org/img:v1")
 
+    def test_source_ref_is_tagged_instead_of_the_mutable_local_tag(self) -> None:
+        """docker.tag() must read from the resolved image ID, not the local_tag name,
+
+        or a concurrent build that rebinds local_tag between build and push would
+        make this job publish the wrong image.
+        """
+        mock_docker = MagicMock()
+        self._call_push(
+            mock_docker,
+            local_tag="agent:2.0",
+            registry="registry.example.com/team",
+            source_ref="sha256:abc123",
+        )
+        expected_remote = "registry.example.com/team/agent:2.0"
+        mock_docker.tag.assert_called_once_with("sha256:abc123", expected_remote)
+        mock_docker.push.assert_called_once_with(expected_remote)
+
+    def test_missing_source_ref_falls_back_to_local_tag(self) -> None:
+        mock_docker = MagicMock()
+        self._call_push(
+            mock_docker,
+            local_tag="agent:2.0",
+            registry="registry.example.com/team",
+        )
+        mock_docker.tag.assert_called_once_with("agent:2.0", "registry.example.com/team/agent:2.0")
+
+
+class TestResolveImageId:
+    def _call(self, mock_docker: MagicMock, tag: str) -> str:
+        import sys
+        from importlib import reload
+
+        from nemo_agents_plugin.container import builder
+
+        fake_module = MagicMock(docker=mock_docker)
+        with patch.dict(sys.modules, {"python_on_whales": fake_module}):
+            reload(builder)
+            return builder.resolve_image_id(tag)
+
+    def test_returns_the_inspected_image_id(self) -> None:
+        mock_docker = MagicMock()
+        mock_docker.image.inspect.return_value.id = "sha256:deadbeef"
+
+        result = self._call(mock_docker, "agent:1.0")
+
+        mock_docker.image.inspect.assert_called_once_with("agent:1.0")
+        assert result == "sha256:deadbeef"
+
+    def test_inspect_failure_is_wrapped(self) -> None:
+        from nemo_agents_plugin.container.errors import ImageBuildError
+
+        mock_docker = MagicMock()
+        mock_docker.image.inspect.side_effect = RuntimeError("no such image")
+
+        with pytest.raises(ImageBuildError, match="no such image"):
+            self._call(mock_docker, "agent:1.0")
+
 
 # ---------------------------------------------------------------------------
 # resolve_value tests

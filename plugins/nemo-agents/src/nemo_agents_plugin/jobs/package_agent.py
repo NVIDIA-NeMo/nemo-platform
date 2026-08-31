@@ -339,7 +339,7 @@ class PackageAgentJob(NemoJob):
         async_sdk: AsyncNeMoPlatform | None = None,
     ) -> dict:
         """Stage the agent's spec fileset into a temp build context, build, and optionally push."""
-        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image, resolve_image_id
         from nemo_agents_plugin.container.publisher import docker_push
 
         cfg = PackageAgentSpec.model_validate(config)
@@ -367,6 +367,10 @@ class PackageAgentJob(NemoJob):
                 skip_validation=cfg.skip_validation,
                 on_progress=logger.info,
             )
+            # Resolved immediately after the build call, not from `run()`-external
+            # code between here and the push below: a concurrent job rebuilding
+            # the same (daemon-global) tag name can't rebind what we publish.
+            image_id = resolve_image_id(image) if cfg.registry else None
 
         published = ""
         if cfg.registry:
@@ -374,6 +378,7 @@ class PackageAgentJob(NemoJob):
                 local_tag=image,
                 registry=cfg.registry,
                 push_tag=cfg.push_tag,
+                source_ref=image_id,
                 on_progress=logger.info,
             )
 
