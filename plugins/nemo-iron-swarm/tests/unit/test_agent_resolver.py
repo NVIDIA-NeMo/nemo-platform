@@ -19,6 +19,7 @@ import yaml
 from nemo_iron_swarm_plugin.agent_resolver import (
     AgentResolutionError,
     build_manifest_dict,
+    derive_agent_env,
     derive_secret_names,
     detect_custom_components,
     gateway_backend,
@@ -360,3 +361,15 @@ def test_the_manifest_carries_the_harness() -> None:
     manifest = build_manifest_dict(agent_name="a", project_dir=".", port=8000, secrets=[], harness="hermes")
 
     assert manifest["agent"]["harness"] == "hermes"
+
+
+def test_declared_env_reaches_the_manifest() -> None:
+    """Egress discovery reads agent_env; without it the agent gets a backend URL it cannot reach."""
+    config = {"environment": {"env": {"BACKEND_URL": "https://ledger.internal", "KEY": "${SECRET}"}}}
+
+    assert derive_agent_env(config) == {"BACKEND_URL": "https://ledger.internal"}
+
+
+def test_declared_env_is_optional() -> None:
+    assert derive_agent_env({}) == {}
+    assert derive_agent_env({"environment": {"workspace": "./workspace"}}) == {}

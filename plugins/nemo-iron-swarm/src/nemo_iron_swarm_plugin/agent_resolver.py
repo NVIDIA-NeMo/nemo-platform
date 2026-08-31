@@ -208,6 +208,28 @@ def derive_secret_names(agent_config: dict[str, Any], extra: list[str] | None = 
     return sorted(found) or ["INFERENCE_API_KEY"]
 
 
+def derive_agent_env(agent_config: dict[str, Any]) -> dict[str, str]:
+    """The agent's declared non-secret environment, for the manifest.
+
+    Fabric applies ``environment.env`` itself at runtime, so the victim gets these either way. Iron
+    Swarm needs them for a different reason: ``agent_env`` is what egress discovery reads to learn
+    which hosts the agent talks to. Without it, an agent whose env names a backend URL receives the
+    variable and is then refused the connection by its own sandbox policy.
+
+    Values that name a secret (``${VAR}``) are dropped rather than copied: they resolve to nothing
+    useful here, and the manifest is written to disk and rendered in reports.
+    """
+    environment = agent_config.get("environment")
+    declared = environment.get("env") if isinstance(environment, dict) else None
+    if not isinstance(declared, dict):
+        return {}
+    return {
+        str(key): value
+        for key, value in declared.items()
+        if isinstance(value, str) and not (value.startswith("${") and value.endswith("}"))
+    }
+
+
 def gateway_backend(base_url: str) -> dict[str, Any] | None:
     """Route-only backend so the sandboxed victim can reach a *local* Inference Gateway.
 
@@ -232,6 +254,7 @@ def build_manifest_dict(
     backends: list[dict[str, Any]] | None = None,
     relay_artifacts: str | None = None,
     harness: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build the ``iron-swarm.yaml`` mapping (mirrors ``iron_swarm.manifest.build_manifest``).
 
@@ -255,6 +278,8 @@ def build_manifest_dict(
         "secrets": secrets,
         "secrets_file": secrets_file,
     }
+    if env:
+        agent["env"] = env
     if relay_artifacts:
         agent["relay_artifacts"] = relay_artifacts
     if egress:
@@ -499,6 +524,7 @@ def resolve_agent_to_manifest(
         backends=[gw_backend] if gw_backend else [],
         relay_artifacts=relay_artifacts_dir(injected),
         harness=harness,
+        env=derive_agent_env(agent_config),
     )
 
     return ResolvedManifest(
