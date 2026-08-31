@@ -51,7 +51,7 @@ import logging
 import os
 from functools import cache
 from importlib.metadata import EntryPoint, entry_points
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.controller import NemoController
@@ -60,13 +60,18 @@ from nemo_platform_plugin.customization_contributor import (
     CustomizationContributorDiscoveryError,
 )
 from nemo_platform_plugin.function import NemoFunction
-from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
 from nemo_platform_plugin.interface import PluginManifest
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.sandbox import SandboxImageProfile
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 from nemo_platform_plugin.seed import NemoSeedJob
 from nemo_platform_plugin.service import NemoService
+
+if TYPE_CHECKING:
+    # Deferred: pulls in anthropic + openai (~750ms), and every nemo CLI
+    # invocation imports this module. discover_inference_middleware()
+    # re-imports it locally at runtime.
+    from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
 
 logger = logging.getLogger(__name__)
 
