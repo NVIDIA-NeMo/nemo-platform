@@ -16687,6 +16687,25 @@ components:
       - artifact_url
       - artifact_storage_type
       title: PlatformJobResultResponse
+    PlatformJobSecret:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: The name of the secret
+        value:
+          title: Value
+          description: The secret value submitted with the job
+          type: string
+        ref_id:
+          title: Ref Id
+          description: Reference id for the stored secret value
+          type: string
+      type: object
+      required:
+      - name
+      title: PlatformJobSecret
+      description: Inline secret material submitted with a job spec.
     PlatformJobSecretEnvironmentVariableRef:
       properties:
         name:
@@ -16715,6 +16734,12 @@ components:
           type: array
           title: Steps
           description: List of steps to be executed in the job
+        secrets:
+          title: Secrets
+          description: Secrets referenced by the job
+          items:
+            $ref: '#/components/schemas/PlatformJobSecret'
+          type: array
       type: object
       required:
       - steps
