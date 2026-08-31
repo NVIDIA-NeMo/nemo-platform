@@ -8,7 +8,12 @@ import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey } from '@nemo/sdk/generated/agents/api';
 import {
+  Button,
   Stack,
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
   Text,
   UploadInputElement,
   UploadRoot,
@@ -18,16 +23,20 @@ import {
   AgentSpecFilesetOrphanError,
   useCreateAgentFromUpload,
 } from '@studio/api/agents/useCreateAgentFromUpload';
+import { CodingAgentPromptEditor } from '@studio/components/CodingAgentPromptEditor';
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { agentIntegrationPrompt } from '@studio/routes/agents/AgentDetailRoute/overview/codingAgentPrompts';
 import {
   AGENT_CONFIG_FILENAME,
   uploadAgentFormSchema,
-} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/const';
+} from '@studio/routes/agents/AgentsListRoute/NewAgentModal/const';
 import type {
+  NewAgentModalProps,
+  NewAgentTab,
   PickedFile,
   UploadAgentEntry,
   UploadAgentFormData,
-  UploadAgentModalProps,
-} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
+} from '@studio/routes/agents/AgentsListRoute/NewAgentModal/type';
 import {
   agentNameFromConfig,
   collectAgentEntries,
@@ -38,7 +47,7 @@ import {
   tooManyPickedFiles,
   totalEntryBytes,
   validateAgentEntries,
-} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/utils';
+} from '@studio/routes/agents/AgentsListRoute/NewAgentModal/utils';
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -53,7 +62,7 @@ import {
 import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 
-export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, workspace }) => {
+export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace }) => {
   const toast = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -68,6 +77,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
   const [directoryName, setDirectoryName] = useState('');
   const [selectionError, setSelectionError] = useState<string | undefined>(undefined);
   const [replaceArmedFor, setReplaceArmedFor] = useState<string | null>(null);
+  const [tab, setTab] = useState<NewAgentTab>('coding-agent-prompt');
 
   const {
     mutateAsync: createAgent,
@@ -117,6 +127,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     setDirectoryName('');
     setSelectionError(undefined);
     setReplaceArmedFor(null);
+    setTab('coding-agent-prompt');
     onClose();
   };
 
@@ -232,45 +243,69 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     selectionError ??
     (createError ? getErrorMessage(createError as Error) || 'Failed to create agent' : undefined);
 
+  const onUploadTab = tab === 'upload';
+
   return (
     <FormModal
       open={open}
       onClose={resetAndClose}
       className="w-[720px] max-w-[90vw]"
-      title="Upload agent configuration"
+      title="Instrument an agent with NeMo Platform"
       instruction="Integrated agents allow users to evaluate, optimize, and deploy agents."
       submitButtonText={replaceOrphan ? 'Replace and create' : 'Create'}
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
       loading={isPending}
       submitDisabled={entries.length === 0}
-      errorText={errorMessage}
+      errorText={onUploadTab ? errorMessage : undefined}
+      slotFooterRight={
+        onUploadTab ? undefined : (
+          <Button color="brand" type="button" onClick={resetAndClose}>
+            Close
+          </Button>
+        )
+      }
     >
-      <Stack gap="density-md">
-        <Text kind="label/semibold/md">Select agent config files</Text>
-        <UploadRoot multiple disabled={isPending}>
-          <UploadTrigger
-            className="w-full"
-            data-testid="agent-directory-dropzone"
-            onDrop={onDirectoryDropped}
-            slotAnchor={directoryName ? 'Choose a different directory' : 'Choose a directory'}
-            slotHeaderText=" containing agent.yaml."
-          >
-            <UploadInputElement
-              ref={setDirectoryInput}
-              data-testid="agent-directory-input"
-              multiple
-              onChange={onDirectoryPicked}
+      <TabsRoot value={tab} onValueChange={(value) => setTab(value as NewAgentTab)}>
+        <TabsList aria-label="Ways to instrument an agent">
+          <TabsTrigger value="coding-agent-prompt">Coding agent prompt</TabsTrigger>
+          <TabsTrigger value="upload">Upload agent</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="coding-agent-prompt" className="items-stretch p-0 pt-density-lg">
+          <CodingAgentPromptEditor
+            prompt={agentIntegrationPrompt({ workspace, baseUrl: PLATFORM_BASE_URL })}
+          />
+        </TabsContent>
+
+        <TabsContent value="upload" className="items-stretch p-0 pt-density-lg">
+          <Stack gap="density-md">
+            <Text kind="label/semibold/md">Select agent config files</Text>
+            <UploadRoot multiple disabled={isPending}>
+              <UploadTrigger
+                className="w-full"
+                data-testid="agent-directory-dropzone"
+                onDrop={onDirectoryDropped}
+                slotAnchor={directoryName ? 'Choose a different directory' : 'Choose a directory'}
+                slotHeaderText=" containing agent.yaml."
+              >
+                <UploadInputElement
+                  ref={setDirectoryInput}
+                  data-testid="agent-directory-input"
+                  multiple
+                  onChange={onDirectoryPicked}
+                />
+              </UploadTrigger>
+            </UploadRoot>
+            {entriesSummary ? <Text kind="body/regular/sm">{entriesSummary}</Text> : null}
+            <ControlledTextInput
+              useControllerProps={{ control, name: 'name' }}
+              label="Name"
+              formFieldProps={{ slotError: errors.name?.message }}
             />
-          </UploadTrigger>
-        </UploadRoot>
-        {entriesSummary ? <Text kind="body/regular/sm">{entriesSummary}</Text> : null}
-        <ControlledTextInput
-          useControllerProps={{ control, name: 'name' }}
-          label="Name"
-          formFieldProps={{ slotError: errors.name?.message }}
-        />
-      </Stack>
+          </Stack>
+        </TabsContent>
+      </TabsRoot>
     </FormModal>
   );
 };

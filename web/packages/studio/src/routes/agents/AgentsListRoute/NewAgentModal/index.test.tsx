@@ -5,7 +5,7 @@ import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { server } from '@studio/mocks/node';
-import { UploadAgentModal } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal';
+import { NewAgentModal } from '@studio/routes/agents/AgentsListRoute/NewAgentModal';
 import { getAgentsListRoute } from '@studio/routes/utils';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import { fireEvent, within } from '@testing-library/react';
@@ -107,11 +107,17 @@ const renderModal = () =>
     routes: [
       {
         path: ROUTES.workspace.agentsList,
-        element: <UploadAgentModal open onClose={vi.fn()} workspace={workspace} />,
+        element: <NewAgentModal open onClose={vi.fn()} workspace={workspace} />,
       },
       { path: ROUTES.workspace.agentDetail, element: <div>Agent detail page</div> },
     ],
   });
+
+/** The prompt tab is the default, so upload tests have to switch before the form exists. */
+const openUploadTab = async (dialog: HTMLElement) => {
+  fireEvent.click(within(dialog).getByRole('tab', { name: 'Upload agent' }));
+  await screen.findByTestId('agent-directory-input');
+};
 
 const pickDirectory = (dialog: HTMLElement, files: File[] = DEFAULT_FILES) => {
   fireEvent.change(within(dialog).getByTestId('agent-directory-input'), { target: { files } });
@@ -121,13 +127,77 @@ const submit = async (dialog: HTMLElement, user: ReturnType<typeof userEvent.set
   await user.click(within(dialog).getByRole('button', { name: /^(Create|Replace and create)$/ }));
 };
 
-describe('UploadAgentModal', () => {
+describe('NewAgentModal coding agent prompt tab', () => {
+  it('opens on the prompt, so an agent already in a repository needs no upload', async () => {
+    mockPlatform();
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByRole('tab', { name: 'Coding agent prompt' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    expect(within(dialog).queryByTestId('agent-directory-input')).not.toBeInTheDocument();
+  });
+
+  it('copies the integration prompt, left open for the name nothing has assigned yet', async () => {
+    // `userEvent.setup()` stubs `navigator.clipboard`, so the prompt is readable back from it.
+    const user = userEvent.setup();
+    mockPlatform();
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+    // The prompt editor is a lazily imported chunk, so it can miss the default find timeout.
+    await user.click(
+      await within(dialog).findByRole('button', { name: 'Copy to clipboard' }, { timeout: 10_000 })
+    );
+
+    const prompt = await navigator.clipboard.readText();
+    expect(prompt).toContain('nemo-agent-config');
+    expect(prompt).toContain(workspace);
+    // The list page creates nothing up front, so the prompt has to ask for the agent name.
+    expect(prompt).toContain('<agent-name>');
+  });
+
+  it('offers Close rather than Create, since the prompt has nothing to submit', async () => {
+    mockPlatform();
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Create' })).not.toBeInTheDocument();
+  });
+
+  it('leaves an upload failure behind when the user switches back to the prompt', async () => {
+    const user = userEvent.setup();
+    mockPlatform({ filesetExists: true, agentExists: true });
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
+    pickDirectory(dialog);
+    await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
+    await submit(dialog, user);
+    expect(await within(dialog).findByText(/already owns the fileset/)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('tab', { name: 'Coding agent prompt' }));
+
+    await waitFor(() =>
+      expect(within(dialog).queryByText(/already owns the fileset/)).not.toBeInTheDocument()
+    );
+  });
+});
+
+describe('NewAgentModal upload tab', () => {
   it('uploads the picked directory, then creates the agent', async () => {
     const user = userEvent.setup();
     const { uploaded, created } = mockPlatform();
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
     pickDirectory(dialog);
     await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
 
@@ -144,6 +214,7 @@ describe('UploadAgentModal', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
     pickDirectory(dialog);
     await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
 
@@ -160,6 +231,7 @@ describe('UploadAgentModal', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
     pickDirectory(dialog);
     await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
 
@@ -177,6 +249,7 @@ describe('UploadAgentModal', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
     pickDirectory(dialog, [makeFile('calc-agent/mcps/calculator.py', 'print(1)\n')]);
 
     expect(await within(dialog).findByText(/No agent\.yaml/)).toBeInTheDocument();
@@ -192,6 +265,7 @@ describe('UploadAgentModal', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
     pickDirectory(dialog, [gate.file]);
     pickDirectory(dialog, DEFAULT_FILES);
     await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
@@ -212,6 +286,7 @@ describe('UploadAgentModal', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
     pickDirectory(dialog);
     await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeEnabled();
@@ -233,6 +308,7 @@ describe('UploadAgentModal', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
     pickDirectory(dialog);
     await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
     await submit(dialog, user);
@@ -250,6 +326,7 @@ describe('UploadAgentModal', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
     pickDirectory(dialog, [
       makeFile('calc-agent/agent.yaml', FABRIC_YAML),
       new File([new Uint8Array([0xff, 0xfe, 0x00])], 'logo.bin'),
@@ -259,11 +336,12 @@ describe('UploadAgentModal', () => {
   });
 });
 
-describe('UploadAgentModal oversized pick', () => {
+describe('NewAgentModal oversized pick', () => {
   it('rejects a directory far larger than an agent, naming the count', async () => {
     mockPlatform();
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
 
     // A real accidental pick was 880k files; only length is read before the guard fires.
     fireEvent.change(within(dialog).getByTestId('agent-directory-input'), {
@@ -275,7 +353,7 @@ describe('UploadAgentModal oversized pick', () => {
   });
 });
 
-describe('UploadAgentModal folder drop', () => {
+describe('NewAgentModal folder drop', () => {
   const dirEntry = (name: string, fullPath: string, children: FileSystemEntry[]) =>
     ({
       name,
@@ -308,6 +386,7 @@ describe('UploadAgentModal folder drop', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openUploadTab(dialog);
 
     const root = dirEntry('calc-agent', '/calc-agent', [
       fileEntry('agent.yaml', '/calc-agent/agent.yaml', FABRIC_YAML),

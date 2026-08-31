@@ -4,11 +4,11 @@
 import {
   MAX_AGENT_SPEC_FILES,
   MAX_PICKED_FILES,
-} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/const';
+} from '@studio/routes/agents/AgentsListRoute/NewAgentModal/const';
 import type {
   PickedFile,
   UploadAgentEntry,
-} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
+} from '@studio/routes/agents/AgentsListRoute/NewAgentModal/type';
 import {
   AgentConfigParseError,
   agentNameFromConfig,
@@ -20,7 +20,7 @@ import {
   pickedFromDataTransfer,
   tooManyPickedFiles,
   validateAgentEntries,
-} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/utils';
+} from '@studio/routes/agents/AgentsListRoute/NewAgentModal/utils';
 
 const makeFile = (relativePath: string, contents = 'x'): PickedFile => ({
   file: new File([contents], relativePath.split('/').pop() ?? relativePath),

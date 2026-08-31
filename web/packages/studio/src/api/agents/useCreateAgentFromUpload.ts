@@ -13,12 +13,12 @@ import {
 import {
   AGENT_CONFIG_FILENAME,
   FABRIC_CONFIG_FORMAT,
-} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/const';
-import type { UploadAgentEntry } from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/type';
+} from '@studio/routes/agents/AgentsListRoute/NewAgentModal/const';
+import type { UploadAgentEntry } from '@studio/routes/agents/AgentsListRoute/NewAgentModal/type';
 import {
   agentSpecFilesetName,
   parseAgentConfig,
-} from '@studio/routes/agents/AgentsListRoute/UploadAgentModal/utils';
+} from '@studio/routes/agents/AgentsListRoute/NewAgentModal/utils';
 import { UseMutationOptions, useMutation } from '@tanstack/react-query';
 
 export interface CreateAgentFromUploadParams {
