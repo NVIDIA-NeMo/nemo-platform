@@ -27,6 +27,7 @@ class StorageConfigType(StrEnum):
     NGC = "ngc"
     HUGGINGFACE = "huggingface"
     S3 = "s3"
+    GITHUB = "github"
     # AZURE_BLOB = "azure_blob"
     # GCS = "gcs"
     # HTTP = "http"
@@ -146,6 +147,43 @@ class HuggingfaceStorageConfig(BaseStorageConfig):
         return {"token": self.token_secret} if self.token_secret else {}
 
 
+class GithubStorageConfig(BaseStorageConfig):
+    type: Literal[StorageConfigType.GITHUB] = StorageConfigType.GITHUB
+    owner: str = Field(description="GitHub repository owner (user or organization)")
+    repo: str = Field(description="GitHub repository name")
+    revision: str = Field(
+        default="HEAD",
+        description="Branch, tag, or commit SHA. 'HEAD' resolves to the repository's default branch.",
+    )
+    original_revision: str | None = Field(
+        default=None,
+        description="The original revision requested by the user before resolution (e.g., 'main'). "
+        "The 'revision' field contains the resolved commit SHA.",
+    )
+    path: str = Field(
+        default="",
+        description="Optional directory within the repository. All paths are relative to it.",
+    )
+
+    token_secret: SecretRef | None = Field(
+        default=None,
+        description="GitHub personal access token secret name, required for private repositories",
+    )
+
+    api_base_url: str = Field(
+        default="https://api.github.com",
+        description="GitHub API base URL. Use for GitHub Enterprise instances.",
+    )
+
+    @field_validator("path")
+    @classmethod
+    def strip_path_slashes(cls, v: str) -> str:
+        return v.strip("/")
+
+    def get_secret_references(self) -> dict[str, SecretRef]:
+        return {"token": self.token_secret} if self.token_secret else {}
+
+
 class NGCStorageConfig(BaseStorageConfig):
     type: Literal[StorageConfigType.NGC] = StorageConfigType.NGC
     org: str = Field(description="NGC organization name")
@@ -252,6 +290,6 @@ class S3StorageConfig(BaseStorageConfig):
         return self.model_copy(deep=True, update={"prefix": new_prefix})
 
 
-StorageConfig = LocalStorageConfig | NGCStorageConfig | HuggingfaceStorageConfig | S3StorageConfig
+StorageConfig = LocalStorageConfig | NGCStorageConfig | HuggingfaceStorageConfig | S3StorageConfig | GithubStorageConfig
 
 StorageConfigField = Annotated[StorageConfig, Field(discriminator="type")]
