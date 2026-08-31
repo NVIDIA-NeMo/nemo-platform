@@ -78,7 +78,7 @@ is nothing to start separately.
 ## Running it
 
 ```bash
-uv run python plugins/nemo-evaluator/examples/harbor_to_intake/run_harbor_to_intake.py
+uv run plugins/nemo-evaluator/examples/harbor_to_intake/run_harbor_to_intake.py
 ```
 
 The first run downloads the tasks into `~/.cache/harbor-to-intake/tasks/`; later runs reuse them.
@@ -101,7 +101,7 @@ The notebook exposes the same choices as constants in its first cell.
 Neither calls a model, so neither needs credentials:
 
 ```bash
-uv run python .../run_harbor_to_intake.py --agent oracle
+uv run plugins/nemo-evaluator/examples/harbor_to_intake/run_harbor_to_intake.py --agent oracle
 ```
 
 Neither measures anything, and neither produces a real trajectory — use them to confirm Docker, the
@@ -114,7 +114,7 @@ through LiteLLM, so a `nvidia_nim/` model reads `NVIDIA_NIM_API_KEY`:
 
 ```bash
 export NVIDIA_NIM_API_KEY=...
-uv run python .../run_harbor_to_intake.py --agent terminus-2 --model nvidia_nim/nvidia/nemotron-3-nano-30b-a3b
+uv run plugins/nemo-evaluator/examples/harbor_to_intake/run_harbor_to_intake.py --agent terminus-2 --model nvidia_nim/nvidia/nemotron-3-nano-30b-a3b
 ```
 
 Only agents that emit ATIF produce a full trajectory in Intake — `codex` does, and so does
@@ -229,8 +229,8 @@ what an Experiment is for. To compare agents, run the same tasks twice under dif
 names:
 
 ```bash
-uv run python .../run_harbor_to_intake.py --agent oracle --evaluation tb-oracle-ceiling
-uv run python .../run_harbor_to_intake.py --agent nop    --evaluation tb-nop-floor
+uv run plugins/nemo-evaluator/examples/harbor_to_intake/run_harbor_to_intake.py --agent oracle --evaluation tb-oracle-ceiling
+uv run plugins/nemo-evaluator/examples/harbor_to_intake/run_harbor_to_intake.py --agent nop    --evaluation tb-nop-floor
 ```
 
 Intake can then roll the two up over identical tasks. Those two are the ceiling and the floor —

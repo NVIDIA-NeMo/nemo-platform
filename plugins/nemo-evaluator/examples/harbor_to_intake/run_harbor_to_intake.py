@@ -26,7 +26,7 @@ for the default agent — a logged-in ``codex``.
 
 Run it from the repository root::
 
-    uv run python plugins/nemo-evaluator/examples/harbor_to_intake/run_harbor_to_intake.py
+    uv run plugins/nemo-evaluator/examples/harbor_to_intake/run_harbor_to_intake.py
 """
 
 from __future__ import annotations
@@ -79,6 +79,8 @@ CODEX_AUTH_JSON = Path.home() / ".codex" / "auth.json"
 
 #: Entity-store names are capped here and must not end in a hyphen.
 ENTITY_NAME_MAX_LENGTH = 63
+# Leads a derived Evaluation name whose dataset cannot: entity names must start with a letter.
+EVALUATION_NAME_PREFIX = "eval-"
 
 
 def _harbor_cli() -> str:
@@ -139,13 +141,19 @@ def _run_evaluation_name(dataset: str, run_id: str) -> str:
     """Derive an Evaluation name for one run that the entity store will accept.
 
     Entity names are capped at 63 characters, so a long ``--dataset`` plus a run id overflows; the
-    run id is the part that has to survive, since it is what keeps runs apart.
+    run id is the part that has to survive, since it is what keeps runs apart. They must also start
+    with a *lowercase* letter, which neither a numeric ``--dataset`` nor a bare run id is
+    guaranteed to do.
     """
     suffix = f"-{run_id}"
-    # An ``org/name`` dataset carries a slash, which entity names do not allow.
-    stem = dataset.rsplit("/", 1)[-1][: ENTITY_NAME_MAX_LENGTH - len(suffix)].rstrip("-")
-    # A name has to start with a letter, so an empty or hyphen-only stem cannot lead.
-    return f"{stem}{suffix}" if stem else run_id
+    # An ``org/name`` dataset carries a slash, which entity names do not allow, and they are
+    # lowercase-only.
+    stem = dataset.rsplit("/", 1)[-1].lower()[: ENTITY_NAME_MAX_LENGTH - len(suffix)].rstrip("-")
+    # An empty, hyphen-only, or digit-leading stem cannot lead, so fall back to a fixed prefix
+    # rather than emitting a name the entity store will reject with a 422.
+    if not stem or not ("a" <= stem[0] <= "z"):
+        stem = f"{EVALUATION_NAME_PREFIX}{stem}"[: ENTITY_NAME_MAX_LENGTH - len(suffix)].rstrip("-")
+    return f"{stem}{suffix}"
 
 
 def _ensure_codex_auth() -> None:
@@ -363,7 +371,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--tasks",
-        nargs="*",
+        # "+" not "*": a bare --tasks would otherwise parse to [] and fail much later, inside the
+        # evaluator, with its generic "at least one task is required".
+        nargs="+",
         default=list(DEFAULT_TASKS),
         help="Harbor Hub task ids to download and run, as 'org/task'.",
     )
