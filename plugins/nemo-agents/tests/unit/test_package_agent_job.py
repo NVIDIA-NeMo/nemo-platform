@@ -490,7 +490,7 @@ class TestPublish:
             return None
 
         with (
-            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_spec_dir", _stage),
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage),
             patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", lambda p, **k: "my-agent:1.0"),
             patch("nemo_agents_plugin.container.publisher.docker_push", push),
         ):
