@@ -277,10 +277,7 @@ class CreateRenderer(CLIRenderer):
 
     def on_complete(self, *, ctx: RendererContext) -> None:
         console.print()
-        if ctx.is_local:
-            print_success("Create complete.")
-        else:
-            print_success("Create submitted.")
+        print_success("Create submitted.")
 
     def on_error(self, error: BaseException, *, ctx: RendererContext) -> None:
         print_error(f"Create failed: {error}")

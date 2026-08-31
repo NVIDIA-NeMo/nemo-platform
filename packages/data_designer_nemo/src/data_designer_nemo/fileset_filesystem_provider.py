@@ -2,12 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from os import PathLike
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import Self
 
 from data_designer.engine.resources.seed_reader import (
-    FileSystemProvider,
-    LocalFileSystemProvider,
     SeedReaderConfigError,
     SeedReaderError,
     SeedReaderFileSystemContext,
@@ -119,48 +117,3 @@ class FilesetFileSystemProvider:
             return parse_fileset_ref(runtime_path, workspace_fallback=self._workspace)
         except FilesetPathError as error:
             raise SeedReaderError(f"🛑 Invalid fileset seed source path {runtime_path!r}: {error}") from error
-
-
-class HybridFileSystemProvider:
-    """Filesystem provider that resolves a seed path against local disk first, then a fileset.
-
-    In local mode a directory-style seed source may point at either a directory on
-    the local filesystem or a NeMo Platform fileset, and the engine only lets us
-    inject a single provider per seed reader. We route per path: if the path
-    resolves to an existing local directory we serve it from disk, otherwise we
-    treat it as a fileset reference. This mirrors the local-first model-provider
-    resolution strategy (locally-defined providers first, Inference Gateway as the
-    fallback).
-    """
-
-    def __init__(
-        self,
-        sdk: NeMoPlatform | AsyncNeMoPlatform,
-        *,
-        workspace: str,
-        validated_roots: set[str] | None = None,
-    ) -> None:
-        self._local = LocalFileSystemProvider()
-        self._fileset = FilesetFileSystemProvider(sdk, workspace=workspace, validated_roots=validated_roots)
-
-    def create_context(self, *, runtime_path: str) -> SeedReaderFileSystemContext:
-        return self._route(runtime_path).create_context(runtime_path=runtime_path)
-
-    def ensure_root_exists(self, *, runtime_path: str) -> None:
-        self._route(runtime_path).ensure_root_exists(runtime_path=runtime_path)
-
-    def _route(self, runtime_path: str) -> FileSystemProvider:
-        return self._local if is_local_directory(runtime_path) else self._fileset
-
-
-def is_local_directory(runtime_path: str) -> bool:
-    """Whether a seed path resolves to an existing directory on the local filesystem.
-
-    Shared by ``HybridFileSystemProvider`` routing and local-mode seed validation so
-    that eager validation and read-time routing always agree on which backend serves
-    a given path.
-    """
-    try:
-        return Path(runtime_path).expanduser().is_dir()
-    except (OSError, ValueError, RuntimeError):
-        return False
