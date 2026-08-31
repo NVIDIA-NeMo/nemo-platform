@@ -12,14 +12,20 @@ import pytest
 import yaml
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.rl.app.jobs.training.schemas import (
+    BatchingStrategy,
     GRPOConfig,
     LoRAConfig,
     ModelConfig,
+    PolicyBackend,
     TrainingBackend,
     TrainingStepConfig,
 )
 from nmp.rl.entities.values import FinetuningType, TrainingType
 from nmp.rl.tasks.training.backends.nemo_rl.grpo_config import compile_grpo_config
+from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
+    DEFAULT_ROLLOUT_CHUNK_SIZE,
+    DEFAULT_ROLLOUT_MAX_IN_FLIGHT,
+)
 
 
 @pytest.fixture
@@ -58,7 +64,9 @@ def _make_grpo_step(
     lora: LoRAConfig | None = None,
     tensor_parallel_size: int = 1,
     expert_parallel_size: int = 1,
+    activation_checkpointing: bool = False,
     grpo: GRPOConfig | None = None,
+    policy_backend: PolicyBackend = PolicyBackend.AUTOMODEL,
 ) -> TrainingStepConfig:
     env_root = tmp_path / "environment"
     env_root.mkdir(exist_ok=True)
@@ -91,6 +99,8 @@ def _make_grpo_step(
             num_gpus_per_node=1,
             tensor_parallel_size=tensor_parallel_size,
             expert_parallel_size=expert_parallel_size,
+            activation_checkpointing=activation_checkpointing,
+            policy_backend=policy_backend,
         ),
         output_model="out",
         workspace_path=str(tmp_path / "workspace"),
@@ -104,7 +114,9 @@ def _prepared_step(
     lora: LoRAConfig | None = None,
     tensor_parallel_size: int = 1,
     expert_parallel_size: int = 1,
+    activation_checkpointing: bool = False,
     grpo: GRPOConfig | None = None,
+    policy_backend: PolicyBackend = PolicyBackend.AUTOMODEL,
 ) -> tuple[TrainingStepConfig, Path]:
     dataset_pvc = tmp_path / "dataset"
     dataset_pvc.mkdir(exist_ok=True)
@@ -118,7 +130,9 @@ def _prepared_step(
             lora=lora,
             tensor_parallel_size=tensor_parallel_size,
             expert_parallel_size=expert_parallel_size,
+            activation_checkpointing=activation_checkpointing,
             grpo=grpo,
+            policy_backend=policy_backend,
         ),
         dataset_pvc,
     )
@@ -272,9 +286,9 @@ def test_compiled_config_selects_only_prefetched_actors(
     step, _ = _prepared_step(tmp_path)
     cfg = compile_grpo_config(step, job_ctx)
 
-    # A plain full-weight job asks for nothing v2 implements, so it stays on
-    # DTensorPolicyWorker -> `fsdp`.
-    assert not cfg["policy"]["dtensor_cfg"].get("_v2", False)
+    # policy_backend defaults to `automodel` -> DTensorPolicyWorkerV2 -> the
+    # `automodel` venv, matching upstream NeMo-RL's reference grpo config.
+    assert cfg["policy"]["dtensor_cfg"]["_v2"] is True
     # megatron_cfg would select MegatronPolicyWorker -> `mcore`.
     assert cfg["policy"]["megatron_cfg"]["enabled"] is False
     # vLLM is the only prefetched generation backend (`vllm`); sglang/trtllm are not.
@@ -406,7 +420,7 @@ def test_compiled_vllm_cfg_has_required_typeddict_fields(
         (FinetuningType.LORA, None, True),
     ],
 )
-def test_lora_and_v2_stay_coupled(
+def test_lora_cfg_follows_finetuning_type_under_automodel(
     tmp_path: Path,
     job_ctx: NMPJobContext,
     monkeypatch: pytest.MonkeyPatch,
@@ -414,12 +428,8 @@ def test_lora_and_v2_stay_coupled(
     lora: LoRAConfig | None,
     expected: bool,
 ) -> None:
-    """Enabling LoRA must always bring ``_v2`` with it.
-
-    LoRA is implemented only in DTensorPolicyWorkerV2; the V1 DTensorPolicyWorker ignores
-    ``lora_cfg`` entirely, so LoRA without ``_v2`` silently trains full weights and reports
-    success. Expert parallelism and ``automodel_kwargs`` also set ``_v2``, so this pins the
-    LoRA direction only.
+    """``finetuning_type`` drives ``lora_cfg``, and nothing else does. ``_v2`` stays true
+    across all three cases: the backend is the caller's choice, not a function of LoRA.
     """
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
     step, _ = _prepared_step(tmp_path, finetuning_type=finetuning_type, lora=lora)
@@ -428,23 +438,52 @@ def test_lora_and_v2_stay_coupled(
     # Read exactly the way NeMo-RL does, so "key omitted" and "enabled: False" are
     # equivalent here and the test does not depend on which one we emit.
     assert dtensor_cfg.get("lora_cfg", {}).get("enabled", False) is expected
-    assert dtensor_cfg.get("_v2", False) is expected
+    assert dtensor_cfg["_v2"] is True
 
 
-def test_compile_grpo_config_disables_triton_for_tp(
-    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("tensor_parallel_size", "expected"),
+    [(1, True), (2, False)],
+)
+def test_unset_triton_is_resolved_from_tensor_parallel_size(
+    tmp_path: Path,
+    job_ctx: NMPJobContext,
+    monkeypatch: pytest.MonkeyPatch,
+    tensor_parallel_size: int,
+    expected: bool,
 ) -> None:
+    """Unset means the compiler picks the only value that works: NeMo-RL asserts on
+    Triton + TP > 1, so choosing wrong here is a crash, not a slowdown."""
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
     step, _ = _prepared_step(
         tmp_path,
         finetuning_type=FinetuningType.LORA,
-        lora=LoRAConfig(rank=16, use_triton=True),
-        tensor_parallel_size=2,
+        lora=LoRAConfig(rank=16),
+        tensor_parallel_size=tensor_parallel_size,
     )
-    # Fix batch divisibility for tp=2 on 1 gpu would fail validate — compiler path
-    # only; here we only compile YAML so TP is just a knob on lora_cfg.
+    # Batch divisibility for tp=2 on 1 gpu would fail validate_for_training — this is the
+    # compiler path only, so TP is just a knob on lora_cfg here.
     cfg = compile_grpo_config(step, job_ctx)
-    assert cfg["policy"]["dtensor_cfg"]["lora_cfg"]["use_triton"] is False
+    assert cfg["policy"]["dtensor_cfg"]["lora_cfg"]["use_triton"] is expected
+
+
+@pytest.mark.parametrize("requested", [True, False])
+def test_explicit_triton_is_passed_through_verbatim(
+    tmp_path: Path,
+    job_ctx: NMPJobContext,
+    monkeypatch: pytest.MonkeyPatch,
+    requested: bool,
+) -> None:
+    """An explicit choice survives compilation. The TP > 1 conflict is rejected up in
+    ``GRPOTraining``, so the compiler never has to second-guess the caller."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        finetuning_type=FinetuningType.LORA,
+        lora=LoRAConfig(rank=16, use_triton=requested),
+    )
+    cfg = compile_grpo_config(step, job_ctx)
+    assert cfg["policy"]["dtensor_cfg"]["lora_cfg"]["use_triton"] is requested
 
 
 def test_sandbox_egress_comes_from_the_compiled_step_not_service_config(
@@ -554,13 +593,23 @@ def test_generation_sampling_comes_from_the_grpo_hyperparameters(
     colocated and sandboxed rollouts sample.
     """
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
-    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4, temperature=0.7))
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4, temperature=0.7, top_k=20))
 
     generation = compile_grpo_config(step, job_ctx)["policy"]["generation"]
     assert generation["temperature"] == 0.7
-    # Neutral values, not knobs: only temperature is exposed on the job schema.
+    assert generation["top_k"] == 20
+    # Neutral value, not a knob: the job schema exposes no top_p.
     assert generation["top_p"] == 1.0
-    assert generation["top_k"] is None
+
+
+def test_generation_samples_the_full_distribution_by_default(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset top_k means no truncation, which is what standard GRPO does."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    assert compile_grpo_config(step, job_ctx)["policy"]["generation"]["top_k"] is None
 
 
 def test_generation_temperature_defaults_to_one(
@@ -571,6 +620,111 @@ def test_generation_temperature_defaults_to_one(
     step, _ = _prepared_step(tmp_path)
 
     assert compile_grpo_config(step, job_ctx)["policy"]["generation"]["temperature"] == 1.0
+
+
+def test_normalize_rewards_reaches_the_block_the_estimator_reads(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The advantage estimator reads `grpo.adv_estimator`, not `grpo`.
+
+    NeMo-RL's YAML recipes wire the two together with OmegaConf interpolation, which
+    this config never goes through -- it is assembled in Python. Writing only the
+    top-level field left AdvEstimatorConfig on its own default of True, so asking for
+    unnormalized advantages did nothing and said nothing.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, normalize_rewards=False, use_leave_one_out_baseline=False),
+    )
+
+    grpo_cfg = compile_grpo_config(step, job_ctx)["grpo"]
+    assert grpo_cfg["adv_estimator"]["name"] == "grpo"
+    assert grpo_cfg["adv_estimator"]["normalize_rewards"] is False
+    assert grpo_cfg["adv_estimator"]["use_leave_one_out_baseline"] is False
+    # Written in both places so the config matches a resolved NeMo-RL recipe, which
+    # carries the top-level pair as the interpolation source.
+    assert grpo_cfg["normalize_rewards"] is False
+    assert grpo_cfg["use_leave_one_out_baseline"] is False
+
+
+def test_advantage_estimation_defaults_are_unchanged(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both were effectively on before they were knobs; a default job must not shift."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    estimator = compile_grpo_config(step, job_ctx)["grpo"]["adv_estimator"]
+    assert estimator["normalize_rewards"] is True
+    assert estimator["use_leave_one_out_baseline"] is True
+
+
+def test_advantage_clip_bounds_reach_the_grpo_block(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Applied after normalization, so they live on `grpo` rather than on the loss."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, advantage_clip_low=-5.0, advantage_clip_high=5.0),
+    )
+
+    grpo_cfg = compile_grpo_config(step, job_ctx)["grpo"]
+    assert grpo_cfg["advantage_clip_low"] == -5.0
+    assert grpo_cfg["advantage_clip_high"] == 5.0
+
+
+def test_advantages_are_unbounded_by_default(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """None on both sides is NeMo-RL's default and standard GRPO."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    grpo_cfg = compile_grpo_config(step, job_ctx)["grpo"]
+    assert grpo_cfg["advantage_clip_low"] is None
+    assert grpo_cfg["advantage_clip_high"] is None
+
+
+def test_loss_clipping_and_correction_knobs_reach_the_loss(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """All three belong to ClippedPGLossConfig, so they compile into `loss_fn`."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            ratio_clip_c=3.0,
+            use_on_policy_kl_approximation=False,
+            use_importance_sampling_correction=False,
+        ),
+    )
+
+    loss_fn = compile_grpo_config(step, job_ctx)["loss_fn"]
+    assert loss_fn["ratio_clip_c"] == 3.0
+    assert loss_fn["use_on_policy_kl_approximation"] is False
+    assert loss_fn["use_importance_sampling_correction"] is False
+
+
+def test_loss_knob_defaults_are_unchanged(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """These two were hardcoded on before they were knobs; the default keeps them on.
+
+    NeMo-RL's own defaults are False. The platform has been running with them True, so
+    the default here follows the platform rather than the library: turning them into
+    settings must not silently change the loss every existing job computes.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    loss_fn = compile_grpo_config(step, job_ctx)["loss_fn"]
+    assert loss_fn["use_on_policy_kl_approximation"] is True
+    assert loss_fn["use_importance_sampling_correction"] is True
+    # Dual clipping stays off unless asked for, matching NeMo-RL.
+    assert loss_fn["ratio_clip_c"] is None
 
 
 def test_max_new_tokens_is_independent_of_max_seq_length(
@@ -717,12 +871,25 @@ def test_lora_without_module_lists_matches_all_linear(
     assert lora_cfg["exclude_modules"] == []
 
 
-def test_expert_parallel_size_reaches_dtensor_and_selects_v2(
+def test_policy_backend_dtensor_omits_v2(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``nemo_rl/models/automodel/setup.py`` is the sole reader of
-    ``dtensor_cfg.expert_parallel_size``. Without ``_v2`` the V1 worker ignores the key and
-    shards nothing, so a full-weight MoE run OOMs with no sign the sharding never happened.
+    """``dtensor`` must reach V1 -- the `fsdp` venv, stock HF modules, no Transformer
+    Engine. NeMo-RL reads ``.get("_v2", False)``, so absent and false are equivalent."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, policy_backend=PolicyBackend.DTENSOR)
+    dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
+
+    assert "_v2" not in dtensor_cfg
+    assert dtensor_cfg["enabled"] is True
+
+
+def test_expert_parallel_size_reaches_dtensor(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``automodel/setup.py`` is the sole reader of ``dtensor_cfg.expert_parallel_size``.
+    Without ``_v2`` the V1 worker ignores it and shards nothing, so a MoE run OOMs with no
+    sign why -- hence ``GRPOTraining`` rejects the pairing rather than letting it compile.
     """
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
     step, _ = _prepared_step(tmp_path, expert_parallel_size=8)
@@ -730,6 +897,46 @@ def test_expert_parallel_size_reaches_dtensor_and_selects_v2(
 
     assert dtensor_cfg["expert_parallel_size"] == 8
     assert dtensor_cfg["_v2"] is True
+
+
+def test_activation_checkpointing_on_moe_ignores_the_router(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Recomputing the router is what makes AC crash on an MoE.
+
+    The bf16 top-k is nondeterministic, so the recomputed forward can route a token to a
+    different expert than the saved one did; the permutation buffers then differ by a row
+    and backward raises CheckpointError out of a TE kernel. Automodel only saves the router
+    output when this is set.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, expert_parallel_size=8, activation_checkpointing=True)
+    dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
+
+    assert dtensor_cfg["activation_checkpointing"] is True
+    assert dtensor_cfg["moe_parallelizer"] == {"ignore_router_for_ac": True}
+
+
+@pytest.mark.parametrize(
+    ("expert_parallel_size", "activation_checkpointing"),
+    [(8, False), (1, True), (1, False)],
+)
+def test_moe_parallelizer_omitted_without_both_moe_and_checkpointing(
+    tmp_path: Path,
+    job_ctx: NMPJobContext,
+    monkeypatch: pytest.MonkeyPatch,
+    expert_parallel_size: int,
+    activation_checkpointing: bool,
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        expert_parallel_size=expert_parallel_size,
+        activation_checkpointing=activation_checkpointing,
+    )
+    dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
+
+    assert "moe_parallelizer" not in dtensor_cfg
 
 
 def test_expert_parallel_size_omitted_when_unused(
@@ -740,10 +947,9 @@ def test_expert_parallel_size_omitted_when_unused(
     dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
 
     assert "expert_parallel_size" not in dtensor_cfg
-    assert dtensor_cfg.get("_v2", False) is False
 
 
-def test_automodel_kwargs_reach_dtensor_and_select_v2(
+def test_automodel_kwargs_reach_dtensor(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """force_hf is what makes NemotronH loadable at all on the DTensor path."""
@@ -853,3 +1059,296 @@ def test_compiled_config_carries_the_progress_reporting_extras(
     assert grpo["steps_per_epoch"] >= 1
     assert "progress_time_series_metrics" in grpo
     assert "progress_min_report_interval_seconds" in grpo
+
+
+def test_rollout_chunk_size_defaults_to_the_upstream_value(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset carries NeMo-RL's own default, so an undeclared knob changes no behaviour.
+
+    Same shape as ttl_s: the mirror holds a non-null default, so the key is always emitted
+    and only its value tracks whether the operator declared one.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+    assert step.gym.sandbox_rollout_chunk_size is None
+
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["rollout_chunk_size"] == DEFAULT_ROLLOUT_CHUNK_SIZE
+
+
+def test_operator_can_pin_the_rollout_chunk_size(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Long generations can make one chunk outlive the sandbox proxy's per-request cap.
+
+    That cap is fixed by the OpenSandbox server build, not exposed in its config, so the
+    workable chunk size is deployment-specific and has to be declarable.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+
+    step.gym.sandbox_rollout_chunk_size = 2
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["rollout_chunk_size"] == 2
+
+
+def test_rollout_max_in_flight_defaults_to_the_upstream_value(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset leaves NeMo-RL's default, so declaring the knob is never required."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+    assert step.gym.sandbox_rollout_max_in_flight is None
+
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["rollout_max_in_flight"] == DEFAULT_ROLLOUT_MAX_IN_FLIGHT
+
+
+def test_operator_can_pin_the_rollout_max_in_flight(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lowering chunk_size without raising this throttles the step.
+
+    In-flight rollouts are chunk_size × max_in_flight, so a deployment that shrinks
+    chunks to stay under the proxy cap has to raise concurrency if it wants the same
+    throughput it had before chunking.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+
+    step.gym.sandbox_rollout_max_in_flight = 64
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["rollout_max_in_flight"] == 64
+
+
+def test_dapo_components_default_off(tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unstated job must compile to the same NeMo-RL config as before these knobs existed."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+
+    cfg = compile_grpo_config(step, job_ctx)
+    assert cfg["grpo"]["use_dynamic_sampling"] is False
+    assert cfg["grpo"]["batch_multiplier"] == 1.0
+    assert cfg["grpo"]["reward_shaping"] == {"enabled": False}
+    # ClippedPGLossFn gates the whole TIS block on the type being non-null.
+    assert cfg["loss_fn"]["truncated_importance_sampling_type"] is None
+
+
+def test_truncated_importance_sampling_reaches_the_loss_fn(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TIS bounds the rollout-vs-training importance weights, which is what stops a run
+    whose ``token_mult_prob_error`` is climbing from training against a policy that no
+    longer generated its data. It only takes effect through ``loss_fn``.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            truncated_importance_sampling_type="icepop",
+            truncated_importance_sampling_ratio=5.0,
+            truncated_importance_sampling_ratio_min=0.5,
+        ),
+    )
+
+    loss_fn = compile_grpo_config(step, job_ctx)["loss_fn"]
+    assert loss_fn["truncated_importance_sampling_type"] == "icepop"
+    assert loss_fn["truncated_importance_sampling_ratio"] == 5.0
+    assert loss_fn["truncated_importance_sampling_ratio_min"] == 0.5
+    # seq-mask-tis asserts against this, and NeMo-RL reads it from the same block.
+    assert loss_fn["sequence_level_importance_ratios"] is False
+    assert loss_fn["use_importance_sampling_correction"] is True
+
+
+def test_dynamic_sampling_and_reward_shaping_reach_grpo(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both live on the grpo block, and reward_shaping is gated on its own ``enabled``."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            use_dynamic_sampling=True,
+            batch_multiplier=4.0,
+            dynamic_sampling_max_gen_batches=6,
+            reward_shaping={"stop_properly_penalty_coef": 0.0},
+        ),
+    )
+
+    grpo = compile_grpo_config(step, job_ctx)["grpo"]
+    assert grpo["use_dynamic_sampling"] is True
+    assert grpo["batch_multiplier"] == 4.0
+    assert grpo["dynamic_sampling_max_gen_batches"] == 6
+    assert grpo["reward_shaping"] == {"enabled": True, "stop_properly_penalty_coef": 0.0}
+
+
+def test_reward_scaling_reaches_grpo(tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The DAPO recipes map a binary verifier's [0,1] onto [-1,1] before advantages.
+
+    Unlike shaping, every bound has a non-null default, so the block is always emitted and
+    only ``enabled`` decides whether NeMo-RL applies it.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4))
+    assert compile_grpo_config(step, job_ctx)["grpo"]["reward_scaling"] == {"enabled": False}
+
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            reward_scaling={"source_min": 0.0, "source_max": 1.0, "target_min": -1.0, "target_max": 1.0},
+        ),
+    )
+    assert compile_grpo_config(step, job_ctx)["grpo"]["reward_scaling"] == {
+        "enabled": True,
+        "source_min": 0.0,
+        "source_max": 1.0,
+        "target_min": -1.0,
+        "target_max": 1.0,
+    }
+
+
+def test_batching_defaults_to_dynamic_with_derived_budget(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Default is dynamic, with a budget derived as max_seq_length * micro_batch_size."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4))
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+
+    # max_seq_length=512, micro_batch_size=1 from the fixture.
+    assert policy["dynamic_batching"] == {
+        "enabled": True,
+        "train_mb_tokens": 512,
+        "logprob_mb_tokens": 512,
+        "sequence_length_round": 64,
+    }
+    assert policy["sequence_packing"] == {"enabled": False}
+
+
+def test_batching_static_disables_both(tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, batching_strategy=BatchingStrategy.STATIC),
+    )
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+    assert policy["dynamic_batching"] == {"enabled": False}
+    assert policy["sequence_packing"] == {"enabled": False}
+
+
+def test_batching_sequence_packing_carries_algorithm(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            batching_strategy=BatchingStrategy.SEQUENCE_PACKING,
+            train_mb_tokens=2048,
+        ),
+    )
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+    assert policy["dynamic_batching"] == {"enabled": False}
+    # No sequence_length_round: NeMo-RL only ever reads it off dynamic_batching, so
+    # emitting it here would be a dead key that reads as if packing honoured it.
+    assert policy["sequence_packing"] == {
+        "enabled": True,
+        "train_mb_tokens": 2048,
+        "logprob_mb_tokens": 2048,
+        "algorithm": "modified_first_fit_decreasing",
+    }
+
+
+@pytest.mark.parametrize("strategy", list(BatchingStrategy))
+def test_batching_modes_are_never_both_enabled(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch, strategy: BatchingStrategy
+) -> None:
+    """NeMo-RL asserts the pair is mutually exclusive; violating it fails only after the
+    model download and vLLM startup, so pin the invariant here."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4, batching_strategy=strategy))
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+    assert not (policy["dynamic_batching"]["enabled"] and policy["sequence_packing"]["enabled"])
+
+
+def test_batching_rejects_budget_below_max_seq_length(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A budget under max_seq_length leaves the longest rollout unable to fit anywhere."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, train_mb_tokens=256),  # fixture max_seq_length=512
+    )
+    with pytest.raises(ValueError, match="below max_seq_length"):
+        compile_grpo_config(step, job_ctx)
+
+
+def test_sequence_packing_rejected_under_context_parallel(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DTensorPolicyWorker rejects packing under CP; catch it at compile time instead."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, batching_strategy=BatchingStrategy.SEQUENCE_PACKING),
+    )
+    step.parallelism.context_parallel_size = 2
+    with pytest.raises(ValueError, match="not supported with context_parallel_size"):
+        compile_grpo_config(step, job_ctx)
+
+    # dynamic has no such restriction on the GRPO + DTensor path.
+    step.training.grpo.batching_strategy = BatchingStrategy.DYNAMIC
+    assert compile_grpo_config(step, job_ctx)["policy"]["dynamic_batching"]["enabled"] is True
+
+
+def test_hf_config_overrides_passthrough_preserves_nesting(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nested keys must survive: Qwen3.5 reads router_aux_loss_coef under text_config."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    overrides = {"text_config": {"router_aux_loss_coef": 0.0}}
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, hf_config_overrides=overrides),
+    )
+    cfg = compile_grpo_config(step, job_ctx)
+    assert cfg["policy"]["hf_config_overrides"] == {"text_config": {"router_aux_loss_coef": 0.0}}
+    # Copied, not aliased: the caller's dict must not be mutated by compilation.
+    assert overrides == {"text_config": {"router_aux_loss_coef": 0.0}}
+
+
+def test_hf_config_overrides_absent_leaves_key_off(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, grpo=GRPOConfig(num_generations_per_prompt=4))
+    assert "hf_config_overrides" not in compile_grpo_config(step, job_ctx)["policy"]
+
+
+def test_router_aux_loss_coef_layers_onto_passthrough(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The scalar shortcut still writes top-level, alongside unrelated nested overrides."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(
+            num_generations_per_prompt=4,
+            router_aux_loss_coef=0.0,
+            hf_config_overrides={"text_config": {"rope_theta": 1000.0}},
+        ),
+    )
+    assert compile_grpo_config(step, job_ctx)["policy"]["hf_config_overrides"] == {
+        "text_config": {"rope_theta": 1000.0},
+        "router_aux_loss_coef": 0.0,
+    }

@@ -24,6 +24,7 @@ from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import (
     CreatePlatformJobRequest,
     PlatformJobResponse,
+    PlatformJobTaskUpdate,
 )
 from nmp.core.jobs.app.dispatcher import JobDispatcher
 from nmp.core.jobs.app.schemas import (
@@ -185,6 +186,35 @@ async def test_delete_job_nonexistent_job(mock_dispatcher: JobDispatcher):
     # This should return False when the job doesn't exist
     deleted = await mock_dispatcher.delete_job("nonexistent-job-id", DEFAULT_WORKSPACE)
     assert deleted is False
+
+
+@pytest.mark.asyncio
+async def test_create_or_update_task_ignores_invalid_terminal_transition(
+    mock_dispatcher: JobDispatcher, mock_store: EntityClient
+):
+    """Terminal task states must not be overwritten by stale backend polls."""
+    _, job_name, _, step_id, task_id, _ = await create_test_job_data(mock_store, "terminal-task-job")
+    step = await mock_store.get_by_id(PlatformJobStep, step_id)
+    task = await mock_store.get_by_id(PlatformJobTask, task_id)
+
+    updated = await mock_dispatcher.create_or_update_task(
+        job_name,
+        task.name,
+        DEFAULT_WORKSPACE,
+        PlatformJobTaskUpdate(
+            status=PlatformJobStatus.ACTIVE,
+            status_details={"message": "Job is running"},
+        ),
+        step,
+    )
+
+    assert updated.id == task.id
+    assert updated.status == PlatformJobStatus.COMPLETED
+    assert updated.status_details == {}
+
+    stored_task = await mock_store.get_by_id(PlatformJobTask, task_id)
+    assert stored_task.status == PlatformJobStatus.COMPLETED
+    assert stored_task.status_details == {}
 
 
 @pytest.mark.asyncio

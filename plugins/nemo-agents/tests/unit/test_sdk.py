@@ -82,6 +82,41 @@ def test_deployments_create_uses_client_workspace_by_default() -> None:
     assert captured["body"] == {"agent": "calc", "deployment_mode": "k8s", "image": "repo/calc:1.0"}
 
 
+def test_deployments_create_forwards_image_entrypoint_mode() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "calc-dep"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+
+    with _install_mock_transport(handler):
+        client.deployments.create(
+            agent="calc",
+            deployment_mode="docker",
+            image="repo/calc:1.0",
+            use_image_entrypoint=True,
+        )
+
+    assert captured["body"] == {
+        "agent": "calc",
+        "deployment_mode": "docker",
+        "image": "repo/calc:1.0",
+        "use_image_entrypoint": True,
+    }
+
+
+def test_deployments_create_rejects_image_entrypoint_for_subprocess() -> None:
+    def handler(_req: httpx.Request) -> httpx.Response:
+        raise AssertionError("should not POST image entrypoint mode for subprocess")
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+
+    with _install_mock_transport(handler), pytest.raises(ValueError, match="use_image_entrypoint"):
+        client.deployments.create(agent="calc", use_image_entrypoint=True)
+
+
 def test_invoke_sends_session_id_as_header() -> None:
     captured: dict[str, Any] = {}
 
@@ -128,3 +163,90 @@ def test_invoke_rejects_empty_session_id() -> None:
 
     with _install_mock_transport(handler), pytest.raises(ValueError, match="session_id must not be empty"):
         client.invoke(input="Hello", agent="calc", session_id="")
+
+
+# ---------------------------------------------------------------------------
+# environment / environment-spec / compute-spec resources
+# ---------------------------------------------------------------------------
+
+
+def test_deployments_create_forwards_environment() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "d1"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="default"))
+    with _install_mock_transport(handler):
+        client.deployments.create(agent="calc", environment="default/env1")
+
+    assert captured["body"]["environment"] == "default/env1"
+
+
+def test_environment_specs_create_posts_inline_fields() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["path"] = req.url.path
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "ben"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+    with _install_mock_transport(handler):
+        result = client.environment_specs.create(name="ben", env={"LOG_LEVEL": "debug"}, secrets={"TOK": "default/tok"})
+
+    assert result == {"name": "ben"}
+    assert captured["path"] == "/apis/agents/v2/workspaces/team-a/environment-specs"
+    assert captured["body"] == {"name": "ben", "env": {"LOG_LEVEL": "debug"}, "secrets": {"TOK": "default/tok"}}
+
+
+def test_environments_create_with_refs() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["path"] = req.url.path
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "env1"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="default"))
+    with _install_mock_transport(handler):
+        client.environments.create(name="env1", environment_spec="default/ben", compute_spec="default/big")
+
+    assert captured["path"] == "/apis/agents/v2/workspaces/default/environments"
+    assert captured["body"]["environment_spec"] == "default/ben"
+    assert captured["body"]["compute_spec"] == "default/big"
+
+
+def test_environments_create_omits_unset_refs() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "env2"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="default"))
+    with _install_mock_transport(handler):
+        client.environments.create(name="env2", environment_spec="default/ben")
+
+    assert "compute_spec" not in captured["body"]
+    assert captured["body"]["environment_spec"] == "default/ben"
+
+
+def test_compute_specs_get_and_delete() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured.setdefault("calls", []).append((req.method, req.url.path))
+        if req.method == "DELETE":
+            return httpx.Response(204)
+        return httpx.Response(200, json={"name": "big"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+    with _install_mock_transport(handler):
+        got = client.compute_specs.get("big")
+        client.compute_specs.delete("big")
+
+    assert got == {"name": "big"}
+    assert ("GET", "/apis/agents/v2/workspaces/team-a/compute-specs/big") in captured["calls"]
+    assert ("DELETE", "/apis/agents/v2/workspaces/team-a/compute-specs/big") in captured["calls"]

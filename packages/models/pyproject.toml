@@ -27,6 +27,7 @@ dev = []
 [tool.vendor-package]
 package = "models"
 package_root = "packages/models"
+sdk_include_mode = "source-package"
 target_sdk_module = "models"
 included_paths = [
   "**/*.py",

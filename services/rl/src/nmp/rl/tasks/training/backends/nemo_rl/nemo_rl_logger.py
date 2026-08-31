@@ -61,40 +61,57 @@ DPO_TIME_SERIES_METRICS = (
 #:
 #: Names carry ``/`` (``advantages/mean``), which ``*`` matches like any other
 #: character, so a family is reachable with one entry.
-#: Left out deliberately, as current values only: the ``/max /min /median /stddev``
+#: Left out deliberately, as current values only: the ``/max /min /median``
 #: siblings of every rollout family, the accounting counters
 #: (``global_valid_toks``, ``num_valid_samples``, ``total_num_tokens``), and the
 #: ratio-clipping bounds, which are read as "where is it now", not as a curve.
+#: ``total_reward/stddev`` is the one sibling that is in: it says how much the
+#: rewards in a step varied, which no other metric here says.
 #:
-#: Three more are left out for reasons particular to this service, since each looks
+#: Two more are left out for reasons particular to this service, since each looks
 #: like an obvious inclusion:
 #:
-#: ``train_filtered_reward`` is unreachable, not merely inert. ``grpo.py`` sets
-#: ``metrics["filtered_reward"]`` only under ``use_dynamic_sampling``, which
-#: ``grpo_config.py`` hardcodes to False with no knob on ``GRPOTraining``.
+#: ``*total_reward/mean`` is the NeMo-Gym aggregator's reward. On this service it is
+#: the same number as ``train_reward``: both average the same
+#: ``full_result["reward"]`` values, because the three settings that could make them
+#: differ (``reward_scaling``, ``reward_shaping``, ``use_dynamic_sampling``) are all
+#: turned off. Add it back if any of those is ever exposed as a knob.
 #:
-#: ``*total_reward/mean`` is the NeMo-Gym aggregator's reward, and on this service
-#: it is the same number as ``train_reward`` -- both are the arithmetic mean of the
-#: same ``full_result["reward"]`` values, because the three transforms that could
-#: separate them (``reward_scaling``, ``reward_shaping``, ``use_dynamic_sampling``)
-#: are all hardcoded off. Its validation half is worse than redundant: ``validate()``
-#: reassigns ``additional_metrics_to_report`` per batch, so ``val_total_reward/mean``
-#: is the *last batch only*, while ``val_accuracy`` below is the whole-pass mean of
-#: the same quantity. If those three transforms are ever exposed, add it back --
-#: that is exactly when raw-verifier and post-transform reward stop coinciding.
+#: One thing to know before adding its validation half: ``validate()`` resets
+#: ``additional_metrics_to_report`` on each batch, so every ``val_`` rollout metric
+#: holds the last batch rather than the whole pass. That does not bite today only
+#: because ``grpo_driver`` sets ``val_batch_size = max_val_samples``, so a pass is
+#: one batch. If that changes, ``val_truncation_rate`` and the rest quietly start
+#: describing the tail of the validation set instead of all of it.
 #:
 #: ``*_rewards_chosen_mean``/``_rejected_mean`` are DPO's, and match nothing here.
 GRPO_TIME_SERIES_METRICS = (
-    # Reward: the mean over the step's batch, which is what the loss optimized.
-    "train_reward",
-    # GRPO's validation reward. `validate()` reports no loss at all, so this is the
-    # only curve a validation pass contributes -- and it is the whole-pass mean,
-    # unlike the per-batch rollout metrics beside it. Shares a spelling with DPO's
-    # entry; both lists carry it because both algorithms report one.
+    # Train reward: the mean over the step's batch, which is what the loss optimized.
+    # A pattern rather than the literal name so it also matches
+    # `train_filtered_reward` if `use_dynamic_sampling` is ever turned on -- the only
+    # case where the filtered and unfiltered rewards differ and both are worth a
+    # curve -- and so it picks up a validation reward if NeMo-RL ever reports one
+    # under this spelling. It does not match the `*total_reward/*` family, whose
+    # names all end in a statistic.
+    "*_reward",
+    # The raw verifier reward, which `*_reward` deliberately does not match. Identical to
+    # `train_reward` while reward shaping and dynamic sampling are off; the pair is the point
+    # once either is enabled, because then `train_reward` is what the loss saw and this is
+    # what the environment returned, and a gap between them is the transform working rather
+    # than the policy moving. Train-only, not `*total_reward/mean`: the validation spelling
+    # is the last batch's mean, a worse-behaved version of the whole-pass `val_accuracy`.
+    "train_total_reward/mean",
+    # The validation reward, under the name NeMo-RL gives it. `validate()` returns
+    # the pass's mean reward as `accuracy`, and that is the name consumers read it
+    # under -- there is no `val_reward`. DPO uses this spelling too, where it means
+    # preference accuracy rather than reward; both lists carry it because both
+    # algorithms report one.
     "*_accuracy",
-    # Off-policy drift. `token_mult_prob_error` is the canonical rollout-vs-training
-    # logprob mismatch signal (the loop plots a sample above 1.05); the KL pair is
-    # how far the policy has walked from the reference.
+    # How far the policy has drifted from the one that generated the rollouts.
+    # `token_mult_prob_error` compares rollout and training logprobs; the KL family
+    # measures distance from the reference policy; `sampling_importance_ratio`
+    # should stay near 1. All four come off `ClippedPGLossFn` on every step, so none
+    # of these patterns can go unmatched on a run that took a single step.
     #
     # `kl_penalty` is a flat zero under the default `ref_policy_kl_penalty=0.0` --
     # the loss function only computes `kl` when the coefficient is nonzero. Kept
@@ -103,7 +120,37 @@ GRPO_TIME_SERIES_METRICS = (
     # is cheaper than having no history for the runs that do.
     "*_token_mult_prob_error",
     "*_gen_kl_error",
+    "*_policy_kl_error",
+    "*_js_divergence_error",
+    "*_sampling_importance_ratio",
     "*_kl_penalty",
+    # How spread out the step's rewards were. `*total_reward/mean` is excluded below
+    # for being the same number as `train_reward`; that does not apply to the spread,
+    # which nothing else here reports.
+    #
+    # `stddev` and the quartile pair say different things about a reward
+    # distribution, so both are kept. A binary reward is bimodal, not normal, and
+    # mean +/- stddev on it can run past 0 or 1 and describes no real rollout. The
+    # p25-p75 band is where the middle half of the rollouts actually landed, which is
+    # what a reward chart can shade without lying about the shape.
+    "*total_reward/stddev",
+    "*total_reward/p25",
+    "*total_reward/p75",
+    # How many prompt groups had rollouts that disagreed with each other. GRPO scores
+    # each rollout against the others in its group, so a group where every rollout
+    # got the same reward produces no gradient. When `pct_mixed` drops to zero the
+    # run has stopped learning, and that shows up here before the reward curve
+    # flattens. Only meaningful for 0/1 rewards: `pct_0` and `pct_1` test for exactly
+    # those two values, so a continuous reward reads as 100% mixed.
+    "*baseline_reward/pct_0",
+    "*baseline_reward/pct_1",
+    "*baseline_reward/pct_mixed",
+    # Wall-clock for one training step, so a run's pace is readable from its history
+    # rather than only from the gap between two reports. Only the total keeps a
+    # curve; the per-phase breakdown beside it (`generation`, `policy_training`, ...)
+    # still reports as a current value, which is what it is read as when a step
+    # suddenly gets slower.
+    "*timing/total_step_time",
     # Advantage centering: should sit near zero, and drift means a broken baseline.
     "*advantages/mean",
     # Entropy collapse -- the failure that looks fine on the reward curve right up
@@ -192,6 +239,7 @@ class NemoRLLogger(LoggerInterface):
         time_series_metrics: Collection[str] | None = None,
         min_report_interval_seconds: float | None = None,
         default_time_series_metrics: Collection[str] = DIAGNOSTIC_TIME_SERIES,
+        run_facts: Mapping[str, object] | None = None,
     ):
         """Initialize the NemoRL logger.
 
@@ -200,6 +248,13 @@ class NemoRLLogger(LoggerInterface):
             job_ctx: NeMo Platform job context for progress reporting (defaults to environment variables).
             max_steps: Total number of training steps (optional, used for progress reporting).
             num_epochs: Total number of epochs (optional, used for progress reporting).
+            run_facts: Constants describing the run rather than its progress --
+                which algorithm it is, how many rollouts a step generates. Sent
+                once with the training-start report and never restated. The
+                driver supplies them because it is the only place that has read
+                the compiled config. Not for anything the run reports
+                repeatedly -- see ``report_training_start`` for why the schedule
+                in particular must not appear here.
             time_series_metrics: Qualified metric names or glob patterns to
                 record as a series, from the job config. None takes
                 ``default_time_series_metrics`` -- absent means "the algorithm's
@@ -228,6 +283,7 @@ class NemoRLLogger(LoggerInterface):
         self._max_steps = max_steps
         self._num_epochs = num_epochs
         self._steps_per_epoch = steps_per_epoch
+        self._run_facts = dict(run_facts or {})
 
         self._callback = TrainingProgressCallback(
             JobsServiceProgressReporter(self._job_ctx),
@@ -260,6 +316,7 @@ class NemoRLLogger(LoggerInterface):
         time_series_metrics: Collection[str] | None = None,
         min_report_interval_seconds: float | None = None,
         default_time_series_metrics: Collection[str] = DIAGNOSTIC_TIME_SERIES,
+        run_facts: Mapping[str, object] | None = None,
         job_ctx: NMPJobContext | None = None,
     ) -> Self:
         """Build a logger from a NeMo-RL training schedule.
@@ -272,6 +329,8 @@ class NemoRLLogger(LoggerInterface):
             default_time_series_metrics: The calling driver's algorithm list --
                 :data:`GRPO_DEFAULT_TIME_SERIES_METRICS` or
                 :data:`DPO_DEFAULT_TIME_SERIES_METRICS`.
+            run_facts: Run constants for the training-start report; see
+                :meth:`__init__`.
             val_period: Accepted and unused. It used to set the validation report
                 cadence, and before that the training one; both now follow from
                 run length in the shared callback. Kept in the signature so the
@@ -286,6 +345,7 @@ class NemoRLLogger(LoggerInterface):
             time_series_metrics=time_series_metrics,
             min_report_interval_seconds=min_report_interval_seconds,
             default_time_series_metrics=default_time_series_metrics,
+            run_facts=run_facts,
         )
 
     def log_metrics(
@@ -324,6 +384,26 @@ class NemoRLLogger(LoggerInterface):
         # log from displacing a pending report that has the loss in it.
         if prefix == "train" and is_chartable(metrics.get("loss")):
             self._callback.report_train_step(step=step, epoch=epoch, metrics=dict(metrics))
+
+        # Step timings arrive under their own prefix and used to be dropped whole,
+        # which is why a job could report eighty metrics and not how long a step
+        # took. NeMo-RL logs this once per step, right after the train metrics and
+        # at the same step number, so it merges into the same report rather than
+        # starting a competing one -- the store is keyed by name and a second call
+        # at one step adds names to it.
+        #
+        # Names are re-prefixed with `timing/` before the phase prefix goes on, so
+        # `total_step_time` reads as `train_timing/total_step_time` rather than
+        # `train_total_step_time`. That matches `train_timing/rollout/*`, which
+        # already arrives this way inside the train dict, and keeps a duration from
+        # looking like a metric: bare, `generation` and `policy_training` would be
+        # indistinguishable from counts.
+        elif prefix == "timing/train":
+            self._callback.report_train_step(
+                step=step,
+                epoch=epoch,
+                metrics={f"timing/{name}": value for name, value in metrics.items()},
+            )
 
         # Validation reports whatever the pass produced. There is one validation
         # log per pass per dataloader and no rollout twin to tell apart, so
@@ -381,8 +461,8 @@ class NemoRLLogger(LoggerInterface):
         if not self._num_epochs and num_epochs:
             self._num_epochs = num_epochs
 
-        self._callback.report_training_start(max_steps=max_steps, num_epochs=num_epochs)
-        _logger.debug(f"log_hyperparams: max_steps={max_steps}, num_epochs={num_epochs}")
+        self._callback.report_training_start(max_steps=max_steps, num_epochs=num_epochs, run_facts=self._run_facts)
+        _logger.debug(f"log_hyperparams: max_steps={max_steps}, num_epochs={num_epochs}, run_facts={self._run_facts}")
 
     def log_histogram(self, histogram: list[Any], step: int, name: str) -> None:
         """No-op: required by NeMo-RL's LoggerInterface.

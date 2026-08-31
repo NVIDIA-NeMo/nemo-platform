@@ -6,9 +6,10 @@
 This directory contains a local Authentik-backed NeMo Platform example. Use it
 to validate three user-visible flows:
 
-- log in to NeMo with Authentik
-- call NeMo APIs through the Authentik gateway
-- run a NeMo job whose workload exchanges a real Authentik workload subject token
+- log in to NeMo Platform with Authentik
+- call NeMo Platform APIs through the Authentik gateway
+- run a NeMo Platform job whose workload exchanges a managed workload proof token for a
+  delegated NeMo Platform access token
 
 All credentials in this example are for local development only.
 
@@ -88,8 +89,10 @@ The 2-minute CLI access-token lifetime is a local demo/testing setting so token
 refresh is easy to observe. Do not use it as a production default; use a longer
 value such as `hours=1` outside the refresh demonstration.
 
-In the Docker Compose runtime, Authentik issues the demo workload subject token,
-but it does not accept the RFC 8693 token exchange grant directly. The Docker
-backend refreshes the Authentik subject token file, the SDK posts that token to
-the NeMo auth service, and the gateway trusts the NeMo auth service JWKS for
-exchanged workload access tokens.
+In the Docker Compose runtime, Authentik idP authenticates users and controller
+service principals, but managed Docker job OBO uses a NeMo Platform-owned
+opaque workload proof token. The Docker backend writes that proof token into the
+job token file, the SDK posts it to the NeMo Platform auth service, and the
+gateway trusts the NeMo Platform auth service JWKS for exchanged workload access
+tokens. Docker OBO does not depend on IdP `jti` claims or IdP-issued workload
+subject tokens.

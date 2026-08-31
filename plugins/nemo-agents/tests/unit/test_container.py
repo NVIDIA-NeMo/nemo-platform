@@ -442,9 +442,10 @@ class TestRenderFabricDockerfile:
 
         result = render_fabric_dockerfile(fabric_agent_config)
 
-        assert f'uv pip install "nemo-platform[nemo-agents-plugin]=={get_contract_version()}"' in result
         install_line = next(line for line in result.splitlines() if "uv pip install" in line)
-        assert "--prerelease" not in install_line
+        assert "--no-sources" in install_line
+        assert "--prerelease=allow" in install_line
+        assert f'"nemo-platform[nemo-agents-plugin]=={get_contract_version()}"' in install_line
         assert '" .' not in install_line
         assert "ENV AGENT_CONFIG_PATH=/workspace/agent.yaml" in result
         assert "NAT_VERSION" not in result
@@ -494,10 +495,11 @@ class TestRenderFabricDockerfile:
 
         result = render_fabric_dockerfile(agent_config, pyproject)
 
-        assert f'uv pip install "nemo-platform[nemo-agents-plugin]=={get_contract_version()}"' in result
-        assert f'"nemo-relay=={PINNED_NEMO_RELAY_CLI_VERSION}" .' in result
         install_line = next(line for line in result.splitlines() if "uv pip install" in line)
-        assert "--prerelease" not in install_line
+        assert "--no-sources" in install_line
+        assert "--prerelease=allow" in install_line
+        assert f'"nemo-platform[nemo-agents-plugin]=={get_contract_version()}"' in install_line
+        assert f'"nemo-relay=={PINNED_NEMO_RELAY_CLI_VERSION}" .' in result
         assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in result
 
     def test_unresolved_contract_version_is_rejected(
@@ -1186,7 +1188,7 @@ class TestDetectAgentConfigFormat:
 
         assert detect_agent_config_format(agent_config) == NAT_WORKFLOW_CONFIG_FORMAT
 
-    def test_detects_platform_agent_spec(self, tmp_path: Path) -> None:
+    def test_detects_platform_agent_config(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.builder import detect_agent_config_format
         from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT
 

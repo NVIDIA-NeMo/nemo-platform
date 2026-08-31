@@ -1,35 +1,36 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { CodeEditor } from '@nemo/common/src/components/CodeEditor';
+import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
-import {
-  AccordionContent,
-  AccordionItem,
-  AccordionRoot,
-  AccordionTrigger,
-  Panel,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { Braces } from 'lucide-react';
 import type { FC } from 'react';
 
 /**
- * Collapsed raw-JSON escape hatch. Guarantees zero information loss and covers
- * any config field the structured view does not yet render.
+ * The complete guardrail document, as it will be saved.
+ *
+ * Shown rather than hidden behind a disclosure: it is the only view of the fields Studio
+ * cannot configure yet, and the only way to see what switching a rail on actually wrote.
  */
 export const RawConfigSection: FC<{ data: RailsConfig }> = ({ data }) => (
-  <Panel slotHeading="Raw configuration" slotIcon={<Braces />} elevation="high" density="compact">
-    <AccordionRoot>
-      <AccordionItem value="raw-config">
-        <AccordionTrigger>
-          <Text kind="label/bold/sm">Show configuration JSON</Text>
-        </AccordionTrigger>
-        <AccordionContent>
-          <pre className="overflow-auto rounded bg-surface-raised p-density-md text-xs leading-relaxed">
-            {JSON.stringify(data, null, 2)}
-          </pre>
-        </AccordionContent>
-      </AccordionItem>
-    </AccordionRoot>
+  <Panel slotHeading="Configuration JSON" slotIcon={<Braces />} elevation="high" density="compact">
+    <Stack gap="density-sm">
+      <Text kind="body/regular/sm" className="text-text-secondary">
+        The full configuration, including any settings this page does not surface. Read-only.
+      </Text>
+      {/*
+        A definite height, not min/max: CodeMirror sizes itself to the container, and with
+        only a max-height the editor grows to the full document (3000px+ for a real config)
+        and spills out of the panel instead of scrolling.
+      */}
+      <CodeEditor
+        className="h-[420px]"
+        content={JSON.stringify(data, null, 2)}
+        readOnly
+        contentType={ContentType.JSON}
+      />
+    </Stack>
   </Panel>
 );

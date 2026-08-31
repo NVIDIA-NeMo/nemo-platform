@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Self
 
 import httpx
 from httpx import Timeout
@@ -22,8 +22,7 @@ from nemo_platform import (
 )
 from nemo_platform._base_client import AsyncAPIClient, SyncAPIClient
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
-
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_plugin.client.tls import client_verify_from_env
 
 
 def _should_bootstrap_config(
@@ -43,6 +42,20 @@ def _should_bootstrap_config(
     return (
         base_url is None
         or config_path is not None
+        or context_name is not None
+        or access_token is not None
+        or bool(os.environ.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR))
+    )
+
+
+def _copy_requires_bootstrap(
+    *,
+    config_path: Path | None,
+    context_name: str | None,
+    access_token: str | None,
+) -> bool:
+    return (
+        config_path is not None
         or context_name is not None
         or access_token is not None
         or bool(os.environ.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR))
@@ -133,6 +146,9 @@ class NeMoPlatform(SyncAPIClient):
             http_client: Custom ``httpx.Client`` instance. When provided, the auth
                 bootstrap is skipped entirely regardless of other parameters.
         """
+        env_base_url = os.environ.get("NEMO_PLATFORM_BASE_URL")
+        bootstrap_base_url = base_url if base_url is not None else env_base_url
+
         should_bootstrap = _should_bootstrap_config(
             http_client=http_client,
             base_url=base_url,
@@ -146,7 +162,7 @@ class NeMoPlatform(SyncAPIClient):
 
                 client_init_kwargs = build_client_init_kwargs(
                     config_path=config_path,
-                    base_url=base_url,
+                    base_url=bootstrap_base_url,
                     context_name=context_name,
                     access_token=access_token,
                     extra_headers=default_headers,
@@ -155,9 +171,19 @@ class NeMoPlatform(SyncAPIClient):
                 if workspace is None:
                     workspace = client_init_kwargs.workspace
                 default_headers = client_init_kwargs.default_headers
+                if client_init_kwargs.http_client is not None and not isinstance(
+                    client_init_kwargs.http_client, httpx.Client
+                ):
+                    raise TypeError("Expected httpx.Client from sync client factory")
                 http_client = client_init_kwargs.http_client
             except Exception as e:
-                raise RuntimeError(f"NeMoPlatform client initialization failed: {e}")
+                raise RuntimeError(f"NeMoPlatform client initialization failed: {e}") from e
+
+        if base_url is None:
+            base_url = bootstrap_base_url
+
+        if base_url is None:
+            raise RuntimeError("NeMoPlatform client initialization failed: base_url is required")
 
         client_verify = client_verify_from_env()
         if http_client is None and client_verify is not True:
@@ -193,6 +219,66 @@ class NeMoPlatform(SyncAPIClient):
         instance = resource_cls(self)
         self.__dict__[name] = instance
         return instance
+
+    def copy(
+        self,
+        *,
+        workspace: str | None = None,
+        base_url: str | httpx.URL | None = None,
+        inference_base_url: str | httpx.URL | None = None,
+        config_path: Path | None = None,
+        context_name: str | None = None,
+        access_token: str | None = None,
+        timeout: float | Timeout | None | NotGiven = not_given,
+        http_client: httpx.Client | None = None,
+        max_retries: int | NotGiven = not_given,
+        default_headers: Mapping[str, str] | None = None,
+        set_default_headers: Mapping[str, str] | None = None,
+        default_query: Mapping[str, object] | None = None,
+        set_default_query: Mapping[str, object] | None = None,
+        _extra_kwargs: Mapping[str, Any] = {},
+    ) -> Self:
+        """
+        Create a new client instance re-using the same options given to the current client with optional overriding.
+        """
+        if default_headers is not None and set_default_headers is not None:
+            raise ValueError("The `default_headers` and `set_default_headers` arguments are mutually exclusive")
+
+        if default_query is not None and set_default_query is not None:
+            raise ValueError("The `default_query` and `set_default_query` arguments are mutually exclusive")
+
+        headers = self._custom_headers
+        if default_headers is not None:
+            headers = {**headers, **default_headers}
+        elif set_default_headers is not None:
+            headers = set_default_headers
+
+        params = self._custom_query
+        if default_query is not None:
+            params = {**params, **default_query}
+        elif set_default_query is not None:
+            params = set_default_query
+
+        if http_client is None and not _copy_requires_bootstrap(
+            config_path=config_path,
+            context_name=context_name,
+            access_token=access_token,
+        ):
+            http_client = self._client
+        return self.__class__(
+            workspace=workspace or self.workspace,
+            base_url=base_url or self.base_url,
+            inference_base_url=inference_base_url or self.inference_base_url,
+            config_path=config_path,
+            context_name=context_name,
+            access_token=access_token,
+            timeout=self.timeout if isinstance(timeout, NotGiven) else timeout,
+            http_client=http_client,
+            max_retries=self.max_retries if isinstance(max_retries, NotGiven) else max_retries,
+            default_headers=headers,
+            default_query=params,
+            **_extra_kwargs,
+        )
 
 
 class AsyncNeMoPlatform(AsyncAPIClient):
@@ -241,11 +327,14 @@ class AsyncNeMoPlatform(AsyncAPIClient):
 
             import asyncio
             from nemo_platform import AsyncNeMoPlatform
+            from nemo_platform_plugin.client.adapter import client_from_platform
+            from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 
             async def main() -> None:
                 client = AsyncNeMoPlatform()
-                page = await client.workspaces.list()
-                print(page.data)
+                workspaces = await client_from_platform(client, AsyncWorkspacesClient).list_workspaces()
+                async for ws in workspaces.items():
+                    print(ws.name)
 
             asyncio.run(main())
 
@@ -255,6 +344,8 @@ class AsyncNeMoPlatform(AsyncAPIClient):
 
             import asyncio, os
             from nemo_platform import AsyncNeMoPlatform
+            from nemo_platform_plugin.client.adapter import client_from_platform
+            from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 
             async def main() -> None:
                 client = AsyncNeMoPlatform(
@@ -262,8 +353,9 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                     access_token=os.environ["NMP_ACCESS_TOKEN"],
                     workspace="default",
                 )
-                page = await client.workspaces.list()
-                print(page.data)
+                workspaces = await client_from_platform(client, AsyncWorkspacesClient).list_workspaces()
+                async for ws in workspaces.items():
+                    print(ws.name)
 
             asyncio.run(main())
 
@@ -295,6 +387,9 @@ class AsyncNeMoPlatform(AsyncAPIClient):
             http_client: Custom ``httpx.AsyncClient`` instance. When provided, the
                 auth bootstrap is skipped entirely regardless of other parameters.
         """
+        env_base_url = os.environ.get("NEMO_PLATFORM_BASE_URL")
+        bootstrap_base_url = base_url if base_url is not None else env_base_url
+
         should_bootstrap = _should_bootstrap_config(
             http_client=http_client,
             base_url=base_url,
@@ -308,7 +403,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
 
                 client_init_kwargs = build_async_client_init_kwargs(
                     config_path=config_path,
-                    base_url=base_url,
+                    base_url=bootstrap_base_url,
                     context_name=context_name,
                     access_token=access_token,
                     extra_headers=default_headers,
@@ -317,9 +412,19 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                 if workspace is None:
                     workspace = client_init_kwargs.workspace
                 default_headers = client_init_kwargs.default_headers
+                if client_init_kwargs.http_client is not None and not isinstance(
+                    client_init_kwargs.http_client, httpx.AsyncClient
+                ):
+                    raise TypeError("Expected httpx.AsyncClient from async client factory")
                 http_client = client_init_kwargs.http_client
             except Exception as e:
-                raise RuntimeError(f"NeMoPlatform client initialization failed: {e}")
+                raise RuntimeError(f"NeMoPlatform client initialization failed: {e}") from e
+
+        if base_url is None:
+            base_url = bootstrap_base_url
+
+        if base_url is None:
+            raise RuntimeError("NeMoPlatform client initialization failed: base_url is required")
 
         client_verify = client_verify_from_env()
         if http_client is None and client_verify is not True:
@@ -358,3 +463,63 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         instance = resource_cls(self)
         self.__dict__[name] = instance
         return instance
+
+    def copy(
+        self,
+        *,
+        workspace: str | None = None,
+        base_url: str | httpx.URL | None = None,
+        inference_base_url: str | httpx.URL | None = None,
+        config_path: Path | None = None,
+        context_name: str | None = None,
+        access_token: str | None = None,
+        timeout: float | Timeout | None | NotGiven = not_given,
+        http_client: httpx.AsyncClient | None = None,
+        max_retries: int | NotGiven = not_given,
+        default_headers: Mapping[str, str] | None = None,
+        set_default_headers: Mapping[str, str] | None = None,
+        default_query: Mapping[str, object] | None = None,
+        set_default_query: Mapping[str, object] | None = None,
+        _extra_kwargs: Mapping[str, Any] = {},
+    ) -> Self:
+        """
+        Create a new client instance re-using the same options given to the current client with optional overriding.
+        """
+        if default_headers is not None and set_default_headers is not None:
+            raise ValueError("The `default_headers` and `set_default_headers` arguments are mutually exclusive")
+
+        if default_query is not None and set_default_query is not None:
+            raise ValueError("The `default_query` and `set_default_query` arguments are mutually exclusive")
+
+        headers = self._custom_headers
+        if default_headers is not None:
+            headers = {**headers, **default_headers}
+        elif set_default_headers is not None:
+            headers = set_default_headers
+
+        params = self._custom_query
+        if default_query is not None:
+            params = {**params, **default_query}
+        elif set_default_query is not None:
+            params = set_default_query
+
+        if http_client is None and not _copy_requires_bootstrap(
+            config_path=config_path,
+            context_name=context_name,
+            access_token=access_token,
+        ):
+            http_client = self._client
+        return self.__class__(
+            workspace=workspace or self.workspace,
+            base_url=base_url or self.base_url,
+            inference_base_url=inference_base_url or self.inference_base_url,
+            config_path=config_path,
+            context_name=context_name,
+            access_token=access_token,
+            timeout=self.timeout if isinstance(timeout, NotGiven) else timeout,
+            http_client=http_client,
+            max_retries=self.max_retries if isinstance(max_retries, NotGiven) else max_retries,
+            default_headers=headers,
+            default_query=params,
+            **_extra_kwargs,
+        )

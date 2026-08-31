@@ -169,7 +169,17 @@ config:
       - description
       - created_at
 - resource: [jobs]
+  additional_methods:
+    watch:
+      override: jobs/watch.py
   methods:
+    create:
+      wait:
+        type: platform_job
+        resource_label: job
+      watch:
+        type: platform_job
+        resource_label: job
     list:
       columns:
       - name
@@ -219,6 +229,9 @@ config:
   methods:
     create:
       wait:
+        type: inference_deployment
+        resource_label: deployment
+      watch:
         type: inference_deployment
         resource_label: deployment
     list:

@@ -29,13 +29,16 @@ Design constraints (see AALGO-289):
 
 from __future__ import annotations
 
+import logging
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_TRACE
 from nemo_platform.types.intake.evaluation_context_param import EvaluationContextParam
 from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
 from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
@@ -43,6 +46,9 @@ from nemo_platform.types.intake.ingest.atif_agent_param import AtifAgentParam
 from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
 from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
 from nemo_platform.types.intake.ingest.atif_step_agent_param import AtifStepAgentParam
+from nemo_platform.types.intake.ingest.atif_step_param import AtifStepParam
+
+logger = logging.getLogger(__name__)
 
 # --- Shared conventions -----------------------------------------------------
 
@@ -52,12 +58,6 @@ ATIF_SCHEMA_VERSION: Literal["ATIF-v1.7"] = "ATIF-v1.7"
 #: Default ``agent.version`` when the run target carries none. Neither Model nor
 #: Agent has a version field today, and ATIF requires one (design doc §3.9 #6).
 DEFAULT_AGENT_VERSION = "unknown"
-
-# Evidence-descriptor keys. ATIF is carried as a ``format`` on ``kind="trace"``,
-# *not* as a distinct ``kind``. These are string literals until D1 (AALGO-281)
-# promotes them to shared descriptor-key constants on the SDK evidence types.
-EVIDENCE_KIND_TRACE = "trace"
-TRACE_FORMAT_ATIF = "atif"
 
 
 def session_id_for(run_id: str, trial_id: str) -> str:
@@ -80,6 +80,41 @@ def run_task_to_evaluation_context(trial: AgentEvalTrial, *, evaluation_name: st
     return {"evaluation_name": evaluation_name, "test_case_name": trial.task_id}
 
 
+async def atif_steps_from_trial(trial: AgentEvalTrial, *, started_at: datetime) -> list[AtifStepParam] | None:
+    """Return the trial's real ATIF steps, or None when it carries no ATIF trajectory.
+
+    Only runners whose agent emits ATIF attach one; Harbor's ``oracle`` and ``nop`` never do, and
+    an unreadable or malformed trajectory is treated the same as an absent one so a publish is
+    never lost to bad evidence.
+
+    The SDK's read model is deliberately more permissive than Intake's ingest schema, so steps that
+    parse here can still be rejected there; :func:`nemo_evaluator.intake.publish.publish_to_intake`
+    retries without them rather than enumerating every divergence.
+    """
+    evidence = trial.evidence
+    if evidence is None:
+        return None
+    descriptor = evidence.get(EVIDENCE_TRACE)
+    if descriptor is None or descriptor.format != EVIDENCE_FORMAT_ATIF:
+        return None
+    try:
+        steps = await (await evidence.trace(EVIDENCE_TRACE)).steps()
+    except (OSError, ValueError, KeyError) as error:
+        logger.warning("Ignoring unreadable ATIF trace for trial %s: %s", trial.id, error)
+        return None
+
+    payload: list[AtifStepParam] = []
+    for index, step in enumerate(steps):
+        dumped = step.model_dump(mode="json", exclude_none=True)
+        # Ingest requires one-based sequential ids, while the SDK read model leaves step_id optional.
+        dumped["step_id"] = index + 1
+        # Intake keys spans on start_time and falls back to its own ingest clock for a step with
+        # no timestamp, which would make re-publish duplicate instead of replace.
+        dumped.setdefault("timestamp", started_at.isoformat())
+        payload.append(cast(AtifStepParam, dumped))
+    return payload
+
+
 def trial_to_atif_ingest(
     trial: AgentEvalTrial,
     *,
@@ -91,16 +126,17 @@ def trial_to_atif_ingest(
     model_name: str | None = None,
     final_metrics: AtifFinalMetricsParam | None = None,
     ended_at: datetime | None = None,
+    steps: Sequence[AtifStepParam] | None = None,
 ) -> AtifCreateParams:
     """Build the ATIF ingest params for a single Trial.
 
-    Until ATIF normalization of trace evidence lands (D2, AALGO-282), this emits
-    a minimal single-step trajectory carrying the trial's final output text, so
-    the session/score path works end to end. Real ``steps[]`` reconstructed from
-    ``trial.evidence`` arrive with D2.
+    ``steps`` carries the trial's real ATIF trajectory when it has one (see
+    :func:`atif_steps_from_trial`). Without it this falls back to a minimal single-step
+    trajectory holding the trial's final output text, which is all a runner that emits no
+    trajectory — Harbor's ``oracle``, for one — can offer.
 
-    ``started_at`` (the run's start time) is stamped on the step because it is what
-    makes re-ingest idempotent. Intake's ``spans`` table is a ``ReplacingMergeTree``
+    ``started_at`` (the run's start time) stamps any step that carries no timestamp of its own,
+    because that is what makes re-ingest idempotent. Intake's ``spans`` table is a ``ReplacingMergeTree``
     keyed on ``(workspace, session_id, start_time, id)``, and a step with no timestamp
     falls back to the server's per-request ingest clock — so the same trajectory sent
     twice lands as two rows that never collapse. An explicit timestamp makes the root
@@ -131,9 +167,14 @@ def trial_to_atif_ingest(
         "schema_version": ATIF_SCHEMA_VERSION,
         "session_id": session_id_for(run_id, trial.id),
         "agent": agent,
-        "steps": [step],
+        "steps": list(steps) if steps else [step],
         "evaluation_context": run_task_to_evaluation_context(trial, evaluation_name=evaluation_name),
     }
+    if trial.error is not None:
+        error: dict[str, object] = {"type": trial.error.type}
+        if trial.error.message is not None:
+            error["message"] = trial.error.message
+        body["extra"] = {"error": error}
     if final_metrics is not None:
         body["final_metrics"] = final_metrics
     return body

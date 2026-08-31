@@ -5,12 +5,15 @@
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import httpx
 import pytest
 from nemo_evaluator.intake.publish import PublishError, _token_final_metrics, publish_to_intake
 from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
@@ -18,7 +21,8 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSumm
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
-from nemo_platform import AsyncNeMoPlatform
+from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_platform import AsyncNeMoPlatform, UnprocessableEntityError
 
 # --- fakes ------------------------------------------------------------------
 
@@ -71,12 +75,13 @@ class _FakeClient:
         root_span_id: str | None = "span",
         atif_fail: bool = False,
         fail_eval_session: str | None = None,
+        atif: Any | None = None,
     ) -> None:
         self.workspace = workspace
         self.atif_calls: list[dict[str, Any]] = []
         self.eval_calls: list[dict[str, Any]] = []
         self.intake = SimpleNamespace(
-            ingest=SimpleNamespace(atif=_FakeAtif(self.atif_calls, fail=atif_fail)),
+            ingest=SimpleNamespace(atif=atif or _FakeAtif(self.atif_calls, fail=atif_fail)),
             evaluator_results=_FakeEvaluatorResults(self.eval_calls, fail_session=fail_eval_session),
             traces=_FakeTraces(root_span_id=root_span_id),
         )
@@ -297,3 +302,63 @@ async def test_one_trial_failure_does_not_block_others_and_is_reported() -> None
     message = str(excinfo.value).lower()
     assert "t-2" in message
     assert "re-run" in message or "cached" in message or "publish" in message
+
+
+class _RejectRichTrajectoryAtif:
+    """Ingest that refuses any multi-step trajectory, the way a schema mismatch would."""
+
+    def __init__(self, calls: list[dict[str, Any]]) -> None:
+        self._calls = calls
+
+    async def create(self, **kwargs: Any) -> None:
+        self._calls.append(kwargs)
+        if len(kwargs["steps"]) > 1:
+            raise UnprocessableEntityError(
+                "steps: rejected",
+                response=httpx.Response(422, request=httpx.Request("POST", "http://test/atif")),
+                body=None,
+            )
+
+
+def _trial_with_atif_trace(tmp_path: Path, trial_id: str = "t-1") -> AgentEvalTrial:
+    trace = tmp_path / "trajectory.json"
+    trace.write_text(
+        json.dumps(
+            {
+                "schema_version": "ATIF-v1.7",
+                "session_id": "s",
+                "agent": {"name": "codex", "version": "1.0"},
+                "steps": [
+                    {"step_id": 1, "source": "user", "message": "q", "timestamp": "2026-01-01T00:00:00+00:00"},
+                    {"step_id": 2, "source": "agent", "message": "a", "timestamp": "2026-01-01T00:00:01+00:00"},
+                ],
+            }
+        )
+    )
+    return AgentEvalTrial(
+        id=trial_id,
+        task_id="task-1",
+        status=AgentEvalTrialStatus.COMPLETED,
+        output=AgentOutput(output_text="a"),
+        evidence=CandidateEvidence(
+            descriptors={"trace": EvidenceDescriptor(kind="trace", format="atif", ref=str(trace))}
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_trajectory_falls_back_instead_of_failing_the_trial(tmp_path: Path) -> None:
+    calls: list[dict[str, Any]] = []
+    client = _client(atif=_RejectRichTrajectoryAtif(calls))
+    trial = _trial_with_atif_trace(tmp_path)
+
+    report = await publish_to_intake(
+        _result([trial], [_score("t-1", "m", [MetricOutput(name="score", value=1.0)])]),
+        platform=client,
+        experiment_id="eval-1",
+        workspace="ws-1",
+    )
+
+    # The rich attempt is refused, the single-step retry lands, and the trial still publishes.
+    assert [len(call["steps"]) for call in calls] == [2, 1]
+    assert report.trial_count == 1

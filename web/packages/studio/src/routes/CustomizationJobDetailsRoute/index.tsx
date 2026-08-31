@@ -4,6 +4,7 @@
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
+import { CJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
 import { useModelsGetModel } from '@nemo/sdk/generated/platform/api';
 import {
@@ -33,6 +34,8 @@ import {
   getDatasetUri,
   getFinetuningType,
   getFormattedTrainingType,
+  getGrpoRunProgressSummary,
+  getTrainingTelemetry,
 } from '@studio/util/customizations';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { Dot } from 'lucide-react';
@@ -61,6 +64,7 @@ export const CustomizationJobDetailsRoute: FC = () => {
   const status = job?.status;
   const output_model = job?.spec.output?.name;
   const showChat = Boolean(output_model) && status === 'completed';
+  const isTerminalStatus = Boolean(status && CJobTerminalStatuses.includes(status));
 
   // Fetch the output model entity so we can check deployment status
   const { data: outputModelEntity } = useModelsGetModel(workspace, output_model ?? '', undefined, {
@@ -73,6 +77,7 @@ export const CustomizationJobDetailsRoute: FC = () => {
   const metadata = [
     getFormattedTrainingType(getFinetuningType(job)),
     getBaseModel(job),
+    getGrpoRunProgressSummary(job, getTrainingTelemetry(job), isTerminalStatus),
     job?.created_at ? `created ${formatAbsoluteTimestamp(job.created_at)}` : '',
   ].filter(Boolean);
 

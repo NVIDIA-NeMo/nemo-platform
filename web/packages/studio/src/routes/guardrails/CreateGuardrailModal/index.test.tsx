@@ -17,6 +17,24 @@ import type { Mock } from 'vitest';
 const WORKSPACE = 'test-workspace';
 const CONFIGS_URL = `${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs`;
 
+// The modal seeds a main model from the workspace catalogue. Stubbed rather than served over
+// MSW so each test states the catalogue it wants; `modelGroups` is what the hook returns.
+let modelGroups: unknown[] = [];
+const useModelsFromWorkspaceSpy = vi.fn();
+vi.mock('@nemo/common/src/api/models/useModelsFromWorkspace', () => ({
+  useModelsFromWorkspace: (options: unknown) => {
+    useModelsFromWorkspaceSpy(options);
+    return { groups: modelGroups };
+  },
+}));
+
+const MODEL_GROUPS = [
+  {
+    workspace: WORKSPACE,
+    models: [{ name: 'nemotron-3-nano-30b-a3b', workspace: WORKSPACE, model_providers: ['p'] }],
+  },
+];
+
 const SOURCE_CONFIG: GuardrailConfig = {
   name: 'my-rail',
   workspace: WORKSPACE,
@@ -58,6 +76,59 @@ describe('CreateGuardrailModal', () => {
     mockUseParams({ [ROUTE_PARAMS.workspace]: WORKSPACE });
     navigate = vi.fn();
     mockUseNavigate(navigate);
+    modelGroups = [];
+    useModelsFromWorkspaceSpy.mockClear();
+  });
+
+  it('seeds a fresh config with the resolved main model', async () => {
+    modelGroups = MODEL_GROUPS;
+    let body: unknown;
+    server.use(
+      http.post(CONFIGS_URL, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ name: 'my-rail' }, { status: 201 });
+      })
+    );
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.type(screen.getByRole('textbox'), 'my-rail');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => {
+      expect(body).toEqual({
+        name: 'my-rail',
+        data: {
+          models: [
+            {
+              type: 'main',
+              engine: 'nim',
+              mode: 'chat',
+              model: `${WORKSPACE}/nemotron-3-nano-30b-a3b`,
+            },
+          ],
+        },
+      });
+    });
+  });
+
+  it('creates without models when the workspace serves none', async () => {
+    let body: unknown;
+    server.use(
+      http.post(CONFIGS_URL, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ name: 'my-rail' }, { status: 201 });
+      })
+    );
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.type(screen.getByRole('textbox'), 'my-rail');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => {
+      expect(body).toEqual({ name: 'my-rail' });
+    });
   });
 
   it('creates the guardrail and navigates to its detail page', async () => {
@@ -116,7 +187,21 @@ describe('CreateGuardrailModal', () => {
       expect(screen.getByText('Duplicate Guardrail')).toBeInTheDocument();
     });
 
+    it('does not query the model catalogue', async () => {
+      renderModal({ sourceConfig: SOURCE_CONFIG });
+
+      // Settle the modal's open effect (name reset + focus) before asserting.
+      await waitFor(() => {
+        expect(screen.getByRole('textbox')).toHaveValue('my-rail-copy');
+      });
+      // The duplicate carries the source's models; resolving a default would be wasted work.
+      expect(useModelsFromWorkspaceSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ queryOptions: { enabled: false } })
+      );
+    });
+
     it('creates a copy carrying the source description and data', async () => {
+      modelGroups = MODEL_GROUPS;
       let body: unknown;
       server.use(
         http.post(CONFIGS_URL, async ({ request }) => {

@@ -51,7 +51,7 @@ async def test_nooa_codeact_returns_typed_analyst_result_and_receives_prompt() -
     analyst = build_analyst_agent(
         deps=AnalystDeps(agent="target-agent", workspace="private-workspace"),
         agent="target-agent",
-        agent_spec="# Expected behavior\nBe accurate.",
+        ethos="# Expected behavior\nBe accurate.",
         llm=fake,
     )
 

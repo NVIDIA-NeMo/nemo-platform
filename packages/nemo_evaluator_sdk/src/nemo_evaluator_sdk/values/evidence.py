@@ -16,7 +16,7 @@ import signal
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias, cast
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, model_validator
@@ -38,6 +38,7 @@ EVIDENCE_TRANSLATION_ERROR = "translation_error"
 
 EVIDENCE_FORMAT_ATIF = "atif"
 EVIDENCE_FORMAT_JSON = "json"
+EVIDENCE_FORMAT_OTLP = "otlp"
 EVIDENCE_FORMAT_TEXT = "text"
 
 # Well-known evidence keys used by the core agent-eval artifact contract.
@@ -318,6 +319,10 @@ class EvidenceDescriptor(BaseModel):
         default=None,
         description="Small inline evidence payload; at least one of ref or data must be set.",
     )
+    description: str | None = Field(
+        default=None,
+        description="Human-readable description of this evidence artifact.",
+    )
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Free-form metadata associated with the evidence descriptor.",
@@ -356,8 +361,99 @@ def read_atif(path: Path) -> Trajectory | None:
         return None
 
 
-class TraceHandle:
+class OTLPTraceHandle:
+    """Lazily loaded read handle over OTLP/JSON (JSONL or a single object)."""
+
+    format: Literal["otlp"] = "otlp"
+
+    def __init__(self, descriptor: EvidenceDescriptor) -> None:
+        self._descriptor = descriptor
+        self._resource_spans: list[dict[str, Any]] | None = None
+
+    async def resource_spans(self) -> list[dict[str, Any]]:
+        """Return concatenated OTLP ``resourceSpans``, loading and validating once.
+
+        Returns:
+            Resource-span objects in request and file order.
+        """
+        if self._resource_spans is None:
+            self._resource_spans = await asyncio.to_thread(self._load_resource_spans)
+        return self._resource_spans
+
+    def _load_resource_spans(self) -> list[dict[str, Any]]:
+        """Load inline or local OTLP evidence into its resource-span export units.
+
+        Returns:
+            Validated resource-span objects from every request.
+        """
+        descriptor = self._descriptor
+        if descriptor.data is not None:
+            if isinstance(descriptor.data, list):
+                return self._validate_resource_spans(descriptor.data)
+            return self._resource_spans_from_request(descriptor.data)
+        if descriptor.ref is None:
+            raise ValueError("trace evidence descriptor requires ref or data")
+
+        raw = _local_filesystem_ref(descriptor.ref).read_text(encoding="utf-8")
+        if not raw.strip():
+            return []
+        try:
+            requests = [json.loads(raw)]
+        except json.JSONDecodeError:
+            requests = []
+            for line_number, line in enumerate(raw.splitlines(), start=1):
+                if not line.strip():
+                    continue
+                try:
+                    requests.append(json.loads(line))
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"invalid OTLP JSON on line {line_number}") from exc
+
+        resource_spans: list[dict[str, Any]] = []
+        for request in requests:
+            resource_spans.extend(self._resource_spans_from_request(request))
+        return resource_spans
+
+    @classmethod
+    def _resource_spans_from_request(cls, request: Any) -> list[dict[str, Any]]:
+        """Extract validated ``resourceSpans`` from one OTLP request object.
+
+        Args:
+            request: Decoded OTLP/JSON request value.
+
+        Returns:
+            The request's validated resource-span objects.
+        """
+        if not isinstance(request, dict):
+            raise ValueError("OTLP trace request must be an object")
+        if "resourceSpans" not in request:
+            raise ValueError("OTLP trace request requires a resourceSpans list")
+        return cls._validate_resource_spans(request["resourceSpans"])
+
+    @staticmethod
+    def _validate_resource_spans(value: Any) -> list[dict[str, Any]]:
+        """Validate the list shape exposed by :meth:`resource_spans`.
+
+        Args:
+            value: Candidate resource-span list.
+
+        Returns:
+            Resource-span objects in their original order.
+        """
+        if not isinstance(value, list):
+            raise ValueError("OTLP resourceSpans must be a list")
+        resource_spans: list[dict[str, Any]] = []
+        for index, resource_span in enumerate(value):
+            if not isinstance(resource_span, dict):
+                raise ValueError(f"OTLP resourceSpans[{index}] must be an object")
+            resource_spans.append(cast(dict[str, Any], resource_span))
+        return resource_spans
+
+
+class ATIFTraceHandle:
     """Lazily validated read handle exposing a trace descriptor as an ATIF :class:`Trajectory`."""
+
+    format: Literal["atif"] = "atif"
 
     def __init__(self, descriptor: EvidenceDescriptor) -> None:
         self._descriptor = descriptor
@@ -397,6 +493,9 @@ class TraceHandle:
         prompt = sum((step.metrics.prompt_tokens or 0) for step in trajectory.steps if step.metrics is not None)
         completion = sum((step.metrics.completion_tokens or 0) for step in trajectory.steps if step.metrics is not None)
         return FinalMetrics(total_prompt_tokens=prompt or None, total_completion_tokens=completion or None)
+
+
+TraceHandle: TypeAlias = ATIFTraceHandle | OTLPTraceHandle
 
 
 class LogHandle:
@@ -484,7 +583,14 @@ class CandidateEvidence(BaseModel):
         cached = self._trace_cache.get(name)
         if cached is not None:
             return cached
-        handle = TraceHandle(self.require(name, kind="trace"))
+        descriptor = self.require(name, kind="trace")
+        handle: TraceHandle
+        if descriptor.format is None or descriptor.format == EVIDENCE_FORMAT_ATIF:
+            handle = ATIFTraceHandle(descriptor)
+        elif descriptor.format == EVIDENCE_FORMAT_OTLP:
+            handle = OTLPTraceHandle(descriptor)
+        else:
+            raise ValueError(f"unknown trace evidence format {descriptor.format!r}")
         self._trace_cache[name] = handle
         return handle
 

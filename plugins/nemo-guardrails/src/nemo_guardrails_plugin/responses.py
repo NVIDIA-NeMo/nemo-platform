@@ -18,7 +18,7 @@ from nemo_platform_plugin.inference_middleware import (
     ResponseResult,
 )
 from nemoguardrails.exceptions import LLMCallException
-from nemoguardrails.rails.llm.options import GenerationResponse
+from nemoguardrails.rails.llm.options import GenerationLog, GenerationResponse
 
 logger = logging.getLogger(__name__)
 
@@ -128,19 +128,9 @@ def build_chat_completion_response_id() -> str:
     return f"chatcmpl-{uuid.uuid4()}"
 
 
-def is_blocked_generation_response(generation_response: GenerationResponse) -> bool:
-    """
-    Returns True if the GenerationResponse indicates the request was blocked by a guardrail.
-    """
-    log = generation_response.log
-
-    if not log:
-        logger.debug("Received GenerationResponse with empty log. ")
-        return True
-
-    activated_rails = log.activated_rails or []
-
-    return any(rail.stop is True for rail in activated_rails)
+def is_blocked_generation_response(log: GenerationLog) -> bool:
+    """Return True if the activation log indicates the request was blocked by a guardrail."""
+    return any(rail.stop is True for rail in log.activated_rails)
 
 
 def extract_response_content(generation_response: GenerationResponse) -> str:
@@ -173,13 +163,11 @@ def extract_response_content(generation_response: GenerationResponse) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _index_of_last_user_message(messages: list[dict[str, Any]]) -> int | None:
-    """Return the index of the last ``role=user`` message, if any."""
-    last_user_index: int | None = None
-    for index, message in enumerate(messages):
-        if isinstance(message, dict) and message.get("role") == "user":
-            last_user_index = index
-    return last_user_index
+def _index_of_current_user_message(messages: list[dict[str, Any]]) -> int | None:
+    """Return the final message index when the current turn is a user message."""
+    if messages and isinstance(messages[-1], dict) and messages[-1].get("role") == "user":
+        return len(messages) - 1
+    return None
 
 
 def apply_input_rail_modifications(
@@ -194,7 +182,7 @@ def apply_input_rail_modifications(
     Returns the same list object when there is nothing to change; otherwise, returns a
     shallow copy that replaces only the last user message dict.
     """
-    last_user_index = _index_of_last_user_message(messages)
+    last_user_index = _index_of_current_user_message(messages)
     if last_user_index is None:
         return messages
 

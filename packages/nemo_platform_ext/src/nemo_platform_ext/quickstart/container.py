@@ -310,9 +310,10 @@ class ContainerManager:
         # Database in mounted /data so it persists across container restarts
         env["DATABASE_URL"] = "sqlite:////data/nmp-platform.db"
 
-        # Secrets: allow key creation and persist key in /data so it survives restarts
-        env["NMP_SECRETS_ALLOW_KEY_CREATION"] = "1"
-        env["NMP_SECRETS_LOCAL_KEY_CREATION_PATH"] = "/data/nmp-encryption-key.txt"
+        # Secrets: allow key creation and persist key in /data so it survives restarts.
+        # Keep explicit PlatformConfig env mappings if the caller supplied them.
+        env.setdefault("NMP_SECRETS_ALLOW_KEY_CREATION", "1")
+        env.setdefault("NMP_SECRETS_LOCAL_KEY_CREATION_PATH", "/data/nmp-encryption-key.txt")
 
         # Seed the platform on startup with entities
         env["NMP_SEED_ON_STARTUP"] = "true"
@@ -325,6 +326,8 @@ class ContainerManager:
         # Configure the models/NIM Docker backend for DonD (Docker-on-Docker) setup.
         # NIMs need to join the same network as the quickstart container so they can
         # communicate via container names (e.g., http://md-workspace-name:8000).
+        env["NEMO_DEPLOYMENTS_DOCKER_NETWORK"] = self.config.network_name
+        env["NEMO_DEPLOYMENTS_DOCKER_ENDPOINT_MODE"] = "network"
         env["MODELS_DOCKER_NETWORKING_MODE"] = "dond"
         env["MODELS_DOCKER_NETWORK"] = self.config.network_name
         # Pass the container name so the Models service can use it for localhost replacement

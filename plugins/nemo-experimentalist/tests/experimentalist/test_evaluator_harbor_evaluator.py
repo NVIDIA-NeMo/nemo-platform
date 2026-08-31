@@ -66,6 +66,7 @@ def _write_trial(
     task_dir: Path,
     rewards: dict[str, float] | None = None,
     exception_info: dict[str, str] | None = None,
+    agent_result: dict[str, int] | None = None,
 ) -> None:
     trial_dir = job_dir / trial_name
     _write(
@@ -77,6 +78,7 @@ def _write_trial(
                 "task_id": {"path": str(task_dir.resolve())},
                 "verifier_result": {"rewards": rewards if rewards is not None else {}},
                 "exception_info": exception_info,
+                "agent_result": agent_result,
             }
         ),
     )
@@ -536,6 +538,35 @@ async def test_wrong_options_type_is_rejected(tmp_path: Path, dataset: HarborDat
         await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(agent_dir, dataset, EvaluatorConfig())
 
 
+async def test_force_rerun_rejects_job_name_outside_jobs_dir(
+    tmp_path: Path,
+    dataset: HarborDataset,
+    agent_dir: Path,
+    fake_job: type[_FakeJob],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_text("do not delete", encoding="utf-8")
+    rmtree_calls: list[Path] = []
+    monkeypatch.setattr(
+        "nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime.shutil.rmtree",
+        lambda path, **kwargs: rmtree_calls.append(Path(path)),
+    )
+
+    with pytest.raises(ValueError, match="strict descendant"):
+        await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
+            agent_dir,
+            dataset,
+            HarborRunnerConfig(jobs_dir=Path("jobs"), job_name="../outside", force_rerun=True),
+        )
+
+    assert fake_job.calls == []
+    assert rmtree_calls == []
+    assert marker.read_text(encoding="utf-8") == "do not delete"
+
+
 # --------------------------------------------------------------------------
 # Result parity with the plain Harbor evaluator
 # --------------------------------------------------------------------------
@@ -560,6 +591,7 @@ async def test_both_evaluators_produce_equivalent_trials(
             task_name="hello/sum-two",
             task_dir=dataset_dir / "sum-two",
             rewards={"reward": 1.0, "format_ok": 1.0},
+            agent_result={"n_input_tokens": 7, "n_output_tokens": 3, "n_cache_tokens": 1},
         )
         _write_trial(
             job_dir,
@@ -567,6 +599,7 @@ async def test_both_evaluators_produce_equivalent_trials(
             task_name="hello/sum-three",
             task_dir=dataset_dir / "sum-three",
             rewards={"reward": 0.0, "format_ok": 1.0},
+            agent_result={"n_input_tokens": 7, "n_output_tokens": 3, "n_cache_tokens": 1},
         )
 
     fake_job.on_run = write_results

@@ -12,7 +12,6 @@ from typing import Generic, List, Optional, TypeVar
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.inference.model_provider import ModelProvider
-from nemo_platform.types.models import ModelEntity
 from nemo_platform_plugin.k8s_naming import (
     DNS_LABEL_MAX_LENGTH,
     DNS_SUBDOMAIN_MAX_LENGTH,
@@ -20,6 +19,7 @@ from nemo_platform_plugin.k8s_naming import (
     k8s_safe_name,
     workspace_name_identity,
 )
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.api.common import PaginationData
 from nmp.common.entities.constants import NAME_PATTERN as ENTITY_NAME_PATTERN
 from pydantic import BaseModel

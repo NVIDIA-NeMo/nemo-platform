@@ -181,7 +181,7 @@ sbx exec --workdir "$repo" \
   nemo agents experimentalist run \
   --no-insight \
   --agent "${AGENT_REPO_URL}@main" \
-  --agent-spec /tmp/tau3-nooa-agent/AGENT-SPEC.md \
+  --ethos /tmp/tau3-nooa-agent/ETHOS.md \
   --train-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
   --validation-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
   --workspace canonical-tau3-airline \
@@ -233,7 +233,7 @@ sbx exec --workdir "$repo" \
   nemo agents experimentalist run \
   --no-insight \
   --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
-  --agent-spec plugins/nemo-experimentalist/examples/tau3-nooa-agent/AGENT-SPEC.md \
+  --ethos plugins/nemo-experimentalist/examples/tau3-nooa-agent/ETHOS.md \
   --train-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
   --validation-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
   --workspace canonical-tau3-airline \

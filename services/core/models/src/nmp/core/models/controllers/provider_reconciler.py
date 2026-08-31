@@ -16,7 +16,7 @@ from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.inference.model_provider import ModelProvider
 from nemo_platform.types.inference.virtual_model import VirtualModel
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.datetime_utils import ensure_utc
 from nmp.common.entities.constants import NAME_PATTERN
 from nmp.common.entities.utils import parse_entity_ref

@@ -38,7 +38,7 @@ vi.mock('lucide-react', async () => {
 });
 
 // Mock the util constants
-vi.mock('@studio/routes/SafeSynthesizerJobRoute/util', () => ({
+vi.mock('@studio/routes/GenerateJobRoute/util', () => ({
   SAFE_SYNTHESIZER_POLLING_INTERVAL_MS: 5000,
 }));
 

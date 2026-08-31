@@ -89,8 +89,7 @@ def test_vllm_server_command_image_args_and_gpu() -> None:
     puller_env = {item.name: item.value for item in puller.env}
     assert puller_env["HF_ENDPOINT"] == resolved.files_hf_url
     assert puller_env["HF_TOKEN"] == "service:models"
-    assert puller.resources is not None
-    assert puller.resources.limits["nvidia.com/gpu"] == "1"
+    assert "nvidia.com/gpu" not in puller.resources.limits
 
 
 def test_nim_gpu_resources_without_override() -> None:
@@ -392,7 +391,7 @@ def test_lora_sidecar_rewrites_loopback_nmp_base_url_for_docker() -> None:
             return_value=platform,
         ),
         patch(
-            "nmp.core.models.controllers.backends.deployments_plugin.compiler.determine_loopback_override",
+            "nmp.core.models.controllers.backends.deployments_plugin.resolve.determine_loopback_override",
             return_value=None,
         ),
     ):

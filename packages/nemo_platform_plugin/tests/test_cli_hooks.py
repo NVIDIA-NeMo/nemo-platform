@@ -49,6 +49,10 @@ class _ByeJob(NemoJob):
         return {"message": f"Bye, {config.get('name', 'world')}!"}
 
 
+class _FlatGreetJob(_GreetJob):
+    generate_legacy_verbs: ClassVar[bool] = False
+
+
 class _GreetSpec(BaseModel):
     name: str
 
@@ -73,6 +77,10 @@ class _ByeFunction(NemoFunction[_GreetSpec]):
 
     async def run(self, spec: _GreetSpec) -> _GreetResponse:
         return _GreetResponse(message=f"Bye, {spec.name}!")
+
+
+class _FlatGreetFunction(_GreetFunction):
+    generate_legacy_verbs: ClassVar[bool] = False
 
 
 class _NoOpCLI(NemoCLI):
@@ -212,6 +220,28 @@ class TestUpdateJobCli:
         bye_help = runner.invoke(app, ["bye", "--help"])
         assert "custom" not in bye_help.output
 
+    def test_direct_mode_hook_can_replace_flat_job_command(self) -> None:
+        class _CLI(_NoOpCLI):
+            def update_job_cli(self, job_cls, group) -> None:
+                if job_cls is not _FlatGreetJob:
+                    return
+                original = next(c for c in group.registered_commands if c.name == "greet").callback
+                assert original is not None
+
+                @group.command("greet")
+                def greet() -> None:
+                    typer.echo("flat-job-replaced")
+
+        app = _app_with_jobs(_FlatGreetJob, cli=_CLI())
+
+        help_result = runner.invoke(app, ["--help"])
+        assert help_result.exit_code == 0
+        assert "greet" in help_result.output
+
+        result = runner.invoke(app, ["greet"])
+        assert result.exit_code == 0
+        assert result.output.strip() == "flat-job-replaced"
+
 
 # ---------------------------------------------------------------------------
 # update_function_cli
@@ -309,3 +339,25 @@ class TestUpdateFunctionCli:
 
         bye_help = runner.invoke(app, ["bye", "--help"])
         assert "custom" not in bye_help.output
+
+    def test_direct_mode_hook_can_replace_flat_function_command(self) -> None:
+        class _CLI(_NoOpCLI):
+            def update_function_cli(self, fn_cls, group) -> None:
+                if fn_cls is not _FlatGreetFunction:
+                    return
+                original = next(c for c in group.registered_commands if c.name == "greet").callback
+                assert original is not None
+
+                @group.command("greet")
+                def greet() -> None:
+                    typer.echo("flat-function-replaced")
+
+        app = _app_with_functions(_FlatGreetFunction, cli=_CLI())
+
+        help_result = runner.invoke(app, ["--help"])
+        assert help_result.exit_code == 0
+        assert "greet" in help_result.output
+
+        result = runner.invoke(app, ["greet"])
+        assert result.exit_code == 0
+        assert result.output.strip() == "flat-function-replaced"

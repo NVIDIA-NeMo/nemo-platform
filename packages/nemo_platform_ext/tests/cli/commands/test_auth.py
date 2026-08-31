@@ -430,6 +430,27 @@ def test_auth_access_keys_create_sends_optional_metadata_and_expiration(monkeypa
     )
 
 
+def test_auth_access_keys_create_sends_service_account(monkeypatch: pytest.MonkeyPatch):
+    fake_platform_client = MagicMock()
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.create_access_key.return_value.data.return_value = _created_access_key("otel")
+    monkeypatch.setattr("nemo_platform_ext.cli.core.context.CLIContext.get_client", lambda self: fake_platform_client)
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(
+        app,
+        ["auth", "access-keys", "create", "--name", "otel", "--service-account", "otel-collector"],
+    )
+
+    assert_exit_code(result, 0)
+    fake_access_keys_client.create_access_key.assert_called_once_with(
+        body=AccessKeyCreateRequest(name="otel", service_account_id="otel-collector")
+    )
+
+
 def test_auth_access_keys_create_sends_explicit_null_expiration(monkeypatch: pytest.MonkeyPatch):
     fake_platform_client = MagicMock()
     fake_access_keys_client = MagicMock()

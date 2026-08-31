@@ -14,7 +14,6 @@ import os
 os.environ.setdefault("TORCHINDUCTOR_FX_GRAPH_REMOTE_CACHE", "0")
 os.environ.setdefault("TORCHINDUCTOR_AUTOTUNE_REMOTE_CACHE", "0")
 
-import argparse
 import json
 import logging
 import sys
@@ -25,8 +24,8 @@ from typing import cast
 
 import pandas as pd
 from datasets import Dataset, DatasetDict, load_dataset
+from filesets import parse_fileset_ref
 from nemo_platform import NeMoPlatform
-from nemo_platform.filesets import parse_fileset_ref
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.client import JobsClient
@@ -190,27 +189,6 @@ def upload_results(result: SafeSynthesizerResults, adapter_path: Path | None = N
         _create_job_result(sdk, workspace, job_id, "adapter", artifact_url)
 
 
-def write_results_local(result: SafeSynthesizerResults, output_dir: Path, adapter_path: Path | None = None) -> None:
-    """Write NSS results to the host filesystem for local CUDA development."""
-    if result.synthetic_data is None:
-        raise ValueError("Safe Synthesizer did not produce synthetic data")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    result.synthetic_data.to_csv(output_dir / "synthetic-data.csv", index=False)
-    with open(output_dir / "summary.json", "w", encoding="utf-8") as f:
-        json.dump(result.summary.model_dump(), f, indent=2)
-    if result.evaluation_report_html:
-        (output_dir / "evaluation-report.html").write_text(result.evaluation_report_html, encoding="utf-8")
-    if adapter_path is not None and adapter_path.exists():
-        embed_run_config_in_adapter(adapter_path)
-        adapter_target = output_dir / "adapter"
-        if adapter_path.is_dir():
-            import shutil
-
-            if adapter_target.exists():
-                shutil.rmtree(adapter_target)
-            shutil.copytree(adapter_path, adapter_target)
-
-
 def _create_job_result(sdk: NeMoPlatform, workspace: str, job_name: str, result_name: str, artifact_url: str):
     """Create a job result record."""
     client_from_platform(sdk, JobsClient).create_job_result(
@@ -321,7 +299,7 @@ def run_config(
     _validate_flat_tabular_data(data_source)
     enable_synthesis: bool = job_config.enable_synthesis
     logger.info("enable_synthesis=%s", enable_synthesis)
-    logger.info("Nemo Safe Synthesizer runtime job config: %s", job_config.model_dump_json(indent=2))
+    logger.info("Nemo Safe Synthesizer task job config: %s", job_config.model_dump_json(indent=2))
     logger.info("Using save_path: %s", save_path)
 
     http_backoff = None
@@ -356,8 +334,8 @@ def run_config(
             total_time = time.monotonic() - (ss._total_start or time.monotonic())
             pii_replaced_df = getattr(ss, "_training_df", None)
             if pii_replaced_df is None:
-                # Older upstream builds used _train_df; keep a fallback so
-                # plugin-local runs do not depend on exactly one NSS internals name.
+                # Older upstream builds used _train_df; keep a fallback so the
+                # task does not depend on exactly one NSS internals name.
                 pii_replaced_df = getattr(ss, "_train_df", None)
             if pii_replaced_df is None:
                 raise RuntimeError("process_data() completed but processed training data is unavailable")
@@ -420,56 +398,15 @@ def run_from_env() -> None:
             pretrained_model_tmp.cleanup_tmp_dir()
 
 
-def run_local(spec_file: Path, workspace: str, output_dir: Path, data_source: Path | None = None) -> None:
-    """Run NSS on the host GPU from a job spec file."""
-    os.environ.setdefault(NEMO_JOB_WORKSPACE_ENVVAR, workspace)
-    with open(spec_file, "r", encoding="utf-8") as f:
-        raw_job_config = json.load(f)
-    job_config = SafeSynthesizerJobConfig.model_validate(raw_job_config)
-    if data_source is None:
-        loaded_data = download_from_fileset(job_config.data_source)
-    else:
-        loaded_data = _load_file_as_dataframe(data_source)
-    pretrained_model_tmp, adapter_path = _resolve_pretrained_model(job_config, workspace=workspace)
-    try:
-        result, new_adapter_path = run_config(
-            job_config,
-            loaded_data,
-            output_dir / "work",
-            adapter_location=adapter_path,
-        )
-        write_results_local(result, output_dir, new_adapter_path)
-    finally:
-        if pretrained_model_tmp is not None:
-            pretrained_model_tmp.cleanup_tmp_dir()
-
-
 def main(argv: list[str] | None = None) -> None:
-    """Run the task entry point from either platform env vars or CLI args."""
+    """Run the task entry point from the platform task-container environment."""
     argv = sys.argv[1:] if argv is None else argv
-    if not argv:
-        run_from_env()
-        return
-
-    parser = argparse.ArgumentParser(prog="python -m nemo_safe_synthesizer_plugin.tasks.safe_synthesizer")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    local_parser = subparsers.add_parser("run-local", help="Run a Safe Synthesizer job from a local spec file.")
-    local_parser.add_argument("--spec-file", required=True, type=Path)
-    local_parser.add_argument("--workspace", default="default")
-    local_parser.add_argument("--output-dir", required=True, type=Path)
-    local_parser.add_argument("--data-source", type=Path)
-
-    args = parser.parse_args(argv)
-    if args.command == "run-local":
-        run_local(
-            spec_file=args.spec_file,
-            workspace=args.workspace,
-            output_dir=args.output_dir,
-            data_source=args.data_source,
+    if argv:
+        raise SystemExit(
+            "Safe Synthesizer task subcommands are not supported. "
+            "Create Safe Synthesizer jobs through the platform Jobs service."
         )
-        return
-
-    parser.error(f"unknown command: {args.command}")
+    run_from_env()
 
 
 if __name__ == "__main__":

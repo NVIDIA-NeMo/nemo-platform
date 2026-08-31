@@ -21,10 +21,10 @@ optimizer:
 eval:
   general:
     dataset:
-      file_path: plugins/nemo-optimization/examples/hermes-optimize/dataset-chatonly.json
+      file_path: dataset-chatonly.json
     max_concurrency: 1
   fabric:
-    base_dir: plugins/nemo-optimization/examples/hermes-optimize
+    base_dir: .
     capture_trajectory: false
     timeout_s: 180
   evaluators:

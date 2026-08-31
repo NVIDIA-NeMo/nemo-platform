@@ -621,7 +621,7 @@ async def test_the_analyzer_is_built_with_the_runs_trace_loader(tmp_path, isolat
             round_num=0,
             config=config,
             load_trace=ctx.load_trace,
-            agent_spec_path=None,
+            ethos_path=None,
         )
 
     assert "load_trace" in seen, "analyzer built without a trace loader; intake traces are unreadable"

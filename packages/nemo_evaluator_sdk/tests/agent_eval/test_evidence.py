@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import asyncio
+import importlib
 import json
 import os
 import time
@@ -10,11 +11,15 @@ from pathlib import Path
 import pytest
 from nemo_evaluator_sdk.execution.samples import build_metric_input
 from nemo_evaluator_sdk.values.evidence import (
+    EVIDENCE_FORMAT_ATIF,
+    EVIDENCE_FORMAT_OTLP,
+    ATIFTraceHandle,
     CandidateEvidence,
     EvidenceDescriptor,
     LocalFilesystemEvidence,
+    OTLPTraceHandle,
 )
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 
 def test_metric_input_preserves_candidate_evidence_out_of_metadata() -> None:
@@ -315,6 +320,8 @@ async def test_trace_handle_reads_atif(tmp_path: Path) -> None:
         descriptors={"trace": EvidenceDescriptor(kind="trace", ref=str(trace_path), format="atif")}
     )
     handle = await evidence.trace("trace")
+    assert isinstance(handle, ATIFTraceHandle)
+    assert handle.format == "atif"
     assert handle is await evidence.trace("trace")  # cached
     trajectory = await handle.trace()
     assert trajectory.schema_version == "ATIF-v1.7"
@@ -326,8 +333,116 @@ async def test_trace_handle_reads_atif(tmp_path: Path) -> None:
     bad = CandidateEvidence(
         descriptors={"trace": EvidenceDescriptor(kind="trace", format="atif", data={"steps": "not-a-list"})}
     )
+    bad_handle = await bad.trace("trace")
+    assert isinstance(bad_handle, ATIFTraceHandle)
     with pytest.raises(ValidationError):
-        await (await bad.trace("trace")).trace()
+        await bad_handle.trace()
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_reads_atif_when_optional_format_is_absent() -> None:
+    evidence = CandidateEvidence(descriptors={"trace": EvidenceDescriptor(kind="trace", data=_ATIF_TRAJECTORY)})
+
+    handle = await evidence.trace("trace")
+    assert isinstance(handle, ATIFTraceHandle)
+    assert handle.format == "atif"
+    trajectory = await handle.trace()
+
+    assert trajectory.schema_version == "ATIF-v1.7"
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_reads_otlp_jsonl_and_inline_data(tmp_path: Path) -> None:
+    trace_path = tmp_path / "trace.jsonl"
+    trace_path.write_text(
+        json.dumps({"resourceSpans": [{"schemaUrl": "keep-me", "scopeSpans": []}]})
+        + "\n"
+        + json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": [{"name": "child"}]}]}]})
+        + "\n",
+        encoding="utf-8",
+    )
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_OTLP, ref=str(trace_path))}
+    )
+
+    assert EVIDENCE_FORMAT_ATIF == "atif"
+    assert EVIDENCE_FORMAT_OTLP == "otlp"
+    handle = await evidence.trace("trace")
+    assert isinstance(handle, OTLPTraceHandle)
+    assert handle.format == "otlp"
+    assert handle is await evidence.trace("trace")
+
+    resource_spans = await handle.resource_spans()
+    assert len(resource_spans) == 2
+    assert resource_spans[0]["schemaUrl"] == "keep-me"
+    assert resource_spans[1]["scopeSpans"][0]["spans"][0]["name"] == "child"
+
+    inline = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format="otlp", data=[{"scopeSpans": []}])}
+    )
+    inline_handle = await inline.trace("trace")
+    assert isinstance(inline_handle, OTLPTraceHandle)
+    assert await inline_handle.resource_spans() == [{"scopeSpans": []}]
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_reads_pretty_printed_otlp_object(tmp_path: Path) -> None:
+    trace_path = tmp_path / "trace.json"
+    trace_path.write_text(
+        json.dumps({"resourceSpans": [{"scopeSpans": []}]}, indent=2),
+        encoding="utf-8",
+    )
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format="otlp", ref=str(trace_path))}
+    )
+
+    handle = await evidence.trace()
+    assert isinstance(handle, OTLPTraceHandle)
+    assert await handle.resource_spans() == [{"scopeSpans": []}]
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_caches_empty_otlp_after_first_read(tmp_path: Path) -> None:
+    trace_path = tmp_path / "empty.jsonl"
+    trace_path.write_text('{"resourceSpans": []}\n', encoding="utf-8")
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format="otlp", ref=str(trace_path))}
+    )
+
+    handle = await evidence.trace()
+    assert isinstance(handle, OTLPTraceHandle)
+    assert await handle.resource_spans() == []
+    trace_path.unlink()
+    assert await handle.resource_spans() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "not-an-object",
+        {},
+        {"resourceSpans": "not-a-list"},
+        {"resourceSpans": ["not-an-object"]},
+    ],
+)
+async def test_trace_handle_rejects_malformed_otlp(payload: JsonValue) -> None:
+    evidence = CandidateEvidence(descriptors={"trace": EvidenceDescriptor(kind="trace", format="otlp", data=payload)})
+
+    handle = await evidence.trace()
+    assert isinstance(handle, OTLPTraceHandle)
+    with pytest.raises(ValueError):
+        await handle.resource_spans()
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_rejects_unknown_format() -> None:
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format="json", data={"resourceSpans": []})}
+    )
+
+    with pytest.raises(ValueError, match="unknown trace evidence format 'json'"):
+        await evidence.trace()
 
 
 @pytest.mark.asyncio
@@ -336,7 +451,9 @@ async def test_trace_handle_exposes_typed_tool_evidence_and_retains_modeled_fiel
         descriptors={"trace": EvidenceDescriptor(kind="trace", format="atif", data=_ATIF_TRAJECTORY)}
     )
 
-    trajectory = await (await evidence.trace("trace")).trace()
+    handle = await evidence.trace("trace")
+    assert isinstance(handle, ATIFTraceHandle)
+    trajectory = await handle.trace()
     assert trajectory.agent is not None
     assert trajectory.agent.name == "demo"
     assert trajectory.session_id == "session-1"
@@ -372,9 +489,10 @@ async def test_trace_handle_exposes_typed_tool_evidence_and_retains_modeled_fiel
 def test_observation_models_are_exported_from_source_and_vendored_values_packages() -> None:
     from nemo_evaluator_sdk.values import Observation as SourceObservation
     from nemo_evaluator_sdk.values import ObservationResult as SourceObservationResult
-    from nemo_platform.beta.evaluator.values import Observation as VendoredObservation
-    from nemo_platform.beta.evaluator.values import ObservationResult as VendoredObservationResult
 
+    vendored_values = importlib.import_module("nemo_platform.beta.evaluator.values")
+    VendoredObservation = vendored_values.Observation
+    VendoredObservationResult = vendored_values.ObservationResult
     assert SourceObservation.__name__ == VendoredObservation.__name__ == "Observation"
     assert SourceObservationResult.__name__ == VendoredObservationResult.__name__ == "ObservationResult"
 

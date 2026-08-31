@@ -14,6 +14,7 @@ import { GuardrailCheckDetailSidePanel } from '@studio/components/sidePanels/Gua
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { GuardrailChecksSubTab } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailTestCard } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCard';
+import { getMainModelName } from '@studio/routes/guardrails/GuardrailConfigTab/mainModel';
 import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { ListChecks, Plus } from 'lucide-react';
@@ -95,8 +96,17 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
 
   const isRunning = isFlushing || runMutation.isPending;
 
+  // The config a run would actually target. A run without a main model fails identically for
+  // every check, so refuse up front rather than after N round trips.
+  const targetConfig = runTarget === 'draft' ? draftConfig : configData;
+  const hasMainModel = Boolean(getMainModelName(targetConfig?.models));
+  const runBlockedReason =
+    !checks.length || hasMainModel
+      ? undefined
+      : 'Set a main model on the Configuration tab to run tests';
+
   const handleRunAll = async () => {
-    if (!checks.length || isRunning) return;
+    if (!checks.length || isRunning || !hasMainModel) return;
     setIsFlushing(true);
     try {
       // Clicking Run blurs the focused message, dispatching that card's save. Await it, or the
@@ -152,7 +162,8 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
             kind="primary"
             height={32}
             loading={isRunning}
-            disabled={!checks.length || isRunning}
+            disabled={!checks.length || isRunning || !hasMainModel}
+            title={runBlockedReason}
             onClick={() => void handleRunAll()}
           >
             <ListChecks size={16} />

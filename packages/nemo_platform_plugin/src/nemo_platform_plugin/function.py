@@ -137,6 +137,14 @@ class NemoFunction(_NamedPlugin, Generic[SpecT]):
         relocate itself outside its plugin's URL namespace. Leave
         ``None`` to use the default.
 
+    .. attribute:: generate_legacy_verbs
+        :type: bool
+
+        Temporary CLI compatibility knob. ``True`` keeps the generated
+        ``<function> run|submit`` command group. ``False`` registers
+        ``<function>`` itself as the remote submit command and omits the
+        local ``run`` and legacy ``submit`` verbs.
+
     Stream response start:
 
     .. attribute:: send_headers_before_first_frame
@@ -187,6 +195,8 @@ class NemoFunction(_NamedPlugin, Generic[SpecT]):
     # ------------------------------------------------------------------ #
 
     endpoint: ClassVar[str | None] = None
+
+    generate_legacy_verbs: ClassVar[bool] = True
 
     send_headers_before_first_frame: ClassVar[bool] = False
 

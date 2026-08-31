@@ -27,6 +27,15 @@ Usage (once the SDK hub is wired up)::
     dep = nemo.agents.deployments.get("calculator-a1b2")
     nemo.agents.deployments.delete("calculator-a1b2")
 
+    # Environments / specs (the request/fulfill split)
+    spec = nemo.agents.environment_specs.create(
+        name="ben", env={"LOG_LEVEL": "debug"},
+        secrets={"GITHUB_PERSONAL_ACCESS_TOKEN": "default/ben-pat"},
+    )
+    env = nemo.agents.environments.create(name="repo-research-ben", environment_spec="default/ben")
+    cs = nemo.agents.compute_specs.create(name="big", resources={"limits": {"cpu": "2"}})
+    dep = nemo.agents.deployments.create(agent="calculator", environment="default/repo-research-ben")
+
     # Invocation (routes through the agents gateway)
     result = nemo.agents.invoke(agent="calculator", input="What is 2+2?")
     result = nemo.agents.invoke(
@@ -73,6 +82,9 @@ class AgentsResource:
         """
         self._platform = platform
         self._deployments: _DeploymentResource | None = None
+        self._environments: _EnvironmentResource | None = None
+        self._environment_specs: _EnvironmentSpecResource | None = None
+        self._compute_specs: _ComputeSpecResource | None = None
 
     # ------------------------------------------------------------------
     # Agent CRUD
@@ -135,11 +147,32 @@ class AgentsResource:
     # ------------------------------------------------------------------
 
     @property
-    def deployments(self) -> "_DeploymentResource":
+    def deployments(self) -> _DeploymentResource:
         """Sub-resource for deployment lifecycle operations."""
         if self._deployments is None:
             self._deployments = _DeploymentResource(self)
         return self._deployments
+
+    @property
+    def environments(self) -> _EnvironmentResource:
+        """Sub-resource for AgentEnvironment CRUD (``nemo.agents.environments``)."""
+        if self._environments is None:
+            self._environments = _EnvironmentResource(self)
+        return self._environments
+
+    @property
+    def environment_specs(self) -> _EnvironmentSpecResource:
+        """Sub-resource for AgentEnvironmentSpec CRUD (``nemo.agents.environment_specs``)."""
+        if self._environment_specs is None:
+            self._environment_specs = _EnvironmentSpecResource(self)
+        return self._environment_specs
+
+    @property
+    def compute_specs(self) -> _ComputeSpecResource:
+        """Sub-resource for AgentComputeSpec CRUD (``nemo.agents.compute_specs``)."""
+        if self._compute_specs is None:
+            self._compute_specs = _ComputeSpecResource(self)
+        return self._compute_specs
 
     # ------------------------------------------------------------------
     # Invocation and evaluation
@@ -263,6 +296,8 @@ class _DeploymentResource:
         name: str | None = None,
         deployment_mode: str = "subprocess",
         image: str | None = None,
+        use_image_entrypoint: bool = False,
+        environment: str | dict[str, Any] | None = None,
         workspace: str | None = None,
     ) -> dict[str, Any]:
         """Create a deployment for *agent*.
@@ -277,6 +312,14 @@ class _DeploymentResource:
             image: Container image for ``docker``/``k8s`` modes. Falls back to
                 ``agents.deployments.default_image`` when omitted. Rejected in
                 ``subprocess`` mode.
+            use_image_entrypoint: For ``docker``/``k8s`` modes, preserve the
+                image ENTRYPOINT/CMD instead of injecting the platform-owned
+                agent server command.
+            environment: Optional AgentEnvironment to deploy under — a
+                ``"workspace/name"`` ref to a stored AgentEnvironment, or an
+                inline environment dict. Its EnvironmentSpec is merged into the
+                agent config and its ComputeSpec/secret refs are snapshotted onto
+                the deployment at creation time.
             workspace: Target workspace.
 
         Returns:
@@ -284,11 +327,17 @@ class _DeploymentResource:
         """
         if image and deployment_mode == "subprocess":
             raise ValueError("image requires deployment_mode='docker' or 'k8s'.")
+        if use_image_entrypoint and deployment_mode == "subprocess":
+            raise ValueError("use_image_entrypoint requires deployment_mode='docker' or 'k8s'.")
         payload: dict[str, Any] = {"agent": agent, "deployment_mode": deployment_mode}
         if name:
             payload["name"] = name
         if image:
             payload["image"] = image
+        if use_image_entrypoint:
+            payload["use_image_entrypoint"] = True
+        if environment is not None:
+            payload["environment"] = environment
         return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/deployments", payload)
 
     def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
@@ -302,6 +351,139 @@ class _DeploymentResource:
     def delete(self, name: str, workspace: str | None = None) -> None:
         """Mark a deployment for deletion."""
         self._parent._delete(f"/v2/workspaces/{self._parent._workspace(workspace)}/deployments/{name}")
+
+
+class _EnvironmentSpecResource:
+    """AgentEnvironmentSpec CRUD under ``nemo.agents.environment_specs``.
+
+    An EnvironmentSpec is the fulfillment half of the request/fulfill split: the
+    Agent declares the dependencies it needs; the spec provides concrete
+    endpoints, plaintext env, and secret refs. It is merged into the agent config
+    at deployment/job create time.
+    """
+
+    def __init__(self, parent: AgentsResource) -> None:
+        self._parent = parent
+
+    def create(self, *, name: str, workspace: str | None = None, **spec: Any) -> dict[str, Any]:
+        """Create an environment spec.
+
+        Args:
+            name: Unique environment-spec name within the workspace.
+            workspace: Target workspace.
+            **spec: EnvironmentSpecInline fields (``env``, ``secrets``, ``mcp``,
+                ``provider``, ``model_provider_override``, ``workspace_path``,
+                ``artifacts_path``, ``connection``, ``metadata``, ``settings``,
+                ...). See :class:`EnvironmentSpecInline`.
+
+        Returns:
+            The created AgentEnvironmentSpec as a dict.
+        """
+        payload: dict[str, Any] = {"name": name, **spec}
+        return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/environment-specs", payload)
+
+    def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
+        """List environment specs in *workspace*."""
+        return self._parent._get(f"/v2/workspaces/{self._parent._workspace(workspace)}/environment-specs")
+
+    def get(self, name: str, workspace: str | None = None) -> dict[str, Any]:
+        """Get an environment spec by name."""
+        return self._parent._get(f"/v2/workspaces/{self._parent._workspace(workspace)}/environment-specs/{name}")
+
+    def delete(self, name: str, workspace: str | None = None) -> None:
+        """Delete an environment spec by name."""
+        self._parent._delete(f"/v2/workspaces/{self._parent._workspace(workspace)}/environment-specs/{name}")
+
+
+class _EnvironmentResource:
+    """AgentEnvironment CRUD under ``nemo.agents.environments``.
+
+    An AgentEnvironment composes an ``environment_spec`` and a ``compute_spec``
+    (each a ``"workspace/name"`` ref or an inline object). It is the single thing
+    a deployment or execute job references via its ``environment`` field.
+    """
+
+    def __init__(self, parent: AgentsResource) -> None:
+        self._parent = parent
+
+    def create(
+        self,
+        *,
+        name: str,
+        environment_spec: str | dict[str, Any] | None = None,
+        compute_spec: str | dict[str, Any] | None = None,
+        description: str = "",
+        workspace: str | None = None,
+    ) -> dict[str, Any]:
+        """Create an AgentEnvironment.
+
+        Args:
+            name: Unique environment name within the workspace.
+            environment_spec: A ``"workspace/name"`` ref to a stored
+                AgentEnvironmentSpec, an inline spec dict, or ``None``.
+            compute_spec: A ``"workspace/name"`` ref to a stored AgentComputeSpec,
+                an inline spec dict, or ``None``.
+            description: Optional human-readable description.
+            workspace: Target workspace.
+
+        Returns:
+            The created AgentEnvironment as a dict.
+        """
+        payload: dict[str, Any] = {"name": name, "description": description}
+        if environment_spec is not None:
+            payload["environment_spec"] = environment_spec
+        if compute_spec is not None:
+            payload["compute_spec"] = compute_spec
+        return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/environments", payload)
+
+    def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
+        """List environments in *workspace*."""
+        return self._parent._get(f"/v2/workspaces/{self._parent._workspace(workspace)}/environments")
+
+    def get(self, name: str, workspace: str | None = None) -> dict[str, Any]:
+        """Get an environment by name."""
+        return self._parent._get(f"/v2/workspaces/{self._parent._workspace(workspace)}/environments/{name}")
+
+    def delete(self, name: str, workspace: str | None = None) -> None:
+        """Delete an environment by name."""
+        self._parent._delete(f"/v2/workspaces/{self._parent._workspace(workspace)}/environments/{name}")
+
+
+class _ComputeSpecResource:
+    """AgentComputeSpec CRUD under ``nemo.agents.compute_specs``.
+
+    A ComputeSpec is a reusable set of k8s-style resource requests/limits an
+    invocation runs with.
+    """
+
+    def __init__(self, parent: AgentsResource) -> None:
+        self._parent = parent
+
+    def create(self, *, name: str, workspace: str | None = None, **spec: Any) -> dict[str, Any]:
+        """Create a compute spec.
+
+        Args:
+            name: Unique compute-spec name within the workspace.
+            workspace: Target workspace.
+            **spec: ComputeSpecInline fields (``resources``, ``description``).
+
+        Returns:
+            The created AgentComputeSpec as a dict.
+        """
+        payload: dict[str, Any] = {"name": name, **spec}
+        return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/compute-specs", payload)
+
+    def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
+        """List compute specs in *workspace*."""
+        return self._parent._get(f"/v2/workspaces/{self._parent._workspace(workspace)}/compute-specs")
+
+    def get(self, name: str, workspace: str | None = None) -> dict[str, Any]:
+        """Get a compute spec by name."""
+        return self._parent._get(f"/v2/workspaces/{self._parent._workspace(workspace)}/compute-specs/{name}")
+
+    def delete(self, name: str, workspace: str | None = None) -> None:
+        """Delete a compute spec by name."""
+        self._parent._delete(f"/v2/workspaces/{self._parent._workspace(workspace)}/compute-specs/{name}")
 
 
 agents_sdk_resources = NemoPluginSDKResources(sync_resource=AgentsResource)

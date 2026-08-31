@@ -325,7 +325,7 @@ def test_create_session_persists_workspace_and_owner(
 def test_recent_conversation_messages_caps_model_context_without_mutating_history(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(assistant, "MAX_RETAINED_TURNS_PER_SESSION", 2)
+    monkeypatch.setattr(assistant, "MAX_MODEL_CONTEXT_TURNS_PER_SESSION", 2)
     conversation = [
         AssistantMessage(role=role, content=f"{role}-{turn}") for turn in range(3) for role in ("user", "assistant")
     ]
@@ -339,6 +339,39 @@ def test_recent_conversation_messages_caps_model_context_without_mutating_histor
         {"role": "assistant", "content": "assistant-2"},
     ]
     assert len(conversation) == 6
+
+
+def test_recent_conversation_messages_removes_legacy_studio_context():
+    contextual_prompt = assistant._build_claude_prompt(
+        "create a guardrail",
+        "default",
+        "https://studio.test",
+        "/workspaces/default/guardrails",
+    )
+    conversation = [AssistantMessage(role="user", content=contextual_prompt)]
+
+    recent = assistant._recent_conversation_messages(conversation)
+
+    assert recent[0].content == "create a guardrail"
+    assert conversation[0].content == contextual_prompt
+
+
+def test_recent_conversation_messages_preserves_user_prompt_with_studio_context_markers():
+    user_prompt = "\n".join(
+        [
+            assistant.STUDIO_CONTEXT_START,
+            "Explain how these Studio wrapper markers work.",
+            assistant.STUDIO_CONTEXT_END,
+            "",
+            assistant.STUDIO_CONTEXT_USER_REQUEST_PREFIX,
+            "This text is part of my example.",
+        ]
+    )
+    conversation = [AssistantMessage(role="user", content=user_prompt)]
+
+    recent = assistant._recent_conversation_messages(conversation)
+
+    assert recent[0].content == user_prompt
 
 
 def test_list_history_sessions_includes_persisted_conversation(
@@ -1245,6 +1278,26 @@ def test_studio_link_destinations_cover_registered_workspace_routes():
         for route_key, destination in route_destination_map.items()
         if route_key in registered_route_keys and destination not in studio_links.STUDIO_LINK_DESTINATIONS
     } == {}
+
+
+def test_build_studio_link_result_returns_virtual_model_chat_link():
+    result = studio_links.build_studio_link_result(
+        "default",
+        None,
+        {"destination": "virtual_model_chat", "name": "demo guarded"},
+        enabled_destinations={"virtual_model_chat": studio_links.STUDIO_LINK_DESTINATIONS["virtual_model_chat"]},
+    )
+
+    assert result == {
+        "workspace": "default",
+        "destination": "virtual_model_chat",
+        "path": "/workspaces/default/virtual-models?virtualModel=demo%20guarded&tab=chat",
+        "url": None,
+        "markdown": (
+            "[Chat with VirtualModel demo guarded]"
+            "(/workspaces/default/virtual-models?virtualModel=demo%20guarded&tab=chat)"
+        ),
+    }
 
 
 def test_mcp_studio_link_returns_agents_page_markdown(service_client: TestClient):
@@ -2309,6 +2362,15 @@ def test_nemo_agent_error_detail_does_not_expose_exception_text():
     )
 
 
+def test_nemo_agent_timeout_detail_explains_where_to_find_late_results():
+    request = httpx.Request("POST", "https://platform.test/agent")
+
+    assert assistant._assistant_error_detail(httpx.ReadTimeout("private detail", request=request)) == (
+        "NeMo Assistant timed out before completing. The operation may still finish; "
+        "check History and Intake traces before retrying."
+    )
+
+
 def test_parse_tool_step_input_extracts_python_repr_dict():
     payload = "**Input:**\n```json\n{'action': 'list', 'resource': 'secrets'}\n```\n**Output:** ..."
     assert assistant._parse_tool_step_input(payload) == {"action": "list", "resource": "secrets"}
@@ -2350,8 +2412,10 @@ async def test_stream_assistant_flushes_tool_events_before_final_response(monkey
         owner_id="local-user",
     )
     await entity_store.create(conversation)
+    invoked_messages: list[dict[str, str]] = []
 
     async def fake_invoke(agent_url, headers, messages, studio_session_id):
+        invoked_messages.extend(messages)
         queue = assistant._session_streams[studio_session_id]
         # Two tool events queued in the same turn the invocation completes: the
         # loop can consume at most one, so the drain must flush the remainder.
@@ -2382,6 +2446,10 @@ async def test_stream_assistant_flushes_tool_events_before_final_response(monkey
     # Both tool-use events survive and are emitted before the final assistant message.
     assert first_tool < final
     assert second_tool < final
+    contextual_message = invoked_messages[-1]["content"]
+    assert "For any deploy_guardrail call for this request, pass deployment_run_id='" in contextual_message
+    deployment_run_id = contextual_message.split("deployment_run_id='", 1)[1].split("'", 1)[0]
+    assert str(uuid.UUID(deployment_run_id)) == deployment_run_id
     assert [message.content for message in conversation.messages] == ["hello", "final answer"]
 
 

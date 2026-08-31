@@ -56,23 +56,16 @@ Stage the fetched files in a temp directory before adapting.
 
 Apply the translation rules below to every fetched markdown file. Leave non-markdown files (e.g., `scripts/get_person_object_schema.py`) byte-identical to upstream.
 
-**Single core rule:** prepend `nemo ` to every CLI invocation of the `data-designer` binary. For most subcommands (`agent`, `config`, `validate`), `nemo data-designer …` accepts the same arguments as the upstream library's CLI, so subcommand names, flags, and positional arguments stay identical.
+**Single core rule:** prepend `nemo ` to every CLI invocation of the `data-designer` binary. For most subcommands (`agent`, `validate`), `nemo data-designer …` accepts the same arguments as the upstream library's CLI, so subcommand names, flags, and positional arguments stay identical.
 
-**Exception — `preview` and `create` require a mode subcommand.** The plugin makes `preview` and `create` into command groups with two execution modes: `run` (local, in-process) and `submit` (cluster, over HTTP). Default to `run` for skill instructions — local execution fits the iterative agent workflow. Insert `run` after the subcommand name and before any positional args / flags. So:
-
-- `data-designer preview <path> --save-results` → `nemo data-designer preview run <path> --save-results`
-- `data-designer create <path> --num-records <N>` → `nemo data-designer create run <path> --num-records <N>`
-- Even prose references like ``the `data-designer preview` command`` should become ``the `nemo data-designer preview run` command`` for consistency with the actual invocation.
-
-**`create` does not accept `--dataset-name` or `--artifact-path`.** Upstream's `create` exposes these flags to name and locate the local artifact folder. The plugin's `create` (both `run` and `submit`) stores artifacts at a Jobs-service-managed path, so there's no local folder to name or relocate. Strip `--dataset-name` and `--artifact-path` (and any related flag values) from upstream `create` invocations during refresh; preserve other flags like `--num-records` as-is.
+**`create` does not accept `--dataset-name` or `--artifact-path`.** Upstream's `create` exposes these flags to name and locate the local artifact folder. The plugin's `create` stores artifacts at a Jobs-service-managed path, so there's no local folder to name or relocate. Strip `--dataset-name` and `--artifact-path` (and any related flag values) from upstream `create` invocations during refresh; preserve other flags like `--num-records` as-is.
 
 This applies to every shell-prompt and backticked invocation of:
 
 - `data-designer agent context` (and other `agent …` subcommands) → just prepend `nemo `
-- `data-designer config providers|models|…` → just prepend `nemo `
 - `data-designer validate <path>` → just prepend `nemo `
-- `data-designer preview <path>` (and any flags after) → prepend `nemo ` AND insert `run`
-- `data-designer create <path>` (and any flags after) → prepend `nemo ` AND insert `run`
+- `data-designer preview <path>` (and any flags after) → prepend `nemo `
+- `data-designer create <path>` (and any flags after) → prepend `nemo `
 
 Do **not** rewrite prose mentions of the project name (e.g., "the Data Designer library", "Data Designer columns"). Only shell-shaped invocations.
 
@@ -140,15 +133,6 @@ grep -RhoE 'nemo data-designer [a-z][a-z -]*' "$SKILLS" \
 ```
 
 Any `MISSING:` line indicates upstream changed the command surface or `nemo data-designer` has drifted from upstream's CLI shape — investigate before merging.
-
-**Every `preview` / `create` invocation has a mode subcommand.** The plugin requires `run` or `submit` after `preview` and `create`. This grep catches missed insertions:
-
-```bash
-grep -RnE 'nemo data-designer (preview|create) ' "$SKILLS" \
-  | grep -vE '(preview|create) (run|submit)[^a-z]'
-```
-
-A clean run produces no output. The trailing `[^a-z]` allows backtick-bounded references like ``the `nemo data-designer preview run` command`` to pass without a trailing space.
 
 ## Notes
 

@@ -6,7 +6,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -42,6 +42,7 @@ from nemo_platform.types.intake.spans.span_group import SpanGroup
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import JobResults
+from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.constants import (
     DEFAULT_JOB_STORAGE_PATH,
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
@@ -753,26 +754,27 @@ async def test_analyze_job_compile_requests_storage_without_provider_credentials
 
 class _AsyncJobList:
     def __init__(self, jobs: list[SimpleNamespace]) -> None:
-        self.jobs = jobs
+        self._jobs = jobs
 
-    def __aiter__(self):
-        return self._iter()
-
-    async def _iter(self):
-        for job in self.jobs:
+    async def items(self):
+        for job in self._jobs:
             yield job
 
 
 class _AsyncJobs:
+    """Duck-typed AsyncJobsClient: records created jobs, serves list_jobs items."""
+
     def __init__(self, jobs: list[SimpleNamespace] | None = None) -> None:
-        self.created: list[dict[str, object]] = []
+        self.created: list[Any] = []
         self.jobs = list(jobs or [])
 
-    async def create(self, **kwargs: object) -> SimpleNamespace:
-        self.created.append(kwargs)
-        return SimpleNamespace(name=kwargs.get("name"))
+    async def create_job(self, *, workspace: str, body: Any) -> SimpleNamespace:
+        del workspace
+        self.created.append(body)
+        return SimpleNamespace(data=lambda: SimpleNamespace(name=body.name))
 
-    def list(self, **_: object) -> _AsyncJobList:
+    async def list_jobs(self, *, workspace: str, query_params: Any = None) -> _AsyncJobList:
+        del workspace, query_params
         return _AsyncJobList(self.jobs)
 
 
@@ -813,6 +815,7 @@ def _controller(
     sdk = _AsyncSdk(jobs=jobs)
     entities = _Entities(run_status=run_status)
     controller._sdk = cast(AsyncNeMoPlatform, sdk)
+    controller._jobs = cast(AsyncJobsClient, sdk.jobs)
     controller._entities = cast(NemoEntitiesClient, entities)
     return controller, sdk, entities
 
@@ -843,15 +846,15 @@ async def test_controller_submits_due_job(monkeypatch: pytest.MonkeyPatch) -> No
     )
 
     async def fake_compile_job_spec(**_: object) -> dict[str, list[object]]:
-        return {"steps": []}
+        return {"steps": [{"name": "step-one", "executor": {"provider": "cpu", "container": {"image": "x"}}}]}
 
     monkeypatch.setattr(controller, "_compile_job_spec", fake_compile_job_spec)
     await controller._reconcile_config(config)
 
     assert len(sdk.jobs.created) == 1
     created = sdk.jobs.created[0]
-    created_spec = cast(dict[str, object], created["spec"])
-    assert created["source"] == "insights"
+    created_spec = cast(dict[str, object], created.spec)
+    assert created.source == "insights"
     assert created_spec["agent"] == "research-agent"
     assert created_spec["since"] is None
     assert created_spec["default_model"] == "default/gpt-5"
@@ -891,7 +894,7 @@ async def test_controller_skips_active_job(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
     async def fake_compile_job_spec(**_: object) -> dict[str, list[object]]:
-        return {"steps": []}
+        return {"steps": [{"name": "step-one", "executor": {"provider": "cpu", "container": {"image": "x"}}}]}
 
     monkeypatch.setattr(controller, "_compile_job_spec", fake_compile_job_spec)
     await controller._reconcile_config(config)

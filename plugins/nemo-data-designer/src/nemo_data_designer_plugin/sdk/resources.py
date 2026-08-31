@@ -16,6 +16,7 @@ from data_designer.config.dataset_metadata import DatasetMetadata
 from data_designer.config.preview_results import PreviewResults
 from data_designer.config.utils.info import InterfaceInfo
 from data_designer.logging import RandomEmoji
+from models.resources import AsyncModelsResource, ModelsResource
 from nemo_data_designer_plugin.functions._types import (
     AnalysisFrame,
     DatasetFrame,
@@ -36,13 +37,11 @@ from nemo_data_designer_plugin.sdk.errors import (
 from nemo_data_designer_plugin.sdk.job_resources import AsyncDataDesignerJobResource, DataDesignerJobResource
 from nemo_data_designer_plugin.sdk.logging import with_logging
 from nemo_data_designer_plugin.sdk.validation import (
-    ExecutionContext,
     ValidationReport,
     validate_config,
     validate_config_sync,
 )
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.models.resources import AsyncModelsResource, ModelsResource
 from nemo_platform.types.inference import ModelProvider as NMPModelProvider
 from nemo_platform_plugin.functions.frames import Done, Error, Heartbeat
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
@@ -360,10 +359,9 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
         self,
         config_builder: dd.DataDesignerConfigBuilder,
         *,
-        execution_context: ExecutionContext | None = None,
         workspace: str | None = None,
     ) -> ValidationReport:
-        """Validate a Data Designer config against one or every execution context.
+        """Validate a Data Designer config.
 
         This runs the same client-side checks ``preview`` / ``create`` perform
         internally, but never short-circuits — every detectable problem is
@@ -372,22 +370,18 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
 
         Args:
             config_builder: Data Designer configuration builder.
-            execution_context: ``"local"``, ``"remote"``, or ``None``.
-                ``None`` (the default) runs every applicable context.
             workspace: Workspace used to resolve provider references and seed
                 sources for the remote pass. Falls back to the platform
                 client's default workspace, then to ``"default"``.
 
         Returns:
-            A :class:`ValidationReport` whose ``ok`` property is true iff
-            every requested context validated cleanly.
+            A :class:``ValidationReport``
         """
         resolved_workspace = workspace or self._platform.workspace or "default"
         return validate_config_sync(
             config_builder,
             sdk=self._platform,
             workspace=resolved_workspace,
-            execution_context=execution_context,
         )
 
 
@@ -534,7 +528,6 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
         self,
         config_builder: dd.DataDesignerConfigBuilder,
         *,
-        execution_context: ExecutionContext | None = None,
         workspace: str | None = None,
     ) -> ValidationReport:
         """Async equivalent of :meth:`DataDesignerResource.validate`."""
@@ -543,7 +536,6 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
             config_builder,
             async_sdk=self._platform,
             workspace=resolved_workspace,
-            execution_context=execution_context,
         )
 
 

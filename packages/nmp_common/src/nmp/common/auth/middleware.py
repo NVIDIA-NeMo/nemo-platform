@@ -76,7 +76,8 @@ HEALTH_ENDPOINTS = {
     "/health/ready",
     "/metrics",
     "/apis/auth/discovery",  # Discovery endpoint for CLI/SDK
-    "/apis/auth/authenticate",  # Bearer-token validation callout
+    "/apis/auth/authenticate",  # Direct bearer-token validation JSON API
+    "/apis/auth/ext-authz",  # Envoy bearer-token validation callout
     "/apis/auth/jwks",  # NeMo-minted bearer-token signing keys
     "/apis/auth/token",  # Workload identity token exchange validates the subject token itself
 }
@@ -89,7 +90,7 @@ PUBLIC_GET_PATHS = {
 
 # Path prefixes that bypass authorization
 BYPASS_PREFIXES = (
-    "/apis/auth/authenticate/",  # Envoy ext_authz path_prefix callout includes the original protected path
+    "/apis/auth/ext-authz/",  # Envoy ext_authz path_prefix callout includes the original protected path
     "/studio",  # Studio UI static files — the SPA handles its own OIDC login
     "/plugin-ui/",  # Studio plugin bundles — loaded via dynamic import(), cannot send Authorization
 )

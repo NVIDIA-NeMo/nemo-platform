@@ -221,6 +221,21 @@ export const getWorkspaceVirtualModelsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.virtualModels, { workspace });
 };
 
+export const getVirtualModelDetailRoute = (workspace: string, virtualModelName: string): string => {
+  return generatePath(ROUTES.workspace.virtualModelDetail, { workspace, virtualModelName });
+};
+
+export const getVirtualModelDetailsRoute = (
+  workspace: string,
+  virtualModelName: string
+): string => {
+  return generatePath(ROUTES.workspace.virtualModelDetails, { workspace, virtualModelName });
+};
+
+export const getVirtualModelChatRoute = (workspace: string, virtualModelName: string): string => {
+  return generatePath(ROUTES.workspace.virtualModelChat, { workspace, virtualModelName });
+};
+
 export const getWorkspaceDeploymentsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.deployments, { workspace });
 };
@@ -427,6 +442,13 @@ export const getGuardrailChecksRoute = (workspace: string, guardrailConfigName: 
   });
 };
 
+export const getGuardrailVirtualModelsRoute = (workspace: string, guardrailConfigName: string) => {
+  return generatePath(ROUTES.workspace.guardrailVirtualModels, {
+    workspace,
+    guardrailConfigName,
+  });
+};
+
 export const getGuardrailChecksSubTabRoute = (
   workspace: string,
   guardrailConfigName: string,
@@ -544,17 +566,14 @@ export const getNewSafeSynthesizerRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.safeSynthesizerNew, { workspace });
 };
 
-export const getSafeSynthesizerJobRoute = (workspace: string, safeSynthesizerJobName: string) => {
+export const getGenerateJobRoute = (workspace: string, safeSynthesizerJobName: string) => {
   return generatePath(ROUTES.workspace.safeSynthesizerJob, {
     workspace,
     safeSynthesizerJobName,
   });
 };
 
-export const getSafeSynthesizerJobReportRoute = (
-  workspace: string,
-  safeSynthesizerJobName: string
-) => {
+export const getGenerateJobReportRoute = (workspace: string, safeSynthesizerJobName: string) => {
   return generatePath(ROUTES.workspace.safeSynthesizerJobReport, {
     workspace,
     safeSynthesizerJobName,

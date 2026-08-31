@@ -2,44 +2,69 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AgentTraceStatistics } from '@studio/components/AgentTraceStatistics/index';
-import type { TraceStatisticsSample } from '@studio/components/AgentTraceStatistics/types';
+import type {
+  TraceStatisticsBucket,
+  TraceStatisticsSummary,
+} from '@studio/components/AgentTraceStatistics/types';
 import { renderRoute, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 
-const TRACES: TraceStatisticsSample[] = [
+const SUMMARY: TraceStatisticsSummary = {
+  totalTraces: 2,
+  avgLatencyMs: 2500,
+  avgTokensPerRun: 1500,
+  avgCostUsd: 0.03,
+};
+
+const BUCKETS: TraceStatisticsBucket[] = [
   {
-    startedAt: new Date('2026-07-01T00:00:00Z'),
-    durationMs: 2000,
-    totalTokens: 1000,
+    timestamp: new Date('2026-07-01T00:00:00Z').getTime(),
     costUsd: 0.02,
+    tokens: 1000,
+    latencyMs: 2000,
   },
   {
-    startedAt: new Date('2026-07-02T00:00:00Z'),
-    durationMs: 3000,
-    totalTokens: 2000,
+    timestamp: new Date('2026-07-02T00:00:00Z').getTime(),
     costUsd: 0.04,
+    tokens: 2000,
+    latencyMs: 3000,
   },
 ];
 
 const noop = () => {};
 
 describe('AgentTraceStatistics', () => {
-  it('renders the summary tiles from the traces it is given', () => {
+  it('renders the summary tiles from the rollup it is given', () => {
     renderRoute(
-      <AgentTraceStatistics traces={TRACES} range="week" onRangeChange={noop} onViewTraces={noop} />
+      <AgentTraceStatistics
+        summary={SUMMARY}
+        buckets={BUCKETS}
+        range="week"
+        onRangeChange={noop}
+        onViewTraces={noop}
+      />
     );
 
     expect(screen.getByText('Trace statistics')).toBeInTheDocument();
     expect(screen.getByText('Total traces')).toBeInTheDocument();
-    // Avg token count across the two traces.
     expect(screen.getByText('1,500')).toBeInTheDocument();
+    expect(screen.getByText('2,500 ms')).toBeInTheDocument();
     expect(screen.getByText('$0.03')).toBeInTheDocument();
+  });
+
+  it('shows the selected range as its option label, not the raw value', () => {
+    renderRoute(
+      <AgentTraceStatistics summary={SUMMARY} buckets={BUCKETS} range="week" onRangeChange={noop} />
+    );
+
+    expect(screen.getByRole('combobox', { name: 'Statistics range' })).toHaveTextContent('Week');
   });
 
   it('replaces the tiles and chart with actionable guidance when there are no traces', () => {
     renderRoute(
       <AgentTraceStatistics
-        traces={[]}
+        summary={null}
+        buckets={[]}
         range="week"
         onRangeChange={noop}
         onViewTraces={noop}
@@ -56,16 +81,39 @@ describe('AgentTraceStatistics', () => {
     expect(screen.queryByRole('button', { name: /view traces/i })).not.toBeInTheDocument();
   });
 
+  it('shows the tiles while the rollup is still loading rather than the empty state', () => {
+    renderRoute(
+      <AgentTraceStatistics
+        summary={null}
+        buckets={[]}
+        range="week"
+        onRangeChange={noop}
+        isPending
+      />
+    );
+
+    expect(screen.queryByText('No traces yet')).not.toBeInTheDocument();
+  });
+
   it('offers to widen a narrow empty range and reports the change', async () => {
     const onRangeChange = vi.fn();
-    renderRoute(<AgentTraceStatistics traces={[]} range="week" onRangeChange={onRangeChange} />);
+    renderRoute(
+      <AgentTraceStatistics
+        summary={null}
+        buckets={[]}
+        range="week"
+        onRangeChange={onRangeChange}
+      />
+    );
 
     await userEvent.click(screen.getByRole('button', { name: /look back a month/i }));
     expect(onRangeChange).toHaveBeenCalledWith('month');
   });
 
   it('does not offer to widen when already on the longest range', () => {
-    renderRoute(<AgentTraceStatistics traces={[]} range="month" onRangeChange={noop} />);
+    renderRoute(
+      <AgentTraceStatistics summary={null} buckets={[]} range="month" onRangeChange={noop} />
+    );
 
     expect(screen.queryByRole('button', { name: /look back a month/i })).not.toBeInTheDocument();
   });

@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { StatTileProps } from '@nemo/common/src/components/StatTile';
+import type { StatTileProps, StatTileStatus } from '@nemo/common/src/components/StatTile';
 import { formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
 import { formatFinetuningType } from '@nemo/common/src/utils/formatters';
+import type { RlGRPOTraining, RlJobOutput } from '@nemo/sdk/generated/customizer/schema';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import { Badge } from '@nvidia/foundations-react-core';
 import type {
@@ -13,12 +14,14 @@ import type {
 } from '@studio/types/customization';
 import {
   isAutomodelJob,
+  isGrpoJob,
   isRlJob,
   isUnslothJob,
   type CustomizationJob,
   type CustomizationJobStatusDetails,
 } from '@studio/util/customizationBackend';
 import { formatElapsedTime } from '@studio/util/date';
+import { formatStepDuration, GRPO_METRIC, medianValue, readSeries } from '@studio/util/grpoMetrics';
 import { getTextWithCount } from '@studio/util/strings';
 import { Circle /* TODO: replace with a proper icon (was Circle) */, Gpu } from 'lucide-react';
 import { ReactNode } from 'react';
@@ -92,6 +95,9 @@ export const getBaseModel = (customizationJob?: CustomizationJob): string => {
   if (isAutomodelJob(customizationJob)) {
     return customizationJob.spec.model ?? '';
   }
+  if (isRlJob(customizationJob)) {
+    return customizationJob.spec.model ?? '';
+  }
   return '';
 };
 
@@ -104,6 +110,10 @@ export const getFinetuningType = (customizationJob?: CustomizationJob): string =
   }
   if (isUnslothJob(customizationJob)) {
     return customizationJob.spec.training?.finetuning_type ?? '';
+  }
+  // GRPO carries `finetuning_type` like the other backends; DPO does not, hence the narrowing.
+  if (isGrpoJob(customizationJob)) {
+    return customizationJob.spec.training.finetuning_type ?? '';
   }
   return '';
 };
@@ -121,6 +131,10 @@ export const getDatasetUri = (customizationJob?: CustomizationJob): string => {
   }
   if (isUnslothJob(customizationJob)) {
     return customizationJob.spec.dataset.path ?? '';
+  }
+  // A bare fileset ref, not a per-split object: GRPO trains on prompts and the env scores them.
+  if (isRlJob(customizationJob)) {
+    return customizationJob.spec.dataset ?? '';
   }
   return '';
 };
@@ -248,35 +262,71 @@ const truncatePhase = (phase: string): string =>
 export const formatMetricValue = (value: number, decimals = 4): string =>
   Math.abs(value) >= EXPONENTIAL_ABOVE ? value.toExponential(2) : value.toFixed(decimals);
 
+interface FormatStepCountOptions {
+  /** Value past which compact notation ("10K") replaces the plain, comma-grouped one. */
+  floor?: number;
+  /** Lowercases the compact suffix ("10k" rather than "10K"), for prose rather than a tile. */
+  lowercase?: boolean;
+}
+
 /** Compact past four digits so a long run's step count cannot widen the column. */
-export const formatStepCount = (value: number): string =>
-  Math.abs(value) >= 10_000
-    ? new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(
-        value
-      )
-    : value.toLocaleString();
+export const formatStepCount = (
+  value: number,
+  { floor = 10_000, lowercase = false }: FormatStepCountOptions = {}
+): string => {
+  if (Math.abs(value) < floor) {
+    return value.toLocaleString();
+  }
+  const compact = new Intl.NumberFormat(undefined, {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
+  return lowercase ? compact.toLowerCase() : compact;
+};
 
 const formatDeltaHint = (delta: number, decimals: number): string =>
   `${delta >= 0 ? '+' : ''}${formatMetricValue(delta, decimals)} from start`;
 
 const NOT_AVAILABLE = '—';
 
-const lossTile = (label: string, summary?: MetricSummary): StatTileProps => {
+interface MetricTileOptions {
+  /** Which direction of travel is good news, and so which way the delta is tinted. */
+  betterWhen: 'lower' | 'higher';
+  formatValue?: (value: number) => string;
+  hint?: string;
+}
+
+/**
+ * `betterWhen` is not cosmetic: loss falling is progress, reward falling is the run going
+ * backwards, so assuming one direction would tint the other's delta exactly wrong.
+ */
+const metricTile = (
+  label: string,
+  summary: MetricSummary | undefined,
+  { betterWhen, formatValue = formatMetricValue, hint }: MetricTileOptions
+): StatTileProps => {
   if (!summary) {
-    return { label, value: NOT_AVAILABLE };
+    return { label, value: NOT_AVAILABLE, hint };
   }
-  return {
-    label,
-    value: formatMetricValue(summary.final),
-    hint:
-      summary.deltaFromStart !== undefined ? formatDeltaHint(summary.deltaFromStart, 4) : undefined,
-    hintStatus:
-      summary.deltaFromStart !== undefined
-        ? summary.deltaFromStart < 0
-          ? 'success'
-          : 'error'
-        : undefined,
-  };
+  const { deltaFromStart } = summary;
+  const value = formatValue(summary.final);
+  if (deltaFromStart === undefined) {
+    return { label, value, hint };
+  }
+
+  // No movement is neither good nor bad; tinting a stalled reward red reads as a failure.
+  const status: StatTileStatus =
+    deltaFromStart === 0
+      ? 'neutral'
+      : (betterWhen === 'lower' ? deltaFromStart < 0 : deltaFromStart > 0)
+        ? 'success'
+        : 'error';
+  const delta = formatDeltaHint(deltaFromStart, 4);
+
+  // The delta only takes the hint slot when the tile has no context to put there instead.
+  return hint
+    ? { label, value, trailingLabel: delta, trailingLabelStatus: status, hint }
+    : { label, value, hint: delta, hintStatus: status };
 };
 
 export const getTrainingProgressTiles = (
@@ -306,13 +356,15 @@ export const getLossTiles = (
   statusDetails: CustomizationStatusDetailsWithMetrics | undefined,
   isTerminal = false
 ): StatTileProps[] => [
-  lossTile(
+  metricTile(
     `${isTerminal ? 'Final' : 'Latest'} Training Loss`,
-    summarizeMetric(statusDetails?.metrics?.train_loss)
+    summarizeMetric(statusDetails?.metrics?.train_loss),
+    { betterWhen: 'lower' }
   ),
-  lossTile(
+  metricTile(
     `${isTerminal ? 'Final' : 'Latest'} Validation Loss`,
-    summarizeMetric(statusDetails?.metrics?.val_loss)
+    summarizeMetric(statusDetails?.metrics?.val_loss),
+    { betterWhen: 'lower' }
   ),
 ];
 
@@ -368,10 +420,25 @@ interface TrainingDiagnosticsContext {
   duration: string;
 }
 
+/** Total time once finished, current stage while running. Every backend's tile set ends with it. */
+const getRunStateTile = (
+  telemetry: CustomizationTrainingTelemetry,
+  { isTerminal, duration }: TrainingDiagnosticsContext
+): StatTileProps =>
+  isTerminal
+    ? { label: 'Duration', value: duration, hint: 'total run time' }
+    : {
+        label: 'Phase',
+        value: telemetry.phase
+          ? truncatePhase(formatTrainingPhase(telemetry.phase))
+          : NOT_AVAILABLE,
+        hint: 'current stage',
+      };
+
 export const getTrainingDiagnosticsTiles = (
   telemetry: CustomizationTrainingTelemetry,
   statusDetails: CustomizationStatusDetailsWithMetrics | undefined,
-  { isTerminal, duration }: TrainingDiagnosticsContext
+  context: TrainingDiagnosticsContext
 ): StatTileProps[] => {
   const trainLoss = summarizeMetric(statusDetails?.metrics?.train_loss);
   const valLoss = summarizeMetric(statusDetails?.metrics?.val_loss);
@@ -394,16 +461,163 @@ export const getTrainingDiagnosticsTiles = (
         trainLoss && valLoss ? formatMetricValue(valLoss.final - trainLoss.final) : NOT_AVAILABLE,
       hint: 'validation - training',
     },
-    isTerminal
-      ? { label: 'Duration', value: duration, hint: 'total run time' }
-      : {
-          label: 'Phase',
-          value: telemetry.phase
-            ? truncatePhase(formatTrainingPhase(telemetry.phase))
-            : NOT_AVAILABLE,
-          hint: 'current stage',
-        },
+    getRunStateTile(telemetry, context),
   ];
+};
+
+const formatPercent = (value: number): string => `${(value * 100).toFixed(1)}%`;
+
+/**
+ * Loss is deliberately absent: GRPO's is a policy-gradient surrogate whose magnitude means
+ * nothing, and it reports no validation loss at all.
+ */
+export const getGrpoSummaryTiles = (
+  statusDetails: CustomizationStatusDetailsWithMetrics | undefined,
+  isTerminal = false
+): StatTileProps[] => {
+  const validation = readSeries(statusDetails, GRPO_METRIC.validationReward);
+  const lastEvalStep = validation?.[validation.length - 1]?.step;
+  const truncation = summarizeMetric(readSeries(statusDetails, GRPO_METRIC.truncationRate));
+  const stepTime = medianValue(readSeries(statusDetails, GRPO_METRIC.stepTime));
+
+  return [
+    metricTile(
+      `${isTerminal ? 'Final' : 'Latest'} Mean Reward`,
+      summarizeMetric(readSeries(statusDetails, GRPO_METRIC.trainReward)),
+      { betterWhen: 'higher', hint: 'across all sampled rollouts' }
+    ),
+    metricTile('Validation Reward', summarizeMetric(validation), {
+      betterWhen: 'higher',
+      hint:
+        lastEvalStep === undefined
+          ? 'held-out prompts'
+          : `held-out prompts, step ${formatStepCount(lastEvalStep)}`,
+    }),
+    {
+      label: 'Median Step Time',
+      value: stepTime === undefined ? NOT_AVAILABLE : formatStepDuration(stepTime),
+      hint: 'wall clock per step',
+    },
+    {
+      label: 'Truncation Rate',
+      value: truncation ? formatPercent(truncation.final) : NOT_AVAILABLE,
+      hint: 'hit the length limit',
+    },
+  ];
+};
+
+/**
+ * Rollouts per training step: group size (rollouts per prompt) times prompts sampled per step.
+ * When the spec omits either factor, the service derives it from `batch_size` divided by the
+ * other factor, so the product collapses back to `batch_size` directly rather than dividing and
+ * multiplying back through a possibly-imprecise fraction.
+ */
+const getGrpoRolloutsPerStep = (training: RlGRPOTraining): number =>
+  training.num_prompts_per_step !== undefined && training.num_generations_per_prompt !== undefined
+    ? training.num_generations_per_prompt * training.num_prompts_per_step
+    : (training.batch_size ?? 0);
+
+/**
+ * Sub-header summary for a GRPO run: which training step it's on (out of the planned total, when
+ * known — whether still running or stopped short of it), or how many steps ran once terminal with
+ * no known target, plus the rollouts that implies. Rollout counts aren't reported directly, so
+ * they're derived from the step count and the group-size/prompts-per-step spec.
+ */
+export const getGrpoRunProgressSummary = (
+  customization: CustomizationJob | undefined,
+  telemetry: CustomizationTrainingTelemetry,
+  isTerminal: boolean
+): string => {
+  if (!customization || !isGrpoJob(customization) || telemetry.step === undefined) {
+    return '';
+  }
+
+  const stepText =
+    telemetry.maxSteps !== undefined
+      ? `step ${formatStepCount(telemetry.step)} of ${formatStepCount(telemetry.maxSteps)}`
+      : isTerminal
+        ? `${formatStepCount(telemetry.step)} ${telemetry.step === 1 ? 'step' : 'steps'} ran`
+        : `step ${formatStepCount(telemetry.step)}`;
+
+  const rolloutsPerStep = getGrpoRolloutsPerStep(customization.spec.training);
+  const rolloutsText =
+    rolloutsPerStep > 0
+      ? `${formatStepCount(telemetry.step * rolloutsPerStep, { floor: 0, lowercase: true })} rollouts generated`
+      : undefined;
+
+  return [stepText, rolloutsText].filter(Boolean).join(' · ');
+};
+
+/** Epochs, and where the run is — the progress row beside the GRPO reward chart. */
+export const getGrpoProgressTiles = (
+  telemetry: CustomizationTrainingTelemetry,
+  context: TrainingDiagnosticsContext
+): StatTileProps[] => [
+  {
+    label: 'Epochs Completed',
+    value:
+      telemetry.epoch === undefined
+        ? NOT_AVAILABLE
+        : telemetry.numEpochs
+          ? `${telemetry.epoch} / ${telemetry.numEpochs}`
+          : String(telemetry.epoch),
+  },
+  getRunStateTile(telemetry, context),
+];
+
+export interface GrpoRunConfig {
+  environment?: string;
+  promptDataset?: string;
+  trainingBackend: string;
+  parallelism: string;
+  generation: string;
+  sequencePacking: string;
+}
+
+/** Joins config parts the way the run-configuration panel reads them. */
+const joinParts = (...parts: (string | undefined)[]): string => parts.filter(Boolean).join(' · ');
+
+/**
+ * Spec values plus what `services/rl/.../nemo_rl/grpo_config.py` hardcodes. Anything that becomes
+ * a real knob later turns into a spec read here, not a new row.
+ */
+export const getGrpoRunConfig = (
+  spec: RlJobOutput & { training: RlGRPOTraining }
+): GrpoRunConfig => {
+  const { training } = spec;
+  const parallelism = training.parallelism ?? {};
+  const tensorParallel = parallelism.tensor_parallel_size ?? 1;
+  const expertParallel = parallelism.expert_parallel_size ?? 1;
+
+  // Megatron is inert for GRPO, so the policy is always DTensor; only v2 implements LoRA, expert
+  // parallelism and `automodel_kwargs`, matching `_build_dtensor_cfg`.
+  const isLora = training.finetuning_type === 'lora';
+  // Keys, not truthiness: unset means "auto-detect", and `{}` is a truthy that would claim v2.
+  const hasAutomodelKwargs = Object.keys(training.automodel_kwargs ?? {}).length > 0;
+  const needsV2 = isLora || expertParallel > 1 || hasAutomodelKwargs;
+
+  return {
+    environment: spec.environment,
+    promptDataset: spec.dataset,
+    trainingBackend: joinParts(
+      needsV2 ? 'DTensor v2' : 'DTensor',
+      isLora ? 'LoRA' : 'Full weights'
+    ),
+    parallelism: joinParts(
+      `TP ${tensorParallel}`,
+      `PP ${parallelism.pipeline_parallel_size ?? 1}`,
+      `CP ${parallelism.context_parallel_size ?? 1}`,
+      expertParallel > 1 ? `EP ${expertParallel}` : undefined,
+      parallelism.sequence_parallel ? 'sequence parallel' : undefined
+    ),
+    // Colocated with the policy and `async_grpo` off, so rollouts and training share the devices.
+    generation: joinParts(
+      'vLLM, colocated',
+      `TP ${training.vllm_tensor_parallel_size ?? Math.min(tensorParallel, parallelism.num_gpus_per_node ?? tensorParallel)}`
+    ),
+    // Pinned off for GRPO by the service; it is a DPO-only knob today.
+    sequencePacking: 'Disabled',
+  };
 };
 
 const badge = (key: string, icon: ReactNode, label: string): ReactNode => (

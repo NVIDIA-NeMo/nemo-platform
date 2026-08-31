@@ -15,17 +15,7 @@ import { FormModal, type FormModalProps } from '@nemo/common/src/components/Form
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { getListExperimentsQueryKey, useCreateExperiment } from '@nemo/sdk/generated/platform/api';
-import {
-  CodeSnippet,
-  FormField,
-  Stack,
-  TabsContent,
-  TabsList,
-  TabsRoot,
-  TabsTrigger,
-  TextArea,
-  TextInput,
-} from '@nvidia/foundations-react-core';
+import { FormField, Stack, TextArea, TextInput } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
 import { DefaultSortControl } from '@studio/components/DefaultSortControl';
 import { DEFAULT_SORT } from '@studio/components/DefaultSortControl/util';
@@ -33,9 +23,10 @@ import {
   experimentCreateSchema,
   type ExperimentCreateFormFields,
 } from '@studio/components/ExperimentCreateModal/constants';
+import { ExperimentFlagSwitch } from '@studio/components/ExperimentFlagSwitch';
 import { AxiosError } from 'axios';
 import { useState, type FC } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { Controller, useForm, type SubmitHandler } from 'react-hook-form';
 
 export interface ExperimentCreateModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   workspace: string;
@@ -53,9 +44,14 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
     formState: { errors, isSubmitting },
     setValue,
     setError,
+    control,
   } = useForm<ExperimentCreateFormFields>({
     resolver: zodResolver(experimentCreateSchema),
     mode: 'onChange',
+    defaultValues: {
+      is_favorite: false,
+      show_evaluations_over_time: false,
+    },
   });
 
   const formDisabled = isSubmitting;
@@ -87,6 +83,8 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
           name: data.name,
           description: data.description,
           default_sort: defaultSort,
+          is_favorite: data.is_favorite,
+          show_evaluations_over_time: data.show_evaluations_over_time,
         },
       });
       resetAndClose();
@@ -134,73 +132,56 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
       open={open}
       className="w-[800px] min-h-[400px]"
     >
-      <TabsRoot defaultValue="create" className="w-full min-w-0">
-        <TabsList>
-          <TabsTrigger value="create">Create experiment</TabsTrigger>
-          <TabsTrigger value="assistant">NeMo Assistant</TabsTrigger>
-          <TabsTrigger value="cli">CLI command</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="create" className="px-0 w-full">
-          <Stack gap="density-2xl" className="w-full">
-            <FormField
-              slotLabel="Name"
-              slotError={errors.name?.message}
-              status={errors.name && 'error'}
-            >
-              <TextInput
-                autoFocus
-                disabled={formDisabled}
-                status={errors.name && 'error'}
-                {...register('name')}
-                onChange={(e) =>
-                  setValue('name', (e.target as HTMLInputElement).value.replace(/[\s-]+/g, '-'), {
-                    shouldValidate: true,
-                  })
-                }
-              />
-            </FormField>
-
-            <FormField
-              slotLabel="Description (optional)"
-              slotError={errors.description?.message}
-              status={errors.description && 'error'}
-            >
-              <TextArea
-                disabled={formDisabled}
-                status={errors.description && 'error'}
-                {...register('description')}
-              />
-            </FormField>
-            <DefaultSortControl
-              value={defaultSort}
-              onChange={setDefaultSort}
-              disabled={formDisabled}
-            />
-          </Stack>
-        </TabsContent>
-
-        <TabsContent value="assistant" className="px-0 w-full">
-          <CodeSnippet
-            className="min-w-full"
-            value="To be determined"
-            language="text"
-            kind="block"
-          />
-        </TabsContent>
-
-        <TabsContent value="cli" className="px-0 w-full">
-          <CodeSnippet
-            className="min-w-full"
-            value={
-              'nemo exp run --group --dataset support-bench-v3\n' +
-              '  --evaluators correctness,helpfulness,groundedness,tool-error'
+      <Stack gap="density-2xl" className="w-full min-w-0">
+        <FormField
+          slotLabel="Name"
+          slotError={errors.name?.message}
+          status={errors.name && 'error'}
+        >
+          <TextInput
+            autoFocus
+            disabled={formDisabled}
+            status={errors.name && 'error'}
+            {...register('name')}
+            onChange={(e) =>
+              setValue('name', (e.target as HTMLInputElement).value.replace(/[\s-]+/g, '-'), {
+                shouldValidate: true,
+              })
             }
-            language="bash"
-            kind="block"
           />
-        </TabsContent>
-      </TabsRoot>
+        </FormField>
+
+        <FormField
+          slotLabel="Description (optional)"
+          slotError={errors.description?.message}
+          status={errors.description && 'error'}
+        >
+          <TextArea
+            disabled={formDisabled}
+            status={errors.description && 'error'}
+            {...register('description')}
+          />
+        </FormField>
+
+        <DefaultSortControl value={defaultSort} onChange={setDefaultSort} disabled={formDisabled} />
+
+        {(['show_evaluations_over_time', 'is_favorite'] as const).map((flag) => (
+          <Controller
+            key={flag}
+            name={flag}
+            control={control}
+            render={({ field }) => (
+              <ExperimentFlagSwitch
+                flag={flag}
+                checked={Boolean(field.value)}
+                onCheckedChange={field.onChange}
+                onBlur={field.onBlur}
+                disabled={formDisabled}
+              />
+            )}
+          />
+        ))}
+      </Stack>
     </FormModal>
   );
 };

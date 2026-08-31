@@ -42,6 +42,26 @@ def _evidence(atif: dict[str, Any]) -> CandidateEvidence:
     return CandidateEvidence(descriptors={EVIDENCE_TRACE: EvidenceDescriptor(kind="trace", format="atif", data=atif)})
 
 
+def _otlp_evidence(payload: str) -> CandidateEvidence:
+    return CandidateEvidence(
+        descriptors={
+            EVIDENCE_TRACE: EvidenceDescriptor(
+                kind="trace",
+                format="otlp",
+                data={
+                    "resourceSpans": [
+                        {
+                            "scopeSpans": [
+                                {"spans": [{"attributes": [{"key": "input.value", "value": {"stringValue": payload}}]}]}
+                            ]
+                        }
+                    ]
+                },
+            )
+        }
+    )
+
+
 async def _score(sample: dict[str, Any]) -> dict[str, Any]:
     result = await SkillUsedMetric().compute_scores(build_metric_input({}, sample, 0))
     return {output.name: output.value for output in result.outputs}
@@ -66,6 +86,21 @@ async def test_present_and_used_when_trajectory_reads_the_skill() -> None:
 @pytest.mark.asyncio
 async def test_present_not_used_when_trajectory_ignores_the_skill() -> None:
     sample = {"skills": [_PROV], "evidence": _evidence(_atif(tool_path="README.md"))}
+    assert await _score(sample) == {"skill_present": True, "skill_used": False}
+
+
+@pytest.mark.asyncio
+async def test_present_and_used_when_otlp_payload_reads_the_skill() -> None:
+    sample = {
+        "skills": [_PROV],
+        "evidence": _otlp_evidence(f'{{"path": "{_LOCATION}/SKILL.md"}}'),
+    }
+    assert await _score(sample) == {"skill_present": True, "skill_used": True}
+
+
+@pytest.mark.asyncio
+async def test_present_not_used_when_otlp_payload_ignores_the_skill() -> None:
+    sample = {"skills": [_PROV], "evidence": _otlp_evidence('{"path": "README.md"}')}
     assert await _score(sample) == {"skill_present": True, "skill_used": False}
 
 

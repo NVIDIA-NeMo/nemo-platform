@@ -146,7 +146,7 @@ async def test_intake_analyze_calls_run_analyst(monkeypatch, tmp_path: Path):
     assert calls["agent"] == "a"
     assert calls["workspace"] == "w"
     assert calls["base_url"] == "u"
-    assert calls["agent_spec"] is None
+    assert calls["ethos"] is None
     assert calls["client"] is built_client
     assert calls["enable_observability"] is True
 
@@ -359,7 +359,7 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
     async def fake_run_analyst(
         *,
         agent,
-        agent_spec,
+        ethos,
         workspace,
         base_url,
         client,
@@ -372,7 +372,7 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
     ):
         seen.update(
             agent=agent,
-            agent_spec=agent_spec,
+            ethos=ethos,
             workspace=workspace,
             base_url=base_url,
             evaluation_id=evaluation_id,
@@ -410,7 +410,7 @@ async def test_benchmark_analyze_uses_record(monkeypatch, tmp_path):
     assert out == "REPORT-OK"
     assert ran_tau2["v"] is False  # analyze never runs tau2
     assert seen["agent"] == "tau2-airline"
-    assert seen["agent_spec"] == "POLICY"
+    assert seen["ethos"] == "POLICY"
     assert seen["workspace"] == "tau2-airline"  # the stable REALISTIC workspace, never the oracle one
     assert seen["evaluation_id"] == "tau2-airline-20260626-000000-abcd"  # run-scoped
     assert seen["base_url"] == "http://localhost:8080"

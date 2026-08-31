@@ -10,7 +10,14 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).parent.parent.parent
-WORKSPACE_SLICES = ("automodel", "rl", "unsloth")
+WORKSPACE_SLICES = ("automodel", "customizer", "rl", "unsloth")
+SDK_EDITABLE_DOCKERFILES = (
+    Path("docker/Dockerfile.nmp-customizer-tasks"),
+    Path("docker/Dockerfile.nmp-unsloth-training"),
+    Path("docker/automodel/Dockerfile.nmp-automodel-training"),
+    Path("docker/rl/Dockerfile.nmp-rl-training"),
+)
+SDK_ALIAS_PACKAGES = ("filesets", "models")
 WANDB_PACKAGE_SPEC_RE = re.compile(r"(?<![\w./-])wandb(?:\[[^\]]+\])?(?:==|~=|!=|<=|>=|<|>)[^\\\s\"']+")
 DOCKER_IMAGE_WANDB_CONFIG_PATHS = (
     Path("docker/Dockerfile.nmp-customizer-tasks"),
@@ -20,18 +27,55 @@ DOCKER_IMAGE_WANDB_CONFIG_PATHS = (
     Path("docker/rl/Dockerfile.nmp-rl-base"),
     Path("docker/unsloth/no_override_requirements.txt"),
 )
+CVE_PACKAGE_FLOORS = (
+    (
+        "mlflow-skinny",
+        "3.15.0",
+        (
+            Path("pyproject.toml"),
+            Path("services/rl/pyproject.toml"),
+            Path("services/unsloth/pyproject.toml"),
+            Path("docker/automodel/Dockerfile.nmp-automodel-base"),
+            Path("docker/Dockerfile.nmp-unsloth-training"),
+            Path("docker/rl/Dockerfile.nmp-rl-base"),
+            Path("docker/locks/nmp-gym-tasks/pyproject.toml"),
+        ),
+    ),
+    (
+        "sqlparse",
+        "0.6.0",
+        (
+            Path("pyproject.toml"),
+            Path("docker/automodel/Dockerfile.nmp-automodel-base"),
+            Path("docker/Dockerfile.nmp-unsloth-training"),
+            Path("docker/rl/Dockerfile.nmp-rl-base"),
+            Path("docker/locks/nmp-gym-tasks/pyproject.toml"),
+        ),
+    ),
+)
+FULL_MLFLOW_SPEC_RE = re.compile(r"(?<![\w./-])mlflow(?:\[[^\]]+\])?(?:==|~=|!=|<=|>=|<|>)")
 
 
 def _load_pyproject(path: Path) -> dict:
+    """Parse a pyproject.toml into a dict."""
     with open(path, "rb") as pyproject:
         return tomllib.load(pyproject)
 
 
 def _normalize_package_name(name: str) -> str:
+    """Normalize a PEP 503 package name for comparison."""
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
+def _package_name_from_spec(spec: str) -> str:
+    """Return the normalized package name from a PEP 508 requirement string."""
+    match = re.match(r"[A-Za-z0-9_.-]+", spec)
+    assert match is not None
+    return _normalize_package_name(match.group())
+
+
 def _notice_wandb_version() -> str:
+    """Read the wandb version documented in NOTICE."""
     for line in (ROOT / "NOTICE").read_text(encoding="utf-8").splitlines():
         if line.strip().startswith("wandb package version:"):
             return line.split(":", maxsplit=1)[1].strip()
@@ -39,6 +83,7 @@ def _notice_wandb_version() -> str:
 
 
 def _wandb_package_specs(path: Path) -> list[str]:
+    """Collect wandb version specs from a Dockerfile or requirements file."""
     specs: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line_without_comment = line.split("#", maxsplit=1)[0]
@@ -46,7 +91,18 @@ def _wandb_package_specs(path: Path) -> list[str]:
     return specs
 
 
+def _package_specs(path: Path, package: str) -> list[str]:
+    """Collect version specs for one package from a Dockerfile or manifest."""
+    pattern = re.compile(rf"(?<![\w./-]){re.escape(package)}(?:\[[^\]]+\])?(?:==|~=|!=|<=|>=|<|>)[^\\\s\"']+")
+    specs: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line_without_comment = line.split("#", maxsplit=1)[0]
+        specs.extend(pattern.findall(line_without_comment))
+    return specs
+
+
 def _workspace_sources(pyproject: dict) -> set[str]:
+    """Return workspace-source package names from a uv pyproject table."""
     sources = pyproject.get("tool", {}).get("uv", {}).get("sources", {})
     return {
         _normalize_package_name(name)
@@ -70,6 +126,34 @@ def test_distributed_image_wandb_specs_use_notice_floor(path: Path) -> None:
     assert all(spec == expected for spec in specs)
 
 
+@pytest.mark.parametrize(
+    ("package", "floor", "path"),
+    [
+        pytest.param(package, floor, ROOT / path, id=f"{package}-{path}")
+        for package, floor, paths in CVE_PACKAGE_FLOORS
+        for path in paths
+    ],
+)
+def test_distributed_image_cve_package_specs_use_reviewed_floor(
+    package: str,
+    floor: str,
+    path: Path,
+) -> None:
+    """CVE-remediated package constraints must retain their reviewed floor."""
+    specs = _package_specs(path, package)
+
+    assert specs
+    assert all(spec.startswith(f"{package}>={floor}") for spec in specs)
+
+
+def test_automodel_cve_layer_does_not_pin_full_mlflow_with_cryptography() -> None:
+    """Full MLflow 3.15 requires cryptography<50 and cannot coinstall with the image floor."""
+    text = (ROOT / "docker/automodel/Dockerfile.nmp-automodel-base").read_text(encoding="utf-8")
+    assert "cryptography>=50.0.0,<51" in text
+    assert "mlflow-skinny>=3.15.0" in text
+    assert not FULL_MLFLOW_SPEC_RE.search(text)
+
+
 @pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)
 def test_docker_workspace_slice_contains_all_workspace_sources(slice_name):
     """Every workspace source must name a package copied into the image slice."""
@@ -89,13 +173,38 @@ def test_docker_workspace_slice_contains_all_workspace_sources(slice_name):
         )
 
 
+@pytest.mark.parametrize(
+    "path",
+    [pytest.param(ROOT / path, id=str(path)) for path in SDK_EDITABLE_DOCKERFILES],
+)
+def test_sdk_editable_image_installs_sdk_alias_packages(path: Path) -> None:
+    """Editable SDK installs need source packages for SDK aliases available separately."""
+    text = path.read_text(encoding="utf-8")
+
+    assert "-e /app/sdk/python/nemo-platform" in text
+    for package in SDK_ALIAS_PACKAGES:
+        assert f"-e /app/packages/{package}" in text
+
+
+@pytest.mark.parametrize("slice_name", WORKSPACE_SLICES)
+@pytest.mark.parametrize("package", SDK_ALIAS_PACKAGES)
+def test_sdk_editable_workspace_slice_includes_sdk_alias_package(slice_name: str, package: str) -> None:
+    """The SDK imports alias packages lazily when those resources are accessed."""
+    workspace_path = ROOT / "docker" / slice_name / "pyproject.workspace.toml"
+    workspace = _load_pyproject(workspace_path)
+    member_paths = set(workspace["tool"]["uv"]["workspace"]["members"])
+    source_names = _workspace_sources(workspace)
+    dockerfile_text = (ROOT / "docker" / slice_name / "Dockerfile.platform-workspace").read_text(encoding="utf-8")
+
+    assert f"packages/{package}" in member_paths
+    assert package in source_names
+    assert f"COPY packages/{package} packages/{package}" in dockerfile_text
+
+
 def test_deployments_plugin_is_optional_for_models_service():
     """The lazily loaded deployments backend must remain an optional package."""
     models = _load_pyproject(ROOT / "services/core/models/pyproject.toml")
-    dependency_names = {
-        _normalize_package_name(re.match(r"[A-Za-z0-9_.-]+", dependency).group())
-        for dependency in models["project"]["dependencies"]
-    }
+    dependency_names = {_package_name_from_spec(dependency) for dependency in models["project"]["dependencies"]}
 
     assert "nemo-deployments-plugin" not in dependency_names, (
         "nmp-models loads the deployments backend lazily, so nemo-deployments-plugin "

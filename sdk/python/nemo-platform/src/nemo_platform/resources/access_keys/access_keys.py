@@ -67,6 +67,7 @@ class AccessKeysResource(SyncAPIResource):
         description: Optional[str] | Omit = omit,
         expires_in_seconds: Optional[int] | Omit = omit,
         name: Optional[str] | Omit = omit,
+        service_account_id: Optional[str] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -88,6 +89,9 @@ class AccessKeysResource(SyncAPIResource):
           name: Optional human-readable Scoped Access Key label. The token jti remains the
               stable identifier.
 
+          service_account_id: Optional non-human service account to bind the key to. Service-bound keys can
+              only be created by a PlatformAdmin and authenticate as service-account:<id>.
+
           extra_headers: Send extra headers
 
           extra_query: Add additional query parameters to the request
@@ -103,6 +107,7 @@ class AccessKeysResource(SyncAPIResource):
                     "description": description,
                     "expires_in_seconds": expires_in_seconds,
                     "name": name,
+                    "service_account_id": service_account_id,
                 },
                 access_key_create_params.AccessKeyCreateParams,
             ),
@@ -290,6 +295,7 @@ class AsyncAccessKeysResource(AsyncAPIResource):
         description: Optional[str] | Omit = omit,
         expires_in_seconds: Optional[int] | Omit = omit,
         name: Optional[str] | Omit = omit,
+        service_account_id: Optional[str] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -311,6 +317,9 @@ class AsyncAccessKeysResource(AsyncAPIResource):
           name: Optional human-readable Scoped Access Key label. The token jti remains the
               stable identifier.
 
+          service_account_id: Optional non-human service account to bind the key to. Service-bound keys can
+              only be created by a PlatformAdmin and authenticate as service-account:<id>.
+
           extra_headers: Send extra headers
 
           extra_query: Add additional query parameters to the request
@@ -326,6 +335,7 @@ class AsyncAccessKeysResource(AsyncAPIResource):
                     "description": description,
                     "expires_in_seconds": expires_in_seconds,
                     "name": name,
+                    "service_account_id": service_account_id,
                 },
                 access_key_create_params.AccessKeyCreateParams,
             ),

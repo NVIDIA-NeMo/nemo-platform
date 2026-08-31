@@ -188,7 +188,7 @@ class TestCompile:
 
 
 class TestRun:
-    def test_builds_from_staged_spec_fileset(self, tmp_path: Path) -> None:
+    def test_builds_from_staged_ethos_fileset(self, tmp_path: Path) -> None:
         captured: dict[str, Any] = {}
 
         async def _stage(*, workspace: str, agent_name: str, agent_config: dict, base_dir: Path, sdk: Any) -> None:
@@ -205,7 +205,7 @@ class TestRun:
             return "my-agent-abc123:26.08.21"
 
         with (
-            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_spec_dir", _stage),
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage),
             patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", _build),
         ):
             result = PackageAgentJob().run(
@@ -230,7 +230,7 @@ class TestRun:
             return "x:latest"
 
         with (
-            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_spec_dir", _stage),
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage),
             patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", _build),
         ):
             PackageAgentJob().run(
@@ -248,7 +248,7 @@ class TestRun:
         ctx = _stub_ctx(tmp_path)
 
         with (
-            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_spec_dir", _stage),
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage),
             patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", lambda p, **k: "my-agent:1.0"),
         ):
             result = PackageAgentJob().run(
@@ -280,7 +280,7 @@ class TestRun:
             return "x:latest"
 
         with (
-            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_spec_dir", _stage),
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage),
             patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", _build),
         ):
             PackageAgentJob().run(
@@ -311,7 +311,7 @@ class TestRun:
             return f"{kwargs['tag_namespace']}/{resolved}"
 
         with (
-            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_spec_dir", _stage),
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage),
             patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", _build),
         ):
             result = PackageAgentJob().run(
@@ -333,7 +333,7 @@ class TestRun:
             raise ImageBuildError("Docker build failed: no such host")
 
         with (
-            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_spec_dir", _stage),
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage),
             patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", _build),
         ):
             with pytest.raises(ImageBuildError, match="no such host"):
@@ -366,7 +366,7 @@ class TestTaskEntrypointWiring:
             return None
 
         with (
-            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_spec_dir", _noop),
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _noop),
             patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", lambda p, **k: "x:latest"),
             caplog.at_level("WARNING"),
         ):
@@ -377,7 +377,7 @@ class TestTaskEntrypointWiring:
                 async_sdk=None,
             )
 
-        assert "my-agent-spec" in caplog.text
+        assert "my-agent-ethos" in caplog.text
 
 
 class TestDockerfileInjection:

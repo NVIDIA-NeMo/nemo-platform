@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import data_designer.config as dd
 import pytest
 from data_designer.engine.resources.seed_reader import DirectorySeedReader, FileContentsSeedReader
-from data_designer_nemo.context import RemoteDataDesignerContext
+from data_designer_nemo.context import DataDesignerContext
 from data_designer_nemo.errors import NDDInvalidConfigError
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from data_designer_nemo.seed import _validate_seed_from_files_service, validate_seed
@@ -21,7 +21,7 @@ def _list_files_response(paths: list[str]) -> Mock:
 
 
 def test_remote_context_includes_filesystem_seed_readers() -> None:
-    readers = RemoteDataDesignerContext(Mock(), "default").get_seed_readers()
+    readers = DataDesignerContext(Mock(), "default").get_seed_readers()
 
     assert any(isinstance(reader, DirectorySeedReader) for reader in readers)
     assert any(isinstance(reader, FileContentsSeedReader) for reader in readers)
@@ -39,7 +39,7 @@ async def test_validate_seed_returns_canonical_validated_filesystem_root() -> No
     config = builder.build()
 
     with patch("data_designer_nemo.seed.client_from_platform", return_value=files):
-        validated_root = await validate_seed(config, "default", sdk, is_local=False)
+        validated_root = await validate_seed(config, "default", sdk)
 
     assert validated_root == "default/docs#corpus"
     files.get_fileset.assert_awaited_once_with(name="docs", workspace="default")
@@ -63,7 +63,7 @@ async def test_validate_seed_rejects_fileset_root_with_no_files() -> None:
 
     with pytest.raises(NDDInvalidConfigError, match="contains no files to use as seed data"):
         with patch("data_designer_nemo.seed.client_from_platform", return_value=files):
-            await validate_seed(config, "default", sdk, is_local=False)
+            await validate_seed(config, "default", sdk)
 
     files.list_files.assert_awaited_once_with(
         workspace="default",
@@ -85,7 +85,7 @@ async def test_validate_seed_rejects_path_with_no_files() -> None:
 
     with pytest.raises(NDDInvalidConfigError, match="contains no files to use as seed data"):
         with patch("data_designer_nemo.seed.client_from_platform", return_value=files):
-            await validate_seed(config, "default", sdk, is_local=False)
+            await validate_seed(config, "default", sdk)
 
 
 @pytest.mark.asyncio

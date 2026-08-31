@@ -1,0 +1,35 @@
+{
+  "skill": "guardrails-plugin",
+  "tests": [
+    {
+      "type": "explicit",
+      "prompt": "Use guardrails-plugin to add an input rail to my NeMo VirtualModel through the API.",
+      "expected_skill": "guardrails-plugin"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Create a stored NeMo guardrail config, validate it with /checks, and attach it to an Inference Gateway VirtualModel.",
+      "expected_skill": "guardrails-plugin"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Use the Guardrails service APIs to create and validate a reusable input policy for my model endpoint.",
+      "expected_skill": "guardrails-plugin"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Why does my input rail work in a standalone check but not on chat completions through my VirtualModel?",
+      "expected_skill": "guardrails-plugin"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Red-team my model with a broad vulnerability scan and generate a garak report.",
+      "expected_skill_not": "guardrails-plugin"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Anonymize names and email addresses in this Parquet training dataset.",
+      "expected_skill_not": "guardrails-plugin"
+    }
+  ]
+}

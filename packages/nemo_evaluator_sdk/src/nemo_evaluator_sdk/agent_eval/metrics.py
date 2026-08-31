@@ -167,7 +167,11 @@ class SkillUsedMetric(MetricBase):
         if evidence is None or evidence.get(self.trace_evidence) is None:
             return False
         try:
-            trajectory = await (await evidence.trace(self.trace_evidence)).trace()
+            handle = await evidence.trace(self.trace_evidence)
+            if handle.format == "otlp":
+                resource_spans = await handle.resource_spans()
+                return any(_otlp_references(resource_spans, loc) for loc in locations)
+            trajectory = await handle.trace()
         except (KeyError, ValueError, ValidationError, OSError) as exc:
             # Best-effort: a missing/malformed/invalid trajectory must score skill_used=False, not raise.
             # ValidationError covers Trajectory.model_validate; OSError covers the underlying file read.
@@ -252,6 +256,97 @@ def _trajectory_references(trajectory: Trajectory, needle: str) -> bool:
                 if result.content is not None and needle in json.dumps(result.content, default=str):
                     return True
     return False
+
+
+def _otlp_references(resource_spans: list[dict[str, Any]], needle: str) -> bool:
+    """Check whether an OTLP string payload references ``needle``.
+
+    Args:
+        resource_spans: OTLP resource-span export units.
+        needle: Staged skill location to find.
+
+    Returns:
+        Whether any span or span-event string attribute contains ``needle``.
+    """
+    return any(needle in blob for blob in _otlp_string_blobs(resource_spans))
+
+
+def _otlp_string_blobs(resource_spans: list[dict[str, Any]]) -> list[str]:
+    """Collect searchable string attributes from OTLP spans and events.
+
+    Args:
+        resource_spans: OTLP resource-span export units.
+
+    Returns:
+        String values found beneath span and event attributes.
+    """
+    blobs: list[str] = []
+    for resource_span in resource_spans:
+        for scope_span in _otlp_dict_items(resource_span.get("scopeSpans")):
+            for span in _otlp_dict_items(scope_span.get("spans")):
+                blobs.extend(_otlp_attr_strings(span.get("attributes")))
+                for event in _otlp_dict_items(span.get("events")):
+                    blobs.extend(_otlp_attr_strings(event.get("attributes")))
+    return blobs
+
+
+def _otlp_dict_items(value: Any) -> list[dict[str, Any]]:
+    """Return only dictionary elements from an OTLP repeated field.
+
+    Args:
+        value: Candidate decoded repeated field.
+
+    Returns:
+        Dictionary elements, or an empty list for malformed containers.
+    """
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _otlp_attr_strings(attributes: Any) -> list[str]:
+    """Collect string leaves from decoded OTLP attributes.
+
+    Args:
+        attributes: Candidate OTLP key-value attribute list.
+
+    Returns:
+        String leaves contained in each attribute value.
+    """
+    blobs: list[str] = []
+    for item in _otlp_dict_items(attributes):
+        blobs.extend(_otlp_any_strings(item.get("value")))
+    return blobs
+
+
+def _otlp_any_strings(value: Any) -> list[str]:
+    """Collect string leaves from one decoded OTLP ``AnyValue``.
+
+    Args:
+        value: Candidate OTLP ``AnyValue`` object.
+
+    Returns:
+        Recursively nested string values.
+    """
+    if isinstance(value, str):
+        return [value]
+    if not isinstance(value, dict):
+        return []
+    if (text := value.get("stringValue")) is not None:
+        return [str(text)]
+    if isinstance(array := value.get("arrayValue"), dict):
+        blobs: list[str] = []
+        values = array.get("values")
+        if isinstance(values, list):
+            for item in values:
+                blobs.extend(_otlp_any_strings(item))
+        return blobs
+    if isinstance(kvlist := value.get("kvlistValue"), dict):
+        blobs = []
+        for item in _otlp_dict_items(kvlist.get("values")):
+            blobs.extend(_otlp_any_strings(item.get("value")))
+        return blobs
+    return []
 
 
 def _as_int(value: Any) -> int | None:

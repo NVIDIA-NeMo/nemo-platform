@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import type { NotifyFn } from '@nemo/common/src/providers/toast/types';
 import { useNotify } from '@nemo/common/src/providers/toast/useNotify';
-import { getErrorMessage } from '@nemo/common/src/utils/error';
 import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { type ComponentProps, type FC, useState } from 'react';
@@ -87,7 +87,11 @@ export const ConfirmationModal: FC<ConfirmationModalProps> = ({
         }
       }
     } catch (error: unknown) {
-      notify(getErrorMessage(error), 'error');
+      // The API-aware `getErrorMessage`, not the one in `utils/error`: that one returns only
+      // `error.message`, which for a rejected request is "Request failed with status code 409"
+      // — it drops the `detail` the service sent explaining what to do about it. Non-Error
+      // throws carry no message to read, so those still fall back to `errorText`.
+      notify(error instanceof Error ? getErrorMessage(error, errorText) : errorText, 'error');
     } finally {
       resetAndClose();
       setIsPending(false);

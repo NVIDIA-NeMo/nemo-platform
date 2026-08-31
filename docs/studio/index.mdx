@@ -16,6 +16,8 @@ Studio is still in early development. Many features are missing or should be exp
 
 NeMo Studio is the web app for AI development with NVIDIA NeMo Platform. It provides a workspace-oriented UI for managing local platform resources, reviewing agents, running agent optimization workflows, monitoring agent telemetry, and working with filesets, jobs, and secrets.
 
+The pages visible in your workspace depend on the installed plugins, enabled services, feature flags, and NeMo Platform version. A page documented here might be hidden in your deployment. Preview pages identify the feature flag that enables them.
+
 ---
 
 ## Getting Started
@@ -24,9 +26,28 @@ NeMo Studio is included with the platform. Follow the [Setup guide](/documentati
 
 ## Features
 
+### Current Workspace Navigation
+
+The current sidebar groups related pages under expandable parents. Selecting a parent that has its own landing page opens that page; use its chevron to expand the child entries.
+
+| Sidebar group | Current entry point | Purpose and availability |
+| --- | --- | --- |
+| **Observability** | **Insights** | Review recurring agent failure patterns and optimization insights. Shown when optimization is enabled. |
+| **Observability** | **Traces** | Inspect ingested traces, spans, and session details. |
+| **Components** | **Agents** | Opens the agent list. Select an agent to access Deployments, Logs, Chat, Evaluations, and Details. |
+| **Components** | **Models** | Opens the base-model list directly. Expand **Models** for **Fine-tune**, **Model Evaluations**, **Playground**, and **Virtual Models**, when those capabilities are enabled. |
+| **Evaluations** | **Experiments** | Run evaluations against an agent, and review experiments, evaluations, sessions, and published results across the workspace. See [NeMo Studio Experiments](/documentation/studio/experiments). |
+| **Data** | **Datasets > Data Designer** | Build and monitor synthetic-data jobs. Other installed data plugins can appear below **Datasets**. |
+| **Governance** | **Guardrails** | Manage guardrail configurations. Disabled by default; see [Studio Guardrail Configs](/documentation/studio/guardrail-configs). |
+| **Governance** | **Iron Swarm** | Plugin-provided agent hardening UI. Appears only when the Iron Swarm plugin is installed; see [Studio Plugin UIs](/documentation/studio/plugins). |
+| **System** | **Filesets** | Organize and manage files used by agents and jobs. |
+| **System** | **Jobs** | Monitor jobs across enabled platform capabilities. |
+
+Additional entries, including Dashboard, Safe Synthesizer, Anonymizer, deployments, and workspace settings, appear when their corresponding capability or feature flag is enabled. Because plugins contribute navigation at runtime, an installed plugin can also add pages to an existing group or add a new group.
+
 ### Agents
 
-Use the Studio Agents area to review platform-managed NeMo Agent Toolkit workflows, inspect agent details, deploy agents, open a chat session against a running deployment, and clean up deployments that are no longer needed.
+Use the Studio Agents area to review Platform-managed agents, including the current Fabric-first `nemo-agents-spec-v1` experience, inspect agent details, deploy agents, open a chat session against a running deployment, and clean up deployments that are no longer needed.
 
 For the full workflow, see [Studio Agents](/documentation/studio/agents).
 
@@ -38,7 +59,7 @@ For the full workflow, see [Studio Monitor](/documentation/studio/monitor).
 
 ### Guardrails
 
-Use **Guardrails** to view NeMo Guardrails configurations for the current workspace. The list shows each config's name, attached task model count, and rail count. Select a row to open the detail page, which displays the full configuration payload as formatted JSON.
+When the preview feature is enabled, use **Governance > Guardrails** to view NeMo Guardrails configurations for the current workspace. The list shows each config's name, attached task model count, and rail count. Select a row to open the detail page, which displays the full configuration payload as formatted JSON.
 
 Guardrail configurations are created through the `nemo guardrail` CLI or Guardrails API.
 
@@ -46,7 +67,7 @@ For the full workflow, see [Studio Guardrail Configs](/documentation/studio/guar
 
 ### Virtual Models
 
-Use **Virtual Models** to inspect inference routes managed by the Inference Gateway. The list shows all user-created virtual models in the workspace — auto-provisioned passthrough routes are hidden. Select a row to open the details panel, which shows the default backend model when configured, and the ordered request, response, and post-response middleware pipelines attached to the route.
+When the Guardrails preview feature is enabled, use **Models > Virtual Models** to inspect inference routes managed by the Inference Gateway. The list shows all user-created virtual models in the workspace — auto-provisioned passthrough routes are hidden. Select a row to open the details panel, which shows the default backend model when configured, and the ordered request, response, and post-response middleware pipelines attached to the route.
 
 Virtual models are created through the `nemo inference virtual-models` CLI or the Inference Gateway API.
 
@@ -54,7 +75,7 @@ For the full workflow, see [Studio Virtual Models](/documentation/studio/virtual
 
 ### Models
 
-Use **Models \> Base Models** to browse model entities available in the current workspace. Base models include models registered in the workspace and default platform models.
+Select **Models** to browse base-model entities available in the current workspace. There is no separate **Base Models** child entry in the sidebar: **Models** is both the expandable parent and the link to the base-model list. Base models include models registered in the workspace and default platform models.
 
 The Base Models page supports searching by model name, filtering by creation or update date, sorting alphabetically or by creation time, and showing only customizable models. Select a model card to open the model details side panel.
 
@@ -90,14 +111,21 @@ For the full workflow, see [Synthesize Safe Data](/documentation/synthesize-safe
 
 ### Evaluations
 
-**Evaluations** appears in two separate sidebar groups because it covers two distinct scopes:
+Studio provides separate agent, model, and workspace evaluation views:
 
 | Location | What it shows |
 | -------- | ------------- |
-| **Agents \> Evaluations** | Evaluation runs scoped to a specific agent — results tied to agent deployments and versions. |
-| **Evaluate \> Evaluations** | All evaluation results across the workspace, regardless of which agent or model was evaluated. |
+| **Agents > select an agent > Evaluations** | Active evaluation jobs, completed evaluations, and experiments scoped to the selected agent. |
+| **Models > Model Evaluations** | Model evaluation results. |
+| **Evaluations > Experiments** | Experiments and their evaluations across the workspace. See [NeMo Studio Experiments](/documentation/studio/experiments). |
 
-Use **Agents \> Evaluations** when reviewing how a specific agent performed. Use **Evaluate \> Evaluations** for a broader view of evaluation history across the workspace.
+Use the agent's **Evaluations** tab when reviewing how a specific agent performed. Use **Experiments** for the broader workspace history.
+
+### Experiments
+
+Use **Evaluations > Experiments** to run an evaluation against an agent from the UI — selecting the agent and judge model, uploading a dataset and evaluation config — and to compare results across runs on the experiment leaderboard.
+
+For the full workflow, see [NeMo Studio Experiments](/documentation/studio/experiments). For concepts, the data model, and the CLI and SDK workflows, see [Experiments](/documentation/evaluate-models/experiments).
 
 ### Jobs
 

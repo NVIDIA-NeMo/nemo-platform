@@ -82,7 +82,7 @@ async def test_injected_client_is_used_and_closed(monkeypatch: pytest.MonkeyPatc
 
     report = await run_module.run_analyst(
         agent="agent",
-        agent_spec=None,
+        ethos=None,
         workspace="workspace",
         base_url="https://platform",
         client=cast(AsyncNeMoPlatform, client),
@@ -119,7 +119,7 @@ async def test_client_closed_when_backend_construction_raises(monkeypatch: pytes
     with pytest.raises(RuntimeError, match="backend failed"):
         await run_module.run_analyst(
             agent="agent",
-            agent_spec=None,
+            ethos=None,
             workspace="workspace",
             base_url="https://platform",
             client=cast(AsyncNeMoPlatform, client),
@@ -140,7 +140,7 @@ async def test_client_closed_when_model_resolution_raises(monkeypatch: pytest.Mo
     with pytest.raises(RuntimeError, match="model resolution failed"):
         await run_module.run_analyst(
             agent="agent",
-            agent_spec=None,
+            ethos=None,
             workspace="workspace",
             base_url="https://platform",
             client=cast(AsyncNeMoPlatform, client),
@@ -197,7 +197,7 @@ async def test_client_closed_when_observability_shutdown_raises(monkeypatch: pyt
     with pytest.raises(RuntimeError, match="shutdown failed"):
         await run_module.run_analyst(
             agent="agent",
-            agent_spec=None,
+            ethos=None,
             workspace="workspace",
             base_url="https://platform",
             client=cast(AsyncNeMoPlatform, client),
@@ -227,7 +227,7 @@ async def test_evaluation_context_is_forwarded_to_default_on_observability(monke
 
     await run_module.run_analyst(
         agent="smoke-agent",
-        agent_spec=None,
+        ethos=None,
         workspace="default",
         base_url="http://localhost:8080",
         client=cast(AsyncNeMoPlatform, client),
@@ -255,7 +255,7 @@ async def test_per_run_observability_opt_out_skips_setup(monkeypatch: pytest.Mon
 
     await run_module.run_analyst(
         agent="remote-agent",
-        agent_spec=None,
+        ethos=None,
         workspace="default",
         base_url="https://remote.example",
         client=cast(AsyncNeMoPlatform, client),

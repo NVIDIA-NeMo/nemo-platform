@@ -30,8 +30,8 @@ SPLITS = ("train", "validation")
 # assert both.
 #
 # `g5-edge-cases` is reachable only when trajectory scoring is on, and the
-# combined scenario runs with it off. Measured across runs made after the spec
-# stated the sentinel, so the spec is not the variable:
+# combined scenario runs with it off. Measured across runs made after the Ethos
+# stated the sentinel, so the Ethos is not the variable:
 #
 #     goal tree off -> 0 of 13 candidates closed g5
 #     goal tree on  -> 7 of 11 candidates closed g5

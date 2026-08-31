@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-import anyio
 from anonymizer.config.anonymizer_config import AnonymizerInput
+from anyio import to_thread
+from filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_anonymizer_plugin.app.errors import AnonymizerInvalidConfigError
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_platform_plugin.jobs.file_manager import AsyncFilesetFileManager, FilesetFileManager, TmpDirPath
 from pydantic import BaseModel, Field, ValidationError
 
@@ -29,13 +29,13 @@ _SUPPORTED_FILE_SUFFIXES = {".csv", ".parquet"}
 class AnonymizerInputSpec(BaseModel):
     """Plugin boundary input spec.
 
-    The upstream ``AnonymizerInput`` validates local path existence at model
+    The upstream ``AnonymizerInput`` validates source locations at model
     construction time. The plugin keeps this looser shape at the API boundary
-    so fileset refs can be accepted and materialized before the upstream model
-    is constructed.
+    so HTTP(S) URLs and fileset refs can be accepted and materialized before
+    the upstream model is constructed.
     """
 
-    source: str = Field(description="Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet input file.")
+    source: str = Field(description="HTTP(S) URL or fileset reference for a CSV/Parquet input file.")
     text_column: str = Field(default="text", min_length=1, description="Column containing text to anonymize.")
     id_column: str | None = Field(default=None, description="Optional column to use as record identifier.")
     data_summary: str | None = Field(default=None, description="Short description of the data.")
@@ -106,7 +106,7 @@ async def prepare_anonymizer_input_async(
         if sdk is None:
             raise AnonymizerInvalidConfigError("Fileset input requires a NeMo Platform SDK.")
         if isinstance(sdk, NeMoPlatform):
-            return await anyio.to_thread.run_sync(
+            return await to_thread.run_sync(
                 partial(
                     prepare_anonymizer_input,
                     data,
@@ -276,5 +276,5 @@ def _raise_for_unsupported_scheme(source: str) -> None:
     if parsed.scheme and "://" in source:
         raise AnonymizerInvalidConfigError(
             f"Input source {source!r} uses unsupported scheme {parsed.scheme!r}. "
-            "Use an http(s) URL, fileset reference, or local file path."
+            "Use an http(s) URL or fileset reference."
         )

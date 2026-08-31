@@ -42,7 +42,7 @@ pytestmark = [pytest.mark.integration]
 def _resolve_target(_model_id: str) -> OpenAICompatibleInferenceTarget:
     return OpenAICompatibleInferenceTarget(
         openai_base_url="http://igw.example/provider/v1",
-        model="meta/llama-3.1-8b-instruct",
+        model="nvidia/nemotron-3-nano-30b-a3b",
     )
 
 

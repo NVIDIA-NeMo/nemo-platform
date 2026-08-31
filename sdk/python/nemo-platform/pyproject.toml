@@ -118,8 +118,26 @@ include = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/nemo_platform"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"../../../docs" = "nemo_platform/cli/docs"
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
+[[tool.hatch.build.targets.wheel.hooks.custom.source-packages]]
+source = "packages/nemo_platform_ext/src/nemo_platform_ext"
+target = "nemo_platform_ext"
+include = ["**/*.py", "skills/**/*.md", "skills/**/*.yaml", "skills/**/*.yml", "skills/**/*.json"]
+
+[[tool.hatch.build.targets.wheel.hooks.custom.source-packages]]
+source = "packages/models/src/models"
+target = "models"
+
+[[tool.hatch.build.targets.wheel.hooks.custom.source-packages]]
+source = "packages/filesets/src/filesets"
+target = "filesets"
+
+[[tool.hatch.build.targets.wheel.hooks.custom.source-packages]]
+source = "packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk"
+target = "nemo_evaluator_sdk"
+include = ["**/*.py", "agent_eval/runtimes/fabric/sandbox.Dockerfile"]
 [tool.hatch.build.targets.sdist]
 # Basically everything except hidden files/directories (such as .github, .devcontainers, .python-version, etc)
 include = [
@@ -135,6 +153,26 @@ include = [
   "tests/*",
 ]
 
+[tool.hatch.build.targets.sdist.hooks.custom]
+path = "hatch_build.py"
+
+[[tool.hatch.build.targets.sdist.hooks.custom.source-packages]]
+source = "packages/nemo_platform_ext/src/nemo_platform_ext"
+target = "nemo_platform_ext"
+include = ["**/*.py", "skills/**/*.md", "skills/**/*.yaml", "skills/**/*.yml", "skills/**/*.json"]
+
+[[tool.hatch.build.targets.sdist.hooks.custom.source-packages]]
+source = "packages/models/src/models"
+target = "models"
+
+[[tool.hatch.build.targets.sdist.hooks.custom.source-packages]]
+source = "packages/filesets/src/filesets"
+target = "filesets"
+
+[[tool.hatch.build.targets.sdist.hooks.custom.source-packages]]
+source = "packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk"
+target = "nemo_evaluator_sdk"
+include = ["**/*.py", "agent_eval/runtimes/fabric/sandbox.Dockerfile"]
 [tool.hatch.metadata.hooks.fancy-pypi-readme]
 content-type = "text/markdown"
 

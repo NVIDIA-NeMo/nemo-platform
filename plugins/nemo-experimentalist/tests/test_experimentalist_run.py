@@ -170,7 +170,7 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
     assert call["insight"] is None
     assert call["train_dataset"] == train_dataset
     assert call["validation_dataset"] == validation_dataset
-    assert call["agent_spec"] is None
+    assert call["ethos"] is None
 
 
 @pytest.mark.asyncio
@@ -202,7 +202,7 @@ async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
 
 
 @pytest.mark.asyncio
-async def test_run_experimentalist_forwards_agent_spec_uri(
+async def test_run_experimentalist_forwards_ethos_uri(
     model_clients: ClosingModelClients,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -214,10 +214,10 @@ async def test_run_experimentalist_forwards_agent_spec_uri(
     monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", lambda **_: object())
     monkeypatch.setattr(experimentalist_run, "ExperimentRunner", runner)
 
-    spec_uri = "/path/to/AGENT-SPEC.md"
+    ethos_uri = "/path/to/ETHOS.md"
     await experimentalist_run.run_experimentalist(
         agent=paths.agent,
-        agent_spec=spec_uri,
+        ethos=ethos_uri,
         insight=None,
         train_dataset=DatasetRef(uri=str(paths.train)),
         validation_dataset=DatasetRef(uri=str(paths.validation)),
@@ -227,7 +227,7 @@ async def test_run_experimentalist_forwards_agent_spec_uri(
         config=EvolutionaryOptimizerConfig(),
     )
 
-    assert runner.calls[0]["agent_spec"] == spec_uri
+    assert runner.calls[0]["ethos"] == ethos_uri
 
 
 @pytest.mark.asyncio

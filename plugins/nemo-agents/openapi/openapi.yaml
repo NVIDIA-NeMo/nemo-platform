@@ -3470,7 +3470,7 @@ paths:
       tags:
       - Agent Sessions
       summary: List Sessions
-      description: List sessions in a workspace, optionally filtered by deployment
+      description: List the current principal's sessions, optionally filtered by deployment
         ID.
       operationId: list_sessions_apis_agents_v2_workspaces__workspace__sessions_get
       parameters:
@@ -3711,7 +3711,7 @@ components:
       title: Agent
       description: "An agent definition \u2014 stores agent config and metadata.\n\
         \nEntity type: ``agent``\nPrimary lookup: by ``name`` within a ``workspace``.\n\
-        \nThe agent's spec files live at the locations returned by\n:func:`agent_spec_file_ref`\
+        \nThe agent's Ethos files live at the locations returned by\n:func:`ethos_file_ref`\
         \ and :func:`agent_config_file_ref` \u2014 they\nare **not** stored on the\
         \ entity because the paths are fully derivable\nfrom ``(workspace, name)``."
     AgentComputeSpec:
@@ -3888,6 +3888,12 @@ components:
           description: Container image for docker/k8s modes. Empty for subprocess;
             falls back to AgentsConfig.deployments.default_image.
           default: ''
+        use_image_entrypoint:
+          type: boolean
+          title: Use Image Entrypoint
+          description: 'Container modes only: preserve the image ENTRYPOINT/CMD instead
+            of injecting the platform-owned NAT/Fabric server command.'
+          default: false
         plugin_deployment:
           type: string
           title: Plugin Deployment
@@ -4640,6 +4646,12 @@ components:
           title: Image
           description: Container image for docker/k8s modes. Ignored for subprocess.
           default: ''
+        use_image_entrypoint:
+          type: boolean
+          title: Use Image Entrypoint
+          description: For docker/k8s modes, leave the container command and args
+            empty so the image's ENTRYPOINT/CMD starts the agent server.
+          default: false
         environment:
           anyOf:
           - type: string
@@ -5452,6 +5464,17 @@ components:
           type: string
           title: Input
           description: Prompt to pass to the agent.
+        environment:
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to AgentEnvironmentInline.
+          - $ref: '#/components/schemas/AgentEnvironmentInline'
+          title: Environment
+          description: 'AgentEnvironment to run under: a "workspace/name" ref to a
+            stored AgentEnvironment, an inline environment, or None. Its EnvironmentSpec
+            is merged into the agent config and its ComputeSpec/secret refs are snapshotted
+            onto the job step at creation time.'
         workdir:
           allOf:
           - $ref: '#/components/schemas/AgentWorkdir'
@@ -5475,6 +5498,13 @@ components:
           $ref: '#/components/schemas/ResolvedAgentConfig'
         workdir:
           $ref: '#/components/schemas/AgentWorkdir'
+        compute:
+          $ref: '#/components/schemas/ComputeSpecInline'
+        secrets:
+          additionalProperties:
+            type: string
+          type: object
+          title: Secrets
       type: object
       required:
       - request
@@ -6229,8 +6259,20 @@ components:
       properties:
         optimize_config:
           type: string
+          minLength: 1
           title: Optimize Config
-          description: Absolute path to the Fabric-native optimization YAML file.
+          description: "Location of the Fabric-native optimization YAML.  With optimize_config_fileset\
+            \ set \u2014 required for `submit` \u2014 this is a path relative to the\
+            \ fileset root.  Without it (local `nemo agents optimize run` only) it\
+            \ is an absolute path on the host running the CLI."
+        optimize_config_fileset:
+          title: Optimize Config Fileset
+          description: 'Fileset holding the optimization bundle: the config named
+            by optimize_config plus every asset it references (Agent under Test package,
+            dataset, eval.fabric.base_dir tree, hooks and MCP configs).  Stage one
+            with `nemo agents optimize prepare-fileset`.  Required for `submit`, where
+            the job has no access to the client''s filesystem.'
+          type: string
         workspace:
           type: string
           title: Workspace
@@ -6240,7 +6282,19 @@ components:
         agent:
           title: Agent
           description: Optional platform agent reference ('name' or 'workspace/name').
-            When omitted, optimize_config must include an inline Fabric agent package.
+            When omitted, the optimization config must include an inline Fabric agent
+            package.
+          type: string
+          minLength: 1
+        output:
+          title: Output
+          description: "Where to publish the study artifacts (optimized config, trials\
+            \ dataframe, pareto plots, ATIF evidence) once the study succeeds \u2014\
+            \ either a local directory (path-shaped: starts with '/', './', '../',\
+            \ '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').\
+            \  Filesets are created on demand if missing.  This is in addition to\
+            \ the per-job artifacts that ``ctx.results.save`` always registers; it\
+            \ gives remote clients a stable, addressable location to read from."
           type: string
       type: object
       required:

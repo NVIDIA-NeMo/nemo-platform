@@ -510,7 +510,7 @@ Docker mode requires a configured Docker executor. Kubernetes mode uses the
 same flow with `--mode k8s` and a registry-reachable image.
 
 When `nemo agents create` registers a Platform-managed agent, it uploads the
-directory containing `agent.yaml` to the `{agent-name}-spec` fileset. Docker and
+directory containing `agent.yaml` to the `{agent-name}-ethos` fileset. Docker and
 Kubernetes deployments stage that fileset beside `agent.yaml`, preserving
 referenced skills and other text artifacts. If the fileset is unavailable, the
 deployment falls back to the inline `agent.yaml`; referenced artifacts must then

@@ -36,7 +36,7 @@ from nemo_agents_plugin.fabric.gateway_credentials import platform_gateway_crede
 from nemo_agents_plugin.runner.backend import DeploymentInfo, ExternalLog, LogLocation, RunnerBackend
 from nemo_agents_plugin.runner.fabric_artifact_staging import (
     FabricArtifactStagingError,
-    stage_fabric_spec_config_files,
+    stage_fabric_ethos_config_files,
 )
 from nemo_agents_plugin.utils import get_base_url, get_internal_base_url
 from nemo_deployments_plugin.auth_proxy import auth_proxy_port
@@ -90,6 +90,7 @@ _RESERVED_ENV_VAR_NAMES = frozenset(
         _NAT_CONFIG_ENV,
     }
 )
+_IMAGE_ENTRYPOINT_RESERVED_ENV_VAR_NAMES = _RESERVED_ENV_VAR_NAMES | {"PORT"}
 
 
 # On delete, wait up to this long for the deployments controller to tear down the
@@ -273,7 +274,12 @@ class ReservedSecretEnvVarError(ValueError):
     """A secret env var name collides with a platform-generated container env var."""
 
 
-def _secret_env_vars(secrets: dict[str, str] | None, *, workspace: str) -> list[EnvVar]:
+def _secret_env_vars(
+    secrets: dict[str, str] | None,
+    *,
+    workspace: str,
+    reserved_env_var_names: frozenset[str] = _RESERVED_ENV_VAR_NAMES,
+) -> list[EnvVar]:
     """Compile resolved secret references into secret-backed container env vars.
 
     ``secrets`` maps ENV_VAR_NAME -> "workspace/secret-name" (an unqualified
@@ -288,12 +294,12 @@ def _secret_env_vars(secrets: dict[str, str] | None, *, workspace: str) -> list[
     """
     if not secrets:
         return []
-    reserved = sorted(name for name in secrets if name in _RESERVED_ENV_VAR_NAMES)
+    reserved = sorted(name for name in secrets if name in reserved_env_var_names)
     if reserved:
         raise ReservedSecretEnvVarError(
             "Environment secret variable name(s) collide with platform-reserved container env vars: "
             f"{', '.join(reserved)}. Rename the secret env var(s) to avoid "
-            f"{', '.join(sorted(_RESERVED_ENV_VAR_NAMES))}."
+            f"{', '.join(sorted(reserved_env_var_names))}."
         )
     env_vars: list[EnvVar] = []
     for env_name, ref in secrets.items():
@@ -373,6 +379,7 @@ def build_deployment_config(
     config_files: list[ConfigFile] | None = None,
     resources: ComputeResources | None = None,
     secrets: dict[str, str] | None = None,
+    use_image_entrypoint: bool = False,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -380,10 +387,12 @@ def build_deployment_config(
     NAT workflow configs start ``nat start fastapi`` with workflow YAML at
     *config_mount_path*. Fabric configs start
     ``python -m nemo_agents_plugin.fabric.server`` with ``agent.yaml`` beside the
-    NAT config directory. Docker mode materializes config from env because the
-    docker backend ignores ``config_files``; k8s mounts ``config_files`` via
-    ConfigMap subPath. The main container binds ``0.0.0.0`` and exposes a
-    readiness probe on ``/health``.
+    NAT config directory. When ``use_image_entrypoint`` is true, the generated
+    DeploymentConfig leaves command/args empty so the image ENTRYPOINT/CMD runs
+    instead. Docker mode materializes config from env because the docker backend
+    ignores ``config_files``; k8s mounts ``config_files`` via ConfigMap subPath.
+    The main container binds ``0.0.0.0`` and exposes a readiness probe on
+    ``/health``.
 
     The caller is responsible for rebasing inference ``base_url`` values in
     *agent_config* to a container-reachable gateway before calling this helper.
@@ -413,7 +422,10 @@ def build_deployment_config(
     # Secret-backed env vars from the resolved environment: emitted as
     # secret_ref (never plaintext). The deployments-plugin substrate resolves
     # them (docker) or mounts a managed Secret via envFrom (k8s).
-    env.extend(_secret_env_vars(secrets, workspace=workspace))
+    reserved_env_var_names = (
+        _IMAGE_ENTRYPOINT_RESERVED_ENV_VAR_NAMES if use_image_entrypoint else _RESERVED_ENV_VAR_NAMES
+    )
+    env.extend(_secret_env_vars(secrets, workspace=workspace, reserved_env_var_names=reserved_env_var_names))
     volume_mounts: list[VolumeMount] = []
     init_containers: list[Container] = []
 
@@ -441,7 +453,11 @@ def build_deployment_config(
         )
         env.append(EnvVar(name="PYTHONPATH", value=_PLUGIN_WHEELS_MOUNT))
 
-    if is_fabric:
+    if use_image_entrypoint:
+        server_command = []
+        server_args = []
+        env.append(EnvVar(name="PORT", value=str(port)))
+    elif is_fabric:
         server_command = ["python"]
         server_args = _fabric_server_cli_args(config_path=config_path, port=port)
     else:
@@ -523,6 +539,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
         created_by: str | None = None,
         resources: ComputeResources | None = None,
         secrets: dict[str, str] | None = None,
+        use_image_entrypoint: bool = False,
     ) -> DeploymentInfo:
         """Create DeploymentConfig + Deployment entities for the agent container."""
         del port  # Host port is allocated by the deployments executor, not agents.
@@ -601,7 +618,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
             agent_yaml_path = _fabric_config_mount_path(self._config.config_mount_path)
             try:
                 sdk = get_async_platform_sdk(as_service="agents", internal=True)
-                staged_config_files = await stage_fabric_spec_config_files(
+                staged_config_files = await stage_fabric_ethos_config_files(
                     workspace=workspace,
                     agent_name=agent,
                     rewritten_agent_config=config,
@@ -629,6 +646,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 config_files=staged_config_files,
                 resources=resources,
                 secrets=secrets,
+                use_image_entrypoint=use_image_entrypoint,
             )
         except ReservedSecretEnvVarError as exc:
             logger.error("Refusing to deploy agent %r: %s", name, exc)

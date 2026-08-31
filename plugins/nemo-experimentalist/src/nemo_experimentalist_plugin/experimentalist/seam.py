@@ -100,7 +100,7 @@ class StrategyContext(BuilderContext, Protocol):
     datasets: Mapping[str, Dataset]
 
     #: Markdown description of the agent under test, when the run has one.
-    agent_spec: Path | None
+    ethos: Path | None
 
     @property
     def objective_metrics(self) -> list[MetricTarget]:

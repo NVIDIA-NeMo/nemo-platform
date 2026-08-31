@@ -1,14 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Extended ModelsResource with high-level helper methods.
+from nemo_platform._alias import alias_package as _alias_package
 
-This module provides extended ModelsResource and AsyncModelsResource
-classes that include convenience methods for OpenAI integration and
-deployment management.
-
-Located at: nemo_platform/models/ (after vendoring)
-"""
-
-from .resources import AsyncModelsResource as AsyncModelsResource
-from .resources import ModelsResource as ModelsResource
+_alias_package("models", globals())

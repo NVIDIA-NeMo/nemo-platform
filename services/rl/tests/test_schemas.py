@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 from nmp.customization_common.schemas.values import OutputNameType
-from nmp.rl.app.jobs.training.schemas import OptimizerType
+from nmp.rl.app.jobs.training.schemas import BatchingStrategy, OptimizerType, PolicyBackend
 from nmp.rl.schemas import DPOTraining, GRPOTraining, OutputResponse, ParallelismParams, RlJobOutput
 
 
@@ -150,11 +150,188 @@ def test_grpo_lora_defaults_params() -> None:
     assert t.lora.alpha == 32
 
 
+def test_grpo_advanced_knobs_default_to_current_behaviour() -> None:
+    """Turning hardcoded values into settings must not move an unchanged job.
+
+    The first three were fixed in the config compiler before they were fields; the
+    rest are NeMo-RL's own defaults, which the compiler was already passing through.
+    """
+    t = GRPOTraining(type="grpo")
+
+    assert t.normalize_rewards is True
+    assert t.use_leave_one_out_baseline is True
+    assert t.use_on_policy_kl_approximation is True
+    assert t.use_importance_sampling_correction is True
+    assert t.ratio_clip_c is None
+    assert t.advantage_clip_low is None
+    assert t.advantage_clip_high is None
+    assert t.top_k is None
+
+
+def test_grpo_dual_clip_must_exceed_one() -> None:
+    """The loss asserts this at startup; rejecting it here fails the request instead."""
+    with pytest.raises(ValueError, match="ratio_clip_c"):
+        GRPOTraining(type="grpo", ratio_clip_c=1.0)
+
+
+def test_grpo_rejects_an_inverted_advantage_clip_range() -> None:
+    """Bounds that cross clip every advantage to one value and kill the gradient."""
+    with pytest.raises(ValueError, match="advantage_clip_low"):
+        GRPOTraining(type="grpo", advantage_clip_low=5.0, advantage_clip_high=-5.0)
+
+
+def test_grpo_rejects_an_empty_advantage_clip_range() -> None:
+    """Equal bounds are the same failure, and just as quiet."""
+    with pytest.raises(ValueError, match="advantage_clip_low"):
+        GRPOTraining(type="grpo", advantage_clip_low=1.0, advantage_clip_high=1.0)
+
+
+def test_grpo_accepts_a_single_advantage_clip_bound() -> None:
+    """Bounding one side is a real request; the pair check only applies to both."""
+    assert GRPOTraining(type="grpo", advantage_clip_low=-5.0).advantage_clip_high is None
+    assert GRPOTraining(type="grpo", advantage_clip_high=5.0).advantage_clip_low is None
+
+
 def test_grpo_lora_rejects_params_with_all_weights() -> None:
     from nmp.rl.schemas import LoRAParams
 
     with pytest.raises(ValueError, match="lora must be omitted"):
         GRPOTraining(type="grpo", finetuning_type="all_weights", lora=LoRAParams(rank=8))
+
+
+def test_router_aux_loss_coef_collides_with_hf_config_overrides() -> None:
+    """Both write the same top-level key, and HuggingFace absorbs an unknown kwarg silently,
+    so a losing setting shows up only as degraded accuracy many steps in."""
+    with pytest.raises(ValueError, match="set both directly and inside hf_config_overrides"):
+        GRPOTraining(
+            type="grpo",
+            router_aux_loss_coef=0.0,
+            hf_config_overrides={"router_aux_loss_coef": 0.0},
+        )
+
+
+def test_router_aux_loss_coef_may_coexist_with_a_nested_override() -> None:
+    """Only the top-level key collides. Nesting it under text_config is the Qwen3.5 case."""
+    t = GRPOTraining(
+        type="grpo",
+        router_aux_loss_coef=0.0,
+        hf_config_overrides={"text_config": {"router_aux_loss_coef": 0.0}},
+    )
+    assert t.router_aux_loss_coef == 0.0
+
+
+def test_batching_defaults() -> None:
+    t = GRPOTraining(type="grpo")
+    assert t.batching_strategy is BatchingStrategy.DYNAMIC
+    assert t.train_mb_tokens is None  # derived as max_seq_length * micro_batch_size
+    assert t.sequence_length_round == 64
+
+
+def test_use_triton_defaults_to_unset() -> None:
+    """Unset is what lets the compiler resolve it from TP without overriding a caller."""
+    from nmp.rl.schemas import LoRAParams
+
+    assert LoRAParams().use_triton is None
+    t = GRPOTraining(type="grpo", finetuning_type="lora")
+    assert t.lora is not None and t.lora.use_triton is None
+
+
+def test_triton_lora_rejected_with_tensor_parallelism() -> None:
+    """The Triton kernels take raw tensors and TP makes them DTensors; NeMo-RL turns the
+    pairing into a bare assert that fires only after the model loads."""
+    from nmp.rl.schemas import LoRAParams
+
+    with pytest.raises(ValueError, match="use_triton=true is incompatible"):
+        GRPOTraining(
+            type="grpo",
+            finetuning_type="lora",
+            lora=LoRAParams(rank=16, use_triton=True),
+            parallelism=ParallelismParams(num_gpus_per_node=2, tensor_parallel_size=2),
+        )
+
+
+def test_triton_lora_accepted_without_tensor_parallelism() -> None:
+    from nmp.rl.schemas import LoRAParams
+
+    t = GRPOTraining(type="grpo", finetuning_type="lora", lora=LoRAParams(rank=16, use_triton=True))
+    assert t.lora is not None and t.lora.use_triton is True
+
+
+def test_triton_lora_explicitly_disabled_is_allowed_with_tensor_parallelism() -> None:
+    """False is the value TP needs, so asking for it must not trip the same check."""
+    from nmp.rl.schemas import LoRAParams
+
+    t = GRPOTraining(
+        type="grpo",
+        finetuning_type="lora",
+        lora=LoRAParams(rank=16, use_triton=False),
+        parallelism=ParallelismParams(num_gpus_per_node=2, tensor_parallel_size=2),
+    )
+    assert t.lora is not None and t.lora.use_triton is False
+
+
+def test_policy_backend_defaults_to_automodel() -> None:
+    """The default must be the superset backend, or the common LoRA job fails out of the box."""
+    assert GRPOTraining(type="grpo").policy_backend is PolicyBackend.AUTOMODEL
+
+
+def test_policy_backend_has_no_megatron_member_yet() -> None:
+    """The image can already run MegatronPolicyWorker, so the enum is the only thing stopping
+    a request from reaching a backend whose megatron_cfg the compiler still emits inert."""
+    assert {b.value for b in PolicyBackend} == {"dtensor", "automodel"}
+
+
+def test_dtensor_backend_rejects_lora() -> None:
+    """V1 asserts ``lora_cfg.enabled is False`` in the Ray worker; fail before the GPU."""
+    with pytest.raises(ValueError, match="only supported with policy_backend='automodel'"):
+        GRPOTraining(type="grpo", finetuning_type="lora", policy_backend=PolicyBackend.DTENSOR)
+
+
+def test_dtensor_backend_rejects_expert_parallelism() -> None:
+    with pytest.raises(ValueError, match="expert_parallel_size=8"):
+        GRPOTraining(
+            type="grpo",
+            policy_backend=PolicyBackend.DTENSOR,
+            parallelism=ParallelismParams(num_gpus_per_node=8, expert_parallel_size=8),
+        )
+
+
+def test_dtensor_backend_rejects_automodel_kwargs() -> None:
+    with pytest.raises(ValueError, match="automodel_kwargs"):
+        GRPOTraining(
+            type="grpo",
+            policy_backend=PolicyBackend.DTENSOR,
+            automodel_kwargs={"force_hf": True},
+        )
+
+
+def test_dtensor_backend_reports_every_conflict_at_once() -> None:
+    """One submission, one error listing all of it -- not three round-trips."""
+    with pytest.raises(ValueError) as excinfo:
+        GRPOTraining(
+            type="grpo",
+            finetuning_type="lora",
+            policy_backend=PolicyBackend.DTENSOR,
+            parallelism=ParallelismParams(num_gpus_per_node=8, expert_parallel_size=8),
+            automodel_kwargs={"force_hf": True},
+        )
+    message = str(excinfo.value)
+    assert "finetuning_type='lora'" in message
+    assert "expert_parallel_size=8" in message
+    assert "automodel_kwargs" in message
+
+
+def test_dtensor_backend_accepts_plain_full_weight() -> None:
+    """Full-weight with no v2-only feature is exactly what `dtensor` is for."""
+    t = GRPOTraining(type="grpo", policy_backend=PolicyBackend.DTENSOR)
+    assert t.policy_backend is PolicyBackend.DTENSOR
+
+
+def test_automodel_backend_accepts_full_weight() -> None:
+    """Automodel is not LoRA-only -- upstream's grpo_math_1B.yaml pairs ``_v2: true`` with
+    ``lora_cfg.enabled: False``, and setup.py gates every LoRA branch on the flag."""
+    t = GRPOTraining(type="grpo", finetuning_type="all_weights", policy_backend=PolicyBackend.AUTOMODEL)
+    assert t.policy_backend is PolicyBackend.AUTOMODEL
 
 
 def test_grpo_lora_rejects_lora_merged() -> None:

@@ -35,26 +35,37 @@ def platform_base_url():
 
 
 class _StubWorkspaces:
+    """Recording fake matching the typed WorkspacesClient shape (get_workspace + .data())."""
+
     def __init__(self) -> None:
         self.requested: list[str] = []
 
-    def retrieve(self, workspace: str) -> SimpleNamespace:
-        self.requested.append(workspace)
-        return SimpleNamespace(name=workspace)
+    def get_workspace(self, *, name: str, **kwargs) -> SimpleNamespace:
+        self.requested.append(name)
+        return SimpleNamespace(data=lambda: SimpleNamespace(name=name))
 
 
-class _StubSDK:
-    def __init__(self) -> None:
-        self.workspaces = _StubWorkspaces()
+@pytest.fixture
+def stub_client_from_platform(monkeypatch) -> _StubWorkspaces:
+    """Replace client_from_platform in run.py so the task talks to an in-memory stub."""
+    stub = _StubWorkspaces()
+
+    def _fake_client_from_platform(platform, client_cls):
+        return stub
+
+    monkeypatch.setattr(
+        "nmp.hello_world.tasks.workload_workspace_get.run.client_from_platform",
+        _fake_client_from_platform,
+    )
+    return stub
 
 
-def test_workload_workspace_get_uses_task_sdk_factory(monkeypatch):
-    sdk = _StubSDK()
+def test_workload_workspace_get_uses_task_sdk_factory(stub_client_from_platform, monkeypatch):
     sdk_factory_calls: list[str] = []
 
-    def get_task_sdk(*, as_service: str) -> NeMoPlatform:
+    def get_task_sdk(*, as_service: str) -> None:
         sdk_factory_calls.append(as_service)
-        return cast(NeMoPlatform, sdk)
+        return None
 
     monkeypatch.setenv(TASK_CONFIG_ENVVAR, '{"workspace":"workload-read-target"}')
     monkeypatch.setattr("nmp.hello_world.tasks.workload_workspace_get.run.get_task_sdk", get_task_sdk)
@@ -63,20 +74,19 @@ def test_workload_workspace_get_uses_task_sdk_factory(monkeypatch):
 
     assert exit_code == 0
     assert sdk_factory_calls == ["jobs"]
-    assert sdk.workspaces.requested == ["workload-read-target"]
+    assert stub_client_from_platform.requested == ["workload-read-target"]
 
 
-def test_workload_workspace_get_uses_injected_sdk_without_workload_token(monkeypatch):
-    sdk = _StubSDK()
+def test_workload_workspace_get_uses_injected_sdk_without_workload_token(stub_client_from_platform, monkeypatch):
     monkeypatch.setenv(TASK_CONFIG_ENVVAR, '{"workspace":"workload-read-target"}')
     monkeypatch.delenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, raising=False)
     monkeypatch.delenv("NEMO_WORKLOAD_TOKEN", raising=False)
     monkeypatch.delenv("NEMO_WORKLOAD_TOKEN_FILE", raising=False)
 
-    exit_code = task_run(sdk=cast(NeMoPlatform, sdk))
+    exit_code = task_run(sdk=cast(NeMoPlatform, object()))
 
     assert exit_code == 0
-    assert sdk.workspaces.requested == ["workload-read-target"]
+    assert stub_client_from_platform.requested == ["workload-read-target"]
 
 
 @respx.mock

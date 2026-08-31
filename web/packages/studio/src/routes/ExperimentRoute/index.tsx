@@ -43,6 +43,17 @@ import { type ComponentProps, type FC, useMemo, useState } from 'react';
 const DEFAULT_PAGE_SIZE = 10;
 
 /**
+ * Favorites are pinned above the paginated list so they stay visible on every page. The list
+ * endpoint cannot sort by `is_favorite`, so they are fetched as their own filtered query and
+ * excluded from the main list to avoid rendering twice.
+ *
+ * The cap bounds that unpaginated query. If a workspace somehow exceeds it we stop excluding
+ * favorites from the main list, so the ones past the cap stay reachable there rather than
+ * disappearing from the page entirely.
+ */
+const MAX_PINNED_FAVORITES = 50;
+
+/**
  * Column filters available for experiments. `created_at` / `updated_at` are base entity
  * fields the list endpoint filters via `$gte` / `$lte` ranges. They are not declared on the
  * generated `ExperimentFilter` type, so the API filter is widened here and coerced back at
@@ -99,9 +110,32 @@ export const ExperimentRoute: FC = () => {
     return input as ExperimentFilter;
   }, [columnFilters, searchText]);
 
+  // Pinned favorites: same search/column filters as the main list, narrowed to favorites, so
+  // searching narrows both sections consistently.
+  const { data: favoritesData } = useListExperiments(
+    workspace,
+    {
+      page: 1,
+      page_size: MAX_PINNED_FAVORITES,
+      filter: { ...filter, is_favorite: true } as ExperimentFilter,
+    },
+    { query: { placeholderData: keepPreviousData } }
+  );
+
+  const favorites = favoritesData?.data ?? [];
+  const favoritesTotal = favoritesData?.pagination?.total_results ?? 0;
+  const favoritesTruncated = favoritesTotal > favorites.length;
+
+  // `is_favorite: false` matches rows stored as false *and* legacy rows with no stored value,
+  // so filtering here does not hide older experiments.
+  const listFilter = useMemo<ExperimentFilter | undefined>(
+    () => (favoritesTruncated ? filter : ({ ...filter, is_favorite: false } as ExperimentFilter)),
+    [filter, favoritesTruncated]
+  );
+
   const { data, isLoading, error } = useListExperiments(
     workspace,
-    { page, page_size: pageSize, filter },
+    { page, page_size: pageSize, filter: listFilter },
     { query: { placeholderData: keepPreviousData } }
   );
 
@@ -146,10 +180,29 @@ export const ExperimentRoute: FC = () => {
         >
           <Stack className="h-full min-h-0" gap="density-md">
             <Block className="flex-1 min-h-0 overflow-auto">
+              {favorites.length > 0 && (
+                <Stack gap="density-md" className="pb-density-md">
+                  {favorites.map((favorite) => (
+                    <ExperimentCard key={favorite.id} group={favorite} workspace={workspace} />
+                  ))}
+                </Stack>
+              )}
               <DataView.CustomContent<ExperimentResponse>
                 renderLoadingState={() => <Loading description="Loading experiments..." />}
-                renderEmptyState={({ hasSearchApplied, hasFiltersApplied }) =>
-                  hasSearchApplied || hasFiltersApplied ? (
+                renderEmptyState={({ hasSearchApplied, hasFiltersApplied }) => {
+                  // Favorites render above and are excluded from this list, so an empty list
+                  // here does not mean the workspace is empty. Suppress the first-use CTA in
+                  // that case; it would contradict the experiments shown right above it.
+                  if (favorites.length > 0) {
+                    return (
+                      <Text kind="body/regular/sm" className="text-secondary p-density-2xl">
+                        {hasSearchApplied || hasFiltersApplied
+                          ? 'No other experiments match the current filters.'
+                          : 'No other experiments yet.'}
+                      </Text>
+                    );
+                  }
+                  return hasSearchApplied || hasFiltersApplied ? (
                     <EntityEmptyState
                       entity="experiments"
                       variant="no-results"
@@ -161,8 +214,8 @@ export const ExperimentRoute: FC = () => {
                       variant="first-use"
                       onCreate={() => setIsCreateModalOpen(true)}
                     />
-                  )
-                }
+                  );
+                }}
                 renderErrorState={() => (
                   <ErrorPanel
                     errorMessage={getErrorMessage(

@@ -29,10 +29,10 @@ from pydantic import BaseModel
 
 
 class RlJob(BaseSubmitJob):
-    """NeMo-RL DPO training job under the customization router (submit-only)."""
+    """NeMo-RL DPO and GRPO training job under the customization router (submit-only)."""
 
     name: ClassVar[str] = "rl.jobs"
-    description: ClassVar[str] = "NeMo-RL DPO training jobs on the platform Kubernetes GPU cluster (Ray)."
+    description: ClassVar[str] = "NeMo-RL DPO and GRPO training jobs on the platform Kubernetes GPU cluster (Ray)."
     job_collection_path: ClassVar[str | None] = "/rl/jobs"
     input_spec_schema: ClassVar[type[BaseModel] | None] = RlJobInput
     spec_schema: ClassVar[type[BaseModel] | None] = RlJobOutput

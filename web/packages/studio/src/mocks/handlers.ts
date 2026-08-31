@@ -9,6 +9,7 @@ import {
   PlatformJobLogPage,
   PlatformJobResponsesPage,
   Project,
+  TraceMetricBucketParam,
 } from '@nemo/sdk/generated/platform/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { customizerHandlers } from '@studio/mocks/handlers/customizer';
@@ -16,6 +17,7 @@ import { deploymentsHandlers } from '@studio/mocks/handlers/deployments';
 import { evaluatorHandlers } from '@studio/mocks/handlers/evaluator';
 import { filesetsHandlers } from '@studio/mocks/handlers/filesets';
 import { guardrailsHandlers } from '@studio/mocks/handlers/guardrails';
+import { insightsHandlers } from '@studio/mocks/handlers/insights';
 import { modelsHandlers } from '@studio/mocks/handlers/models';
 import { sampleDatasetsHandlers } from '@studio/mocks/handlers/sampleDatasets';
 import { secretsHandlers } from '@studio/mocks/handlers/secrets';
@@ -34,6 +36,7 @@ import {
   mockSpanById,
   mockSpansPage,
   mockTraceById,
+  mockTraceMetrics,
   mockTracesPage,
 } from '@studio/mocks/intake/telemetry';
 import { randomUUID } from 'crypto';
@@ -66,6 +69,47 @@ export interface ProjectParams {
 export interface HypermodelParams {
   hypermodelId: string;
 }
+
+/** Shared by the agents list and get-by-name handlers so both agree on the same fixtures. */
+const mockAgents = (workspace: unknown) => {
+  const config = {
+    functions: { wiki: { _type: 'wiki_search' }, clock: { _type: 'current_datetime' } },
+    llms: {
+      llm: {
+        _type: 'openai',
+        api_key: 'not-used',
+        model_name: 'meta-llama-3-1-70b-instruct',
+        temperature: 0,
+      },
+    },
+    workflow: {
+      _type: 'react_agent',
+      tool_names: ['wiki', 'clock'],
+      llm_name: 'llm',
+      verbose: false,
+      parse_agent_response_max_retries: 3,
+    },
+  };
+
+  return [
+    {
+      name: 'react-agent',
+      workspace,
+      description: '',
+      created_at: '2026-04-20T10:00:00Z',
+      config,
+      config_format: 'nat-workflow-v1',
+    },
+    {
+      name: 'react-agent2',
+      workspace,
+      description: 'Second react agent',
+      created_at: '2026-04-22T10:00:00Z',
+      config,
+      config_format: 'nat-workflow-v1',
+    },
+  ];
+};
 
 /**
  * Happy path handlers for all UI tests. They usually return mock fixtures, like example Hypermodel response objects.
@@ -490,9 +534,15 @@ export const handlers = [
   http.get('*/apis/intake/v2/workspaces/:workspace/experiments/:name', ({ params }) =>
     HttpResponse.json(mockExperiment(String(params['name'])))
   ),
-  http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', () =>
-    HttpResponse.json(mockEvaluationsPage())
-  ),
+  http.get('*/apis/intake/v2/workspaces/:workspace/evaluations', ({ request }) => {
+    const agentName = new URL(request.url).searchParams.get('filter[agent_name]');
+    const page = mockEvaluationsPage();
+    return HttpResponse.json(
+      agentName
+        ? { ...page, data: page.data.filter((e) => e.agent_names?.includes(agentName)) }
+        : page
+    );
+  }),
   http.get(
     '*/apis/intake/v2/workspaces/:workspace/evaluations/:name/sessions',
     ({ request, params }) => {
@@ -500,6 +550,17 @@ export const handlers = [
       return HttpResponse.json(mockEvaluationSessionsPage(String(params['name']), testCaseName));
     }
   ),
+  http.get('*/apis/intake/v2/workspaces/:workspace/traces/metrics', ({ request }) => {
+    const url = new URL(request.url);
+    const bucketParam = url.searchParams.get('bucket');
+    const bucket: TraceMetricBucketParam = (
+      Object.values(TraceMetricBucketParam) as string[]
+    ).includes(bucketParam ?? '')
+      ? (bucketParam as TraceMetricBucketParam)
+      : 'total';
+    const timezone = url.searchParams.get('timezone') ?? 'UTC';
+    return HttpResponse.json(mockTraceMetrics(bucket, timezone));
+  }),
   http.get('*/apis/intake/v2/workspaces/:workspace/traces', ({ request }) => {
     const url = new URL(request.url);
     const sessionId = url.searchParams.get('filter[session_id]');
@@ -592,58 +653,7 @@ export const handlers = [
   http.get(
     `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents`,
     ({ params, request }) => {
-      const data = [
-        {
-          name: 'react-agent',
-          workspace: params['workspace'],
-          description: '',
-          created_at: '2026-04-20T10:00:00Z',
-          config: {
-            functions: { wiki: { _type: 'wiki_search' }, clock: { _type: 'current_datetime' } },
-            llms: {
-              llm: {
-                _type: 'openai',
-                api_key: 'not-used',
-                model_name: 'meta-llama-3-1-70b-instruct',
-                temperature: 0,
-              },
-            },
-            workflow: {
-              _type: 'react_agent',
-              tool_names: ['wiki', 'clock'],
-              llm_name: 'llm',
-              verbose: false,
-              parse_agent_response_max_retries: 3,
-            },
-          },
-          config_format: 'nat-workflow-v1',
-        },
-        {
-          name: 'react-agent2',
-          workspace: params['workspace'],
-          description: 'Second react agent',
-          created_at: '2026-04-22T10:00:00Z',
-          config: {
-            functions: { wiki: { _type: 'wiki_search' }, clock: { _type: 'current_datetime' } },
-            llms: {
-              llm: {
-                _type: 'openai',
-                api_key: 'not-used',
-                model_name: 'meta-llama-3-1-70b-instruct',
-                temperature: 0,
-              },
-            },
-            workflow: {
-              _type: 'react_agent',
-              tool_names: ['wiki', 'clock'],
-              llm_name: 'llm',
-              verbose: false,
-              parse_agent_response_max_retries: 3,
-            },
-          },
-          config_format: 'nat-workflow-v1',
-        },
-      ];
+      const data = mockAgents(params['workspace']);
 
       const url = new URL(request.url);
       const sort = url.searchParams.get('sort') ?? '-created_at';
@@ -674,6 +684,13 @@ export const handlers = [
         sort,
         filter: null,
       });
+    }
+  ),
+  http.get(
+    `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`,
+    ({ params }) => {
+      const agent = mockAgents(params['workspace']).find((a) => a.name === params['name']);
+      return agent ? HttpResponse.json(agent) : new HttpResponse(null, { status: 404 });
     }
   ),
   http.delete(
@@ -759,6 +776,7 @@ export const handlers = [
   ...secretsHandlers,
   ...filesetsHandlers,
   ...guardrailsHandlers,
+  ...insightsHandlers,
 ];
 
 // Re-export EvaluateJob so consumers of this module that previously relied on

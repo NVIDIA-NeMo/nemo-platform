@@ -121,7 +121,7 @@ class ExperimentContext:
         root: Working directory for the run's artifacts.
         agent_dir: The agent under test, materialized by the runner. A strategy forks
             candidates from here; it must not write into it.
-        agent_spec: Optional markdown description of the agent under test.
+        ethos: Optional markdown description of the agent under test.
         datasets: Evaluator-domain datasets keyed by split. ``validation`` is always
             present; ``train`` and ``insight`` are present when the run has them.
         evaluator: OutcomeEvaluator component the run was configured with.
@@ -138,7 +138,7 @@ class ExperimentContext:
         run: ExperimentRun,
         root: Path,
         agent_dir: Path,
-        agent_spec: Path | None = None,
+        ethos: Path | None = None,
         datasets: Mapping[str, Dataset],
         evaluator: Evaluator,
         resuming: bool = False,
@@ -157,7 +157,7 @@ class ExperimentContext:
         self.workspace = workspace
         self.root = root
         self.agent_dir = agent_dir
-        self.agent_spec = agent_spec
+        self.ethos = ethos
         self.datasets: Mapping[str, Dataset] = dict(datasets)
         self.resuming = resuming
 

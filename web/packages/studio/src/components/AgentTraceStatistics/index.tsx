@@ -16,25 +16,27 @@ import { TraceStatisticsChart } from '@studio/components/AgentTraceStatistics/Tr
 import { TraceStatisticsEmptyState } from '@studio/components/AgentTraceStatistics/TraceStatisticsEmptyState';
 import { TraceStatisticsTiles } from '@studio/components/AgentTraceStatistics/TraceStatisticsTiles';
 import type {
+  TraceStatisticsBucket,
   TraceStatisticsRange,
-  TraceStatisticsSample,
+  TraceStatisticsSummary,
 } from '@studio/components/AgentTraceStatistics/types';
-import {
-  RANGE_LABELS,
-  bucketTraceAverages,
-  summarizeTraces,
-} from '@studio/components/AgentTraceStatistics/utils';
+import { RANGE_LABELS } from '@studio/components/AgentTraceStatistics/utils';
 import { ListTree } from 'lucide-react';
-import { type FC, useMemo } from 'react';
+import { type FC } from 'react';
 
 const RANGE_OPTIONS: TraceStatisticsRange[] = ['day', 'week', 'month'];
 
+const isTraceStatisticsRange = (value: unknown): value is TraceStatisticsRange =>
+  typeof value === 'string' && (RANGE_OPTIONS as string[]).includes(value);
+
 export interface AgentTraceStatisticsProps {
   /**
-   * Traces already scoped to the selected range. The caller owns the query, so changing `range`
-   * refetches rather than re-slicing a cached superset.
+   * Headline numbers for the selected range, or `null` when the range saw no runs. The caller owns
+   * the query, so changing `range` refetches rather than re-slicing a cached superset.
    */
-  traces: TraceStatisticsSample[];
+  summary: TraceStatisticsSummary | null;
+  /** Trend points for the same range, gaps already filled. */
+  buckets: TraceStatisticsBucket[];
   range: TraceStatisticsRange;
   onRangeChange: (range: TraceStatisticsRange) => void;
   /** Omit to hide the "View traces" action. */
@@ -50,7 +52,8 @@ export interface AgentTraceStatisticsProps {
 }
 
 export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
-  traces,
+  summary,
+  buckets,
   range,
   onRangeChange,
   onViewTraces,
@@ -60,9 +63,7 @@ export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
   isPending,
   chartHeight,
 }) => {
-  const summary = useMemo(() => summarizeTraces(traces), [traces]);
-  const buckets = useMemo(() => bucketTraceAverages(traces, range), [traces, range]);
-  const isEmpty = !isPending && traces.length === 0;
+  const isEmpty = !isPending && (summary === null || summary.totalTraces === 0);
 
   return (
     <Stack gap="4">
@@ -86,7 +87,13 @@ export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
             value={range}
             onValueChange={(value: string) => onRangeChange(value as TraceStatisticsRange)}
           >
-            <SelectTrigger aria-label="Statistics range" className="w-32" />
+            <SelectTrigger
+              aria-label="Statistics range"
+              className="w-32"
+              renderValue={(value) =>
+                isTraceStatisticsRange(value) ? RANGE_LABELS[value] : undefined
+              }
+            />
             <SelectContent className="min-w-40">
               <SelectListbox>
                 {RANGE_OPTIONS.map((option) => (

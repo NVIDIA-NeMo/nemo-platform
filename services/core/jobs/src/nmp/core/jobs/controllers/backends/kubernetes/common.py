@@ -740,16 +740,6 @@ class KubernetesJobStorageConfig(PluginKubernetesJobStorageConfig):
 class BaseKubernetesExecutionProfileConfig(PluginBaseKubernetesExecutionProfileConfig):
     """Kubernetes execution config whose storage carries ``to_k8s()`` (server-side)."""
 
-    workload_identity_token_expiration_seconds: int = Field(
-        default=600,
-        ge=600,
-        description="Requested expirationSeconds for the projected service account token used as the workload identity subject token.",
-    )
-    workload_identity_token_audience: str | None = Field(
-        default=None,
-        description="Audience for the projected service account token. Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.",
-    )
-
     # Storage configurations for the job (re-typed to server subclass with to_k8s())
     storage: KubernetesJobStorageConfig = Field(
         default_factory=KubernetesJobStorageConfig, description="Storage configuration for the Kubernetes job pods."
@@ -949,6 +939,32 @@ def build_event_field_selector(kind: str, api_version: str, name: str = "") -> s
     return selector
 
 
+def _opensandbox_job_env(platform_config: Any) -> list[client.V1EnvVar]:
+    """Inject OpenSandbox client env when the cluster has a server installed.
+
+    Domain is a plaintext Service DNS. The API key is a Kubernetes Secret in the
+    job namespace (secretKeyRef cannot read opensandbox-system).
+    """
+    if not getattr(platform_config, "sandbox_cluster_capable", False):
+        return []
+    env: list[client.V1EnvVar] = []
+    domain = getattr(platform_config, "sandbox_server_domain", None)
+    if domain:
+        env.append(client.V1EnvVar(name="OPEN_SANDBOX_DOMAIN", value=domain))
+    secret_name = getattr(platform_config, "sandbox_api_key_secret", None)
+    secret_key = getattr(platform_config, "sandbox_api_key_secret_key", None) or "api-key"
+    if secret_name:
+        env.append(
+            client.V1EnvVar(
+                name="OPEN_SANDBOX_API_KEY",
+                value_from=client.V1EnvVarSource(
+                    secret_key_ref=client.V1SecretKeySelector(name=secret_name, key=secret_key)
+                ),
+            )
+        )
+    return env
+
+
 def create_pod_template_spec(
     step: PlatformJobStepWithContext,
     namespace: str,
@@ -979,11 +995,12 @@ def create_pod_template_spec(
     """
 
     platform_config = get_platform_config()
-    workload_identity_enabled = is_workload_identity_token_exchange_enabled()
-    workload_identity_token_audience = config.workload_identity_token_audience or get_workload_identity_token_audience()
+    workload_identity_enabled = is_workload_identity_token_exchange_enabled() and step.auth_context is not None
+    workload_identity_token_audience = config.workload_identity.token_audience or get_workload_identity_token_audience()
 
     # Profile-level env vars first (e.g. HOME=/tmp); system, step, and shared env override these
     env = [client.V1EnvVar(name=name, value=value) for name, value in config.env.items()]
+    env.extend(_opensandbox_job_env(platform_config))
     validate_no_reserved_managed_job_environment_variable_names(
         (envvar.name for envvar in step.step_spec.environment or []),
         source="Job step environment keys",
@@ -1016,7 +1033,7 @@ def create_pod_template_spec(
         env.append(client.V1EnvVar(name=WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, value=WORKLOAD_IDENTITY_TOKEN_FILE_PATH))
 
     # Set auth context env var for job containers to make authenticated API calls
-    if step.auth_context:
+    if step.auth_context and not workload_identity_enabled:
         sdk_auth_context = step.auth_context
         auth_context = AuthContext.model_validate(sdk_auth_context.model_dump(mode="python", exclude_none=True))
         principal = auth_context.to_principal()
@@ -1094,7 +1111,7 @@ def create_pod_template_spec(
                         client.V1VolumeProjection(
                             service_account_token=client.V1ServiceAccountTokenProjection(
                                 path="token",
-                                expiration_seconds=config.workload_identity_token_expiration_seconds,
+                                expiration_seconds=config.workload_identity.token_expiration_seconds,
                                 audience=workload_identity_token_audience,
                             )
                         )

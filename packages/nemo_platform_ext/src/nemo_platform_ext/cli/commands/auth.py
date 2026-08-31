@@ -850,12 +850,20 @@ def create_access_key(
             help="Scoped Access Key lifetime in seconds. Use 'none' to request no expiration.",
         ),
     ] = None,
+    service_account: Annotated[
+        str | None,
+        typer.Option(
+            "--service-account",
+            help="Bind the key to a non-human service account (PlatformAdmin only).",
+        ),
+    ] = None,
 ) -> None:
-    """Create a Scoped Access Key for the currently authenticated user."""
+    """Create a user-bound or service-bound Scoped Access Key."""
     expires_in_was_set, parsed_expires_in = _parse_access_key_expires_in(expires_in)
     request = AccessKeyCreateRequest(
         name=name,
         description=description,
+        service_account_id=service_account,
         **({"expires_in_seconds": parsed_expires_in} if expires_in_was_set else {}),
     )
     try:
@@ -877,7 +885,11 @@ def list_access_keys(
         typer.Option("--page-size", min=1, max=100, help="Number of keys to retrieve per page."),
     ] = 100,
 ) -> None:
-    """List Scoped Access Keys owned by the currently authenticated user."""
+    """List Scoped Access Keys owned by the currently authenticated user.
+
+    PlatformAdmins also see every service-bound Scoped Access Key, not just the
+    ones they personally created.
+    """
     try:
         listed = _access_key_issuer(ctx).list(page=page, page_size=page_size)
     except AccessKeyFeatureDisabledError as exc:
@@ -894,6 +906,8 @@ def list_access_keys(
             Column("jti", None),
             Column("name", None),
             Column("description", None),
+            Column("entity_type", None),
+            Column("principal", None),
             Column("status", None),
             Column("issuer", None),
             Column("audiences", None),

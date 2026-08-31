@@ -74,13 +74,14 @@ DEFAULT_STUDIO_ASSISTANT_NAME = "nemo-studio-assistant"
 DEFAULT_STUDIO_ASSISTANT_BASE_URL = "http://127.0.0.1:8080"
 STUDIO_ASSISTANT_TIMEOUT_SECONDS = 600.0
 MAX_RETAINED_SESSIONS = 100
-MAX_RETAINED_TURNS_PER_SESSION = 50
+MAX_MODEL_CONTEXT_TURNS_PER_SESSION = 8
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 SERVER_CWD = Path(os.getcwd()).resolve()
 STUDIO_CONTEXT_START = "<nemo_studio_context>"
 STUDIO_CONTEXT_END = "</nemo_studio_context>"
 STUDIO_CONTEXT_USER_REQUEST_PREFIX = "User request:"
+STUDIO_CONTEXT_PROMPT_HEADER = "You are NeMo Assistant, running inside NeMo Studio."
 STUDIO_MESSAGE_SUMMARY_START = "<<<NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>"
 STUDIO_MESSAGE_SUMMARY_END = "<<<END_NEMO_STUDIO_MESSAGE_SUMMARY_V1>>>"
 WORKSPACE_NAME_RE = re.compile(NAME_PATTERN)
@@ -154,9 +155,18 @@ _AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
 
 
 def _recent_conversation_messages(conversation: list[AssistantMessage]) -> list[AssistantMessage]:
-    """Bound model context without truncating the persisted chat history."""
-    max_messages = MAX_RETAINED_TURNS_PER_SESSION * 2
-    return conversation[-max_messages:]
+    """Bound and normalize model context without truncating persisted history."""
+    max_messages = MAX_MODEL_CONTEXT_TURNS_PER_SESSION * 2
+    return [
+        message.model_copy(
+            update={
+                "content": (
+                    _strip_studio_context_from_prompt(message.content) if message.role == "user" else message.content
+                )
+            }
+        )
+        for message in conversation[-max_messages:]
+    ]
 
 
 def _append_conversation_turn(
@@ -359,11 +369,13 @@ def _build_studio_url(studio_base_url: str | None, path: str) -> str | None:
 
 
 def _strip_studio_context_from_prompt(content: str) -> str:
-    if not content.startswith(STUDIO_CONTEXT_START):
+    wrapper_prefix = f"{STUDIO_CONTEXT_START}\n{STUDIO_CONTEXT_PROMPT_HEADER}\n"
+    request_separator = f"\n{STUDIO_CONTEXT_END}\n\n{STUDIO_CONTEXT_USER_REQUEST_PREFIX}\n"
+    if not content.startswith(wrapper_prefix):
         return content
 
-    _, prefix, request = content.partition(f"{STUDIO_CONTEXT_USER_REQUEST_PREFIX}\n")
-    if not prefix:
+    _, separator, request = content.partition(request_separator)
+    if not separator:
         return content
     return request.strip() or content
 
@@ -397,7 +409,7 @@ def _build_studio_system_prompt(
     current_studio_route = _trimmed_string(studio_pathname) or "unknown"
     destinations = studio_links.STUDIO_LINK_DESTINATIONS if enabled_destinations is None else enabled_destinations
     lines = [
-        "You are NeMo Assistant, running inside NeMo Studio.",
+        STUDIO_CONTEXT_PROMPT_HEADER,
         f"Current Studio workspace: {workspace or 'unknown'}",
         f"Studio UI base URL: {normalized_base_url or 'unknown'}",
         f"Current Studio route path: {current_studio_route}",
@@ -1510,6 +1522,11 @@ def _assistant_error_detail(exc: httpx.HTTPError | RuntimeError | ValueError) ->
     """Return a safe client-facing error without leaking exception or upstream response details."""
     if isinstance(exc, httpx.HTTPStatusError):
         return f"The deployed NeMo Assistant returned HTTP {exc.response.status_code}."
+    if isinstance(exc, httpx.ReadTimeout):
+        return (
+            "NeMo Assistant timed out before completing. The operation may still finish; "
+            "check History and Intake traces before retrying."
+        )
     if isinstance(exc, httpx.HTTPError):
         return "The deployed NeMo Assistant could not be reached."
     return "The deployed NeMo Assistant returned an invalid response."
@@ -1772,10 +1789,15 @@ async def _stream_assistant(
 
     queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
     _session_streams[session_id] = queue
+    deployment_run_id = str(uuid.uuid4())
     contextual_message = "\n\n".join(
         [
             "<nemo_studio_context>",
             studio_system_prompt,
+            (
+                f"For any deploy_guardrail call for this request, pass deployment_run_id='{deployment_run_id}'. "
+                "Use it exactly once and do not invent or substitute another value."
+            ),
             "</nemo_studio_context>",
             "User request:",
             message,

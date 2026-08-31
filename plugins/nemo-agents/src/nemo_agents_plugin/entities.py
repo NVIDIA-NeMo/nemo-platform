@@ -217,38 +217,41 @@ class AgentEnvironmentInline(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Canonical spec storage convention
+# Canonical Ethos storage convention
 # ---------------------------------------------------------------------------
 #
-# Each agent has exactly one spec fileset, named by convention. The fileset can
-# hold both the human-readable agent spec and the machine-readable agent config.
-# We do **not** store these locations on the agent - they are fully derivable
-# from the agent's workspace and name. Consumers should call the file-ref
-# helpers below rather than reconstructing refs inline.
+# Each agent has exactly one Ethos fileset, named by convention. The fileset can
+# hold both the human-readable Ethos document and the machine-readable agent
+# config. We do **not** store these locations on the agent - they are fully
+# derivable from the agent's workspace and name. Consumers should call the
+# file-ref helpers below rather than reconstructing refs inline.
 #
 # Layout:
-#   - Fileset (entity ref):  ``{workspace}/{agent-name}-spec``
-#   - Human-readable spec:   ``AGENT-SPEC.md`` (industry-standard name)
+#   - Fileset (entity ref):  ``{workspace}/{agent-name}-ethos``
+#   - Human-readable Ethos:  ``ETHOS.md``
 #   - Machine-readable cfg:  ``agent.yaml``
-#   - Spec file ref:         ``{workspace}/{agent-name}-spec#AGENT-SPEC.md``
-#   - Config file ref:       ``{workspace}/{agent-name}-spec#agent.yaml``
-#   - Local cache root:      ``agents/{agent-name}-spec/``
+#   - Ethos file ref:        ``{workspace}/{agent-name}-ethos#ETHOS.md``
+#   - Config file ref:       ``{workspace}/{agent-name}-ethos#agent.yaml``
+#   - Local cache root:      ``agents/{agent-name}-ethos/``
 #
 # This is intentionally **not** an Optional field on the Agent. The
 # relationship is 1:1 and convention-bound; carrying a stored ref would
 # duplicate state with no resilience benefit (rename of either entity
 # orphans both representations equally).
 
+ETHOS_FILENAME = "ETHOS.md"
+"""Canonical filename inside the agent's Ethos fileset."""
+
 AGENT_SPEC_FILENAME = "AGENT-SPEC.md"
-"""Canonical filename inside the agent's spec fileset."""
+"""Prior contract filename. Staging drops it from the runtime tree."""
 
 AGENT_CONFIG_FILENAME = "agent.yaml"
-"""Canonical machine-readable agent config filename in the agent spec fileset.
+"""Canonical machine-readable agent config filename in the agent Ethos fileset.
 
 This file is parsed into Agent.config when using the nemo-agents-spec-v1 format.
 """
 
-AGENT_SPEC_LOCAL_ROOT = "agents"
+ETHOS_LOCAL_ROOT = "agents"
 """Local directory holding agent build artifacts."""
 
 NAT_WORKFLOW_CONFIG_FORMAT = "nat-workflow-v1"
@@ -257,47 +260,47 @@ NAT_WORKFLOW_CONFIG_FORMAT = "nat-workflow-v1"
 NEMO_AGENTS_SPEC_CONFIG_FORMAT = "nemo-agents-spec-v1"
 """Canonical format tag for the Platform-owned agent.yaml spec format."""
 
-# Container deployments deliver the spec fileset through a ConfigMap (k8s) or a
+# Container deployments deliver the Ethos fileset through a ConfigMap (k8s) or a
 # single env var (docker), both of which cap out around 1MiB. Bound the tree at
 # both ends of the pipe so an agent root pointed at a whole checkout fails at
 # upload time with a clear message instead of at container start.
-MAX_AGENT_SPEC_STAGED_BYTES = 900_000
-"""Maximum total bytes an agent spec fileset may contribute to a deployment."""
+MAX_ETHOS_STAGED_BYTES = 900_000
+"""Maximum total bytes an agent Ethos fileset may contribute to a deployment."""
 
-MAX_AGENT_SPEC_STAGED_FILES = 500
-"""Maximum number of files an agent spec fileset may contain."""
-
-
-def agent_spec_fileset_name(agent_name: str) -> str:
-    """Return the conventional fileset name holding an agent's spec."""
-    return f"{agent_name}-spec"
+MAX_ETHOS_STAGED_FILES = 500
+"""Maximum number of files an agent Ethos fileset may contain."""
 
 
-def agent_spec_local_path(agent_name: str, root: str | Path = AGENT_SPEC_LOCAL_ROOT) -> Path:
-    """Return the local write-through cache path for an agent's spec."""
-    return Path(root) / agent_spec_fileset_name(agent_name) / AGENT_SPEC_FILENAME
+def ethos_fileset_name(agent_name: str) -> str:
+    """Return the conventional fileset name holding an agent's Ethos."""
+    return f"{agent_name}-ethos"
 
 
-def agent_spec_file_ref(workspace: str, agent_name: str) -> FilesetRef:
-    """Return the canonical file ref ``workspace/<name>-spec#AGENT-SPEC.md``.
+def ethos_local_path(agent_name: str, root: str | Path = ETHOS_LOCAL_ROOT) -> Path:
+    """Return the local write-through cache path for an agent's Ethos."""
+    return Path(root) / ethos_fileset_name(agent_name) / ETHOS_FILENAME
 
-    Use this anywhere downstream code needs to point at an agent's spec -
+
+def ethos_file_ref(workspace: str, agent_name: str) -> FilesetRef:
+    """Return the canonical file ref ``workspace/<name>-ethos#ETHOS.md``.
+
+    Use this anywhere downstream code needs to point at an agent's Ethos -
     do not reconstruct the path inline. If the layout ever changes (e.g.
     moving to a per-agent bundle fileset holding multiple artifacts), this
     is the only function that needs to update.
     """
-    return FilesetRef(f"{workspace}/{agent_spec_fileset_name(agent_name)}#{AGENT_SPEC_FILENAME}")
+    return FilesetRef(f"{workspace}/{ethos_fileset_name(agent_name)}#{ETHOS_FILENAME}")
 
 
 def agent_config_file_ref(workspace: str, agent_name: str) -> FilesetRef:
-    """Return the canonical file ref ``workspace/<name>-spec#agent.yaml``.
+    """Return the canonical file ref ``workspace/<name>-ethos#agent.yaml``.
 
     Use this anywhere downstream code needs to point at an agent's config -
     do not reconstruct the path inline. If the layout ever changes (e.g.
     moving to a per-agent bundle fileset holding multiple artifacts), this
     is the only function that needs to update.
     """
-    return FilesetRef(f"{workspace}/{agent_spec_fileset_name(agent_name)}#{AGENT_CONFIG_FILENAME}")
+    return FilesetRef(f"{workspace}/{ethos_fileset_name(agent_name)}#{AGENT_CONFIG_FILENAME}")
 
 
 class AgentComputeSpec(NemoEntity, ComputeSpecInline, entity_type="agent_compute_spec"):
@@ -333,8 +336,8 @@ class Agent(NemoEntity, entity_type="agent"):
     Entity type: ``agent``
     Primary lookup: by ``name`` within a ``workspace``.
 
-    The agent's spec files live at the locations returned by
-    :func:`agent_spec_file_ref` and :func:`agent_config_file_ref` — they
+    The agent's Ethos files live at the locations returned by
+    :func:`ethos_file_ref` and :func:`agent_config_file_ref` — they
     are **not** stored on the entity because the paths are fully derivable
     from ``(workspace, name)``.
     """
@@ -426,6 +429,13 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
     image: str = Field(
         default="",
         description="Container image for docker/k8s modes. Empty for subprocess; falls back to AgentsConfig.deployments.default_image.",
+    )
+    use_image_entrypoint: bool = Field(
+        default=False,
+        description=(
+            "Container modes only: preserve the image ENTRYPOINT/CMD instead of injecting "
+            "the platform-owned NAT/Fabric server command."
+        ),
     )
     plugin_deployment: str = Field(
         default="",

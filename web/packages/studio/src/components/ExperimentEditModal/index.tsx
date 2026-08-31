@@ -12,7 +12,10 @@ import {
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { FormField, Stack, TextArea, TextInput } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
+import { trendVisibilityStorageKey } from '@studio/components/charts/ExperimentTrendChart/visibility';
 import { DefaultSortControl } from '@studio/components/DefaultSortControl';
+import { ExperimentFlagSwitch } from '@studio/components/ExperimentFlagSwitch';
+import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { AxiosError } from 'axios';
 import { type FC, type FormEvent, useEffect, useMemo, useState } from 'react';
 
@@ -30,12 +33,18 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
   const toast = useToast();
   const [description, setDescription] = useState(group.description ?? '');
   const [defaultSort, setDefaultSort] = useState<string>(group.default_sort);
+  const [isFavorite, setIsFavorite] = useState(group.is_favorite ?? false);
+  const [showEvaluationsOverTime, setShowEvaluationsOverTime] = useState(
+    group.show_evaluations_over_time ?? false
+  );
 
   // Reset local form state whenever the modal (re)opens or points at a different group.
   useEffect(() => {
     if (open) {
       setDescription(group.description ?? '');
       setDefaultSort(group.default_sort);
+      setIsFavorite(group.is_favorite ?? false);
+      setShowEvaluationsOverTime(group.show_evaluations_over_time ?? false);
     }
   }, [open, group]);
 
@@ -54,6 +63,13 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
       ].sort(),
     [experimentsPage]
   );
+
+  // `resolveTrendVisible` already retires a stored choice whose stamped flag no longer matches, which
+  // covers the flag moving anywhere else — API, CLI, another tab. It cannot cover a round trip: turn
+  // the flag off and back on and the stamp matches again, so a viewer who had hidden the chart would
+  // watch the owner's edit do nothing. An explicit edit here is unambiguous, so drop the choice
+  // outright. Deleting through the hook notifies the open page, so the chart follows without a reload.
+  const [, , clearTrendChoice] = useLocalStorage(trendVisibilityStorageKey(group.id));
 
   const { mutateAsync: updateExperiment, isPending } = useUpdateExperiment({
     mutation: {
@@ -82,8 +98,13 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
           insight_id: group.insight_id,
           summary: group.summary,
           metadata: group.metadata,
+          is_favorite: isFavorite,
+          show_evaluations_over_time: showEvaluationsOverTime,
         },
       });
+      if (showEvaluationsOverTime !== (group.show_evaluations_over_time ?? false)) {
+        clearTrendChoice();
+      }
       onClose();
     } catch (error) {
       const detail = error instanceof AxiosError ? error.response?.data?.detail : undefined;
@@ -100,7 +121,7 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
   return (
     <FormModal
       title="Edit experiment"
-      instruction="Update the experiment's description and default sort order."
+      instruction="Update the experiment's description, default sort order, and presentation settings."
       submitButtonText={isPending ? 'Saving…' : 'Save'}
       disabled={isPending}
       loading={isPending}
@@ -124,6 +145,18 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
           value={defaultSort}
           onChange={setDefaultSort}
           evaluatorOptions={evaluatorOptions}
+          disabled={isPending}
+        />
+        <ExperimentFlagSwitch
+          flag="show_evaluations_over_time"
+          checked={showEvaluationsOverTime}
+          onCheckedChange={setShowEvaluationsOverTime}
+          disabled={isPending}
+        />
+        <ExperimentFlagSwitch
+          flag="is_favorite"
+          checked={isFavorite}
+          onCheckedChange={setIsFavorite}
           disabled={isPending}
         />
       </Stack>

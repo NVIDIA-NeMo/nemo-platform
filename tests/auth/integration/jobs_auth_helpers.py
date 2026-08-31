@@ -3,18 +3,23 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 
 @contextmanager
 def managed_admin_workspace(admin_sdk: NeMoPlatform, workspace_name: str) -> Iterator[str]:
-    admin_sdk.workspaces.create(name=workspace_name)
+    workspaces = client_from_platform(admin_sdk, WorkspacesClient)
+    workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_name)).data()
     try:
         yield workspace_name
     finally:
-        admin_sdk.workspaces.delete(workspace_name)
+        workspaces.delete_workspace(name=workspace_name).data()
 
 
-def job_exists_in_pages(jobs_page: object, job_name: str) -> bool:
-    return any(item.name == job_name for page in jobs_page.iter_pages() for item in page.data)
+def job_exists_in_pages(items: Iterator[Any], job_name: str) -> bool:
+    return any(item.name == job_name for item in items)

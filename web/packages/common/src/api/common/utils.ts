@@ -54,7 +54,7 @@ export const isVersionConflictError = (error: unknown): boolean =>
  * Handles both ValidationError arrays and simple string errors from the backend.
  *
  * @param error - The error object (typically from an API call)
- * @param fallbackMessage - Optional fallback message if no backend detail is available
+ * @param fallbackMessage - Used only when the error carries no message of its own
  * @returns A user-friendly error message string
  *
  * @example
@@ -121,6 +121,9 @@ export const getErrorMessage = (error: AxiosError | Error, fallbackMessage?: str
     }
   }
 
-  // Return fallback or generic error message
-  return fallbackMessage ?? error.message;
+  // The error's own message first: callers pass `fallbackMessage` for errors that carry
+  // nothing useful (an AxiosError whose branches above all missed), not to overwrite a
+  // message that was written to be read. Preferring the fallback turned a precise
+  // "config has no usable model" into "Unknown error" at the guardrail-run call site.
+  return error.message || fallbackMessage || '';
 };

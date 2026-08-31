@@ -9,11 +9,10 @@ from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundEr
 from nemo_platform_plugin.client.errors import PermissionDeniedError as ClientPermissionDeniedError
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_safe_synthesizer.config.replace_pii import ClassifyConfig, Globals, PiiReplacerConfig, StepDefinition
-from nemo_safe_synthesizer_plugin.api.v2.jobs import endpoints
-from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import job_config_compiler
 from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerJobConfig as PluginJobConfig
 from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerParameters
-from nemo_safe_synthesizer_plugin.runtime import TASK_MODULE
+from nemo_safe_synthesizer_plugin.jobs import generate
+from nemo_safe_synthesizer_plugin.jobs.generate import GenerateJob
 
 DEFAULT_WORKSPACE = "default"
 DEFAULT_DATA_SOURCE = "default/test-data#file.csv"
@@ -27,7 +26,7 @@ def _client_error(error_cls, status_code: int, detail: str):
 
 
 def _patch_jobs_client(jobs_client: MagicMock, files_client: MagicMock):
-    """Patch ``client_from_platform`` in the endpoints module, dispatching by class.
+    """Patch ``client_from_platform`` in the generate module, dispatching by class.
 
     The compiler validates the ``data_source`` fileset via
     ``client_from_platform(sdk, AsyncFilesClient).get_fileset(...)`` and then resolves
@@ -46,7 +45,7 @@ def _patch_jobs_client(jobs_client: MagicMock, files_client: MagicMock):
         raise AssertionError(f"unexpected client class: {client_cls!r}")
 
     return patch(
-        "nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints.client_from_platform",
+        "nemo_safe_synthesizer_plugin.jobs.generate.client_from_platform",
         side_effect=_dispatch,
     )
 
@@ -62,24 +61,28 @@ def mock_files_client():
 def mock_sdk(mock_files_client):
     sdk = MagicMock()
     sdk.inference.providers.retrieve = AsyncMock()
-    sdk.models.get_provider_route_openai_url = MagicMock(
-        return_value="http://nmp-host/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
-    )
     return sdk
 
 
 @pytest.fixture(autouse=True)
 def _patch_client_from_platform(mock_files_client):
+    from nemo_platform_plugin.models.client import AsyncModelsClient
+
+    models_client = MagicMock()
+    models_client.get_provider_route_openai_url = MagicMock(
+        return_value="http://nmp-host/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
+    )
+
+    def _dispatch(_sdk, client_cls):
+        if client_cls is AsyncModelsClient:
+            return models_client
+        return mock_files_client
+
     with patch(
-        "nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints.client_from_platform",
-        return_value=mock_files_client,
+        "nemo_safe_synthesizer_plugin.jobs.generate.client_from_platform",
+        side_effect=_dispatch,
     ):
         yield
-
-
-@pytest.fixture(autouse=True)
-def mock_runtime_command(monkeypatch):
-    monkeypatch.setattr(endpoints, "runtime_task_command", lambda _config: ["/runtime/bin/python", "-m", TASK_MODULE])
 
 
 def _make_spec(data_source: str = DEFAULT_DATA_SOURCE, model_provider: str | None = None):
@@ -96,13 +99,12 @@ def _make_spec(data_source: str = DEFAULT_DATA_SOURCE, model_provider: str | Non
 
 
 async def _compile(spec, mock_sdk):
-    return await job_config_compiler(
+    return await GenerateJob.compile(
         workspace=DEFAULT_WORKSPACE,
-        original_spec=spec,
-        transformed_spec=spec,
+        spec=spec,
         entity_client=MagicMock(),
         job_name=None,
-        sdk=mock_sdk,
+        async_sdk=mock_sdk,
     )
 
 
@@ -145,18 +147,16 @@ async def test_job_config_compiler_with_classify_provider(mock_sdk):
 
     mock_sdk.inference.providers.retrieve.assert_awaited_once_with("my-nim", workspace="default")
     step = next(iter(result["steps"]))
-    assert step["executor"]["provider"] == "subprocess"
-    assert step["executor"]["command"] == ["/runtime/bin/python", "-m", TASK_MODULE]
+    assert step["executor"]["provider"] == "gpu"
     env = {e["name"]: e.get("value") for e in step.get("environment", [])}
     assert env["CLASSIFY_LLM_ENDPOINT_PATH"] == "/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_container_mode_uses_safe_synthesizer_tasks_image(mock_sdk, monkeypatch):
-    monkeypatch.setattr(endpoints.config, "job_mode", "container")
-    monkeypatch.setattr(endpoints.config, "container_image", "safe-synthesizer-tasks")
-    monkeypatch.setattr(endpoints.config, "container_image_ref", None)
-    monkeypatch.setattr(endpoints, "get_qualified_image", lambda name: f"registry.example.com/nemo/{name}:test-tag")
+async def test_job_config_compiler_uses_safe_synthesizer_tasks_image(mock_sdk, monkeypatch):
+    monkeypatch.setattr(generate.plugin_config, "container_image", "safe-synthesizer-tasks")
+    monkeypatch.setattr(generate.plugin_config, "container_image_ref", None)
+    monkeypatch.setattr(generate, "get_qualified_image", lambda name: f"registry.example.com/nemo/{name}:test-tag")
 
     result = await _compile(_make_spec(), mock_sdk)
 
@@ -171,11 +171,10 @@ async def test_job_config_compiler_container_mode_uses_safe_synthesizer_tasks_im
 
 
 @pytest.mark.asyncio
-async def test_job_config_compiler_container_mode_uses_image_ref_override(mock_sdk, monkeypatch):
-    monkeypatch.setattr(endpoints.config, "job_mode", "container")
-    monkeypatch.setattr(endpoints.config, "container_image_ref", "safe-synthesizer-tasks:local")
+async def test_job_config_compiler_uses_image_ref_override(mock_sdk, monkeypatch):
+    monkeypatch.setattr(generate.plugin_config, "container_image_ref", "safe-synthesizer-tasks:local")
     get_qualified_image = MagicMock(side_effect=AssertionError("image ref overrides should not be qualified"))
-    monkeypatch.setattr(endpoints, "get_qualified_image", get_qualified_image)
+    monkeypatch.setattr(generate, "get_qualified_image", get_qualified_image)
 
     result = await _compile(_make_spec(), mock_sdk)
 
@@ -232,7 +231,7 @@ async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock
     assert reparsed.pretrained_model_job == "prior-safe-synth-job"
 
 
-def test_runtime_job_config_allows_pretrained_model_job_with_missing_training():
+def test_task_job_config_allows_pretrained_model_job_with_missing_training():
     job_config = MagicMock()
     job_config.pretrained_model_job = "prior-safe-synth-job"
     job_config.model_dump.return_value = {
@@ -241,12 +240,12 @@ def test_runtime_job_config_allows_pretrained_model_job_with_missing_training():
         "config": {"generation": {"num_records": 25}},
     }
 
-    runtime_config = endpoints._runtime_job_config(job_config)
+    runtime_config = generate._task_job_config(job_config)
 
     assert runtime_config["config"] == {"generation": {"num_records": 25}}
 
 
-def test_runtime_job_config_allows_pretrained_model_job_with_non_dict_training():
+def test_task_job_config_allows_pretrained_model_job_with_non_dict_training():
     job_config = MagicMock()
     job_config.pretrained_model_job = "prior-safe-synth-job"
     job_config.model_dump.return_value = {
@@ -255,12 +254,12 @@ def test_runtime_job_config_allows_pretrained_model_job_with_non_dict_training()
         "config": {"training": "local-adapter"},
     }
 
-    runtime_config = endpoints._runtime_job_config(job_config)
+    runtime_config = generate._task_job_config(job_config)
 
     assert runtime_config["config"]["training"] == "local-adapter"
 
 
-def test_runtime_job_config_preserves_pretrained_model_without_pretrained_model_job():
+def test_task_job_config_preserves_pretrained_model_without_pretrained_model_job():
     job_config = MagicMock()
     job_config.pretrained_model_job = None
     job_config.model_dump.return_value = {
@@ -268,7 +267,7 @@ def test_runtime_job_config_preserves_pretrained_model_without_pretrained_model_
         "config": {"training": {"pretrained_model": "HuggingFaceTB/SmolLM3-3B"}},
     }
 
-    runtime_config = endpoints._runtime_job_config(job_config)
+    runtime_config = generate._task_job_config(job_config)
 
     assert runtime_config["config"]["training"]["pretrained_model"] == "HuggingFaceTB/SmolLM3-3B"
 

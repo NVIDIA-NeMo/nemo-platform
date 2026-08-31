@@ -7,8 +7,10 @@ from unittest.mock import patch
 
 import httpx
 import pytest
-from nemo_platform.auth.helpers import NMPOIDCConfig
+from nemo_platform_ext.auth.helpers import NMPOIDCConfig
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.jobs.client import JobsClient
 from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.http_clients import shared_async_http_client, shared_sync_http_client
 from nmp.common.sdk_factory import (
@@ -111,7 +113,7 @@ def test_get_platform_sdk_preserves_api_base_url_for_controller_only_pods(monkey
         sdk = get_platform_sdk(http_client=http_client)
 
         assert str(sdk.base_url).rstrip("/") == "http://nemo-platform-api:8080"
-        sdk.jobs.list(workspace="default")
+        client_from_platform(sdk, JobsClient).list_jobs(workspace="default")
 
     assert len(captured_requests) == 1
     assert str(captured_requests[0].url) == "http://nemo-platform-api:8080/apis/jobs/v2/workspaces/default/jobs"
@@ -189,8 +191,10 @@ def test_get_platform_sdk_uses_workload_identity_when_token_file_configured(monk
     monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
     monkeypatch.setenv("NMP_PRINCIPAL", json.dumps({"id": "creator@example.com", "email": "creator@example.com"}))
     monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
-    monkeypatch.setattr("nemo_platform.client.factory.discover_nmp_config", lambda _base_url: _workload_oidc_config())
-    monkeypatch.setattr("nemo_platform.auth.workload_exchange.token_exchange_grant", token_exchange_grant)
+    monkeypatch.setattr(
+        "nemo_platform_ext.client.factory.discover_nmp_config", lambda _base_url: _workload_oidc_config()
+    )
+    monkeypatch.setattr("nemo_platform_ext.auth.workload_exchange.token_exchange_grant", token_exchange_grant)
 
     sdk = get_platform_sdk()
     try:
@@ -388,8 +392,10 @@ def test_get_task_sdk_uses_workload_identity_when_token_file_configured(monkeypa
     monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
     monkeypatch.setenv("NMP_PRINCIPAL", json.dumps({"id": "creator@example.com", "email": "creator@example.com"}))
     monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
-    monkeypatch.setattr("nemo_platform.client.factory.discover_nmp_config", lambda _base_url: _workload_oidc_config())
-    monkeypatch.setattr("nemo_platform.auth.workload_exchange.token_exchange_grant", token_exchange_grant)
+    monkeypatch.setattr(
+        "nemo_platform_ext.client.factory.discover_nmp_config", lambda _base_url: _workload_oidc_config()
+    )
+    monkeypatch.setattr("nemo_platform_ext.auth.workload_exchange.token_exchange_grant", token_exchange_grant)
 
     sdk = get_task_sdk(as_service="customizer")
     try:

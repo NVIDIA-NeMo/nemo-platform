@@ -15,14 +15,24 @@ import { Palette } from 'lucide-react';
 export const CHAT_DEFAULT_MAX_TOKENS = 4096;
 export const DEFAULT_LARGE_PAGE_SIZE = 1000;
 export const DATASET_NAME_REGEX = /^[a-zA-Z0-9._-]+$/;
-export const DEFAULT_MODEL_NAME = 'meta/llama-3.1-8b-instruct';
+export const DEFAULT_MODEL_NAME = 'nvidia/nemotron-3-nano-30b-a3b';
 export const DEFAULT_NAMESPACE = 'default';
 export const DEFAULT_API_ERR_MSG = 'Invalid API response. Please try again later.';
 export const DEFAULT_TOOLS_FILE_NAME = 'tools.json';
 export const EMPTY_FIELD_VALUE = '-';
 export const EMPTY_FIELD_EMDASH_VALUE = '—';
-export const DEFAULT_BUILD_MODEL_NAME = 'nvidia-nemotron-nano-3-30b-a3b';
+export const DEFAULT_BUILD_MODEL_NAME = 'nvidia-nemotron-3-nano-30b-a3b';
 export const DEFAULT_EMBEDDER_MODEL_NAME = 'nvidia-nv-embedqa-e5-v5';
+
+/**
+ * Engine for a guardrail config's `main` model entry.
+ *
+ * Mirrors `DEFAULT_MAIN_ENGINE` in
+ * `plugins/nemo-guardrails/src/nemo_guardrails_plugin/constants.py`, which is what the
+ * service falls back to when a config declares no `main` entry. Writing the same value
+ * keeps a Studio-authored config behaviourally identical to one without the entry.
+ */
+export const GUARDRAIL_DEFAULT_ENGINE = 'nim';
 
 export const DEFAULT_MAX_PARALLEL_REQUESTS = 2;
 export const MAX_PARALLEL_REQUESTS_MIN = 1;

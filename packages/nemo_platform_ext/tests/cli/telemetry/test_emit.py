@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+import asyncio
 import json
 import uuid
 from collections.abc import Iterator
@@ -77,6 +78,28 @@ class TestEmitEvent:
     @patch.object(emit_mod, "TelemetryHandler", side_effect=RuntimeError("boom"))
     def test_emit_never_raises(self, _handler_cls):
         emit_mod.emit_event(_event())  # must not raise
+
+    @patch.object(emit_mod, "TelemetryHandler")
+    def test_emit_suppresses_keyboard_interrupt_from_handler_stop(self, handler_cls):
+        instance = Mock()
+        instance.stop.side_effect = KeyboardInterrupt
+        handler_cls.return_value = instance
+
+        emit_mod.emit_event(_event())
+
+        instance.enqueue.assert_called_once()
+        instance.stop.assert_called_once()
+
+    @patch.object(emit_mod, "TelemetryHandler")
+    def test_emit_suppresses_cancelled_error_from_handler_stop(self, handler_cls):
+        instance = Mock()
+        instance.stop.side_effect = asyncio.CancelledError
+        handler_cls.return_value = instance
+
+        emit_mod.emit_event(_event())
+
+        instance.enqueue.assert_called_once()
+        instance.stop.assert_called_once()
 
     @patch.object(emit_mod, "TelemetryHandler")
     def test_session_id_is_stable_across_calls(self, handler_cls):

@@ -10,8 +10,9 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 import pytest
+from jinja2 import Environment, FileSystemLoader
 from nemo_platform._types import Omit
-from nemo_platform_sdk_tools.sdk.cli_generator.config import CLIConfig
+from nemo_platform_sdk_tools.sdk.cli_generator.config import CLIConfig, get_templates_dir
 from nemo_platform_sdk_tools.sdk.cli_generator.context_collectors.base import (
     build_path_params,
     promote_name_to_positional,
@@ -696,6 +697,18 @@ def _make_body_param(name: str, help_text: str | None = None) -> Parameter:
     )
 
 
+def _render_create_command(context: dict[str, Any]) -> str:
+    env = Environment(  # noqa: S701  # nosec B701
+        loader=FileSystemLoader(get_templates_dir()),
+        trim_blocks=True,
+        lstrip_blocks=True,
+        autoescape=False,
+    )
+    env.filters["repr"] = repr
+    env.filters["to_kebab"] = lambda value: str(value).replace("_", "-")
+    return env.get_template("create_command.py.j2").render(**context)
+
+
 class TestCLIConfig:
     def test_top_level_command_config_ignores_non_mapping_top_level(self):
         config = _make_config("""
@@ -907,7 +920,33 @@ config:
         ctx = CreateContextCollector(self._config()).collect(["things"], sdk_method, "create")
         assert all(p.var_name != "name" for p in ctx["parameters"])
 
-    def test_create_includes_wait_config(self):
+    def test_create_includes_watch_config(self):
+        config = self._config("""
+config:
+  - resource: [things]
+    methods:
+      create:
+        watch:
+          type: platform_job
+          resource_label: thing job
+""")
+        sdk_method = _make_sdk_method_with_body([("name", None), ("spec", None)])
+        ctx = CreateContextCollector(config).collect(["things"], sdk_method, "create")
+
+        assert ctx["watch_config"] == {"type": "platform_job", "resource_label": "thing job"}
+        assert ctx["wait_config"] is None
+        rendered = _render_create_command(ctx)
+        assert "from nemo_platform_ext.jobs.watch import watch_job" not in rendered
+        assert (
+            "from nemo_platform_ext.cli.core.job_watch_renderer import JobWatchRenderResult, render_job_watch_events"
+            in rendered
+        )
+        assert "from nemo_platform_ext.cli.core.waiters import wait_for_platform_job" not in rendered
+        assert "from nemo_platform_plugin.client.adapter import client_from_platform" in rendered
+        assert "from nemo_platform_plugin.jobs.client import JobsClient" in rendered
+        assert "jobs_client.watch_job(" in rendered
+
+    def test_create_platform_job_watch_config_renders_wait_and_watch(self):
         config = self._config("""
 config:
   - resource: [things]
@@ -916,11 +955,106 @@ config:
         wait:
           type: platform_job
           resource_label: thing job
+        watch:
+          type: platform_job
+          resource_label: thing job
 """)
         sdk_method = _make_sdk_method_with_body([("name", None), ("spec", None)])
         ctx = CreateContextCollector(config).collect(["things"], sdk_method, "create")
 
-        assert ctx["wait_config"] == {"type": "platform_job", "resource_label": "thing job"}
+        rendered = _render_create_command(ctx)
+
+        assert 'typer.Option("--watch"' in rendered
+        assert 'typer.Option("--wait"' in rendered
+        assert "timeout: Annotated[int | None" in rendered
+        assert "] = None" in rendered
+        assert 'watch_options={"timeout": timeout, "poll_interval": poll_interval} if watch else None' in rendered
+        assert (
+            'wait_options={"timeout": timeout if timeout is not None else 1200, "poll_interval": poll_interval} '
+            "if wait else None"
+        ) in rendered
+        assert "wait_config={\"type\": 'platform_job', \"resource_label\": 'thing job'} if wait else None" in rendered
+        assert "from nemo_platform_ext.jobs.watch import watch_job" not in rendered
+        assert "from nemo_platform_ext.cli.core.waiters import wait_for_platform_job" in rendered
+        assert (
+            "from nemo_platform_ext.cli.core.job_watch_renderer import JobWatchRenderResult, render_job_watch_events"
+            in rendered
+        )
+        assert "from nemo_platform_plugin.client.adapter import client_from_platform" in rendered
+        assert "from nemo_platform_plugin.jobs.client import JobsClient" in rendered
+        assert "jobs_client = client_from_platform(client, JobsClient)" in rendered
+        assert "client.things.get_status" not in rendered
+        assert "wait_for_platform_job(" in rendered
+        assert "jobs_client.watch_job(" in rendered
+        assert "resource_label='thing job'" in rendered
+        assert "watch_result = render_job_watch_events(events, resource_label='thing job')" in rendered
+        assert "if watch_result is JobWatchRenderResult.INTERRUPTED:" in rendered
+        assert "raise typer.Exit(130)" in rendered
+        assert "if watch_result is not JobWatchRenderResult.SUCCEEDED:" in rendered
+        assert rendered.index("format_output(") < rendered.index("if wait or watch:")
+
+    def test_create_inference_deployment_config_renders_wait_and_watch(self):
+        config = self._config("""
+config:
+  - resource: [inference, deployments]
+    methods:
+      create:
+        wait:
+          type: inference_deployment
+          resource_label: deployment
+        watch:
+          type: inference_deployment
+          resource_label: deployment
+""")
+        sdk_method = _make_sdk_method_with_body([("name", None), ("workspace", None), ("config", None)])
+        ctx = CreateContextCollector(config).collect(["inference", "deployments"], sdk_method, "create")
+
+        rendered = _render_create_command(ctx)
+
+        assert 'typer.Option("--wait"' in rendered
+        assert 'typer.Option("--watch"' in rendered
+        assert "Wait for the created deployment to be up and running" in rendered
+        assert "Watch the created deployment until it is stable while streaming status updates" in rendered
+        assert "created deployment to reach a terminal state" not in rendered
+        assert "timeout if timeout is not None else 1200" not in rendered
+        assert "timeout: Annotated[int, typer.Option" in rendered
+        assert "] = 1200" in rendered
+        assert "from nemo_platform_ext.cli.core.waiters import wait_for_inference_deployment" in rendered
+        assert "from nemo_platform_ext.jobs.watch import watch_job" not in rendered
+        assert (
+            "watch_config={\"type\": 'inference_deployment', \"resource_label\": 'deployment'} if watch else None"
+            in rendered
+        )
+        assert 'watch_options={"timeout": timeout, "poll_interval": poll_interval} if watch else None' in rendered
+        assert (
+            "wait_config={\"type\": 'inference_deployment', \"resource_label\": 'deployment'} if wait else None"
+            in rendered
+        )
+        assert "if wait or watch:" in rendered
+        assert "wait_for_inference_deployment(" in rendered
+        assert "verbose=" not in rendered
+        assert "Unable to determine created resource name for --wait/--watch" in rendered
+
+    def test_create_inference_deployment_wait_only_does_not_reference_watch(self):
+        config = self._config("""
+config:
+  - resource: [inference, deployments]
+    methods:
+      create:
+        wait:
+          type: inference_deployment
+          resource_label: deployment
+""")
+        sdk_method = _make_sdk_method_with_body([("name", None), ("workspace", None), ("config", None)])
+        ctx = CreateContextCollector(config).collect(["inference", "deployments"], sdk_method, "create")
+
+        rendered = _render_create_command(ctx)
+
+        assert 'typer.Option("--wait"' in rendered
+        assert 'typer.Option("--watch"' not in rendered
+        assert "if wait:" in rendered
+        assert "verbose=" not in rendered
+        assert "verbose=watch" not in rendered
 
     def test_delete_suppressed_by_config(self):
         sdk_method = _make_sdk_method_with_body([("name", None)])

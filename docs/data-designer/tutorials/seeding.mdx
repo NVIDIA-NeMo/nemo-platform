@@ -11,21 +11,6 @@ This tutorial demonstrates how to use external datasets as seed data for synthet
 
 For more detail about seed dataset behavior, see the [open-source library's version](https://docs.nvidia.com/nemo/datadesigner/v0.9.1/tutorials/seeding-with-an-external-dataset) of this tutorial.
 
-## Seed Sources by Execution Mode
-
-Seed source support depends on where the workload executes:
-
-| Seed source | CLI `run` | CLI `submit` / SDK today | Use case |
-|-------------|-----------|--------------------------|----------|
-| **Local files or DataFrames** | Supported | Not supported | Fast local iteration with files available to the CLI process. |
-| **HuggingFace** | Supported | Supported | Publicly available datasets or private HuggingFace datasets. |
-| **Files API Filesets** | Supported when NeMo Services access is configured | Supported | Shared seed data stored through the Files API. |
-
-<Note>
-
-`run` versus `submit` controls where the workload executes. A local `run` can still read Files API Filesets if the configuration references them and NeMo Services access is configured.
-
-</Note>
 ### HuggingFace Datasets
 
 Use `HuggingFaceSeedSource` to load data from HuggingFace:
@@ -45,7 +30,7 @@ dd.HuggingFaceSeedSource(
 
 ### Files API Filesets
 
-Use `FilesetFileSeedSource` to load data through the Files API. This works in CLI `run`, CLI `submit`, and SDK execution when NeMo Services access is configured:
+Use `FilesetFileSeedSource` to load data through the Files API.
 
 ```python
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
@@ -61,11 +46,11 @@ FilesetFileSeedSource(
 
 ## Prerequisites
 
-Ensure you have completed the [tutorials prerequisites](/documentation/design-synthetic-data/tutorials#prerequisites). This tutorial uses an Inference Gateway provider, so local CLI `run` and NeMo Services execution both need access to the Inference Gateway API in a running NeMo Services cluster.
+Ensure you have completed the [tutorials prerequisites](/documentation/design-synthetic-data/tutorials#prerequisites).
 
 ## Example: Medical Notes from Symptom Data
 
-This example generates realistic patient medical notes by seeding with publicly available symptom-to-diagnosis data. It uploads the seed data to a Files API Fileset so the same configuration can run locally through CLI `run` or through NeMo Services execution.
+This example generates realistic patient medical notes by seeding with publicly available symptom-to-diagnosis data.
 
 ### Step 1: Upload Seed Data
 
@@ -251,7 +236,7 @@ Respond with only the notes, no other text.
 
 ### Step 5: Execute
 
-Because this example uses a Files API Fileset and an Inference Gateway provider, even local CLI execution communicates with NeMo Services APIs.
+#### CLI Execution
 
 For CLI execution, save the configuration in `medical_notes.py` and expose a `load_config_builder()` function that returns the `config_builder`.
 
@@ -260,26 +245,19 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     return config_builder
 ```
 
-Preview locally:
+Preview the dataset:
 
 ```bash
-nemo data-designer preview run medical_notes.py --num-records 5
+nemo data-designer preview medical_notes.py --workspace default
 ```
 
-Generate a larger dataset locally:
+Generate a larger dataset:
 
 ```bash
-nemo data-designer create run medical_notes.py --num-records 30
+nemo data-designer create medical_notes.py --workspace default --num-records 30
 ```
 
-Submit to NeMo Services:
-
-```bash
-nemo data-designer preview submit medical_notes.py --workspace default --num-records 5
-nemo data-designer create submit medical_notes.py --workspace default --profile default --num-records 30
-```
-
-You can also execute through the SDK service path.
+#### SDK Execution
 
 Create a client:
 
@@ -287,8 +265,6 @@ Create a client:
 # Using the client instance from Step 1
 data_designer = client.data_designer
 ```
-
-### Previewing the Dataset
 
 Use the `preview` method for rapid iteration:
 
@@ -307,7 +283,6 @@ preview.analysis.to_report()
 ```
 
 <Markdown src="/snippets/data-designer/_snippets/preview-results.mdx" />
-### Generating the Full Dataset
 
 When you're satisfied with the preview, submit a larger generation job:
 
@@ -344,6 +319,5 @@ When you configure a seed dataset:
 
 ## Next Steps
 
-- **Execution modes:** Learn more about local and NeMo Services execution in [Execution Modes](/documentation/design-synthetic-data/execution-modes)
 - **Column types:** Explore all available column types in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.9.1/concepts/columns)
-- **Processors:** Transform your data with processors in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.9.1/concepts/processors)
+- **Advanced features:** Learn about [processors](https://docs.nvidia.com/nemo/datadesigner/v0.9.1/concepts/processors) and [validation](https://docs.nvidia.com/nemo/datadesigner/v0.9.1/concepts/validators)

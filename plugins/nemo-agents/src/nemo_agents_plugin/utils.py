@@ -195,7 +195,7 @@ def get_internal_base_url() -> str | None:
 
 def get_default_model() -> str | None:
     """Return the default model for the platform from the SDK context."""
-    from nemo_platform.config import get_context
+    from nemo_platform_ext.config import get_context
 
     return get_context().default_model
 
