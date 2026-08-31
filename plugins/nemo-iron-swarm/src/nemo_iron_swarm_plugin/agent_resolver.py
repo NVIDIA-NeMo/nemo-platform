@@ -235,7 +235,15 @@ def derive_agent_env(agent_config: dict[str, Any]) -> dict[str, str]:
 
 #: MCP transports whose ``url`` is a network address. ``stdio`` names a local executable instead —
 #: allow-listing it would put a filesystem path in a network policy.
-_NETWORK_MCP_TRANSPORTS = frozenset({"sse", "streamable-http", "http", "websocket"})
+#: Transports that reach the network, in the adapter's normalized spelling. The Fabric adapter
+#: lowercases and maps ``-`` to ``_`` before validating, so both ``streamable-http`` and
+#: ``streamable_http`` are legal in a config and must be recognised here.
+_NETWORK_MCP_TRANSPORTS = frozenset({"sse", "streamable_http", "http", "websocket"})
+
+
+def _normalized_transport(server: dict[str, Any]) -> str:
+    """The server's transport, spelled the way the adapter spells it."""
+    return str(server.get("transport", "stdio")).strip().lower().replace("-", "_")
 
 
 def derive_egress(agent_config: dict[str, Any]) -> list[str]:
@@ -253,7 +261,7 @@ def derive_egress(agent_config: dict[str, Any]) -> list[str]:
 
     servers = agent_config.get("mcp", {}).get("servers") if isinstance(agent_config.get("mcp"), dict) else None
     for server in servers.values() if isinstance(servers, dict) else ():
-        if not isinstance(server, dict) or str(server.get("transport", "stdio")) not in _NETWORK_MCP_TRANSPORTS:
+        if not isinstance(server, dict) or _normalized_transport(server) not in _NETWORK_MCP_TRANSPORTS:
             continue
         url = server.get("url")
         if isinstance(url, str) and "://" in url:
@@ -425,15 +433,30 @@ def materialize_agent_package(
     return config_path
 
 
-def relay_artifacts_dir(agent_config: dict[str, Any]) -> str | None:
-    """Where the agent writes its Relay telemetry, if it says.
+#: Where a sandboxed victim must write its Relay telemetry. Iron Swarm reads this exact path out of
+#: the sandbox (``iron_swarm.relay_plugin.victim.SANDBOX_ARTIFACTS_DIR``); an agent that points
+#: ``telemetry.output_dir`` anywhere else produces a stream nothing collects.
+SANDBOX_TELEMETRY_DIR = "/home/sandbox/.iron-swarm/relay"
 
-    Iron Swarm reads ``events.atof.jsonl`` from here to recover which tools an attack reached, and
-    the relay preflight uses it to prove the victim is instrumented at all.
+
+def check_relay_artifacts_dir(agent_config: dict[str, Any]) -> str | None:
+    """Return a complaint if the agent writes Relay telemetry where Iron Swarm will not look.
+
+    Deliberately *not* forwarded to the manifest as ``relay_artifacts``: that field names a
+    **host** directory for the fetched copy, while ``telemetry.output_dir`` names a path inside the
+    container. Passing the container path across made the host try to write ``/home/sandbox``, which
+    on macOS is an autofs mount and fails with ``[Errno 45] Operation not supported`` — and would
+    silently create a stray real directory on Linux.
     """
     telemetry = agent_config.get("telemetry")
     output_dir = telemetry.get("output_dir") if isinstance(telemetry, dict) else None
-    return str(output_dir) if output_dir else None
+    if output_dir and str(output_dir) != SANDBOX_TELEMETRY_DIR:
+        return (
+            f"telemetry.output_dir is {output_dir!r}, but Iron Swarm reads the victim's ATOF stream "
+            f"from {SANDBOX_TELEMETRY_DIR!r}. Point it there or the run will report an "
+            "uninstrumented victim."
+        )
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -523,6 +546,10 @@ def resolve_agent_to_manifest(
     resolved_port, warnings = _resolve_victim_port(sdk, workspace, name)
     port = port or resolved_port
 
+    telemetry_complaint = check_relay_artifacts_dir(agent_config)
+    if telemetry_complaint:
+        warnings.append(telemetry_complaint)
+
     # Skills and other local artifacts live beside the config, so a scaffold that copies only the
     # config yields an agent that starts and then cannot find them.
     referenced = detect_custom_components(agent_config)
@@ -562,7 +589,6 @@ def resolve_agent_to_manifest(
         secrets=secrets,
         egress=egress,
         backends=[gw_backend] if gw_backend else [],
-        relay_artifacts=relay_artifacts_dir(injected),
         harness=harness,
         env=derive_agent_env(agent_config),
     )
