@@ -10203,6 +10203,7 @@ components:
           - $ref: '#/components/schemas/NGCStorageConfig'
           - $ref: '#/components/schemas/HuggingfaceStorageConfig'
           - $ref: '#/components/schemas/S3StorageConfig'
+          - $ref: '#/components/schemas/GithubStorageConfig'
           title: Storage
           description: The storage configuration for the fileset. If not provided,
             uses default storage.
@@ -12530,6 +12531,7 @@ components:
           - $ref: '#/components/schemas/NGCStorageConfig'
           - $ref: '#/components/schemas/HuggingfaceStorageConfig'
           - $ref: '#/components/schemas/S3StorageConfig'
+          - $ref: '#/components/schemas/GithubStorageConfig'
           title: Storage
         metadata:
           $ref: '#/components/schemas/FilesetMetadata'
@@ -13036,6 +13038,60 @@ components:
         with ``-`` for
 
         descending order.'
+    GithubStorageConfig:
+      properties:
+        read_chunk_size:
+          type: integer
+          title: Read Chunk Size
+          description: 'Chunk size in bytes for reading/streaming files. Larger chunks
+            reduce async overhead but increase memory per concurrent download. Default:
+            1MB.'
+          default: 1048576
+        type:
+          type: string
+          const: github
+          title: Type
+          default: github
+        owner:
+          type: string
+          title: Owner
+          description: GitHub repository owner (user or organization)
+        repo:
+          type: string
+          title: Repo
+          description: GitHub repository name
+        revision:
+          type: string
+          title: Revision
+          description: Branch, tag, or commit SHA. 'HEAD' resolves to the repository's
+            default branch.
+          default: HEAD
+        original_revision:
+          title: Original Revision
+          description: The original revision requested by the user before resolution
+            (e.g., 'main'). The 'revision' field contains the resolved commit SHA.
+          type: string
+        path:
+          type: string
+          title: Path
+          description: Optional directory within the repository. All paths are relative
+            to it.
+          default: ''
+        token_secret:
+          allOf:
+          - $ref: '#/components/schemas/SecretRef'
+          description: GitHub personal access token secret name, required for private
+            repositories
+        api_base_url:
+          type: string
+          title: Api Base Url
+          description: GitHub API base URL. Use for GitHub Enterprise instances.
+          default: https://api.github.com
+      type: object
+      required:
+      - owner
+      - repo
+      title: GithubStorageConfig
     GuardrailCheckRequest:
       properties:
         model:
@@ -18907,6 +18963,7 @@ components:
       - ngc
       - huggingface
       - s3
+      - github
       title: StorageConfigType
       type: string
     StringFilter:
