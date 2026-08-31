@@ -255,8 +255,14 @@ grep -Fq \
 
 uv sync ${UV_SYNC_MODE} --extra vllm      --no-install-project   # GRPO generation (vllm 0.20 cu130 + flashinfer + deep_gemm/deep_ep)
 uv sync ${UV_SYNC_MODE} --extra fsdp      --no-install-project   # DPO policy training (flash-attn, mamba-ssm, causal-conv1d)
+
+# Transformer Engine invokes Ninja with all detected CPUs by default. On the arm64 BuildKit worker,
+# eight simultaneous ptxas processes exhaust available memory. Limit only the two extras that
+# can build Transformer Engine; the remaining dependency syncs retain their normal parallelism.
+export NVTE_BUILD_MAX_JOBS=2
 uv sync ${UV_SYNC_MODE} --extra automodel --no-install-project   # GRPO policy training, DTensor V2 (+ LoRA); builds Transformer-Engine
 uv sync ${UV_SYNC_MODE} --extra mcore     --no-install-project   # Megatron training + Megatron-native generation; reuses automodel's TE
+unset NVTE_BUILD_MAX_JOBS
 uv sync ${UV_SYNC_MODE} --extra modelopt  --no-install-project   # quantization / model-opt
 uv sync ${UV_SYNC_MODE} --extra nemo_gym  --no-install-project   # NeMo-Gym (uv workspace member)
 uv sync ${UV_SYNC_MODE} --all-groups      --no-install-project   # build/test/etc groups
