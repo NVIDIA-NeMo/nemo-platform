@@ -7,6 +7,7 @@ import { Button, Flex, Stack, StatusIndicator, Text } from '@nvidia/foundations-
 import { deploymentStatusColor } from '@studio/routes/agents/AgentDetailRoute/helpers';
 import { NoHealthyDeploymentsBanner } from '@studio/routes/agents/AgentDetailRoute/NoHealthyDeploymentsBanner';
 import { DetailPanel } from '@studio/routes/agents/AgentDetailRoute/overview/DetailPanel';
+import { PackageAgentPanel } from '@studio/routes/agents/AgentDetailRoute/PackageAgentPanel';
 import type { FC } from 'react';
 
 interface DeploymentsTabProps {
@@ -20,6 +21,10 @@ interface DeploymentsTabProps {
   onViewLogs: (deployment: AgentDeployment) => void;
   /** Deploying requires a Platform-managed agent config (Fabric integration). */
   canDeploy: boolean;
+  workspace: string;
+  /** Packaging is Fabric-only, a narrower gate than `canDeploy`. */
+  canPackage: boolean;
+  onImageBuilt?: (image: string) => void;
 }
 
 /** Deployments list with per-deployment actions. */
@@ -33,8 +38,19 @@ export const DeploymentsTab: FC<DeploymentsTabProps> = ({
   onDelete,
   onViewLogs,
   canDeploy,
+  workspace,
+  canPackage,
+  onImageBuilt,
 }) => (
   <Stack gap="5" className="w-full">
+    {agentName ? (
+      <PackageAgentPanel
+        workspace={workspace}
+        agentName={agentName}
+        canPackage={canPackage}
+        onImageBuilt={onImageBuilt}
+      />
+    ) : null}
     <DetailPanel title="Deployments" flush>
       {!isDeploymentsLoading && deployments.length === 0 ? (
         <div className="p-4">
