@@ -118,8 +118,7 @@ export const totalEntryBytes = (entries: UploadAgentEntry[]): number =>
 export const validateAgentEntries = (entries: UploadAgentEntry[]): string | undefined => {
   if (entries.length === 0) return 'That directory has no uploadable files.';
 
-  // Dropping two directories at once merges them, and the fileset would take whichever
-  // upload of a shared path landed last.
+  // Two directories dropped at once merge, and a path they share would upload twice.
   const seen = new Set<string>();
   for (const { path } of entries) {
     if (seen.has(path)) {

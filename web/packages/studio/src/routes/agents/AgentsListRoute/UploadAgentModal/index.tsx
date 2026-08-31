@@ -120,12 +120,14 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     onClose();
   };
 
-  // Reading a directory is async, so a newer selection has to win however the reads finish.
+  // Directory reads finish out of order, so the newest selection has to win.
   const selectionSeq = useRef(0);
   const beginSelection = (): (() => boolean) => {
     const selection = ++selectionSeq.current;
-    // A new selection replaces whatever the last attempt reported.
+    // Dropping the entries disables submit until this selection validates.
     resetMutation();
+    setEntries([]);
+    setSelectionError(undefined);
     setReplaceArmedFor(null);
     return () => selection !== selectionSeq.current;
   };
@@ -167,7 +169,6 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     }
 
     setEntries(collected);
-    setSelectionError(undefined);
   };
 
   const rejectOversized = (count: number): boolean => {

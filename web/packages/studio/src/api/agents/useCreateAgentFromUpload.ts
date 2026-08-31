@@ -48,7 +48,7 @@ export class AgentSpecFilesetOrphanError extends Error {
 
 // Files first: the fileset reserves the name, and a create-time validation that needs a
 // base_dir can only see files that are already uploaded. Creating it outside the try keeps
-// rollback to what this call created — a failed create leaves someone else's fileset alone.
+// rollback to what this call created.
 export const createAgentFromUpload = async ({
   workspace,
   name,
@@ -92,8 +92,7 @@ const claimFileset = async (
   try {
     await filesRetrieveFileset(workspace, filesetName);
   } catch (error) {
-    // Only a 404 means the name is free. Anything else and ownership is unknown, so
-    // claiming it could hand a live agent's fileset to this upload.
+    // Only a 404 means the name is free; anything else leaves ownership unknown.
     if (!isNotFoundError(error)) throw error;
     return;
   }

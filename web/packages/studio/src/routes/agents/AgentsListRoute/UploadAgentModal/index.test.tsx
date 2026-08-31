@@ -32,7 +32,7 @@ const makeFile = (relativePath: string, contents: string): File => {
   return file;
 };
 
-/** A file whose reads block until released, so two selections can be resolved out of order. */
+/** Blocks its reads until released, so selections can resolve out of order. */
 const deferredFile = (relativePath: string, contents: string) => {
   const file = makeFile(relativePath, contents);
   const bytes = new TextEncoder().encode(contents);
@@ -201,6 +201,30 @@ describe('UploadAgentModal', () => {
 
     expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument();
     expect(within(dialog).getByText(/calc-agent — 2 files/)).toBeInTheDocument();
+  });
+
+  it('cannot submit the previous directory while a new one is validated', async () => {
+    mockPlatform();
+    const gate = deferredFile(
+      'slow-agent/agent.yaml',
+      'config_format: nemo-agents-spec-v1\nname: slow\n'
+    );
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+    pickDirectory(dialog);
+    await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
+    expect(within(dialog).getByRole('button', { name: 'Create' })).toBeEnabled();
+
+    pickDirectory(dialog, [gate.file]);
+
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled()
+    );
+
+    gate.release();
+    await waitFor(() => expect(within(dialog).getByDisplayValue('slow')).toBeInTheDocument());
+    expect(within(dialog).getByRole('button', { name: 'Create' })).toBeEnabled();
   });
 
   it('clears the previous failure when a new directory is picked', async () => {
