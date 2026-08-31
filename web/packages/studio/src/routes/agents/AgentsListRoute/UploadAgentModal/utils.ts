@@ -118,6 +118,16 @@ export const totalEntryBytes = (entries: UploadAgentEntry[]): number =>
 export const validateAgentEntries = (entries: UploadAgentEntry[]): string | undefined => {
   if (entries.length === 0) return 'That directory has no uploadable files.';
 
+  // Dropping two directories at once merges them, and the fileset would take whichever
+  // upload of a shared path landed last.
+  const seen = new Set<string>();
+  for (const { path } of entries) {
+    if (seen.has(path)) {
+      return `That selection holds more than one ${path}. Select a single agent directory.`;
+    }
+    seen.add(path);
+  }
+
   if (!entries.some((entry) => entry.path === AGENT_CONFIG_FILENAME)) {
     return `No ${AGENT_CONFIG_FILENAME} at the top level of that directory.`;
   }

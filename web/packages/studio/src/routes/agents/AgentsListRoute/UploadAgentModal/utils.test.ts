@@ -85,6 +85,15 @@ describe('validateAgentEntries', () => {
     expect(validateAgentEntries([])).toMatch(/no uploadable files/);
   });
 
+  it('rejects two roots that contribute the same path', () => {
+    const entries = collectAgentEntries([
+      makeFile('calc-agent/agent.yaml'),
+      makeFile('other-agent/agent.yaml'),
+    ]);
+
+    expect(validateAgentEntries(entries)).toMatch(/more than one agent\.yaml/);
+  });
+
   it('rejects a directory over the file-count limit', () => {
     const entries = [
       entry('agent.yaml'),

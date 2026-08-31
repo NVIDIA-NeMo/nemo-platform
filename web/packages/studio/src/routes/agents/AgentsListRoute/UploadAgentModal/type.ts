@@ -9,14 +9,14 @@ export type UploadAgentFormData = z.infer<typeof uploadAgentFormSchema>;
 
 /** A file plus the path it was picked or dropped under, still including the root directory. */
 export interface PickedFile {
-  file: File;
-  relativePath: string;
+  readonly file: File;
+  readonly relativePath: string;
 }
 
 /** A picked file paired with its path inside the agent spec fileset. */
 export interface UploadAgentEntry {
-  path: string;
-  file: File;
+  readonly path: string;
+  readonly file: File;
 }
 
 export interface UploadAgentModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {

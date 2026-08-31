@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { isNotFoundError } from '@nemo/common/src/api/common/utils';
 import { agentsCreateAgent, agentsGetAgent } from '@nemo/sdk/generated/agents/api';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import {
@@ -46,8 +47,8 @@ export class AgentSpecFilesetOrphanError extends Error {
 }
 
 // Files first: the fileset reserves the name, and a create-time validation that needs a
-// base_dir can only see files that are already uploaded. Deleting the fileset on rollback
-// is safe because an existing one is either refused or replaced deliberately above.
+// base_dir can only see files that are already uploaded. Creating it outside the try keeps
+// rollback to what this call created — a failed create leaves someone else's fileset alone.
 export const createAgentFromUpload = async ({
   workspace,
   name,
@@ -62,11 +63,12 @@ export const createAgentFromUpload = async ({
 
   await claimFileset(workspace, name, filesetName, replaceOrphanedFileset);
 
+  await filesCreateFileset(workspace, {
+    name: filesetName,
+    description: `Agent spec for ${name}`,
+  });
+
   try {
-    await filesCreateFileset(workspace, {
-      name: filesetName,
-      description: `Agent spec for ${name}`,
-    });
     await uploadEntries(workspace, filesetName, entries);
 
     return await agentsCreateAgent(workspace, {
@@ -89,7 +91,10 @@ const claimFileset = async (
 ): Promise<void> => {
   try {
     await filesRetrieveFileset(workspace, filesetName);
-  } catch {
+  } catch (error) {
+    // Only a 404 means the name is free. Anything else and ownership is unknown, so
+    // claiming it could hand a live agent's fileset to this upload.
+    if (!isNotFoundError(error)) throw error;
     return;
   }
 
@@ -107,7 +112,8 @@ const agentExists = async (workspace: string, agentName: string): Promise<boolea
   try {
     await agentsGetAgent(workspace, agentName);
     return true;
-  } catch {
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
     return false;
   }
 };

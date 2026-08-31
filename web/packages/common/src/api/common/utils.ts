@@ -49,6 +49,12 @@ export const isValidationErrorArray = (detail: unknown): detail is ValidationErr
 export const isVersionConflictError = (error: unknown): boolean =>
   error instanceof AxiosError && error.response?.status === 409;
 
+/** A 404 from the platform API. Duck-typed: some callers see a plain object, not an AxiosError. */
+export const isNotFoundError = (error: unknown): boolean => {
+  const candidate = error as { response?: { status?: number }; status?: number };
+  return candidate?.response?.status === 404 || candidate?.status === 404;
+};
+
 /**
  * Extracts a user-friendly error message from an error object.
  * Handles both ValidationError arrays and simple string errors from the backend.

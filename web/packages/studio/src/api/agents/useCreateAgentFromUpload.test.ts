@@ -43,10 +43,13 @@ const entries = (): UploadAgentEntry[] => [
 
 const params = () => ({ workspace: 'ws', name: 'calc', entries: entries() });
 
-const filesetMissing = () => vi.mocked(filesRetrieveFileset).mockRejectedValue(new Error('404'));
+const httpError = (status: number): Error =>
+  Object.assign(new Error(`HTTP ${status}`), { response: { status } });
+
+const filesetMissing = () => vi.mocked(filesRetrieveFileset).mockRejectedValue(httpError(404));
 const filesetExists = () =>
   vi.mocked(filesRetrieveFileset).mockResolvedValue({ name: 'calc-spec' } as never);
-const agentMissing = () => vi.mocked(agentsGetAgent).mockRejectedValue(new Error('404'));
+const agentMissing = () => vi.mocked(agentsGetAgent).mockRejectedValue(httpError(404));
 const agentExists = () => vi.mocked(agentsGetAgent).mockResolvedValue({ name: 'calc' } as never);
 
 beforeEach(() => {
@@ -141,6 +144,32 @@ describe('createAgentFromUpload', () => {
 
     await expect(createAgentFromUpload(params())).rejects.toThrow('409 conflict');
     expect(filesDeleteFileset).toHaveBeenCalledWith('ws', 'calc-spec');
+  });
+
+  it('does not delete a fileset it failed to create', async () => {
+    vi.mocked(filesCreateFileset).mockRejectedValue(httpError(409));
+
+    await expect(createAgentFromUpload(params())).rejects.toThrow('HTTP 409');
+    expect(filesDeleteFileset).not.toHaveBeenCalled();
+  });
+
+  it('does not claim the name when the fileset lookup fails for any reason but absence', async () => {
+    vi.mocked(filesRetrieveFileset).mockRejectedValue(httpError(503));
+
+    await expect(createAgentFromUpload(params())).rejects.toThrow('HTTP 503');
+    expect(filesCreateFileset).not.toHaveBeenCalled();
+    expect(filesDeleteFileset).not.toHaveBeenCalled();
+  });
+
+  it('does not replace a fileset when the agent lookup fails for any reason but absence', async () => {
+    filesetExists();
+    vi.mocked(agentsGetAgent).mockRejectedValue(httpError(503));
+
+    await expect(
+      createAgentFromUpload({ ...params(), replaceOrphanedFileset: true })
+    ).rejects.toThrow('HTTP 503');
+    expect(filesDeleteFileset).not.toHaveBeenCalled();
+    expect(agentsCreateAgent).not.toHaveBeenCalled();
   });
 
   it('rejects a non-Fabric config before touching anything', async () => {

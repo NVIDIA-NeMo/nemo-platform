@@ -120,8 +120,18 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     onClose();
   };
 
+  // Reading a directory is async, so a newer selection has to win however the reads finish.
+  const selectionSeq = useRef(0);
+  const beginSelection = (): (() => boolean) => {
+    const selection = ++selectionSeq.current;
+    // A new selection replaces whatever the last attempt reported.
+    resetMutation();
+    setReplaceArmedFor(null);
+    return () => selection !== selectionSeq.current;
+  };
+
   // Both entry points land here so a drop is validated exactly like a pick.
-  const acceptPicked = async (picked: PickedFile[]) => {
+  const acceptPicked = async (picked: PickedFile[], superseded: () => boolean) => {
     setDirectoryName(picked[0]?.relativePath.split('/')[0] ?? '');
     const collected = collectAgentEntries(picked);
 
@@ -133,6 +143,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     }
 
     const binaryPath = await findNonUtf8Path(collected);
+    if (superseded()) return;
     if (binaryPath) {
       setEntries([]);
       setSelectionError(
@@ -144,8 +155,10 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     const configEntry = collected.find((item) => item.path === AGENT_CONFIG_FILENAME);
     try {
       const config = parseAgentConfig((await configEntry?.file.text()) ?? '');
+      if (superseded()) return;
       setValue('name', agentNameFromConfig(config) ?? '', { shouldValidate: true });
     } catch (error) {
+      if (superseded()) return;
       setEntries([]);
       setSelectionError(
         getErrorMessage(error as Error) || `Could not read ${AGENT_CONFIG_FILENAME}`
@@ -171,6 +184,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     const pickedCount = fileList?.length ?? 0;
     if (pickedCount === 0) return;
 
+    const superseded = beginSelection();
     if (rejectOversized(pickedCount)) {
       event.target.value = '';
       return;
@@ -178,7 +192,7 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
 
     const picked = pickedFromFileList(Array.from(fileList ?? []));
     event.target.value = '';
-    await acceptPicked(picked);
+    await acceptPicked(picked, superseded);
   };
 
   const onDirectoryDropped: DragEventHandler<HTMLLabelElement> = async (event) => {
@@ -189,14 +203,17 @@ export const UploadAgentModal: FC<UploadAgentModalProps> = ({ open, onClose, wor
     const items = Array.from(event.dataTransfer.items);
     if (items.length === 0) return;
 
+    const superseded = beginSelection();
     const picked = await pickedFromDataTransfer(items);
+    if (superseded()) return;
+
     if (picked.length === 0) {
       setSelectionError('That drop contained no readable files.');
       return;
     }
     if (rejectOversized(picked.length)) return;
 
-    await acceptPicked(picked);
+    await acceptPicked(picked, superseded);
   };
 
   const onSubmit: SubmitHandler<UploadAgentFormData> = async (formData) => {

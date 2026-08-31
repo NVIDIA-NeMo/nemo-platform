@@ -32,6 +32,34 @@ const makeFile = (relativePath: string, contents: string): File => {
   return file;
 };
 
+/** A file whose reads block until released, so two selections can be resolved out of order. */
+const deferredFile = (relativePath: string, contents: string) => {
+  const file = makeFile(relativePath, contents);
+  const bytes = new TextEncoder().encode(contents);
+  let release = () => {};
+  let read = false;
+  const open = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: async () => {
+      await open;
+      read = true;
+      return bytes.buffer;
+    },
+  });
+  Object.defineProperty(file, 'text', {
+    value: async () => {
+      await open;
+      read = true;
+      return contents;
+    },
+  });
+
+  return { file, release: () => release(), read: () => read };
+};
+
 const DEFAULT_FILES = [
   makeFile('calc-agent/agent.yaml', FABRIC_YAML),
   makeFile('calc-agent/mcps/calculator.py', 'print(1)\n'),
@@ -153,6 +181,44 @@ describe('UploadAgentModal', () => {
 
     expect(await within(dialog).findByText(/No agent\.yaml/)).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled();
+  });
+
+  it('ignores a slower selection that a newer one replaced', async () => {
+    mockPlatform();
+    const gate = deferredFile(
+      'slow-agent/agent.yaml',
+      'config_format: nemo-agents-spec-v1\nname: slow\n'
+    );
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+    pickDirectory(dialog, [gate.file]);
+    pickDirectory(dialog, DEFAULT_FILES);
+    await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
+
+    gate.release();
+    await waitFor(() => expect(gate.read()).toBe(true));
+
+    expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument();
+    expect(within(dialog).getByText(/calc-agent — 2 files/)).toBeInTheDocument();
+  });
+
+  it('clears the previous failure when a new directory is picked', async () => {
+    const user = userEvent.setup();
+    mockPlatform({ filesetExists: true, agentExists: true });
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+    pickDirectory(dialog);
+    await waitFor(() => expect(within(dialog).getByDisplayValue('calc')).toBeInTheDocument());
+    await submit(dialog, user);
+    expect(await within(dialog).findByText(/already owns the fileset/)).toBeInTheDocument();
+
+    pickDirectory(dialog, DEFAULT_FILES);
+
+    await waitFor(() =>
+      expect(within(dialog).queryByText(/already owns the fileset/)).not.toBeInTheDocument()
+    );
   });
 
   it('rejects a directory holding a file that is not text', async () => {
