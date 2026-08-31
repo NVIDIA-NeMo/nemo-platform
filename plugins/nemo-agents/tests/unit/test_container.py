@@ -443,6 +443,7 @@ class TestRenderFabricDockerfile:
         result = render_fabric_dockerfile(fabric_agent_config)
 
         install_line = next(line for line in result.splitlines() if "uv pip install" in line)
+        assert "--no-sources" in install_line
         assert "--prerelease=allow" in install_line
         assert f'"nemo-platform[nemo-agents-plugin]=={get_contract_version()}"' in install_line
         assert '" .' not in install_line
@@ -495,6 +496,7 @@ class TestRenderFabricDockerfile:
         result = render_fabric_dockerfile(agent_config, pyproject)
 
         install_line = next(line for line in result.splitlines() if "uv pip install" in line)
+        assert "--no-sources" in install_line
         assert "--prerelease=allow" in install_line
         assert f'"nemo-platform[nemo-agents-plugin]=={get_contract_version()}"' in install_line
         assert f'"nemo-relay=={PINNED_NEMO_RELAY_CLI_VERSION}" .' in result

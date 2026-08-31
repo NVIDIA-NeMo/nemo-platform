@@ -6,7 +6,6 @@
 import json
 import os
 import re
-import time
 import uuid
 from typing import Annotated, Any
 from urllib.parse import quote, urlencode
@@ -21,8 +20,6 @@ STUDIO_CALLBACK_TIMEOUT_SECONDS = 3600.0
 _READ_ONLY_SDK_ACTIONS = frozenset({"check", "get", "get_logs", "get_status", "list", "read", "retrieve", "search"})
 _API_ERROR_LIMIT = 3
 _GUARDRAIL_CHECK_FAILURE_LIMIT = 3
-_VIRTUAL_MODEL_ROUTING_TIMEOUT_SECONDS = 90.0
-_VIRTUAL_MODEL_ROUTING_MAX_POLL_SECONDS = 5.0
 _REFUSAL_LIKE_PROBE_RE = re.compile(
     r"^\s*(?:(?:i(?:'m| am)|we(?:'re| are))\s+sorry[,;:]?\s*(?:but\s+)?)?"
     r"(?:(?:i|we)\s+(?:can't|cannot|won't|will not|am unable to|are unable to)|"
@@ -342,20 +339,6 @@ def _routable_virtual_model(client: NeMoPlatform, workspace: str, virtual_model_
     return False
 
 
-def _wait_for_virtual_model(client: NeMoPlatform, workspace: str, virtual_model_name: str) -> None:
-    deadline = time.monotonic() + _VIRTUAL_MODEL_ROUTING_TIMEOUT_SECONDS
-    poll_interval = 0.5
-    while time.monotonic() < deadline:
-        if _routable_virtual_model(client, workspace, virtual_model_name):
-            return
-        time.sleep(min(poll_interval, max(0.0, deadline - time.monotonic())))
-        poll_interval = min(poll_interval * 2, _VIRTUAL_MODEL_ROUTING_MAX_POLL_SECONDS)
-    raise GuardrailWorkflowError(
-        f"VirtualModel {workspace}/{virtual_model_name} did not become routable within "
-        f"{_VIRTUAL_MODEL_ROUTING_TIMEOUT_SECONDS:g} seconds"
-    )
-
-
 def _validate_guardrail_probe_messages(blocked_message: str, allowed_message: str) -> None:
     normalized_blocked_message = blocked_message.replace("’", "'").strip()
     if _REFUSAL_LIKE_PROBE_RE.match(normalized_blocked_message):
@@ -510,7 +493,8 @@ def deploy_guardrail(
 
     This is the deterministic fast path for a new input-only self-check policy.
     It refuses to overwrite resources, requires both a blocked and allowed check,
-    and waits until the resulting VirtualModel is routable.
+    and reports the resulting VirtualModel's current routing status without
+    blocking the assistant while gateway propagation completes.
     """
     try:
         deployment_key = (_validated_session_id(studio_session_id), str(uuid.UUID(deployment_run_id)))
@@ -717,11 +701,10 @@ def deploy_guardrail(
         virtual_model_path = f"/workspaces/{quote(requested_workspace, safe='')}/virtual-models?{virtual_model_query}"
         virtual_model_link = f"[Chat with VirtualModel {chat_model}]({virtual_model_path})"
         routing_warning: str | None = None
-        try:
-            _wait_for_virtual_model(client, requested_workspace, values["virtual_model_name"])
-        except GuardrailWorkflowError as exc:
+        if not _routable_virtual_model(client, requested_workspace, values["virtual_model_name"]):
             routing_warning = (
-                f"VirtualModel {chat_model} was created and verified, but routing is still propagating. {exc}"
+                f"VirtualModel {chat_model} was created and verified, but routing is still propagating. "
+                "Open the chat link in a moment; do not redeploy it."
             )
             _report_workflow_activity(
                 studio_session_id,
@@ -1021,12 +1004,15 @@ def studio_link(
     return json.dumps(result)
 
 
-def ask_user_question(studio_session_id: str, questions: str) -> str:
+def ask_user_question(studio_session_id: str, questions: str | list[dict[str, Any]]) -> str:
     """Render one or more Studio multiple-choice questions."""
-    try:
-        parsed = json.loads(questions)
-    except (json.JSONDecodeError, TypeError) as exc:
-        return f"Error: `questions` must be a JSON array string: {exc}"
+    if isinstance(questions, str):
+        try:
+            parsed = json.loads(questions)
+        except (json.JSONDecodeError, TypeError) as exc:
+            return f"Error: `questions` must be a JSON array or JSON array string: {exc}"
+    else:
+        parsed = questions
     if not isinstance(parsed, list) or not parsed or not all(isinstance(question, dict) for question in parsed):
         return "Error: `questions` must be a non-empty JSON array of question objects."
     approval = _call_studio_tool(
