@@ -33,14 +33,10 @@ Compare to the legacy pattern this replaces::
         generate_job_name=my_name_generator,
     )
 
-``add_job_routes`` applies :func:`stamp_profile` to the compiled
-``PlatformJobSpec`` using ``default_profile``. It does *not* yet thread
-submitter-provided ``profile`` / ``options`` body fields through
-:class:`BaseJobRequest`; the wrapper passes ``profile=None`` /
-``options=None`` to ``NemoJob.compile`` until the request body shape is
-extended. (The submitter CLI flags ``--profile`` / ``-o`` reach
-``submit_remote`` and are POSTed in the body, where the server currently
-ignores them via Pydantic's ``extra="ignore"`` default.)
+``add_job_routes`` threads submitter-provided ``profile`` / ``options``
+body fields through to ``NemoJob.compile``. It then applies
+:func:`stamp_profile` to the compiled ``PlatformJobSpec`` using the submitted
+profile, or ``default_profile`` when the request did not choose one.
 """
 
 from __future__ import annotations
@@ -101,8 +97,8 @@ def add_job_routes(
             provide a ``name``. Passthrough to the factory.
         default_profile: Profile label stamped onto each step of the
             compiled ``PlatformJobSpec`` when the plugin's ``compile``
-            didn't set one explicitly. Submitter-chosen ``--profile``
-            plumbing is not yet wired through ``BaseJobRequest``.
+            didn't set one explicitly and the submitter did not provide
+            ``profile``.
 
     Returns:
         An :class:`APIRouter` with the standard job endpoints mounted.
@@ -267,11 +263,12 @@ def _adapt_compile(
     """Bridge ``NemoJob.compile`` to the factory's ``platform_job_config_compiler`` shape.
 
     The factory calls ``compiler(workspace, original_spec, transformed_spec,
-    entity_client, job_name, sdk)``. :meth:`NemoJob.compile` is an
-    ``async classmethod`` that uses kwargs and also accepts
-    ``profile`` / ``options``; both are passed as ``None`` until the
-    request body shape threads them through. After ``compile`` returns,
-    the adapter applies :func:`stamp_profile` with ``default_profile``.
+    entity_client, job_name, sdk)`` and forwards submitter-provided
+    ``profile`` / ``options`` to compilers that accept those kwargs.
+    :meth:`NemoJob.compile` is an ``async classmethod`` that uses kwargs and
+    accepts those submit controls. After ``compile`` returns, the adapter
+    applies :func:`stamp_profile` with the submitted profile or
+    ``default_profile``.
 
     Missing-override errors from the ``NemoJob.compile`` base marker
     become :class:`PlatformJobCompilationError` so the factory's
@@ -285,6 +282,8 @@ def _adapt_compile(
         entity_client: Any,
         job_name: str | None,
         sdk: Any,
+        profile: str | None = None,
+        options: dict[str, Any] | None = None,
     ) -> Any:
         del original_spec  # NemoJob.compile only needs the canonical (transformed) spec
         try:
@@ -294,13 +293,13 @@ def _adapt_compile(
                 entity_client=entity_client,
                 job_name=job_name,
                 async_sdk=sdk,
-                profile=None,
-                options=None,
+                profile=profile,
+                options=options,
             )
         except NotImplementedError as exc:
             raise PlatformJobCompilationError(str(exc)) from exc
 
-        stamp_profile(result, default_profile)
+        stamp_profile(result, profile or default_profile)
         return result
 
     return compile_adapter

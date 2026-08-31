@@ -2540,6 +2540,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/AgentEvalInputSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -3185,6 +3192,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/EvaluateInputSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true

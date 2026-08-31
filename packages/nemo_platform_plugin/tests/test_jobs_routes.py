@@ -353,6 +353,48 @@ async def test_compile_adapter_invokes_nemo_compile_and_stamps_default_profile()
 
 
 @pytest.mark.asyncio
+async def test_compile_adapter_forwards_submitted_profile_and_options() -> None:
+    seen: dict = {}
+
+    class CaptureSubmitControls(NemoJob):
+        name = "capture-submit-controls"
+        spec_schema = _WidgetSpec
+
+        def run(self, config: dict) -> dict:
+            return config
+
+        @classmethod
+        async def compile(
+            cls,
+            *,
+            workspace: str,
+            spec: BaseModel,
+            entity_client,
+            job_name,
+            async_sdk,
+            profile=None,
+            options=None,
+        ):
+            seen.update(profile=profile, options=options)
+            return _FakePlatformSpec(steps=[_FakeStep(profile=None)])
+
+    adapter = _adapt_compile(CaptureSubmitControls, default_profile="default")
+    platform_spec = await adapter(
+        "ws",
+        None,
+        _WidgetSpec(name="x"),
+        "ec",
+        None,
+        "sdk",
+        profile="research",
+        options={"slurm": {"nodes": 4}},
+    )
+
+    assert seen == {"profile": "research", "options": {"slurm": {"nodes": 4}}}
+    assert platform_spec.steps[0].executor.profile == "research"
+
+
+@pytest.mark.asyncio
 async def test_compile_adapter_preserves_profile_set_by_plugin_compile() -> None:
     class CompileSetsProfile(NemoJob):
         name = "pre-stamped"

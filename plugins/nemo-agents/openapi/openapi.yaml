@@ -4458,6 +4458,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/AnalyzeBatchConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5075,6 +5082,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/EvaluateAgentSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5293,6 +5307,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/EvaluateSuiteSubmitConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5573,6 +5594,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/ExecuteAgentJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5958,6 +5986,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/OptimizeSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -6177,6 +6212,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/OptimizeSkillsConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -6424,6 +6466,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/PackageAgentInput'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true

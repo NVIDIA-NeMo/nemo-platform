@@ -22,6 +22,7 @@ from typing import (
     Type,
     TypeVar,
     Union,
+    cast,
     get_args,
     get_origin,
     overload,
@@ -127,6 +128,8 @@ class BaseJobRequest(BaseModel, Generic[JobConfigT]):
     description: str | None = None
     project: str | None = None
     spec: JobConfigT
+    profile: str | None = None
+    options: dict[str, Any] | None = None
     ownership: dict | None = None
     custom_fields: dict | None = None
     output_location: str | None = None
@@ -658,6 +661,8 @@ async def _compile_platform_spec(
     job_name: str | None,
     service_name: str,
     sdk: AsyncNeMoPlatform,
+    profile: str | None,
+    options: dict[str, Any] | None,
 ) -> PlatformJobSpec:
     """Compile input and output specs into a PlatformJobSpec for execution.
 
@@ -674,12 +679,30 @@ async def _compile_platform_spec(
         PermissionError: If the compiler raises a PermissionError.
     """
     try:
+        submit_control_kwargs = _submit_control_kwargs(compiler, profile=profile, options=options)
         if inspect.iscoroutinefunction(compiler):
-            platform_spec = await compiler(workspace, original_spec, transformed_spec, entity_client, job_name, sdk)
+            platform_spec = cast(
+                PlatformJobSpec,
+                await compiler(
+                    workspace, original_spec, transformed_spec, entity_client, job_name, sdk, **submit_control_kwargs
+                ),
+            )
         else:
             # Run sync compilers in a thread pool to avoid blocking the event loop.
-            platform_spec = await to_thread.run_sync(
-                partial(compiler, workspace, original_spec, transformed_spec, entity_client, job_name, sdk)
+            platform_spec = cast(
+                PlatformJobSpec,
+                await to_thread.run_sync(
+                    partial(
+                        compiler,
+                        workspace,
+                        original_spec,
+                        transformed_spec,
+                        entity_client,
+                        job_name,
+                        sdk,
+                        **submit_control_kwargs,
+                    )
+                ),
             )
 
         _validate_job_spec(platform_spec)
@@ -699,6 +722,41 @@ async def _compile_platform_spec(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Failed to compile {service_name} job spec: {str(e)}",
         ) from e
+
+
+def _submit_control_kwargs(
+    compiler: Callable[..., object],
+    *,
+    profile: str | None,
+    options: dict[str, Any] | None,
+) -> dict[str, object]:
+    """Return profile/options kwargs accepted by *compiler*.
+
+    The low-level ``job_route_factory`` predates submitter controls and has
+    six-argument compiler call sites. Preserve those call sites while allowing
+    ``add_job_routes`` adapters and newer compilers to receive the body fields.
+    """
+    signature = inspect.signature(compiler)
+    parameters = signature.parameters
+    accepts_kwargs = any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
+    accepts_profile = accepts_kwargs or "profile" in parameters
+    accepts_options = accepts_kwargs or "options" in parameters
+
+    unsupported = []
+    if profile is not None and not accepts_profile:
+        unsupported.append("profile")
+    if options and not accepts_options:
+        unsupported.append("options")
+    if unsupported:
+        compiler_name = getattr(compiler, "__qualname__", getattr(compiler, "__name__", repr(compiler)))
+        raise PlatformJobCompilationError(f"{compiler_name} does not support submit field(s): {', '.join(unsupported)}")
+
+    kwargs: dict[str, object] = {}
+    if accepts_profile:
+        kwargs["profile"] = profile
+    if accepts_options:
+        kwargs["options"] = options
+    return kwargs
 
 
 def job_route_factory(
@@ -873,6 +931,8 @@ def job_route_factory(
                 job_name,
                 service_name,
                 sdk,
+                request.profile,
+                request.options,
             )
 
             # Create the job using the SDK pointed to the platform jobs microservice.
