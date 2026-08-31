@@ -37,6 +37,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 import urllib.request
 from importlib.util import find_spec
 from pathlib import Path
@@ -94,6 +95,15 @@ def _harbor_cli() -> str:
     return found
 
 
+def _task_id_of(folder: Path) -> str | None:
+    """The task id a downloaded folder declares, or None if it does not declare one."""
+    config = folder / "task.toml"
+    try:
+        return tomllib.loads(config.read_text(encoding="utf-8")).get("task", {}).get("name")
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return None
+
+
 def _ensure_tasks(tasks: list[str], tasks_dir: Path) -> Path:
     """Download each task from Harbor Hub, into one directory of task folders.
 
@@ -103,9 +113,17 @@ def _ensure_tasks(tasks: list[str], tasks_dir: Path) -> Path:
     """
     tasks_dir.mkdir(parents=True, exist_ok=True)
     for task in tasks:
-        # An empty directory means an interrupted download, not a cached task.
+        # ``--export`` writes <tasks_dir>/<bare name>/, dropping any org prefix, so two orgs
+        # publishing the same task name land on one folder. An empty directory means an
+        # interrupted download, not a cached task.
         folder = tasks_dir / task.rsplit("/", 1)[-1]
         if folder.is_dir() and any(folder.iterdir()):
+            cached = _task_id_of(folder)
+            if cached is not None and cached != task:
+                raise SystemExit(
+                    f"{folder} already holds {cached}, which shares a name with {task}. "
+                    "Harbor exports both to the same folder; run them with separate --tasks-dir."
+                )
             print(f"Task already present: {folder.name}")
             continue
         # flush: the subprocess writes straight to this stdout, so an unflushed line lands after it.
@@ -287,7 +305,9 @@ async def _publish(
         experiment_id=evaluation,
         workspace=workspace,
         agent_name=agent,
-        model_name=model or "none",
+        # oracle and nop never call a model, so publishing the --model default would record a
+        # model that did not run against the trial.
+        model_name="none" if agent in KEYLESS_AGENTS else (model or "none"),
     )
     print(f"\nPublished {report.trial_count} trial(s), {report.evaluator_result_count} score row(s) to {evaluation}")
     for omitted in report.skipped:
