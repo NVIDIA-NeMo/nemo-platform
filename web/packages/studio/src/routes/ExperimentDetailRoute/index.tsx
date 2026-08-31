@@ -23,7 +23,7 @@ import { ExperimentMetrics } from '@studio/routes/ExperimentDetailRoute/Experime
 import { getExperimentRoute } from '@studio/routes/utils';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { ChartLine, ChartScatter, Pencil } from 'lucide-react';
+import { ChartLine, ChartScatter, Pencil, Star } from 'lucide-react';
 import { type FC, useEffect, useState } from 'react';
 
 export const ExperimentDetailRoute: FC = () => {
@@ -73,7 +73,21 @@ export const ExperimentDetailRoute: FC = () => {
       <Stack className="h-full overflow-auto" gap="density-2xl" padding="density-2xl">
         <PageHeader
           className="p-0"
-          slotHeading={experimentName}
+          slotHeading={
+            group?.is_favorite ? (
+              <Flex align="center" gap="density-sm">
+                <Star
+                  size={24}
+                  className="text-brand shrink-0"
+                  fill="currentColor"
+                  aria-label="Favorite"
+                />
+                {experimentName}
+              </Flex>
+            ) : (
+              experimentName
+            )
+          }
           slotDescription={group?.description || undefined}
           slotActions={
             <Button kind="secondary" disabled={!group} onClick={() => setEditOpen(true)}>
