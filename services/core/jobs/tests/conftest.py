@@ -9,12 +9,14 @@ from pathlib import Path
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.capabilities import reset_capability_cache
+from nemo_platform_plugin.entities import EntityClient as PluginEntityClient
 from nemo_platform_plugin.jobs.api_factory import ContainerSpec as FactoryContainerSpec
 from nemo_platform_plugin.jobs.api_factory import CPUExecutionProviderSpec as FactoryCPUExecutionProviderSpec
 from nemo_platform_plugin.jobs.api_factory import PlatformJobEnvironmentVariableParam, job_route_factory
@@ -316,9 +318,21 @@ def mock_nmp_client(_mock_files_client, mock_jobs_client):
     patches dispatch on the requested client type: ``JobsClient`` requests resolve to
     ``mock_jobs_client``; anything else falls back to the files client.
     """
+    http_client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
+        base_url="http://test",
+    )
     mock_client = MagicMock()
     mock_client.beta = MagicMock()
     mock_client.jobs = MagicMock()
+    mock_client.base_url = "http://test"
+    mock_client.workspace = "default"
+    mock_client._custom_headers = {}
+    mock_client._client = http_client
+    mock_client.timeout = httpx.Timeout(60.0)
+    mock_client.max_retries = 0
+    mock_client._prepare_url = lambda url: url
+    mock_client.token_provider = None
 
     from nemo_platform_plugin.jobs.client import JobsClient
 
@@ -332,6 +346,7 @@ def mock_nmp_client(_mock_files_client, mock_jobs_client):
         patch(f"{module}.client_from_platform", side_effect=_dispatch) for module in _JOBS_CLIENT_CONTROLLER_MODULES
     ]
     with ExitStack() as stack:
+        stack.enter_context(http_client)
         for patcher in patchers:
             stack.enter_context(patcher)
         yield mock_client
@@ -349,6 +364,7 @@ def mock_result_manager(tmp_path: Path):
         return TmpDirPath(path=m._path, tmp_dir=m._tmp_dir)
 
     m.download_artifact = download_artifact
+    m.aclose = AsyncMock()
 
     return m
 
@@ -429,7 +445,7 @@ def mock_platform_config() -> PlatformConfig:
     """Real PlatformConfig for controller tests (get_service_url, loopback_address, to_shared_envvars work correctly)."""
     return PlatformConfig(  # type: ignore[abstract]
         base_url="http://localhost:8080",
-        files_url="http://localhost:8080",
+        service_discovery={"files": "http://localhost:8080"},
         image_pull_secrets=[ImagePullSecret(name="global-pull-secret")],
         loopback_address=None,
     )
@@ -554,9 +570,9 @@ def hello_world_job_config(
     workspace: str,
     input_spec: HelloWorldJobConfig,
     output_spec: HelloWorldJobConfig,
-    entity_client: EntityClient,
+    entity_client: PluginEntityClient,
     job_name: str | None,
-    sdk,
+    sdk: AsyncNeMoPlatform,
 ) -> FactoryPlatformJobSpec:
     return FactoryPlatformJobSpec(
         steps=[

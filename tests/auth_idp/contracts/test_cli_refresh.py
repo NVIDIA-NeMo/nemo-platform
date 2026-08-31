@@ -9,8 +9,8 @@ import pytest
 import yaml
 from nemo_platform_ext.auth.helpers import decode_jwt_claims, discover_nmp_config, generate_unsigned_jwt
 from nemo_platform_ext.cli.app import app
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, client_verify_from_env
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, httpx_tls_config_from_env
 from typer.testing import CliRunner
 
 from tests.auth_idp.common import require_capability
@@ -92,7 +92,7 @@ def test_cli_api_command_auto_refreshes_expired_device_flow_token(
     assert oidc.token_endpoint
     assert "offline_access" in oidc.default_scopes.split()
 
-    verify = getattr(auth_idp_runtime, "verify", client_verify_from_env())
+    verify = getattr(auth_idp_runtime, "verify", httpx_tls_config_from_env().get("verify", True))
     runtime_device_authorization_endpoint = with_url_origin(
         oidc.device_authorization_endpoint,
         auth_idp_runtime.gateway_base_url,

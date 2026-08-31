@@ -340,9 +340,6 @@ def get_platform_config_class() -> Type[NemoPlatformConfig]:
 # Platform configuration types
 # ---------------------------------------------------------------------------
 
-# Regex for env vars that set per-service URLs (e.g. NMP_FILES_URL).
-_PLATFORM_SERVICE_URL_ENV_PATTERN = re.compile(r"^NMP_([A-Z0-9]+)_URL$")
-
 # Addresses that refer to localhost/loopback interfaces
 LOOPBACK_ADDRESSES = ("localhost", "0.0.0.0", "::1", "127.0.0.1")
 
@@ -477,9 +474,8 @@ class NemoPlatformConfig(ServiceConfig):
     """Platform-wide configuration settings. It inherits from ServiceConfig and provides Platform-centric settings, which may
     be used by other microservices to interact with other Platform services.
 
-    Environment variables NMP_<SERVICE>_URL (e.g. NMP_FILES_URL) are read and merged into
-    service_discovery with the service name lowercased; NMP_BASE_URL sets base_url and is not added to
-    service_discovery.
+    ``base_url`` is the default platform URL; ``service_discovery`` can pin
+    specific services to different URLs.
     """
 
     model_config = SettingsConfigDict(
@@ -532,8 +528,7 @@ class NemoPlatformConfig(ServiceConfig):
         default_factory=dict,
         description=(
             "Map of service names to their URLs. Used to discover services by name (e.g. 'files': 'http://files-service:8080'). "
-            "Environment variables NMP_<SERVICE>_URL (e.g. NMP_FILES_URL) are read and merged "
-            "into this map with the service name lowercased; NMP_BASE_URL is not added here (it sets base_url)."
+            "Per-service environment URL overrides are resolved by endpoint/client factories, not merged into this config."
         ),
     )
 
@@ -640,25 +635,6 @@ class NemoPlatformConfig(ServiceConfig):
 
     def create_service_pattern(self) -> re.Pattern[str] | None:
         return re.compile(r"/apis/([a-z]+(?:-[a-z]+)*)/")
-
-    @model_validator(mode="before")
-    @classmethod
-    def merge_service_url_env_vars(cls, values: Any) -> Any:
-        if not isinstance(values, dict):
-            return values
-        sd = dict(values.get("service_discovery") or {})
-        for key, value in environ.items():
-            if not value:
-                continue
-            match = _PLATFORM_SERVICE_URL_ENV_PATTERN.match(key)
-            if not match:
-                continue
-            service_name = match.group(1)
-            if service_name == "BASE":
-                continue
-            sd[service_name.lower()] = value
-        values["service_discovery"] = sd
-        return values
 
     @model_validator(mode="before")
     @classmethod

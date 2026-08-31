@@ -11,7 +11,6 @@ import signal
 import threading
 import time
 from collections.abc import Callable, Mapping
-from typing import cast
 
 from nmp.common.config import get_auth_config, get_common_service_config, get_platform_config, get_service_config
 from nmp.common.observability import initialize_obs, setup_global_instrumentations
@@ -69,7 +68,12 @@ def run_controllers_in_threads(
     """Start controller run functions in daemon threads."""
     threads = []
     for name, run_func in controller_run_funcs.items():
-        thread = threading.Thread(target=run_func, args=(stop_signal,), name=f"controller-{name}", daemon=True)
+        thread = threading.Thread(
+            target=run_func,
+            args=(stop_signal,),
+            name=f"controller-{name}",
+            daemon=True,
+        )
         thread.start()
         threads.append(thread)
     return threads
@@ -222,10 +226,10 @@ def _load_run_functions(
         t0 = time.perf_counter()
         value = registry[name]
         try:
-            if callable(value):
-                run_funcs[name] = cast(ControllerRunFunc, value)
-            else:
+            if isinstance(value, str):
                 run_funcs[name] = load_controller_run_func(name, value)
+            else:
+                run_funcs[name] = value
         except (ImportError, TypeError, AttributeError, ValueError) as error:
             logger.error("Failed to load %s %s: %s", kind, name, error)
             raise SystemExit(1) from error

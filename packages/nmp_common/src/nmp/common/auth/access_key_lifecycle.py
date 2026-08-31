@@ -6,6 +6,7 @@
 import logging
 import math
 import time
+from collections.abc import Sequence
 
 import httpx
 import jwt
@@ -20,7 +21,7 @@ from nemo_platform import (
 from nmp.common.config import AuthConfig
 
 from .token_claims import TokenClaims
-from .token_resolver import ResolvedBearerToken
+from .token_resolver import ResolvedBearerToken, ResolvedTokenKind
 
 logger = logging.getLogger(__name__)
 ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD = 3
@@ -47,18 +48,21 @@ class AccessKeyLifecycleAuthenticator:
         self._failure_count = 0
         self._circuit_open_until = 0.0
 
+    async def aclose(self) -> None:
+        sdk = self._sdk
+        self._sdk = None
+        if sdk is not None:
+            await sdk.close()
+
     def _get_sdk(self) -> AsyncNeMoPlatform:
         if self._sdk is None:
-            # Import lazily to avoid an auth -> SDK factory import cycle. The
-            # factory attaches PlatformRequestRouter, which owns service
-            # discovery and transport selection for /apis/auth requests.
-            from nmp.common.sdk_factory import get_async_platform_sdk, with_options_preserving_request_router
+            # Import lazily to avoid an auth -> SDK factory import cycle.
+            from nmp.common.sdk_factory import get_async_platform_sdk
 
-            sdk = get_async_platform_sdk(http_client=self._http_client)
-            self._sdk = with_options_preserving_request_router(
-                sdk,
+            self._sdk = get_async_platform_sdk(
+                http_client=self._http_client,
                 max_retries=0,
-                _extra_kwargs={"_strict_response_validation": True},
+                _strict_response_validation=True,
             )
         return self._sdk
 
@@ -85,6 +89,15 @@ class AccessKeyLifecycleAuthenticator:
 
     async def authenticate(self, token: str) -> ResolvedBearerToken | None:
         """Return trusted access-key claims, or None when auth rejects the token."""
+        return await self.authenticate_token(token, token_kinds=("access_key",))
+
+    async def authenticate_token(
+        self,
+        token: str,
+        *,
+        token_kinds: Sequence[ResolvedTokenKind],
+    ) -> ResolvedBearerToken | None:
+        """Return trusted claims for allowed auth-service token kinds."""
         now = time.monotonic()
         if now < self._circuit_open_until:
             retry_after = self._retry_after()
@@ -117,10 +130,10 @@ class AccessKeyLifecycleAuthenticator:
             logger.error("Access-key lifecycle validation failed at %s: %s", exc.request.url, exc)
             raise self._unavailable(503, "Access-key lifecycle validation unavailable") from exc
 
-        if result.token_kind != "access_key":
+        if result.token_kind not in token_kinds:
             self._record_success()
             return None
-        if not result.jti:
+        if result.token_kind == "access_key" and not result.jti:
             logger.error("Access-key lifecycle validator returned an invalid success response")
             raise self._unavailable(503, "Access-key lifecycle validation unavailable")
 
@@ -138,19 +151,20 @@ class AccessKeyLifecycleAuthenticator:
             )
         except jwt.PyJWTError:
             unverified_payload = {}
+        raw_claims = {
+            **unverified_payload,
+            "nmp_token_type": result.token_kind,
+            "sub": result.principal,
+            **({"jti": result.jti} if result.jti else {}),
+            **({"email": result.email} if result.email is not None else {}),
+        }
         return ResolvedBearerToken(
             claims=TokenClaims(
                 subject=result.principal,
                 email=result.email,
                 groups=result.groups or [],
                 scopes=result.scopes or [],
-                raw_claims={
-                    **unverified_payload,
-                    "nmp_token_type": "access_key",
-                    "jti": result.jti,
-                    "sub": result.principal,
-                    **({"email": result.email} if result.email is not None else {}),
-                },
+                raw_claims=raw_claims,
             ),
-            token_kind="access_key",
+            token_kind=result.token_kind,
         )

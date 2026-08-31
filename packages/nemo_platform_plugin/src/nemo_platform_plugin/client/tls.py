@@ -6,11 +6,26 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping, Sequence
+from typing import TypedDict
 
 NMP_CLIENT_SSL_CERT_FILE_ENVVAR = "NMP_CLIENT_SSL_CERT_FILE"
 
 
-def client_verify_from_env() -> str | bool:
-    """Return the httpx verify setting for NeMo Platform client requests."""
-    cert_file = os.environ.get(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "").strip()
-    return cert_file or True
+class HttpxTLSConfig(TypedDict, total=False):
+    """TLS kwargs passed to HTTPX client and request calls."""
+
+    verify: str
+
+
+def httpx_tls_config_from_env(
+    env: Mapping[str, str] | None = None,
+    *,
+    cert_file_envvars: Sequence[str] = (NMP_CLIENT_SSL_CERT_FILE_ENVVAR,),
+) -> HttpxTLSConfig:
+    """Return HTTPX TLS kwargs for NeMo Platform client requests."""
+    for envvar in cert_file_envvars:
+        cert_file = (env[envvar] if env is not None and envvar in env else os.environ.get(envvar, "")).strip()
+        if cert_file:
+            return {"verify": cert_file}
+    return {}

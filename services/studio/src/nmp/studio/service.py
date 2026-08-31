@@ -11,10 +11,10 @@ from html import escape
 from pathlib import Path
 from typing import ClassVar
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse
 from nemo_platform_plugin.authz import Permission
-from nmp.common.http_clients import shared_async_http_client
 from nmp.common.service import RouterConfig, Service
 from nmp.studio import assistant
 from nmp.studio.config import StudioConfig
@@ -89,9 +89,17 @@ class StudioService(Service[StudioConfig]):
 
     dependencies: ClassVar[list[str]] = ["entities", "auth"]
 
-    def __init__(self):
+    def __init__(self, telemetry_http_client: httpx.AsyncClient | None = None):
         """Initialize the studio service."""
         super().__init__(name="studio", module_name="nmp.studio")
+        self._owns_telemetry_http_client = telemetry_http_client is None
+        self._telemetry_http_client = telemetry_http_client or httpx.AsyncClient()
+
+    async def on_shutdown(self) -> None:
+        """Close service-owned telemetry proxy resources."""
+        if self._owns_telemetry_http_client:
+            await self._telemetry_http_client.aclose()
+        await super().on_shutdown()
 
     @property
     def title(self) -> str:
@@ -189,7 +197,7 @@ class StudioService(Service[StudioConfig]):
 
         target_url = self._build_telemetry_target_url(collector_url, telemetry_path, request.url.query)
         try:
-            upstream_response = await shared_async_http_client().request(
+            upstream_response = await self._telemetry_http_client.request(
                 method=request.method,
                 url=target_url,
                 content=await request.body(),

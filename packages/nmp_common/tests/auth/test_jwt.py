@@ -12,7 +12,6 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
-from nmp.common import http_clients
 from nmp.common.auth.jwt import (
     JWTValidator,
     UnsignedJWTRejectedError,
@@ -775,8 +774,26 @@ class TestJWTValidator:
         assert jwks_client.get_jwks.await_count == 2
 
     @pytest.mark.asyncio
+    async def test_aclose_closes_cached_jwks_client(self, auth_config):
+        auth_config.oidc.jwks_uri = "https://custom.example.com/jwks"
+        validator = JWTValidator(auth_config)
+        jwks_client = MagicMock()
+        jwks_client.aclose = AsyncMock()
+
+        with patch("nmp.common.auth.jwt.AsyncJWKSClient", return_value=jwks_client):
+            assert await validator._get_jwks_client() is jwks_client
+
+        await validator.aclose()
+
+        jwks_client.aclose.assert_awaited_once_with()
+        assert validator._jwks_client is None
+
+    @pytest.mark.asyncio
     async def test_validate_token_fetches_jwks_with_async_client(self, auth_config, monkeypatch):
         """OIDC JWKS lookup must not use sync PyJWKClient in async validation."""
+        from nmp.common.auth.jwks import AsyncJWKSClient
+        from nmp.common.auth.jwt import _JWKS_CACHE_LIFESPAN
+
         auth_config.oidc.jwks_uri = "https://custom.example.com/jwks"
         validator = JWTValidator(auth_config)
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -802,32 +819,31 @@ class TestJWTValidator:
             def __init__(self, *args, **kwargs):
                 raise AssertionError("OIDC validation should use async JWKS fetching")
 
-        class FakeResponse:
-            def raise_for_status(self) -> None:
-                pass
+        calls = 0
 
-            def json(self) -> dict:
-                return {"keys": [jwk]}
+        async def jwks_handler(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            assert str(request.url) == "https://custom.example.com/jwks"
+            timeout = request.extensions["timeout"]
+            assert all(value == 10.0 for value in timeout.values())
+            calls += 1
+            return httpx.Response(200, json={"keys": [jwk]}, request=request)
 
-        class FakeAsyncClient:
-            def __init__(self) -> None:
-                self.calls = 0
+        async with httpx.AsyncClient(transport=httpx.MockTransport(jwks_handler)) as http_client:
 
-            async def get(self, url: str, *, timeout: float) -> FakeResponse:
-                assert url == "https://custom.example.com/jwks"
-                assert timeout == 10.0
-                self.calls += 1
-                return FakeResponse()
+            def jwks_client_factory(uri: str, *, lifespan: int) -> AsyncJWKSClient:
+                assert uri == "https://custom.example.com/jwks"
+                assert lifespan == _JWKS_CACHE_LIFESPAN
+                return AsyncJWKSClient(uri, lifespan=lifespan, http_client=http_client)
 
-        fake_client = FakeAsyncClient()
-        monkeypatch.setattr(http_clients, "shared_async_http_client", lambda: fake_client)
-        monkeypatch.setattr("nmp.common.auth.jwt.PyJWKClient", ForbiddenPyJWKClient, raising=False)
+            monkeypatch.setattr("nmp.common.auth.jwt.AsyncJWKSClient", jwks_client_factory)
+            monkeypatch.setattr("nmp.common.auth.jwt.PyJWKClient", ForbiddenPyJWKClient, raising=False)
 
-        first_claims = await validator.validate_token(token)
-        second_claims = await validator.validate_token(token)
+            first_claims = await validator.validate_token(token)
+            second_claims = await validator.validate_token(token)
 
-        assert first_claims is not None
-        assert second_claims is not None
-        assert first_claims.subject == "user123"
-        assert second_claims.subject == "user123"
-        assert fake_client.calls == 1
+            assert first_claims is not None
+            assert second_claims is not None
+            assert first_claims.subject == "user123"
+            assert second_claims.subject == "user123"
+            assert calls == 1

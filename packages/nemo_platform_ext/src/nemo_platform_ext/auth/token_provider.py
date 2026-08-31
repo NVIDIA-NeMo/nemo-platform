@@ -13,10 +13,10 @@ from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 
 import httpx
+from nemo_platform_plugin.client.tls import httpx_tls_config_from_env
 from typing_extensions import Self
 
 from nemo_platform_ext.auth.helpers import decode_jwt_claims
-from nemo_platform_ext.client.tls import client_verify_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def refresh_token_grant(
     if scope:
         data["scope"] = scope
 
-    response = httpx.post(token_endpoint, data=data, timeout=timeout, verify=client_verify_from_env())
+    response = httpx.post(token_endpoint, data=data, timeout=timeout, **httpx_tls_config_from_env())
 
     if response.status_code != 200:
         error_data: dict[str, str] = {}

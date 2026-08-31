@@ -4,11 +4,13 @@
 """Shared client constants and env checks."""
 
 import os
+from pathlib import Path
 
 WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR = "NMP_WORKLOAD_IDENTITY_TOKEN_FILE"
 JWT_WORKLOAD_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
 DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE = "urn:nvidia:nemo:params:oauth:token-type:docker-opaque-workload-proof"
 OPAQUE_DOCKER_PROOF_PREFIX = "nmp_obo_v1"
+NMP_PRINCIPAL_ENVVAR = "NMP_PRINCIPAL"
 
 
 def is_workload_identity_token_file_set() -> bool:
@@ -20,3 +22,13 @@ def subject_token_type_for_exchange(subject_token: str) -> str:
     if subject_token.startswith(f"{OPAQUE_DOCKER_PROOF_PREFIX}."):
         return DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE
     return JWT_WORKLOAD_SUBJECT_TOKEN_TYPE
+
+
+def workload_identity_token_file_from_env() -> Path | None:
+    token_file = os.environ.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR)
+    return Path(token_file) if token_file else None
+
+
+def require_workload_identity_without_principal_env() -> None:
+    if is_workload_identity_token_file_set() and os.environ.get(NMP_PRINCIPAL_ENVVAR):
+        raise ValueError(f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} and {NMP_PRINCIPAL_ENVVAR} are mutually exclusive")

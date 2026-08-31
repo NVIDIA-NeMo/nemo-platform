@@ -47,6 +47,12 @@ class JWTValidator:
         self._discovery_cache: JsonObject | None = None
         self._discovery_cache_time: float = 0.0
 
+    async def aclose(self) -> None:
+        jwks_client = self._jwks_client
+        self._jwks_client = None
+        if jwks_client is not None:
+            await jwks_client.aclose()
+
     async def _discover_oidc_config(self) -> JsonObject:
         """Fetch OIDC discovery document from issuer.
 

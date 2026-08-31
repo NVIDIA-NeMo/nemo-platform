@@ -32,6 +32,7 @@ def test_intake_ready_with_explicit_external_clickhouse_without_startup_warning(
     service = IntakeService().with_config(intake_config)
 
     async def check_readiness() -> bool:
+        service.dependency_provider.initialize()
         await service.on_startup()
         assert service.clickhouse_client is not None
         try:
@@ -54,6 +55,7 @@ def test_intake_uses_reconciled_clickhouse_url(monkeypatch: pytest.MonkeyPatch) 
     service = IntakeService().with_config(intake_config)
 
     async def start_and_stop() -> None:
+        service.dependency_provider.initialize()
         await service.on_startup()
         try:
             assert service.clickhouse_client is not None
@@ -86,6 +88,7 @@ def test_intake_stays_ready_and_logs_docker_recovery_guidance(
     service = IntakeService().with_config(IntakeConfig(clickhouse_config=ClickHouseConfig()))
 
     async def check_readiness() -> bool:
+        service.dependency_provider.initialize()
         await service.on_startup()
         try:
             return await service.is_ready()
@@ -107,6 +110,7 @@ def test_intake_stays_ready_for_non_docker_reconciliation_errors(
     service = IntakeService().with_config(IntakeConfig(clickhouse_config=ClickHouseConfig()))
 
     async def check_readiness() -> bool:
+        service.dependency_provider.initialize()
         await service.on_startup()
         try:
             assert service.clickhouse_client is not None

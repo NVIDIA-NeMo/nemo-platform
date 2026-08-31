@@ -74,7 +74,7 @@ def test_run_platform_marks_loaded_services_local_before_starting_controllers(mo
     monkeypatch.setattr(
         runner,
         "_load_run_functions",
-        lambda names, registry, kind: {"jobs": lambda stop_signal: None} if kind == "controller" else {},
+        lambda names, registry, kind: {"jobs": lambda _stop_signal: None} if kind == "controller" else {},
     )
     monkeypatch.setattr(runner, "_display_banner", lambda **_: None)
     monkeypatch.setattr(

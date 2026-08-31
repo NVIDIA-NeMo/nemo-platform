@@ -1,33 +1,27 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""NemoClient factory for task containers and services — the plugin-side
-interface for building authenticated
-:class:`~nemo_platform_plugin.client.client.NemoClient` /
-:class:`~nemo_platform_plugin.client.client.AsyncNemoClient` handles.
+"""Standalone NemoClient factory for plugin-only task containers.
 
-This is the :class:`~nemo_platform_plugin.client.client.NemoClient` sibling of
-:mod:`nemo_platform_plugin.sdk_provider`.  Plugin authors call
-:func:`get_nemo_client` / :func:`get_async_nemo_client` here instead of
-importing from ``nmp.common``.  This keeps ``nemo-platform-plugin`` free of any
-``nmp-common`` dependency while still allowing the platform to register a richer
-provider (URL routing, shared HTTP clients, OTEL headers, workload identity,
-...) when ``nmp-common`` is installed.
+Most platform/service code should acquire a ``NeMoPlatform`` SDK through
+``sdk_provider`` and adapt it to a typed service client with
+``client_from_platform(sdk, ServiceClient)``. This module exists for
+plugin-only environments that cannot import ``nmp.common`` and need direct
+:class:`~nemo_platform_plugin.client.client.NemoClient` or
+:class:`~nemo_platform_plugin.client.client.AsyncNemoClient` handles.
 
 Lookup order for the provider
 -----------------------------
 
 1. **Explicit override** — set via :func:`set_nemo_client_provider` (for tests).
-2. **Entry-point discovery** — scans the ``nemo.client_provider`` group.
-   When ``nmp-common`` is installed in the image (platform deployment), its
-   provider is picked up automatically.
+2. **Entry-point discovery** — scans the ``nemo.client_provider`` group for
+   optional third-party overrides.
 3. **Built-in default** — :class:`DefaultNemoClientProvider`, an env-var-based
    implementation that reads ``NMP_BASE_URL`` and ``NMP_PRINCIPAL``.  Works for
    local development and gateway-routed task containers.
 
-For user-facing / CLI usage, prefer ``NemoClient.from_config()`` which reads
-``~/.config/nmp/config.yaml`` and wires up OIDC token refresh / workload
-identity token exchange.
+For user-facing / CLI usage, prefer ``nemo_platform.NeMoPlatform`` or
+``nemo_platform.AsyncNeMoPlatform``.
 """
 
 from __future__ import annotations
@@ -42,14 +36,17 @@ from typing import Any, Protocol, runtime_checkable
 from nemo_platform_plugin.client.auth import TokenProvider
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.constants import (
+    NMP_PRINCIPAL_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     is_workload_identity_token_file_set,
+    require_workload_identity_without_principal_env,
+    workload_identity_token_file_from_env,
 )
 
 logger = logging.getLogger(__name__)
 
 _INTERNAL_REQUEST_HEADER = "X-NMP-Internal"
-_NMP_PRINCIPAL_ENVVAR = "NMP_PRINCIPAL"
+_NMP_PRINCIPAL_ENVVAR = NMP_PRINCIPAL_ENVVAR
 
 
 # ---------------------------------------------------------------------------
@@ -223,8 +220,23 @@ def _workload_identity_auth(base_url: str) -> TokenProvider:
     """
     from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
 
-    token_file = os.environ[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR]
+    token_file = workload_identity_token_file_from_env()
+    if token_file is None:
+        raise RuntimeError(f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} is not set")
     return resolve_workload_exchange_provider(base_url=base_url, subject_token_file=Path(token_file))
+
+
+def _workload_identity_headers(*, internal: bool) -> dict[str, str]:
+    return {_INTERNAL_REQUEST_HEADER: "true"} if internal else {}
+
+
+def _ensure_no_trusted_headers_for_workload_identity(
+    *,
+    as_service: str | None,
+    on_behalf_of: str | None,
+) -> None:
+    if as_service is not None or on_behalf_of is not None:
+        raise ValueError(f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} cannot be combined with trusted principal headers")
 
 
 def _base_url() -> str:
@@ -247,8 +259,19 @@ class DefaultNemoClientProvider:
         on_behalf_of: str | None = None,
         workspace: str | None = None,
     ) -> NemoClient:
+        base_url = _base_url()
+        if is_workload_identity_token_file_set():
+            require_workload_identity_without_principal_env()
+            _ensure_no_trusted_headers_for_workload_identity(as_service=as_service, on_behalf_of=on_behalf_of)
+            return NemoClient(
+                base_url=base_url,
+                workspace=workspace,
+                auth=_workload_identity_auth(base_url),
+                default_headers=_workload_identity_headers(internal=internal) or None,
+            )
+
         headers = _build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
-        return NemoClient(base_url=_base_url(), workspace=workspace, default_headers=headers or None)
+        return NemoClient(base_url=base_url, workspace=workspace, default_headers=headers or None)
 
     def get_async_nemo_client(
         self,
@@ -258,8 +281,19 @@ class DefaultNemoClientProvider:
         on_behalf_of: str | None = None,
         workspace: str | None = None,
     ) -> AsyncNemoClient:
+        base_url = _base_url()
+        if is_workload_identity_token_file_set():
+            require_workload_identity_without_principal_env()
+            _ensure_no_trusted_headers_for_workload_identity(as_service=as_service, on_behalf_of=on_behalf_of)
+            return AsyncNemoClient(
+                base_url=base_url,
+                workspace=workspace,
+                auth=_workload_identity_auth(base_url),
+                default_headers=_workload_identity_headers(internal=internal) or None,
+            )
+
         headers = _build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
-        return AsyncNemoClient(base_url=_base_url(), workspace=workspace, default_headers=headers or None)
+        return AsyncNemoClient(base_url=base_url, workspace=workspace, default_headers=headers or None)
 
     def get_task_nemo_client(
         self,
@@ -269,11 +303,12 @@ class DefaultNemoClientProvider:
     ) -> NemoClient:
         base_url = _base_url()
         if is_workload_identity_token_file_set():
+            require_workload_identity_without_principal_env()
             return NemoClient(
                 base_url=base_url,
                 workspace=workspace,
                 auth=_workload_identity_auth(base_url),
-                default_headers={_INTERNAL_REQUEST_HEADER: "true"},
+                default_headers=_workload_identity_headers(internal=True),
             )
         return NemoClient(
             base_url=base_url,
@@ -289,11 +324,12 @@ class DefaultNemoClientProvider:
     ) -> AsyncNemoClient:
         base_url = _base_url()
         if is_workload_identity_token_file_set():
+            require_workload_identity_without_principal_env()
             return AsyncNemoClient(
                 base_url=base_url,
                 workspace=workspace,
                 auth=_workload_identity_auth(base_url),
-                default_headers={_INTERNAL_REQUEST_HEADER: "true"},
+                default_headers=_workload_identity_headers(internal=True),
             )
         return AsyncNemoClient(
             base_url=base_url,
@@ -391,7 +427,7 @@ def get_nemo_client(
     Delegates to the resolved :class:`NemoClientProvider`.  Under the built-in
     default this reads ``NMP_BASE_URL`` (default ``http://localhost:8080``) and
     ``NMP_PRINCIPAL`` from the environment; under the platform provider it
-    additionally routes service URLs, reuses the shared HTTP client, and injects
+    additionally routes service URLs, uses endpoint-aware HTTP clients, and injects
     OTEL headers.
 
     Args:

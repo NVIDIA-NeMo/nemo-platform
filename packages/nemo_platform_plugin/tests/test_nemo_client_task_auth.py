@@ -129,7 +129,7 @@ def test_task_client_uses_workload_identity(monkeypatch, tmp_path, _stub_workloa
     token_file = tmp_path / "token"
     token_file.write_text("subject-token")
     monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
-    monkeypatch.setenv("NMP_PRINCIPAL", json.dumps(CREATOR))  # must be ignored in WI mode
+    monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
     client = get_task_nemo_client("evaluator")
 
@@ -143,10 +143,21 @@ def test_task_client_uses_workload_identity(monkeypatch, tmp_path, _stub_workloa
     assert client._default_headers.get("X-NMP-Internal") == "true"
 
 
+def test_task_client_rejects_workload_identity_with_principal(monkeypatch, tmp_path):
+    token_file = tmp_path / "token"
+    token_file.write_text("subject-token")
+    monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("NMP_PRINCIPAL", json.dumps(CREATOR))
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        get_task_nemo_client("evaluator")
+
+
 async def test_async_task_client_uses_workload_identity(monkeypatch, tmp_path, _stub_workload_exchange):
     token_file = tmp_path / "token"
     token_file.write_text("subject-token")
     monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
+    monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
     client = get_async_task_nemo_client("evaluator")
     assert isinstance(client._auth, _FakeExchangeProvider)

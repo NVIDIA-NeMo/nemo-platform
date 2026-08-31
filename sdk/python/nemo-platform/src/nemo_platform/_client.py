@@ -19,9 +19,17 @@ from __future__ import annotations
 
 import os
 from typing import TYPE_CHECKING, Any, Mapping
+from pathlib import Path
 from typing_extensions import Self, override
 
 import httpx
+from nemo_platform_plugin.client.tls import httpx_tls_config_from_env
+from nemo_platform_plugin.client.auth import TokenProvider, TokenProviderAuth, AsyncTokenProvider
+from nemo_platform_plugin.client.types import RetryPolicy
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.platform_options import SyncPlatformClientOptions, AsyncPlatformClientOptions
+
+from nemo_platform._base_client import DefaultHttpxClient, DefaultAsyncHttpxClient
 
 from . import _exceptions
 from ._qs import Querystring
@@ -35,8 +43,6 @@ from ._types import (
     not_given,
 )
 from ._utils import (
-    is_given,
-    is_mapping_t,
     get_async_library,
 )
 from ._compat import cached_property
@@ -48,12 +54,9 @@ from ._base_client import (
     SyncAPIClient,
     AsyncAPIClient,
 )
-from nemo_platform._base_client import DefaultAsyncHttpxClient, DefaultHttpxClient
-from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
-from nemo_platform_plugin.client.tls import client_verify_from_env
-from pathlib import Path
 
 if TYPE_CHECKING:
+    from .models import ModelsResource, AsyncModelsResource
     from .resources import (
         iam,
         auth,
@@ -73,11 +76,10 @@ if TYPE_CHECKING:
         experiments,
     )
     from .resources.iam.iam import IamResource, AsyncIamResource
+    from .filesets.resources import FilesResource, AsyncFilesResource
     from .resources.auth.auth import AuthResource, AsyncAuthResource
     from .resources.jobs.jobs import JobsResource, AsyncJobsResource
-    from .filesets.resources import FilesResource, AsyncFilesResource
     from .resources.intake.intake import IntakeResource, AsyncIntakeResource
-    from .models import ModelsResource, AsyncModelsResource
     from .resources.secrets.secrets import SecretsResource, AsyncSecretsResource
     from .resources.adapters.adapters import AdaptersResource, AsyncAdaptersResource
     from .resources.entities.entities import EntitiesResource, AsyncEntitiesResource
@@ -130,12 +132,40 @@ def _copy_requires_bootstrap(
     context_name: str | None,
     access_token: str | None,
 ) -> bool:
-    return (
-        config_path is not None
-        or context_name is not None
-        or access_token is not None
-        or bool(os.environ.get(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR))
+    return config_path is not None or context_name is not None or access_token is not None
+
+
+def _typed_client_default_headers(
+    custom_headers: Mapping[str, object],
+    transport_headers: Mapping[str, str],
+) -> Mapping[str, str] | None:
+    headers = {str(key): value for key, value in custom_headers.items() if isinstance(value, str)}
+    if headers:
+        return headers
+
+    default_transport_headers = {"accept", "accept-encoding", "connection", "user-agent", "host"}
+    headers = {
+        str(key): value
+        for key, value in transport_headers.items()
+        if str(key).lower() not in default_transport_headers and isinstance(value, str)
+    }
+    return headers or None
+
+
+def _typed_client_retry(max_retries: int) -> RetryPolicy:
+    return RetryPolicy(
+        max_retries=max_retries,
+        retryable_status_codes=(408, 409, 429),
+        retry_all_server_errors=True,
+        respect_retry_decision_headers=True,
+        respect_retry_after_headers=True,
     )
+
+
+def _typed_client_timeout(timeout: float | Timeout | None) -> float | Timeout | None:
+    if timeout is None:
+        return httpx.Timeout(None)
+    return timeout
 
 
 class NeMoPlatform(SyncAPIClient):
@@ -154,6 +184,7 @@ class NeMoPlatform(SyncAPIClient):
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
         default_query: Mapping[str, object] | None = None,
+        token_provider: TokenProvider | None = None,
         # Configure a custom httpx client.
         # We provide a `DefaultHttpxClient` class that you can pass to retain the default values we use for `limits`, `timeout` & `follow_redirects`.
         # See the [httpx documentation](https://www.python-httpx.org/api/#client) for more details.
@@ -249,6 +280,7 @@ class NeMoPlatform(SyncAPIClient):
                 if workspace is None:
                     workspace = client_init_kwargs.workspace
                 default_headers = client_init_kwargs.default_headers
+                token_provider = client_init_kwargs.token_provider
                 if client_init_kwargs.http_client is not None and not isinstance(
                     client_init_kwargs.http_client, httpx.Client
                 ):
@@ -263,11 +295,13 @@ class NeMoPlatform(SyncAPIClient):
         if base_url is None:
             raise RuntimeError("NeMoPlatform client initialization failed: base_url is required")
 
-        client_verify = client_verify_from_env()
-        if http_client is None and client_verify is not True:
-            http_client = DefaultHttpxClient(verify=client_verify)
+        tls_config = httpx_tls_config_from_env()
+        if http_client is None and tls_config:
+            http_client = DefaultHttpxClient(**tls_config)
 
         self.workspace = workspace
+        self._token_provider = token_provider
+        self._token_provider_auth = TokenProviderAuth(token_provider) if token_provider is not None else None
 
         super().__init__(
             version=__version__,
@@ -440,12 +474,16 @@ class NeMoPlatform(SyncAPIClient):
         elif set_default_query is not None:
             params = set_default_query
 
-        if http_client is None and not _copy_requires_bootstrap(
+        requires_bootstrap = _copy_requires_bootstrap(
             config_path=config_path,
             context_name=context_name,
             access_token=access_token,
-        ):
+        )
+        if http_client is None and not requires_bootstrap:
             http_client = self._client
+        extra_kwargs = dict(_extra_kwargs)
+        if not requires_bootstrap:
+            extra_kwargs.setdefault("token_provider", self._token_provider)
         return self.__class__(
             workspace=workspace or self.workspace,
             base_url=base_url or self.base_url,
@@ -458,7 +496,7 @@ class NeMoPlatform(SyncAPIClient):
             max_retries=self.max_retries if isinstance(max_retries, NotGiven) else max_retries,
             default_headers=headers,
             default_query=params,
-            **_extra_kwargs,
+            **extra_kwargs,
         )
 
     # Alias for `copy` for nicer inline usage, e.g.
@@ -522,6 +560,30 @@ class NeMoPlatform(SyncAPIClient):
         self.__dict__[name] = instance
         return instance
 
+    @property
+    def custom_auth(self) -> TokenProviderAuth | None:
+        return self._token_provider_auth
+
+    @property
+    def http_client(self) -> httpx.Client:
+        return self._client
+
+    @property
+    def token_provider(self) -> TokenProvider | None:
+        return self._token_provider
+
+    def typed_client_options(self) -> SyncPlatformClientOptions:
+        return SyncPlatformClientOptions(
+            base_url=str(self.base_url).rstrip("/"),
+            workspace=self.workspace,
+            default_headers=_typed_client_default_headers(self._custom_headers, self._client.headers),
+            timeout=_typed_client_timeout(self.timeout),
+            retry=_typed_client_retry(self.max_retries),
+            http_client=self._client,
+            url_resolver=self._prepare_url,
+            auth=self._token_provider,
+        )
+
 
 class AsyncNeMoPlatform(AsyncAPIClient):
     # client options
@@ -540,6 +602,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         max_retries: int = DEFAULT_MAX_RETRIES,
         default_headers: Mapping[str, str] | None = None,
         default_query: Mapping[str, object] | None = None,
+        token_provider: TokenProvider | AsyncTokenProvider | None = None,
         # Configure a custom httpx client.
         # We provide a `DefaultAsyncHttpxClient` class that you can pass to retain the default values we use for `limits`, `timeout` & `follow_redirects`.
         # See the [httpx documentation](https://www.python-httpx.org/api/#asyncclient) for more details.
@@ -654,6 +717,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                 if workspace is None:
                     workspace = client_init_kwargs.workspace
                 default_headers = client_init_kwargs.default_headers
+                token_provider = client_init_kwargs.token_provider
                 if client_init_kwargs.http_client is not None and not isinstance(
                     client_init_kwargs.http_client, httpx.AsyncClient
                 ):
@@ -668,11 +732,13 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         if base_url is None:
             raise RuntimeError("NeMoPlatform client initialization failed: base_url is required")
 
-        client_verify = client_verify_from_env()
-        if http_client is None and client_verify is not True:
-            http_client = DefaultAsyncHttpxClient(verify=client_verify)
+        tls_config = httpx_tls_config_from_env()
+        if http_client is None and tls_config:
+            http_client = DefaultAsyncHttpxClient(**tls_config)
 
         self.workspace = workspace
+        self._token_provider = token_provider
+        self._token_provider_auth = TokenProviderAuth(token_provider) if token_provider is not None else None
 
         super().__init__(
             version=__version__,
@@ -848,12 +914,16 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         elif set_default_query is not None:
             params = set_default_query
 
-        if http_client is None and not _copy_requires_bootstrap(
+        requires_bootstrap = _copy_requires_bootstrap(
             config_path=config_path,
             context_name=context_name,
             access_token=access_token,
-        ):
+        )
+        if http_client is None and not requires_bootstrap:
             http_client = self._client
+        extra_kwargs = dict(_extra_kwargs)
+        if not requires_bootstrap:
+            extra_kwargs.setdefault("token_provider", self._token_provider)
         return self.__class__(
             workspace=workspace or self.workspace,
             base_url=base_url or self.base_url,
@@ -866,7 +936,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
             max_retries=self.max_retries if isinstance(max_retries, NotGiven) else max_retries,
             default_headers=headers,
             default_query=params,
-            **_extra_kwargs,
+            **extra_kwargs,
         )
 
     # Alias for `copy` for nicer inline usage, e.g.
@@ -929,6 +999,30 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         instance = resource_cls(self)
         self.__dict__[name] = instance
         return instance
+
+    @property
+    def custom_auth(self) -> TokenProviderAuth | None:
+        return self._token_provider_auth
+
+    @property
+    def http_client(self) -> httpx.AsyncClient:
+        return self._client
+
+    @property
+    def token_provider(self) -> TokenProvider | AsyncTokenProvider | None:
+        return self._token_provider
+
+    def typed_client_options(self) -> AsyncPlatformClientOptions:
+        return AsyncPlatformClientOptions(
+            base_url=str(self.base_url).rstrip("/"),
+            workspace=self.workspace,
+            default_headers=_typed_client_default_headers(self._custom_headers, self._client.headers),
+            timeout=_typed_client_timeout(self.timeout),
+            retry=_typed_client_retry(self.max_retries),
+            http_client=self._client,
+            url_resolver=self._prepare_url,
+            auth=self._token_provider,
+        )
 
 
 class NeMoPlatformWithRawResponse:

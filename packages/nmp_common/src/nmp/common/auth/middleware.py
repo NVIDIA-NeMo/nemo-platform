@@ -24,7 +24,7 @@ from .client import AuthClient
 from .dependencies import auth_client_context
 from .exceptions import InvalidPrincipalHeader, InvalidScopeFormatError
 from .models import Principal
-from .token_resolver import ResolvedBearerToken, resolve_bearer_token
+from .token_resolver import ResolvedBearerToken, ResolvedTokenKind, resolve_bearer_token
 
 logger = logging.getLogger(__name__)
 
@@ -505,6 +505,11 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             )
 
         if resolved is None:
+            if self.config.oidc.workload_token_exchange_enabled:
+                resolved_or_error = await self._authenticate_workload_token_lifecycle(token)
+                if isinstance(resolved_or_error, Response):
+                    return resolved_or_error
+                return await self._handle_resolved_bearer_token(request, call_next, resolved_or_error)
             if jwt_validator is None:
                 logger.warning(
                     "Bearer token rejected: OIDC is not configured and the token did not pass "
@@ -532,8 +537,25 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         self,
         token: str,
     ) -> ResolvedBearerToken | Response:
+        return await self._authenticate_token_lifecycle(token, token_kinds=("access_key",))
+
+    async def _authenticate_workload_token_lifecycle(
+        self,
+        token: str,
+    ) -> ResolvedBearerToken | Response:
+        return await self._authenticate_token_lifecycle(
+            token,
+            token_kinds=("workload_access_token", "workload_subject_token"),
+        )
+
+    async def _authenticate_token_lifecycle(
+        self,
+        token: str,
+        *,
+        token_kinds: tuple[ResolvedTokenKind, ...],
+    ) -> ResolvedBearerToken | Response:
         try:
-            resolved = await self._access_key_lifecycle.authenticate(token)
+            resolved = await self._access_key_lifecycle.authenticate_token(token, token_kinds=token_kinds)
         except AccessKeyLifecycleUnavailableError as exc:
             return self._access_key_lifecycle_error_response(
                 exc.status_code,

@@ -90,6 +90,10 @@ class MockServiceBackend(ServiceBackend):
         """No-op init for mock backend."""
         pass
 
+    def shutdown(self) -> None:
+        """No-op shutdown for mock backend."""
+        pass
+
     async def create_model_deployment(self, ctx: Any) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
         self.create_calls.append((ctx.model_deployment, ctx.model_deployment_config, ctx.model_entity))
@@ -105,9 +109,16 @@ class MockServiceBackend(ServiceBackend):
         self.status_calls.append(ctx.model_deployment)
         return self.status_response
 
-    async def delete_model_deployment(self, deployment: Any) -> DeploymentStatusUpdate:
+    async def delete_model_deployment(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        deleting_elapsed_seconds: float | None = None,
+    ) -> DeploymentStatusUpdate:
         """Record call and return configured response."""
-        self.delete_calls.append(deployment)
+        del deleting_elapsed_seconds
+        self.delete_calls.append((workspace, name))
         return self.delete_response
 
 
@@ -352,7 +363,10 @@ def controller_with_docker_and_igw(
             return_value=mock_platform_config,
         ),
         patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk") as mock_sdk_factory,
-        patch("nemo_platform_plugin.sdk_provider.get_async_platform_sdk") as mock_sdk,
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.get_async_platform_sdk"
+        ) as mock_backend_sdk,
+        patch("nemo_deployments_plugin.controller.get_async_platform_sdk") as mock_deployments_sdk,
         patch("nemo_deployments_plugin.config.DeploymentsConfig.get", return_value=deployments_config),
         patch(
             "nemo_platform_plugin.jobs.image.get_qualified_image",
@@ -360,22 +374,20 @@ def controller_with_docker_and_igw(
         ),
     ):
         mock_sdk_factory.return_value = test_clients.async_sdk
-        mock_sdk.return_value = test_clients.async_sdk
+        mock_backend_sdk.return_value = test_clients.async_sdk
+        mock_deployments_sdk.return_value = test_clients.async_sdk
 
-        controller = ModelsController(
+        class ModelsControllerWithDeploymentsPlugin(ModelsController):
+            def step(self) -> None:
+                super().step()
+                self._loop.run_until_complete(deployments_controller.reconcile())
+
+        controller = ModelsControllerWithDeploymentsPlugin(
             backend_registry=backend_registry,
             stop_signal=None,
         )
         controller._provider_reconciler.reconcile_model_providers = AsyncMock(return_value=None)
         controller._loop.run_until_complete(deployments_controller.on_startup())
-
-        original_step = controller.step
-
-        def step_with_deployments_plugin() -> None:
-            original_step()
-            controller._loop.run_until_complete(deployments_controller.reconcile())
-
-        controller.step = step_with_deployments_plugin
 
         model_cache = global_model_cache()
 
@@ -416,7 +428,7 @@ async def trigger_cache_refresh(
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> Generator[None, None, None]:
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> Generator[None, Any, None]:
     """Store test results on the item for fixture access."""
     outcome = yield
     rep = outcome.get_result()

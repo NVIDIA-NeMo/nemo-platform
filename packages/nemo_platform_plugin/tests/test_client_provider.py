@@ -3,9 +3,8 @@
 
 """Tests for :mod:`nemo_platform_plugin.client_provider`.
 
-Covers the env-var default provider and the provider/entry-point resolution
-seam.  The rich platform provider (``nmp.common.client_factory``) is tested in
-``packages/nmp_common/tests/client_factory``.
+Covers the env-var default provider and optional provider/entry-point resolution.
+Platform code should prefer ``sdk_provider`` plus ``client_from_platform``.
 """
 
 from __future__ import annotations
@@ -15,6 +14,7 @@ from unittest.mock import patch
 
 import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client_provider import (
     DefaultNemoClientProvider,
     NemoClientProvider,
@@ -174,6 +174,24 @@ class TestDefaultNemoClientProvider:
         client = DefaultNemoClientProvider().get_async_nemo_client(workspace="team-a")
         assert client.workspace == "team-a"
 
+    def test_workload_identity_rejects_principal_env(self, monkeypatch, tmp_path):
+        token_file = tmp_path / "token"
+        token_file.write_text("subject-token", encoding="utf-8")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(token_file))
+        monkeypatch.setenv("NMP_PRINCIPAL", json.dumps({"id": "creator@ex.com"}))
+
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            DefaultNemoClientProvider().get_nemo_client()
+
+    def test_workload_identity_rejects_trusted_principal_headers(self, monkeypatch, tmp_path):
+        token_file = tmp_path / "token"
+        token_file.write_text("subject-token", encoding="utf-8")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(token_file))
+        monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
+
+        with pytest.raises(ValueError, match="trusted principal headers"):
+            DefaultNemoClientProvider().get_nemo_client(as_service="evaluator", internal=True)
+
 
 # ---------------------------------------------------------------------------
 # Provider resolution
@@ -332,6 +350,14 @@ class TestProviderResolution:
                 return NemoClient(base_url="http://x")
 
             def get_async_nemo_client(self, **kwargs):
+                captured.update(kwargs)
+                return AsyncNemoClient(base_url="http://x")
+
+            def get_task_nemo_client(self, service_name, **kwargs):
+                captured.update(kwargs)
+                return NemoClient(base_url="http://x")
+
+            def get_async_task_nemo_client(self, service_name, **kwargs):
                 captured.update(kwargs)
                 return AsyncNemoClient(base_url="http://x")
 

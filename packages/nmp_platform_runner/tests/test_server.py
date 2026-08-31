@@ -11,11 +11,13 @@ import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from nemo_platform_plugin.jobs.openapi_utils import clear_query_param_schemas, generate_openapi_extra_params
 from nmp.common.config import AuthConfig, Configuration
+from nmp.common.config import get_platform_config as load_platform_config
 from nmp.common.config.base import OIDCConfig
 from nmp.common.service import RouterConfig, Service
 from nmp.platform_runner import config as runner_config
@@ -62,6 +64,16 @@ class PluginService(Service):
 
     def get_routers(self):
         return []
+
+
+class ShutdownTrackingService(PluginService):
+    def __init__(self):
+        super().__init__()
+        self.shutdown_called = False
+
+    async def on_shutdown(self) -> None:
+        self.shutdown_called = True
+        await super().on_shutdown()
 
 
 class _DateFilter(BaseModel):
@@ -240,13 +252,66 @@ def test_create_app_uses_separate_http_clients_for_auth_callouts(monkeypatch):
     assert auth_middleware.kwargs["access_key_lifecycle_http_client"] is lifecycle_http_client
 
 
-def test_create_app_mounted_services_drive_sdk_local_routing_without_services_env(monkeypatch):
+@pytest.mark.asyncio
+async def test_create_app_configures_service_dependency_provider_http_client(monkeypatch):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=False)
+    service = PluginService()
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _request: httpx.Response(200)))
+
+    try:
+        app = server.create_app([service], http_client=http_client)
+        with TestClient(app):
+            assert service.dependency_provider.get_http_client() is http_client
+    finally:
+        await http_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_app_runs_service_shutdown_without_closing_injected_http_client(monkeypatch):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=False)
+    service = ShutdownTrackingService()
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _request: httpx.Response(200)))
+
+    try:
+        app = server.create_app([service], http_client=http_client)
+        with TestClient(app):
+            pass
+
+        assert service.shutdown_called is True
+        assert http_client.is_closed is False
+    finally:
+        await http_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_create_app_starts_controller_with_stop_signal(monkeypatch):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=False)
+    captured: dict[str, object] = {}
+    started = threading.Event()
+
+    def run_controller(stop_signal: threading.Event) -> None:
+        captured["stop_signal"] = stop_signal
+        started.set()
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _request: httpx.Response(200)))
+    app = server.create_app(controller_run_funcs={"test": run_controller}, http_client=http_client)
+
+    try:
+        with TestClient(app):
+            assert started.wait(timeout=2)
+    finally:
+        await http_client.aclose()
+
+    assert isinstance(captured["stop_signal"], threading.Event)
+
+
+def test_create_app_mounted_services_drive_lifecycle_routing_without_services_env(monkeypatch):
     monkeypatch.delenv("NMP_SERVICES", raising=False)
     monkeypatch.setenv("NMP_BASE_URL", "https://nemo-gateway:8080")
     monkeypatch.setenv("NMP_SERVICE_HOST", "127.0.0.1")
     monkeypatch.setenv("NMP_SERVICE_PORT", "8080")
     Configuration.clear_cache()
-    platform_cfg = Configuration.get_platform_config()
+    platform_cfg = load_platform_config()
 
     try:
         auth_cfg = _make_auth_config(enabled=False)
@@ -254,19 +319,19 @@ def test_create_app_mounted_services_drive_sdk_local_routing_without_services_en
         monkeypatch.setattr(server, "get_auth_config", lambda: auth_cfg)
 
         import nmp.common.auth.middleware as auth_middleware
-        from nmp.common.sdk_factory import get_platform_sdk
+        from nmp.common.platform_endpoint import resolve_platform_endpoint
 
         monkeypatch.setattr(auth_middleware, "get_auth_config", lambda: auth_cfg)
 
         server.create_app(services=[PluginService()])
 
-        sdk = get_platform_sdk()
-        prepared = sdk._prepare_url("https://nemo-gateway:8080/apis/agents/v2/example")
+        endpoint = resolve_platform_endpoint(platform_cfg)
+        routed = endpoint.route_request_url("https://nemo-gateway:8080/apis/agents/v2/example")
 
         assert platform_cfg.services == "agents"
-        assert prepared.scheme == "http"
-        assert prepared.host == "127.0.0.1"
-        assert prepared.port == 8080
+        assert routed.url.scheme == "http"
+        assert routed.url.host == "127.0.0.1"
+        assert routed.url.port == 8080
     finally:
         Configuration.clear_cache()
 
@@ -511,6 +576,7 @@ def test_create_default_app_raises_for_unknown_controller_from_env(monkeypatch):
 
 def _make_platform_config_mock(*, redirect_root_to_studio: bool = True) -> MagicMock:
     cfg = MagicMock()
+    cfg.base_url = "http://platform.local"
     cfg.seed_on_startup = False
     cfg.redirect_root_to_studio = redirect_root_to_studio
     return cfg

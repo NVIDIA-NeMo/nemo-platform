@@ -445,12 +445,6 @@ def create_test_client(
         services_to_start = [_create_svc(svc, configs) for svc in services_to_create]
         services_to_start = order_services_by_dependencies(services_to_start)
 
-        # Clear any stale SDK client from previous tests BEFORE creating app.
-        # This prevents service startup code from using a previous test's http transport.
-        from nmp.common import sdk_factory as sdk_factory_module
-
-        sdk_factory_module._test_http_client = None
-
         # Create transport and http_client BEFORE the app, so we can inject the client
         # into create_app() for middleware (AuthorizationMiddleware). We set transport.app
         # after app creation - this works because no requests are made until setup completes.
@@ -484,26 +478,10 @@ def create_test_client(
             # Store on app.state so tests can access it via test_client.app.state.access_log
             app.state.access_log = access_log_instance
 
-        # Configure module-level http client as FALLBACK for direct callers of
-        # get_async_platform_sdk()/get_platform_sdk() that don't use DependencyProvider.
-        # The primary injection path is through DependencyProvider (see below). These
-        # module-level variables will be removed once all direct callers are migrated.
-        # See architecture/docs/http-client-injection.md for details.
-        sdk_factory_module._test_http_client = async_http_client
-        stack.callback(lambda: setattr(sdk_factory_module, "_test_http_client", None))
-
         async_sdk = AsyncNeMoPlatform(base_url="http://testserver", http_client=async_http_client, workspace=workspace)
 
         # Create the EntityClient (used for DI and optionally yielded)
         entity_client = EntityClient(client_from_platform(async_sdk, AsyncEntitiesClient))
-
-        # Inject ASGI-transport clients into each service's DependencyProvider.
-        # This is critical for services that call dependency_provider.get_sdk_client()
-        # directly (e.g., in on_startup for background tasks like auth policy refresh).
-        # See architecture/docs/http-client-injection.md for details.
-        for svc in services_to_start:
-            svc.dependency_provider._http_client = async_http_client
-            svc.dependency_provider._sdk_client = async_sdk
 
         # Merge dependency overrides
         all_overrides = {}

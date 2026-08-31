@@ -666,10 +666,6 @@ experimentalist = "nemo_experimentalist_plugin.cli:ExperimentalistCLI"
 analyst = "nemo_insights_plugin.analyst.cli:AnalystCLI"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
-[project.entry-points."nemo.client_provider"]
-platform = "nmp.common.client_factory:PlatformNemoClientProvider"
-
-# Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.controllers"]
 agents-deployment = "nemo_agents_plugin.runner.controller:AgentDeploymentController"
 insights-analysis = "nemo_insights_plugin.controller:InsightsAnalysisController"

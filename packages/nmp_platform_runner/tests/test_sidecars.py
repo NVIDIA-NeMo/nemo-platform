@@ -105,6 +105,7 @@ def test_create_app_starts_and_stops_dummy_sidecar_with_lifespan() -> None:
         patch("nmp.platform_runner.server.get_auth_config", return_value=_auth_config(False)),
         patch("nmp.common.auth.middleware.get_auth_config", return_value=_auth_config(False)),
     ):
+        platform_config.return_value.base_url = "http://platform.local"
         platform_config.return_value.seed_on_startup = False
         platform_config.return_value.redirect_root_to_studio = False
         app = server.create_app(
@@ -130,6 +131,7 @@ def test_build_platform_app_loads_dependent_sidecar_into_lifespan(monkeypatch: p
         patch("nmp.platform_runner.server.get_auth_config", return_value=_auth_config(False)),
         patch("nmp.common.auth.middleware.get_auth_config", return_value=_auth_config(False)),
     ):
+        platform_config.return_value.base_url = "http://platform.local"
         platform_config.return_value.seed_on_startup = False
         platform_config.return_value.redirect_root_to_studio = False
         app = server.build_platform_app(runner_config.PlatformAppConfig(services=["models"], controllers=[]), env={})
@@ -187,14 +189,18 @@ def test_real_adapters_sidecar_entrypoint_starts_and_stops_with_required_env(
     monkeypatch.delenv("VLLM_ENDPOINT", raising=False)
 
     monkeypatch.setattr(adapters_main, "get_platform_config", lambda: MagicMock(base_url="http://platform.local"))
-    monkeypatch.setattr(adapters_main, "get_platform_sdk", lambda **_kwargs: MagicMock())
     monkeypatch.setattr(adapters_main.asyncio, "new_event_loop", lambda: MagicMock())
     monkeypatch.setattr(adapters_main, "Loop", FakeLoop)
     monkeypatch.setattr(adapters_main, "TimedLoopWaiter", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(adapters_main.ControllerManager, "get_instance", classmethod(lambda _cls: manager))
+    monkeypatch.setattr(adapters_main, "get_platform_sdk", MagicMock(return_value=MagicMock()))
 
     stop_signal = threading.Event()
-    thread = threading.Thread(target=adapters_main.run, args=(stop_signal,), daemon=True)
+    thread = threading.Thread(
+        target=adapters_main.run,
+        args=(stop_signal,),
+        daemon=True,
+    )
     try:
         thread.start()
 

@@ -15,7 +15,7 @@ from nemo_platform_ext.auth.token_provider import (
     TokenSet,
     refresh_token_grant,
 )
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 
 def _make_jwt(claims: dict, header: dict | None = None) -> str:

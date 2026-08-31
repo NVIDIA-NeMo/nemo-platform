@@ -38,7 +38,7 @@ from nemo_platform_plugin.client.constants import (
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     subject_token_type_for_exchange,
 )
-from nemo_platform_plugin.client.tls import client_verify_from_env
+from nemo_platform_plugin.client.tls import httpx_tls_config_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ def discover_nmp_config(base_url: str, timeout: float = 10.0) -> NMPOIDCConfig:
     response = httpx.get(
         f"{base_url.rstrip('/')}/apis/auth/discovery",
         timeout=timeout,
-        verify=client_verify_from_env(),
+        **httpx_tls_config_from_env(),
     )
     response.raise_for_status()
     data = response.json()
@@ -266,7 +266,7 @@ def refresh_token_grant(
     if scope:
         data["scope"] = scope
 
-    response = httpx.post(token_endpoint, data=data, timeout=timeout, verify=client_verify_from_env())
+    response = httpx.post(token_endpoint, data=data, timeout=timeout, **httpx_tls_config_from_env())
 
     if response.status_code != 200:
         error_data: dict[str, str] = {}
@@ -325,7 +325,7 @@ def token_exchange_grant(
     if scope:
         data["scope"] = scope
 
-    response = httpx.post(token_endpoint, data=data, timeout=timeout, verify=client_verify_from_env())
+    response = httpx.post(token_endpoint, data=data, timeout=timeout, **httpx_tls_config_from_env())
     if response.status_code != 200:
         error_data: dict[str, object] = {}
         if response.headers.get("content-type", "").startswith("application/json"):

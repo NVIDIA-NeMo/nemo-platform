@@ -29,6 +29,7 @@ import yaml as _yaml
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.tls import HttpxTLSConfig, httpx_tls_config_from_env
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 from nemo_platform_plugin.workspaces.client import WorkspacesClient
@@ -49,7 +50,6 @@ from nemo_platform_ext.cli.core.errors import handle_errors
 from nemo_platform_ext.cli.docker_preflight import DOCKER_PREFLIGHT_MESSAGE, require_docker_for_default_local
 from nemo_platform_ext.cli.telemetry import emit
 from nemo_platform_ext.cli.telemetry.events import OnboardingStepEvent, TaskStatusEnum
-from nemo_platform_ext.client.tls import client_verify_from_env
 from nemo_platform_ext.config.config import Config
 from nemo_platform_ext.config.models import DEFAULT_BASE_URL, ConfigFile, ConfigParams, LocalServicesConfig, NoAuthUser
 from nemo_platform_ext.local.install import services_extra_install_command
@@ -323,11 +323,11 @@ def _check_platform_reachable(base_url: str, timeout: float = 5.0) -> bool:
     Local ``nemo services run`` publishes ``/status``. Hosted deployments may
     only expose ``/cluster-info`` on ingress, so try both.
     """
-    verify = client_verify_from_env()
+    tls_config = httpx_tls_config_from_env()
     root = base_url.rstrip("/")
     for path in _PLATFORM_REACHABILITY_PATHS:
         try:
-            resp = httpx.get(f"{root}{path}", timeout=timeout, verify=verify)
+            resp = httpx.get(f"{root}{path}", timeout=timeout, **tls_config)
             if resp.status_code == 200:
                 return True
         except Exception:
@@ -466,10 +466,10 @@ def _platform_request_headers(cli_context: CLIContext) -> dict[str, str] | None:
     return {key: value for key, value in headers.items() if isinstance(key, str) and isinstance(value, str)}
 
 
-def _hosted_platform_without_status(base_url: str, *, timeout: float, verify: str | bool) -> bool:
+def _hosted_platform_without_status(base_url: str, *, timeout: float, tls_config: HttpxTLSConfig) -> bool:
     """Return True when ``/cluster-info`` confirms a hosted platform that omits ``/status``."""
     try:
-        resp = httpx.get(f"{base_url.rstrip('/')}/cluster-info", timeout=timeout, verify=verify)
+        resp = httpx.get(f"{base_url.rstrip('/')}/cluster-info", timeout=timeout, **tls_config)
     except Exception:
         return False
     return resp.status_code == 200
@@ -485,13 +485,13 @@ def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool,
     If ``controllers.status`` is empty on the first call (startup timing race),
     waits ``_CONTROLLER_HEALTH_RETRY_DELAY`` seconds and retries once.
     """
-    verify = client_verify_from_env()
+    tls_config = httpx_tls_config_from_env()
     root = base_url.rstrip("/")
     for attempt in range(2):
         try:
-            resp = httpx.get(f"{root}/status", timeout=timeout, verify=verify)
+            resp = httpx.get(f"{root}/status", timeout=timeout, **tls_config)
             if resp.status_code == 404:
-                if _hosted_platform_without_status(root, timeout=timeout, verify=verify):
+                if _hosted_platform_without_status(root, timeout=timeout, tls_config=tls_config):
                     return True, "Hosted deployment does not publish /status."
                 return False, "Unexpected status 404 from /status endpoint."
             if resp.status_code != 200:

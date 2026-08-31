@@ -24,6 +24,7 @@ import httpx
 import pytest
 import yaml
 from _pytest.nodes import Node
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, httpx_tls_config_from_env
 from nmp.testing.e2e import Docker as DockerE2EBackend
 from nmp.testing.e2e.config import deep_merge
 
@@ -42,6 +43,7 @@ _DEFAULT_E2E_PLATFORM_CONFIG = _E2E_REPO_ROOT / "packages/nmp_platform/config/lo
 # deployments orphan cleanup cannot delete peer platforms' docker containers.
 _DEFAULT_E2E_DISABLE_DEPLOYMENTS_ORPHAN_CLEANUP = _E2E_REPO_ROOT / "e2e/configs/disable-deployments-orphan-cleanup.yaml"
 _E2E_COMPOSE_LIFECYCLE_ENV = "NMP_E2E_COMPOSE_LIFECYCLE"
+_CA_BUNDLE_ENVVARS = (NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE")
 
 
 def admin_headers() -> dict[str, str]:
@@ -780,18 +782,6 @@ def _wait_for_auth_ready(url: str, proc: subprocess.Popen[Any] | None, timeout: 
     return False
 
 
-def _request_verify_from_env(env: Mapping[str, str] | None = None) -> str | bool:
-    source = dict(os.environ)
-    if env:
-        source.update(env)
-    return (
-        source.get("NMP_CLIENT_SSL_CERT_FILE")
-        or source.get("REQUESTS_CA_BUNDLE")
-        or source.get("SSL_CERT_FILE")
-        or True
-    )
-
-
 def _wait_for_auth_ready_url(
     url: str,
     proc: subprocess.Popen[Any] | None,
@@ -800,12 +790,12 @@ def _wait_for_auth_ready_url(
     timeout: float = _AUTH_READY_TIMEOUT,
 ) -> bool:
     deadline = time.monotonic() + timeout
-    verify = _request_verify_from_env(env)
+    tls_config = httpx_tls_config_from_env(env, cert_file_envvars=_CA_BUNDLE_ENVVARS)
     while time.monotonic() < deadline:
         if proc is not None and _process_exited(proc):
             return False
         try:
-            response = httpx.get(url, timeout=5.0, verify=verify)
+            response = httpx.get(url, timeout=5.0, **tls_config)
             if response.status_code == 200:
                 return True
         except httpx.RequestError as exc:

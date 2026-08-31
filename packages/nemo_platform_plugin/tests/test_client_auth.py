@@ -208,11 +208,14 @@ class TestNemoClientAuth:
 class TestAsyncNemoClientAuth:
     @respx.mock
     def test_async_provider_called(self):
-        """AsyncNemoClient(auth=AsyncProvider()) calls async get_access_token()."""
+        """AsyncNemoClient(auth=AsyncProvider()) calls async get_access_token_async()."""
         route = respx.get("http://localhost:8080/test").mock(return_value=httpx.Response(200, json={"ok": True}))
 
         class AsyncProvider:
-            async def get_access_token(self) -> str:
+            def get_access_token(self) -> str:
+                raise AssertionError("sync token path should not be used")
+
+            async def get_access_token_async(self) -> str:
                 return "async-token"
 
         client = AsyncNemoClient(base_url="http://localhost:8080", auth=AsyncProvider())
@@ -420,7 +423,6 @@ class TestWorkloadTokenExchangeProvider:
                 "scope": "openid email groups",
             },
             timeout=5.0,
-            verify=True,
         )
 
     def test_token_exchange_grant_uses_docker_opaque_subject_token_type(self, monkeypatch):
@@ -926,16 +928,16 @@ class TestGetNemoClient:
             subject_token_file=subject_token_file,
         )
 
-    def test_workload_exchange_provider_does_not_override_explicit_service(self, monkeypatch, tmp_path):
+    def test_workload_exchange_provider_rejects_explicit_service(self, monkeypatch, tmp_path):
         subject_token_file = tmp_path / "workload-token"
         subject_token_file.write_text("subject-token\n", encoding="utf-8")
         monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
         with patch("nemo_platform_plugin.client.oidc_factory.resolve_workload_exchange_provider") as resolve_provider:
-            client = get_nemo_client(as_service="jobs")
+            with pytest.raises(ValueError, match="trusted principal headers"):
+                get_nemo_client(as_service="jobs")
 
-        assert client._auth is None
         resolve_provider.assert_not_called()
 
 

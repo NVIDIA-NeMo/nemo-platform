@@ -6,7 +6,7 @@ import uuid
 
 import httpx
 import pytest
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_plugin.client.tls import httpx_tls_config_from_env
 from nmp.testing import grant_workspace_role
 
 from tests.auth_idp.common import jwt_claims, require_capability
@@ -25,7 +25,7 @@ GATEWAY_TRANSIENT_STATUS_CODES = {502, 503, 504}
 
 
 def _runtime_verify(auth_idp_runtime) -> str | bool:
-    return getattr(auth_idp_runtime, "verify", client_verify_from_env())
+    return getattr(auth_idp_runtime, "verify", httpx_tls_config_from_env().get("verify", True))
 
 
 def _gateway_get_with_transient_retries(

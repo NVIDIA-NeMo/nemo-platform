@@ -23,8 +23,8 @@ from nemo_platform_ext.auth.workload_exchange import (
     read_subject_token_file,
     token_exchange_grant,
 )
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 
 def test_workload_exchange_module_has_no_nmp_common_dependency():

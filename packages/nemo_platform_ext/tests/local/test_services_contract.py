@@ -274,7 +274,7 @@ def _patch_runner_registry(
             return []
 
     dummy_services: dict[str, Service] = {"models": _DummyService()}
-    dummy_sidecars: dict[str, Callable] = {"adapters": sidecar_run_func}
+    dummy_sidecars: dict[str, Callable[[threading.Event], None]] = {"adapters": sidecar_run_func}
 
     monkeypatch.setattr(runner_config, "get_available_services", lambda: dummy_services)
     monkeypatch.setattr(runner_config, "get_available_controllers", lambda: {})
@@ -298,6 +298,7 @@ def _patch_runner_registry(
     monkeypatch.setattr(server, "get_auth_config", lambda: auth_cfg)
     monkeypatch.setattr("nmp.common.auth.middleware.get_auth_config", lambda: auth_cfg)
     platform_cfg = MagicMock()
+    platform_cfg.base_url = "http://platform.local"
     platform_cfg.seed_on_startup = False
     platform_cfg.redirect_root_to_studio = False
     monkeypatch.setattr(server, "get_platform_config", lambda: platform_cfg)

@@ -53,7 +53,11 @@ def test_create_app_starts_and_joins_controller_threads() -> None:
         patch("nmp.platform_runner.server.get_auth_config") as mock_ac,
         patch("nmp.common.auth.middleware.get_auth_config") as mock_ac2,
     ):
-        mock_pc.return_value = MagicMock(seed_on_startup=False, redirect_root_to_studio=False)
+        mock_pc.return_value = MagicMock(
+            base_url="http://platform.local",
+            seed_on_startup=False,
+            redirect_root_to_studio=False,
+        )
         mock_ac.return_value = MagicMock(enabled=False, policy_decision_point_provider="embedded")
         mock_ac2.return_value = MagicMock(enabled=False, policy_decision_point_provider="embedded")
 
@@ -87,7 +91,11 @@ def test_create_app_controller_thread_join_timeout() -> None:
         patch("nmp.platform_runner.server.get_auth_config") as mock_ac,
         patch("nmp.common.auth.middleware.get_auth_config") as mock_ac2,
     ):
-        mock_pc.return_value = MagicMock(seed_on_startup=False, redirect_root_to_studio=False)
+        mock_pc.return_value = MagicMock(
+            base_url="http://platform.local",
+            seed_on_startup=False,
+            redirect_root_to_studio=False,
+        )
         mock_ac.return_value = MagicMock(enabled=False, policy_decision_point_provider="embedded")
         mock_ac2.return_value = MagicMock(enabled=False, policy_decision_point_provider="embedded")
 
@@ -107,24 +115,20 @@ def test_create_app_controller_thread_join_timeout() -> None:
 
 
 @pytest.mark.integration
-def test_lifespan_cleanup_runs_on_app_shutdown() -> None:
-    """``close_shared_http_clients`` should be called during lifespan teardown."""
-    cleanup_called = threading.Event()
-
+def test_lifespan_shutdown_marks_controller_stop_signal() -> None:
+    """Lifespan teardown should mark the controller stop signal."""
     with (
         patch("nmp.platform_runner.server.get_platform_config") as mock_pc,
         patch("nmp.platform_runner.server.get_auth_config") as mock_ac,
         patch("nmp.common.auth.middleware.get_auth_config") as mock_ac2,
-        patch("nmp.platform_runner.server.close_shared_http_clients") as mock_close,
     ):
-        mock_pc.return_value = MagicMock(seed_on_startup=False, redirect_root_to_studio=False)
+        mock_pc.return_value = MagicMock(
+            base_url="http://platform.local",
+            seed_on_startup=False,
+            redirect_root_to_studio=False,
+        )
         mock_ac.return_value = MagicMock(enabled=False, policy_decision_point_provider="embedded")
         mock_ac2.return_value = MagicMock(enabled=False, policy_decision_point_provider="embedded")
-
-        async def fake_close():
-            cleanup_called.set()
-
-        mock_close.side_effect = fake_close
 
         from nmp.platform_runner.server import create_app
 
@@ -135,7 +139,7 @@ def test_lifespan_cleanup_runs_on_app_shutdown() -> None:
         with TestClient(app):
             pass
 
-        assert cleanup_called.is_set(), "close_shared_http_clients was not called during shutdown"
+        assert app.state.controller_stop_signal.is_set()
 
 
 # ---------------------------------------------------------------------------

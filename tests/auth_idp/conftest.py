@@ -13,8 +13,8 @@ from urllib.parse import urlparse
 import httpx
 import pytest
 from nemo_platform import NeMoPlatform
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, client_verify_from_env
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, httpx_tls_config_from_env
 from nemo_platform_plugin.workspaces.client import WorkspacesClient
 from nemo_platform_plugin.workspaces.types import CreateWorkspaceQueryParams, CreateWorkspaceRequest
 
@@ -152,14 +152,14 @@ def _exchange_token_with_retries(
 ) -> str:
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
-    request_verify = client_verify_from_env() if verify is None else verify
+    request_kwargs = httpx_tls_config_from_env() if verify is None else {"verify": verify}
     while time.monotonic() < deadline:
         try:
             response = httpx.post(
                 token_endpoint,
                 data=_token_request_body(grant),
                 timeout=30.0,
-                verify=request_verify,
+                **request_kwargs,
             )
             if response.status_code >= 500:
                 last_error = httpx.HTTPStatusError(

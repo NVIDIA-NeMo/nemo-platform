@@ -36,6 +36,7 @@ def _cleanup_config_overrides():
     """Clean up Configuration overrides set by create_test_app to prevent leaking to other tests."""
     yield
     Configuration.clear_override(AuthConfig)
+    Configuration.clear_override(PlatformConfig)
 
 
 @pytest.fixture
@@ -87,6 +88,7 @@ def access_key_lifecycle_middleware(auth_config_oidc_disabled, monkeypatch: pyte
             update={"access_keys": auth_config_oidc_disabled.access_keys.model_copy(update={"enabled": True})}
         )
         Configuration.set_override(config)
+        Configuration.set_override(PlatformConfig(base_url=base_url, services=""))
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             middleware = AuthorizationMiddleware(
                 FastAPI(),
@@ -94,11 +96,7 @@ def access_key_lifecycle_middleware(auth_config_oidc_disabled, monkeypatch: pyte
                 http_client=http_client,
                 access_key_lifecycle_http_client=http_client,
             )
-            with patch(
-                "nmp.common.sdk_factory.Configuration.get_platform_config",
-                return_value=PlatformConfig(base_url=base_url, services=""),
-            ):
-                yield middleware
+            yield middleware
 
     return make
 
@@ -574,7 +572,7 @@ class TestBearerTokenAuth:
         mock_validate.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_access_key_lifecycle_sdk_uses_auth_service_discovery(
+    async def test_access_key_lifecycle_callout_uses_injected_client_base_url(
         self,
         auth_config_oidc_disabled,
         monkeypatch: pytest.MonkeyPatch,
@@ -611,7 +609,7 @@ class TestBearerTokenAuth:
                 response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
 
         assert isinstance(response, ResolvedBearerToken)
-        assert requests[0].url == httpx.URL("http://auth.internal:8080/apis/auth/authenticate")
+        assert requests[0].url == httpx.URL("http://platform.example.com/apis/auth/authenticate")
 
     @pytest.mark.asyncio
     async def test_access_key_lifecycle_callout_allows_active_token(self, access_key_lifecycle_middleware):
@@ -671,11 +669,8 @@ class TestBearerTokenAuth:
                 http_client=pdp_client,
                 access_key_lifecycle_http_client=lifecycle_client,
             )
-            with patch(
-                "nmp.common.sdk_factory.Configuration.get_platform_config",
-                return_value=PlatformConfig(base_url="unix:///tmp/nemo-platform.sock", services=""),
-            ):
-                response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+            Configuration.set_override(PlatformConfig(base_url="unix:///tmp/nemo-platform.sock", services=""))
+            response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
 
         assert isinstance(response, ResolvedBearerToken)
         assert response.claims.subject == "alice@example.com"
@@ -878,11 +873,8 @@ class TestBearerTokenAuth:
         )
 
         try:
+            Configuration.set_override(PlatformConfig(base_url="http://platform.example.com", services=""))
             with (
-                patch(
-                    "nmp.common.sdk_factory.Configuration.get_platform_config",
-                    return_value=PlatformConfig(base_url="http://platform.example.com", services=""),
-                ),
                 patch("nmp.common.auth.middleware.resolve_bearer_token", new=AsyncMock()) as resolver,
                 patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize,
             ):
@@ -898,6 +890,70 @@ class TestBearerTokenAuth:
             assert requests[0].url == httpx.URL("http://platform.example.com/apis/auth/authenticate")
             assert requests[0].headers["authorization"] == f"Bearer {token}"
             resolver.assert_not_awaited()
+            mock_authorize.assert_called_once()
+        finally:
+            asyncio.run(http_client.aclose())
+
+    def test_workload_bearer_uses_authenticate_callout_after_local_resolver_rejects(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.get("/whoami")
+        async def whoami(auth_client: AuthClient = Depends(get_auth_client)):
+            return {
+                "principal": auth_client.principal.id,
+                "email": auth_client.principal.email,
+                "groups": auth_client.principal.groups,
+            }
+
+        config = auth_config_enabled.model_copy(
+            update={
+                "oidc": auth_config_enabled.oidc.model_copy(
+                    update={"workload_token_exchange_enabled": True},
+                )
+            }
+        )
+        Configuration.set_override(config)
+        Configuration.set_override(PlatformConfig(base_url="http://platform.example.com", services=""))
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "principal": "system:serviceaccount:nemo:job",
+                    "email": None,
+                    "groups": ["team-ml"],
+                    "scopes": ["openid", "email"],
+                    "token_kind": "workload_access_token",
+                },
+            )
+
+        http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        app.add_middleware(
+            AuthorizationMiddleware,
+            service_name="test-service",
+            access_key_lifecycle_http_client=http_client,
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+
+        try:
+            with (
+                patch("nmp.common.auth.middleware.resolve_bearer_token", new=AsyncMock(return_value=None)) as resolver,
+                patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize,
+            ):
+                mock_authorize.return_value = MagicMock(allowed=True)
+                response = client.get("/whoami", headers={"Authorization": "Bearer workload-access-token"})
+
+            assert response.status_code == 200
+            assert response.json() == {
+                "principal": "system:serviceaccount:nemo:job",
+                "email": None,
+                "groups": ["team-ml"],
+            }
+            assert requests[0].url == httpx.URL("http://platform.example.com/apis/auth/authenticate")
+            assert requests[0].headers["authorization"] == "Bearer workload-access-token"
+            resolver.assert_awaited_once()
             mock_authorize.assert_called_once()
         finally:
             asyncio.run(http_client.aclose())

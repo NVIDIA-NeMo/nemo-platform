@@ -9,7 +9,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlunsplit
 
+import httpx
 import pytest
+from nemo_platform import NeMoPlatform
 from nmp.common.config import PlatformConfig
 from nmp.common.jobs.constants import EPHEMERAL_TASK_STORAGE_PATH_ENVVAR, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.common.jobs.schemas import PlatformJobStatus
@@ -509,15 +511,13 @@ class TestGetJobRuntimeSharedEnvvars:
 def _make_step(
     staleness_timeout: int = 0,
     created_at: datetime.datetime | None = None,
-    step_spec: PlatformJobStepSpec | None = ...,  # type: ignore[assignment]
 ) -> PlatformJobStepWithContext:
-    if step_spec is ...:
-        step_spec = PlatformJobStepSpec(
-            name="test-step",
-            executor=CPUExecutionProvider(provider="cpu", profile="default", container=ContainerSpec(image="img")),
-            config={},
-            lifecycle=StepLifecycle(staleness_timeout_seconds=staleness_timeout),
-        )
+    step_spec = PlatformJobStepSpec(
+        name="test-step",
+        executor=CPUExecutionProvider(provider="cpu", profile="default", container=ContainerSpec(image="img")),
+        config={},
+        lifecycle=StepLifecycle(staleness_timeout_seconds=staleness_timeout),
+    )
     return PlatformJobStepWithContext(
         id="step-1",
         job="job-1",
@@ -538,8 +538,9 @@ def _make_task(status: str = "active", updated_at: datetime.datetime | None = No
     return task
 
 
-def _make_backend(mock_sdk: MagicMock | None = None) -> MockKubernetesCPUJobBackend:
-    sdk = mock_sdk or MagicMock()
+def _make_backend() -> MockKubernetesCPUJobBackend:
+    http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
+    sdk = NeMoPlatform(base_url="http://test", http_client=http_client, workspace="default")
     return MockKubernetesCPUJobBackend(nmp_sdk=sdk, execution_profile_config=MagicMock(), profile_name="default")
 
 
@@ -575,10 +576,10 @@ class TestCheckTaskStaleness:
 
         assert backend.check_step_is_stale(step) is False
 
-    def test_disabled_when_lifecycle_is_none(self):
+    def test_disabled_when_step_spec_is_none(self):
         backend = _make_backend()
         step = _make_step()
-        step.step_spec.lifecycle = None
+        step.step_spec = None
 
         assert backend.check_step_is_stale(step) is False
 

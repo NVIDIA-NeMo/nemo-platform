@@ -1,15 +1,28 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
+import httpx
 import pytest
+from nemo_platform import NeMoPlatform
 from nmp.guardrails.app.utils.model_routing import (
     build_openai_gateway_url,
     parse_model_entity_reference,
     resolve_model_entity_references,
 )
-from nmp.guardrails.entities.values._private import Model, RailsConfig
+from nmp.guardrails.entities.values._private import Model, ModelParameters, RailsConfig
+
+
+def _model_routing_sdk(base_url: str = "http://localhost:8000") -> NeMoPlatform:
+    http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
+    return NeMoPlatform(base_url=base_url, workspace="default", http_client=http_client)
+
+
+def _base_url(model: Model) -> str | None:
+    parameters = model.parameters
+    assert parameters is not None
+    return parameters.base_url
 
 
 class TestParseModelEntityReference:
@@ -51,9 +64,7 @@ class TestBuildOpenAIGatewayUrl:
     @patch("nmp.guardrails.app.utils.model_routing.get_platform_sdk")
     def test_url_construction(self, mock_get_sdk):
         """Test URL construction for Model Entity reference."""
-        mock_sdk = MagicMock()
-        mock_sdk.base_url = "http://localhost:8000"
-        mock_get_sdk.return_value = mock_sdk
+        mock_get_sdk.side_effect = _model_routing_sdk
 
         url = build_openai_gateway_url("default/my-model")
         assert url == "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
@@ -65,9 +76,7 @@ class TestBuildOpenAIGatewayUrl:
     @patch("nmp.guardrails.app.utils.model_routing.get_platform_sdk")
     def test_v1_suffix_preserved(self, mock_get_sdk):
         """Test /v1 suffix is preserved from typed client URL."""
-        mock_sdk = MagicMock()
-        mock_sdk.base_url = "http://localhost:8000"
-        mock_get_sdk.return_value = mock_sdk
+        mock_get_sdk.side_effect = _model_routing_sdk
 
         url = build_openai_gateway_url("default/model")
         assert url == "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
@@ -76,9 +85,7 @@ class TestBuildOpenAIGatewayUrl:
     @patch("nmp.guardrails.app.utils.model_routing.get_platform_sdk")
     def test_typed_client_adds_v1(self, mock_get_sdk):
         """Test the typed Models client helper adds the OpenAI /v1 suffix."""
-        mock_sdk = MagicMock()
-        mock_sdk.base_url = "http://localhost:8000"
-        mock_get_sdk.return_value = mock_sdk
+        mock_get_sdk.side_effect = _model_routing_sdk
 
         url = build_openai_gateway_url("default/model")
         assert url == "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
@@ -95,9 +102,7 @@ class TestResolveModelEntityReferences:
     @patch("nmp.guardrails.app.utils.model_routing.get_platform_sdk")
     def test_resolve_single_model(self, mock_get_sdk):
         """Test resolving a single model with Model Entity reference."""
-        mock_sdk = MagicMock()
-        mock_sdk.base_url = "http://localhost:8000"
-        mock_get_sdk.return_value = mock_sdk
+        mock_get_sdk.side_effect = _model_routing_sdk
 
         rails_config = RailsConfig(
             models=[
@@ -107,16 +112,14 @@ class TestResolveModelEntityReferences:
 
         resolved = resolve_model_entity_references(rails_config)
 
-        assert resolved.models[0].parameters["base_url"] == (
+        assert _base_url(resolved.models[0]) == (
             "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
         )
 
     @patch("nmp.guardrails.app.utils.model_routing.get_platform_sdk")
     def test_resolve_all_models(self, mock_get_sdk):
         """Test that ALL models in config get resolved (multiple models use case)."""
-        mock_sdk = MagicMock()
-        mock_sdk.base_url = "http://localhost:8000"
-        mock_get_sdk.return_value = mock_sdk
+        mock_get_sdk.side_effect = _model_routing_sdk
 
         rails_config = RailsConfig(
             models=[
@@ -129,9 +132,9 @@ class TestResolveModelEntityReferences:
         resolved = resolve_model_entity_references(rails_config)
 
         expected_url = "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
-        assert resolved.models[0].parameters["base_url"] == expected_url
-        assert resolved.models[1].parameters["base_url"] == expected_url
-        assert resolved.models[2].parameters["base_url"] == expected_url
+        assert _base_url(resolved.models[0]) == expected_url
+        assert _base_url(resolved.models[1]) == expected_url
+        assert _base_url(resolved.models[2]) == expected_url
 
     def test_explicit_base_url_preserved_for_non_entity(self):
         """Test that explicit base_url is preserved for non-entity models."""
@@ -141,14 +144,14 @@ class TestResolveModelEntityReferences:
                     type="main",
                     engine="nim",
                     model="gpt-4",
-                    parameters={"base_url": "http://custom-endpoint/v1"},
+                    parameters=ModelParameters(base_url="http://custom-endpoint/v1"),
                 ),
             ]
         )
 
         resolved = resolve_model_entity_references(rails_config)
 
-        assert resolved.models[0].parameters["base_url"] == "http://custom-endpoint/v1"
+        assert _base_url(resolved.models[0]) == "http://custom-endpoint/v1"
 
     def test_explicit_base_url_preserved_for_entity_reference(self):
         """Test that explicit base_url is preserved even for Model Entity references."""
@@ -158,21 +161,19 @@ class TestResolveModelEntityReferences:
                     type="main",
                     engine="nim",
                     model="default/my-model",
-                    parameters={"base_url": "http://custom-override/v1"},
+                    parameters=ModelParameters(base_url="http://custom-override/v1"),
                 ),
             ]
         )
 
         resolved = resolve_model_entity_references(rails_config)
 
-        assert resolved.models[0].parameters["base_url"] == "http://custom-override/v1"
+        assert _base_url(resolved.models[0]) == "http://custom-override/v1"
 
     @patch("nmp.guardrails.app.utils.model_routing.get_platform_sdk")
     def test_mixed_config(self, mock_get_sdk):
         """Test config with one Model Entity ref, one explicit URLs."""
-        mock_sdk = MagicMock()
-        mock_sdk.base_url = "http://localhost:8000"
-        mock_get_sdk.return_value = mock_sdk
+        mock_get_sdk.side_effect = _model_routing_sdk
 
         rails_config = RailsConfig(
             models=[
@@ -181,17 +182,17 @@ class TestResolveModelEntityReferences:
                     type="content_safety",
                     engine="nim",
                     model="default/nemoguard-content-safety",
-                    parameters={"base_url": "https://direct-nim:8000/v1"},
+                    parameters=ModelParameters(base_url="https://direct-nim:8000/v1"),
                 ),
             ]
         )
 
         resolved = resolve_model_entity_references(rails_config)
 
-        assert resolved.models[0].parameters["base_url"] == (
+        assert _base_url(resolved.models[0]) == (
             "http://localhost:8000/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
         )
-        assert resolved.models[1].parameters["base_url"] == "https://direct-nim:8000/v1"
+        assert _base_url(resolved.models[1]) == "https://direct-nim:8000/v1"
 
     def test_empty_models_returns_unchanged(self):
         """Test that config with empty models list is returned unchanged."""

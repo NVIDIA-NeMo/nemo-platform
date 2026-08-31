@@ -7,8 +7,8 @@ authenticated :class:`~nemo_platform.NeMoPlatform` handles.
 Plugin authors use :func:`get_task_sdk` in their ``__main__.py`` entrypoints
 instead of importing from ``nmp.common.sdk_factory``.  This keeps the
 ``nemo-platform-plugin`` package free of ``nmp-common`` dependencies while
-still allowing the platform to register a richer provider (with URL routing,
-shared HTTP clients, OTEL headers, etc.) when ``nmp-common`` is installed.
+still allowing the platform to register a richer provider (with platform auth
+context, OTEL headers, etc.) when ``nmp-common`` is installed.
 
 Lookup order for the provider
 -----------------------------
@@ -36,21 +36,25 @@ import json
 import logging
 import os
 from importlib.metadata import entry_points
-from typing import Any, Protocol, TypeVar, runtime_checkable
+from typing import Any, Protocol, overload, runtime_checkable
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.client.constants import is_workload_identity_token_file_set
-
-_SDKT = TypeVar("_SDKT", NeMoPlatform, AsyncNeMoPlatform)
+from nemo_platform import AsyncNeMoPlatform, DefaultAsyncHttpxClient, DefaultHttpxClient, NeMoPlatform
+from nemo_platform_plugin.client.auth import TokenProvider, TokenProviderAuth
+from nemo_platform_plugin.client.constants import (
+    NMP_PRINCIPAL_ENVVAR,
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    is_workload_identity_token_file_set,
+    require_workload_identity_without_principal_env,
+    workload_identity_token_file_from_env,
+)
 
 logger = logging.getLogger(__name__)
 
 # Header name the platform uses to mark internal (service-to-service) requests.
 _INTERNAL_REQUEST_HEADER = "X-NMP-Internal"
 
-# Environment variable the jobs backend writes with the job creator's
-# principal (JSON-serialised).
-_NMP_PRINCIPAL_ENVVAR = "NMP_PRINCIPAL"
+# Environment variable the jobs backend writes with the job creator's principal.
+_NMP_PRINCIPAL_ENVVAR = NMP_PRINCIPAL_ENVVAR
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +166,40 @@ def _workload_identity_headers(*, internal: bool) -> dict[str, str]:
     return {_INTERNAL_REQUEST_HEADER: "true"} if internal else {}
 
 
+def _workload_identity_token_provider(base_url: str) -> TokenProvider:
+    from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
+
+    subject_token_file = workload_identity_token_file_from_env()
+    if subject_token_file is None:
+        raise RuntimeError(f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} is not set")
+    return resolve_workload_exchange_provider(base_url=base_url, subject_token_file=subject_token_file)
+
+
+def _ensure_no_trusted_headers_for_workload_identity(
+    *,
+    as_service: str | None,
+    on_behalf_of: str | None,
+    on_behalf_of_headers: dict[str, str] | None,
+) -> None:
+    if as_service is not None or on_behalf_of is not None or on_behalf_of_headers is not None:
+        raise ValueError(f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} cannot be combined with trusted principal headers")
+
+
+def _task_on_behalf_of_headers() -> dict[str, str] | None:
+    principal = _read_principal_from_env()
+    return _on_behalf_of_headers(principal) if principal is not None else None
+
+
+def _warn_missing_task_principal(*, service_name: str, async_sdk: bool) -> None:
+    qualifier = "async task SDK" if async_sdk else "task SDK"
+    logger.warning(
+        "%s not set; %s will authenticate as service:%s without on-behalf-of delegation",
+        _NMP_PRINCIPAL_ENVVAR,
+        qualifier,
+        service_name,
+    )
+
+
 class DefaultSDKProvider:
     """Env-var-based provider that ships with the plugin package.
 
@@ -172,74 +210,126 @@ class DefaultSDKProvider:
 
     def get_task_sdk(self, service_name: str) -> NeMoPlatform:
         if is_workload_identity_token_file_set():
-            return NeMoPlatform(
-                base_url=self._base_url(),
-                default_headers=_workload_identity_headers(internal=True),
-            )
+            require_workload_identity_without_principal_env()
+            return self._make_workload_identity_sdk(NeMoPlatform, internal=True)
 
-        headers: dict[str, str] = {
-            "X-NMP-Principal-Id": f"service:{service_name}",
-            _INTERNAL_REQUEST_HEADER: "true",
-        }
-
-        principal = _read_principal_from_env()
-        if principal is not None:
-            headers.update(_on_behalf_of_headers(principal))
-        else:
-            logger.warning(
-                "%s not set; task SDK will authenticate as service:%s without on-behalf-of delegation",
-                _NMP_PRINCIPAL_ENVVAR,
-                service_name,
-            )
-
-        return NeMoPlatform(
-            base_url=self._base_url(),
-            default_headers=headers,
+        on_behalf_of_headers = _task_on_behalf_of_headers()
+        if on_behalf_of_headers is None:
+            _warn_missing_task_principal(service_name=service_name, async_sdk=False)
+        return self._make_sdk(
+            NeMoPlatform,
+            as_service=service_name,
+            internal=True,
+            on_behalf_of_headers=on_behalf_of_headers,
         )
 
     def get_async_task_sdk(self, service_name: str) -> AsyncNeMoPlatform:
         # Async mirror of get_task_sdk: identical headers (service principal,
         # internal marker, and full on-behalf-of id/email/groups), async client.
         if is_workload_identity_token_file_set():
-            return AsyncNeMoPlatform(
-                base_url=self._base_url(),
-                default_headers=_workload_identity_headers(internal=True),
-            )
+            require_workload_identity_without_principal_env()
+            return self._make_workload_identity_sdk(AsyncNeMoPlatform, internal=True)
 
-        headers: dict[str, str] = {
-            "X-NMP-Principal-Id": f"service:{service_name}",
-            _INTERNAL_REQUEST_HEADER: "true",
-        }
-
-        principal = _read_principal_from_env()
-        if principal is not None:
-            headers.update(_on_behalf_of_headers(principal))
-        else:
-            logger.warning(
-                "%s not set; async task SDK will authenticate as service:%s without on-behalf-of delegation",
-                _NMP_PRINCIPAL_ENVVAR,
-                service_name,
-            )
-
-        return AsyncNeMoPlatform(
-            base_url=self._base_url(),
-            default_headers=headers,
+        on_behalf_of_headers = _task_on_behalf_of_headers()
+        if on_behalf_of_headers is None:
+            _warn_missing_task_principal(service_name=service_name, async_sdk=True)
+        return self._make_sdk(
+            AsyncNeMoPlatform,
+            as_service=service_name,
+            internal=True,
+            on_behalf_of_headers=on_behalf_of_headers,
         )
 
+    @overload
     def _make_sdk(
         self,
-        cls: type[_SDKT],
+        cls: type[NeMoPlatform],
         *,
         as_service: str | None = None,
         internal: bool = False,
         on_behalf_of: str | None = None,
-    ) -> _SDKT:
-        if as_service is None and on_behalf_of is None and is_workload_identity_token_file_set():
-            headers = _workload_identity_headers(internal=internal)
-            return cls(base_url=self._base_url(), default_headers=headers or None)
+        on_behalf_of_headers: dict[str, str] | None = None,
+    ) -> NeMoPlatform: ...
+
+    @overload
+    def _make_sdk(
+        self,
+        cls: type[AsyncNeMoPlatform],
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | None = None,
+        on_behalf_of_headers: dict[str, str] | None = None,
+    ) -> AsyncNeMoPlatform: ...
+
+    def _make_sdk(
+        self,
+        cls: type[NeMoPlatform] | type[AsyncNeMoPlatform],
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | None = None,
+        on_behalf_of_headers: dict[str, str] | None = None,
+    ) -> NeMoPlatform | AsyncNeMoPlatform:
+        if is_workload_identity_token_file_set():
+            require_workload_identity_without_principal_env()
+            _ensure_no_trusted_headers_for_workload_identity(
+                as_service=as_service,
+                on_behalf_of=on_behalf_of,
+                on_behalf_of_headers=on_behalf_of_headers,
+            )
+            if cls is NeMoPlatform:
+                return self._make_workload_identity_sdk(NeMoPlatform, internal=internal)
+            if cls is AsyncNeMoPlatform:
+                return self._make_workload_identity_sdk(AsyncNeMoPlatform, internal=internal)
+            raise TypeError(f"Unsupported SDK class for workload identity: {cls!r}")
 
         headers = self._build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+        if on_behalf_of_headers:
+            headers.update(on_behalf_of_headers)
         return cls(base_url=self._base_url(), default_headers=headers or None)
+
+    @overload
+    def _make_workload_identity_sdk(
+        self,
+        cls: type[NeMoPlatform],
+        *,
+        internal: bool,
+    ) -> NeMoPlatform: ...
+
+    @overload
+    def _make_workload_identity_sdk(
+        self,
+        cls: type[AsyncNeMoPlatform],
+        *,
+        internal: bool,
+    ) -> AsyncNeMoPlatform: ...
+
+    def _make_workload_identity_sdk(
+        self,
+        cls: type[NeMoPlatform] | type[AsyncNeMoPlatform],
+        *,
+        internal: bool,
+    ) -> NeMoPlatform | AsyncNeMoPlatform:
+        base_url = self._base_url()
+        headers = _workload_identity_headers(internal=internal)
+        token_provider = _workload_identity_token_provider(base_url)
+        auth = TokenProviderAuth(token_provider)
+        if cls is AsyncNeMoPlatform:
+            return AsyncNeMoPlatform(
+                base_url=base_url,
+                default_headers=headers or None,
+                http_client=DefaultAsyncHttpxClient(auth=auth),
+                token_provider=token_provider,
+            )
+        if cls is NeMoPlatform:
+            return NeMoPlatform(
+                base_url=base_url,
+                default_headers=headers or None,
+                http_client=DefaultHttpxClient(auth=auth),
+                token_provider=token_provider,
+            )
+        raise TypeError(f"Unsupported SDK class for workload identity: {cls!r}")
 
     def get_platform_sdk(
         self,
@@ -391,9 +481,8 @@ def get_async_task_sdk(service_name: str) -> AsyncNeMoPlatform:
     ``NMP_PRINCIPAL`` is set, on behalf of the job creator with the full delegated identity
     (on-behalf-of id, email, and groups) — wire-identical to :func:`get_task_sdk`.
 
-    A dedicated provider method (not a wrapper over :func:`get_async_platform_sdk`) so each provider
-    mirrors its own sync :meth:`SDKProvider.get_task_sdk` exactly; the platform provider routes URLs
-    and reuses its shared async client, the default provider uses env-var headers.
+    Delegates to the active provider so each provider can preserve its own SDK
+    construction lifecycle while keeping task and platform SDK auth policy aligned.
     """
     return _resolve_provider().get_async_task_sdk(service_name)
 
@@ -450,7 +539,8 @@ def get_forwarding_headers(sdk: NeMoPlatform | AsyncNeMoPlatform) -> dict[str, s
             per-request headers, pass a request-scoped SDK built with
             ``sdk.with_options(set_default_headers=...)``.
     """
-    # _custom_headers holds the headers passed at construction time
-    # (service principal, internal marker, on-behalf-of, OTEL, etc.)
-    # — everything the platform SDK factory injects.
-    return dict(sdk._custom_headers)
+    return {
+        name: value
+        for name, value in sdk.default_headers.items()
+        if name.startswith("X-NMP-") and isinstance(value, str)
+    }

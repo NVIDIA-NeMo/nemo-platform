@@ -198,7 +198,7 @@ class TestCheckPlatformReachable:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         with (
-            patch(f"{SETUP_MOD}.client_verify_from_env", return_value="/tmp/custom-ca.pem"),
+            patch(f"{SETUP_MOD}.httpx_tls_config_from_env", return_value={"verify": "/tmp/custom-ca.pem"}),
             patch(f"{SETUP_MOD}.httpx.get", return_value=mock_resp) as mock_get,
         ):
             assert _check_platform_reachable("http://localhost:8080") is True
@@ -224,7 +224,7 @@ class TestCheckPlatformReachable:
             raise AssertionError(f"unexpected url: {url}")
 
         with (
-            patch(f"{SETUP_MOD}.client_verify_from_env", return_value="/tmp/custom-ca.pem"),
+            patch(f"{SETUP_MOD}.httpx_tls_config_from_env", return_value={"verify": "/tmp/custom-ca.pem"}),
             patch(f"{SETUP_MOD}.httpx.get", side_effect=_get),
         ):
             assert _check_platform_reachable("https://nemo-platform-freeplay.dev.aire.nvidia.com") is True

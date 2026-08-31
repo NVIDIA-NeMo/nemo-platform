@@ -1102,7 +1102,7 @@ class DefaultHttpxClient:
         encoding="utf-8",
     )
     (plugin_client_path / "tls.py").write_text(
-        "def client_verify_from_env() -> bool:\n    return True\n",
+        "def httpx_tls_config_from_env() -> dict[str, str]:\n    return {}\n",
         encoding="utf-8",
     )
 
@@ -1169,8 +1169,9 @@ class AsyncNeMoPlatform:
     assert "from pathlib import Path" in updated
     assert "from nemo_platform._base_client import DefaultAsyncHttpxClient, DefaultHttpxClient" in updated
     assert "from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR" in updated
-    assert "from nemo_platform_plugin.client.tls import client_verify_from_env" in updated
+    assert "from nemo_platform_plugin.client.tls import httpx_tls_config_from_env" in updated
     assert "from nemo_platform_ext.client.tls import client_verify_from_env" not in updated
+    assert "from nemo_platform_plugin.client.tls import client_verify_from_env" not in updated
     assert "def _should_bootstrap_config(config_path: Path | None = None) -> bool:" in updated
     assert "return config_path is not None" in updated
     assert "return False" not in updated

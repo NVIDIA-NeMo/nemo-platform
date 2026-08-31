@@ -67,6 +67,7 @@ from nemo_platform import (
     not_given,
 )
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import httpx_tls_config_from_env
 
 from nemo_platform_ext.auth.helpers import NMPOIDCConfig, build_effective_scope, discover_nmp_config
 from nemo_platform_ext.auth.token_provider import (
@@ -74,7 +75,6 @@ from nemo_platform_ext.auth.token_provider import (
     TokenSet,
 )
 from nemo_platform_ext.auth.workload_exchange import WorkloadTokenExchangeProvider
-from nemo_platform_ext.client.tls import client_verify_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -103,13 +103,15 @@ class ClientInitConfig:
 
     For non-OAuth users this just carries base_url/workspace/headers.
     For OAuth users it also includes a custom httpx client with an event
-    hook that injects/refreshes the Bearer token on every request.
+    hook that injects/refreshes the Bearer token on every request, plus the
+    token provider itself for typed client adapters.
     """
 
     base_url: str
     workspace: str | None
     default_headers: Mapping[str, str] | None = None
     http_client: httpx.Client | httpx.AsyncClient | None = None
+    token_provider: _AccessTokenProvider | None = None
 
 
 @dataclass(frozen=True)
@@ -634,13 +636,14 @@ def build_client_init_kwargs(
     http_client = DefaultHttpxClient(
         event_hooks={"request": [hook], "response": []},
         follow_redirects=True,
-        verify=client_verify_from_env(),
+        **httpx_tls_config_from_env(),
     )
     return ClientInitConfig(
         base_url=bootstrap.base_url,
         workspace=bootstrap.workspace,
         default_headers=headers or None,
         http_client=http_client,
+        token_provider=bootstrap.token_provider,
     )
 
 
@@ -677,13 +680,14 @@ def build_async_client_init_kwargs(
     http_client = DefaultAsyncHttpxClient(
         event_hooks={"request": [hook], "response": []},
         follow_redirects=True,
-        verify=client_verify_from_env(),
+        **httpx_tls_config_from_env(),
     )
     return ClientInitConfig(
         base_url=bootstrap.base_url,
         workspace=bootstrap.workspace,
         default_headers=headers or None,
         http_client=http_client,
+        token_provider=bootstrap.token_provider,
     )
 
 
@@ -721,6 +725,7 @@ def create_client(
         workspace=client_init_kwargs.workspace,
         default_headers=client_init_kwargs.default_headers,
         http_client=http_client,
+        token_provider=client_init_kwargs.token_provider,
         max_retries=max_retries,
         timeout=timeout,
     )

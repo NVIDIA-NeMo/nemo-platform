@@ -11,7 +11,6 @@ from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter
 from nmp.common.entities import ALL_WORKSPACES, ListResponse
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
-from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.core.models.api.service.model_entity_service import _adapter_to_adapter_schema, get_fileset_and_files_list
 from nmp.core.models.constants import parse_model_ref
 from nmp.core.models.entities import Adapter, Model
@@ -24,9 +23,9 @@ logger = logging.getLogger(__name__)
 class AdapterEntityService:
     """Service for adapter CRUD, scoped to a workspace, with model reference from path or body."""
 
-    def __init__(self, entity_client: EntityClient, sdk: AsyncNeMoPlatform | None = None) -> None:
+    def __init__(self, entity_client: EntityClient, sdk: AsyncNeMoPlatform) -> None:
         self.entity_client = entity_client
-        self.sdk = sdk or get_async_platform_sdk()
+        self.sdk = sdk
 
     async def _fetch_all_entities(
         self,

@@ -5,26 +5,23 @@
 
 import asyncio
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier, Event, Lock
+from threading import Barrier
 from types import SimpleNamespace
 from typing import List
 from unittest.mock import AsyncMock, patch
 
 import httpx
+import nmp.common.service as common_service
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.testclient import TestClient
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.client.client import AsyncNemoClient
-from nemo_platform_plugin.dependencies import get_nemo_client as plugin_get_nemo_client
 from nmp.common.config import PlatformConfig
 from nmp.common.observability.otel import scoped_otel_headers
 from nmp.common.service import DependencyProvider, RouterConfig, Service
 from nmp.common.service import __all__ as service_exports
-from nmp.common.service import get_nemo_client as facade_get_nemo_client
-from nmp.common.service.dependencies import get_nemo_client
+from nmp.common.service.dependencies import get_sdk_client
 
 
 def _route_paths(app: FastAPI) -> set[str]:
@@ -33,8 +30,9 @@ def _route_paths(app: FastAPI) -> set[str]:
     queue = list(app.routes)
     while queue:
         route = queue.pop()
-        if hasattr(route, "path"):
-            paths.add(route.path)
+        path = getattr(route, "path", None)
+        if isinstance(path, str):
+            paths.add(path)
         fn = getattr(route, "effective_candidates", None)
         if callable(fn):
             queue.extend(fn())  # type: ignore[arg-type]
@@ -124,6 +122,7 @@ class TestServiceBase:
         assert app is not None
         assert app.title == service.title
         assert app.version == service.version
+        assert app.openapi()["info"]["description"] == service.description
 
     def test_service_app_property_caches(self):
         """Test app property returns cached instance."""
@@ -192,7 +191,8 @@ class TestServiceAsync:
         provider = DependencyProvider()
         provider._platform_config = PlatformConfig(base_url="http://platform.local")
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider._http_client = client
+            provider.configure_http_client(client)
+            provider.initialize()
             service = MockService(dependency_provider=provider)
 
             ready = await service.wait_for_service_ready("entities", timeout=1.0, poll_interval=0)
@@ -212,7 +212,8 @@ class TestServiceAsync:
         provider = DependencyProvider()
         provider._platform_config = PlatformConfig(base_url="http://platform.local")
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider._http_client = client
+            provider.configure_http_client(client)
+            provider.initialize()
             service = MockService(dependency_provider=provider)
 
             ready = await service.wait_for_service_ready("models", timeout=1.0, poll_interval=0)
@@ -240,42 +241,17 @@ class TestDependencyProvider:
         """Test DependencyProvider initialization."""
         provider = DependencyProvider()
         assert provider._sdk_client is None
-        assert provider._http_client is None
+        assert provider._configured_http_client is None
 
-    def test_nemo_client_dependency_is_exported_with_exact_plugin_identity(self):
-        assert get_nemo_client is plugin_get_nemo_client
-        assert facade_get_nemo_client is plugin_get_nemo_client
-        assert "get_nemo_client" in service_exports
+    def test_generic_nemo_client_dependency_is_not_exported(self):
+        assert not hasattr(common_service, "get_nemo_client")
+        assert "get_nemo_client" not in service_exports
 
-    def test_setup_dependencies_registers_nemo_client_override(self):
-        provider = DependencyProvider()
-        app = FastAPI()
-
-        provider.setup_dependencies(app, MockService())
-
-        assert app.dependency_overrides[get_nemo_client] == provider.get_request_scoped_nemo_client
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("first_client", ["sdk", "nemo"], ids=["sdk-first", "nemo-first"])
-    async def test_sdk_and_nemo_clients_share_provider_transport_regardless_of_order(self, first_client: str):
-        provider = DependencyProvider()
-
-        if first_client == "sdk":
-            sdk = provider.get_request_scoped_sdk()
-            nemo = provider.get_request_scoped_nemo_client()
-        else:
-            nemo = provider.get_request_scoped_nemo_client()
-            sdk = provider.get_request_scoped_sdk()
-
-        assert sdk._client is provider.get_http_client()
-        assert nemo._http is provider.get_http_client()
-
-        await provider.close()
-
-    def test_request_scoped_nemo_clients_are_distinct_and_share_transport(self):
+    def test_request_scoped_sdks_are_distinct_and_share_transport(self):
         provider = DependencyProvider()
         transport = AsyncMock(spec=httpx.AsyncClient)
-        provider._http_client = transport
+        provider.configure_http_client(transport)
+        provider.initialize()
 
         with patch(
             "nmp.common.sdk_factory.get_principal_auth_headers",
@@ -285,42 +261,55 @@ class TestDependencyProvider:
             },
         ):
             with scoped_otel_headers({"traceparent": "00-trace-one-span-one-01"}):
-                first = provider.get_request_scoped_nemo_client()
+                first = provider.get_request_scoped_sdk()
         with patch(
             "nmp.common.sdk_factory.get_principal_auth_headers",
             return_value={"X-NMP-Principal-Id": "user-two@example.com"},
         ):
             with scoped_otel_headers({"traceparent": "00-trace-two-span-two-01"}):
-                second = provider.get_request_scoped_nemo_client()
+                second = provider.get_request_scoped_sdk()
 
         assert first is not second
-        assert first._http is transport
-        assert second._http is transport
-        assert first._default_headers["X-NMP-Principal-Id"] == "user-one@example.com"
-        assert first._default_headers["X-NMP-Principal-On-Behalf-Of"] == "delegate-one@example.com"
-        assert first._default_headers["traceparent"] == "00-trace-one-span-one-01"
-        assert second._default_headers["X-NMP-Principal-Id"] == "user-two@example.com"
-        assert second._default_headers["traceparent"] == "00-trace-two-span-two-01"
+        assert first._client is transport
+        assert second._client is transport
+        assert first.default_headers["X-NMP-Principal-Id"] == "user-one@example.com"
+        assert first.default_headers["X-NMP-Principal-On-Behalf-Of"] == "delegate-one@example.com"
+        assert first.default_headers["traceparent"] == "00-trace-one-span-one-01"
+        assert second.default_headers["X-NMP-Principal-Id"] == "user-two@example.com"
+        assert second.default_headers["traceparent"] == "00-trace-two-span-two-01"
 
     @pytest.mark.asyncio
-    async def test_close_closes_shared_sdk_and_nemo_transport_exactly_once(self):
+    async def test_close_closes_owned_sdk_transport_exactly_once(self, monkeypatch: pytest.MonkeyPatch):
+        from nmp.common.service import base as service_base
+
         provider = DependencyProvider()
-        transport = CloseCountingAsyncClient()
-        provider._http_client = transport
+        created: list[CloseCountingAsyncClient] = []
+
+        def create_transport() -> CloseCountingAsyncClient:
+            transport = CloseCountingAsyncClient()
+            created.append(transport)
+            return transport
+
+        endpoint = SimpleNamespace(
+            connect_base_url="http://platform.test",
+            async_sdk_http_client=lambda timeout=None: create_transport(),
+        )
+        monkeypatch.setattr(service_base, "resolve_platform_endpoint", lambda _platform_config=None: endpoint)
+
+        provider.initialize()
         sdk = provider.get_sdk_client()
-        nemo = provider.get_request_scoped_nemo_client()
 
         await provider.close()
         await provider.close()
 
-        assert sdk._client is transport
-        assert nemo._http is transport
-        assert transport.close_count == 1
-        assert provider._http_client is None
+        assert created == [sdk._client]
+        assert created[0].close_count == 1
+        assert provider._configured_http_client is None
+        assert provider._service_http_client is None
         assert provider._sdk_client is None
 
     @pytest.mark.asyncio
-    async def test_concurrent_first_dependency_resolution_creates_one_transport_and_sdk(
+    async def test_concurrent_dependency_resolution_reuses_initialized_transport_and_sdk(
         self, monkeypatch: pytest.MonkeyPatch
     ):
         from nmp.common import sdk_factory
@@ -328,83 +317,72 @@ class TestDependencyProvider:
 
         provider = DependencyProvider()
         resolution_ready = Barrier(13)
-        factory_started = Event()
-        release_factory = Event()
         created: list[CloseCountingAsyncClient] = []
-        created_lock = Lock()
 
-        def resolve_dependency(index: int) -> AsyncNeMoPlatform | AsyncNemoClient:
+        def resolve_dependency() -> AsyncNeMoPlatform:
             resolution_ready.wait(timeout=5)
-            factory = provider.get_request_scoped_sdk if index % 2 == 0 else provider.get_request_scoped_nemo_client
-            return factory()
+            return provider.get_request_scoped_sdk()
 
         def create_transport() -> CloseCountingAsyncClient:
             transport = CloseCountingAsyncClient()
-            with created_lock:
-                created.append(transport)
-            factory_started.set()
-            assert release_factory.wait(timeout=5)
+            created.append(transport)
             return transport
 
-        endpoint = SimpleNamespace(async_sdk_http_client=lambda: create_transport())
-        monkeypatch.setattr(service_base, "resolve_platform_endpoint", lambda: endpoint)
+        endpoint = SimpleNamespace(
+            connect_base_url="http://platform.test",
+            async_sdk_http_client=lambda timeout=None: create_transport(),
+        )
+        monkeypatch.setattr(service_base, "resolve_platform_endpoint", lambda _platform_config=None: endpoint)
 
         with patch.object(
-            sdk_factory, "get_async_platform_sdk", wraps=sdk_factory.get_async_platform_sdk
+            sdk_factory, "_get_async_platform_sdk_for_endpoint", wraps=sdk_factory._get_async_platform_sdk_for_endpoint
         ) as sdk_factory_call:
+            provider.initialize()
             with ThreadPoolExecutor(max_workers=12) as executor:
-                futures = [executor.submit(resolve_dependency, index) for index in range(12)]
+                futures = [executor.submit(resolve_dependency) for _index in range(12)]
                 resolution_ready.wait(timeout=5)
-                assert factory_started.wait(timeout=5)
-                time.sleep(0.05)
-                release_factory.set()
                 clients = [future.result(timeout=5) for future in futures]
 
         assert sdk_factory_call.call_count == 1
 
         transport = provider.get_http_client()
-        sdk_clients = [client for client in clients if isinstance(client, AsyncNeMoPlatform)]
-        nemo_clients = [client for client in clients if isinstance(client, AsyncNemoClient)]
 
         assert created == [transport]
-        assert len({id(client) for client in sdk_clients}) == 1
-        assert all(client._client is transport for client in sdk_clients)
-        assert all(client._http is transport for client in nemo_clients)
+        assert len({id(client) for client in clients}) == 1
+        assert all(client._client is transport for client in clients)
 
         await provider.close()
         assert created[0].close_count == 1
 
     @pytest.mark.asyncio
-    async def test_fastapi_caches_nemo_client_within_request_and_isolates_requests(self):
+    async def test_fastapi_caches_sdk_dependency_within_request(self):
         provider = DependencyProvider()
         app = FastAPI()
         provider.setup_dependencies(app, MockService())
-        resolved: list[tuple[AsyncNemoClient, AsyncNemoClient]] = []
+        provider.initialize()
+        resolved: list[tuple[AsyncNeMoPlatform, AsyncNeMoPlatform]] = []
 
         @app.get("/clients")
         async def clients(
-            first: AsyncNemoClient = Depends(get_nemo_client),
-            second: AsyncNemoClient = Depends(get_nemo_client),
+            first: AsyncNeMoPlatform = Depends(get_sdk_client),
+            second: AsyncNeMoPlatform = Depends(get_sdk_client),
         ) -> dict[str, bool]:
             resolved.append((first, second))
             return {"same": first is second}
 
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-            first_response = await client.get("/clients")
-            second_response = await client.get("/clients")
+            response = await client.get("/clients")
 
-        assert first_response.json() == {"same": True}
-        assert second_response.json() == {"same": True}
+        assert response.json() == {"same": True}
         assert resolved[0][0] is resolved[0][1]
-        assert resolved[1][0] is resolved[1][1]
-        assert resolved[0][0] is not resolved[1][0]
-        assert resolved[0][0]._http is resolved[1][0]._http
+        assert resolved[0][0]._client is provider.get_http_client()
 
         await provider.close()
 
     @pytest.mark.asyncio
     async def test_service_principal_sdk_shares_provider_transport(self):
         provider = DependencyProvider()
+        provider.initialize()
         cached_sdk = provider.get_sdk_client()
         service_sdk = provider.get_sdk_client(as_service="entities")
 
@@ -429,6 +407,20 @@ class TestServiceWithProvider:
         service = MockService()
         assert service.dependency_provider is not None
         assert isinstance(service.dependency_provider, DependencyProvider)
+
+    def test_service_configures_provider_service_name_for_entity_client_headers(self):
+        """Test Service configures the provider before entity SDK creation."""
+        provider = DependencyProvider()
+        service = MockService(dependency_provider=provider)
+
+        with patch.object(service.dependency_provider, "get_sdk_client") as mock_sdk:
+            mock_base_sdk = mock_sdk.return_value
+
+            service.dependency_provider._get_entity_sdk_on_behalf_of()
+
+        call_kwargs = mock_base_sdk.with_options.call_args
+        headers = call_kwargs.kwargs.get("set_default_headers") or call_kwargs[1].get("set_default_headers")
+        assert headers["X-NMP-Principal-Id"] == "service:test-service"
 
 
 class LifecycleService(MockService):

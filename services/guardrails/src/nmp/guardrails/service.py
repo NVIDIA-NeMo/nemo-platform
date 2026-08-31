@@ -5,7 +5,7 @@
 
 import logging
 import os
-from typing import ClassVar, List
+from typing import ClassVar, List, cast
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -28,6 +28,7 @@ from nmp.guardrails.app.exceptions.exception_handlers import (
 from nmp.guardrails.app.patches import apply_langchain_patch
 from nmp.guardrails.config import GuardrailsServiceConfig
 from pydantic import ValidationError
+from starlette.types import ExceptionHandler
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,12 @@ class GuardrailsService(Service[GuardrailsServiceConfig]):
             os.environ["NVIDIA_BASE_URL"] = inference_base_url
             logger.info(f"Set NVIDIA_BASE_URL to: {inference_base_url}")
 
+    async def on_shutdown(self) -> None:
+        from nmp.guardrails.api.dependencies import close_nemo_platform
+
+        await close_nemo_platform()
+        await super().on_shutdown()
+
     def configure_app(self, app: FastAPI) -> None:
         """Configure additional app settings after creation."""
         # Add middlewares
@@ -90,11 +97,15 @@ class GuardrailsService(Service[GuardrailsServiceConfig]):
 
     def _register_exception_handlers(self, app: FastAPI) -> None:
         """Register custom exception handlers."""
-        app.add_exception_handler(GuardrailConfigurationNotFoundError, config_not_found_error_handler)
-        app.add_exception_handler(CustomHTTPException, custom_exception_handler)
-        app.add_exception_handler(LLMCallException, llm_call_exception_handler)
-        app.add_exception_handler(ModelInitializationError, model_initialization_error_handler)
-        app.add_exception_handler(InvalidRailsConfigurationError, invalid_rails_configuration_error_handler)
-        app.add_exception_handler(RequestValidationError, validation_error_handler)
-        app.add_exception_handler(ValidationError, validation_error_handler)
-        app.add_exception_handler(404, custom_404_handler)
+        app.add_exception_handler(
+            GuardrailConfigurationNotFoundError, cast(ExceptionHandler, config_not_found_error_handler)
+        )
+        app.add_exception_handler(CustomHTTPException, cast(ExceptionHandler, custom_exception_handler))
+        app.add_exception_handler(LLMCallException, cast(ExceptionHandler, llm_call_exception_handler))
+        app.add_exception_handler(ModelInitializationError, cast(ExceptionHandler, model_initialization_error_handler))
+        app.add_exception_handler(
+            InvalidRailsConfigurationError, cast(ExceptionHandler, invalid_rails_configuration_error_handler)
+        )
+        app.add_exception_handler(RequestValidationError, cast(ExceptionHandler, validation_error_handler))
+        app.add_exception_handler(ValidationError, cast(ExceptionHandler, validation_error_handler))
+        app.add_exception_handler(404, cast(ExceptionHandler, custom_404_handler))

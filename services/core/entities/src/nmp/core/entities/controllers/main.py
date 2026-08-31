@@ -28,7 +28,7 @@ def handle_signal(signum, frame):
     stop_signal.set()
 
 
-def run(parent_stop_signal: threading.Event | None = None):
+def run(parent_stop_signal: threading.Event | None = None) -> None:
     platform_config = get_platform_config()
     logger.info("Starting entities controller")
 
@@ -39,56 +39,56 @@ def run(parent_stop_signal: threading.Event | None = None):
     else:
         local_stop_signal = parent_stop_signal
 
-    nmp_sdk = get_async_platform_sdk(
-        as_service="entities",
-        internal=True,
-    )
-
     # Create a single event loop that will be shared for DB init and the cleanup controller,
     # so SQLAlchemy's async pool is bound to the same loop that later runs queries.
-    entities_config = get_service_config(EntitiesConfig)
     loop = asyncio.new_event_loop()
-    loop.run_until_complete(initialize_async_engine(entities_config))
-    session_maker = loop.run_until_complete(get_async_session_maker())
-
-    workspace_repository = SQLAlchemyWorkspaceRepository(session_maker)
-
-    if not wait_for_service_ready(platform_config, "entities", local_stop_signal):
-        if local_stop_signal.is_set():
-            logger.info("Shutdown requested before server became ready")
-            return
-        logger.warning("Server did not become ready in time, starting loops anyway")
-
-    cleanup_controller = WorkspaceCleanup(
-        nmp_sdk=nmp_sdk,
-        workspace_repository=workspace_repository,
-        stop_signal=local_stop_signal,
-        loop=loop,
-    )
-    cleanup_controller_monitored = TrackLastExecutionTime(cleanup_controller)
-
-    cleanup_loop = Loop(
-        TimedLoopWaiter(entities_config.workspace_cleanup_interval, stop_signal=local_stop_signal),
-        cleanup_controller_monitored,
-        stop_signal=local_stop_signal,
-    )
-
-    controller_manager = ControllerManager.get_instance()
-    controller_manager.register("workspace_cleanup", cleanup_loop)
-
-    cleanup_loop.start()
-    logger.info("Entities controller started successfully")
-
+    nmp_sdk = get_async_platform_sdk(as_service="entities", internal=True)
+    cleanup_loop: Loop | None = None
     try:
+        entities_config = get_service_config(EntitiesConfig)
+        loop.run_until_complete(initialize_async_engine(entities_config))
+        session_maker = loop.run_until_complete(get_async_session_maker())
+
+        workspace_repository = SQLAlchemyWorkspaceRepository(session_maker)
+
+        if not wait_for_service_ready(platform_config, "entities", local_stop_signal):
+            if local_stop_signal.is_set():
+                logger.info("Shutdown requested before server became ready")
+                return
+            logger.warning("Server did not become ready in time, starting loops anyway")
+
+        cleanup_controller = WorkspaceCleanup(
+            nmp_sdk=nmp_sdk,
+            workspace_repository=workspace_repository,
+            stop_signal=local_stop_signal,
+            loop=loop,
+        )
+        cleanup_controller_monitored = TrackLastExecutionTime(cleanup_controller)
+
+        cleanup_loop = Loop(
+            TimedLoopWaiter(entities_config.workspace_cleanup_interval, stop_signal=local_stop_signal),
+            cleanup_controller_monitored,
+            stop_signal=local_stop_signal,
+        )
+
+        controller_manager = ControllerManager.get_instance()
+        controller_manager.register("workspace_cleanup", cleanup_loop)
+
+        cleanup_loop.start()
+        logger.info("Entities controller started successfully")
+
         while not local_stop_signal.is_set():
             local_stop_signal.wait(timeout=1)
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, stopping entities controller")
     finally:
-        cleanup_loop.stop()
-        cleanup_loop.join(timeout=10)
-        if cleanup_loop.is_alive():
-            logger.warning("Workspace cleanup loop did not stop in time")
+        if cleanup_loop is not None:
+            cleanup_loop.stop()
+            cleanup_loop.join(timeout=10)
+            if cleanup_loop.is_alive():
+                logger.warning("Workspace cleanup loop did not stop in time")
+        loop.run_until_complete(nmp_sdk.close())
+        loop.close()
         logger.info("Entities controller stopped")
 
 

@@ -42,16 +42,16 @@ class TestPlatformConfig:
         assert "NMP_BASE_URL" in envvars
         assert "NMP_JOBS_URL" in envvars
 
-    def test_service_url_env_var_populates_service_discovery(self, monkeypatch):
-        """NMP_<SERVICE>_URL env vars are merged into service_discovery."""
+    def test_service_url_env_var_does_not_populate_service_discovery(self, monkeypatch):
+        """NMP_<SERVICE>_URL env vars are resolved by endpoint factories, not config."""
         monkeypatch.setenv("NMP_FILES_URL", "http://files:8000")
         config = PlatformConfig()
 
-        assert config.get_service_url("files") == "http://files:8000"
-        assert config.service_discovery["files"] == "http://files:8000"
+        assert config.get_service_url("files") == "http://localhost:8080"
+        assert "files" not in config.service_discovery
 
-    def test_service_url_env_var_overrides_config_file(self, monkeypatch):
-        """Env var NMP_*_URL overrides or adds to file service_discovery."""
+    def test_service_url_env_var_does_not_override_config_file(self, monkeypatch):
+        """Env var NMP_*_URL is not merged into file service_discovery."""
         monkeypatch.setenv("NMP_JOBS_URL", "http://jobs-from-env:9000")
         settings = {
             "platform": {
@@ -61,9 +61,9 @@ class TestPlatformConfig:
         config = Configuration.global_settings_to_service_config(settings, PlatformConfig)
 
         assert config.get_service_url("files") == "http://files-from-file:8080"
-        assert config.get_service_url("jobs") == "http://jobs-from-env:9000"
+        assert config.get_service_url("jobs") == "http://localhost:8080"
         assert config.service_discovery["files"] == "http://files-from-file:8080"
-        assert config.service_discovery["jobs"] == "http://jobs-from-env:9000"
+        assert "jobs" not in config.service_discovery
 
     def test_base_url_env_var_not_in_service_discovery(self, monkeypatch):
         """NMP_BASE_URL sets base_url and is not added to service_discovery."""

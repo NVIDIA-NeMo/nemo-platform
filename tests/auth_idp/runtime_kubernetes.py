@@ -21,7 +21,7 @@ from typing import TypeVar
 import httpx
 import pytest
 from nemo_platform import DefaultHttpxClient, NeMoPlatform
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 
 from tests.auth_idp.common import jwt_claims
 from tests.auth_idp.runtime_contract import AuthIdpCase, TokenSet

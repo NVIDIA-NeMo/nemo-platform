@@ -7,8 +7,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import patch
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -32,10 +34,20 @@ class FakeTelemetryClient:
     def __init__(self, response: FakeTelemetryResponse | None = None):
         self.response = response or FakeTelemetryResponse()
         self.calls: list[dict] = []
+        self.close_calls = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        pass
 
     async def request(self, **kwargs):
         self.calls.append(kwargs)
         return self.response
+
+    async def aclose(self) -> None:
+        self.close_calls += 1
 
 
 class TestStudioService:
@@ -75,24 +87,23 @@ class TestTelemetryProxy:
     def _client(
         self,
         config: StudioConfig,
-        monkeypatch: pytest.MonkeyPatch,
         fake_client: FakeTelemetryClient | None = None,
     ) -> tuple[TestClient, FakeTelemetryClient]:
         app = FastAPI()
         telemetry_client = fake_client or FakeTelemetryClient()
-        monkeypatch.setattr("nmp.studio.service.shared_async_http_client", lambda: telemetry_client)
-        StudioService().with_config(config).configure_app(app)
+        StudioService(telemetry_http_client=cast(httpx.AsyncClient, telemetry_client)).with_config(
+            config
+        ).configure_app(app)
         return TestClient(app), telemetry_client
 
-    def test_post_strips_studio_telemetry_prefix_and_proxies_request(self, monkeypatch: pytest.MonkeyPatch):
+    def test_post_strips_studio_telemetry_prefix_and_proxies_request(self):
         """Test that /studio/telemetry/* proxies to the collector without the route prefix."""
         origin = "http://studio.test"
         client, telemetry_client = self._client(
             StudioConfig(
                 telemetry_enabled=True,
                 otel={"collector_url": "http://collector:4318", "allowed_origins": [origin]},
-            ),
-            monkeypatch,
+            )
         )
 
         response = client.post(
@@ -113,15 +124,14 @@ class TestTelemetryProxy:
         assert call["headers"]["X-Real-IP"] == "testclient"
         assert call["headers"]["X-Forwarded-For"] == "testclient"
 
-    def test_post_only_forwards_whitelisted_telemetry_headers(self, monkeypatch: pytest.MonkeyPatch):
+    def test_post_only_forwards_whitelisted_telemetry_headers(self):
         """Test that browser credentials and metadata are not forwarded to the collector."""
         origin = "http://studio.test"
         client, telemetry_client = self._client(
             StudioConfig(
                 telemetry_enabled=True,
                 otel={"collector_url": "http://collector:4318", "allowed_origins": [origin]},
-            ),
-            monkeypatch,
+            )
         )
 
         response = client.post(
@@ -151,15 +161,14 @@ class TestTelemetryProxy:
             "X-Forwarded-For": "testclient",
         }
 
-    def test_post_strips_root_telemetry_prefix_and_proxies_request(self, monkeypatch: pytest.MonkeyPatch):
+    def test_post_strips_root_telemetry_prefix_and_proxies_request(self):
         """Test that /telemetry/* keeps parity with the old nginx route."""
         origin = "http://studio.test"
         client, telemetry_client = self._client(
             StudioConfig(
                 telemetry_enabled=True,
                 otel={"collector_url": "http://collector:4318", "allowed_origins": [origin]},
-            ),
-            monkeypatch,
+            )
         )
 
         response = client.post("/telemetry/v1/logs", headers={"origin": origin})
@@ -167,15 +176,14 @@ class TestTelemetryProxy:
         assert response.status_code == 200
         assert telemetry_client.calls[0]["url"] == "http://collector:4318/v1/logs"
 
-    def test_options_returns_preflight_response_without_proxying(self, monkeypatch: pytest.MonkeyPatch):
+    def test_options_returns_preflight_response_without_proxying(self):
         """Test that CORS preflight requests are handled locally."""
         origin = "http://studio.test"
         client, telemetry_client = self._client(
             StudioConfig(
                 telemetry_enabled=True,
                 otel={"collector_url": "http://collector:4318", "allowed_origins": [origin]},
-            ),
-            monkeypatch,
+            )
         )
 
         response = client.options("/studio/telemetry/v1/traces", headers={"origin": origin})
@@ -188,11 +196,10 @@ class TestTelemetryProxy:
         assert response.headers["access-control-max-age"] == "1728000"
         assert telemetry_client.calls == []
 
-    def test_disabled_telemetry_returns_404(self, monkeypatch: pytest.MonkeyPatch):
+    def test_disabled_telemetry_returns_404(self):
         """Test that disabled telemetry preserves the old nginx 404 behavior."""
         client, telemetry_client = self._client(
-            StudioConfig(telemetry_enabled=False, otel={"collector_url": "http://collector:4318"}),
-            monkeypatch,
+            StudioConfig(telemetry_enabled=False, otel={"collector_url": "http://collector:4318"})
         )
 
         response = client.post("/studio/telemetry/v1/traces", headers={"origin": "http://testserver"})
@@ -200,14 +207,13 @@ class TestTelemetryProxy:
         assert response.status_code == 404
         assert telemetry_client.calls == []
 
-    def test_disallowed_origin_returns_403(self, monkeypatch: pytest.MonkeyPatch):
+    def test_disallowed_origin_returns_403(self):
         """Test that disallowed origins preserve the old nginx 403 behavior."""
         client, telemetry_client = self._client(
             StudioConfig(
                 telemetry_enabled=True,
                 otel={"collector_url": "http://collector:4318", "allowed_origins": ["http://studio.test"]},
-            ),
-            monkeypatch,
+            )
         )
 
         response = client.post("/studio/telemetry/v1/traces", headers={"origin": "http://not-allowed.test"})
@@ -215,20 +221,72 @@ class TestTelemetryProxy:
         assert response.status_code == 403
         assert telemetry_client.calls == []
 
-    def test_same_origin_request_is_allowed(self, monkeypatch: pytest.MonkeyPatch):
+    def test_same_origin_request_is_allowed(self):
         """Test that same-origin Studio deployments work without hard-coded host config."""
         client, telemetry_client = self._client(
             StudioConfig(
                 telemetry_enabled=True,
                 otel={"collector_url": "http://collector:4318", "allowed_origins": []},
-            ),
-            monkeypatch,
+            )
         )
 
         response = client.post("/studio/telemetry/v1/traces", headers={"origin": "http://testserver"})
 
         assert response.status_code == 200
         assert telemetry_client.calls[0]["url"] == "http://collector:4318/v1/traces"
+
+    def test_post_reuses_service_owned_telemetry_client(self, monkeypatch: pytest.MonkeyPatch):
+        """Test that proxied telemetry requests reuse one service-scoped client."""
+        origin = "http://studio.test"
+        app = FastAPI()
+        created_clients: list[FakeTelemetryClient] = []
+
+        def create_client() -> FakeTelemetryClient:
+            client = FakeTelemetryClient()
+            created_clients.append(client)
+            return client
+
+        monkeypatch.setattr("nmp.studio.service.httpx.AsyncClient", create_client)
+        StudioService().with_config(
+            StudioConfig(
+                telemetry_enabled=True,
+                otel={"collector_url": "http://collector:4318", "allowed_origins": [origin]},
+            )
+        ).configure_app(app)
+        client = TestClient(app)
+
+        first_response = client.post("/studio/telemetry/v1/traces", headers={"origin": origin})
+        second_response = client.post("/studio/telemetry/v1/logs", headers={"origin": origin})
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert len(created_clients) == 1
+        assert [call["url"] for call in created_clients[0].calls] == [
+            "http://collector:4318/v1/traces",
+            "http://collector:4318/v1/logs",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_shutdown_does_not_close_injected_telemetry_client(self):
+        """Test that injected telemetry HTTP clients remain caller-owned."""
+        telemetry_client = FakeTelemetryClient()
+        service = StudioService(telemetry_http_client=cast(httpx.AsyncClient, telemetry_client))
+
+        await service.on_shutdown()
+
+        assert telemetry_client.close_calls == 0
+
+    @pytest.mark.asyncio
+    async def test_shutdown_closes_owned_telemetry_client(self):
+        """Test that the service closes telemetry clients it creates."""
+        telemetry_client = FakeTelemetryClient()
+        service = StudioService()
+        service._telemetry_http_client = cast(httpx.AsyncClient, telemetry_client)
+        service._owns_telemetry_http_client = True
+
+        await service.on_shutdown()
+
+        assert telemetry_client.close_calls == 1
 
 
 class TestStaticFilesPath:

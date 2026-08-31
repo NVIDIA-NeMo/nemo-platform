@@ -454,7 +454,7 @@ class ModelsConfig(create_service_config_class("models")):  # type: ignore
 
 # Module-level singleton instances
 config = get_service_config(ModelsConfig)
-backends = merge_backends(
+backends: dict[BackendName, BackendConfig] = merge_backends(
     config.controller.backends,
     get_default_backends_for_runtime(get_platform_config().runtime),
 )

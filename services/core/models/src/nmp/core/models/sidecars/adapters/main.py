@@ -14,9 +14,8 @@ import urllib.error
 import urllib.request
 
 from nemo_platform import NeMoPlatform, NotFoundError
-from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.models.client import ModelsClient
-from nemo_platform_plugin.models.types import Adapter, ModelEntity
+from nemo_platform.types.models import ModelEntity
+from nemo_platform.types.models.adapter import Adapter
 from nmp.common.config import get_platform_config
 from nmp.common.controller import (
     Controller,
@@ -39,7 +38,11 @@ ADAPTER_META_FILENAME = "nmp_adapter_meta.json"
 
 
 class AdaptersController(HeartbeatMixin, Controller):
-    def __init__(self, stop_signal: threading.Event | None = None):
+    def __init__(
+        self,
+        *,
+        stop_signal: threading.Event | None = None,
+    ) -> None:
         self.nim_peft_source = os.getenv("NIM_PEFT_SOURCE", "")
         if not self.nim_peft_source:
             msg = "NIM_PEFT_SOURCE is not set on the container"
@@ -93,7 +96,6 @@ class AdaptersController(HeartbeatMixin, Controller):
             as_service="models",
             internal=True,
         )
-        self._models = client_from_platform(self._sdk, ModelsClient)
 
     def download_fileset(self, dest_dir: str, workspace: str, name: str) -> bool:
         try:
@@ -158,12 +160,12 @@ class AdaptersController(HeartbeatMixin, Controller):
         # (AALGO-129): they remain single-workspace for now and continue to
         # use the bare model_entity.name as their on-disk directory.
         logger.info(f"Fetching prompt data for {self.workspace}/{self.model_name}")
-        model_entities: list[ModelEntity] = list(
-            self._models.list_models(
-                workspace=self.workspace,
-                query_params={"filter": json.dumps({"base_model": self.model_name})},
-            ).items()
-        )
+        model_entities = self._sdk.models.list(
+            workspace=self.workspace,
+            filter={
+                "base_model": self.model_name,
+            },
+        ).data
         for model_entity in model_entities:
             if model_entity.prompt:
                 dirs_to_keep.add(model_entity.name)
@@ -418,7 +420,7 @@ class AdaptersController(HeartbeatMixin, Controller):
         """
         logger.info(f"Fetching adapters for {self.workspace}/{self.model_name}")
 
-        model_entity: ModelEntity = self._models.get_model(name=self.model_name, workspace=self.workspace).data()
+        model_entity: ModelEntity = self._sdk.models.retrieve(name=self.model_name, workspace=self.workspace)
         if not model_entity.adapters:
             return
 
@@ -466,7 +468,7 @@ def handle_sighup(signum, frame):
     stop_signal.set()
 
 
-def run(parent_stop_signal: threading.Event | None = None):
+def run(parent_stop_signal: threading.Event | None = None) -> None:
     """Run the Adapters Controller with its control loop."""
 
     global adapters_controller_monitored

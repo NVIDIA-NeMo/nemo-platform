@@ -61,10 +61,11 @@ def build_openai_gateway_url(model_entity_ref: str) -> str:
     # Use SDK helper to build IGW OpenAI-compatible URL
     # IGW handles routing the request to the correct Model Provider
     sdk = get_platform_sdk()
-    models = client_from_platform(sdk, ModelsClient)
-    url = models.get_openai_route_base_url(workspace=workspace)
-
-    return url
+    try:
+        models = client_from_platform(sdk, ModelsClient)
+        return models.get_openai_route_base_url(workspace=workspace)
+    finally:
+        sdk.close()
 
 
 def resolve_model_entity_references(rails_config: RailsConfig) -> RailsConfig:

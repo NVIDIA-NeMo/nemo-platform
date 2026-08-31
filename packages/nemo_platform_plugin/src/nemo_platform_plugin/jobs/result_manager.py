@@ -7,7 +7,7 @@ import tarfile
 from abc import ABC
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Generic, Literal, Type, TypeVar, overload
+from typing import Generic, Literal, Type, TypeVar, cast, overload
 
 from filesets import parse_fileset_ref
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
@@ -37,6 +37,16 @@ FileManagerClsT = TypeVar("FileManagerClsT", Type["FilesetFileManager"], Type["A
 PlatformSDKT = TypeVar("PlatformSDKT", "NeMoPlatform", "AsyncNeMoPlatform")
 
 
+def _owned_sdks_once(*sdk_ownerships: tuple[PlatformSDKT, bool]) -> list[PlatformSDKT]:
+    owned_sdks: list[PlatformSDKT] = []
+    seen_sdk_ids: set[int] = set()
+    for sdk, should_close in sdk_ownerships:
+        if should_close and id(sdk) not in seen_sdk_ids:
+            owned_sdks.append(sdk)
+            seen_sdk_ids.add(id(sdk))
+    return owned_sdks
+
+
 @dataclass
 class BaseResultManager(Generic[FileManagerClsT, PlatformSDKT], ABC):
     """
@@ -50,6 +60,8 @@ class BaseResultManager(Generic[FileManagerClsT, PlatformSDKT], ABC):
     files_sdk: PlatformSDKT
     jobs_sdk: PlatformSDKT
     attempt_id: str | None = field(default=None)
+    owns_files_sdk: bool = field(default=False)
+    owns_jobs_sdk: bool = field(default=False)
 
     def _validate_local_path(self, artifact_local_path: str | Path) -> Path:
         if isinstance(artifact_local_path, str):
@@ -68,6 +80,13 @@ class BaseResultManager(Generic[FileManagerClsT, PlatformSDKT], ABC):
 
 @dataclass
 class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
+    def close(self) -> None:
+        for sdk in _owned_sdks_once(
+            (self.files_sdk, self.owns_files_sdk),
+            (self.jobs_sdk, self.owns_jobs_sdk),
+        ):
+            sdk.close()
+
     def _fetch_job_metadata(self) -> tuple[str, str, str | None]:
         """Fetch job and return (attempt_id, fileset_name, output_location)."""
         jobs = client_from_platform(self.jobs_sdk, JobsClient)
@@ -135,6 +154,13 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
 
 @dataclass
 class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncNeMoPlatform]):
+    async def aclose(self) -> None:
+        for sdk in _owned_sdks_once(
+            (self.files_sdk, self.owns_files_sdk),
+            (self.jobs_sdk, self.owns_jobs_sdk),
+        ):
+            await sdk.close()
+
     async def _fetch_job_metadata(self) -> tuple[str, str, str | None]:
         """Fetch job and return (attempt_id, fileset_name, output_location)."""
         jobs = client_from_platform(self.jobs_sdk, AsyncJobsClient)
@@ -254,18 +280,31 @@ def result_manager_factory(
     if workspace is None:
         workspace = _get_job_workspace()
 
+    if is_async:
+        if jobs_sdk is None:
+            jobs_sdk = files_sdk
+        async_files_sdk = cast(AsyncNeMoPlatform, files_sdk)
+        async_jobs_sdk = cast(AsyncNeMoPlatform, jobs_sdk)
+        return AsyncResultManager(
+            job_name=job_name,
+            workspace=workspace,
+            attempt_id=attempt_id,
+            file_manager_cls=AsyncFilesetFileManager,
+            files_sdk=async_files_sdk,
+            jobs_sdk=async_jobs_sdk,
+        )
+
     if jobs_sdk is None:
         jobs_sdk = files_sdk
-
-    file_manager_cls = AsyncFilesetFileManager if is_async else FilesetFileManager
-    result_manager_cls = AsyncResultManager if is_async else ResultManager
-    return result_manager_cls(
+    sync_files_sdk = cast(NeMoPlatform, files_sdk)
+    sync_jobs_sdk = cast(NeMoPlatform, jobs_sdk)
+    return ResultManager(
         job_name=job_name,
         workspace=workspace,
         attempt_id=attempt_id,
-        file_manager_cls=file_manager_cls,
-        files_sdk=files_sdk,
-        jobs_sdk=jobs_sdk,
+        file_manager_cls=FilesetFileManager,
+        files_sdk=sync_files_sdk,
+        jobs_sdk=sync_jobs_sdk,
     )
 
 

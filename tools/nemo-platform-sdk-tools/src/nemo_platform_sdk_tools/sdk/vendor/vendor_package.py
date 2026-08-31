@@ -78,17 +78,35 @@ class ResourceReplacement(BaseModel):
 
 
 _CLIENT_CLASS_NAMES = ("NeMoPlatform", "AsyncNeMoPlatform")
-_CLIENT_METHOD_NAMES = ("__init__", "__getattr__", "copy")
-_CLIENT_HELPER_FUNCTION_NAMES = ("_should_bootstrap_config", "_copy_requires_bootstrap")
+_CLIENT_METHOD_NAMES = (
+    "__init__",
+    "__getattr__",
+    "copy",
+    "custom_auth",
+    "http_client",
+    "token_provider",
+    "typed_client_options",
+)
+_CLIENT_HELPER_FUNCTION_NAMES = (
+    "_should_bootstrap_config",
+    "_copy_requires_bootstrap",
+    "_typed_client_default_headers",
+    "_typed_client_retry",
+    "_typed_client_timeout",
+)
 _CLIENT_INIT_REQUIRED_IMPORTS: dict[str, tuple[str, ...]] = {
     "nemo_platform._base_client": ("DefaultAsyncHttpxClient", "DefaultHttpxClient"),
+    "nemo_platform_plugin.client.auth": ("AsyncTokenProvider", "TokenProvider", "TokenProviderAuth"),
     "nemo_platform_plugin.client.constants": ("WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR",),
-    "nemo_platform_plugin.client.tls": ("client_verify_from_env",),
+    "nemo_platform_plugin.client.platform_options": ("AsyncPlatformClientOptions", "SyncPlatformClientOptions"),
+    "nemo_platform_plugin.client.tls": ("httpx_tls_config_from_env",),
+    "nemo_platform_plugin.client.types": ("RetryPolicy",),
     "pathlib": ("Path",),
 }
 _STALE_CLIENT_INIT_IMPORTS: dict[str, tuple[str, ...]] = {
     "nemo_platform.client.tls": ("client_verify_from_env",),
     "nemo_platform_ext.client.tls": ("client_verify_from_env",),
+    "nemo_platform_plugin.client.tls": ("client_verify_from_env",),
 }
 
 

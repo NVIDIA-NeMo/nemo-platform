@@ -11,10 +11,11 @@ from pathlib import Path
 from typing import Literal, TextIO
 
 import httpx
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, httpx_tls_config_from_env
 
 ComposeLifecycle = Literal["fresh", "reuse"]
 _DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS = 60
+_CA_BUNDLE_ENVVARS = (NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE")
 
 
 def _compose_env(env: dict[str, str] | None) -> dict[str, str]:
@@ -164,19 +165,14 @@ class DockerComposeE2EBackend:
         self._wait_ready()
 
     def _wait_ready(self) -> None:
-        verify = (
-            self.env.get(NMP_CLIENT_SSL_CERT_FILE_ENVVAR)
-            or self.env.get("REQUESTS_CA_BUNDLE")
-            or self.env.get("SSL_CERT_FILE")
-            or True
-        )
+        tls_config = httpx_tls_config_from_env(self.env, cert_file_envvars=_CA_BUNDLE_ENVVARS)
         deadline = time.monotonic() + self.wait_timeout_seconds
         pending = list(dict.fromkeys(self.wait_urls))
         last_results: dict[str, str] = {}
         while time.monotonic() < deadline and pending:
             for wait_url in list(pending):
                 try:
-                    response = httpx.get(wait_url, timeout=5, verify=verify)
+                    response = httpx.get(wait_url, timeout=5, **tls_config)
                     if response.status_code == 200:
                         pending.remove(wait_url)
                     else:
