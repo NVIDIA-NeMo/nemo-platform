@@ -26,7 +26,7 @@ from nemo_platform_plugin.client.constants import (
 )
 
 from nemo_platform_ext.auth.token_provider import DEFAULT_REFRESH_MARGIN_SECONDS, TokenSet
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_ext.client.tls import httpx_tls_config_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +87,7 @@ def token_exchange_grant(
     subject_token: str,
     audience: str | None = None,
     scope: str | None = None,
+    certificate_authority: str | None = None,
     timeout: float = 30.0,
 ) -> dict[str, object]:
     """Execute RFC 8693 token exchange and return token response JSON."""
@@ -103,7 +104,12 @@ def token_exchange_grant(
     if scope:
         data["scope"] = scope
 
-    response = httpx.post(token_endpoint, data=data, timeout=timeout, verify=client_verify_from_env())
+    response = httpx.post(
+        token_endpoint,
+        data=data,
+        timeout=timeout,
+        **httpx_tls_config_from_env(certificate_authority),
+    )
 
     if response.status_code != 200:
         error_data: dict[str, object] = {}
@@ -165,6 +171,7 @@ class WorkloadTokenExchangeProvider:
     subject_token_file: Path
     audience: str | None = None
     scope: str | None = None
+    certificate_authority: str | None = None
     refresh_margin_seconds: float = DEFAULT_REFRESH_MARGIN_SECONDS
     tokens: TokenSet = field(default_factory=lambda: TokenSet(access_token=""))
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -189,6 +196,7 @@ class WorkloadTokenExchangeProvider:
             subject_token=subject_token,
             audience=self.audience,
             scope=self.scope,
+            certificate_authority=self.certificate_authority,
         )
         access_token = _access_token_from_response(token_data)
         try:

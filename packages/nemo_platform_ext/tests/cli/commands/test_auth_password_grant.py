@@ -27,7 +27,10 @@ def _mock_oidc_config() -> SimpleNamespace:
 
 def test_login_password_grant_with_flags(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("NMP_BASE_URL", "https://cluster.example.com")
-    monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", lambda *_: _mock_oidc_config())
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.discover_nmp_config",
+        lambda *_args, **_kwargs: _mock_oidc_config(),
+    )
     monkeypatch.setattr(
         "nemo_platform_ext.auth.device_flow.authenticate_with_password_grant",
         lambda **_: SimpleNamespace(token_for_nmp="access-token", refresh_token="refresh-token"),
@@ -62,7 +65,10 @@ def test_login_password_grant_with_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("NMP_BASE_URL", "https://cluster.example.com")
     monkeypatch.setenv("NMP_OIDC_USERNAME", "env-user")
     monkeypatch.setenv("NMP_OIDC_PASSWORD", "env-password")
-    monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", lambda *_: _mock_oidc_config())
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.discover_nmp_config",
+        lambda *_args, **_kwargs: _mock_oidc_config(),
+    )
     monkeypatch.setattr(
         "nemo_platform_ext.auth.device_flow.authenticate_with_password_grant",
         lambda **_: SimpleNamespace(token_for_nmp="access-token", refresh_token=None),

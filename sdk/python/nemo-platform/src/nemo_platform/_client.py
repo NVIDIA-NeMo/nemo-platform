@@ -226,7 +226,7 @@ class NeMoPlatform(SyncAPIClient):
         """
         env_base_url = os.environ.get("NEMO_PLATFORM_BASE_URL")
         bootstrap_base_url = base_url if base_url is not None else env_base_url
-
+        client_verify = client_verify_from_env()
         should_bootstrap = _should_bootstrap_config(
             http_client=http_client,
             base_url=base_url,
@@ -254,6 +254,7 @@ class NeMoPlatform(SyncAPIClient):
                 ):
                     raise TypeError("Expected httpx.Client from sync client factory")
                 http_client = client_init_kwargs.http_client
+                client_verify = client_init_kwargs.client_verify
             except Exception as e:
                 raise RuntimeError(f"NeMoPlatform client initialization failed: {e}") from e
 
@@ -263,7 +264,6 @@ class NeMoPlatform(SyncAPIClient):
         if base_url is None:
             raise RuntimeError("NeMoPlatform client initialization failed: base_url is required")
 
-        client_verify = client_verify_from_env()
         if http_client is None and client_verify is not True:
             http_client = DefaultHttpxClient(verify=client_verify)
 
@@ -631,7 +631,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         """
         env_base_url = os.environ.get("NEMO_PLATFORM_BASE_URL")
         bootstrap_base_url = base_url if base_url is not None else env_base_url
-
+        client_verify = client_verify_from_env()
         should_bootstrap = _should_bootstrap_config(
             http_client=http_client,
             base_url=base_url,
@@ -659,6 +659,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                 ):
                     raise TypeError("Expected httpx.AsyncClient from async client factory")
                 http_client = client_init_kwargs.http_client
+                client_verify = client_init_kwargs.client_verify
             except Exception as e:
                 raise RuntimeError(f"NeMoPlatform client initialization failed: {e}") from e
 
@@ -668,7 +669,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         if base_url is None:
             raise RuntimeError("NeMoPlatform client initialization failed: base_url is required")
 
-        client_verify = client_verify_from_env()
         if http_client is None and client_verify is not True:
             http_client = DefaultAsyncHttpxClient(verify=client_verify)
 

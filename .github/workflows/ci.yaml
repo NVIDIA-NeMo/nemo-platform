@@ -1313,11 +1313,11 @@ jobs:
           - provider: authentik
             runtime: authentik-compose
             backend: compose
-            command: compose
+            command: test compose
           - provider: authentik
             runtime: authentik-kubernetes
             backend: kubernetes
-            command: k8s
+            command: test k8s
     env:
       NMP_AUTHENTIK_K8S_RUNTIME: kind
       NMP_AUTHENTIK_K8S_NAMESPACE: nemo-authentik
