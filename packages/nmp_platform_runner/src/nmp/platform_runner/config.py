@@ -41,6 +41,10 @@ _SCOPE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _INSTANCES_DIRNAME = "instances"
 _SOCKET_FILENAME = "nemo-platform.sock"
 _LOG_FILENAME = "services.log"
+_QUICKSTART_PLATFORM_CONFIG_FILENAME = "platform-config.yaml"
+_SECRETS_ALLOW_KEY_CREATION_ENV_VAR = "NMP_SECRETS_ALLOW_KEY_CREATION"
+_SECRETS_LOCAL_KEY_CREATION_PATH_ENV_VAR = "NMP_SECRETS_LOCAL_KEY_CREATION_PATH"
+_QUICKSTART_LOCAL_KEY_CREATION_PATH = "/data/nmp-encryption-key.txt"
 
 
 @dataclass
@@ -328,6 +332,7 @@ def apply_run_environment(
     # self-call origin must stay aligned with the resolved base URL. Deployed
     # mode can still override this explicitly by pre-setting the env var.
     env.setdefault("NMP_AUTH_POLICY_DECISION_POINT_BASE_URL", base_url)
+    _apply_quickstart_dev_secrets_defaults(config, env)
     _set_or_clear_env(env, NMP_SERVICES_ENV_VAR, config.services)
     _set_or_clear_env(env, NMP_CONTROLLERS_ENV_VAR, config.controllers)
     _set_or_clear_env(env, NMP_SIDECARS_ENV_VAR, config.sidecars)
@@ -339,6 +344,49 @@ def _set_or_clear_env(env: MutableMapping[str, str], name: str, values: set[str]
         env[name] = ",".join(sorted(values))
     else:
         env.pop(name, None)
+
+
+def _apply_quickstart_dev_secrets_defaults(
+    config: ResolvedRunConfiguration,
+    env: MutableMapping[str, str],
+) -> None:
+    """Backfill quickstart's dev/demo secrets fallback for legacy configs.
+
+    The secrets service deliberately defaults ``allow_key_creation`` to false.
+    Quickstart is the dev/demo exception, and older generated
+    ``platform-config.yaml`` files can omit that field while also omitting a
+    real encryption provider. Keep the backfill tied to quickstart's config file
+    convention so Helm and other named-provider configs continue to fail closed.
+    """
+    if _SECRETS_ALLOW_KEY_CREATION_ENV_VAR in env:
+        return
+    if Path(config.config_path).name != _QUICKSTART_PLATFORM_CONFIG_FILENAME:
+        return
+    try:
+        global_settings = Configuration.get_global_settings_from_file(config.config_path)
+    except (OSError, ValueError):
+        return
+    secrets_settings = global_settings.get("secrets")
+    if isinstance(secrets_settings, dict):
+        if "allow_key_creation" in secrets_settings:
+            return
+        if _has_explicit_secrets_encryption_provider(secrets_settings.get("encryption")):
+            return
+
+    env[_SECRETS_ALLOW_KEY_CREATION_ENV_VAR] = "1"
+    env.setdefault(_SECRETS_LOCAL_KEY_CREATION_PATH_ENV_VAR, _QUICKSTART_LOCAL_KEY_CREATION_PATH)
+
+
+def _has_explicit_secrets_encryption_provider(encryption_settings: object) -> bool:
+    if not isinstance(encryption_settings, dict):
+        return False
+    current_provider = encryption_settings.get("current_provider")
+    if isinstance(current_provider, str) and current_provider.strip():
+        return True
+    providers = encryption_settings.get("providers")
+    if not isinstance(providers, dict):
+        return False
+    return any(isinstance(provider_map, dict) and bool(provider_map) for provider_map in providers.values())
 
 
 def _config_file_base_url_parts(config_path: str) -> tuple[str, str] | None:
