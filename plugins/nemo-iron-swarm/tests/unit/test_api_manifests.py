@@ -25,7 +25,8 @@ NOW = datetime.now(timezone.utc)
 PREFIX = "/apis/iron-swarm/v2/workspaces/{workspace}"
 
 
-def _resolved() -> ResolvedManifest:
+def _resolved(egress: list[str] | None = None) -> ResolvedManifest:
+    """The real resolver returns the *effective* egress — the flag plus what the config declares."""
     return ResolvedManifest(
         manifest={"agent": {"name": "clockbot", "port": 8000}, "backends": []},
         agent_config_path=Path("/tmp/agent.yaml"),
@@ -34,6 +35,7 @@ def _resolved() -> ResolvedManifest:
         agent_name="clockbot",
         port=8000,
         secrets=["INFERENCE_API_KEY"],
+        egress=list(egress or []),
         warnings=["no running deployment; defaulting port to 8000."],
     )
 
@@ -46,7 +48,9 @@ def mock_entity_client() -> AsyncMock:
 @pytest.fixture
 def client(mock_entity_client: AsyncMock, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(manifests_module, "get_platform_sdk", lambda **_: MagicMock())
-    monkeypatch.setattr(manifests_module, "resolve_agent_to_manifest", lambda *_a, **_k: _resolved())
+    monkeypatch.setattr(
+        manifests_module, "resolve_agent_to_manifest", lambda *_a, **kw: _resolved(kw.get("egress"))
+    )
     # Resolution now writes a scaffold that gets frozen as a fileset; the real upload needs a real dir.
     monkeypatch.setattr(manifests_module, "upload_project_dir", lambda _sdk, _dir, *, workspace: "default/agent-fs-1")
     monkeypatch.setattr(manifests_module, "delete_fileset", lambda _sdk, _ref: None)
@@ -162,7 +166,7 @@ def test_patch_updates_egress(client, mock_entity_client) -> None:
 
 
 def test_create_agent_manifest_persists_egress(client, mock_entity_client) -> None:
-    """Passed to the resolver *and* stored: the run re-resolves and would otherwise drop it."""
+    """Passed to the resolver *and* stored as what it resolved to: the run re-resolves otherwise."""
     mock_entity_client.create = AsyncMock(side_effect=lambda entity: entity)
 
     resp = client.post(
