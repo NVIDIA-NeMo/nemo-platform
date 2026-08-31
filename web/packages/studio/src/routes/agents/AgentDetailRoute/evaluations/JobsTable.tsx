@@ -40,7 +40,7 @@ const DurationCell: FC<{ row: EvalJobRow; durationMs?: number }> = ({ row, durat
     enabled: !isTerminal,
   });
   if (!isTerminal) return <Text>{formatTimeInSeconds(liveSeconds)}</Text>;
-  return <Text>{formatDurationMs(durationMs)}</Text>;
+  return <Text>{formatDurationMs(durationMs, { hideMsAboveMinute: true })}</Text>;
 };
 
 interface JobsTableProps {
