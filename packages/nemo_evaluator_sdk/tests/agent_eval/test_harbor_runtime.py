@@ -879,8 +879,10 @@ def test_symlink_loop_degrades_the_stamp_instead_of_killing_the_run(tmp_path: Pa
     loop.symlink_to(loop)
 
     # Pin the premise: if this stops raising, the guard below is no longer load-bearing.
-    with pytest.raises(RuntimeError):
-        loop.resolve()
+    # From 3.13 `resolve()` returns the path for a loop instead of raising.
+    if sys.version_info < (3, 13):
+        with pytest.raises(RuntimeError):
+            loop.resolve()
     assert _safe_resolve(loop) == loop.absolute(), "_safe_resolve must swallow the loop, not just OSError"
 
     task = AgentEvalTask(
