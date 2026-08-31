@@ -348,6 +348,45 @@ class TestDeleteSession:
         assert response.status_code == 409
 
 
+class TestNoAuthSessionLifecycle:
+    def test_service_owned_session_remains_accessible_without_a_principal(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        client.app.dependency_overrides[get_effective_principal_id] = lambda: ""
+        deployment = _make_deployment()
+        session = _make_session(created_by="service:platform")
+        mock_entity_client.find_one.return_value = deployment
+        mock_entity_client.create.return_value = session
+
+        create_response = client.post(BASE, json={"deployment_id": "deployment-id", "name": "session-one"})
+
+        assert create_response.status_code == 201
+        assert create_response.json()["created_by"] == "service:platform"
+
+        mock_entity_client.list.return_value = _list_response(session)
+        list_response = client.get(BASE)
+
+        assert list_response.status_code == 200
+        assert [item["name"] for item in list_response.json()["data"]] == ["session-one"]
+        assert mock_entity_client.list.await_args.kwargs["filter_obj"] is None
+
+        mock_entity_client.get.return_value = session
+        get_response = client.get(f"{BASE}/session-one")
+
+        assert get_response.status_code == 200
+
+        mock_entity_client.update.side_effect = lambda updated: updated
+        close_response = client.post(f"{BASE}/session-one/close")
+
+        assert close_response.status_code == 200
+        assert close_response.json()["status"] == "closed"
+
+        delete_response = client.delete(f"{BASE}/session-one")
+
+        assert delete_response.status_code == 204
+        mock_entity_client.delete.assert_awaited_once()
+
+
 class TestFabricRuntimeCleanup:
     async def test_cleanup_calls_bound_deployment_session_endpoint(self, mock_entity_client: AsyncMock) -> None:
         deployment = _make_deployment()
