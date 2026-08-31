@@ -523,7 +523,7 @@ def _session_inactive(session: AgentSession) -> HTTPException:
 def _session_expired(session: AgentSession) -> HTTPException:
     return HTTPException(
         status_code=409,
-        detail=f"Session ID '{session.id}' has status 'expired' and cannot be invoked.",
+        detail=f"Session ID '{session.id}' has expired and cannot be invoked.",
     )
 
 

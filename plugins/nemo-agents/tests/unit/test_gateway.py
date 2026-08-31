@@ -594,7 +594,7 @@ class TestSessionAwareRouting:
             )
 
         assert response.status_code == 409
-        assert "status 'expired'" in response.json()["error"]["message"]
+        assert "has expired" in response.json()["error"]["message"]
         mock_entity_client.update.assert_awaited_once()
         mock_entity_client.get_by_id.assert_awaited_once_with(AgentSession, "session-1")
         httpx_client.assert_not_called()
@@ -850,7 +850,7 @@ class TestSessionAwareRouting:
             )
 
         assert response.status_code == 409
-        assert "status 'expired'" in response.json()["error"]["message"]
+        assert "has expired" in response.json()["error"]["message"]
         mock_entity_client.update.assert_not_awaited()
         httpx_client.assert_not_called()
 

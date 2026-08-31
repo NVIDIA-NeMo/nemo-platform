@@ -26,6 +26,8 @@ def session_expiration_is_due(session: AgentSession, *, at: datetime) -> bool:
         return False
     if expires_at.tzinfo is None or expires_at.utcoffset() is None:
         expires_at = expires_at.replace(tzinfo=UTC)
+    else:
+        expires_at = expires_at.astimezone(UTC)
     return expires_at <= at.astimezone(UTC)
 
 

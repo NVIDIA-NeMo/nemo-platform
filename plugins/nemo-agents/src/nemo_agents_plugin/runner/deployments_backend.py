@@ -310,6 +310,8 @@ def _fabric_config_mount_path(config_mount_path: str) -> str:
 
 
 def _fabric_server_cli_args(*, config_path: str, port: int) -> list[str]:
+    # If this launch path forwards an idle-timeout override, the gateway must
+    # use the same deployment-sourced value when computing ``expires_at``.
     return [
         "-m",
         _FABRIC_SERVER_MODULE,

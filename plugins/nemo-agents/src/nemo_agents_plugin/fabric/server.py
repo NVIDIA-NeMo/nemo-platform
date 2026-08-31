@@ -390,6 +390,8 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_MAX_CONCURRENT_INVOCATIONS,
         help="Maximum concurrent Fabric invocations; use 0 for unlimited.",
     )
+    # Overrides must stay aligned with the gateway timeout used to compute
+    # persisted ``expires_at``; ideally both come from the deployment config.
     parser.add_argument(
         "--idle-session-timeout-seconds",
         type=float,
