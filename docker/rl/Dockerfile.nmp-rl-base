@@ -86,6 +86,8 @@ RUN ARCH="$(uname -m)" && \
     rm -rf "${F}" "${F}.tar.gz"
 
 # Official CPython (not uv-managed). libpython is $ORIGIN/../lib relative to the binary.
+# The extension modules also link against OpenSSL from this copied prefix, so expose its libdir to
+# the dynamic loader before Python imports urllib's HTTPS support.
 COPY --from=cpython /usr/local /opt/cpython
 RUN chmod -R a+rX /opt/cpython
 
@@ -98,13 +100,15 @@ ARG UV_VERSION
 # Raise uv's HTTP retry budget and cap concurrent downloads for large GitHub-hosted wheels like vLLM,
 # which can hit transient HTTP/2 refused-stream failures under BuildKit.
 ENV UV_PYTHON=/opt/cpython/bin/python3.13 \
+    LD_LIBRARY_PATH=/opt/cpython/lib \
     UV_HTTP_TIMEOUT=120 \
     UV_HTTP_RETRIES=8 \
     UV_CONCURRENT_DOWNLOADS=4 \
     PATH="/opt/cpython/bin:/usr/local/bin:/root/.local/bin:${PATH}"
 RUN umask 022 && \
     curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \
-    cp /root/.local/bin/uv /usr/local/bin/uv
+    cp /root/.local/bin/uv /usr/local/bin/uv && \
+    python3.13 -c 'import ssl, urllib.request; print(ssl.OPENSSL_VERSION)'
 COPY docker/scripts/collect-apt-sources.sh \
     docker/scripts/collect-python-sdists.py \
     /usr/local/bin/
