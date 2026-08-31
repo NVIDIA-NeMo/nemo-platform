@@ -75,6 +75,9 @@ class ResolvedManifest:
     agent_name: str
     port: int
     secrets: list[str]
+    #: The operator's ``--egress`` plus what the agent's own config declares. Reported rather than
+    #: recomputed, so the summary cannot claim "no egress" while the manifest allow-lists a host.
+    egress: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -228,6 +231,41 @@ def derive_agent_env(agent_config: dict[str, Any]) -> dict[str, str]:
         for key, value in declared.items()
         if isinstance(value, str) and not (value.startswith("${") and value.endswith("}"))
     }
+
+
+#: MCP transports whose ``url`` is a network address. ``stdio`` names a local executable instead —
+#: allow-listing it would put a filesystem path in a network policy.
+_NETWORK_MCP_TRANSPORTS = frozenset({"sse", "streamable-http", "http", "websocket"})
+
+
+def derive_egress(agent_config: dict[str, Any]) -> list[str]:
+    """Hosts the agent was configured to call, for the sandbox's egress allow-list.
+
+    Egress discovery scans the *code* an agent ships, which finds nothing for a config-only agent:
+    its MCP servers and model endpoints are declarations, not calls. So an agent that names a
+    network MCP server or a remote model is admitted, started, and then refused the connection by
+    its own policy — a default-deny sandbox failing an agent that was configured correctly.
+
+    ``stdio`` servers are skipped: their ``url`` is a local interpreter path, and there is nothing to
+    reach over the network.
+    """
+    found: list[str] = []
+
+    servers = agent_config.get("mcp", {}).get("servers") if isinstance(agent_config.get("mcp"), dict) else None
+    for server in servers.values() if isinstance(servers, dict) else ():
+        if not isinstance(server, dict) or str(server.get("transport", "stdio")) not in _NETWORK_MCP_TRANSPORTS:
+            continue
+        url = server.get("url")
+        if isinstance(url, str) and "://" in url:
+            found.append(url)
+
+    models = agent_config.get("models")
+    for model_cfg in models.values() if isinstance(models, dict) else ():
+        base_url = model_cfg.get("base_url") if isinstance(model_cfg, dict) else None
+        if isinstance(base_url, str) and "://" in base_url:
+            found.append(base_url)
+
+    return sorted(dict.fromkeys(found))
 
 
 def gateway_backend(base_url: str) -> dict[str, Any] | None:
@@ -514,6 +552,8 @@ def resolve_agent_to_manifest(
     )
     secrets = secrets or derive_secret_names(agent_config)
 
+    # The operator's --egress first: an explicit answer should win over a derived one.
+    egress = [*(egress or []), *derive_egress(agent_config)]
     gw_backend = gateway_backend(base_url)
     manifest = build_manifest_dict(
         agent_name=name,
@@ -535,5 +575,6 @@ def resolve_agent_to_manifest(
         agent_name=name,
         port=port,
         secrets=secrets,
+        egress=egress,
         warnings=warnings,
     )

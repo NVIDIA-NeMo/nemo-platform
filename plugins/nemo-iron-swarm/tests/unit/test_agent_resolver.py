@@ -20,6 +20,7 @@ from nemo_iron_swarm_plugin.agent_resolver import (
     AgentResolutionError,
     build_manifest_dict,
     derive_agent_env,
+    derive_egress,
     derive_secret_names,
     detect_custom_components,
     gateway_backend,
@@ -373,3 +374,31 @@ def test_declared_env_reaches_the_manifest() -> None:
 def test_declared_env_is_optional() -> None:
     assert derive_agent_env({}) == {}
     assert derive_agent_env({"environment": {"workspace": "./workspace"}}) == {}
+
+
+def test_network_mcp_servers_and_model_endpoints_are_allow_listed() -> None:
+    """Discovery scans code; a config-only agent's hosts are declarations, so nothing finds them.
+
+    Without this the agent is admitted, started, and then refused the connection by its own policy.
+    """
+    config = {
+        "mcp": {
+            "servers": {
+                "remote": {"transport": "streamable-http", "url": "https://ledger-tools.internal/mcp"},
+                "local": {"transport": "stdio", "url": "/workspace/.venv/bin/python", "args": ["s.py"]},
+            }
+        },
+        "models": {"default": {"base_url": "https://inference-api.nvidia.com/v1"}},
+    }
+
+    assert derive_egress(config) == [
+        "https://inference-api.nvidia.com/v1",
+        "https://ledger-tools.internal/mcp",
+    ]
+
+
+def test_a_stdio_server_contributes_no_egress() -> None:
+    """Its url is a local interpreter path; a filesystem path in a network policy is nonsense."""
+    config = {"mcp": {"servers": {"local": {"transport": "stdio", "url": "/usr/bin/python"}}}}
+
+    assert derive_egress(config) == []

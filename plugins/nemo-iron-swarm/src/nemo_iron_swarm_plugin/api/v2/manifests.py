@@ -316,7 +316,7 @@ async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarm
         agent_fileset=fileset,
         port=resolved.port,
         secrets=resolved.secrets,
-        egress=body.egress or [],  # persisted, not just used for the resolve above
+        egress=resolved.egress,  # what was actually written, including hosts derived from the config
         env=body.env or {},
         warnings=resolved.warnings,
         models=body.models or WarGameModels(),
