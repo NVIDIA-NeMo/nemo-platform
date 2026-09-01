@@ -4031,8 +4031,7 @@ components:
         corpus:
           type: string
           title: Corpus
-          description: Fileset ref (workspace/fileset[#subdir]), local path, or hf://
-            URI.
+          description: Fileset ref (workspace/fileset[#subdir]) or hf:// URI.
         provider:
           type: string
           title: Provider
@@ -4374,11 +4373,12 @@ components:
       properties:
         sdg_input:
           title: Sdg Input
-          description: Fileset, local path, or hf:// URI to Stage 0 output or generation_result.json.
+          description: Fileset or hf:// URI to Stage 0 output or generation_result.json.
           type: string
         train_input_file:
           title: Train Input File
-          description: Pre-converted wrapped train.json; skips conversion.
+          description: Fileset containing a pre-converted wrapped train.json; skips
+            conversion.
           type: string
         corpus_id:
           type: string

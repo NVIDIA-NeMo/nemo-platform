@@ -28,9 +28,13 @@ retrieval_app = typer.Typer(
 
 @retrieval_app.command("generate")
 def retrieval_generate(
-    corpus: str = typer.Option(..., "--corpus", help="Fileset ref, local path, or hf:// URI."),
+    corpus: str = typer.Option(..., "--corpus", help="Corpus fileset ref or hf:// URI."),
     provider: str = typer.Option(..., "--provider", help="Inference Gateway provider (workspace/name)."),
-    profile: ProfileChoice = typer.Option(ProfileChoice.embed, "--profile", help="embed or rerank model defaults."),
+    profile: ProfileChoice = typer.Option(
+        ProfileChoice.embed.value,
+        "--profile",
+        help="embed or rerank model defaults.",
+    ),
     workspace: str = typer.Option("default", "--workspace", "-w"),
     spec_out: bool = typer.Option(False, "--print-spec", help="Print JSON spec instead of submitting."),
 ) -> None:
@@ -60,6 +64,8 @@ def retrieval_prepare(
     workspace: str = typer.Option("default", "--workspace", "-w"),
 ) -> None:
     """Build a retrieval-prepare spec. Auto CLI: ``nemo data-designer retrieval-prepare``."""
+    if (sdg_input is None) == (train_input_file is None):
+        raise typer.BadParameter("Provide exactly one of --sdg-input or --train-input-file.")
     spec = RetrievalPrepareJobConfig(
         sdg_input=sdg_input,
         train_input_file=train_input_file,
@@ -73,9 +79,9 @@ def retrieval_prepare(
 
 @retrieval_app.command("preview")
 def retrieval_preview(
-    corpus: str = typer.Option(..., "--corpus"),
-    provider: str = typer.Option(..., "--provider"),
-    profile: ProfileChoice = typer.Option(ProfileChoice.embed, "--profile"),
+    corpus: str = typer.Option(..., "--corpus", help="Corpus fileset ref or hf:// URI."),
+    provider: str = typer.Option(..., "--provider", help="Inference Gateway provider (workspace/name)."),
+    profile: ProfileChoice = typer.Option(ProfileChoice.embed.value, "--profile"),
     workspace: str = typer.Option("default", "--workspace", "-w"),
 ) -> None:
     """Build a retrieval-preview spec. Auto CLI: ``nemo data-designer retrieval-preview``."""

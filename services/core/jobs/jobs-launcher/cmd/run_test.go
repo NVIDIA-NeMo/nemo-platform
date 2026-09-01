@@ -30,6 +30,8 @@ func TestLogLevel(t *testing.T) {
 		{name: "critical on stderr", line: "[CRITICAL] process failed", fallback: slog.LevelError, want: slog.LevelError},
 		{name: "unprefixed stderr", line: "Traceback (most recent call last):", fallback: slog.LevelError, want: slog.LevelError},
 		{name: "unprefixed stdout", line: "plain output", fallback: slog.LevelInfo, want: slog.LevelInfo},
+		{name: "marker in stdout message", line: "plain output [ERROR]", fallback: slog.LevelInfo, want: slog.LevelInfo},
+		{name: "unknown prefix before marker", line: "[worker] [ERROR] failed", fallback: slog.LevelInfo, want: slog.LevelInfo},
 	}
 
 	for _, test := range tests {

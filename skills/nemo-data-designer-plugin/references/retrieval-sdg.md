@@ -2,6 +2,12 @@
 
 Use dedicated Data Designer jobs to replicate Nemotron embed/rerank Stage 0 (`sdg`) and Stage 1 (`prep`). Do not use `nemo data-designer create` for this pipeline.
 
+## Prerequisites
+
+- A corpus fileset in the job workspace, or an `hf://` dataset URI.
+- An Inference Gateway provider for chat and, when different, embeddings.
+- For mining, a platform model entity with an attached encoder/tokenizer fileset.
+
 Stage 0:
 
 ```bash
@@ -31,3 +37,8 @@ nemo data-designer retrieval-prepare --spec '{"sdg_input":"default/stage0-out","
 ```
 
 Chaining generate then prepare is a jobs-service multi-step job (`retrieval-run`), not Data Designer workflow chaining.
+
+## Next Steps
+
+Use the emitted `training.jsonl` in an embedding or reranking customization job.
+See `nemo-platform-plugin-additions.md` for fileset and platform validation guidance.

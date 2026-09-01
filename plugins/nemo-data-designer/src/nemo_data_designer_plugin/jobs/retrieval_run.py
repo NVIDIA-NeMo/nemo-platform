@@ -45,7 +45,7 @@ class RetrievalRunJob(NemoJob):
             workspace=workspace,
             entity_client=entity_client,
             async_sdk=async_sdk,
-            is_local=is_local,
+            is_local=False,
         )
         prepare_cfg = run.prepare
         if prepare_cfg.sdg_input is None and prepare_cfg.train_input_file is None:
@@ -115,5 +115,5 @@ class RetrievalRunJob(NemoJob):
         )
         return PlatformJobSpec(steps=[*generate_job["steps"], *prepare_job["steps"]])
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform, is_local: bool = False) -> dict:
+    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform) -> dict:
         raise NotImplementedError("retrieval-run is remote-only; compile emits generate and prepare steps.")

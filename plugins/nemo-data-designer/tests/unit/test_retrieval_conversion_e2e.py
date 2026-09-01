@@ -13,6 +13,7 @@ non-cluster reproduction of the Nemotron recipe.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -129,9 +130,10 @@ def test_prepare_job_convert_phase_runs_unmocked(stage0_jsonl: Path, tmp_path: P
     ctx.storage.persistent = persistent
     ctx.storage.ephemeral = ephemeral
     ctx.results.save.return_value = SimpleNamespace(model_dump=lambda: {"name": "artifacts"})
+    shutil.copytree(stage0_jsonl.parent, persistent / "stage0_sdg")
 
     step = RetrievalPrepareStepConfig(
-        job_config=RetrievalPrepareJobConfig(sdg_input=str(stage0_jsonl.parent), enable_mining=False),
+        job_config=RetrievalPrepareJobConfig(sdg_input="stage0_sdg", enable_mining=False),
         phase="convert",
     )
     result = RetrievalPrepareJob().run(step.model_dump(mode="json"), ctx=ctx, sdk=Mock())

@@ -110,7 +110,7 @@ class RetrievalPrepareJob(NemoJob):
             )
         return PlatformJobSpec(steps=steps)
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform, is_local: bool = False) -> dict:
+    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform) -> dict:
         step = RetrievalPrepareStepConfig.model_validate(config)
         if step.phase == "mine":
             raise RuntimeError("Mining runs as nmp.automodel.tasks.retrieval_mine, not this module")
@@ -118,24 +118,37 @@ class RetrievalPrepareJob(NemoJob):
 
 
 def _materialize_input(ref: str, dest: Path, ctx: JobContext, sdk: NeMoPlatform) -> Path:
-    local = Path(ref)
-    if local.exists():
-        return local.resolve()
     staged = (ctx.storage.persistent or ctx.storage.ephemeral) / ref
-    if staged.exists():
+    if not Path(ref).is_absolute() and staged.exists():
         return staged
     return materialize_corpus(ref, dest=dest, sdk=sdk, workspace=ctx.workspace)
 
 
 def _run_convert(job: RetrievalPrepareJobConfig, output_dir: Path, ctx: JobContext, sdk: NeMoPlatform) -> dict:
     if job.train_input_file:
-        train_file = _materialize_input(job.train_input_file, ctx.storage.ephemeral / "train_input", ctx, sdk)
+        train_file = _materialize_input(
+            job.train_input_file,
+            ctx.storage.ephemeral / "train_input",
+            ctx,
+            sdk,
+        )
         if train_file.is_dir():
             candidate = train_file / "train.json"
-            train_file = candidate if candidate.exists() else next(train_file.rglob("train.json"))
+            if candidate.exists():
+                train_file = candidate
+            else:
+                matches = list(train_file.rglob("train.json"))
+                if not matches:
+                    raise FileNotFoundError(f"No train.json under {train_file}")
+                train_file = matches[0]
     else:
         assert job.sdg_input is not None
-        sdg_root = _materialize_input(job.sdg_input, ctx.storage.ephemeral / "sdg_input", ctx, sdk)
+        sdg_root = _materialize_input(
+            job.sdg_input,
+            ctx.storage.ephemeral / "sdg_input",
+            ctx,
+            sdk,
+        )
         input_path = sdg_root if sdg_root.is_file() else _find_generation_input(sdg_root)
         conversion = execute_conversion(
             input_path=input_path,
@@ -157,14 +170,7 @@ def _run_convert(job: RetrievalPrepareJobConfig, output_dir: Path, ctx: JobConte
 
     if not job.enable_mining:
         inline_path = output_dir / "training.jsonl"
-        wrapped_to_inline_jsonl(train_file, inline_path)
-        artifacts = ctx.results.save(name="artifacts", local_path=output_dir)
-        return {
-            "exit_code": 0,
-            "workspace": ctx.workspace,
-            "train_file": str(train_file),
-            "results": {"artifacts": artifacts.model_dump()},
-        }
+        wrapped_to_inline_jsonl(train_file, inline_path, output_dir / "corpus" / "train.parquet")
 
     artifacts = ctx.results.save(name="artifacts", local_path=output_dir)
     return {

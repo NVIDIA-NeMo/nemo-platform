@@ -9,49 +9,38 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 
 def wrapped_to_inline_jsonl(train_json: Path, output_jsonl: Path, corpus_parquet: Path | None = None) -> Path:
     """Emit ``{query, pos_doc, neg_doc}`` JSONL from wrapped Automodel JSON."""
     payload = json.loads(train_json.read_text(encoding="utf-8"))
     records = payload.get("data", [])
-    corpus_by_id = _load_corpus(payload, train_json, corpus_parquet)
+    corpus_by_id = _load_corpus(train_json, corpus_parquet)
 
     output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     with output_jsonl.open("w", encoding="utf-8") as handle:
         for record in records:
             pos_texts = [_doc_text(doc, corpus_by_id) for doc in record.get("pos_doc", [])]
             neg_texts = [_doc_text(doc, corpus_by_id) for doc in record.get("neg_doc", [])]
-            pos_doc = pos_texts[0] if pos_texts else ""
-            extra_pos = pos_texts[1:]
-            handle.write(
-                json.dumps(
-                    {
-                        "query": record.get("question", ""),
-                        "pos_doc": pos_doc,
-                        "neg_doc": extra_pos + neg_texts,
-                    },
-                    ensure_ascii=False,
+            for pos_doc in pos_texts or [""]:
+                handle.write(
+                    json.dumps(
+                        {
+                            "query": record.get("question", ""),
+                            "pos_doc": pos_doc,
+                            "neg_doc": neg_texts,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
     return output_jsonl
 
 
-def _load_corpus(payload: dict[str, Any], train_json: Path, corpus_parquet: Path | None) -> dict[str, str]:
-    parquet_path = corpus_parquet
-    if parquet_path is None:
-        corpus = payload.get("corpus") or {}
-        corpus_path = corpus.get("path")
-        if corpus_path:
-            path = Path(corpus_path)
-            if not path.is_absolute():
-                path = train_json.parent / path
-            parquet_path = path / "train.parquet" if path.is_dir() else path
-    if parquet_path is None or not parquet_path.exists() or parquet_path.suffix != ".parquet":
-        return {}
-    try:
-        import pandas as pd
-    except ImportError:
+def _load_corpus(train_json: Path, corpus_parquet: Path | None) -> dict[str, str]:
+    parquet_path = corpus_parquet or train_json.parent / "corpus" / "train.parquet"
+    if not parquet_path.exists() or parquet_path.suffix != ".parquet":
         return {}
     frame = pd.read_parquet(parquet_path)
     id_col = "id" if "id" in frame.columns else frame.columns[0]

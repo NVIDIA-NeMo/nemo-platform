@@ -15,7 +15,7 @@ class RetrievalGenerateJobConfig(BaseModel):
 
     model_config = {"json_schema_mode_override": "validation"}
 
-    corpus: str = Field(description="Fileset ref (workspace/fileset[#subdir]), local path, or hf:// URI.")
+    corpus: str = Field(description="Fileset ref (workspace/fileset[#subdir]) or hf:// URI.")
     provider: str = Field(description="Default Inference Gateway provider (name or workspace/name).")
     chat_provider: str | None = Field(
         default=None,
@@ -98,11 +98,11 @@ class RetrievalPrepareJobConfig(BaseModel):
 
     sdg_input: str | None = Field(
         default=None,
-        description="Fileset, local path, or hf:// URI to Stage 0 output or generation_result.json.",
+        description="Fileset or hf:// URI to Stage 0 output or generation_result.json.",
     )
     train_input_file: str | None = Field(
         default=None,
-        description="Pre-converted wrapped train.json; skips conversion.",
+        description="Fileset containing a pre-converted wrapped train.json; skips conversion.",
     )
     corpus_id: str = "retrieval_sdg"
     quality_threshold: float = Field(default=7.0, ge=0.0, le=10.0)

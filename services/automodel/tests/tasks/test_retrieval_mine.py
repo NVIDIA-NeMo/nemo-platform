@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import yaml
+from nmp.automodel.tasks.retrieval_mine.inline import wrapped_to_inline_jsonl
 from nmp.automodel.tasks.retrieval_mine.runner import RetrievalMineJobConfig, RetrievalMiningOptions, run_mine
 
 
@@ -65,3 +66,23 @@ def test_run_mine_launches_torchrun_then_unrolls(tmp_path: Path) -> None:
     assert (output_dir / "train_mined.automodel_unrolled.json").exists()
     assert (output_dir / "training.jsonl").exists()
     ctx.results.save.assert_called_once()
+
+
+def test_inline_jsonl_keeps_additional_positives_positive(tmp_path: Path) -> None:
+    wrapped = tmp_path / "train.json"
+    wrapped.write_text(
+        json.dumps(
+            {
+                "corpus": {},
+                "data": [{"question": "q", "pos_doc": ["p1", "p2"], "neg_doc": ["n1"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "training.jsonl"
+
+    wrapped_to_inline_jsonl(wrapped, output)
+
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert [row["pos_doc"] for row in rows] == ["p1", "p2"]
+    assert all(row["neg_doc"] == ["n1"] for row in rows)

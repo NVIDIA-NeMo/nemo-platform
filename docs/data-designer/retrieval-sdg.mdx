@@ -1,15 +1,27 @@
+---
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Retrieval SDG on NeMo Platform.
+title: "Retrieval SDG"
+description: "Generate and prepare retrieval training data with the Nemotron Stage 0 and Stage 1 recipes."
+---
+<a id="retrieval-sdg"></a>
 
-Nemotron embed/rerank Stage 0 (`sdg`) and Stage 1 (`prep`) are exposed as
-dedicated Data Designer jobs. They wrap `data-designer-retrieval-sdg` and do
-**not** go through `nemo data-designer create`.
+NeMo Platform exposes Nemotron embed/rerank Stage 0 (`sdg`) and Stage 1
+(`prep`) as dedicated Data Designer jobs. They wrap
+`data-designer-retrieval-sdg` and do **not** go through
+`nemo data-designer create`.
+
+## Prerequisites
+
+- A text corpus published as a fileset in the job workspace, or an `hf://`
+  dataset URI.
+- An Inference Gateway provider for the Stage 0 chat model and, when different,
+  an embedding provider.
+- For GPU mining, a platform model entity with an attached fileset containing
+  the encoder and tokenizer.
 
 ## Generate (Stage 0, CPU)
-
-Upload a text corpus fileset, then:
 
 ```bash
 nemo data-designer retrieval-generate --workspace default --spec '{
@@ -39,9 +51,10 @@ nemo data-designer retrieval-preview --spec '{"generate":{"corpus":"default/my-d
 
 ## Prepare (Stage 1)
 
-Conversion (CPU) produces `eval_beir/` and training JSON. GPU mining is off by default.
-Skip SDG by pointing at `nvidia/Retrieval-Synthetic-NVDocs-v1`
-or an existing `generation_result.json`.
+Conversion (CPU) produces `eval_beir/` and training JSON. GPU mining is off by
+default. Skip SDG by pointing `sdg_input` at a fileset containing an existing
+`generation_result.json`, or at
+`hf://nvidia/Retrieval-Synthetic-NVDocs-v1@<revision>`.
 
 ```bash
 nemo data-designer retrieval-prepare --spec '{
@@ -81,3 +94,9 @@ client.data_designer.retrieval_generate(
     RetrievalGenerateJobConfig(corpus="default/my-docs", provider="default/nvidia-build", profile="embed")
 )
 ```
+
+## Next Steps
+
+- See the [Data Designer CLI](./cli.mdx) for configuration and command details.
+- Use the Stage 1 `training.jsonl` artifact as input to an embedding or
+  reranking customization job.

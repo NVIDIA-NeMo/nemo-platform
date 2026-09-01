@@ -43,7 +43,7 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
         is_local: bool = False,
     ) -> AsyncIterator[BaseModel]:
         job = spec.generate
-        dd_ctx = create_data_designer_context(is_local, async_sdk, ctx.workspace)
+        dd_ctx = create_data_designer_context(async_sdk, ctx.workspace)
         model_configs = build_retrieval_model_configs(
             profile=job.profile,
             provider=job.provider,
@@ -69,6 +69,7 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
                     dest=tmp_path / "corpus",
                     sdk=sdk,
                     workspace=ctx.workspace,
+                    allow_local_path=is_local,
                 )
                 run_config = build_generation_run_config(
                     corpus_dir=corpus_dir,
@@ -106,5 +107,9 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
                     num_preview_records=getattr(result, "num_preview_records", spec.num_records),
                 )
 
-        yield await asyncio.to_thread(run_preview)
+        try:
+            yield await asyncio.to_thread(run_preview)
+        except Exception as exc:
+            yield Error(message=str(exc), details={"type": type(exc).__name__})
+            return
         yield Done()

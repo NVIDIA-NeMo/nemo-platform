@@ -257,7 +257,7 @@ async def test_retrieval_prepare_compile_adds_gpu_mining_step() -> None:
 
 def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
-    sdg = tmp_path / "sdg"
+    sdg = ctx.storage.persistent / "sdg"
     sdg.mkdir()
     jsonl = sdg / "qa.jsonl"
     jsonl.write_text("{}\n", encoding="utf-8")
@@ -267,7 +267,7 @@ def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
         json.dumps({"corpus": {}, "data": [{"question": "q", "pos_doc": ["p"], "neg_doc": []}]}), encoding="utf-8"
     )
     spec = RetrievalPrepareStepConfig(
-        job_config=RetrievalPrepareJobConfig(sdg_input=str(sdg), enable_mining=False),
+        job_config=RetrievalPrepareJobConfig(sdg_input="sdg", enable_mining=False),
         phase="convert",
     )
     conversion = SimpleNamespace(train_file=train_file)
@@ -301,6 +301,32 @@ def test_retrieval_prepare_rejects_mine_phase(tmp_path: Path) -> None:
         phase="mine",
     )
     with pytest.raises(RuntimeError, match="retrieval_mine"):
+        RetrievalPrepareJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=Mock())
+
+
+def test_retrieval_prepare_reports_missing_train_json(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    train_input = ctx.storage.persistent / "empty-train-input"
+    train_input.mkdir()
+    spec = RetrievalPrepareStepConfig(
+        job_config=RetrievalPrepareJobConfig(train_input_file="empty-train-input"),
+        phase="convert",
+    )
+
+    with pytest.raises(FileNotFoundError, match="No train.json"):
+        RetrievalPrepareJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=Mock())
+
+
+def test_retrieval_prepare_rejects_host_filesystem_paths(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    host_corpus = tmp_path / "host-sdg"
+    host_corpus.mkdir()
+    spec = RetrievalPrepareStepConfig(
+        job_config=RetrievalPrepareJobConfig(sdg_input=str(host_corpus), enable_mining=False),
+        phase="convert",
+    )
+
+    with pytest.raises(ValueError):
         RetrievalPrepareJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=Mock())
 
 
@@ -381,6 +407,24 @@ def test_unroll_and_inline_jsonl(tmp_path: Path) -> None:
     assert "gamma" in lines[0]["neg_doc"]
 
 
+def test_inline_jsonl_unrolls_positives_without_making_them_negative(tmp_path: Path) -> None:
+    wrapped = tmp_path / "train.json"
+    wrapped.write_text(
+        json.dumps(
+            {
+                "corpus": {},
+                "data": [{"question": "what?", "pos_doc": ["alpha", "beta"], "neg_doc": ["gamma"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "training.jsonl"
+    wrapped_to_inline_jsonl(wrapped, out)
+    lines = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+    assert [line["pos_doc"] for line in lines] == ["alpha", "beta"]
+    assert all(line["neg_doc"] == ["gamma"] for line in lines)
+
+
 def test_retrieval_cli_prints_spec() -> None:
     from nemo_data_designer_plugin.cli.retrieval import retrieval_app
     from typer.testing import CliRunner
@@ -394,3 +438,19 @@ def test_retrieval_cli_prints_spec() -> None:
     payload = json.loads(result.stdout)
     assert payload["corpus"] == "default/docs"
     assert payload["profile"] == "embed"
+
+
+def test_retrieval_prepare_cli_requires_exactly_one_input() -> None:
+    from nemo_data_designer_plugin.cli.retrieval import retrieval_app
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    missing = runner.invoke(retrieval_app, ["prepare"])
+    both = runner.invoke(
+        retrieval_app,
+        ["prepare", "--sdg-input", "default/stage0", "--train-input-file", "default/train"],
+    )
+    assert missing.exit_code != 0
+    assert both.exit_code != 0
+    assert "exactly one" in missing.output
+    assert "exactly one" in both.output

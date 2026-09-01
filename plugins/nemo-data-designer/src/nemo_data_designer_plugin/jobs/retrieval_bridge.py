@@ -27,7 +27,7 @@ def run_job_module(job_cls: type[Any], spec_cls: type[BaseModel]) -> int:
         spec = spec_cls.model_validate_json(handle.read())
     sdk = get_platform_sdk(as_service="data-designer")
     ctx = _get_ctx(sdk)
-    result = job_cls().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk, is_local=False)
+    result = job_cls().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)
     exit_code = result.get("exit_code") if isinstance(result, dict) else 1
     return exit_code if isinstance(exit_code, int) else 1
 

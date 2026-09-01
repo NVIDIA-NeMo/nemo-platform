@@ -315,16 +315,33 @@ func runExec(args []string, stdinReader io.Reader) (int, error) {
 // that, so treating every stderr line as an error mislabels INFO and WARNING
 // records in OpenTelemetry. Unprefixed stderr remains an error.
 func logLevel(line string, fallback slog.Level) slog.Level {
-	switch {
-	case strings.Contains(line, "[DEBUG]"):
+	prefix := strings.TrimSpace(line)
+	marker, rest := nextLogPrefix(prefix)
+	if _, err := time.Parse("15:04:05", marker); err == nil {
+		marker, _ = nextLogPrefix(strings.TrimSpace(rest))
+	}
+
+	switch marker {
+	case "DEBUG":
 		return slog.LevelDebug
-	case strings.Contains(line, "[INFO]"):
+	case "INFO":
 		return slog.LevelInfo
-	case strings.Contains(line, "[WARNING]"), strings.Contains(line, "[WARN]"):
+	case "WARNING", "WARN":
 		return slog.LevelWarn
-	case strings.Contains(line, "[ERROR]"), strings.Contains(line, "[CRITICAL]"):
+	case "ERROR", "CRITICAL":
 		return slog.LevelError
 	default:
 		return fallback
 	}
+}
+
+func nextLogPrefix(line string) (string, string) {
+	if !strings.HasPrefix(line, "[") {
+		return "", line
+	}
+	end := strings.IndexByte(line, ']')
+	if end < 0 {
+		return "", line
+	}
+	return line[1:end], line[end+1:]
 }

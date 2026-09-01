@@ -38,6 +38,9 @@ def resolve_generation_input(input_path: Path) -> Path:
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Invalid generation manifest: {input_path}") from exc
 
+    if not isinstance(payload, dict):
+        raise ValueError(f"Invalid generation manifest: {input_path}")
+
     if payload.get("schema_version") != GENERATION_MANIFEST_SCHEMA_VERSION:
         raise ValueError(f"Unsupported generation manifest schema in {input_path}")
 

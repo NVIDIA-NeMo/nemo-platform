@@ -19,14 +19,20 @@ def materialize_corpus(
     sdk: NeMoPlatform,
     workspace: str,
     hf_token: str | None = None,
+    allow_local_path: bool = False,
 ) -> Path:
-    """Download a fileset or HuggingFace corpus (or use a local path) to ``dest``."""
+    """Stage a fileset or Hugging Face corpus into the job-owned destination.
+
+    Local filesystem paths are only accepted when ``allow_local_path`` is true,
+    which retrieval-preview uses for in-process no-upload loops.
+    """
     if corpus.startswith(_HF_PREFIX):
         return _download_hf(corpus, dest, token=hf_token)
 
-    local = Path(corpus)
-    if local.exists():
-        return local.resolve()
+    if allow_local_path:
+        local = Path(corpus)
+        if local.exists():
+            return local.resolve()
 
     return _download_fileset(corpus, dest=dest, sdk=sdk, workspace=workspace)
 
@@ -64,6 +70,9 @@ def _download_fileset(corpus: str, *, dest: Path, sdk: NeMoPlatform, workspace: 
         fileset_workspace, fileset, fragment = parse_fileset_ref(corpus, workspace_fallback=workspace)
     except FilesetPathError as exc:
         raise ValueError(f"Invalid corpus reference {corpus!r}: {exc}") from exc
+
+    if fileset_workspace != workspace:
+        raise ValueError(f"Corpus fileset workspace {fileset_workspace!r} does not match job workspace {workspace!r}")
 
     root = build_fileset_ref(fragment, workspace=fileset_workspace, fileset=fileset)
     dest.mkdir(parents=True, exist_ok=True)
