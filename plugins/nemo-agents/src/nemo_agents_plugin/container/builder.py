@@ -382,6 +382,11 @@ def build_fabric_agent_image(
     if wheel is None:
         from_env = os.environ.get(WHEEL_ENV, "").strip()
         wheel = Path(from_env) if from_env else None
+    if wheel is not None and dockerfile is not None:
+        # A supplied Dockerfile installs whatever it wants and never sees the
+        # staged wheel, so the wheel must not speak for the version either.
+        emit_progress(on_progress, f"warning: ignoring {WHEEL_ENV}={wheel}; --dockerfile decides what is installed")
+        wheel = None
     if wheel is not None:
         if not wheel.is_file():
             raise ValueError(f"wheel not found: {wheel}")

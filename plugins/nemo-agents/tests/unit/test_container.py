@@ -2893,6 +2893,44 @@ class TestFabricWheelInstall:
 
         assert captured["contract_version"] == "0.4.0.post176.dev0+abc123"
 
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_a_supplied_dockerfile_ignores_the_wheel(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A caller-supplied Dockerfile never sees the staged wheel, so letting the
+        wheel decide the version would advertise a runtime the image cannot contain."""
+        import nemo_agents_plugin.container.builder as builder
+        import nemo_agents_plugin.container.template as template
+
+        monkeypatch.setattr(template, "get_contract_version", lambda: "9.9.9")
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0.post176.dev0+abc123-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+        dockerfile = tmp_path / "Dockerfile"
+        dockerfile.write_text("FROM scratch\n")
+        context = fabric_agent_config.parent
+
+        monkeypatch.setenv(template.WHEEL_ENV, str(wheel))
+        notices: list[str] = []
+        builder.build_fabric_agent_image(
+            fabric_agent_config,
+            dockerfile=dockerfile,
+            skip_validation=True,
+            agent_author="x",
+            on_progress=notices.append,
+        )
+        with_wheel = mock_build.call_args.kwargs["tag"]
+        assert not (context / wheel.name).exists()
+        assert any(template.WHEEL_ENV in line for line in notices)
+
+        monkeypatch.delenv(template.WHEEL_ENV)
+        builder.build_fabric_agent_image(
+            fabric_agent_config, dockerfile=dockerfile, skip_validation=True, agent_author="x"
+        )
+
+        assert with_wheel == mock_build.call_args.kwargs["tag"], "the wheel must not reach the image identity"
+
     @pytest.mark.parametrize(
         "filename",
         ["some_other_package-1.0-py3-none-any.whl", "notawheelname.whl"],
