@@ -89,13 +89,15 @@ def _make_spec(data_source: str = DEFAULT_DATA_SOURCE, model_provider: str | Non
     )
 
 
-async def _compile(spec, mock_sdk):
+async def _compile(spec, mock_sdk, *, profile: str | None = None, options: dict | None = None):
     return await GenerateJob.compile(
         workspace=DEFAULT_WORKSPACE,
         spec=spec,
         entity_client=MagicMock(),
         job_name=None,
         async_sdk=mock_sdk,
+        profile=profile,
+        options=options,
     )
 
 
@@ -159,6 +161,22 @@ async def test_job_config_compiler_uses_safe_synthesizer_tasks_image(mock_sdk, m
         "-m",
         "nemo_safe_synthesizer_plugin.tasks.safe_synthesizer",
     ]
+
+
+@pytest.mark.asyncio
+async def test_job_config_compiler_uses_submitted_profile(mock_sdk, monkeypatch):
+    monkeypatch.setattr(generate.plugin_config, "job_executor_profile", "configured-default")
+
+    result = await _compile(_make_spec(), mock_sdk, profile="research")
+
+    step = next(iter(result["steps"]))
+    assert step["executor"]["profile"] == "research"
+
+
+@pytest.mark.asyncio
+async def test_job_config_compiler_rejects_submit_options(mock_sdk):
+    with pytest.raises(PlatformJobCompilationError, match="does not support submit options"):
+        await _compile(_make_spec(), mock_sdk, options={"slurm": {"nodes": 4}})
 
 
 @pytest.mark.asyncio

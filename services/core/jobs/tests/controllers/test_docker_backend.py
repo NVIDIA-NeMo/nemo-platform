@@ -9,9 +9,11 @@ from types import SimpleNamespace
 from typing import Iterator
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from docker.errors import APIError, NotFound
 from nemo_platform.types.shared import AuthContext as SdkAuthContext
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nmp.common.auth import NMP_PRINCIPAL_ENVVAR, AuthContext, Principal
 from nmp.common.config import PlatformConfig
 from nmp.common.docker.gpu_pool import DockerGPUPool
@@ -562,14 +564,17 @@ def test_docker_job_sync_cancelling_sigterm(docker_job, docker_client_mock, test
     container_mock.remove.assert_not_called()
 
 
-def test_docker_job_sync_cancelling_sigkill(docker_job, docker_client_mock, test_job_step):
-    """Test that the cancel method stops the container."""
+@pytest.mark.parametrize("exit_code", [1, 137, 143, 255])
+def test_docker_job_sync_cancelling_nonzero_exit(
+    docker_job, docker_client_mock, mock_jobs_client, test_job_step, exit_code
+):
+    """Cancellation intent wins over entrypoint-specific post-stop exit codes."""
 
     test_job_step.status = PlatformJobStatus.CANCELLING
     container_mock = MagicMock()
     container_mock.id = "16-character-uid"
     container_mock.status = "exited"
-    container_mock.attrs = {"State": {"ExitCode": 137}}  # SIGKILL will set exit code 137
+    container_mock.attrs = {"State": {"ExitCode": exit_code}}
     task_id = uuid.uuid4().hex
     container_mock.labels = owned_container_labels(
         {
@@ -586,7 +591,12 @@ def test_docker_job_sync_cancelling_sigkill(docker_job, docker_client_mock, test
     # Test sync with running container
     update = docker_job.sync(test_job_step)
     assert update.status == "cancelled"
+    assert update.status_details == {"message": f"Job was cancelled successfully with exit code {exit_code}"}
+    assert update.error_details == {}
     docker_client_mock.containers.get.assert_called_with("job-test-job-id-test-step")
+    task_update = mock_jobs_client.update_job_step_task.call_args.kwargs["body"]
+    assert task_update.status == PlatformJobStatus.CANCELLED
+    assert task_update.error_stack == ""
     # Container removed as part of cleanup_steps
     container_mock.remove.assert_not_called()
 
@@ -1526,6 +1536,324 @@ def test_gpu_cleanup_on_job_error(mock_nmp_client, docker_client_mock):
     executor.cleanup_steps()
     assert set(executor.gpu_pool.gpu_to_workload_id.keys()) == {0}
     assert executor.gpu_pool.gpu_to_workload_id[0] is None
+
+
+def _gpu_executor_config(num_gpus: int = 1) -> GPUExecutionProvider:
+    return GPUExecutionProvider.model_validate(
+        {
+            "provider": "gpu",
+            "profile": "default",
+            "container": {
+                "image": "test-gpu-image:latest",
+            },
+            "resources": {
+                "num_gpus": num_gpus,
+            },
+            "config": {},
+        }
+    )
+
+
+def _gpu_step(
+    *,
+    step_id: str = "test-gpu-step-id",
+    job: str = "test-gpu-job",
+    name: str = "gpu-step",
+    status: PlatformJobStatus | str = PlatformJobStatus.CREATED,
+) -> PlatformJobStepWithContext:
+    gpu_executor_config = _gpu_executor_config()
+    return PlatformJobStepWithContext.model_validate(
+        {
+            "id": step_id,
+            "job": job,
+            "attempt_id": "test-job-attempt-id",
+            "name": name,
+            "fileset": "test-logs-fileset",
+            "workspace": "default",
+            "step_spec": {
+                "name": name,
+                "executor": gpu_executor_config.model_dump(),
+                "config": {},
+                "environment": [],
+            },
+            "status": status,
+        }
+    )
+
+
+def _gpu_backend(mock_nmp_client, docker_client_mock) -> GPUDockerJobBackend:
+    with patch("nmp.core.jobs.controllers.backends.docker.SharedResourceManager") as mock_srm:
+        mock_pool = DockerGPUPool(reserved_gpu_device_ids=[0])
+        mock_srm.get_instance.return_value.get_gpu_pool.return_value = mock_pool
+
+        executor = GPUDockerJobBackend(
+            nmp_sdk=mock_nmp_client,
+            execution_profile_config=DockerJobExecutionProfileConfig(
+                storage=DockerJobStorageConfig(volume_name="test_jobs_storage"),
+            ),
+            profile_name="default",
+        )
+        executor._client = docker_client_mock
+        return executor
+
+
+def _gpu_container(
+    step: PlatformJobStepWithContext,
+    *,
+    status: str = "exited",
+    exit_code: int = 0,
+    finished_at: str | None = None,
+    task_id: str = "task-gpu-step",
+) -> MagicMock:
+    container = MagicMock()
+    container.name = f"{step.job}-{step.name}"
+    container.id = f"container-{step.id}"
+    container.status = status
+    container.attrs = {
+        "State": {
+            "ExitCode": exit_code,
+            "FinishedAt": finished_at or datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        "NetworkSettings": {"Networks": {"host": {}}},
+    }
+    container.labels = {
+        JOB_WORKSPACE_ID_LABEL: step.workspace,
+        JOB_ID_LABEL: step.job,
+        JOB_STEP_NAME_LABEL: step.name,
+        JOB_STEP_ID_LABEL: step.id,
+        JOB_TASK_ID_LABEL: task_id,
+        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
+        JOB_EXECUTION_BACKEND_LABEL: "docker",
+        JOB_EXECUTION_PROFILE_LABEL: "default",
+        JOB_TYPE_LABEL: JOB_TYPE_JOB,
+    }
+    return container
+
+
+def test_gpu_pool_released_when_deleted_step_stops_scheduling(mock_nmp_client, docker_client_mock):
+    """A deleted step before container start must not leave its GPU allocation orphaned."""
+    step = _gpu_step(step_id="deleted-step-id", job="job-deleted-before-start", name="gpu-deleted-step")
+    executor = _gpu_backend(mock_nmp_client, docker_client_mock)
+
+    executor.gpu_pool.allocate_gpu(step.id)
+    assert executor.gpu_pool.gpu_to_workload_id[0] == step.id
+
+    executor.get_step_safe = MagicMock(return_value=None)
+
+    assert executor.cancel_scheduling(step) is True
+    assert executor.gpu_pool.gpu_to_workload_id[0] is None
+    executor._jobs.update_job_step_status.assert_not_called()
+
+
+@pytest.mark.parametrize("terminal_status", [PlatformJobStatus.CANCELLED, PlatformJobStatus.PAUSED])
+def test_gpu_pool_released_when_cancel_scheduling_sees_terminal_step(
+    mock_nmp_client, docker_client_mock, terminal_status
+):
+    step = _gpu_step(step_id=f"{terminal_status.value}-step-id")
+    executor = _gpu_backend(mock_nmp_client, docker_client_mock)
+    refreshed_step = MagicMock()
+    refreshed_step.status = terminal_status
+
+    executor.gpu_pool.allocate_gpu(step.id)
+    executor.get_step_safe = MagicMock(return_value=refreshed_step)
+
+    assert executor.cancel_scheduling(step) is True
+    assert executor.gpu_pool.gpu_to_workload_id[0] is None
+    executor._jobs.update_job_step_status.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "refreshed_status,expected_update_status",
+    [
+        (PlatformJobStatus.CANCELLED, None),
+        (PlatformJobStatus.PAUSED, None),
+        (PlatformJobStatus.CANCELLING, PlatformJobStatus.CANCELLED),
+        (PlatformJobStatus.PAUSING, PlatformJobStatus.PAUSED),
+    ],
+)
+def test_gpu_pool_released_when_cancel_scheduling_removes_created_container_before_release(
+    mock_nmp_client, docker_client_mock, refreshed_status, expected_update_status
+):
+    step = _gpu_step(step_id=f"{refreshed_status.value}-created-container-step-id")
+    executor = _gpu_backend(mock_nmp_client, docker_client_mock)
+    container_mock = _gpu_container(step, status="created", task_id="task-pre-start-stop")
+    refreshed_step = MagicMock()
+    refreshed_step.status = refreshed_status
+
+    executor.gpu_pool.allocate_gpu(step.id)
+    assert executor.gpu_pool.gpu_to_workload_id[0] == step.id
+
+    def assert_remove_before_release(*, force: bool) -> None:
+        assert force is True
+        assert executor.gpu_pool.gpu_to_workload_id[0] == step.id
+
+    container_mock.remove.side_effect = assert_remove_before_release
+    executor.get_step_safe = MagicMock(return_value=refreshed_step)
+
+    assert executor.cancel_scheduling(step, created_container=container_mock) is True
+
+    container_mock.remove.assert_called_once_with(force=True)
+    assert executor.gpu_pool.gpu_to_workload_id[0] is None
+    assert executor.gpu_pool.allocate_gpu("next-step-id") == [0]
+    if expected_update_status is None:
+        executor._jobs.update_job_step_status.assert_not_called()
+    else:
+        executor._jobs.update_job_step_status.assert_called_once()
+        assert executor._jobs.update_job_step_status.call_args.kwargs["body"].status == expected_update_status
+
+
+def test_gpu_pool_released_when_cancel_scheduling_status_update_loses_step(mock_nmp_client, docker_client_mock):
+    step = _gpu_step(step_id="cancelling-lost-step-id")
+    executor = _gpu_backend(mock_nmp_client, docker_client_mock)
+    refreshed_step = MagicMock()
+    refreshed_step.status = PlatformJobStatus.CANCELLING
+
+    executor.gpu_pool.allocate_gpu(step.id)
+    executor.get_step_safe = MagicMock(return_value=refreshed_step)
+    executor._jobs.update_job_step_status.side_effect = ClientNotFoundError(httpx.Response(404, text="missing"))
+
+    assert executor.cancel_scheduling(step) is True
+    assert executor.gpu_pool.gpu_to_workload_id[0] is None
+    executor._jobs.update_job_step_status.assert_called_once()
+
+
+def test_gpu_cleanup_releases_deleted_step_container_without_terminal_sync(mock_nmp_client, docker_client_mock):
+    """Cleanup after job deletion releases GPUs even when terminal sync never saw the step."""
+    step_id = "deleted-terminal-step-id"
+
+    with patch("nmp.core.jobs.controllers.backends.docker.SharedResourceManager") as mock_srm:
+        mock_pool = DockerGPUPool(reserved_gpu_device_ids=[0])
+        mock_srm.get_instance.return_value.get_gpu_pool.return_value = mock_pool
+
+        executor = GPUDockerJobBackend(
+            nmp_sdk=mock_nmp_client,
+            execution_profile_config=DockerJobExecutionProfileConfig(
+                storage=DockerJobStorageConfig(volume_name="test_jobs_storage"),
+            ),
+            profile_name="default",
+        )
+        executor._client = docker_client_mock
+
+    executor.gpu_pool.allocate_gpu(step_id)
+    assert executor.gpu_pool.gpu_to_workload_id[0] == step_id
+    executor._execution_profile_config.cleanup_completed_jobs_immediately = True
+
+    container_mock = MagicMock()
+    container_mock.name = "job-deleted-before-sync-gpu-step"
+    container_mock.id = "deleted-terminal-container-id"
+    container_mock.status = "exited"
+    container_mock.attrs = {
+        "State": {"ExitCode": 0, "FinishedAt": datetime.datetime.now(datetime.UTC).isoformat()},
+        "NetworkSettings": {"Networks": {"host": {}}},
+    }
+    container_mock.labels = {
+        JOB_WORKSPACE_ID_LABEL: "default",
+        JOB_ID_LABEL: "job-deleted-before-sync",
+        JOB_STEP_NAME_LABEL: "gpu-step",
+        JOB_STEP_ID_LABEL: step_id,
+        JOB_TASK_ID_LABEL: "task-deleted-step",
+        JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
+        JOB_CONTROLLER_INSTANCE_ID_LABEL: TEST_JOBS_CONTROLLER_INSTANCE_ID,
+        JOB_EXECUTION_BACKEND_LABEL: "docker",
+        JOB_EXECUTION_PROFILE_LABEL: "default",
+        JOB_TYPE_LABEL: JOB_TYPE_JOB,
+    }
+
+    docker_client_mock.containers.list.return_value = [container_mock]
+    executor.check_step_is_terminal = MagicMock(return_value=True)
+
+    executor.cleanup_steps()
+
+    assert executor.gpu_pool.gpu_to_workload_id[0] is None
+    container_mock.remove.assert_called_once_with(force=True)
+
+
+def test_gpu_cleanup_releases_retained_deleted_step_container_without_terminal_sync(
+    mock_nmp_client, docker_client_mock
+):
+    """Retained terminal containers must free GPUs before the cleanup TTL expires."""
+    step = _gpu_step(
+        step_id="retained-deleted-terminal-step-id",
+        job="job-retained-deleted-before-sync",
+        name="gpu-step",
+    )
+    executor = _gpu_backend(mock_nmp_client, docker_client_mock)
+    executor._execution_profile_config.cleanup_completed_jobs_immediately = False
+    executor._execution_profile_config.ttl_seconds_after_finished = 300
+
+    executor.gpu_pool.allocate_gpu(step.id)
+    assert executor.gpu_pool.gpu_to_workload_id[0] == step.id
+
+    recent_finished_at = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=10)).isoformat()
+    container_mock = _gpu_container(step, finished_at=recent_finished_at, task_id="task-retained-deleted-step")
+    docker_client_mock.containers.list.return_value = [container_mock]
+    executor.check_step_is_terminal = MagicMock(return_value=True)
+
+    executor.cleanup_steps()
+
+    assert executor.gpu_pool.gpu_to_workload_id[0] is None
+    container_mock.remove.assert_not_called()
+
+
+def test_gpu_pool_released_when_failed_schedule_after_configure_container(
+    mock_nmp_client, docker_client_mock, mock_platform_config
+):
+    step = _gpu_step(step_id="submit-failed-step-id", job="job-submit-failed")
+    executor = _gpu_backend(mock_nmp_client, docker_client_mock)
+    executor._container_run_threadpool = MagicMock()
+    executor._container_run_threadpool.submit.side_effect = RuntimeError("threadpool unavailable")
+
+    acquired = 0
+    final_acquired = False
+    try:
+        for _ in range(DOCKER_CONTAINER_START_WORKERS - 1):
+            assert executor._container_start_admission.acquire(blocking=False)
+            acquired += 1
+
+        with (
+            patch("nmp.core.jobs.controllers.backends.docker.get_platform_config", return_value=mock_platform_config),
+            pytest.raises(RuntimeError, match="threadpool unavailable"),
+        ):
+            executor.schedule_single_container(_gpu_executor_config(), step)
+
+        assert executor.gpu_pool.gpu_to_workload_id[0] is None
+        final_acquired = executor._container_start_admission.acquire(blocking=False)
+        assert final_acquired
+    finally:
+        if final_acquired:
+            executor._container_start_admission.release()
+        for _ in range(acquired):
+            executor._container_start_admission.release()
+
+
+def test_gpu_failed_schedule_removes_created_container_before_releasing_pool(mock_nmp_client, docker_client_mock):
+    step = _gpu_step(step_id="run-failed-created-container-step-id", job="job-run-failed")
+    executor = _gpu_backend(mock_nmp_client, docker_client_mock)
+    container_mock = _gpu_container(step, status="created", task_id="task-run-failed")
+
+    executor.gpu_pool.allocate_gpu(step.id)
+    assert executor.gpu_pool.gpu_to_workload_id[0] == step.id
+
+    def assert_remove_before_release(*, force: bool) -> None:
+        assert force is True
+        assert executor.gpu_pool.gpu_to_workload_id[0] == step.id
+
+    container_mock.remove.side_effect = assert_remove_before_release
+
+    assert executor._container_start_admission.acquire(blocking=False)
+    executor._run_container_in_thread = MagicMock(
+        side_effect=FailedToScheduleError("container failed", error_details={"message": "container failed"})
+    )
+    docker_client_mock.containers.get.side_effect = None
+    docker_client_mock.containers.get.return_value = container_mock
+
+    executor.run_container(step, {})
+
+    container_mock.remove.assert_called_once_with(force=True)
+    assert executor.gpu_pool.gpu_to_workload_id[0] is None
+    assert executor._container_start_admission.acquire(blocking=False)
+    executor._container_start_admission.release()
 
 
 def test_ensure_volume_creates_when_test_missing(docker_job: CPUDockerJobBackend, docker_client_mock, test_job_step):
