@@ -30,7 +30,7 @@ export const ControlledStringListInput = ({
   return (
     <FormField {...formFieldProps}>
       <TextInput
-        value={((value as string[] | undefined) ?? []).join(', ')}
+        value={Array.isArray(value) ? (value as string[]).join(', ') : ''}
         placeholder={placeholder}
         disabled={disabled || fieldDisabled}
         onValueChange={(next: string) =>

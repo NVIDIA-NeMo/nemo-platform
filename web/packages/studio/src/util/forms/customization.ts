@@ -407,60 +407,16 @@ export const customizationFormSchema = z
       spec = rlSpecSchema;
       value = data.rl;
       const grpo = data.grpo as Partial<GrpoFormFields> | undefined;
-      if (grpo?.trainingType === 'grpo') {
-        if (!grpo.environmentFileset) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'A reward environment fileset is required for GRPO training',
-            path: ['grpo', 'environmentFileset'],
-          });
-        }
-        // Mirrors the backend's _generation_length_fits_context validator: max_seq_length
-        // is the whole prompt + generation budget, so a larger generation cap is
-        // unsatisfiable and the job is rejected at submit.
-        const maxSeqLength = (data.rl as RlJobInput | undefined)?.training?.max_seq_length;
-        if (
-          grpo.max_new_tokens != null &&
-          maxSeqLength != null &&
-          grpo.max_new_tokens > maxSeqLength
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Max new tokens cannot exceed the max sequence length (${maxSeqLength}), which is the total prompt + generation budget`,
-            path: ['grpo', 'max_new_tokens'],
-          });
-        }
-        // Mirrors _advantage_clip_range_is_usable: reversed or equal bounds clamp every
-        // advantage to one value, which zeroes the gradient with nothing in the logs.
-        const { advantage_clip_low: low, advantage_clip_high: high } = grpo;
-        if (low != null && high != null && low >= high) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'Advantage clip low must be below advantage clip high',
-            path: ['grpo', 'advantage_clip_low'],
-          });
-        }
-        // Mirrors _batch_multiplier_requires_dynamic_sampling. The payload already omits
-        // the multiplier when dynamic sampling is off, so this only fires if both are on
-        // screen and inconsistent.
-        if (!grpo.use_dynamic_sampling && grpo.batch_multiplier !== 1) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'Batch multiplier requires dynamic sampling to be enabled',
-            path: ['grpo', 'batch_multiplier'],
-          });
-        }
-        // Only automodel implements LoRA, expert parallelism and automodel_kwargs.
-        if (
-          grpo.policy_backend === PolicyBackend.dtensor &&
-          grpo.finetuning_type === RlGRPOTrainingFinetuningType.lora
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'LoRA requires the automodel policy backend',
-            path: ['grpo', 'policy_backend'],
-          });
-        }
+      if (grpo?.trainingType === 'grpo' && !grpo.environmentFileset) {
+        // Form-completeness only. Every other GRPO rule (generation length, advantage
+        // clip range, policy-backend conflicts, truncated importance sampling, HF
+        // override collisions) is enforced by the backend, which reports it with a
+        // precise message; mirroring them here just creates two sources of truth.
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'A reward environment fileset is required for GRPO training',
+          path: ['grpo', 'environmentFileset'],
+        });
       }
     }
     const result = spec.safeParse(value);
