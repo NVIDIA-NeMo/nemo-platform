@@ -36,7 +36,6 @@ class RetrievalGenerateJob(NemoJob):
         async_sdk: object,
         is_local: bool,
     ) -> BaseModel:
-        assert is_local is False, "retrieval-generate to_spec runs on the plugin service, not the local scheduler"
         async_sdk = cast(AsyncNeMoPlatform, async_sdk)
         job_config = cast(RetrievalGenerateJobConfig, input_spec)
         dd_ctx = create_data_designer_context(async_sdk, workspace)

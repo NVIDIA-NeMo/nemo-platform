@@ -102,7 +102,10 @@ in-config workflow chaining.
 ## SDK
 
 ```python
+from nemo_platform import NeMoPlatform
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobConfig
+
+client = NeMoPlatform(base_url="http://localhost:8080", workspace="default")
 
 client.data_designer.retrieval_generate(
     RetrievalGenerateJobConfig(
@@ -118,6 +121,6 @@ client.data_designer.retrieval_generate(
 
 ## Next Steps
 
-- See the [Data Designer CLI](./cli.mdx) for configuration and command details.
+- See the [Data Designer CLI](/documentation/design-synthetic-data/cli) for configuration and command details.
 - Use the Stage 1 `training.jsonl` artifact as input to an embedding or
   reranking customization job.

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Friendly ``nemo data-designer retrieval`` command group."""
+"""Spec-building helpers for retrieval job and preview commands."""
 
 from __future__ import annotations
 
@@ -12,7 +12,11 @@ from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobCo
 
 retrieval_app = typer.Typer(
     name="retrieval",
-    help="Nemotron retrieval SDG (Stage 0 generate, Stage 1 prepare).",
+    help=(
+        "Build specs for Nemotron retrieval SDG commands. "
+        "These helpers print the auto-generated retrieval-generate, retrieval-prepare, "
+        "or retrieval-preview command to submit."
+    ),
     no_args_is_help=True,
 )
 
@@ -26,7 +30,7 @@ def retrieval_generate(
     workspace: str = typer.Option("default", "--workspace", "-w"),
     spec_out: bool = typer.Option(False, "--print-spec", help="Print JSON spec instead of submitting."),
 ) -> None:
-    """Build a retrieval-generate spec. Auto CLI: ``nemo data-designer retrieval-generate``."""
+    """Build a spec for the auto-generated ``retrieval-generate`` job command."""
     spec = RetrievalGenerateJobConfig(
         corpus=corpus,
         provider=provider,
@@ -58,7 +62,7 @@ def retrieval_prepare(
     ),
     workspace: str = typer.Option("default", "--workspace", "-w"),
 ) -> None:
-    """Build a retrieval-prepare spec. Auto CLI: ``nemo data-designer retrieval-prepare``."""
+    """Build a spec for the auto-generated ``retrieval-prepare`` job command."""
     if (sdg_input is None) == (train_input_file is None):
         raise typer.BadParameter("Provide exactly one of --sdg-input or --train-input-file.")
     spec = RetrievalPrepareJobConfig(
@@ -80,7 +84,7 @@ def retrieval_preview(
     embed_model: str = typer.Option(..., "--embed-model", help="Embedding model."),
     workspace: str = typer.Option("default", "--workspace", "-w"),
 ) -> None:
-    """Build a retrieval-preview spec. Auto CLI: ``nemo data-designer retrieval-preview``."""
+    """Build a spec for the auto-generated ``retrieval-preview`` function command."""
     generate = RetrievalGenerateJobConfig(
         corpus=corpus,
         provider=provider,

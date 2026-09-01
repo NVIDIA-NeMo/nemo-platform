@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 from nemo_data_designer_plugin.jobs.create import CreateJob
 from nemo_data_designer_plugin.jobs.retrieval_generate import RetrievalGenerateJob
-from nemo_data_designer_plugin.jobs.retrieval_prepare import RetrievalPrepareJob
+from nemo_data_designer_plugin.jobs.retrieval_prepare import RetrievalPrepareJob, _materialize_input
 from nemo_data_designer_plugin.jobs.retrieval_run import RetrievalRunJob
 from nemo_data_designer_plugin.jobs.retrieval_spec import (
     RetrievalGenerateJobConfig,
@@ -26,8 +26,6 @@ from nemo_data_designer_plugin.jobs.retrieval_spec import (
     RetrievalRunJobConfig,
 )
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig
-from nemo_data_designer_plugin.retrieval.inline import wrapped_to_inline_jsonl
-from nemo_data_designer_plugin.retrieval.unroll import unroll_training_data
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec, PlatformJobStep
 from pydantic import ValidationError
 
@@ -392,44 +390,26 @@ def test_prepare_mining_options_are_typed() -> None:
         )
 
 
-def test_unroll_and_inline_jsonl(tmp_path: Path) -> None:
-    records = [
-        {
-            "question_id": "q1",
-            "question": "what?",
-            "corpus_id": "c",
-            "pos_doc": ["alpha", "beta"],
-            "neg_doc": ["gamma"],
-        }
-    ]
-    unrolled = unroll_training_data(records)
-    assert len(unrolled) == 2
-    wrapped = tmp_path / "train.json"
-    wrapped.write_text(json.dumps({"corpus": {}, "data": unrolled}), encoding="utf-8")
-    out = tmp_path / "training.jsonl"
-    wrapped_to_inline_jsonl(wrapped, out)
-    lines = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
-    assert lines[0]["query"] == "what?"
-    assert lines[0]["pos_doc"] == "alpha"
-    assert "gamma" in lines[0]["neg_doc"]
+def test_prepare_rejects_staged_path_that_escapes_job_storage(tmp_path: Path) -> None:
+    jobs_root = tmp_path / "jobs"
+    this_job = jobs_root / "this-job"
+    other_job = jobs_root / "other-job"
+    this_job.mkdir(parents=True)
+    other_job.mkdir()
+    (other_job / "train.json").write_text("secret", encoding="utf-8")
+
+    ctx = _ctx(this_job)
+    with pytest.raises(ValueError, match="escapes job storage"):
+        _materialize_input("../../other-job/train.json", ctx.storage.ephemeral / "dest", ctx, Mock())
 
 
-def test_inline_jsonl_unrolls_positives_without_making_them_negative(tmp_path: Path) -> None:
-    wrapped = tmp_path / "train.json"
-    wrapped.write_text(
-        json.dumps(
-            {
-                "corpus": {},
-                "data": [{"question": "what?", "pos_doc": ["alpha", "beta"], "neg_doc": ["gamma"]}],
-            }
-        ),
-        encoding="utf-8",
-    )
-    out = tmp_path / "training.jsonl"
-    wrapped_to_inline_jsonl(wrapped, out)
-    lines = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
-    assert [line["pos_doc"] for line in lines] == ["alpha", "beta"]
-    assert all(line["neg_doc"] == ["gamma"] for line in lines)
+def test_prepare_uses_contained_staged_input(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    staged = ctx.storage.persistent / "stage0" / "train.json"
+    staged.parent.mkdir()
+    staged.write_text("{}", encoding="utf-8")
+    resolved = _materialize_input("stage0/train.json", ctx.storage.ephemeral / "dest", ctx, Mock())
+    assert resolved == staged.resolve()
 
 
 def test_retrieval_cli_prints_spec() -> None:
@@ -457,6 +437,19 @@ def test_retrieval_cli_prints_spec() -> None:
     assert payload["corpus"] == "default/docs"
     assert payload["qa_generation_model"] == "nvidia/nemotron-3-nano-30b-a3b"
     assert payload["embed_model"] == "nvidia/nemotron-3-embed-1b"
+
+
+def test_retrieval_cli_help_distinguishes_helpers_from_job_commands() -> None:
+    from nemo_data_designer_plugin.cli.retrieval import retrieval_app
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(retrieval_app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "Build specs" in result.output
+    assert "retrieval-generate" in result.output
+    assert "retrieval-prepare" in result.output
+    assert "retrieval-preview" in result.output
 
 
 def test_retrieval_prepare_cli_requires_exactly_one_input() -> None:

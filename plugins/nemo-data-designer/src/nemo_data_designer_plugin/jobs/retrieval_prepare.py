@@ -16,11 +16,11 @@ from nemo_data_designer_plugin.jobs.retrieval_common import (
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalPrepareJobConfig, RetrievalPrepareStepConfig
 from nemo_data_designer_plugin.retrieval.conversion import execute_conversion
 from nemo_data_designer_plugin.retrieval.corpus import materialize_corpus
-from nemo_data_designer_plugin.retrieval.inline import wrapped_to_inline_jsonl
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nmp.customization_common.retrieval.inline import wrapped_to_inline_jsonl
 from nmp.customization_common.service.platform_client import fetch_model_entity
 from pydantic import BaseModel
 
@@ -116,8 +116,13 @@ class RetrievalPrepareJob(NemoJob):
 
 
 def _materialize_input(ref: str, dest: Path, ctx: JobContext, sdk: NeMoPlatform) -> Path:
-    staged = (ctx.storage.persistent or ctx.storage.ephemeral) / ref
-    if not Path(ref).is_absolute() and staged.exists():
+    if Path(ref).is_absolute():
+        return materialize_corpus(ref, dest=dest, sdk=sdk, workspace=ctx.workspace)
+    storage_root = (ctx.storage.persistent or ctx.storage.ephemeral).resolve()
+    staged = (storage_root / ref).resolve()
+    if not staged.is_relative_to(storage_root):
+        raise ValueError(f"Staged input path escapes job storage: {ref}")
+    if staged.exists():
         return staged
     return materialize_corpus(ref, dest=dest, sdk=sdk, workspace=ctx.workspace)
 

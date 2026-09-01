@@ -33,7 +33,7 @@ tokenizer load only from this staged directory with Hugging Face networking disa
 The miner's recipe config is generated from the prepare spec, not shipped in the image. Common knobs (`model`, `hard_negatives_to_mine`, `query_prefix`, `dist_backend`, ...) plus the nested `mining` object are written to `mining_config.yaml` in the job artifacts and passed to the miner as `--config`:
 
 ```bash
-nemo data-designer retrieval-prepare --spec '{"sdg_input":"default/stage0-out","enable_mining":true,"mining":{"corpus_chunk_size":10000,"hard_neg_margin_type":"abs"}}'
+nemo data-designer retrieval-prepare --spec '{"sdg_input":"default/stage0-out","enable_mining":true,"model":"default/nemotron-3-embed-1b","mining":{"corpus_chunk_size":10000,"hard_neg_margin_type":"abs"}}'
 ```
 
 Chaining generate then prepare is a jobs-service multi-step job (`retrieval-run`), not Data Designer workflow chaining.

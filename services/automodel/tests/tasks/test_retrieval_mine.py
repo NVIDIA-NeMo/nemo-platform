@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import yaml
-from nmp.automodel.tasks.retrieval_mine.inline import wrapped_to_inline_jsonl
 from nmp.automodel.tasks.retrieval_mine.runner import RetrievalMineJobConfig, RetrievalMiningOptions, run_mine
 
 
@@ -68,21 +67,27 @@ def test_run_mine_launches_torchrun_then_unrolls(tmp_path: Path) -> None:
     ctx.results.save.assert_called_once()
 
 
-def test_inline_jsonl_keeps_additional_positives_positive(tmp_path: Path) -> None:
-    wrapped = tmp_path / "train.json"
-    wrapped.write_text(
-        json.dumps(
-            {
-                "corpus": {},
-                "data": [{"question": "q", "pos_doc": ["p1", "p2"], "neg_doc": ["n1"]}],
-            }
-        ),
-        encoding="utf-8",
-    )
-    output = tmp_path / "training.jsonl"
+def test_run_mine_selects_shallowest_train_file_deterministically(tmp_path: Path) -> None:
+    output_dir = tmp_path / "stage1_data_prep"
+    shallow = output_dir / "a" / "train.json"
+    deep = output_dir / "0" / "nested" / "train.json"
+    shallow.parent.mkdir(parents=True)
+    deep.parent.mkdir(parents=True)
+    shallow.write_text("{}", encoding="utf-8")
+    deep.write_text("{}", encoding="utf-8")
+    (tmp_path / "model").mkdir()
 
-    wrapped_to_inline_jsonl(wrapped, output)
+    ctx = Mock()
+    ctx.workspace = "default"
+    ctx.results.save.return_value = SimpleNamespace(model_dump=lambda: {"name": "artifacts"})
 
-    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
-    assert [row["pos_doc"] for row in rows] == ["p1", "p2"]
-    assert all(row["neg_doc"] == ["n1"] for row in rows)
+    def _fake_mine(**kwargs: object) -> None:
+        config = yaml.safe_load(Path(str(kwargs["config_file"])).read_text(encoding="utf-8"))
+        assert config["mining"]["train_qa_file_path"] == str(shallow)
+        Path(config["mining"]["train_file_output_path"]).write_text(
+            json.dumps({"corpus": {}, "data": []}),
+            encoding="utf-8",
+        )
+
+    with patch("nmp.automodel.tasks.retrieval_mine.runner.run_hard_negative_mining", side_effect=_fake_mine):
+        run_mine(RetrievalMineJobConfig(), output_dir, ctx, model_trust_remote_code=False)

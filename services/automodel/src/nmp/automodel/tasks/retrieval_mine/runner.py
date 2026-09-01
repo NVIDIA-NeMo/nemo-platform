@@ -10,9 +10,9 @@ from typing import Any, Literal
 
 import yaml
 from nemo_platform_plugin.job_context import JobContext
-from nmp.automodel.tasks.retrieval_mine.inline import wrapped_to_inline_jsonl
 from nmp.automodel.tasks.retrieval_mine.launch import run_hard_negative_mining
-from nmp.automodel.tasks.retrieval_mine.unroll import unroll_training_file
+from nmp.customization_common.retrieval.inline import wrapped_to_inline_jsonl
+from nmp.customization_common.retrieval.unroll import unroll_training_file
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -104,7 +104,10 @@ def run_mine(
 ) -> dict[str, Any]:
     train_file = output_dir / "train.json"
     if not train_file.exists():
-        matches = list(output_dir.rglob("train.json"))
+        matches = sorted(
+            output_dir.rglob("train.json"),
+            key=lambda path: (len(path.relative_to(output_dir).parts), path.as_posix()),
+        )
         if not matches:
             raise FileNotFoundError(f"train.json not found under {output_dir}")
         train_file = matches[0]

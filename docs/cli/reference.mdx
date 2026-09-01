@@ -7746,7 +7746,7 @@ nemo data-designer [OPTIONS] COMMAND [ARGS]...
 * `create`
 * `preview`
 * `personas`: Manage Nemotron Personas datasets
-* `retrieval`: Nemotron retrieval SDG (Stage 0 generate, Stage 1 prepare).
+* `retrieval`: Build specs for Nemotron retrieval SDG commands.
 * `agent`: Agent-only interface for dynamic Data Designer introspection
 
 *Functions:*
@@ -7875,7 +7875,7 @@ nemo data-designer personas make-fileset [OPTIONS]
 
 #### nemo data-designer retrieval
 
-Nemotron retrieval SDG (Stage 0 generate, Stage 1 prepare).
+Build specs for Nemotron retrieval SDG commands. These helpers print the auto-generated retrieval-generate, retrieval-prepare, or retrieval-preview command to submit.
 
 **Usage:**
 
@@ -7889,13 +7889,13 @@ nemo data-designer retrieval [OPTIONS] COMMAND [ARGS]...
 
 **Commands:**
 
-* `generate`: Build a retrieval-generate spec.
-* `prepare`: Build a retrieval-prepare spec.
-* `preview`: Build a retrieval-preview spec.
+* `generate`: Build a spec for the auto-generated...
+* `prepare`: Build a spec for the auto-generated ``retrieval-prepare``...
+* `preview`: Build a spec for the auto-generated ``retrieval-preview``...
 
 ##### nemo data-designer retrieval generate
 
-Build a retrieval-generate spec. Auto CLI: ``nemo data-designer retrieval-generate``.
+Build a spec for the auto-generated ``retrieval-generate`` job command.
 
 **Usage:**
 
@@ -7918,7 +7918,7 @@ nemo data-designer retrieval generate [OPTIONS]
 
 ##### nemo data-designer retrieval prepare
 
-Build a retrieval-prepare spec. Auto CLI: ``nemo data-designer retrieval-prepare``.
+Build a spec for the auto-generated ``retrieval-prepare`` job command.
 
 **Usage:**
 
@@ -7939,7 +7939,7 @@ nemo data-designer retrieval prepare [OPTIONS]
 
 ##### nemo data-designer retrieval preview
 
-Build a retrieval-preview spec. Auto CLI: ``nemo data-designer retrieval-preview``.
+Build a spec for the auto-generated ``retrieval-preview`` function command.
 
 **Usage:**
 

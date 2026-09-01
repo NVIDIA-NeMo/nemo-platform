@@ -56,7 +56,7 @@ class RetrievalRunJob(NemoJob):
                 workspace=workspace,
                 entity_client=entity_client,
                 async_sdk=async_sdk,
-                is_local=is_local,
+                is_local=False,
             ),
         )
         return RetrievalRunJobConfig(generate=run.generate, prepare=prepare_step.job_config)
