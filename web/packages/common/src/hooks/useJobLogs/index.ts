@@ -33,6 +33,8 @@ export interface UseJobLogsOptions {
   /** Max pages of logs to retain in memory. Defaults to LOGS_MAX_PAGES.
    *  Set to Infinity for download scenarios where all logs are needed. */
   maxPages?: number;
+  /** Restrict logs to one pipeline step, by step name (e.g. `grpo-training`). */
+  stepId?: string;
 }
 
 interface JobLogsQueryData {
@@ -48,15 +50,30 @@ export interface UseJobLogsResult {
   refetch: (options?: RefetchOptions) => Promise<QueryObserverResult<JobLogsQueryData>>;
 }
 
+// A step-filtered fetch returns a strict subset of the unfiltered one, so both must be cached
+// separately or switching the filter would serve the wrong list from cache.
+const stepScope = (stepId: string | undefined) => stepId ?? 'all-steps';
+
 export function getJobLogsQueryKey(
   workspace: string,
-  name: string
-): [...ReturnType<typeof getJobsPageJobLogsQueryKey>, 'all'] {
-  return [...getJobsPageJobLogsQueryKey(workspace, name), 'all'];
+  name: string,
+  stepId?: string
+): [...ReturnType<typeof getJobsPageJobLogsQueryKey>, string, 'all'] {
+  return [...getJobsPageJobLogsQueryKey(workspace, name), stepScope(stepId), 'all'];
 }
 
-function getPageQueryKey(workspace: string, name: string, cursor: string | undefined) {
-  return [...getJobsPageJobLogsQueryKey(workspace, name), 'page', cursor ?? 'initial'];
+function getPageQueryKey(
+  workspace: string,
+  name: string,
+  cursor: string | undefined,
+  stepId: string | undefined
+) {
+  return [
+    ...getJobsPageJobLogsQueryKey(workspace, name),
+    stepScope(stepId),
+    'page',
+    cursor ?? 'initial',
+  ];
 }
 
 export const useJobLogs = ({
@@ -66,9 +83,10 @@ export const useJobLogs = ({
   jobStatus,
   pageSize = LOGS_PAGE_SIZE,
   maxPages = LOGS_MAX_PAGES,
+  stepId,
 }: UseJobLogsOptions): UseJobLogsResult => {
   const queryClient = useQueryClient();
-  const queryKey = getJobLogsQueryKey(workspace, name);
+  const queryKey = getJobLogsQueryKey(workspace, name, stepId);
   const maxRetainedLogs = maxPages * pageSize;
 
   const query = useQuery<JobLogsQueryData>({
@@ -82,14 +100,19 @@ export const useJobLogs = ({
         if (signal.aborted) break;
 
         const pageCursor = cursor;
-        const pageKey = getPageQueryKey(workspace, name, pageCursor);
+        const pageKey = getPageQueryKey(workspace, name, pageCursor, stepId);
         const cached = queryClient.getQueryData<PlatformJobLogPage>(pageKey);
         const isCachedFullPage = cached !== undefined && cached.data.length >= pageSize;
 
         const page = await queryClient.fetchQuery({
           queryKey: pageKey,
           queryFn: ({ signal }) =>
-            jobsPageJobLogs(workspace, name, { limit: pageSize, page_cursor: pageCursor }, signal),
+            jobsPageJobLogs(
+              workspace,
+              name,
+              { limit: pageSize, page_cursor: pageCursor, step_id: stepId },
+              signal
+            ),
           staleTime: isCachedFullPage ? Infinity : 0,
         });
 

@@ -57,14 +57,24 @@ export interface UseCustomizationJobStatusResult {
   isError: boolean;
 }
 
+interface UseCustomizationJobStatusOptions {
+  /**
+   * Defaults to true. TanStack schedules `refetchInterval` per observer, so a second consumer of
+   * this hook doubles the request rate against `/status` rather than sharing the first one's
+   * polling — callers that only need the steps in some states should opt out of the rest.
+   */
+  enabled?: boolean;
+}
+
 export const useCustomizationJobStatus = (
   workspace: string,
   name: string,
   backend: CustomizationBackend | undefined,
-  jobStatus?: PlatformJobStatus
+  jobStatus?: PlatformJobStatus,
+  { enabled = true }: UseCustomizationJobStatusOptions = {}
 ): UseCustomizationJobStatusResult => {
   const endpoint = backend ? STATUS_ENDPOINTS[backend] : undefined;
-  const canFetch = Boolean(endpoint && workspace && name);
+  const canFetch = Boolean(endpoint && workspace && name && enabled);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: endpoint ? endpoint.getQueryKey(workspace, name) : PENDING_BACKEND_QUERY_KEY,

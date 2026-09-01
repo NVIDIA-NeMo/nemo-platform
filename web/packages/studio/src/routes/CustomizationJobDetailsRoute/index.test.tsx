@@ -6,7 +6,10 @@ import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { PlatformJobResponse, PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
-import { customizationJob1 } from '@studio/mocks/customizer/customization-jobs';
+import {
+  customizationJob1,
+  failedGrpoCustomizationJob,
+} from '@studio/mocks/customizer/customization-jobs';
 import { dataset } from '@studio/mocks/datasets';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { server } from '@studio/mocks/node';
@@ -143,69 +146,118 @@ describe('CustomizationJobDetailsRoute', () => {
     );
   });
 
-  it('Should render error message for a failed customization', async () => {
-    const user = userEvent.setup();
-    const mockErrorDetail =
-      'CUDA out of memory. Tried to allocate 896.00 MiB. GPU 1 has a total capacity of 79.32 GiB of which 185.56 MiB is free.';
-
-    server.use(
-      http.get<never, never, PlatformJobResponse>(
-        `${PLATFORM_BASE_URL}/apis/jobs/v2/workspaces/:workspace/jobs/:name`,
-        () => {
-          return HttpResponse.json({
-            ...customizationJob1,
-            status: PlatformJobStatus.error,
-            status_details: {
-              created_at: customizationJob1.created_at!,
-              updated_at: customizationJob1.updated_at!,
-              status: 'failed',
-              status_logs: [
+  describe('a failed job', () => {
+    /** Captures the `step_id` of every logs request the page makes. */
+    const stubLogs = () => {
+      const stepIds: (string | null)[] = [];
+      server.use(
+        http.get(
+          `${PLATFORM_BASE_URL}/apis/jobs/v2/workspaces/:workspace/jobs/:name/logs`,
+          ({ request }) => {
+            stepIds.push(new URL(request.url).searchParams.get('step_id'));
+            return HttpResponse.json({
+              data: [
                 {
-                  updated_at: customizationJob1.updated_at!,
-                  message: 'TraingJobFailed',
-                  detail: mockErrorDetail,
+                  timestamp: failedGrpoCustomizationJob.updated_at!,
+                  job: failedGrpoCustomizationJob.name,
+                  job_step: 'grpo-training',
+                  job_task: 'main',
+                  message: 'torch.OutOfMemoryError: CUDA out of memory.',
                 },
               ],
-            },
-          } as unknown as PlatformJobResponse);
-        }
-      ),
-      http.get(`${PLATFORM_BASE_URL}/apis/jobs/v2/workspaces/:workspace/jobs/:name/logs`, () =>
-        HttpResponse.json({
-          data: [
-            {
-              timestamp: customizationJob1.updated_at!,
-              job: customizationJob1.name,
-              job_step: 'training',
-              job_task: 'main',
-              message: mockErrorDetail,
-            },
-          ],
-          total: 1,
-          next_page: '',
-          prev_page: '',
-        })
-      )
-    );
+              total: 1,
+              next_page: '',
+              prev_page: '',
+            });
+          }
+        )
+      );
+      return stepIds;
+    };
 
-    render(
-      <TestProviders>
-        <CustomizationJobDetailsRoute />
-      </TestProviders>
-    );
+    beforeEach(() => {
+      mockUseNavigate();
+      mockUseParams({
+        [ROUTE_PARAMS.workspace]: workspace1.name,
+        [ROUTE_PARAMS.customizationJobName]: failedGrpoCustomizationJob.name,
+      });
+    });
 
-    // Ensure status is error (PlatformJobStatus.error displays as "Error")
-    expect(
-      await screen.findByText('Error', undefined, { timeout: XL_SELECTOR_TIMEOUT })
-    ).toBeInTheDocument();
+    it('shows the mapped cause from the failing task, not the generic job-level text', async () => {
+      render(
+        <TestProviders>
+          <CustomizationJobDetailsRoute />
+        </TestProviders>
+      );
 
-    await user.click(await screen.findByRole('tab', { name: /Logs/ }));
+      const banner = await screen.findByTestId('customization-error-banner', undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      });
 
-    await waitFor(
-      () => {
-        expect(screen.getByText(/CUDA out of memory/)).toBeInTheDocument();
-      },
-      { timeout: XL_SELECTOR_TIMEOUT }
-    );
+      expect(banner).toHaveTextContent(/ran out of GPU memory/);
+      expect(banner).not.toHaveTextContent(/One or more tasks are in error state/);
+    });
+
+    it('names the failing pipeline step and the mapped error type', async () => {
+      render(
+        <TestProviders>
+          <CustomizationJobDetailsRoute />
+        </TestProviders>
+      );
+
+      const banner = await screen.findByTestId('customization-error-banner', undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      });
+
+      expect(banner).toHaveTextContent('Failed during GRPO training');
+      expect(banner).toHaveTextContent('CudaError');
+    });
+
+    it('opens the logs scoped to the failing step from the banner', async () => {
+      const stepIds = stubLogs();
+      const user = userEvent.setup();
+
+      render(
+        <TestProviders>
+          <CustomizationJobDetailsRoute />
+        </TestProviders>
+      );
+
+      await user.click(
+        await screen.findByRole(
+          'button',
+          { name: /View GRPO training logs/ },
+          { timeout: XL_SELECTOR_TIMEOUT }
+        )
+      );
+
+      expect(await screen.findByText(/Showing logs for GRPO training/)).toBeInTheDocument();
+      await waitFor(() => expect(stepIds).toContain('grpo-training'), {
+        timeout: XL_SELECTOR_TIMEOUT,
+      });
+    });
+
+    it('drops the step filter when the user asks for all logs', async () => {
+      const stepIds = stubLogs();
+      const user = userEvent.setup();
+
+      render(
+        <TestProviders>
+          <CustomizationJobDetailsRoute />
+        </TestProviders>
+      );
+
+      await user.click(
+        await screen.findByRole(
+          'button',
+          { name: /View GRPO training logs/ },
+          { timeout: XL_SELECTOR_TIMEOUT }
+        )
+      );
+      await user.click(await screen.findByRole('button', { name: /Show all logs/ }));
+
+      expect(screen.queryByText(/Showing logs for GRPO training/)).not.toBeInTheDocument();
+      await waitFor(() => expect(stepIds).toContain(null), { timeout: XL_SELECTOR_TIMEOUT });
+    });
   });
 });
