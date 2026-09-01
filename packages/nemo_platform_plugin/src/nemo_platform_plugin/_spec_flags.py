@@ -226,7 +226,7 @@ def _walk(
                 param_name,
             )
             if unavailable is not None:
-                unavailable.append(f"{'.'.join(path)} (inline form)")
+                unavailable.append(f"{'.'.join(path)} (other union forms)")
 
         out.append(
             SpecLeafField(
@@ -548,7 +548,7 @@ def make_field_param(
     if leaf.partial:
         scalar_name = _SCALAR_TYPE_NAMES.get(leaf.python_type, leaf.python_type.__name__)
         help_text = (
-            f"{help_text} This flag accepts the {scalar_name} form only; use --spec or --spec-file for the object form."
+            f"{help_text} This flag accepts the {scalar_name} form only; use --spec or --spec-file for the other union form(s)."
         ).strip()
     if leaf.required and leaf.default is PydanticUndefined:
         help_text = f"[required] {help_text}".strip()
