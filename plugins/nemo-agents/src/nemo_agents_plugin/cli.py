@@ -45,7 +45,7 @@ import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from pkgutil import resolve_name
 from typing import Any, ClassVar, Literal, Optional, cast
@@ -78,9 +78,11 @@ from nemo_agents_plugin.entities import (
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     AgentDeployment,
     AgentSession,
+    SessionStatus,
     ethos_fileset_name,
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
+from nemo_agents_plugin.session_lifecycle import session_expiration_is_due
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform import NeMoPlatform
 from nemo_platform_ext.cli.core.api import is_tty
@@ -99,6 +101,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_WORKSPACE = "default"
 _LIST_OUTPUT_FORMAT = Literal["table", "json", "yaml", "csv", "markdown", "raw"]
+_DEPLOYMENT_RESOLUTION_PAGE_SIZE = 100
 
 _AGENT_LIST_COLUMNS = [
     Column("name"),
@@ -986,22 +989,19 @@ def _register_platform_commands(app: typer.Typer) -> None:
     ) -> None:
         """List persisted sessions, newest first."""
         base_url = _resolve_base_url(base_url)
-        deployment_id = None
+        path = f"/apis/agents/v2/workspaces/{workspace}/sessions"
         if agent_deployment is not None:
             if not agent_deployment.strip():
                 typer.echo("Error: --agent-deployment must not be empty.", err=True)
                 raise typer.Exit(code=2)
-            deployment_id = _get_deployment_id(
-                base_url=base_url,
-                workspace=workspace,
-                deployment_name=agent_deployment,
+            deployment = _api_request(
+                "GET",
+                base_url,
+                f"/apis/agents/v2/workspaces/{workspace}/deployments/{agent_deployment}",
             )
+            path += f"?{urlencode({'filter[deployment_id]': deployment['id']})}"
 
-        resp = _api_request(
-            "GET",
-            base_url,
-            _sessions_list_path(workspace=workspace, deployment_id=deployment_id),
-        )
+        resp = _api_request("GET", base_url, path)
         _print_list_response(
             ctx,
             resp,
@@ -1031,10 +1031,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         """Close a session and release its deployed runtime."""
         base_url = _resolve_base_url(base_url)
         if not yes:
-            typer.confirm(
-                f"Close session '{name}'? It cannot be resumed after it is closed.",
-                abort=True,
-            )
+            typer.confirm(f"Close session '{name}'? It cannot be resumed after it is closed.", abort=True)
         _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/sessions/{name}/close")
         typer.echo(f"Session '{name}' closed.")
 
@@ -2178,8 +2175,21 @@ def _platform_session_chat(
         return
 
     if session is not None:
-        typer.echo("Error: Existing session resumption is not implemented yet.", err=True)
-        raise typer.Exit(code=1)
+        deployment, resolved_session, session_id = _resolve_existing_session(
+            base_url=base_url,
+            workspace=workspace,
+            session_name=session,
+        )
+        _run_resolved_session_chat(
+            base_url=base_url,
+            workspace=workspace,
+            deployment=deployment,
+            session=resolved_session,
+            session_id=session_id,
+            input=input,
+            timeout=timeout,
+        )
+        return
     typer.echo("Error: Provide exactly one of --agent-deployment or --session.", err=True)
     raise typer.Exit(code=2)
 
@@ -2204,28 +2214,6 @@ def _run_resolved_session_chat(
 # ---------------------------------------------------------------------------
 
 
-def _sessions_list_path(*, workspace: str, deployment_id: str | None = None) -> str:
-    """Build the session-list path with the API's deep-object deployment filter."""
-    path = f"/apis/agents/v2/workspaces/{workspace}/sessions"
-    if deployment_id is None:
-        return path
-    return f"{path}?{urlencode({'filter[deployment_id]': deployment_id})}"
-
-
-def _get_deployment_id(*, base_url: str, workspace: str, deployment_name: str) -> str:
-    """Resolve a deployment's entity ID for APIs that filter by immutable ID."""
-    deployment = _api_request(
-        "GET",
-        base_url,
-        f"/apis/agents/v2/workspaces/{workspace}/deployments/{deployment_name}",
-    )
-    deployment_id = deployment.get("id") if isinstance(deployment, dict) else None
-    if not isinstance(deployment_id, str) or not deployment_id:
-        typer.echo(f"Error: Deployment '{deployment_name}' response did not include a valid ID.", err=True)
-        raise typer.Exit(code=1)
-    return deployment_id
-
-
 def _create_session_for_deployment(
     *,
     base_url: str,
@@ -2239,17 +2227,13 @@ def _create_session_for_deployment(
         base_url,
         f"/apis/agents/v2/workspaces/{workspace}/deployments/{deployment_name}",
     )
-    deployment_id = deployment_response.get("id") if isinstance(deployment_response, dict) else None
-    if not isinstance(deployment_id, str) or not deployment_id:
-        typer.echo(f"Error: Deployment '{deployment_name}' response did not include a valid ID.", err=True)
-        raise typer.Exit(code=1)
     try:
+        deployment_id = deployment_response["id"]
+        if not isinstance(deployment_id, str) or not deployment_id:
+            raise ValueError
         deployment = AgentDeployment.model_validate(deployment_response)
-    except ValidationError:
+    except (KeyError, TypeError, ValueError):
         typer.echo(f"Error: Deployment '{deployment_name}' returned an invalid response.", err=True)
-        raise typer.Exit(code=1)
-    if deployment.name != deployment_name or deployment.workspace != workspace:
-        typer.echo(f"Error: Deployment '{deployment_name}' returned mismatched identity metadata.", err=True)
         raise typer.Exit(code=1)
 
     config_format = deployment.config.get("config_format")
@@ -2276,23 +2260,99 @@ def _create_session_for_deployment(
         f"/apis/agents/v2/workspaces/{workspace}/sessions",
         json_body=payload,
     )
-    session_id = response.get("id") if isinstance(response, dict) else None
-    if not isinstance(session_id, str) or not session_id:
-        typer.echo("Error: Session creation response did not include a valid ID.", err=True)
-        raise typer.Exit(code=1)
     try:
+        session_id = response["id"]
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError
         created_session = AgentSession.model_validate(response)
-    except ValidationError:
+    except (KeyError, TypeError, ValueError):
         typer.echo("Error: Session creation returned an invalid response.", err=True)
-        raise typer.Exit(code=1)
-    if created_session.workspace != workspace or created_session.deployment_id != deployment_id:
-        typer.echo("Error: Session creation returned mismatched deployment or workspace metadata.", err=True)
-        raise typer.Exit(code=1)
-    if session_name is not None and created_session.name != session_name:
-        typer.echo("Error: Session creation returned a different name than requested.", err=True)
         raise typer.Exit(code=1)
 
     return deployment, created_session, session_id
+
+
+def _resolve_existing_session(
+    *,
+    base_url: str,
+    workspace: str,
+    session_name: str,
+) -> tuple[AgentDeployment, AgentSession, str]:
+    """Resolve a resumable persisted session and its bound deployment."""
+    response = _api_request(
+        "GET",
+        base_url,
+        f"/apis/agents/v2/workspaces/{workspace}/sessions/{session_name}",
+    )
+    try:
+        session_id = response["id"]
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError
+        resolved_session = AgentSession.model_validate(response)
+    except (KeyError, TypeError, ValueError):
+        typer.echo(f"Error: Session '{session_name}' returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+    if resolved_session.status is not SessionStatus.ACTIVE:
+        typer.echo(
+            f"Error: Session '{session_name}' is {resolved_session.status.value} and cannot be resumed.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if session_expiration_is_due(resolved_session, at=datetime.now(UTC)):
+        typer.echo(f"Error: Session '{session_name}' is expired and cannot be resumed.", err=True)
+        raise typer.Exit(code=1)
+
+    deployment = _resolve_deployment_by_id(
+        base_url=base_url,
+        workspace=workspace,
+        deployment_id=resolved_session.deployment_id,
+        session_name=session_name,
+    )
+    return deployment, resolved_session, session_id
+
+
+def _resolve_deployment_by_id(
+    *,
+    base_url: str,
+    workspace: str,
+    deployment_id: str,
+    session_name: str,
+) -> AgentDeployment:
+    """Find a session's bound deployment through the paginated list API."""
+    page = 1
+    while True:
+        query = urlencode({"page": page, "page_size": _DEPLOYMENT_RESOLUTION_PAGE_SIZE})
+        response = _api_request(
+            "GET",
+            base_url,
+            f"/apis/agents/v2/workspaces/{workspace}/deployments?{query}",
+        )
+        for candidate in _unwrap_list(response):
+            if candidate.get("id") != deployment_id:
+                continue
+            try:
+                deployment = AgentDeployment.model_validate(candidate)
+            except ValidationError:
+                typer.echo(
+                    f"Error: Deployment ID '{deployment_id}' for session '{session_name}' "
+                    "returned an invalid response.",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+            return deployment
+
+        pagination = response.get("pagination") if isinstance(response, dict) else None
+        total_pages = pagination.get("total_pages") if isinstance(pagination, dict) else None
+        if not isinstance(total_pages, int) or page >= total_pages:
+            break
+        page += 1
+
+    typer.echo(
+        f"Error: Session '{session_name}' references deployment ID '{deployment_id}', "
+        f"but no matching deployment exists in workspace '{workspace}'.",
+        err=True,
+    )
+    raise typer.Exit(code=1)
 
 
 def _unwrap_list(resp: Any) -> list[dict[str, Any]]:

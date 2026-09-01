@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import call, patch
 
@@ -16,6 +17,7 @@ from nemo_agents_plugin.entities import (
     AgentDeployment,
     AgentSession,
     DeploymentStatus,
+    SessionStatus,
 )
 from typer.testing import CliRunner
 
@@ -29,6 +31,7 @@ def _deployment_response(
     config_format: str = NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     status: DeploymentStatus = "running",
     endpoint: str = "http://127.0.0.1:9001",
+    deployment_id: str = "deployment-id",
 ) -> dict[str, Any]:
     response = AgentDeployment(
         name=name,
@@ -38,7 +41,7 @@ def _deployment_response(
         status=status,
         endpoint=endpoint,
     ).model_dump(mode="json")
-    response["id"] = "deployment-id"
+    response["id"] = deployment_id
     return response
 
 
@@ -47,14 +50,35 @@ def _session_response(
     name: str = "debug-auth",
     workspace: str = "default",
     deployment_id: str = "deployment-id",
+    status: SessionStatus = SessionStatus.ACTIVE,
+    expires_at: datetime | None = None,
 ) -> dict[str, Any]:
     response = AgentSession(
         name=name,
         workspace=workspace,
         deployment_id=deployment_id,
+        status=status,
+        expires_at=expires_at,
     ).model_dump(mode="json")
     response["id"] = "session-id"
     return response
+
+
+def _deployment_page(
+    *deployments: dict[str, Any],
+    page: int = 1,
+    total_pages: int = 1,
+) -> dict[str, Any]:
+    return {
+        "data": list(deployments),
+        "pagination": {
+            "page": page,
+            "page_size": 100,
+            "current_page_size": len(deployments),
+            "total_pages": total_pages,
+            "total_results": len(deployments),
+        },
+    }
 
 
 def test_session_chat_help_describes_new_and_resumed_sessions() -> None:
@@ -245,6 +269,156 @@ def test_session_chat_preserves_api_generated_session_name() -> None:
     assert run_chat.call_args.kwargs["session_id"] == "session-id"
 
 
+def test_session_chat_resumes_active_session_and_passes_values_to_transport() -> None:
+    with (
+        patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
+        patch(
+            "nemo_agents_plugin.cli._api_request",
+            side_effect=[
+                _session_response(),
+                _deployment_page(_deployment_response()),
+            ],
+        ) as api_request,
+        patch("nemo_agents_plugin.cli._run_resolved_session_chat") as run_chat,
+    ):
+        result = runner.invoke(
+            AgentsCLI().get_cli(),
+            ["chat", "--session", "debug-auth", "--input", "Continue debugging", "--timeout", "42"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    assert api_request.call_args_list == [
+        call(
+            "GET",
+            "http://localhost:8080",
+            "/apis/agents/v2/workspaces/default/sessions/debug-auth",
+        ),
+        call(
+            "GET",
+            "http://localhost:8080",
+            "/apis/agents/v2/workspaces/default/deployments?page=1&page_size=100",
+        ),
+    ]
+    run_chat.assert_called_once()
+    run_kwargs = run_chat.call_args.kwargs
+    assert run_kwargs["base_url"] == "http://localhost:8080"
+    assert run_kwargs["workspace"] == "default"
+    assert run_kwargs["input"] == "Continue debugging"
+    assert run_kwargs["timeout"] == 42.0
+    assert run_kwargs["deployment"].name == "fabric-deployment"
+    assert run_kwargs["session"].name == "debug-auth"
+    assert run_kwargs["session_id"] == "session-id"
+
+
+def test_session_chat_pages_until_it_finds_the_session_deployment() -> None:
+    target_id = "target-deployment-id"
+    with (
+        patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
+        patch(
+            "nemo_agents_plugin.cli._api_request",
+            side_effect=[
+                _session_response(deployment_id=target_id),
+                _deployment_page(
+                    _deployment_response(name="unrelated", deployment_id="unrelated-id"),
+                    page=1,
+                    total_pages=2,
+                ),
+                _deployment_page(
+                    _deployment_response(deployment_id=target_id),
+                    page=2,
+                    total_pages=2,
+                ),
+            ],
+        ) as api_request,
+        patch("nemo_agents_plugin.cli._run_resolved_session_chat") as run_chat,
+    ):
+        result = runner.invoke(AgentsCLI().get_cli(), ["chat", "--session", "debug-auth"])
+
+    assert result.exit_code == 0, result.stderr
+    assert api_request.call_args_list[-2:] == [
+        call(
+            "GET",
+            "http://localhost:8080",
+            "/apis/agents/v2/workspaces/default/deployments?page=1&page_size=100",
+        ),
+        call(
+            "GET",
+            "http://localhost:8080",
+            "/apis/agents/v2/workspaces/default/deployments?page=2&page_size=100",
+        ),
+    ]
+    assert run_chat.call_args.kwargs["deployment"].name == "fabric-deployment"
+    assert run_chat.call_args.kwargs["session_id"] == "session-id"
+
+
+@pytest.mark.parametrize("status", [SessionStatus.CLOSED, SessionStatus.EXPIRED, SessionStatus.LOST])
+def test_session_chat_rejects_terminal_session_before_deployment_lookup(status: SessionStatus) -> None:
+    with (
+        patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
+        patch(
+            "nemo_agents_plugin.cli._api_request",
+            return_value=_session_response(status=status),
+        ) as api_request,
+        patch("nemo_agents_plugin.cli._run_resolved_session_chat") as run_chat,
+    ):
+        result = runner.invoke(AgentsCLI().get_cli(), ["chat", "--session", "debug-auth"])
+
+    assert result.exit_code == 1
+    assert f"is {status.value} and cannot be resumed" in result.stderr
+    api_request.assert_called_once()
+    run_chat.assert_not_called()
+
+
+def test_session_chat_rejects_active_session_past_its_expiration_deadline() -> None:
+    with (
+        patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
+        patch(
+            "nemo_agents_plugin.cli._api_request",
+            return_value=_session_response(expires_at=datetime(2000, 1, 1, tzinfo=UTC)),
+        ) as api_request,
+        patch("nemo_agents_plugin.cli._run_resolved_session_chat") as run_chat,
+    ):
+        result = runner.invoke(AgentsCLI().get_cli(), ["chat", "--session", "debug-auth"])
+
+    assert result.exit_code == 1
+    assert "is expired and cannot be resumed" in result.stderr
+    api_request.assert_called_once()
+    run_chat.assert_not_called()
+
+
+def test_session_chat_rejects_session_whose_deployment_no_longer_exists() -> None:
+    with (
+        patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
+        patch(
+            "nemo_agents_plugin.cli._api_request",
+            side_effect=[_session_response(), _deployment_page()],
+        ),
+        patch("nemo_agents_plugin.cli._run_resolved_session_chat") as run_chat,
+    ):
+        result = runner.invoke(AgentsCLI().get_cli(), ["chat", "--session", "debug-auth"])
+
+    assert result.exit_code == 1
+    assert "references deployment ID 'deployment-id'" in result.stderr
+    assert "no matching deployment exists" in result.stderr
+    run_chat.assert_not_called()
+
+
+def test_session_chat_rejects_invalid_session_lookup_response() -> None:
+    with (
+        patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
+        patch(
+            "nemo_agents_plugin.cli._api_request",
+            return_value={"name": "debug-auth", "deployment_id": "deployment-id"},
+        ),
+        patch("nemo_agents_plugin.cli._run_resolved_session_chat") as run_chat,
+    ):
+        result = runner.invoke(AgentsCLI().get_cli(), ["chat", "--session", "debug-auth"])
+
+    assert result.exit_code == 1
+    assert "returned an invalid response" in result.stderr
+    run_chat.assert_not_called()
+
+
 def test_session_chat_rejects_non_fabric_deployment_before_session_creation() -> None:
     with (
         patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
@@ -295,23 +469,15 @@ def test_session_chat_rejects_unroutable_deployment_before_session_creation(
     run_chat.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("session_response", "message"),
-    [
-        ({"name": "debug-auth", "deployment_id": "deployment-id"}, "did not include a valid ID"),
-        (_session_response(deployment_id="other-deployment-id"), "mismatched deployment or workspace"),
-        (_session_response(name="different-name"), "different name than requested"),
-    ],
-)
-def test_session_chat_rejects_invalid_session_creation_response(
-    session_response: dict[str, Any],
-    message: str,
-) -> None:
+def test_session_chat_rejects_invalid_session_creation_response() -> None:
     with (
         patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
         patch(
             "nemo_agents_plugin.cli._api_request",
-            side_effect=[_deployment_response(), session_response],
+            side_effect=[
+                _deployment_response(),
+                {"name": "debug-auth", "deployment_id": "deployment-id"},
+            ],
         ),
         patch("nemo_agents_plugin.cli._run_resolved_session_chat") as run_chat,
     ):
@@ -327,5 +493,5 @@ def test_session_chat_rejects_invalid_session_creation_response(
         )
 
     assert result.exit_code == 1
-    assert message in result.stderr
+    assert "returned an invalid response" in result.stderr
     run_chat.assert_not_called()

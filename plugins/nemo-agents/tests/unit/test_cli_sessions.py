@@ -51,18 +51,16 @@ def test_sessions_help_exposes_management_scope_without_pagination_or_delete(app
     result = runner.invoke(app, ["sessions", "--help"])
 
     assert result.exit_code == 0
-    assert "list" in result.stdout
-    assert "get" in result.stdout
-    assert "close" in result.stdout
+    for command in ("list", "get", "close"):
+        assert command in result.stdout
     assert "delete" not in result.stdout
 
     list_help = runner.invoke(app, ["sessions", "list", "--help"])
     assert list_help.exit_code == 0
-    assert "--agent-deployment" in list_help.stdout
-    assert "--format" in list_help.stdout
-    assert "--no-truncate" in list_help.stdout
-    assert "--page" not in list_help.stdout
-    assert "--page-size" not in list_help.stdout
+    for option in ("--agent-deployment", "--format", "--no-truncate"):
+        assert option in list_help.stdout
+    for option in ("--page", "--page-size"):
+        assert option not in list_help.stdout
 
 
 def test_sessions_list_defaults_to_newest_first_api_table(app) -> None:
@@ -129,15 +127,6 @@ def test_sessions_list_rejects_empty_deployment_filter(app) -> None:
     assert result.exit_code == 2
     assert "--agent-deployment must not be empty" in result.stderr
     api_request.assert_not_called()
-
-
-def test_sessions_list_rejects_deployment_response_without_id(app) -> None:
-    with patch("nemo_agents_plugin.cli._api_request", return_value={"name": "fabric-deployment"}) as api_request:
-        result = runner.invoke(app, ["sessions", "list", "--agent-deployment", "fabric-deployment"])
-
-    assert result.exit_code == 1
-    assert "did not include a valid ID" in result.stderr
-    api_request.assert_called_once()
 
 
 def test_sessions_get_prints_full_session_json(app) -> None:
