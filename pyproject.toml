@@ -378,6 +378,7 @@ nemo-iron-swarm-plugin = { workspace = true }
 nemo-data-designer-plugin = { workspace = true }
 data-designer-nemo = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
+sandboxed-gym = { workspace = true }
 nmp-guardrails = { workspace = true }
 nmp-intake = { workspace = true }
 nmp-jobs = { workspace = true }
@@ -444,6 +445,7 @@ members = [
   "packages/nemo_nb",
   "packages/data_designer_nemo",
   "packages/nmp_platform",
+  "packages/sandboxed_gym",
   "services/hello-world",
   "services/studio",
   "services/guardrails",
@@ -615,6 +617,8 @@ extra-paths = [
   "plugins/nemo-insights/src",
   # Source path for Experimentalist; its tests also import the benchmark runner.
   "plugins/nemo-experimentalist/src",
+  # Source path for sandboxed-gym; its tests import the package under test.
+  "packages/sandboxed_gym/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
   # on sys.path in tests/conftest.py.
   "tests/agentic-use",
@@ -634,6 +638,22 @@ exclude = [
   "./script/",
 
   "packages/nmp_common/",
+
+  # Runtime-only imports absent from a workspace checkout by design. `gym_host_runtime` drives
+  # NeMo-Gym from inside the Gym image; the other three use the OpenSandbox SDK, an optional
+  # extra. Everything these modules need at *import* time is vendored (`sandboxed_gym.wire`,
+  # `sandboxed_gym.sandbox_types`). Same rationale as the GPU training drivers below.
+  #
+  # The episode driver and backend DO type-check cleanly against the real SDK -- verified with
+  # `sandboxed-gym[opensandbox]` installed. They are excluded only because CI installs workspace
+  # members without their extras, so `ty` would report `opensandbox` as unresolved. Drop these two
+  # lines once the lint job installs that extra.
+  "packages/sandboxed_gym/src/sandboxed_gym/backends/_opensandbox_driver.py",
+  "packages/sandboxed_gym/src/sandboxed_gym/backends/opensandbox.py",
+  "packages/sandboxed_gym/src/sandboxed_gym/host/opensandbox.py",
+  "packages/sandboxed_gym/src/sandboxed_gym/ray/",
+  "packages/sandboxed_gym/src/sandboxed_gym/runtime/gym_host_runtime.py",
+
   "packages/nemo_platform_ext/",
   "packages/nemo_nb/",
 

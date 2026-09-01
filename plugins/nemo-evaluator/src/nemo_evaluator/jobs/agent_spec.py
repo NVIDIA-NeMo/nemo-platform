@@ -25,7 +25,7 @@ from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
-from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
 from nemo_evaluator_sdk.values.agents import AgentBase
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -174,6 +174,20 @@ class GymRunnerTarget(BaseModel):
         "configurable only this way — `wmt_translation` reads `WMT_TRANSLATION_COMET_PY_CACHE` for its "
         "model-cache root and defaults to a container-only path — and a job spec has no ambient "
         "environment to inherit from, so whatever the environment needs has to travel in the spec.",
+    )
+    agent_ref_name: str | None = Field(
+        default=None,
+        description="Gym agent instance rollouts are routed to when running against a sandboxed host, "
+        "stamped as each row's `agent_ref`. Defaults to `agent`. Set it when the environment's config "
+        "defines the agent under a different name -- `mcqa` registers `mcqa_simple_agent`, and routing to "
+        "`simple_agent` there does not answer.",
+    )
+    env_secrets: dict[str, SecretRef] = Field(
+        default_factory=dict,
+        description="Environment variables sourced from the secrets service, as {ENV_NAME: secret-ref}. "
+        "The reference travels in the spec; the service resolves it into the job's environment at "
+        "compile time, so no credential is stored on the spec or written to a run bundle. Use this "
+        "rather than `env_vars` for anything secret -- a Gym model API key belongs here.",
     )
     num_repeats: int = Field(default=1, ge=1, description="Attempts per row; each attempt becomes one trial.")
     concurrency: int = Field(
