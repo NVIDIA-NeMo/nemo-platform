@@ -400,7 +400,8 @@ def _add_run_command(
     when no renderer is supplied.
     """
     schema = _job_input_schema(job_cls)
-    leaves = walk_spec_leaves(schema, reserved=_JOB_RUN_RESERVED_FLAGS)
+    unavailable: list[str] = []
+    leaves = walk_spec_leaves(schema, reserved=_JOB_RUN_RESERVED_FLAGS, unavailable=unavailable)
 
     def _run(typer_ctx: typer.Context, **kwargs: object) -> None:
         original_kwargs = dict(kwargs)
@@ -447,8 +448,9 @@ def _add_run_command(
             renderer.on_complete(ctx=rctx)
 
     help_text = "Run locally, in-process."
+    epilog = build_epilog(schema=schema, leaves=leaves, kind="Job", unavailable=unavailable)
     setattr(_run, "__signature__", _build_job_run_signature(leaves))
-    group.command(name="run", help=help_text)(_run)
+    group.command(name="run", help=help_text, epilog=epilog)(_run)
 
 
 def _build_job_run_signature(leaves: list[SpecLeafField]) -> inspect.Signature:
@@ -554,7 +556,8 @@ def _add_submit_command(
     ``on_complete``.
     """
     schema = _job_input_schema(job_cls)
-    leaves = walk_spec_leaves(schema, reserved=_JOB_SUBMIT_RESERVED_FLAGS)
+    unavailable: list[str] = []
+    leaves = walk_spec_leaves(schema, reserved=_JOB_SUBMIT_RESERVED_FLAGS, unavailable=unavailable)
 
     def _submit(typer_ctx: typer.Context, **kwargs: object) -> None:
         original_kwargs = dict(kwargs)
@@ -626,8 +629,9 @@ def _add_submit_command(
             renderer.on_complete(ctx=rctx)
 
     help_text = "Submit to a cluster."
+    epilog = build_epilog(schema=schema, leaves=leaves, kind="Job", unavailable=unavailable)
     setattr(_submit, "__signature__", _build_job_submit_signature(leaves))
-    group.command(name=command_name, help=help_text, rich_help_panel=rich_help_panel)(_submit)
+    group.command(name=command_name, help=help_text, epilog=epilog, rich_help_panel=rich_help_panel)(_submit)
 
 
 def _build_job_submit_signature(leaves: list[SpecLeafField]) -> inspect.Signature:
@@ -924,7 +928,8 @@ def _add_function_run_command(
     (and ``--output-format json`` is not set), the renderer's lifecycle
     drives the streamed output instead of the default per-frame echo.
     """
-    leaves = walk_spec_leaves(fn_cls.spec_schema, reserved=_FN_RUN_RESERVED_FLAGS)
+    unavailable: list[str] = []
+    leaves = walk_spec_leaves(fn_cls.spec_schema, reserved=_FN_RUN_RESERVED_FLAGS, unavailable=unavailable)
 
     def _run(typer_ctx: typer.Context, **kwargs: object) -> None:
         original_kwargs = dict(kwargs)
@@ -973,7 +978,7 @@ def _add_function_run_command(
             renderer.on_complete(ctx=rctx)
 
     help_text = f"Run {fn_cls.name} locally, in-process."
-    epilog = build_epilog(schema=fn_cls.spec_schema, leaves=leaves, kind="Function")
+    epilog = build_epilog(schema=fn_cls.spec_schema, leaves=leaves, kind="Function", unavailable=unavailable)
     setattr(_run, "__signature__", _build_function_run_signature(leaves))
     group.command(name="run", help=help_text, epilog=epilog)(_run)
 
@@ -1125,7 +1130,8 @@ def _add_function_submit_command(
     (and ``--output-format json`` is not set), the renderer's lifecycle drives
     the streamed NDJSON response instead of the default per-line echo.
     """
-    leaves = walk_spec_leaves(fn_cls.spec_schema, reserved=_FN_SUBMIT_RESERVED_FLAGS)
+    unavailable: list[str] = []
+    leaves = walk_spec_leaves(fn_cls.spec_schema, reserved=_FN_SUBMIT_RESERVED_FLAGS, unavailable=unavailable)
 
     def _submit(typer_ctx: typer.Context, **kwargs: object) -> None:
         original_kwargs = dict(kwargs)
@@ -1179,7 +1185,7 @@ def _add_function_submit_command(
             raise typer.Exit(code=2) from exc
 
     help_text = f"Submit {fn_cls.name} over HTTP."
-    epilog = build_epilog(schema=fn_cls.spec_schema, leaves=leaves, kind="Function")
+    epilog = build_epilog(schema=fn_cls.spec_schema, leaves=leaves, kind="Function", unavailable=unavailable)
     setattr(_submit, "__signature__", _build_function_submit_signature(leaves))
     group.command(name=command_name, help=help_text, epilog=epilog, rich_help_panel=rich_help_panel)(_submit)
 
