@@ -65,7 +65,10 @@ def _install(monkeypatch, tmp_path: Path, config: dict, data: Path | None = None
     monkeypatch.setenv(NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR, str(config_path))
     monkeypatch.setenv(NEMO_JOB_WORKSPACE_ENVVAR, "ws1")
     monkeypatch.setenv(NEMO_JOB_ID_ENVVAR, "job-1")
-    monkeypatch.delenv(NEMO_JOB_FILESET_ENVVAR, raising=False)
+    # Set, not cleared: every job backend exports NEMO_JOB_FILESET as the job's own auto-created
+    # logs/results fileset, so clearing it would let a task that wrongly read it still pass here.
+    # Holding it at its production value is what makes the "nothing to profile" test meaningful.
+    monkeypatch.setenv(NEMO_JOB_FILESET_ENVVAR, "job-fileset-job-1")
     monkeypatch.setattr(run_mod, "FilesetFileSource", _source)
     monkeypatch.setattr(run_mod, "PlatformJobResults", _Results)
     monkeypatch.setattr(run_mod, "client_from_platform", lambda sdk, client_cls: _FilesClient())
@@ -165,6 +168,11 @@ def test_task_fails_when_the_step_config_says_nothing_to_profile(tmp_path, monke
     published = _install(monkeypatch, tmp_path, {}, _dataset(tmp_path / "data"))
     assert run_mod.run(_SDK) == 1  # a nonzero exit, not a traceback out of the container
     assert "profile" not in published
+    # NEMO_JOB_FILESET is set (to the job's own logs fileset) throughout this test. Nothing may be
+    # read from it, stored against it, or published for it: a config that does not say what to
+    # profile has to fail, not profile the job's own logs and report success.
+    assert "read" not in published
+    assert "stored" not in published
 
 
 def test_task_fails_when_the_fileset_cannot_be_read(tmp_path, monkeypatch):
