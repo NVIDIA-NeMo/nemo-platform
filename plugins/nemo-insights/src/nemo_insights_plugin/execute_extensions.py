@@ -56,8 +56,13 @@ class InsightsAnalysisExtension:
 def _analyst_result_from_fabric_output(output: Any) -> AnalystResult:
     if not isinstance(output, dict):
         raise ValueError("Insights analysis extension expected Fabric output to be a mapping.")
-    payload = output.get("analyst_result", output)
-    return AnalystResult.model_validate(payload)
+    if "analyst_result" not in output:
+        # Validating the whole output instead would report missing AnalystResult
+        # fields, describing the shape we wanted rather than the key we lacked.
+        raise ValueError(
+            f"Insights analysis extension expected Fabric output to contain 'analyst_result'; got keys: {list(output)}."
+        )
+    return AnalystResult.model_validate(output["analyst_result"])
 
 
 async def _persist_result(

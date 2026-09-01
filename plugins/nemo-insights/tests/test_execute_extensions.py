@@ -82,3 +82,22 @@ def test_insights_extension_persists_analyst_result_and_saves_report(
     assert client.closed
     report_path = Path(ctx.storage.ephemeral / "results" / REPORT_RESULT_NAME)
     assert report_path.read_text() == "Persisted analysis report"
+
+
+def test_insights_extension_names_the_missing_analyst_result_key(ctx: JobContext) -> None:
+    """An output without the key is a wiring problem, not a malformed AnalystResult."""
+    extension = InsightsAnalysisExtension()
+
+    with pytest.raises(ValueError) as excinfo:
+        extension.after_invoke(
+            ExecuteAgentAfterInvokeContext(
+                ctx=ctx,
+                config={"agent": "research-agent"},
+                agent_name="analyst",
+                fabric_result=FabricRuntimeResult(status="succeeded", output={"response": "summary"}),
+            )
+        )
+
+    message = str(excinfo.value)
+    assert "analyst_result" in message
+    assert "'response'" in message, "the message should show what the output actually carried"
