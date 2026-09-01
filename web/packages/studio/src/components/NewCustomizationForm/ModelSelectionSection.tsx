@@ -58,6 +58,7 @@ export const ModelSelectionSection = () => {
             onValueChange={handleModelChange}
             onOpenChange={setOpen}
             disabled={disabled}
+            emptyMessage="No fine-tunable models found"
             hideAdapters
             fullWidth
           />
