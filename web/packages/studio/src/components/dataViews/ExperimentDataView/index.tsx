@@ -186,8 +186,6 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
   // reference is stable across renders (until default_sort changes).
   const defaultSort = useMemo(() => seedSortFromDefault(group.default_sort), [group.default_sort]);
 
-  // Seeded once, from the layout saved on the experiment. Keyed by group id at the route level, so a
-  // different experiment remounts this view rather than reusing another's columns.
   const seededColumns = useMemo(() => seedColumnState(group.column_layout), [group.column_layout]);
 
   const dataViewState = useStudioDataViewState<EvaluationFilter>({
@@ -656,31 +654,32 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
             Add to experiment
           </Button>
         )}
-        toolbarSlotEnd={
-          // Held at its natural width so the toolbar's search field absorbs the space instead: the
-          // slot shrinks by default, which clipped the Save button off the end of the toolbar.
-          <div className="flex shrink-0 items-center gap-2">
-            <EditColumnsMenu
-              kind="secondary"
-              showChevron={false}
-              // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
-              // spacer sets a min width on the menu (which sizes to its widest child).
-              slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+        // `shrink-0` so the search field absorbs the width instead of the button being clipped.
+        toolbarSlotStart={
+          columnLayout.hasUnsavedLayout ? (
+            <Button
+              className="shrink-0"
+              kind="primary"
+              disabled={columnLayout.isSaving}
+              onClick={columnLayout.save}
             >
-              <>
-                <Columns3 />
-                <span className="hide-mobile">Columns</span>
-              </>
-            </EditColumnsMenu>
-            {/* Only present once the layout differs from the saved one: a permanently visible Save
-                with nothing to save reads as an action the table is waiting on. Left at the default
-                size so it matches the Columns trigger it sits against. */}
-            {columnLayout.hasUnsavedLayout && (
-              <Button kind="primary" disabled={columnLayout.isSaving} onClick={columnLayout.save}>
-                {columnLayout.isSaving ? 'Saving…' : 'Save columns'}
-              </Button>
-            )}
-          </div>
+              {columnLayout.isSaving ? 'Saving…' : 'Save columns'}
+            </Button>
+          ) : undefined
+        }
+        toolbarSlotEnd={
+          <EditColumnsMenu
+            kind="secondary"
+            showChevron={false}
+            // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
+            // spacer sets a min width on the menu (which sizes to its widest child).
+            slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+          >
+            <>
+              <Columns3 />
+              <span className="hide-mobile">Columns</span>
+            </>
+          </EditColumnsMenu>
         }
         attributes={{
           DataViewRoot: {

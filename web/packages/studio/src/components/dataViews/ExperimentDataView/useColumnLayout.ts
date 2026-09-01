@@ -6,18 +6,10 @@ import { getGetExperimentQueryKey, useUpdateExperiment } from '@nemo/sdk/generat
 import type { ColumnLayout, ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { useQueryClient } from '@tanstack/react-query';
 
-/**
- * Columns hidden until someone says otherwise. Applied only when the experiment has no saved layout
- * at all — once a layout exists it is authoritative, so a deliberate "show everything" is not
- * quietly re-hidden on the next load.
- */
+/** Applied only when no layout is saved; a saved layout is authoritative, including an empty one. */
 const DEFAULT_HIDDEN_COLUMNS: readonly string[] = ['created_by', 'updated_at'];
 
-/**
- * The table's `columnVisibility` only records columns someone has toggled; anything absent is
- * visible. Inverting it back to a plain id list is what makes the saved layout comparable to the
- * live one, and keeps what we persist independent of how many columns happen to exist.
- */
+/** `columnVisibility` only records toggled columns; anything absent is visible. */
 export const hiddenColumnIds = (visibility: Record<string, boolean>): string[] =>
   Object.entries(visibility)
     .filter(([, isVisible]) => !isVisible)
@@ -27,21 +19,15 @@ export const hiddenColumnIds = (visibility: Record<string, boolean>): string[] =
 const toVisibility = (hidden: readonly string[]): Record<string, boolean> =>
   Object.fromEntries(hidden.map((id) => [id, false]));
 
-/** Order is a sequence, so it compares element-wise; hidden is a set, so it compares sorted. */
 const sameSequence = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
 const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
   sameSequence([...a].sort(), [...b].sort());
 
-/** The hidden ids a layout implies, falling back to the built-in defaults only when none is saved. */
 const savedHiddenColumns = (layout: ColumnLayout | undefined): readonly string[] =>
   layout ? (layout.hidden ?? []) : DEFAULT_HIDDEN_COLUMNS;
 
-/**
- * Seed values for the data view's column state, so the table opens on the experiment's saved layout
- * instead of flashing the default one and re-arranging once the group loads.
- */
 export const seedColumnState = (
   layout: ColumnLayout | undefined
 ): { columnOrder: string[]; columnVisibility: Record<string, boolean> } => ({
@@ -49,11 +35,6 @@ export const seedColumnState = (
   columnVisibility: toVisibility(savedHiddenColumns(layout)),
 });
 
-/**
- * Whether the live column state differs from the saved layout — which is the whole condition for
- * offering a save. An untouched table sitting on its saved layout must read as clean, including the
- * case where nothing has ever been saved and the table is on its defaults.
- */
 export const isLayoutDirty = ({
   saved,
   columnOrder,
@@ -75,12 +56,10 @@ export interface ExperimentColumnLayout {
 }
 
 /**
- * Tracks the evaluations table's column layout against the copy saved on the experiment, and
- * persists it on request.
+ * Tracks the evaluations table's column layout against the copy saved on the experiment.
  *
- * The layout lives on the experiment rather than in browser storage because it describes the
- * experiment — which of its evaluators are worth a column, and in what order they read — so it
- * should follow the experiment between browsers and between people looking at the same results.
+ * The layout lives on the experiment, not in browser storage, so it follows the experiment between
+ * browsers and between people looking at the same results.
  */
 export function useColumnLayout({
   workspace,
@@ -116,9 +95,8 @@ export function useColumnLayout({
   });
 
   const save = () => {
-    // PUT replaces the whole experiment, and the fields below are written unconditionally by the
-    // API — so they are echoed back as-is. `pareto` and the display flags are guarded server-side by
-    // whether the client sent them, so omitting them preserves what is already saved.
+    // PUT replaces the whole experiment: the fields below are written unconditionally by the API and
+    // must be echoed back, while omitted ones (`pareto`, the display flags) are preserved server-side.
     saveGroup({
       workspace,
       name: group.name,

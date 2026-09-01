@@ -257,8 +257,6 @@ async def update_experiment(
     # clients) must not silently reset customized axes to the cost/latency default.
     if body.pareto is not None:
         existing.pareto = body.pareto
-    # Same reasoning for the saved table layout: an omitted `column_layout` leaves it alone rather
-    # than clearing a layout the user explicitly saved. Sending an empty layout resets it.
     if body.column_layout is not None:
         existing.column_layout = body.column_layout
     # Preserve values written by newer clients when an older client sends a full update without

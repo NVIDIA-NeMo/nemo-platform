@@ -62,14 +62,11 @@ class ParetoConfig(BaseModel):
 class ColumnLayout(BaseModel):
     """A saved table layout for a group's evaluations list: column order and which columns are hidden.
 
-    Column ids are Studio's, not this API's — the evaluations table builds a column per evaluator and
-    per metadata key found in the loaded rows, so the set is workspace- and data-specific and cannot be
-    enumerated here. Ids are stored as given and echoed back unvalidated; Studio ignores any that no
-    longer resolve.
+    Column ids are Studio's and cannot be enumerated here — the table builds a column per evaluator
+    and metadata key found in the rows — so ids are stored and echoed back unvalidated.
 
-    Visibility is stored as the *hidden* ids rather than a visible/hidden map for every column, so a
-    column that appears later (a new evaluator, a new metadata key) shows up by default instead of
-    being invisible because a layout saved before it existed never mentioned it.
+    Visibility is stored as the *hidden* ids rather than a map over every column, so a column that
+    appears later (a new evaluator, a new metadata key) shows up by default.
     """
 
     order: list[str] = Field(

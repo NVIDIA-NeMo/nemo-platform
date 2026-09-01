@@ -9906,15 +9906,12 @@ components:
       type: object
       title: ColumnLayout
       description: "A saved table layout for a group's evaluations list: column order\
-        \ and which columns are hidden.\n\nColumn ids are Studio's, not this API's\
-        \ \u2014 the evaluations table builds a column per evaluator and\nper metadata\
-        \ key found in the loaded rows, so the set is workspace- and data-specific\
-        \ and cannot be\nenumerated here. Ids are stored as given and echoed back\
-        \ unvalidated; Studio ignores any that no\nlonger resolve.\n\nVisibility is\
-        \ stored as the *hidden* ids rather than a visible/hidden map for every column,\
-        \ so a\ncolumn that appears later (a new evaluator, a new metadata key) shows\
-        \ up by default instead of\nbeing invisible because a layout saved before\
-        \ it existed never mentioned it."
+        \ and which columns are hidden.\n\nColumn ids are Studio's and cannot be enumerated\
+        \ here \u2014 the table builds a column per evaluator\nand metadata key found\
+        \ in the rows \u2014 so ids are stored and echoed back unvalidated.\n\nVisibility\
+        \ is stored as the *hidden* ids rather than a map over every column, so a\
+        \ column that\nappears later (a new evaluator, a new metadata key) shows up\
+        \ by default."
     ComputeResourceSpec:
       properties:
         cpu:
