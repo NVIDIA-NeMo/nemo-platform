@@ -677,6 +677,8 @@ class AgentDeploymentController(NemoController):
         healthy = bool(dep.endpoint) and await backend.health_check(dep.endpoint)
 
         if healthy:
+            if info is not None:
+                info.status = "running"
             dep.status = "running"
             self._starting_since.pop((dep.workspace, dep.name), None)
             await self._observe_runtime_instance(dep)
