@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +21,7 @@ from nemo_agents_plugin.fabric import server
 from nemo_agents_plugin.fabric.runtime import (
     FabricRuntimeExecutionError,
     FabricRuntimeResult,
+    FabricRuntimeStream,
     FabricRuntimeTimeoutError,
 )
 from nemo_agents_plugin.fabric.server import SESSION_ID_HEADER, FabricServingSettings, create_fabric_serving_app
@@ -115,6 +117,29 @@ def _sse_line_payload(line: str) -> dict[str, object]:
     return json.loads(line.removeprefix("data: "))
 
 
+def test_shutdown_removes_a_staged_agent_root(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+) -> None:
+    mounted = tmp_path / "mounted"
+    mounted.mkdir()
+    config_path = _write_agent_config(mounted)
+    mounted.chmod(0o555)
+    app = create_fabric_serving_app(config_path)
+    try:
+        with TestClient(app) as client:
+            assert client.get("/health").status_code == 200
+            staged = Path(app.state.base_dir)
+
+            assert staged != mounted
+            assert (staged / "agent.yaml").exists()
+
+        assert not staged.exists()
+        assert config_path.exists()
+    finally:
+        mounted.chmod(0o755)
+
+
 def test_startup_loads_and_validates_agent_config(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
@@ -186,6 +211,7 @@ def test_shutdown_stops_all_registered_runtimes(
         async def register_runtime() -> None:
             await registry.register(cast(Any, runtime), session_id="session-1")
 
+        assert client.portal is not None
         client.portal.call(register_runtime)
 
     assert runtime.stop_calls == 1
@@ -521,7 +547,7 @@ async def test_streaming_chat_completion_emits_sse_error_and_closes_stream() -> 
         event
         async for event in server._iter_streaming_chat_completion(
             stream_context,
-            fabric_stream,
+            cast(FabricRuntimeStream, fabric_stream),
             completion_id="chatcmpl-test",
             model="test-model",
         )
@@ -544,14 +570,14 @@ async def test_streaming_chat_completion_closes_stream_on_generator_close() -> N
     stream_context = _FakeStreamContext(fabric_stream)
     events = server._iter_streaming_chat_completion(
         stream_context,
-        fabric_stream,
+        cast(FabricRuntimeStream, fabric_stream),
         completion_id="chatcmpl-test",
         model="test-model",
     )
 
     assert _sse_payload(await events.__anext__())["choices"] == [{"index": 0, "delta": {"role": "assistant"}}]
 
-    await events.aclose()
+    await cast(AsyncGenerator[str], events).aclose()
 
     assert fabric_stream.aclose_calls == 1
     assert stream_context.exit_calls == 1
@@ -563,12 +589,12 @@ async def test_streaming_chat_completion_closes_stream_before_first_event() -> N
     stream_context = _FakeStreamContext(fabric_stream)
     events = server._iter_streaming_chat_completion(
         stream_context,
-        fabric_stream,
+        cast(FabricRuntimeStream, fabric_stream),
         completion_id="chatcmpl-test",
         model="test-model",
     )
 
-    await events.aclose()
+    await cast(AsyncGenerator[str], events).aclose()
 
     assert fabric_stream.aclose_calls == 1
     assert stream_context.exit_calls == 1

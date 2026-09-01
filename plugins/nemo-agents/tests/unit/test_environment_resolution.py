@@ -308,45 +308,115 @@ class TestRuntimeBaseDir:
     """Fabric resolves both reads and writes against the agent root, so a root the
     runtime cannot write to breaks session startup rather than config loading."""
 
+    @staticmethod
+    def _unwritable_root(tmp_path: Path, name: str = "mounted") -> Path:
+        mounted = tmp_path / name
+        (mounted / "skills").mkdir(parents=True)
+        (mounted / "agent.yaml").write_text("config_format: nemo-agents-spec-v1\n")
+        (mounted / "skills" / "SKILL.md").write_text(f"# {name}\n")
+        # Mirrors a ConfigMap subPath parent: readable and executable, not writable.
+        mounted.chmod(0o555)
+        return mounted
+
     def test_a_writable_agent_root_is_used_as_is(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.fabric.environment import resolve_runtime_base_dir
 
         config = tmp_path / "agent.yaml"
         config.write_text("config_format: nemo-agents-spec-v1\n")
 
-        assert resolve_runtime_base_dir(config) == tmp_path
+        base_dir = resolve_runtime_base_dir(config)
+
+        assert base_dir.path == tmp_path
+        assert base_dir.staged is False
 
     def test_an_unwritable_agent_root_is_staged_somewhere_writable(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.fabric.environment import resolve_runtime_base_dir
 
-        mounted = tmp_path / "mounted"
-        (mounted / "skills").mkdir(parents=True)
-        (mounted / "agent.yaml").write_text("config_format: nemo-agents-spec-v1\n")
-        (mounted / "skills" / "SKILL.md").write_text("# skill\n")
-        # Mirrors a ConfigMap subPath parent: readable and executable, not writable.
-        mounted.chmod(0o555)
+        mounted = self._unwritable_root(tmp_path)
         try:
             base_dir = resolve_runtime_base_dir(mounted / "agent.yaml")
 
-            assert base_dir != mounted
-            assert os.access(base_dir, os.W_OK)
+            assert base_dir.path != mounted
+            assert base_dir.staged is True
+            assert os.access(base_dir.path, os.W_OK)
             # Sibling artifacts must survive the move or skills.paths stops resolving.
-            assert (base_dir / "skills" / "SKILL.md").read_text() == "# skill\n"
-            assert (base_dir / "agent.yaml").exists()
+            assert (base_dir.path / "skills" / "SKILL.md").read_text() == "# mounted\n"
+            assert (base_dir.path / "agent.yaml").exists()
         finally:
             mounted.chmod(0o755)
 
-    def test_staging_is_idempotent_across_restarts(self, tmp_path: Path) -> None:
+    def test_each_lifecycle_stages_to_its_own_directory(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.fabric.environment import resolve_runtime_base_dir
 
-        mounted = tmp_path / "mounted"
-        mounted.mkdir()
-        (mounted / "agent.yaml").write_text("config_format: nemo-agents-spec-v1\n")
-        mounted.chmod(0o555)
+        mounted = self._unwritable_root(tmp_path)
         try:
             first = resolve_runtime_base_dir(mounted / "agent.yaml")
             second = resolve_runtime_base_dir(mounted / "agent.yaml")
 
-            assert first == second
+            assert first.path != second.path
         finally:
             mounted.chmod(0o755)
+
+    def test_a_staged_root_never_inherits_an_earlier_pass(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.fabric.environment import (
+            release_runtime_base_dir,
+            resolve_runtime_base_dir,
+        )
+
+        mounted = self._unwritable_root(tmp_path)
+        try:
+            first = resolve_runtime_base_dir(mounted / "agent.yaml")
+            (first.path / "skills" / "STALE.md").write_text("# dropped skill\n")
+            release_runtime_base_dir(first)
+
+            second = resolve_runtime_base_dir(mounted / "agent.yaml")
+
+            assert not (second.path / "skills" / "STALE.md").exists()
+            assert (second.path / "skills" / "SKILL.md").exists()
+        finally:
+            mounted.chmod(0o755)
+
+    def test_two_agent_roots_stage_to_separate_directories(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.fabric.environment import resolve_runtime_base_dir
+
+        roots = [self._unwritable_root(tmp_path, name) for name in ("first", "second")]
+        try:
+            first = resolve_runtime_base_dir(roots[0] / "agent.yaml")
+            second = resolve_runtime_base_dir(roots[1] / "agent.yaml")
+
+            assert first.path != second.path
+            assert (first.path / "skills" / "SKILL.md").read_text() == "# first\n"
+            assert (second.path / "skills" / "SKILL.md").read_text() == "# second\n"
+        finally:
+            for mounted in roots:
+                mounted.chmod(0o755)
+
+    def test_releasing_a_staged_root_removes_it(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.fabric.environment import (
+            release_runtime_base_dir,
+            resolve_runtime_base_dir,
+        )
+
+        mounted = self._unwritable_root(tmp_path)
+        try:
+            base_dir = resolve_runtime_base_dir(mounted / "agent.yaml")
+            release_runtime_base_dir(base_dir)
+
+            assert not base_dir.path.exists()
+        finally:
+            mounted.chmod(0o755)
+
+    def test_releasing_an_in_place_root_leaves_the_agent_alone(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.fabric.environment import (
+            release_runtime_base_dir,
+            resolve_runtime_base_dir,
+        )
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: nemo-agents-spec-v1\n")
+
+        base_dir = resolve_runtime_base_dir(config)
+        release_runtime_base_dir(base_dir)
+
+        assert config.exists()
+        assert tmp_path.exists()

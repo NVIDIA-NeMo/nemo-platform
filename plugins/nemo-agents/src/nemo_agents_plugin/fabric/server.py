@@ -20,7 +20,7 @@ from typing import Annotated, Any
 from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from nemo_agents_plugin.agent_config import AgentConfig, load_agent_config
-from nemo_agents_plugin.fabric.environment import resolve_runtime_base_dir
+from nemo_agents_plugin.fabric.environment import release_runtime_base_dir, resolve_runtime_base_dir
 from nemo_agents_plugin.fabric.runtime import (
     FabricInvocationRequest,
     FabricRuntimeExecutionError,
@@ -247,7 +247,8 @@ def create_fabric_serving_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         agent_config = load_agent_config(config_path)
-        base_dir = await asyncio.to_thread(resolve_runtime_base_dir, config_path)
+        runtime_base_dir = await asyncio.to_thread(resolve_runtime_base_dir, config_path)
+        base_dir = runtime_base_dir.path
         validation_result = await _validate_agent_config(agent_config, base_dir=base_dir)
         app.state.agent_config = agent_config
         app.state.base_dir = base_dir
@@ -278,7 +279,11 @@ def create_fabric_serving_app(
             try:
                 await cleanup_task
             finally:
-                await session_manager.close_all_sessions()
+                try:
+                    # A staged root is only safe to remove once no runtime can still write to it.
+                    await session_manager.close_all_sessions()
+                finally:
+                    await asyncio.to_thread(release_runtime_base_dir, runtime_base_dir)
 
     app = FastAPI(title="NeMo Agents Fabric Server", lifespan=lifespan)
     runtime_instance_id = str(uuid.uuid4())

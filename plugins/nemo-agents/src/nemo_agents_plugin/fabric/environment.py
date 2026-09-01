@@ -8,17 +8,27 @@ import os
 import shutil
 import stat
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from nemo_agents_plugin.agent_config import AgentConfig
 
 logger = logging.getLogger(__name__)
 
-#: Where the agent tree is copied when its mounted location cannot be written to.
-RUNTIME_BASE_DIR_NAME = "nemo-agent-runtime"
+#: Prefix for the directory an agent tree is copied to when its mounted location
+#: cannot be written to.
+RUNTIME_BASE_DIR_PREFIX = "nemo-agent-runtime"
 
 
-def resolve_runtime_base_dir(config_path: Path) -> Path:
+@dataclass(frozen=True, slots=True)
+class RuntimeBaseDir:
+    """An agent root the runtime can write to, and whether this process created it."""
+
+    path: Path
+    staged: bool
+
+
+def resolve_runtime_base_dir(config_path: Path) -> RuntimeBaseDir:
     """Return an agent root the runtime can write to, copying the tree out if it cannot.
 
     Fabric resolves everything against the agent root — skills and prompts to
@@ -27,21 +37,32 @@ def resolve_runtime_base_dir(config_path: Path) -> Path:
     root, so the runtime user can read its agent but cannot create anything
     beside it. Docker has no such mount and is unaffected.
 
-    The tree is bounded by the spec-fileset staging limits, so copying it is
-    cheap next to starting a runtime.
+    A staged copy belongs to one process lifecycle: it goes to a fresh directory
+    and :func:`release_runtime_base_dir` removes it at shutdown, so a later
+    runtime can never read skills or prompts left behind by an earlier one. The
+    tree is bounded by the spec-fileset staging limits, so copying it is cheap
+    next to starting a runtime.
     """
     source = config_path.parent
     if os.access(source, os.W_OK):
-        return source
+        return RuntimeBaseDir(path=source, staged=False)
 
-    target = Path(tempfile.gettempdir()) / RUNTIME_BASE_DIR_NAME
+    target = Path(tempfile.mkdtemp(prefix=f"{RUNTIME_BASE_DIR_PREFIX}-"))
     logger.info("Agent root %s is not writable; staging it to %s for the runtime.", source, target)
     shutil.copytree(source, target, dirs_exist_ok=True)
     # copytree carries the source's mode across, so the copy of a read-only mount
     # is read-only too — restore write access on the directories we just made.
     for directory in (target, *(path for path in target.rglob("*") if path.is_dir())):
         directory.chmod(directory.stat().st_mode | stat.S_IRWXU)
-    return target
+    return RuntimeBaseDir(path=target, staged=True)
+
+
+def release_runtime_base_dir(base_dir: RuntimeBaseDir) -> None:
+    """Remove a staged agent root. A root used in place is left alone."""
+    if not base_dir.staged:
+        return
+    shutil.rmtree(base_dir.path, ignore_errors=True)
+    logger.info("Removed staged agent root %s.", base_dir.path)
 
 
 def ensure_local_workspace_dir(agent_config: AgentConfig, base_dir: Path) -> None:
