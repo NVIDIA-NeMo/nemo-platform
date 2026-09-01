@@ -55,6 +55,14 @@ const datasetAsJsonl = async (): Promise<{ buffer: Buffer; rowCount: number }> =
   };
 };
 
+/** The job name carried by a submit response, or undefined when the payload is not the shape
+ *  this flow depends on: an object with a non-empty string `name`. */
+const jobNameOf = (payload: unknown): string | undefined => {
+  if (typeof payload !== 'object' || payload === null) return undefined;
+  const name = (payload as { name?: unknown }).name;
+  return typeof name === 'string' && name.length > 0 ? name : undefined;
+};
+
 interface AgentTracker {
   /** Register an agent for teardown: its deployments, the agent, and its spec fileset. */
   trackAgent: (name: string) => void;
@@ -72,9 +80,11 @@ const test = baseTest.extend<TestFixtures>({
     await runFixture(new AgentsAPI(request));
   },
   // Teardown runs even when the test fails, so anything registered here is cleaned up no
-  // matter where in the UI flow we threw. Every delete is best-effort: a step that never
-  // ran left nothing behind, and a 404 here must not mask the real failure.
-  tracked: async ({ agentsAPI }, runFixture) => {
+  // matter where in the UI flow we threw. A cleanup failure is recorded as an annotation
+  // rather than thrown: it must not overwrite the test's own verdict, but it must not vanish
+  // either — a swallowed one leaks the agent, its deployment and its filesets with no trace.
+  // The API layer already tolerates a 404, so anything reaching here is a real failure.
+  tracked: async ({ agentsAPI }, runFixture, testInfo) => {
     const agents: string[] = [];
     const experiments: string[] = [];
 
@@ -83,15 +93,32 @@ const test = baseTest.extend<TestFixtures>({
       trackExperiment: (name) => experiments.push(name),
     });
 
+    const cleanUp = async (what: string, remove: () => Promise<void>) => {
+      try {
+        await remove();
+      } catch (error) {
+        testInfo.annotations.push({
+          type: 'cleanup-failed',
+          description: `${what}: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    };
+
     for (const experiment of experiments) {
-      await agentsAPI.deleteFileset(WORKSPACE, `${experiment}-data`).catch(() => undefined);
-      await agentsAPI.deleteExperiment(WORKSPACE, experiment).catch(() => undefined);
+      await cleanUp(`fileset ${experiment}-data`, () =>
+        agentsAPI.deleteFileset(WORKSPACE, `${experiment}-data`)
+      );
+      await cleanUp(`experiment ${experiment}`, () =>
+        agentsAPI.deleteExperiment(WORKSPACE, experiment)
+      );
     }
     for (const agent of agents) {
-      await agentsAPI.removeDeployments(WORKSPACE, agent).catch(() => undefined);
-      await agentsAPI.deleteAgent(WORKSPACE, agent).catch(() => undefined);
+      await cleanUp(`deployments of ${agent}`, () => agentsAPI.removeDeployments(WORKSPACE, agent));
+      await cleanUp(`agent ${agent}`, () => agentsAPI.deleteAgent(WORKSPACE, agent));
       // Deleting an agent leaves its spec fileset behind by design.
-      await agentsAPI.deleteFileset(WORKSPACE, `${agent}-spec`).catch(() => undefined);
+      await cleanUp(`fileset ${agent}-spec`, () =>
+        agentsAPI.deleteFileset(WORKSPACE, `${agent}-spec`)
+      );
     }
   },
 });
@@ -212,9 +239,17 @@ test.describe('Agent Evaluation', () => {
       );
       await modal.getByRole('button', { name: 'Submit' }).click();
 
-      const body = (await (await submitted).json()) as { name?: string };
-      expect(body.name, 'the submit response should name the job it created').toBeTruthy();
-      jobName = body.name ?? '';
+      // Read as `unknown` and narrowed: asserting the shape would let a null payload throw a
+      // bare TypeError here, and a non-string `name` through to fail later as a puzzling 404
+      // on the results URL.
+      const payload: unknown = await (await submitted).json();
+      const submittedName = jobNameOf(payload);
+      if (submittedName === undefined) {
+        throw new Error(
+          `The submit response did not name the job it created: ${JSON.stringify(payload)}`
+        );
+      }
+      jobName = submittedName;
 
       await expect(modal).toBeHidden({ timeout: VERY_LONG_OPERATION_TIMEOUT });
     });
