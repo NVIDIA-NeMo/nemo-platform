@@ -37,6 +37,7 @@ from nemo_evaluator.jobs.agent_spec import (
     ModelTarget,
     Target,
 )
+from nemo_evaluator.jobs.gym_sandbox import SessionBackedGymRunner, sandbox_plan_from_environment
 from nemo_evaluator.jobs.metric_resolution import resolve_metrics_to_inline, to_runtime_bundle
 from nemo_evaluator.jobs.publication import publish_agent_eval_result
 from nemo_evaluator.jobs.result_persistence import persist_agent_eval_result
@@ -344,6 +345,18 @@ class AgentEvalJob(NemoJob):
             )
             return fabric_runtime, None, None
         if isinstance(target, GymRunnerTarget):
+            # Sandboxing is a deployment decision, not a job field: the same target runs colocated
+            # on a trusted box and sandboxed on a shared cluster. The decision, and the settings it
+            # needs, were resolved and validated by the compiler in the evaluator service -- the
+            # only place the operator's configuration exists. This container reads the result; it
+            # cannot re-derive it, because none of those variables are set here.
+            plan = sandbox_plan_from_environment()
+            if plan is not None:
+                return (
+                    SessionBackedGymRunner(target=target, plan=plan, job_id=ctx.job_id),
+                    None,
+                    None,
+                )
             gym_runtime = GymAgentTaskRunner(
                 config=GymRuntimeConfig(
                     agent=target.agent,

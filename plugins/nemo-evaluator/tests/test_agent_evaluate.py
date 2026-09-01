@@ -1009,3 +1009,33 @@ async def test_trial_error_survives_the_job_spec_wire_contract() -> None:
     round_tripped = AgentEvalSpec.model_validate(json.loads(json.dumps(spec.model_dump(mode="json"))))
     assert round_tripped.trials is not None
     assert round_tripped.trials[0].error == error
+
+
+async def test_compile_resolves_gym_runner_env_secrets() -> None:
+    """A Gym environment's model key reaches it through the OS environment, not an endpoint spec.
+
+    Without this the only route was `env_vars`, which stores the credential in plaintext on the spec
+    and writes it into whatever persists that spec.
+    """
+    spec = AgentEvalSpec(
+        tasks=[_task_spec()],
+        target=GymRunnerTarget(
+            agent="simple_agent",
+            agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+            resources_server="mcqa",
+            env_vars={"WMT_TRANSLATION_COMET_PY_CACHE": "/shared/cache"},
+            env_secrets={"OPENAI_API_KEY": SecretRef(root="my-workspace/openai-key")},
+        ),
+    )
+
+    compiled = await AgentEvalJob.compile(
+        workspace="default", spec=spec, entity_client=object(), job_name=None, async_sdk=None
+    )
+
+    step = PlatformJobSpec.model_validate(compiled).steps[0]
+    secrets = {env.name: env.from_secret.name for env in step.environment or [] if env.from_secret}
+    assert secrets == {"OPENAI_API_KEY": "my-workspace/openai-key"}
+    # The reference travels; the value never does.
+    stored_target = cast(dict[str, Any], step.config)["target"]
+    assert stored_target["env_secrets"] == {"OPENAI_API_KEY": "my-workspace/openai-key"}
+    assert stored_target["env_vars"] == {"WMT_TRANSLATION_COMET_PY_CACHE": "/shared/cache"}
