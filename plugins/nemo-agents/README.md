@@ -186,6 +186,26 @@ set NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION=1 if your index serves this
 version.
 ```
 
+To package from a checkout, build a wheel and point `NEMO_AGENTS_WHEEL` at it.
+The image installs that wheel instead of resolving the pin, so the version never
+has to be one an index can serve:
+
+```bash
+uv build --package nemo-platform --wheel --out-dir dist && \
+NEMO_AGENTS_WHEEL="$(ls -t dist/nemo_platform-*.whl | head -1)" nemo agents package \
+  --agent plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml \
+  --tag calculator-agent:local
+```
+
+It is an environment variable rather than a flag because packaging also runs as
+a platform job, and a flag would only ever reach the CLI. Setting it in the jobs
+execution profile's `env` makes packaging from Studio work the same way.
+
+Packaging copies the wheel into the build context for the duration of the build
+and removes it afterward. It does not overwrite an existing file with that name.
+It applies to Fabric packaging only — NAT images install the packaged project
+itself.
+
 Supplying your own `--template` also skips the check, since a custom template
 need not pin the contract version at all.
 
