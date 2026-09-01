@@ -34,7 +34,7 @@ export const ExperimentSettingsFields = <T extends FieldValues>({
       name={names.description}
       render={({ field, fieldState }) => (
         <FormField
-          slotLabel="Description (optional)"
+          slotLabel="Description (Optional)"
           slotError={fieldState.error?.message}
           status={fieldState.error && 'error'}
         >

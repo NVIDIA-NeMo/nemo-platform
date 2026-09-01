@@ -108,7 +108,7 @@ describe('SubmitEvaluationModal', () => {
 
     // The experiment step is the Experiments page's own form: name plus every setting.
     expect(await screen.findByLabelText('Name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Description (optional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Description (Optional)')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /evaluate over time/i })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /favorite/i })).toBeInTheDocument();
   });
@@ -175,7 +175,7 @@ describe('SubmitEvaluationModal', () => {
 
     // One screen: pick the run to re-run, then name the run that pick produces.
     const picker = await screen.findByRole('combobox', { name: /evaluation to re-run/i });
-    const nameField = screen.getByLabelText('New evaluation name');
+    const nameField = screen.getByLabelText('New Evaluation Name');
     expect(
       picker.compareDocumentPosition(nameField) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
@@ -209,7 +209,7 @@ describe('SubmitEvaluationModal', () => {
     renderModal({ sourceEvaluation: 'nemotron-super-3-temp-point5' });
 
     // Straight to naming the run — the first two answers came in with the source.
-    const nameField = await screen.findByLabelText<HTMLInputElement>('New evaluation name');
+    const nameField = await screen.findByLabelText<HTMLInputElement>('New Evaluation Name');
     await waitFor(() => expect(nameField.value).toBe('nemotron-super-3-temp-point5'));
     // The picker sits on this step too, so the name appears in its options as well; the point is
     // that the help text under it states which experiment the chosen run belongs to.
@@ -230,7 +230,7 @@ describe('SubmitEvaluationModal', () => {
     const user = userEvent.setup();
     renderModal({ sourceEvaluation: 'baseline' });
 
-    await screen.findByLabelText('New evaluation name');
+    await screen.findByLabelText('New Evaluation Name');
     await user.click(screen.getByRole('button', { name: 'Back' }));
 
     expect(await screen.findByText('How do you want to start?')).toBeInTheDocument();

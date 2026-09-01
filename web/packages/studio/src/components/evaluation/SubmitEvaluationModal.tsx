@@ -1001,7 +1001,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                   isCreateMode ? 'e.g. initial-baseline' : 'e.g. nemotron-super-3-temp-1'
                 }
                 formFieldProps={{
-                  slotLabel: isCreateMode ? 'Evaluation Name' : 'New evaluation name',
+                  slotLabel: isCreateMode ? 'Evaluation Name' : 'New Evaluation Name',
                   ...recordNameSlots,
                 }}
               />
@@ -1033,7 +1033,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                     renderInput={(slotInput) => (
                       <FormField
                         name="dataset"
-                        slotLabel="Add dataset"
+                        slotLabel="Add Dataset"
                         slotHelp="JSONL, or a JSON array of objects."
                         slotError={datasetError}
                         status={datasetError ? 'error' : undefined}
@@ -1051,7 +1051,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                     renderInput={(slotInput) => (
                       <FormField
                         name="evalConfig"
-                        slotLabel="Select evaluator config"
+                        slotLabel="Select Evaluator Config"
                         slotHelp="Select a JSON or YAML config."
                         slotError={configError}
                         status={configError ? 'error' : undefined}
@@ -1066,8 +1066,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                       formFieldName="judgeModel"
                       slotLabel={
                         judgeRequired
-                          ? 'Override all LLM models'
-                          : 'Override all LLM models (optional)'
+                          ? 'Override All LLM Models'
+                          : 'Override All LLM Models (Optional)'
                       }
                       slotError={invalidModelsError}
                     />

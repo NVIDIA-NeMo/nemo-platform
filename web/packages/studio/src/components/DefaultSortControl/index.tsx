@@ -167,7 +167,7 @@ export const DefaultSortControl: FC<DefaultSortControlProps> = ({
   };
 
   return (
-    <FormField slotLabel="Default sort">
+    <FormField slotLabel="Default Sort">
       <Stack gap="density-md">
         <Text kind="body/regular/sm" className="text-secondary">
           Sets the default sort order for all users when they open this group. The first field is

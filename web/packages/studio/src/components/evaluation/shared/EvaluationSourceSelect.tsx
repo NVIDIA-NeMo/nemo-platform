@@ -52,7 +52,7 @@ export const EvaluationSourceSelect = <T extends FieldValues>({
       searchPlaceholder="Search experiments and evaluations..."
       emptyMessage="No evaluation matches that search"
       formFieldProps={{
-        slotLabel: 'Evaluation to re-run',
+        slotLabel: 'Evaluation to Re-run',
         slotHelp: experimentName ? (
           <>
             Reuses the eval config saved on this run. Experiment:{' '}
