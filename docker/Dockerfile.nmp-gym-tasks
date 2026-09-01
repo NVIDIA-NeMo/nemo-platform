@@ -28,10 +28,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --no-install-project
 
 # CVE remediation for the isolated Gym venv.
-# cryptography: GHSA-g6cj-pr64-35w5 (affects <50.0.0).
+# cryptography 50.x is not lockable yet because nemo-gym pulls mlflow>=3.15.1,
+# whose current metadata caps cryptography at <50. Pin the post-sync override so
+# the scanner-visible artifact is deterministic until that upstream cap moves.
 # Ray's bundled Java jars carry httpcore5/jackson CVEs and are only needed for JVM workers.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    UV_CACHE_DIR=/root/.cache/uv UV_LINK_MODE=copy uv pip install --python /opt/gym-venv/bin/python --no-deps "cryptography>=50.0.0,<51" \
+    UV_CACHE_DIR=/root/.cache/uv UV_LINK_MODE=copy uv pip install --python /opt/gym-venv/bin/python --no-deps "cryptography==50.0.0" \
     && find /opt/gym-venv -type d -path '*/site-packages/ray/jars' -prune -exec rm -rf {} + \
     && test -z "$(find /opt/gym-venv -path '*/site-packages/ray/jars/*' -print -quit)"
 
