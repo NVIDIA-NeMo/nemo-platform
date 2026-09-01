@@ -16,6 +16,7 @@ import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
 import { useCustomizationJobStatus } from '@studio/hooks/useCustomizationJobStatus';
 import { hasMetrics } from '@studio/types/customization';
 import { isGrpoJob, isRlJob } from '@studio/util/customizationBackend';
+import { resolveCustomizationFailure } from '@studio/util/customizationFailure';
 import {
   getCustomizationTrainingSteps,
   getDatasetUri,
@@ -106,6 +107,7 @@ export const CustomizationOverview: FC<Props> = ({ customizationJobName, workspa
   const runState = {
     isTerminal: isTerminalStatus,
     duration: getJobDuration(steps, isTerminalStatus, liveSeconds),
+    failedAtStepLabel: resolveCustomizationFailure(customization, steps)?.failingStepLabel,
   };
 
   return (
