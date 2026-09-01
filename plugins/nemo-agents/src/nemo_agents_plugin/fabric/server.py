@@ -20,6 +20,7 @@ from typing import Annotated, Any
 from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from nemo_agents_plugin.agent_config import AgentConfig, load_agent_config
+from nemo_agents_plugin.fabric.environment import resolve_runtime_base_dir
 from nemo_agents_plugin.fabric.runtime import (
     FabricInvocationRequest,
     FabricRuntimeExecutionError,
@@ -246,15 +247,16 @@ def create_fabric_serving_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         agent_config = load_agent_config(config_path)
-        validation_result = await _validate_agent_config(agent_config, base_dir=config_path.parent)
+        base_dir = await asyncio.to_thread(resolve_runtime_base_dir, config_path)
+        validation_result = await _validate_agent_config(agent_config, base_dir=base_dir)
         app.state.agent_config = agent_config
-        app.state.base_dir = config_path.parent
+        app.state.base_dir = base_dir
         app.state.validation_result = validation_result
         session_registry = FabricSessionRegistry()
         app.state.session_registry = session_registry
         session_manager = FabricSessionManager(
             agent_config,
-            base_dir=config_path.parent,
+            base_dir=base_dir,
             session_registry=session_registry,
             max_concurrent_invocations=settings.max_concurrent_invocations,
         )

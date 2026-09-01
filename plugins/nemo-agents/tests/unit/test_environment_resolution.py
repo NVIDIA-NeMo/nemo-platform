@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -15,6 +17,7 @@ from nemo_agents_plugin.entities import (
     AgentEnvironment,
     AgentEnvironmentInline,
     AgentEnvironmentSpec,
+    ComputeResources,
     ComputeSpecInline,
     EnvironmentSpecInline,
     McpFulfillment,
@@ -57,7 +60,7 @@ async def test_resolve_none_returns_empty() -> None:
 async def test_resolve_inline_environment_with_inline_specs() -> None:
     environment = AgentEnvironmentInline(
         environment_spec=EnvironmentSpecInline(env={"FOO": "bar"}),
-        compute_spec=ComputeSpecInline(resources={"limits": {"cpu": "2"}}),
+        compute_spec=ComputeSpecInline(resources=ComputeResources(limits={"cpu": "2"})),
     )
     resolved = await resolve_environment(environment, workspace="default", entity_client=AsyncMock())
     assert resolved.environment_spec is not None
@@ -75,7 +78,7 @@ async def test_resolve_environment_ref_dereferences_all_entities() -> None:
         compute_spec="default/cspec",
     )
     espec = AgentEnvironmentSpec(name="espec", workspace="default", env={"A": "1"})
-    cspec = AgentComputeSpec(name="cspec", workspace="default", resources={"requests": {"cpu": "1"}})
+    cspec = AgentComputeSpec(name="cspec", workspace="default", resources=ComputeResources(requests={"cpu": "1"}))
 
     entity_client = AsyncMock()
     entity_client.get = AsyncMock(side_effect=[env_entity, espec, cspec])
@@ -299,3 +302,51 @@ def test_merge_no_environment_reference_is_identical_to_today() -> None:
     result = merge_environment_spec_into_agent_config(config, None)
     assert result.config == config
     assert result.secrets == {}
+
+
+class TestRuntimeBaseDir:
+    """Fabric resolves both reads and writes against the agent root, so a root the
+    runtime cannot write to breaks session startup rather than config loading."""
+
+    def test_a_writable_agent_root_is_used_as_is(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.fabric.environment import resolve_runtime_base_dir
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: nemo-agents-spec-v1\n")
+
+        assert resolve_runtime_base_dir(config) == tmp_path
+
+    def test_an_unwritable_agent_root_is_staged_somewhere_writable(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.fabric.environment import resolve_runtime_base_dir
+
+        mounted = tmp_path / "mounted"
+        (mounted / "skills").mkdir(parents=True)
+        (mounted / "agent.yaml").write_text("config_format: nemo-agents-spec-v1\n")
+        (mounted / "skills" / "SKILL.md").write_text("# skill\n")
+        # Mirrors a ConfigMap subPath parent: readable and executable, not writable.
+        mounted.chmod(0o555)
+        try:
+            base_dir = resolve_runtime_base_dir(mounted / "agent.yaml")
+
+            assert base_dir != mounted
+            assert os.access(base_dir, os.W_OK)
+            # Sibling artifacts must survive the move or skills.paths stops resolving.
+            assert (base_dir / "skills" / "SKILL.md").read_text() == "# skill\n"
+            assert (base_dir / "agent.yaml").exists()
+        finally:
+            mounted.chmod(0o755)
+
+    def test_staging_is_idempotent_across_restarts(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.fabric.environment import resolve_runtime_base_dir
+
+        mounted = tmp_path / "mounted"
+        mounted.mkdir()
+        (mounted / "agent.yaml").write_text("config_format: nemo-agents-spec-v1\n")
+        mounted.chmod(0o555)
+        try:
+            first = resolve_runtime_base_dir(mounted / "agent.yaml")
+            second = resolve_runtime_base_dir(mounted / "agent.yaml")
+
+            assert first == second
+        finally:
+            mounted.chmod(0o755)
