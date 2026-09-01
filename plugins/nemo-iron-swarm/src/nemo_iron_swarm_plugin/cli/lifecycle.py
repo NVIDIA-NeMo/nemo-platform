@@ -9,6 +9,7 @@ iron-swarm is never imported: it runs in its own venv, invoked by subprocess.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import typer
 from nemo_iron_swarm_plugin.cli import checks, credentials, provisioning
@@ -19,6 +20,90 @@ from nemo_iron_swarm_plugin.cli._shared import (
     preflight_models,
 )
 from nemo_iron_swarm_plugin.config import IronSwarmConfig
+from nemo_iron_swarm_plugin.filesets import upload_project_dir
+
+
+def _project_init_body(
+    ctx: Any,
+    *,
+    project_dir: str,
+    name: str | None,
+    dockerfile: str | None,
+    start_command: str | None,
+    binaries: list[str],
+    harness: str | None,
+    relay_confirmed: bool,
+) -> dict[str, Any]:
+    """Upload a project bundle, derive what it states, and fail naming whatever is still missing.
+
+    The derivation runs server-side — the same endpoint Studio calls — so a CLI user and a Studio user
+    get a manifest from one code path rather than two that drift.
+    """
+    root = Path(project_dir).expanduser().resolve()
+    if not root.is_dir():
+        typer.secho(f"Error: --project-dir {project_dir!r} is not a directory.", fg="red")
+        raise typer.Exit(code=1)
+
+    try:
+        fileset = upload_project_dir(ctx.sdk, root, workspace=ctx.workspace)
+    except Exception as exc:
+        typer.secho(f"Error: could not upload the project — {exc}", fg="red")
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"  uploaded  {root.name} -> {fileset}")
+
+    try:
+        derived = ctx.sdk.iron_swarm.manifests.inspect_project(fileset, dockerfile=dockerfile, workspace=ctx.workspace)
+    except Exception as exc:
+        typer.secho(f"Error: could not read the project — {exc}", fg="red")
+        raise typer.Exit(code=1) from exc
+
+    for warning in derived.get("warnings", []):
+        typer.secho(f"  ! {warning}", fg="yellow")
+
+    supplied = {
+        "dockerfile": dockerfile,
+        "start_command": start_command,
+        "binaries": binaries,
+        "harness": harness,
+        "relay_integration_confirmed": relay_confirmed or None,
+    }
+    # Report every gap at once. Discovering them one flag per run is the slowest possible way to learn
+    # what a project could not say about itself.
+    missing = [field for field in derived.get("unresolved", []) if not supplied.get(field)]
+    if missing:
+        flags = {
+            "dockerfile": "--dockerfile",
+            "start_command": "--start-command",
+            "binaries": "--binary",
+            "harness": "--harness",
+            "relay_integration_confirmed": "--relay-confirmed",
+        }
+        typer.secho(
+            f"Error: the project does not state {', '.join(missing)}. "
+            f"Pass {', '.join(flags[field] for field in missing)}.",
+            fg="red",
+        )
+        raise typer.Exit(code=1)
+
+    for field, value in (("dockerfile", derived.get("dockerfile")), ("start_command", derived.get("start_command"))):
+        if not supplied.get(field) and value:
+            typer.echo(f"  derived   {field}: {value}")
+
+    body: dict[str, Any] = {
+        "name": name or root.name,
+        "source_type": "project",
+        "project_fileset": fileset,
+        "relay_integration_confirmed": relay_confirmed,
+    }
+    for key, value in (
+        ("dockerfile", dockerfile),
+        ("start_command", start_command),
+        ("binaries", binaries or None),
+        ("harness", harness),
+    ):
+        if value:
+            body[key] = value
+    return body
 
 
 def register(app: typer.Typer) -> None:
@@ -66,8 +151,41 @@ def register(app: typer.Typer) -> None:
 
     @app.command()
     def init(
-        agent: str = typer.Option(
-            ..., "--agent", help="Registered NeMo Platform agent to war-game (name or workspace/name)."
+        agent: str | None = typer.Option(
+            None, "--agent", help="Registered NeMo Platform agent to war-game (name or workspace/name)."
+        ),
+        project_dir: str | None = typer.Option(
+            None,
+            "--project-dir",
+            help="Bring your own: a directory holding the Dockerfile that builds your agent. Uploaded and "
+            "read server-side; everything the project states is derived, and you are asked only for the rest.",
+        ),
+        dockerfile: str | None = typer.Option(
+            None, "--dockerfile", help="Which Dockerfile builds the agent, when the project holds more than one."
+        ),
+        start_command: str | None = typer.Option(
+            None,
+            "--start-command",
+            help="Command that serves the agent inside the sandbox. Derived from an exec-form ENTRYPOINT/CMD; "
+            "required when the Dockerfile uses a shell form. Must be absolute — OpenShell replaces PATH.",
+        ),
+        binary: list[str] = typer.Option(
+            None,
+            "--binary",
+            help="Glob matching the victim's interpreter, repeatable. Derived from the image's venv; override "
+            "when the image puts it elsewhere.",
+        ),
+        harness: str | None = typer.Option(
+            None,
+            "--harness",
+            help="Which harness the agent runs (deepagents, hermes, langchain, langgraph, other). Decides "
+            "whether a guardrail can refuse a tool call, and cannot be read from the project.",
+        ),
+        relay_confirmed: bool = typer.Option(
+            False,
+            "--relay-confirmed",
+            help="Confirm NeMo Relay is attached to the agent. Without it the victim emits no telemetry and "
+            "the run cannot be scored.",
         ),
         name: str | None = typer.Option(
             None, "--name", help="Saved-manifest name (the id later phases reference). Defaults to the agent name."
@@ -120,8 +238,25 @@ def register(app: typer.Typer) -> None:
         Resolution happens server-side — the same path Studio takes — so the manifest a CLI user
         gets and the one Studio gets are produced by one code path.
         """
+        if bool(agent) == bool(project_dir):
+            typer.secho("Error: pass exactly one of --agent or --project-dir.", fg="red")
+            raise typer.Exit(code=1)
+
         ctx = command_context(workspace)
-        body: dict[str, object] = {"name": name or str(agent).split("/")[-1], "agent": agent}
+        body: dict[str, Any]
+        if project_dir:
+            body = _project_init_body(
+                ctx,
+                project_dir=project_dir,
+                name=name,
+                dockerfile=dockerfile,
+                start_command=start_command,
+                binaries=list(binary or []),
+                harness=harness,
+                relay_confirmed=relay_confirmed,
+            )
+        else:
+            body = {"name": name or str(agent).split("/")[-1], "agent": agent}
         if port:
             body["port"] = port
         if egress:
@@ -149,11 +284,14 @@ def register(app: typer.Typer) -> None:
             typer.secho(f"Error: could not create manifest — {exc}", fg="red")
             raise typer.Exit(code=1) from exc
 
-        for warning in manifest.get("warnings") or []:
-            typer.secho(f"  ! {warning}", fg="yellow")
+        # A project manifest already printed these while deriving; repeating them here reads as two
+        # separate problems rather than one.
+        if manifest.get("source_type") != "project":
+            for warning in manifest.get("warnings") or []:
+                typer.secho(f"  ! {warning}", fg="yellow")
         manifest_name = str(manifest.get("name") or body["name"])
         typer.secho(f"Saved manifest '{manifest_name}'", fg="green")
-        source = manifest.get("agent") or "?"
+        source = manifest.get("agent") or manifest.get("project_fileset") or "?"
         image = manifest.get("dockerfile") or "(generic, built from the project)"
         typer.echo(
             f"  source    {source}\n"
