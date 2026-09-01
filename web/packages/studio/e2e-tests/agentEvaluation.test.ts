@@ -97,16 +97,18 @@ const test = baseTest.extend<TestFixtures>({
 });
 
 test.describe('Agent Evaluation', () => {
+  test.beforeEach(() => {
+    test.skip(
+      !process.env.RECORD,
+      'Needs a live platform with an inference provider key to deploy and score an agent; run via pnpm test:e2e:record'
+    );
+  });
   test.beforeEach(async ({ page }) => disableAuthForTest(page));
 
   test('Deploys the Fabric email security triage agent and scores it on the sample CSV @record', async ({
     page,
     tracked,
   }) => {
-    test.skip(
-      !process.env.RECORD,
-      'Needs a live platform with an inference provider key to deploy and score an agent; run via pnpm test:e2e:record'
-    );
     // Deploying a Fabric agent and scoring every row of the dataset against it are both
     // model-bound, so the whole flow gets one generous budget rather than the 1-minute default.
     test.setTimeout(30 * 60 * 1000);
