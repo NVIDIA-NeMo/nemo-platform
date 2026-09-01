@@ -26,9 +26,7 @@ export interface CustomizationFailure {
   detail?: string;
   /** Container terminated message, or the tail of its logs. Task level only. */
   errorStack?: string;
-  /** Raw pipeline step name, e.g. `grpo-training`. Use as the logs `step_id` filter. */
-  failingStep?: string;
-  /** Display form of `failingStep`, e.g. `GRPO training`. */
+  /** Display form of the failing pipeline step's raw name, e.g. `GRPO training`. */
   failingStepLabel?: string;
   /** True when only generic infrastructure text was available — no mapped cause was found. */
   isGeneric: boolean;
@@ -155,7 +153,6 @@ export const resolveCustomizationFailure = (
     errorType: readString(failingTask?.error_details, 'type'),
     detail: readString(failingTask?.error_details, 'detail'),
     errorStack: failingTask?.error_stack?.trim() ? failingTask.error_stack : undefined,
-    failingStep: failingStep?.name,
     failingStepLabel: failingStep ? formatPipelineStepName(failingStep.name) : undefined,
     isGeneric: specific === undefined,
   };

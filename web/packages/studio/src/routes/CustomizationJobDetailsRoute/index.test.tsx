@@ -147,34 +147,6 @@ describe('CustomizationJobDetailsRoute', () => {
   });
 
   describe('a failed job', () => {
-    /** Captures the `step_id` of every logs request the page makes. */
-    const stubLogs = () => {
-      const stepIds: (string | null)[] = [];
-      server.use(
-        http.get(
-          `${PLATFORM_BASE_URL}/apis/jobs/v2/workspaces/:workspace/jobs/:name/logs`,
-          ({ request }) => {
-            stepIds.push(new URL(request.url).searchParams.get('step_id'));
-            return HttpResponse.json({
-              data: [
-                {
-                  timestamp: failedGrpoCustomizationJob.updated_at!,
-                  job: failedGrpoCustomizationJob.name,
-                  job_step: 'grpo-training',
-                  job_task: 'main',
-                  message: 'torch.OutOfMemoryError: CUDA out of memory.',
-                },
-              ],
-              total: 1,
-              next_page: '',
-              prev_page: '',
-            });
-          }
-        )
-      );
-      return stepIds;
-    };
-
     beforeEach(() => {
       mockUseNavigate();
       mockUseParams({
@@ -213,8 +185,7 @@ describe('CustomizationJobDetailsRoute', () => {
       expect(banner).toHaveTextContent('CudaError');
     });
 
-    it('opens the logs scoped to the failing step from the banner', async () => {
-      const stepIds = stubLogs();
+    it('opens the logs tab from the banner', async () => {
       const user = userEvent.setup();
 
       render(
@@ -231,33 +202,7 @@ describe('CustomizationJobDetailsRoute', () => {
         )
       );
 
-      expect(await screen.findByText(/Showing logs for GRPO training/)).toBeInTheDocument();
-      await waitFor(() => expect(stepIds).toContain('grpo-training'), {
-        timeout: XL_SELECTOR_TIMEOUT,
-      });
-    });
-
-    it('drops the step filter when the user asks for all logs', async () => {
-      const stepIds = stubLogs();
-      const user = userEvent.setup();
-
-      render(
-        <TestProviders>
-          <CustomizationJobDetailsRoute />
-        </TestProviders>
-      );
-
-      await user.click(
-        await screen.findByRole(
-          'button',
-          { name: /View GRPO training logs/ },
-          { timeout: XL_SELECTOR_TIMEOUT }
-        )
-      );
-      await user.click(await screen.findByRole('button', { name: /Show all logs/ }));
-
-      expect(screen.queryByText(/Showing logs for GRPO training/)).not.toBeInTheDocument();
-      await waitFor(() => expect(stepIds).toContain(null), { timeout: XL_SELECTOR_TIMEOUT });
+      expect(await screen.findByRole('tab', { name: /Logs/, selected: true })).toBeInTheDocument();
     });
   });
 });

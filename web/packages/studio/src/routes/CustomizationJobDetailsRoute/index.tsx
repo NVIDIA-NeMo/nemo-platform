@@ -78,16 +78,10 @@ export const CustomizationJobDetailsRoute: FC = () => {
   const failure = resolveCustomizationFailure(job, steps);
 
   const [activeTab, setActiveTab] = useState('overview');
-  const [logStepFilter, setLogStepFilter] = useState<string>();
 
   // The chat tab unmounts when the job is no longer completed; leaving it selected would blank
   // the page, so fall back to a tab that is always rendered.
   const selectedTab = activeTab === 'chat' && !showChat ? 'overview' : activeTab;
-
-  const viewFailingStepLogs = () => {
-    setLogStepFilter(failure?.failingStep);
-    setActiveTab('logs');
-  };
 
   // Fetch the output model entity so we can check deployment status
   const { data: outputModelEntity } = useModelsGetModel(workspace, output_model ?? '', undefined, {
@@ -140,10 +134,7 @@ export const CustomizationJobDetailsRoute: FC = () => {
           }
         />
         {failure && (
-          <CustomizationFailureBanner
-            failure={failure}
-            onViewLogs={failure.failingStep ? viewFailingStepLogs : undefined}
-          />
+          <CustomizationFailureBanner failure={failure} onViewLogs={() => setActiveTab('logs')} />
         )}
         <TabsRoot
           className="flex min-h-0 flex-1 flex-col"
@@ -176,8 +167,6 @@ export const CustomizationJobDetailsRoute: FC = () => {
               customizationJobName={customizationJobName}
               workspace={workspace}
               jobStatus={status}
-              stepId={logStepFilter}
-              onClearStepFilter={() => setLogStepFilter(undefined)}
             />
           </TabsContent>
 

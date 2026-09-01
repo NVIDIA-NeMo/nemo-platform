@@ -52,7 +52,6 @@ describe('resolveCustomizationFailure', () => {
       steps(failedGrpoJobSteps)
     );
 
-    expect(failure?.failingStep).toBe('grpo-training');
     expect(failure?.failingStepLabel).toBe('GRPO training');
   });
 
@@ -135,7 +134,7 @@ describe('resolveCustomizationFailure', () => {
     // Volcano writes no error_details anywhere, so every candidate is generic.
     expect(failure?.message).toBe('Job failed');
     expect(failure?.isGeneric).toBe(true);
-    expect(failure?.failingStep).toBe('grpo-training');
+    expect(failure?.failingStepLabel).toBe('GRPO training');
     expect(failure?.errorType).toBeUndefined();
   });
 
@@ -144,7 +143,7 @@ describe('resolveCustomizationFailure', () => {
 
     expect(failure?.message).toBe('One or more tasks are in error state');
     expect(failure?.isGeneric).toBe(true);
-    expect(failure?.failingStep).toBeUndefined();
+    expect(failure?.failingStepLabel).toBeUndefined();
   });
 
   it('always produces a message, even with nothing to go on', () => {
