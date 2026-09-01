@@ -31,9 +31,11 @@ OWN_DB_URL = _fixture_dsn("scaled_evals", "own-db", "scaled_evals")
 # Runs in a subprocess so conftest's env presets can't mask a real boot failure.
 BOOT_PROBE = """
 import os
-from nmp.platform_runner.registry import get_available_services
+from importlib.metadata import entry_points
 
-print("DISCOVERED:", "scaled-evals" in get_available_services())
+service_entrypoint = next(iter(entry_points(group="nemo.services", name="scaled-evals")))
+print("DISCOVERED:", service_entrypoint.name == "scaled-evals")
+service_entrypoint.load()()
 
 from cryptography.fernet import Fernet
 os.environ["CREDENTIALS_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
