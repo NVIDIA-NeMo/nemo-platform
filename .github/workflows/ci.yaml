@@ -48,6 +48,7 @@ jobs:
       deps: ${{ steps.changes.outputs.deps }}
       fabric: ${{ steps.changes.outputs.fabric }}
       evaluator-sdk-closure: ${{ steps.changes.outputs.evaluator-sdk-closure }}
+      scaled-evals: ${{ steps.changes.outputs.scaled-evals }}
       e2e: ${{ steps.changes.outputs.e2e }}
       docs: ${{ steps.changes.outputs.docs }}
       web-studio: ${{ steps.changes.outputs.web-studio }}
@@ -1046,6 +1047,10 @@ jobs:
   # it its own environment instead.
   python-unit-test-scaled-evals:
     name: Python unit tests (scaled-evals plugin)
+    needs: [changes]
+    if: >
+      !cancelled() &&
+      needs.changes.outputs.scaled-evals == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
