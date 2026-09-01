@@ -27,15 +27,17 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
         run: |
+          escaped_pr_title="$(sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' <<<"${PR_TITLE}")"
           text="$(printf '%s\n' \
             ':warning: *Forward merge needs attention*' \
             "Repository: ${REPOSITORY}" \
-            "PR: <${PR_URL}|${PR_TITLE}>" \
+            "PR: <${PR_URL}|${escaped_pr_title}>" \
             '' \
             'The bot could not merge automatically and will not retry. Manual recovery is required.' \
             "<${COMMENT_URL}|View failure details>")"
           payload="$(jq -n --arg text "${text}" '{text: $text}')"
-          curl --fail-with-body --retry 2 \
+          curl --fail-with-body --location --max-redirs 0 \
+            --proto '=https' --connect-timeout 10 --max-time 30 \
             --header "Content-Type: application/json" \
             --data "${payload}" \
             "${SLACK_ALERTS_WEBHOOK}"
