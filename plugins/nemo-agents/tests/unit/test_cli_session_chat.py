@@ -5,12 +5,14 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import call, patch
 
+import httpx
 import pytest
-from nemo_agents_plugin.cli import AgentsCLI
+from nemo_agents_plugin.cli import AgentsCLI, _run_resolved_session_chat
 from nemo_agents_plugin.entities import (
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
@@ -19,6 +21,8 @@ from nemo_agents_plugin.entities import (
     DeploymentStatus,
     SessionStatus,
 )
+from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
+from nemo_platform_ext.cli.chat_tui import collect_stream_response
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -417,6 +421,58 @@ def test_session_chat_rejects_invalid_session_lookup_response() -> None:
     assert result.exit_code == 1
     assert "returned an invalid response" in result.stderr
     run_chat.assert_not_called()
+
+
+def test_resolved_session_chat_streams_each_current_turn_with_session_and_auth_headers() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        user_input = json.loads(request.content)["messages"][0]["content"]
+        chunk = {"choices": [{"delta": {"content": f"reply:{user_input}"}}]}
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode(),
+        )
+
+    real_client = httpx.Client
+    transport = httpx.MockTransport(handler)
+
+    def exercise_tui(**kwargs: Any) -> None:
+        assert kwargs["display_info"] == {"Deployment": "fabric-deployment", "Session": "debug-auth"}
+        assert kwargs["initial_message"] == "first turn"
+        for user_input in (kwargs["initial_message"], "second turn"):
+            response_text, usage = collect_stream_response(kwargs["send_turn"](user_input))
+            assert response_text == f"reply:{user_input}"
+            assert usage is None
+
+    with (
+        patch("nemo_agents_plugin.cli._resolve_context_headers", return_value={"Authorization": "Bearer token"}),
+        patch(
+            "nemo_agents_plugin.cli.httpx.Client",
+            side_effect=lambda **kwargs: real_client(transport=transport, **kwargs),
+        ),
+        patch("nemo_agents_plugin.cli.run_chat_tui", side_effect=exercise_tui),
+    ):
+        _run_resolved_session_chat(
+            base_url="http://platform.test/",
+            workspace="team-a",
+            deployment=AgentDeployment.model_validate(_deployment_response()),
+            session=AgentSession.model_validate(_session_response()),
+            session_id="session-id",
+            input="first turn",
+            timeout=42,
+        )
+
+    expected_path = "/apis/agents/v2/workspaces/team-a/deployments/fabric-deployment/-/v1/chat/completions"
+    assert [request.url.path for request in requests] == [expected_path, expected_path]
+    assert [json.loads(request.content) for request in requests] == [
+        {"messages": [{"role": "user", "content": "first turn"}], "stream": True},
+        {"messages": [{"role": "user", "content": "second turn"}], "stream": True},
+    ]
+    assert all(request.headers[SESSION_ID_HEADER] == "session-id" for request in requests)
+    assert all(request.headers["Authorization"] == "Bearer token" for request in requests)
 
 
 def test_session_chat_rejects_non_fabric_deployment_before_session_creation() -> None:

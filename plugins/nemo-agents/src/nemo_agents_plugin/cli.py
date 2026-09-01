@@ -44,6 +44,7 @@ import re
 import sys
 import tempfile
 import time
+from contextlib import closing
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -83,8 +84,10 @@ from nemo_agents_plugin.entities import (
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.session_lifecycle import session_expiration_is_due
+from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform import NeMoPlatform
+from nemo_platform_ext.cli.chat_tui import StreamingResponse, run_chat_tui
 from nemo_platform_ext.cli.core.api import is_tty
 from nemo_platform_ext.cli.core.formatters import Column, format_output
 from nemo_platform_ext.cli.core.help_formatter import NmpGroup
@@ -2205,8 +2208,48 @@ def _run_resolved_session_chat(
     timeout: float,
 ) -> None:
     """Run the shared TUI for an already-resolved session."""
-    typer.echo("Error: Session chat transport is not implemented yet.", err=True)
-    raise typer.Exit(code=1)
+    url = (
+        f"{base_url.rstrip('/')}/apis/agents/v2/workspaces/{workspace}"
+        f"/deployments/{deployment.name}/-/v1/chat/completions"
+    )
+    headers = {**_resolve_context_headers(), SESSION_ID_HEADER: session_id}
+
+    try:
+        with httpx.Client(timeout=timeout) as client:
+
+            def send_turn(user_input: str) -> StreamingResponse:
+                request = client.build_request(
+                    "POST",
+                    url,
+                    headers=headers,
+                    json={"messages": [{"role": "user", "content": user_input}], "stream": True},
+                )
+                response = client.send(request, stream=True)
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError:
+                    response.read()
+                    response.close()
+                    raise
+                return cast(StreamingResponse, closing(response))
+
+            run_chat_tui(
+                send_turn=send_turn,
+                display_info={"Deployment": deployment.name, "Session": session.name},
+                initial_message=input,
+            )
+    except httpx.TimeoutException as exc:
+        typer.echo(
+            f"Error: session chat request timed out after {timeout:.0f}s. Use --timeout to increase it.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+    except httpx.HTTPStatusError as exc:
+        print_http_status_error(exc, action="chat with deployed agent")
+        raise typer.Exit(code=1)
+    except httpx.RequestError as exc:
+        print_http_request_error(exc, action="chat with deployed agent")
+        raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
