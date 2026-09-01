@@ -37,7 +37,6 @@ from nemo_platform_plugin.files.types import PutFilesetProfileRequest
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.constants import (
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
-    NEMO_JOB_FILESET_ENVVAR,
     NEMO_JOB_ID_ENVVAR,
     NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
     NEMO_JOB_WORKSPACE_ENVVAR,
@@ -63,7 +62,13 @@ def run(sdk: NeMoPlatform | None = None) -> int:
         service_sdk = sdk or get_platform_sdk(as_service=_SERVICE_IDENTITY)
         config = _load_step_config()
         workspace = config.get("workspace") or _required_env(NEMO_JOB_WORKSPACE_ENVVAR)
-        fileset = config.get("fileset") or _required_env(NEMO_JOB_FILESET_ENVVAR)
+        # No env fallback for the fileset, deliberately asymmetric with `workspace` above.
+        # NEMO_JOB_WORKSPACE is the workspace the fileset lives in, so falling back to it is a
+        # restatement. NEMO_JOB_FILESET is not the fileset to profile: every backend sets it to the
+        # job's own auto-created logs/results fileset. Reading it here would answer a step config
+        # that forgot to say what to profile by profiling the job's log fileset and exiting 0 --
+        # the same silent key-drift that shipped once already as `rows_per_file` vs `row_budget`.
+        fileset = _required_config(config, "fileset")
         return _profile_and_publish(
             service_sdk,
             source=_fileset_source(service_sdk, workspace=workspace, fileset=fileset),
