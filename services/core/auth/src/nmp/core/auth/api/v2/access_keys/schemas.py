@@ -12,6 +12,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyNotImplementedErrorResponse as AccessKeyNotImplementedErrorResponse,
 )
 from nemo_platform_plugin.auth.access_keys.types import AccessKeyRevokeResponse as AccessKeyRevokeResponse
+from nemo_platform_plugin.auth.access_keys.types import AccessKeyRotateResponse as AccessKeyRotateResponse
 from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyStatusChangeResponse as AccessKeyStatusChangeResponse,
 )

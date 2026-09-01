@@ -319,6 +319,15 @@ class AccessKeyConfig(BaseSettings):
             "Set to null to allow explicit no-expiration requests."
         ),
     )
+    rotation_grace_period_seconds: int = Field(
+        default=48 * 60 * 60,
+        ge=1,
+        description=(
+            "How long a rotated-out Scoped Access Key remains usable after "
+            "POST /v2/access-keys/{jti}/rotate before it is treated as revoked. "
+            "Gives callers a dual-active window to cut over to the newly issued key."
+        ),
+    )
 
     @staticmethod
     def _parse_nullable_expiry(value: Any) -> Any:

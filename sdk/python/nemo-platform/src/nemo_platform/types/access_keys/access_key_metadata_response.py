@@ -41,7 +41,7 @@ class AccessKeyMetadataResponse(BaseModel):
     principal: str
     """Principal ID stamped into the token."""
 
-    status: Literal["ACTIVE", "EXPIRED", "REVOKED", "SUSPENDED"]
+    status: Literal["ACTIVE", "EXPIRED", "REVOKED", "SUSPENDED", "ROTATING"]
 
     description: Optional[str] = None
     """Human-readable description of the Scoped Access Key."""
@@ -50,6 +50,15 @@ class AccessKeyMetadataResponse(BaseModel):
     """Whether the key is bound to a user or a non-human service account."""
 
     expires_at: Optional[datetime] = None
+
+    grace_period_expires_at: Optional[datetime] = None
+    """Timestamp when the rotated-out key's grace period expires."""
+
+    last_used_at: Optional[datetime] = None
+    """
+    Timestamp of the most recent successful authentication with this Scoped Access
+    Key.
+    """
 
     name: Optional[str] = None
     """Optional human-readable Scoped Access Key label."""
