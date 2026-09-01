@@ -7,8 +7,9 @@ navigation:
       - page: Home
         path: ../../index.mdx
       - section: Get Started
-        path: ../../get-started/setup.mdx
         contents:
+          - page: Setup
+            path: ../../get-started/setup.mdx
           - section: Core Concepts
             path: ../../get-started/concepts/index.mdx
             contents:
@@ -29,8 +30,346 @@ navigation:
           - page: Example Agent
             hidden: true
             path: ../../get-started/example-agent.mdx
-      - section: Self-Managed Deployment
-        slug: self-managed-deployment
+      - section: Models and Inference
+        path: ../../run-inference/about.mdx
+        contents:
+          - page: Run Inference
+            path: ../../run-inference/tutorials/run-inference.mdx
+          - page: Deploy Models
+            path: ../../run-inference/tutorials/deploy-models.mdx
+      - section: Agents
+        path: ../../agents/index.mdx
+        contents:
+          - page: Deploy Agents
+            path: ../../agents/deploy-agents.mdx
+          - page: Observe Agents
+            path: ../../agents/observability.mdx
+          - section: Optimize Agents
+            contents:
+              - page: Run the Agent Optimizer
+                path: ../../agents/optimization.mdx
+              - page: Insight-Driven Optimization
+                path: ../../agents/insight-driven-optimization.mdx
+          - page: Secure Agents
+            path: ../../agents/security.mdx
+          - page: Plugins and Skills
+            path: ../../agents/plugins.mdx
+      - section: Evaluate Agents & Models
+        slug: evaluate-models
+        path: ../../evaluator/index.mdx
+        contents:
+          - page: Dataset-Driven vs Task-Driven Evaluation
+            slug: dataset-driven-vs-task-driven-evaluation
+            path: ../../evaluator/evaluation-approaches.mdx
+          - section: Agent Evaluation
+            slug: agent-eval
+            path: ../../evaluator/agent-eval/index.mdx
+            contents:
+              - page: Quickstart
+                slug: quickstart
+                path: ../../evaluator/agent-eval/quickstart.mdx
+              - page: Evaluate a Deployed Agent over HTTP
+                slug: evaluate-deployed-agent
+                path: ../../evaluator/agent-eval/evaluate-deployed-agent.mdx
+              - page: Evaluate a Harbor Task Suite
+                slug: harbor-runner
+                path: ../../evaluator/agent-eval/harbor-runner.mdx
+              - page: Evaluate a NeMo Gym Environment
+                slug: gym-runner
+                path: ../../evaluator/agent-eval/gym-runner.mdx
+              - page: Evaluate with a NeMo Fabric Harness
+                slug: fabric-runner
+                path: ../../evaluator/agent-eval/fabric-runner.mdx
+              - page: Score by Component
+                slug: score-by-component
+                path: ../../evaluator/agent-eval/score-by-component.mdx
+              - page: Targets and Runners
+                slug: targets-and-runners
+                path: ../../evaluator/agent-eval/targets-and-runners.mdx
+              - page: Writing Metrics
+                slug: writing-metrics
+                path: ../../evaluator/agent-eval/writing-metrics.mdx
+              - page: Reading Results
+                slug: reading-results
+                path: ../../evaluator/agent-eval/reading-results.mdx
+          - section: Tutorials
+            path: ../../evaluator/tutorials/index.mdx
+            contents:
+              - page: Run LLM-as-a-Judge Evaluation
+                path: ../../evaluator/tutorials/run-llm-judge-evaluation.mdx
+              - page: Define and Run Custom Python Metrics
+                path: ../../evaluator/tutorials/define-run-custom-python-metrics.mdx
+          - page: Experiments
+            slug: experiments
+            path: ../../evaluator/experiments.mdx
+          - page: SDK Resources
+            path: ../../evaluator/sdk-resources.mdx
+          - page: Manage Tasks & Tasksets
+            slug: manage-tasks-tasksets
+            path: ../../evaluator/manage-tasks-tasksets.mdx
+          - section: Metrics
+            path: ../../evaluator/metrics/index.mdx
+            contents:
+              - page: Manage Metrics
+                path: ../../evaluator/metrics/manage-metrics.mdx
+              - page: LLM-as-a-Judge
+                path: ../../evaluator/metrics/llm-as-a-judge.mdx
+              - page: RAG Metrics
+                path: ../../evaluator/metrics/rag.mdx
+              - page: Similarity Metrics
+                path: ../../evaluator/metrics/similarity.mdx
+              - page: Agentic Metrics
+                path: ../../evaluator/metrics/agentic.mdx
+              - page: Bring Your Own Metric
+                path: ../../evaluator/metrics/remote.mdx
+              - page: Agent Configuration
+                path: ../../evaluator/metrics/agent-configuration.mdx
+              - page: Model Configuration
+                path: ../../evaluator/metrics/model-configuration.mdx
+      - section: Fine-tune Models
+        slug: customizer-reference
+        path: ../../customizer/index.mdx
+        contents:
+          - page: Customization Concepts
+            path: ../../customizer/about.mdx
+            slug: customization-concepts
+          - page: GRPO and Reward Environments
+            path: ../../customizer/grpo-training.mdx
+            slug: grpo-and-reward-environments
+          - section: Manage Customization Jobs
+            slug: manage-customization-jobs
+            path: ../../customizer/manage-customization-jobs/index.mdx
+            contents:
+              - page: Create a Customization Job
+                path: ../../customizer/manage-customization-jobs/create-job.mdx
+                slug: create-a-customization-job
+              - page: Get Job Status
+                path: ../../customizer/manage-customization-jobs/get-job-status.mdx
+                slug: get-job-status
+              - page: List Active Jobs
+                path: ../../customizer/manage-customization-jobs/list-active-jobs.mdx
+                slug: list-active-jobs
+              - page: Cancel a Job
+                path: ../../customizer/manage-customization-jobs/cancel-job.mdx
+                slug: cancel-job
+              - page: Training Configuration
+                path: ../../customizer/manage-customization-jobs/hyperparameters.mdx
+                slug: training-configuration
+              - page: Customization Job Reference
+                path: ../../customizer/manage-customization-jobs/customization-job-reference.mdx
+                slug: customization-job-reference
+          - section: Manage Model Entities
+            slug: manage-model-entities
+            contents:
+              - page: Overview
+                path: ../../customizer/manage-model-entities/index.mdx
+                slug: overview
+              - page: Create a Model Entity
+                path: ../../customizer/manage-model-entities/create-model-entity.mdx
+                slug: create-a-model-entity
+              - page: Create a Model FileSet
+                path: ../../customizer/manage-model-entities/create-fileset.mdx
+                slug: create-a-model-file-set
+          - section: Models
+            slug: models
+            contents:
+              - page: Model Catalog
+                path: ../../customizer/models/index.mdx
+                slug: model-catalog
+              - page: Dataset Format
+                path: ../../customizer/models/data-format.mdx
+                slug: dataset-format
+              - page: Embedding
+                path: ../../customizer/models/embedding.mdx
+                slug: embedding
+              - page: GPT-OSS
+                path: ../../customizer/models/gpt-oss.mdx
+                slug: gpt-oss
+              - page: Llama
+                path: ../../customizer/models/llama.mdx
+                slug: llama
+              - page: Llama Nemotron
+                path: ../../customizer/models/llama-nemotron.mdx
+                slug: llama-nemotron
+              - page: Mistral
+                path: ../../customizer/models/mistral.mdx
+                slug: mistral
+              - page: Phi
+                path: ../../customizer/models/phi.mdx
+                slug: phi
+              - page: Qwen
+                path: ../../customizer/models/qwen.mdx
+                slug: qwen
+          - section: Tutorials
+            slug: tutorials
+            path: ../../customizer/tutorials/index.mdx
+            contents:
+              - page: Understanding Models and Training
+                path: ../../customizer/tutorials/understand-configurations-and-models.mdx
+                slug: understanding-models-and-training
+              - page: Format Training Dataset
+                path: ../../customizer/tutorials/format-training-dataset.mdx
+                slug: format-training-dataset
+              - page: GRPO Environment Packages
+                path: ../../customizer/tutorials/grpo-environment-packages.mdx
+                slug: grpo-environment-packages
+              - page: Import HuggingFace Models
+                path: ../../customizer/tutorials/import-hf-model.mdx
+                slug: import-hugging-face-models
+              - page: SFT Customization Job
+                path: ../../customizer/tutorials/sft-customization-job.mdx
+                slug: sft-customization-job
+              - page: LoRA Customization Job
+                path: ../../customizer/tutorials/lora-customization-job.mdx
+                slug: lora-customization-job
+              - page: Distillation Customization Job
+                path: ../../customizer/tutorials/distillation-customization-job.mdx
+                slug: distillation-customization-job
+              - page: Embedding Customization Job
+                path: ../../customizer/tutorials/embedding-customization-job.mdx
+                slug: embedding-customization-job
+              - page: Job Metrics
+                path: ../../customizer/tutorials/metrics.mdx
+                slug: metrics
+              - page: Optimize Throughput
+                path: ../../customizer/tutorials/optimize-throughput.mdx
+                slug: optimize-throughput
+      - section: Design Synthetic Data
+        path: ../../data-designer/index.mdx
+        contents:
+          - page: CLI
+            path: ../../data-designer/cli.mdx
+          - section: Tutorials
+            path: ../../data-designer/tutorials/index.mdx
+            contents:
+              - page: The Basics
+                path: ../../data-designer/tutorials/basics.mdx
+              - page: Seeding with External Datasets
+                path: ../../data-designer/tutorials/seeding.mdx
+          - page: SDK Resources
+            path: ../../data-designer/sdk-resources.mdx
+          - page: Migrating from Standalone Library
+            path: ../../data-designer/migration.mdx
+      - section: Synthesize Safe Data
+        path: ../../safe-synthesizer/getting-started.mdx
+        contents:
+          - section: About
+            path: ../../safe-synthesizer/about/index.mdx
+            contents:
+              - page: Data Synthesis
+                path: ../../safe-synthesizer/about/data-synthesis.mdx
+              - page: PII Replacement
+                path: ../../safe-synthesizer/about/pii-replacement.mdx
+              - page: Evaluation
+                path: ../../safe-synthesizer/about/evaluation.mdx
+              - page: Jobs
+                path: ../../safe-synthesizer/about/jobs.mdx
+              - page: Parameters Reference
+                path: ../../safe-synthesizer/about/reference.mdx
+          - section: Tutorials
+            path: ../../safe-synthesizer/tutorials/index.mdx
+            contents:
+              - page: Safe Synthesizer 101
+                path: ../../safe-synthesizer/tutorials/safe-synthesizer-101.mdx
+              - page: Differential Privacy
+                path: ../../safe-synthesizer/tutorials/differential-privacy.mdx
+          - page: SDK Resources
+            path: ../../safe-synthesizer/sdk-resources.mdx
+      - section: Anonymize Data
+        path: ../../anonymizer/index.mdx
+        contents:
+          - section: Tutorials
+            path: ../../anonymizer/tutorials/index.mdx
+            contents:
+              - page: Preview a Config
+                path: ../../anonymizer/tutorials/preview.mdx
+              - page: Run an Anonymizer Job
+                path: ../../anonymizer/tutorials/run.mdx
+          - page: SDK Resources
+            path: ../../anonymizer/sdk-resources.mdx
+          - page: CLI Reference
+            path: ../../anonymizer/cli.mdx
+      - section: Guardrail Models
+        path: ../../guardrails/index.mdx
+        contents:
+          - section: Core Concepts
+            path: ../../guardrails/concepts/index.mdx
+            contents:
+              - page: Architecture
+                path: ../../guardrails/concepts/architecture.mdx
+              - section: Configurations
+                path: ../../guardrails/concepts/configurations/index.mdx
+                contents:
+                  - page: Configuration Structure
+                    path: ../../guardrails/concepts/configurations/configuration-structure.mdx
+                  - page: Default Configurations
+                    path: ../../guardrails/concepts/configurations/default-configs.mdx
+                  - page: Manage Configurations
+                    path: ../../guardrails/concepts/configurations/manage-configs.mdx
+              - page: Running Inference
+                path: ../../guardrails/concepts/inference.mdx
+              - page: Running Checks
+                path: ../../guardrails/concepts/checks.mdx
+          - section: Tutorials
+            path: ../../guardrails/tutorials/index.mdx
+            contents:
+              - page: Content Safety
+                path: ../../guardrails/tutorials/content-safety.mdx
+              - page: Deploy NemoGuard NIMs
+                path: ../../guardrails/tutorials/deploy-nemoguard-nims.mdx
+              - page: Injection Detection
+                path: ../../guardrails/tutorials/injection-detection.mdx
+              - page: Multimodal Data
+                path: ../../guardrails/tutorials/multimodal-data.mdx
+              - page: Parallel Rails
+                path: ../../guardrails/tutorials/parallel-rails.mdx
+          - page: Terminology
+            path: ../../guardrails/terminology.mdx
+          - page: Observability
+            path: ../../guardrails/observability.mdx
+      - section: Vulnerability Scanning
+        path: ../../auditor/index.mdx
+        contents:
+          - section: Tutorials
+            path: ../../auditor/tutorials/index.mdx
+            contents:
+              - page: Run an Audit Locally
+                path: ../../auditor/tutorials/run-audit-locally.mdx
+          - page: SDK Resources
+            path: ../../auditor/sdk-resources.mdx
+          - section: Configurations
+            path: ../../auditor/configs/index.mdx
+            contents:
+              - page: Selecting Probes
+                path: ../../auditor/configs/probes.mdx
+              - page: Schema
+                path: ../../auditor/configs/schema.mdx
+          - section: Targets
+            path: ../../auditor/targets/index.mdx
+            contents:
+              - page: Inference Gateway
+                path: ../../auditor/targets/inference-gateway.mdx
+              - page: Schema
+                path: ../../auditor/targets/schema.mdx
+      - section: Studio
+        path: ../../studio/index.mdx
+        contents:
+          - page: Agents
+            path: ../../studio/agents.mdx
+          - page: Data Designer
+            path: ../../studio/data-designer-build.mdx
+          - page: Experiments
+            path: ../../studio/experiments.mdx
+          - page: Monitor
+            path: ../../studio/monitor.mdx
+          - page: Plugin UIs
+            path: ../../studio/plugins.mdx
+          - page: Guardrail Configs
+            path: ../../studio/guardrails.mdx
+          - page: Virtual Models
+            path: ../../studio/virtual-models.mdx
+      - section: Kubernetes Deployment
+        slug: kubernetes-deployment
         contents:
           - section: Setup
             slug: setup
@@ -142,348 +481,7 @@ navigation:
           - page: Security Model
             path: ../../auth/security-model.mdx
           - page: Troubleshooting
-            path: ../../auth/troubleshooting.mdx
-      - section: Studio
-        path: ../../studio/index.mdx
-        contents:
-          - page: Agents
-            path: ../../studio/agents.mdx
-          - page: Data Designer
-            path: ../../studio/data-designer-build.mdx
-          - page: Experiments
-            path: ../../studio/experiments.mdx
-          - page: Monitor
-            path: ../../studio/monitor.mdx
-          - page: Plugin UIs
-            path: ../../studio/plugins.mdx
-          - page: Guardrail Configs
-            path: ../../studio/guardrails.mdx
-          - page: Virtual Models
-            path: ../../studio/virtual-models.mdx
-      - section: Models and Inference
-        path: ../../run-inference/about.mdx
-        contents:
-          - section: Tutorials
-            path: ../../run-inference/tutorials/index.mdx
-            contents:
-              - page: Run Inference
-                path: ../../run-inference/tutorials/run-inference.mdx
-              - page: Deploy Models
-                path: ../../run-inference/tutorials/deploy-models.mdx
-      - section: Fine-tune Models
-        slug: customizer-reference
-        path: ../../customizer/index.mdx
-        contents:
-          - page: Customization Concepts
-            path: ../../customizer/about.mdx
-            slug: customization-concepts
-          - page: GRPO and Reward Environments
-            path: ../../customizer/grpo-training.mdx
-            slug: grpo-and-reward-environments
-          - section: Manage Customization Jobs
-            slug: manage-customization-jobs
-            path: ../../customizer/manage-customization-jobs/index.mdx
-            contents:
-              - page: Create a Customization Job
-                path: ../../customizer/manage-customization-jobs/create-job.mdx
-                slug: create-a-customization-job
-              - page: Get Job Status
-                path: ../../customizer/manage-customization-jobs/get-job-status.mdx
-                slug: get-job-status
-              - page: List Active Jobs
-                path: ../../customizer/manage-customization-jobs/list-active-jobs.mdx
-                slug: list-active-jobs
-              - page: Cancel a Job
-                path: ../../customizer/manage-customization-jobs/cancel-job.mdx
-                slug: cancel-job
-              - page: Training Configuration
-                path: ../../customizer/manage-customization-jobs/hyperparameters.mdx
-                slug: training-configuration
-              - page: Customization Job Reference
-                path: ../../customizer/manage-customization-jobs/customization-job-reference.mdx
-                slug: customization-job-reference
-          - section: Manage Model Entities
-            slug: manage-model-entities
-            contents:
-              - page: Overview
-                path: ../../customizer/manage-model-entities/index.mdx
-                slug: overview
-              - page: Create a Model Entity
-                path: ../../customizer/manage-model-entities/create-model-entity.mdx
-                slug: create-a-model-entity
-              - page: Create a Model FileSet
-                path: ../../customizer/manage-model-entities/create-fileset.mdx
-                slug: create-a-model-file-set
-          - section: Models
-            slug: models
-            contents:
-              - page: Model Catalog
-                path: ../../customizer/models/index.mdx
-                slug: model-catalog
-              - page: Dataset Format
-                path: ../../customizer/models/data-format.mdx
-                slug: dataset-format
-              - page: Embedding
-                path: ../../customizer/models/embedding.mdx
-                slug: embedding
-              - page: GPT-OSS
-                path: ../../customizer/models/gpt-oss.mdx
-                slug: gpt-oss
-              - page: Llama
-                path: ../../customizer/models/llama.mdx
-                slug: llama
-              - page: Llama Nemotron
-                path: ../../customizer/models/llama-nemotron.mdx
-                slug: llama-nemotron
-              - page: Mistral
-                path: ../../customizer/models/mistral.mdx
-                slug: mistral
-              - page: Phi
-                path: ../../customizer/models/phi.mdx
-                slug: phi
-              - page: Qwen
-                path: ../../customizer/models/qwen.mdx
-                slug: qwen
-          - section: Tutorials
-            slug: tutorials
-            path: ../../customizer/tutorials/index.mdx
-            contents:
-              - page: Understanding Models and Training
-                path: ../../customizer/tutorials/understand-configurations-and-models.mdx
-                slug: understanding-models-and-training
-              - page: Format Training Dataset
-                path: ../../customizer/tutorials/format-training-dataset.mdx
-                slug: format-training-dataset
-              - page: GRPO Environment Packages
-                path: ../../customizer/tutorials/grpo-environment-packages.mdx
-                slug: grpo-environment-packages
-              - page: Import HuggingFace Models
-                path: ../../customizer/tutorials/import-hf-model.mdx
-                slug: import-hugging-face-models
-              - page: SFT Customization Job
-                path: ../../customizer/tutorials/sft-customization-job.mdx
-                slug: sft-customization-job
-              - page: LoRA Customization Job
-                path: ../../customizer/tutorials/lora-customization-job.mdx
-                slug: lora-customization-job
-              - page: Distillation Customization Job
-                path: ../../customizer/tutorials/distillation-customization-job.mdx
-                slug: distillation-customization-job
-              - page: Embedding Customization Job
-                path: ../../customizer/tutorials/embedding-customization-job.mdx
-                slug: embedding-customization-job
-              - page: Job Metrics
-                path: ../../customizer/tutorials/metrics.mdx
-                slug: metrics
-              - page: Optimize Throughput
-                path: ../../customizer/tutorials/optimize-throughput.mdx
-                slug: optimize-throughput
-      - section: Agents
-        path: ../../agents/index.mdx
-        contents:
-          - page: Deploy Agents
-            path: ../../agents/deploy-agents.mdx
-          - page: Observe Agents
-            path: ../../agents/observability.mdx
-          - section: Optimize Agents
-            contents:
-              - page: Run the Agent Optimizer
-                path: ../../agents/optimization.mdx
-              - page: Insight-Driven Optimization
-                path: ../../agents/insight-driven-optimization.mdx
-          - page: Secure Agents
-            path: ../../agents/security.mdx
-          - page: Plugins and Skills
-            path: ../../agents/plugins.mdx
-      - section: Design Synthetic Data
-        path: ../../data-designer/index.mdx
-        contents:
-          - page: CLI
-            path: ../../data-designer/cli.mdx
-          - section: Tutorials
-            path: ../../data-designer/tutorials/index.mdx
-            contents:
-              - page: The Basics
-                path: ../../data-designer/tutorials/basics.mdx
-              - page: Seeding with External Datasets
-                path: ../../data-designer/tutorials/seeding.mdx
-          - page: SDK Resources
-            path: ../../data-designer/sdk-resources.mdx
-          - page: Migrating from Standalone Library
-            path: ../../data-designer/migration.mdx
-      - section: Synthesize Safe Data
-        path: ../../safe-synthesizer/getting-started.mdx
-        contents:
-          - section: About
-            path: ../../safe-synthesizer/about/index.mdx
-            contents:
-              - page: Data Synthesis
-                path: ../../safe-synthesizer/about/data-synthesis.mdx
-              - page: PII Replacement
-                path: ../../safe-synthesizer/about/pii-replacement.mdx
-              - page: Evaluation
-                path: ../../safe-synthesizer/about/evaluation.mdx
-              - page: Jobs
-                path: ../../safe-synthesizer/about/jobs.mdx
-              - page: Parameters Reference
-                path: ../../safe-synthesizer/about/reference.mdx
-          - section: Tutorials
-            path: ../../safe-synthesizer/tutorials/index.mdx
-            contents:
-              - page: Safe Synthesizer 101
-                path: ../../safe-synthesizer/tutorials/safe-synthesizer-101.mdx
-              - page: Differential Privacy
-                path: ../../safe-synthesizer/tutorials/differential-privacy.mdx
-          - page: SDK Resources
-            path: ../../safe-synthesizer/sdk-resources.mdx
-      - section: Anonymize Data
-        path: ../../anonymizer/index.mdx
-        contents:
-          - section: Tutorials
-            path: ../../anonymizer/tutorials/index.mdx
-            contents:
-              - page: Preview a Config
-                path: ../../anonymizer/tutorials/preview.mdx
-              - page: Run an Anonymizer Job
-                path: ../../anonymizer/tutorials/run.mdx
-          - page: SDK Resources
-            path: ../../anonymizer/sdk-resources.mdx
-          - page: CLI Reference
-            path: ../../anonymizer/cli.mdx
-      - section: Guardrail Models
-        path: ../../guardrails/index.mdx
-        contents:
-          - section: Core Concepts
-            path: ../../guardrails/concepts/index.mdx
-            contents:
-              - page: Architecture
-                path: ../../guardrails/concepts/architecture.mdx
-              - section: Configurations
-                path: ../../guardrails/concepts/configurations/index.mdx
-                contents:
-                  - page: Configuration Structure
-                    path: ../../guardrails/concepts/configurations/configuration-structure.mdx
-                  - page: Default Configurations
-                    path: ../../guardrails/concepts/configurations/default-configs.mdx
-                  - page: Manage Configurations
-                    path: ../../guardrails/concepts/configurations/manage-configs.mdx
-              - page: Running Inference
-                path: ../../guardrails/concepts/inference.mdx
-              - page: Running Checks
-                path: ../../guardrails/concepts/checks.mdx
-          - section: Tutorials
-            path: ../../guardrails/tutorials/index.mdx
-            contents:
-              - page: Content Safety
-                path: ../../guardrails/tutorials/content-safety.mdx
-              - page: Deploy NemoGuard NIMs
-                path: ../../guardrails/tutorials/deploy-nemoguard-nims.mdx
-              - page: Injection Detection
-                path: ../../guardrails/tutorials/injection-detection.mdx
-              - page: Multimodal Data
-                path: ../../guardrails/tutorials/multimodal-data.mdx
-              - page: Parallel Rails
-                path: ../../guardrails/tutorials/parallel-rails.mdx
-          - page: Terminology
-            path: ../../guardrails/terminology.mdx
-          - page: Observability
-            path: ../../guardrails/observability.mdx
-      - section: Evaluate Models & Agents
-        slug: evaluate-models
-        path: ../../evaluator/index.mdx
-        contents:
-          - page: Dataset-Driven vs Task-Driven Evaluation
-            slug: dataset-driven-vs-task-driven-evaluation
-            path: ../../evaluator/evaluation-approaches.mdx
-          - section: Agent Evaluation
-            slug: agent-eval
-            path: ../../evaluator/agent-eval/index.mdx
-            contents:
-              - page: Quickstart
-                slug: quickstart
-                path: ../../evaluator/agent-eval/quickstart.mdx
-              - page: Evaluate a Deployed Agent over HTTP
-                slug: evaluate-deployed-agent
-                path: ../../evaluator/agent-eval/evaluate-deployed-agent.mdx
-              - page: Evaluate a Harbor Task Suite
-                slug: harbor-runner
-                path: ../../evaluator/agent-eval/harbor-runner.mdx
-              - page: Evaluate a NeMo Gym Environment
-                slug: gym-runner
-                path: ../../evaluator/agent-eval/gym-runner.mdx
-              - page: Evaluate with a NeMo Fabric Harness
-                slug: fabric-runner
-                path: ../../evaluator/agent-eval/fabric-runner.mdx
-              - page: Score by Component
-                slug: score-by-component
-                path: ../../evaluator/agent-eval/score-by-component.mdx
-              - page: Targets and Runners
-                slug: targets-and-runners
-                path: ../../evaluator/agent-eval/targets-and-runners.mdx
-              - page: Writing Metrics
-                slug: writing-metrics
-                path: ../../evaluator/agent-eval/writing-metrics.mdx
-              - page: Reading Results
-                slug: reading-results
-                path: ../../evaluator/agent-eval/reading-results.mdx
-          - section: Tutorials
-            path: ../../evaluator/tutorials/index.mdx
-            contents:
-              - page: Run LLM-as-a-Judge Evaluation
-                path: ../../evaluator/tutorials/run-llm-judge-evaluation.mdx
-              - page: Define and Run Custom Python Metrics
-                path: ../../evaluator/tutorials/define-run-custom-python-metrics.mdx
-          - page: Experiments
-            slug: experiments
-            path: ../../evaluator/experiments.mdx
-          - page: SDK Resources
-            path: ../../evaluator/sdk-resources.mdx
-          - page: Manage Tasks & Tasksets
-            slug: manage-tasks-tasksets
-            path: ../../evaluator/manage-tasks-tasksets.mdx
-          - section: Metrics
-            path: ../../evaluator/metrics/index.mdx
-            contents:
-              - page: Manage Metrics
-                path: ../../evaluator/metrics/manage-metrics.mdx
-              - page: LLM-as-a-Judge
-                path: ../../evaluator/metrics/llm-as-a-judge.mdx
-              - page: RAG Metrics
-                path: ../../evaluator/metrics/rag.mdx
-              - page: Similarity Metrics
-                path: ../../evaluator/metrics/similarity.mdx
-              - page: Agentic Metrics
-                path: ../../evaluator/metrics/agentic.mdx
-              - page: Bring Your Own Metric
-                path: ../../evaluator/metrics/remote.mdx
-              - page: Agent Configuration
-                path: ../../evaluator/metrics/agent-configuration.mdx
-              - page: Model Configuration
-                path: ../../evaluator/metrics/model-configuration.mdx
-      - section: Vulnerability Scanning
-        path: ../../auditor/index.mdx
-        contents:
-          - section: Tutorials
-            path: ../../auditor/tutorials/index.mdx
-            contents:
-              - page: Run an Audit Locally
-                path: ../../auditor/tutorials/run-audit-locally.mdx
-          - page: SDK Resources
-            path: ../../auditor/sdk-resources.mdx
-          - section: Configurations
-            path: ../../auditor/configs/index.mdx
-            contents:
-              - page: Selecting Probes
-                path: ../../auditor/configs/probes.mdx
-              - page: Schema
-                path: ../../auditor/configs/schema.mdx
-          - section: Targets
-            path: ../../auditor/targets/index.mdx
-            contents:
-              - page: Inference Gateway
-                path: ../../auditor/targets/inference-gateway.mdx
-              - page: Schema
-                path: ../../auditor/targets/schema.mdx
+            path: ../../auth/troubleshooting.mdx  
       - section: Reference
         contents:
           - section: Release Notes
