@@ -168,6 +168,17 @@ def test_data_success() -> None:
     assert item.name == "alice"
 
 
+def test_response_delegates_unknown_attributes_to_body() -> None:
+    response = NemoResponse(
+        http_response=httpx.Response(200, request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/alice")),
+        body=ItemResponse(id=1, name="alice"),
+        request=GET_ITEM(name="alice"),
+    )
+
+    assert response.id == 1
+    assert response.name == "alice"
+
+
 def test_base_url_trailing_slash_stripped() -> None:
     mock_http = MagicMock(spec=httpx.Client)
     mock_http.request.return_value = httpx.Response(

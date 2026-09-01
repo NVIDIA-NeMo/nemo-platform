@@ -580,8 +580,8 @@ def _add_submit_command(
 
         try:
             merged_options = _merge_options_inputs(options, options_file)
-        except ValueError as exc:
-            typer.echo(f"Error: {exc}", err=True)
+        except (OSError, ValueError) as exc:
+            typer.echo(f"Error: invalid options — {exc}", err=True)
             raise typer.Exit(code=1) from exc
 
         renderer_cls: type[CLIRenderer] | None = None
@@ -808,7 +808,7 @@ def _load_spec(spec_str: str, spec_file: Path | None) -> dict:
             loaded = load_spec_file(spec_file)
         else:
             loaded = json.loads(spec_str)
-    except (json.JSONDecodeError, ValueError) as exc:
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         typer.echo(f"Error: invalid spec — {exc}", err=True)
         raise typer.Exit(code=1) from exc
     if not isinstance(loaded, dict):
