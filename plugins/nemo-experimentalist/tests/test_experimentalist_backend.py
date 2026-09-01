@@ -11,8 +11,10 @@ boundary mocked.
 
 import asyncio
 import json
+import logging
 import traceback
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import httpx
@@ -377,17 +379,6 @@ async def test_persist_result_preserves_generated_optimization_report(tmp_path: 
 # ---------------------------------------------------------------------------
 
 
-class _RecordingClient:
-    """Captures posts so the payload and URL can be asserted directly."""
-
-    def __init__(self) -> None:
-        self.posts: list[dict] = []
-
-    async def post(self, url, *, cast_to, body=None, content=None, options=None):
-        self.posts.append({"url": url, "body": body, "content": content, "options": options})
-        return {}
-
-
 def _atif_ref(tmp_path, session_id="sess-1"):
     from nemo_experimentalist_plugin.entities import ResourceRef
 
@@ -406,10 +397,178 @@ def _atif_ref(tmp_path, session_id="sess-1"):
     return ResourceRef(uri=f"file://{path}", description="", metadata={"trace_format": "atif"})
 
 
-async def test_upload_trace_atif_posts_to_the_atif_ingest_endpoint(tmp_path):
+class _RecordingResource:
+    def __init__(self, result: object = None) -> None:
+        self.calls: list[dict] = []
+        self._result = result
+
+    async def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self._result
+
+
+class _RecordingIntakeClient:
+    """Exposes only the ingest chains the trace uploads reach through."""
+
+    def __init__(self) -> None:
+        self.traces = _RecordingResource(SimpleNamespace(errors=[]))
+        self.atif = _RecordingResource()
+        self.intake = SimpleNamespace(
+            ingest=SimpleNamespace(
+                otlp=SimpleNamespace(v1=SimpleNamespace(traces=self.traces)),
+                atif=self.atif,
+            )
+        )
+
+
+def _otlp_ref(tmp_path):
+    from nemo_experimentalist_plugin.entities import ResourceRef
+
+    path = tmp_path / "trace.jsonl"
+    path.write_text(
+        json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": [{"traceId": "f" * 32, "spanId": "a" * 16}]}]}]})
+        + "\n",
+        encoding="utf-8",
+    )
+    return ResourceRef(uri=f"file://{path}", description="", metadata={"trace_format": "otlp"})
+
+
+async def test_upload_trace_otlp_sends_protobuf_through_the_typed_sdk_method(tmp_path):
+    from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import _upload_trace_otlp
+
+    client = _RecordingIntakeClient()
+    await _upload_trace_otlp(
+        cast(Any, client),
+        "ws-1",
+        _otlp_ref(tmp_path),
+        evaluation_name="exp-1",
+        trial_id="trial-1",
+        task_id="case-a",
+    )
+
+    assert len(client.traces.calls) == 1
+    call = client.traces.calls[0]
+    assert call["workspace"] == "ws-1"
+    assert isinstance(call["body"], bytes)
+    assert b"exp-1" in call["body"]
+
+
+async def test_ingest_otlp_sends_every_payload_and_stays_quiet_when_intake_accepts(caplog):
+    from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import _ingest_otlp
+
+    client = _RecordingIntakeClient()
+
+    with caplog.at_level(logging.WARNING):
+        await _ingest_otlp(cast(Any, client), [b"one", b"two"], workspace="ws-1", trial_id="trial-1")
+
+    assert [call["body"] for call in client.traces.calls] == [b"one", b"two"]
+    assert all(call["workspace"] == "ws-1" for call in client.traces.calls)
+    assert caplog.text == ""
+
+
+async def test_upload_trace_otlp_raises_when_intake_rejects_spans(tmp_path):
+    from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import _upload_trace_otlp
+
+    client = _RecordingIntakeClient()
+    client.traces._result = SimpleNamespace(errors=["span 00a1: bad trace_id"])
+
+    with pytest.raises(RuntimeError, match="bad trace_id"):
+        await _upload_trace_otlp(
+            cast(Any, client),
+            "ws-1",
+            _otlp_ref(tmp_path),
+            evaluation_name="exp-1",
+            trial_id="trial-1",
+            task_id="case-a",
+        )
+
+
+async def test_persist_trial_leaves_the_local_trace_ref_when_ingest_is_rejected(tmp_path):
+    """A partial ingest must not repoint the trial at a trace that never fully landed."""
+    from nemo_experimentalist_plugin.entities import TrialResult
+
+    client = _RecordingIntakeClient()
+    client.traces._result = SimpleNamespace(errors=["span 00a1: bad trace_id"])
+    backend = LocalExperimentalistBackend(client=cast(Any, client), path=tmp_path / "backend")
+    ref = _otlp_ref(tmp_path)
+    trial = TrialResult(id="trial-9", task_id="case-z", status="completed", trace=ref)
+
+    with pytest.raises(RuntimeError):
+        await backend._persist_trial(trial, workspace="ws-1", evaluation_name="exp-1", agent_attrs={})
+
+    assert trial.trace is not None and trial.trace.uri == ref.uri
+
+
+async def _completed(value):
+    return value
+
+
+class _SpanRow:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def model_dump(self, **_kwargs):
+        return self._payload
+
+
+class _ReingestClient(_RecordingIntakeClient):
+    """Adds the span listing `_persist_trial` reads before it re-ingests."""
+
+    def __init__(self, rows: list[dict]) -> None:
+        super().__init__()
+        self.list_calls: list[dict] = []
+        self.intake.spans = SimpleNamespace(list=self._list)
+        self._rows = rows
+
+    def _list(self, **kwargs):
+        self.list_calls.append(kwargs)
+
+        async def _iter():
+            for row in self._rows:
+                yield _SpanRow(row)
+
+        return _iter()
+
+
+async def test_persist_trial_reingests_intake_traces_with_evaluation_attributes(tmp_path, monkeypatch):
+    from nemo_experimentalist_plugin.entities import ResourceRef, TrialResult
+
+    row = {
+        "span_id": "00000000000000a1",
+        "trace_id": "f" * 32,
+        "name": "root",
+        "started_at": "2026-08-14T00:00:00Z",
+    }
+    client = _ReingestClient([row])
+    backend = LocalExperimentalistBackend(client=cast(Any, client), path=tmp_path / "backend")
+    # The trace already exists in Intake but carries no evaluation context, which is the
+    # condition that triggers the re-ingest.
+    monkeypatch.setattr(
+        LocalExperimentalistBackend,
+        "_retrieve_trace_with_retry",
+        lambda self, trace_id, **kwargs: _completed(SimpleNamespace(evaluation_context=None)),
+    )
+    trial = TrialResult(
+        id="trial-9",
+        task_id="case-z",
+        status="completed",
+        trace=ResourceRef(uri="intake://traces/abc123", description="", metadata={}),
+    )
+
+    await backend._persist_trial(trial, workspace="ws-1", evaluation_name="exp-1", agent_attrs={})
+
+    assert client.list_calls[0]["workspace"] == "ws-1"
+    assert client.list_calls[0]["filter"] == {"trace_id": "abc123"}
+    assert len(client.traces.calls) == 1
+    body = client.traces.calls[0]["body"]
+    assert client.traces.calls[0]["workspace"] == "ws-1"
+    assert b"exp-1" in body and b"case-z" in body and b"trial-9" in body
+
+
+async def test_upload_trace_atif_sends_evaluation_context_and_agent_identity(tmp_path):
     from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import _upload_trace_atif
 
-    client = _RecordingClient()
+    client = _RecordingIntakeClient()
     await _upload_trace_atif(
         cast(Any, client),
         "ws-1",
@@ -419,23 +578,24 @@ async def test_upload_trace_atif_posts_to_the_atif_ingest_endpoint(tmp_path):
         extra_attrs={"gen_ai.request.model": "gpt-5-mini"},
     )
 
-    assert len(client.posts) == 1
-    post = client.posts[0]
-    assert post["url"] == "/apis/intake/v2/workspaces/ws-1/ingest/atif"
-    assert post["body"]["evaluation_context"] == {
+    assert len(client.atif.calls) == 1
+    call = client.atif.calls[0]
+    assert call["workspace"] == "ws-1"
+    assert call["evaluation_context"] == {
         "evaluation_name": "exp-1",
         "test_case_name": "case-a",
     }
-    assert post["body"]["agent"]["model_name"] == "gpt-5-mini"
+    assert call["agent"]["model_name"] == "gpt-5-mini"
 
 
-async def test_upload_trace_atif_sends_json_not_protobuf(tmp_path):
+async def test_upload_trace_atif_sends_a_trajectory_not_bytes(tmp_path):
     from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import _upload_trace_atif
 
-    client = _RecordingClient()
+    client = _RecordingIntakeClient()
     await _upload_trace_atif(cast(Any, client), "ws-1", _atif_ref(tmp_path), evaluation_name="exp-1", task_id="case-a")
-    assert client.posts[0]["content"] is None
-    assert client.posts[0]["body"] is not None
+
+    assert client.traces.calls == []
+    assert client.atif.calls[0]["schema_version"].startswith("ATIF-")
 
 
 @pytest.mark.parametrize("bad_id", ["../run", "a/b", "..", ".", "nested/../../run"])
