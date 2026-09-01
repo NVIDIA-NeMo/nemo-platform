@@ -147,8 +147,8 @@ entity — the Analyst only matches it against each span's normalized
 
 - The existing `AnalyzeJob` remains untouched for comparison. It is submitted at
   `/apis/insights/v2/workspaces/{workspace}/jobs/analyze-job`.
-- The Analyst Agent entity is assumed to exist by the high-level route; the
-  setup script is the demo-friendly way to create it.
+- There is no Analyst Agent entity in the database; the route delivers an inline
+  configuration to the agents service.
 - Dynamic read settings such as `since` and `evaluation_id` are request fields
   that reach the Analyst's harness settings, not execute-extension config.
 - The analysis-runs route creates the backing job through the request-scoped
