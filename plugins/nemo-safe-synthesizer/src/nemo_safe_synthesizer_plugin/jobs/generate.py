@@ -83,6 +83,9 @@ class GenerateJob(NemoJob):
         options: dict | None = None,
     ) -> PlatformJobSpec:
         assert isinstance(spec, SafeSynthesizerJobConfig)
+        if options:
+            raise PlatformJobCompilationError("Safe Synthesizer does not support submit options.")
+
         steps = []
 
         try:
@@ -154,7 +157,7 @@ class GenerateJob(NemoJob):
                 ) from e
 
         if spec.config:
-            steps.append(_create_job_step(spec, environment))
+            steps.append(_create_job_step(spec, environment, profile=profile))
 
         if not steps:
             raise PlatformJobCompilationError("No steps to run")
@@ -164,7 +167,12 @@ class GenerateJob(NemoJob):
         raise NotImplementedError("Safe Synthesizer does not support local execution.")
 
 
-def _create_job_step(spec: SafeSynthesizerJobConfig, environment: list[EnvironmentVariable]) -> PlatformJobStep:
+def _create_job_step(
+    spec: SafeSynthesizerJobConfig,
+    environment: list[EnvironmentVariable],
+    *,
+    profile: str | None = None,
+) -> PlatformJobStep:
     resources = ResourcesSpec(
         limits=ResourcesLimitsSpec(
             memory=plugin_config.default_job_resource_memory_limit,
@@ -179,7 +187,7 @@ def _create_job_step(spec: SafeSynthesizerJobConfig, environment: list[Environme
         name="safe-synthesizer",
         executor=GPUExecutionProviderSpec(
             provider="gpu",
-            profile=plugin_config.job_executor_profile,
+            profile=profile or plugin_config.job_executor_profile,
             container=ContainerSpec(
                 image=plugin_config.container_image_ref or get_qualified_image(plugin_config.container_image),
                 entrypoint=plugin_config.entrypoint,
