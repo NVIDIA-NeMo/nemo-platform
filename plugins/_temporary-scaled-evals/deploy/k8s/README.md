@@ -15,7 +15,7 @@ untracked; `local.env.example` is the template. `apply.sh` substitutes them and
 refuses to apply while any is unresolved.
 
 ```bash
-cd plugins/nemo-scaled-evals/deploy/k8s
+cd plugins/_temporary-scaled-evals/deploy/k8s
 cp local.env.example local.env   # then fill it in
 ./apply.sh --render      # print substituted manifests, touch nothing
 ./apply.sh               # deploy
@@ -106,7 +106,7 @@ gcloud auth configure-docker "${REPO%%/*}"    # the registry host
 # sandbox-k8s is not published there, so with the default empty value the
 # harbor stage fails to resolve it. Point this at an index carrying both.
 docker buildx build --platform linux/amd64 \
-  -f plugins/nemo-scaled-evals/deploy/compose/Dockerfile \
+  -f plugins/_temporary-scaled-evals/deploy/compose/Dockerfile \
   --build-arg HARBOR_EXTRA_INDEX_URL="$SE_HARBOR_INDEX_URL" \
   -t "$REPO:$TAG" --push .          # from the repo root
 

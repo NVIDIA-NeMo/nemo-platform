@@ -480,7 +480,7 @@ members = [
   "packages/models",
   "plugins/nemo-guardrails",
   "plugins/nemo-evaluator",
-  "plugins/nemo-scaled-evals",
+  "plugins/_temporary-scaled-evals",
   "plugins/nemo-auditor",
   "plugins/nemo-safe-synthesizer",
   "plugins/nemo-switchyard",
@@ -703,7 +703,7 @@ exclude = [
   # Source injected into the evaluation harness image at build time, where it
   # replaces modules of the sandbox library it imports. Nothing imports it from
   # the control plane, so that library is absent from the workspace env.
-  "plugins/nemo-scaled-evals/harbor-patches/",
+  "plugins/_temporary-scaled-evals/harbor-patches/",
 
   "docs/",
 

@@ -12,7 +12,7 @@ Vendors the scaled-evals control plane into NeMo Platform as an ephemeral plugin
 ```bash
 # From nemo-platform repo root
 uv sync
-uv pip install -e plugins/nemo-scaled-evals/
+uv pip install -e plugins/_temporary-scaled-evals/
 ```
 
 Restart `nemo services run` after install.
@@ -141,7 +141,7 @@ from nmp.platform_runner.registry import get_available_services, get_service_gro
 print('discovered:', 'scaled-evals' in get_available_services())
 print('in groups:', [g for g, v in get_service_groups().items() if 'scaled-evals' in v])
 "
-uv run pytest plugins/nemo-scaled-evals/tests/ -q
+uv run pytest plugins/_temporary-scaled-evals/tests/ -q
 ```
 
 Expect `discovered: True`, `in groups: ['api', 'all']`, passing tests. To include the
@@ -150,7 +150,7 @@ drops its own scratch database per run:
 
 ```bash
 SCALED_EVALS_TEST_DATABASE_URL=postgresql://scaled_evals:scaled_evals@127.0.0.1:5434/scaled_evals \
-  uv run pytest plugins/nemo-scaled-evals/tests/ -q
+  uv run pytest plugins/_temporary-scaled-evals/tests/ -q
 ```
 
 **2. Postgres.** scaled-evals' own, so an empty server is all it needs.

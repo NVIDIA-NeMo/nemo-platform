@@ -10,7 +10,7 @@ workers, and the substrate they need — Postgres, RustFS, BuildKit, and a
 registry. Enough to take a task from `create` to a built, pushed image.
 
 ```bash
-cd plugins/nemo-scaled-evals/deploy/compose
+cd plugins/_temporary-scaled-evals/deploy/compose
 cp .env.example .env     # then set CREDENTIALS_ENCRYPTION_KEY and HARBOR_EXTRA_INDEX_URL (see Configuration)
 docker compose up -d     # first run builds the app image (~1 min)
 ./smoke.sh               # create -> upload -> finalize -> ready, then verify the push

@@ -1062,7 +1062,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Run scaled-evals plugin tests
-        run: uv run --frozen --group scaled-evals pytest plugins/nemo-scaled-evals/tests -v
+        run: uv run --frozen --group scaled-evals pytest plugins/_temporary-scaled-evals/tests -v
         env:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
 

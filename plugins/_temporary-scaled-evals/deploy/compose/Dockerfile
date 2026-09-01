@@ -13,7 +13,7 @@
 # a scaled-evals-only API never imports.
 #
 # Build from the repo root:
-#   docker build -f plugins/nemo-scaled-evals/deploy/compose/Dockerfile .
+#   docker build -f plugins/_temporary-scaled-evals/deploy/compose/Dockerfile .
 
 ARG PYTHON_VERSION=3.12
 # Client and daemon come from the same image so buildctl cannot skew past buildkitd.
@@ -44,7 +44,7 @@ FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim AS harbor
 #   --build-arg HARBOR_EXTRA_INDEX_URL=https://<index>/simple
 ARG HARBOR_EXTRA_INDEX_URL=""
 
-COPY plugins/nemo-scaled-evals/src/scaled_evals/data/harbor_runner_qualifications.json \
+COPY plugins/_temporary-scaled-evals/src/scaled_evals/data/harbor_runner_qualifications.json \
      /opt/harbor/qualification-catalog.json
 
 RUN set -eu; \
@@ -69,8 +69,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Upstream sandbox-k8s lacks emptyDir mounts for /solution, /tests, /logs and
 # /installed-agent, which the oracle verifier path needs. Overlay the same
 # patched adapter the standalone image uses, in place, located via importlib.
-COPY plugins/nemo-scaled-evals/harbor-patches/sandbox_k8s_harbor.py /tmp/sandbox_k8s_harbor.py
-COPY plugins/nemo-scaled-evals/harbor-patches/patch_sandbox_k8s_root.py /tmp/patch_sandbox_k8s_root.py
+COPY plugins/_temporary-scaled-evals/harbor-patches/sandbox_k8s_harbor.py /tmp/sandbox_k8s_harbor.py
+COPY plugins/_temporary-scaled-evals/harbor-patches/patch_sandbox_k8s_root.py /tmp/patch_sandbox_k8s_root.py
 RUN set -eu; \
     runner="/opt/harbor/$(cat /opt/harbor/default-version.txt)"; \
     harbor_py="$("${runner}/.venv/bin/python" -c 'import importlib.util; print(importlib.util.find_spec("sandbox_k8s.harbor").origin)')"; \
@@ -128,7 +128,7 @@ RUN apt-get update -qq \
 # Harbor venv (with the patched adapter) plus the task harness tree that
 # SANDBOX_K8S_CONFIG_PATH and TASK_PATH point into.
 COPY --from=harbor /opt/harbor /opt/harbor
-COPY plugins/nemo-scaled-evals/examples/tasks /harness/tasks
+COPY plugins/_temporary-scaled-evals/examples/tasks /harness/tasks
 # 0777 because the runtime picks the uid; the k8s manifests mount a writable
 # volume over this path anyway, so this only matters for bare `docker run`.
 RUN mkdir -p /var/lib/scaled-evals/harbor-jobs \

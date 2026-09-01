@@ -6802,7 +6802,7 @@ provides-extras = ["test", "nemo-platform-plugin"]
 [[package]]
 name = "nemo-scaled-evals-plugin"
 version = "0.98.1"
-source = { editable = "plugins/nemo-scaled-evals" }
+source = { editable = "plugins/_temporary-scaled-evals" }
 dependencies = [
     { name = "boto3", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "click", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7391,7 +7391,7 @@ nmp-base = [
 ]
 nmp-services-runtime = [{ name = "nemo-platform", extras = ["services"], editable = "packages/nemo_platform" }]
 nmp-task-runtime = [{ name = "nmp-platform", editable = "packages/nmp_platform" }]
-scaled-evals = [{ name = "nemo-scaled-evals-plugin", editable = "plugins/nemo-scaled-evals" }]
+scaled-evals = [{ name = "nemo-scaled-evals-plugin", editable = "plugins/_temporary-scaled-evals" }]
 typecheck = [{ name = "transformers", specifier = ">=5.5.0,<5.9.0" }]
 
 [[package]]

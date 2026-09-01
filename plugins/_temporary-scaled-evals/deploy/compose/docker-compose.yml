@@ -59,7 +59,7 @@ x-scaled-evals-env: &scaled-evals-env
 
 x-app-build: &app-build
   context: ../../../..
-  dockerfile: plugins/nemo-scaled-evals/deploy/compose/Dockerfile
+  dockerfile: plugins/_temporary-scaled-evals/deploy/compose/Dockerfile
   args:
     # harbor resolves from PyPI but sandbox-k8s is not published there, so with
     # the default empty value the image's harbor stage cannot resolve it and the
