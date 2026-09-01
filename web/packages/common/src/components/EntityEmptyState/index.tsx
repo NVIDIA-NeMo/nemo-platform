@@ -23,11 +23,7 @@ export type EntityEmptyStateVariant = 'first-use' | 'no-results';
 export interface EntityEmptyStateBaseProps {
   entity: EntityKey;
   className?: string;
-  /**
-   * Workspace to resolve `<workspace>` against in the registry's CLI command and skill prompt.
-   * Both are meant to be pasted and run as-is, and a prompt still carrying the placeholder would
-   * send the work to the wrong workspace. Omitted leaves the placeholder for the user to fill in.
-   */
+  /** Resolves `<workspace>` in the CLI command and skill prompt. Omitted leaves the placeholder. */
   workspace?: string;
 }
 
@@ -50,7 +46,6 @@ export type EntityEmptyStateProps = EntityEmptyStateBaseProps &
       }
   );
 
-/** Placeholder the registry uses for the workspace in copy-pasteable commands and prompts. */
 const WORKSPACE_PLACEHOLDER = '<workspace>';
 
 const resolveWorkspace = (text: string | undefined, workspace: string | undefined) =>
@@ -176,8 +171,7 @@ const SelfServiceHelp: FC<{ cliCommand?: string; skillPrompt?: string }> = ({
   const language: CodeSnippetLanguage = showCli ? 'bash' : 'markdown';
 
   return (
-    // The snippet scrolls a long value horizontally by default, which truncates it on screen —
-    // and these values are meant to be read before they are copied. Wrap instead.
+    // Unwrapped, the snippet scrolls a long value out of sight instead of showing it.
     <div
       className="mt-density-lg [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]"
       data-testid="entity-empty-state-help"

@@ -120,9 +120,6 @@ describe('IntakeTracesTable', () => {
     const descriptor = ENTITY_EMPTY_STATES.telemetryTraces;
     expect(await screen.findByText(descriptor.heading)).toBeInTheDocument();
 
-    // The prompt is what a user pastes into the agent, so it has to say what the agent will do,
-    // name the skill that does it, and name the workspace the import should land in — a
-    // `<workspace>` placeholder left in would send the traces somewhere else.
     const help = await screen.findByTestId('entity-empty-state-help');
     expect(help).toHaveTextContent(
       descriptor.skillPrompt!.replaceAll('<workspace>', 'test-workspace')

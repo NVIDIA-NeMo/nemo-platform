@@ -274,16 +274,12 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     subheading: 'This insight has no linked traces yet.',
   },
   telemetryTraces: {
-    // Matches the Traces item in the left nav, so the empty state reads as the same place the
-    // user navigated to.
     icon: ListTree,
     heading: 'No traces yet',
     subheading: 'Trace summaries will appear here after spans are ingested.',
     cliCommand:
       'nemo intake ingest otlp v1 traces create --input-file <otlp-traces>.json --workspace <workspace>',
-    // Names the skill by its id, which is what makes an agent load it — "the NeMo Platform intake
-    // skill" reads well but matches nothing. `<workspace>` is resolved by EntityEmptyState so the
-    // import lands where the user is looking rather than in whichever workspace the agent guesses.
+    // The skill id is what makes an agent load it; rewording it to prose matches nothing.
     skillPrompt:
       'Help me import traces into the "<workspace>" workspace with the nemo-intake skill.',
   },
