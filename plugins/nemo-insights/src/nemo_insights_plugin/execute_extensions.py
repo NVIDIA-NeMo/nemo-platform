@@ -47,7 +47,7 @@ class InsightsAnalysisExtension:
             )
         )
 
-        report_path = context.ctx.storage.persistent / REPORT_FILE_NAME
+        report_path = context.ctx.storage.ephemeral / REPORT_FILE_NAME
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(report, encoding="utf-8")
         context.ctx.results.save(REPORT_RESULT_NAME, report_path)

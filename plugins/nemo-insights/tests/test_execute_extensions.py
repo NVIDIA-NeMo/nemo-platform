@@ -26,7 +26,7 @@ def ctx(tmp_path: Path) -> JobContext:
     return JobContext(
         workspace="default",
         storage=StoragePaths(ephemeral=ephemeral, persistent=persistent),
-        results=LocalJobResults(root=persistent / "results"),
+        results=LocalJobResults(root=ephemeral / "results"),
     )
 
 
@@ -80,5 +80,5 @@ def test_insights_extension_persists_analyst_result_and_saves_report(
     assert backend.calls[0]["agent"] == "research-agent"
     assert backend.calls[0]["result"].summary == "summary"
     assert client.closed
-    report_path = Path(ctx.storage.persistent / "results" / REPORT_RESULT_NAME)
+    report_path = Path(ctx.storage.ephemeral / "results" / REPORT_RESULT_NAME)
     assert report_path.read_text() == "Persisted analysis report"
