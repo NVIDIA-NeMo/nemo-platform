@@ -5,7 +5,9 @@ import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName'
 import {
   type AutomodelJobInput,
   type AutomodelJobsJobRequest,
+  BatchingStrategy,
   OptimizerType,
+  PolicyBackend,
   RlGRPOTrainingFinetuningType,
   type RlDPOTraining,
   type RlGRPOTraining,
@@ -34,7 +36,8 @@ import { z } from 'zod';
  */
 export type GrpoLoraFields = Required<
   Pick<RlLoRAParams, 'rank' | 'alpha' | 'dropout' | 'use_triton'>
->;
+> &
+  Pick<RlLoRAParams, 'target_modules' | 'exclude_modules'>;
 
 /**
  * GRPO-only hyperparameters, kept in their own namespace because `rl.training` holds
@@ -54,6 +57,16 @@ export interface GrpoFormFields extends Required<
     | 'temperature'
     | 'val_at_start'
     | 'overlong_filtering'
+    | 'use_dynamic_sampling'
+    | 'batch_multiplier'
+    | 'dynamic_sampling_max_gen_batches'
+    | 'use_leave_one_out_baseline'
+    | 'use_importance_sampling_correction'
+    | 'use_on_policy_kl_approximation'
+    | 'policy_backend'
+    | 'batching_strategy'
+    | 'sequence_length_round'
+    | 'vllm_gpu_memory_utilization'
   >
 > {
   /** 'grpo' shows the GRPO form sections; 'dpo' shows DPO sections. Maps to training.type on submit. */
@@ -70,6 +83,26 @@ export interface GrpoFormFields extends Required<
   max_new_tokens: RlGRPOTraining['max_new_tokens'];
   /** LoRA hyperparameters; only sent when finetuning_type is 'lora'. */
   lora: GrpoLoraFields;
+  /**
+   * Fields the backend leaves unset by default. They stay optional here so an untouched
+   * control sends nothing and the backend keeps its own behaviour, rather than the form
+   * switching a feature on with a value the user never chose.
+   */
+  ratio_clip_c: RlGRPOTraining['ratio_clip_c'];
+  advantage_clip_low: RlGRPOTraining['advantage_clip_low'];
+  advantage_clip_high: RlGRPOTraining['advantage_clip_high'];
+  truncated_importance_sampling_type: RlGRPOTraining['truncated_importance_sampling_type'];
+  truncated_importance_sampling_ratio: RlGRPOTraining['truncated_importance_sampling_ratio'];
+  truncated_importance_sampling_ratio_min: RlGRPOTraining['truncated_importance_sampling_ratio_min'];
+  top_k: RlGRPOTraining['top_k'];
+  train_mb_tokens: RlGRPOTraining['train_mb_tokens'];
+  router_aux_loss_coef: RlGRPOTraining['router_aux_loss_coef'];
+  vllm_tensor_parallel_size: RlGRPOTraining['vllm_tensor_parallel_size'];
+  reward_scaling: RlGRPOTraining['reward_scaling'];
+  reward_shaping: RlGRPOTraining['reward_shaping'];
+  /** Free-form passthrough dicts, edited via ControlledJsonInput. */
+  hf_config_overrides: RlGRPOTraining['hf_config_overrides'];
+  automodel_kwargs: RlGRPOTraining['automodel_kwargs'];
 }
 
 export interface CustomizationFormFields {
@@ -287,6 +320,32 @@ export const FORM_DEFAULTS: CustomizationFormFields = {
     max_new_tokens: 2048,
     finetuning_type: RlGRPOTrainingFinetuningType.all_weights,
     lora: { rank: 16, alpha: 32, dropout: 0, use_triton: true },
+    use_dynamic_sampling: false,
+    batch_multiplier: 1.0,
+    dynamic_sampling_max_gen_batches: 10,
+    use_leave_one_out_baseline: true,
+    use_importance_sampling_correction: true,
+    use_on_policy_kl_approximation: true,
+    policy_backend: PolicyBackend.automodel,
+    batching_strategy: BatchingStrategy.dynamic,
+    sequence_length_round: 64,
+    vllm_gpu_memory_utilization: 0.5,
+    // Left unset: the backend treats absence as "feature off", so seeding any number
+    // here would silently enable it. Their controls reset to empty rather than to a value.
+    ratio_clip_c: undefined,
+    advantage_clip_low: undefined,
+    advantage_clip_high: undefined,
+    truncated_importance_sampling_type: undefined,
+    truncated_importance_sampling_ratio: undefined,
+    truncated_importance_sampling_ratio_min: undefined,
+    top_k: undefined,
+    train_mb_tokens: undefined,
+    router_aux_loss_coef: undefined,
+    vllm_tensor_parallel_size: undefined,
+    reward_scaling: undefined,
+    reward_shaping: undefined,
+    hf_config_overrides: undefined,
+    automodel_kwargs: undefined,
   },
 };
 
@@ -348,29 +407,16 @@ export const customizationFormSchema = z
       spec = rlSpecSchema;
       value = data.rl;
       const grpo = data.grpo as Partial<GrpoFormFields> | undefined;
-      if (grpo?.trainingType === 'grpo') {
-        if (!grpo.environmentFileset) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'A reward environment fileset is required for GRPO training',
-            path: ['grpo', 'environmentFileset'],
-          });
-        }
-        // Mirrors the backend's _generation_length_fits_context validator: max_seq_length
-        // is the whole prompt + generation budget, so a larger generation cap is
-        // unsatisfiable and the job is rejected at submit.
-        const maxSeqLength = (data.rl as RlJobInput | undefined)?.training?.max_seq_length;
-        if (
-          grpo.max_new_tokens != null &&
-          maxSeqLength != null &&
-          grpo.max_new_tokens > maxSeqLength
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Max new tokens cannot exceed the max sequence length (${maxSeqLength}), which is the total prompt + generation budget`,
-            path: ['grpo', 'max_new_tokens'],
-          });
-        }
+      if (grpo?.trainingType === 'grpo' && !grpo.environmentFileset) {
+        // Form-completeness only. Every other GRPO rule (generation length, advantage
+        // clip range, policy-backend conflicts, truncated importance sampling, HF
+        // override collisions) is enforced by the backend, which reports it with a
+        // precise message; mirroring them here just creates two sources of truth.
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'A reward environment fileset is required for GRPO training',
+          path: ['grpo', 'environmentFileset'],
+        });
       }
     }
     const result = spec.safeParse(value);
@@ -401,6 +447,29 @@ export const formToAutomodelCreate = (f: CustomizationFormFields): AutomodelJobs
   };
 };
 
+/**
+ * Blank text fields mean "no integration", not "an integration named empty string". Drop
+ * empty values, then drop a provider whose fields are all empty, then the whole block.
+ */
+const cleanIntegrations = (
+  integrations: RlJobInput['integrations']
+): RlJobInput['integrations'] => {
+  if (!integrations) return undefined;
+  const prune = <T extends object>(obj: T | undefined | null): T | undefined => {
+    if (!obj) return undefined;
+    const kept = Object.entries(obj).filter(([, v]) =>
+      typeof v === 'string' ? v.trim() !== '' : Array.isArray(v) ? v.length > 0 : v != null
+    );
+    return kept.length > 0 ? (Object.fromEntries(kept) as T) : undefined;
+  };
+  const wandb = prune(integrations.wandb);
+  const mlflow = prune(integrations.mlflow);
+  return wandb || mlflow ? { ...(wandb && { wandb }), ...(mlflow && { mlflow }) } : undefined;
+};
+
+/** An empty list is not a filter — send nothing so the backend keeps its own default. */
+const emptyToUndefined = (v: string[] | undefined | null) => (v && v.length > 0 ? v : undefined);
+
 export const formToRlCreate = (f: CustomizationFormFields): RlJobsJobRequest => {
   if (f.grpo.trainingType === 'grpo') {
     const t = f.rl.training;
@@ -412,6 +481,7 @@ export const formToRlCreate = (f: CustomizationFormFields): RlJobsJobRequest => 
         model: f.rl.model,
         dataset: f.rl.dataset,
         environment: f.grpo.environmentFileset || undefined,
+        integrations: cleanIntegrations(f.rl.integrations),
         training: {
           type: 'grpo',
           optimizer_type: t.optimizer_type,
@@ -434,7 +504,13 @@ export const formToRlCreate = (f: CustomizationFormFields): RlJobsJobRequest => 
           parallelism: t.parallelism,
           max_grad_norm: t.max_grad_norm,
           finetuning_type: f.grpo.finetuning_type,
-          lora: isLora ? f.grpo.lora : undefined,
+          lora: isLora
+            ? {
+                ...f.grpo.lora,
+                target_modules: emptyToUndefined(f.grpo.lora.target_modules),
+                exclude_modules: emptyToUndefined(f.grpo.lora.exclude_modules),
+              }
+            : undefined,
           num_generations_per_prompt: f.grpo.num_generations_per_prompt,
           num_prompts_per_step: f.grpo.num_prompts_per_step,
           overlong_filtering: f.grpo.overlong_filtering,
@@ -446,6 +522,36 @@ export const formToRlCreate = (f: CustomizationFormFields): RlJobsJobRequest => 
           ref_policy_kl_penalty: t.ref_policy_kl_penalty,
           ratio_clip_min: f.grpo.ratio_clip_min,
           ratio_clip_max: f.grpo.ratio_clip_max,
+          epochs: t.epochs,
+          execution_profile: t.execution_profile || undefined,
+          ratio_clip_c: f.grpo.ratio_clip_c,
+          advantage_clip_low: f.grpo.advantage_clip_low,
+          advantage_clip_high: f.grpo.advantage_clip_high,
+          use_dynamic_sampling: f.grpo.use_dynamic_sampling,
+          // The backend rejects a multiplier other than 1.0 unless dynamic sampling is on,
+          // so the two always travel together.
+          batch_multiplier: f.grpo.use_dynamic_sampling ? f.grpo.batch_multiplier : undefined,
+          dynamic_sampling_max_gen_batches: f.grpo.use_dynamic_sampling
+            ? f.grpo.dynamic_sampling_max_gen_batches
+            : undefined,
+          use_leave_one_out_baseline: f.grpo.use_leave_one_out_baseline,
+          use_importance_sampling_correction: f.grpo.use_importance_sampling_correction,
+          use_on_policy_kl_approximation: f.grpo.use_on_policy_kl_approximation,
+          truncated_importance_sampling_type: f.grpo.truncated_importance_sampling_type,
+          truncated_importance_sampling_ratio: f.grpo.truncated_importance_sampling_ratio,
+          truncated_importance_sampling_ratio_min: f.grpo.truncated_importance_sampling_ratio_min,
+          reward_scaling: f.grpo.reward_scaling,
+          reward_shaping: f.grpo.reward_shaping,
+          policy_backend: f.grpo.policy_backend,
+          batching_strategy: f.grpo.batching_strategy,
+          sequence_length_round: f.grpo.sequence_length_round,
+          top_k: f.grpo.top_k,
+          train_mb_tokens: f.grpo.train_mb_tokens,
+          router_aux_loss_coef: f.grpo.router_aux_loss_coef,
+          vllm_tensor_parallel_size: f.grpo.vllm_tensor_parallel_size,
+          vllm_gpu_memory_utilization: f.grpo.vllm_gpu_memory_utilization,
+          hf_config_overrides: f.grpo.hf_config_overrides,
+          automodel_kwargs: f.grpo.automodel_kwargs,
         },
         output: { name: f.outputName || undefined },
       },
@@ -463,6 +569,7 @@ export const formToRlCreate = (f: CustomizationFormFields): RlJobsJobRequest => 
     spec: {
       model: f.rl.model,
       dataset: f.rl.dataset,
+      integrations: cleanIntegrations(f.rl.integrations),
       training: {
         type: 'dpo' as const,
         optimizer_type: dpo.optimizer_type,
@@ -490,6 +597,7 @@ export const formToRlCreate = (f: CustomizationFormFields): RlJobsJobRequest => 
         sft_loss_weight: dpo.sft_loss_weight,
         preference_average_log_probs: dpo.preference_average_log_probs,
         sft_average_log_probs: dpo.sft_average_log_probs,
+        execution_profile: dpo.execution_profile || undefined,
       },
       output: { name: f.outputName || undefined },
     },
@@ -565,6 +673,36 @@ export const jobToFormFields = (job: CustomizationJob): CustomizationFormFields 
           max_new_tokens: grpo.max_new_tokens ?? defaults.max_new_tokens,
           finetuning_type: grpo.finetuning_type ?? defaults.finetuning_type,
           lora: grpo.lora ? { ...defaults.lora, ...grpo.lora } : defaults.lora,
+          use_dynamic_sampling: grpo.use_dynamic_sampling ?? defaults.use_dynamic_sampling,
+          batch_multiplier: grpo.batch_multiplier ?? defaults.batch_multiplier,
+          dynamic_sampling_max_gen_batches:
+            grpo.dynamic_sampling_max_gen_batches ?? defaults.dynamic_sampling_max_gen_batches,
+          use_leave_one_out_baseline:
+            grpo.use_leave_one_out_baseline ?? defaults.use_leave_one_out_baseline,
+          use_importance_sampling_correction:
+            grpo.use_importance_sampling_correction ?? defaults.use_importance_sampling_correction,
+          use_on_policy_kl_approximation:
+            grpo.use_on_policy_kl_approximation ?? defaults.use_on_policy_kl_approximation,
+          policy_backend: grpo.policy_backend ?? defaults.policy_backend,
+          batching_strategy: grpo.batching_strategy ?? defaults.batching_strategy,
+          sequence_length_round: grpo.sequence_length_round ?? defaults.sequence_length_round,
+          vllm_gpu_memory_utilization:
+            grpo.vllm_gpu_memory_utilization ?? defaults.vllm_gpu_memory_utilization,
+          // No `??` fallback: these are unset by default, and absence is meaningful.
+          ratio_clip_c: grpo.ratio_clip_c,
+          advantage_clip_low: grpo.advantage_clip_low,
+          advantage_clip_high: grpo.advantage_clip_high,
+          truncated_importance_sampling_type: grpo.truncated_importance_sampling_type,
+          truncated_importance_sampling_ratio: grpo.truncated_importance_sampling_ratio,
+          truncated_importance_sampling_ratio_min: grpo.truncated_importance_sampling_ratio_min,
+          top_k: grpo.top_k,
+          train_mb_tokens: grpo.train_mb_tokens,
+          router_aux_loss_coef: grpo.router_aux_loss_coef,
+          vllm_tensor_parallel_size: grpo.vllm_tensor_parallel_size,
+          reward_scaling: grpo.reward_scaling,
+          reward_shaping: grpo.reward_shaping,
+          hf_config_overrides: grpo.hf_config_overrides,
+          automodel_kwargs: grpo.automodel_kwargs,
         }),
       },
     };

@@ -29,6 +29,7 @@ import { GrpoParametersSection } from '@studio/components/NewCustomizationForm/G
 import { LoraParametersSection } from '@studio/components/NewCustomizationForm/LoraParametersSection';
 import { ModelSelectionSection } from '@studio/components/NewCustomizationForm/ModelSelectionSection';
 import { RewardEnvironmentSection } from '@studio/components/NewCustomizationForm/RewardEnvironmentSection';
+import { RlIntegrationsSection } from '@studio/components/NewCustomizationForm/RlIntegrationsSection';
 import { TrainingMethodSection } from '@studio/components/NewCustomizationForm/TrainingMethodSection';
 import { getWorkspaceCustomizationJobDetailsRoute } from '@studio/routes/utils';
 import {
@@ -228,6 +229,12 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
                       <>
                         <Divider />
                         <DpoParametersSection />
+                      </>
+                    )}
+                    {backend === 'rl' && (
+                      <>
+                        <Divider />
+                        <RlIntegrationsSection />
                       </>
                     )}
                     <Divider />
