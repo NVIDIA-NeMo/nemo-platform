@@ -552,6 +552,7 @@ resources:
       platform_job_list_sort_field: PlatformJobListSortField
       platform_job_response: PlatformJobResponse
       platform_job_responses_page: PlatformJobResponsesPage
+      platform_job_secret: PlatformJobSecret
       platform_job_secret_environment_variable_ref: PlatformJobSecretEnvironmentVariableRef
       platform_job_sort_field: PlatformJobSortField
       platform_job_spec: PlatformJobSpec

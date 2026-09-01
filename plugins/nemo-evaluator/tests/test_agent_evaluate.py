@@ -52,8 +52,6 @@ from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types.jobs import SubprocessExecutionProvider
-from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
@@ -68,7 +66,8 @@ from nemo_platform_plugin.jobs.execution_profiles import (
     VolcanoJobExecutionProfile,
     VolcanoJobExecutionProfileConfig,
 )
-from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
+from nemo_platform_plugin.jobs.providers import SubprocessExecutionProvider
+from nemo_platform_plugin.jobs.spec import BaseExecutionProfile, PlatformJobSpec
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pytest_mock import MockerFixture
 
@@ -81,6 +80,10 @@ def _inline_metric() -> MetricInline:
     return MetricInline.model_validate(bundle.model_dump(mode="json"))
 
 
+def _task_inputs(**values: Any) -> TaskInputs:
+    return TaskInputs.model_validate(values)
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
@@ -89,7 +92,7 @@ def _task_spec() -> AgentEvalTaskSpec:
     return AgentEvalTaskSpec(
         id="task-1",
         intent="Answer the question.",
-        inputs={"instruction": "What is 2+2?"},
+        inputs=_task_inputs(instruction="What is 2+2?"),
         metrics=[_inline_metric()],
     )
 
@@ -165,7 +168,7 @@ async def test_reference_round_trips_from_input_spec_to_runtime_task() -> None:
             AgentEvalTaskInput(
                 id="fix-bug",
                 intent="Fix the bug.",
-                inputs={"instruction": "Fix calculator.py."},
+                inputs=_task_inputs(instruction="Fix calculator.py."),
                 reference=reference,
                 metrics=[_inline_metric()],
             )
@@ -444,9 +447,12 @@ def test_build_evaluator_without_platform_forwards_no_headers() -> None:
 
 def test_input_spec_accepts_stored_metric_reference() -> None:
     spec = AgentEvalInputSpec(
-        tasks=[AgentEvalTaskInput(id="task-1", intent="Answer.", inputs={}, metrics=[MetricRef("stored-metric")])],
+        tasks=[
+            AgentEvalTaskInput(id="task-1", intent="Answer.", inputs=TaskInputs(), metrics=[MetricRef("stored-metric")])
+        ],
         target=_runner_target("openai/gpt-5.4"),
     )
+    assert not isinstance(spec.tasks, TasksetRef)
     assert isinstance(spec.tasks[0].metrics[0], MetricRef)
 
 
@@ -470,7 +476,7 @@ async def test_to_spec_resolves_inline_task_metrics_without_a_platform() -> None
             AgentEvalTaskInput(
                 id="task-1",
                 intent="Answer the question.",
-                inputs={"instruction": "What is 2+2?"},
+                inputs=_task_inputs(instruction="What is 2+2?"),
                 metrics=[_inline_metric()],
             )
         ],
@@ -490,7 +496,9 @@ async def test_to_spec_requires_platform_to_resolve_a_metric_reference() -> None
     # A stored MetricRef can only be loaded with an entity store + SDK; without one, to_spec must
     # fail loudly rather than silently drop the metric.
     input_spec = AgentEvalInputSpec(
-        tasks=[AgentEvalTaskInput(id="task-1", intent="Answer.", inputs={}, metrics=[MetricRef("stored-metric")])],
+        tasks=[
+            AgentEvalTaskInput(id="task-1", intent="Answer.", inputs=TaskInputs(), metrics=[MetricRef("stored-metric")])
+        ],
         target=_runner_target("openai/gpt-5.4"),
     )
     with pytest.raises(ValueError, match="platform connection"):
@@ -864,7 +872,10 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
     input_spec = AgentEvalInputSpec(
         tasks=[
             AgentEvalTaskInput(
-                id="task-1", intent="Answer.", inputs={"instruction": "What is 2+2?"}, metrics=[_inline_metric()]
+                id="task-1",
+                intent="Answer.",
+                inputs=_task_inputs(instruction="What is 2+2?"),
+                metrics=[_inline_metric()],
             )
         ],
         target=target,
@@ -898,7 +909,7 @@ def test_run_local_scores_precomputed_trials_offline(mocker: MockerFixture) -> N
         )
     ]
     input_spec = AgentEvalInputSpec(
-        tasks=[AgentEvalTaskInput(id="task-1", intent="Answer.", inputs={}, metrics=[_inline_metric()])],
+        tasks=[AgentEvalTaskInput(id="task-1", intent="Answer.", inputs=TaskInputs(), metrics=[_inline_metric()])],
         trials=precomputed,
     )
 
@@ -998,3 +1009,33 @@ async def test_trial_error_survives_the_job_spec_wire_contract() -> None:
     round_tripped = AgentEvalSpec.model_validate(json.loads(json.dumps(spec.model_dump(mode="json"))))
     assert round_tripped.trials is not None
     assert round_tripped.trials[0].error == error
+
+
+async def test_compile_resolves_gym_runner_env_secrets() -> None:
+    """A Gym environment's model key reaches it through the OS environment, not an endpoint spec.
+
+    Without this the only route was `env_vars`, which stores the credential in plaintext on the spec
+    and writes it into whatever persists that spec.
+    """
+    spec = AgentEvalSpec(
+        tasks=[_task_spec()],
+        target=GymRunnerTarget(
+            agent="simple_agent",
+            agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+            resources_server="mcqa",
+            env_vars={"WMT_TRANSLATION_COMET_PY_CACHE": "/shared/cache"},
+            env_secrets={"OPENAI_API_KEY": SecretRef(root="my-workspace/openai-key")},
+        ),
+    )
+
+    compiled = await AgentEvalJob.compile(
+        workspace="default", spec=spec, entity_client=object(), job_name=None, async_sdk=None
+    )
+
+    step = PlatformJobSpec.model_validate(compiled).steps[0]
+    secrets = {env.name: env.from_secret.name for env in step.environment or [] if env.from_secret}
+    assert secrets == {"OPENAI_API_KEY": "my-workspace/openai-key"}
+    # The reference travels; the value never does.
+    stored_target = cast(dict[str, Any], step.config)["target"]
+    assert stored_target["env_secrets"] == {"OPENAI_API_KEY": "my-workspace/openai-key"}
+    assert stored_target["env_vars"] == {"WMT_TRANSLATION_COMET_PY_CACHE": "/shared/cache"}

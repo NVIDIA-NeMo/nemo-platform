@@ -20,8 +20,8 @@ from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError, extract_h
 from nemo_data_designer_plugin.sdk.job_results import DataDesignerJobResults
 from nemo_data_designer_plugin.sdk.logging import with_logging
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types import PlatformJobStatus
 from nemo_platform_plugin.jobs.archive import safe_extract_tar
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)

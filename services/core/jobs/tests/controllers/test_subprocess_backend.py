@@ -44,8 +44,14 @@ def _step_with_command(step, command: list[str]):
 
 def _step_with_unvalidated_command(step, command: list[str]):
     updated_step = step.model_copy(deep=True)
-    updated_step.step_spec.executor = SubprocessExecutionProvider.model_construct(
-        provider="subprocess", profile="default", command=command
+    step_spec = updated_step.step_spec
+    assert step_spec is not None
+    updated_step.step_spec = step_spec.model_copy(
+        update={
+            "executor": SubprocessExecutionProvider.model_construct(
+                provider="subprocess", profile="default", command=command
+            )
+        }
     )
     return updated_step
 

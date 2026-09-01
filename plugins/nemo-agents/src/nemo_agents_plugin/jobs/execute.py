@@ -537,19 +537,19 @@ def _compute_to_resources(compute: ComputeSpecInline | None) -> ResourcesSpec | 
     _reject_unsupported_resource_keys(resources.limits, "limits")
     _reject_unsupported_resource_keys(resources.requests, "requests")
 
-    spec: ResourcesSpec = {}
+    spec: dict[str, Any] = {}
     limits = _cpu_memory_spec(resources.limits)
-    if limits:
+    if limits is not None:
         spec["limits"] = limits
     requests = _cpu_memory_spec(resources.requests)
-    if requests:
+    if requests is not None:
         spec["requests"] = requests
 
     num_gpus = _gpu_count(resources.limits, resources.requests)
     if num_gpus is not None:
         spec["num_gpus"] = num_gpus
 
-    return spec or None
+    return ResourcesSpec(**spec) if spec else None
 
 
 def _reject_unsupported_resource_keys(resource_map: dict[str, str], where: str) -> None:
@@ -561,15 +561,15 @@ def _reject_unsupported_resource_keys(resource_map: dict[str, str], where: str) 
         )
 
 
-def _cpu_memory_spec(resource_map: dict[str, str]) -> ResourcesLimitsSpec:
-    # ``ResourcesLimitsSpec`` and ``ResourcesRequestsSpec`` are the same TypedDict
-    # (``ComputeResourceSpecParam``); one builder covers both sides.
-    spec: ResourcesLimitsSpec = {}
+def _cpu_memory_spec(resource_map: dict[str, str]) -> ResourcesLimitsSpec | None:
+    # ``ResourcesLimitsSpec`` and ``ResourcesRequestsSpec`` are the same
+    # plugin-owned compute resource spec; one builder covers both sides.
+    spec: dict[str, str] = {}
     if "cpu" in resource_map:
         spec["cpu"] = resource_map["cpu"]
     if "memory" in resource_map:
         spec["memory"] = resource_map["memory"]
-    return spec
+    return ResourcesLimitsSpec(**spec) if spec else None
 
 
 def _gpu_count(limits: dict[str, str], requests: dict[str, str]) -> int | None:
