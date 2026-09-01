@@ -5,7 +5,7 @@ name: Dispatch
 
 on:
   push:
-    branches: [main]
+    branches: [main, "release/*"]
 
 permissions:
   contents: read
@@ -26,6 +26,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          jq -n --arg ref "${GITHUB_SHA}" \
-            '{event_type: "ci-passed", client_payload: {ref: $ref}}' \
+          event_type="ci-passed"
+          release_version=""
+          if [[ "${GITHUB_REF_NAME}" == release/* ]]; then
+            event_type="release-branch-updated"
+            release_version="${GITHUB_REF_NAME#release/}"
+          fi
+
+          jq -n \
+            --arg event_type "${event_type}" \
+            --arg ref "${GITHUB_SHA}" \
+            --arg branch "${GITHUB_REF_NAME}" \
+            --arg version "${release_version}" \
+            '{
+              event_type: $event_type,
+              client_payload: {
+                ref: $ref,
+                branch: $branch,
+                version: $version
+              }
+            }' \
           | gh api -X POST "/repos/${DISPATCH_REPO}/dispatches" --input -
