@@ -34,8 +34,6 @@ dependencies = [
   "ragas==0.4.3",
   "langchain-openai>=1.3.5",
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
-  # Do not lower: earlier releases corrupt the scope stack on overlapping LangChain runs, which fails
-  # trials whose agent work succeeded (NVBug 6562846).
   "nemo-relay>=0.7.3,<0.8",
   # Fabric's typed config surface (FabricConfig/RuntimeConfig/ModelConfig/the relay models) — what the
   # agent-eval runtimes compose against. The metapackage includes nemo-fabric-runtime; the harness
