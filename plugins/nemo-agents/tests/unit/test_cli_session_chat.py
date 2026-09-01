@@ -532,6 +532,32 @@ def test_session_chat_interrupt_detaches_without_closing(exception: type[BaseExc
     ]
 
 
+def test_session_chat_interrupt_during_initial_turn_detaches_without_closing() -> None:
+    def interrupt(_: httpx.Request) -> httpx.Response:
+        raise KeyboardInterrupt
+
+    real_client = httpx.Client
+    with (
+        patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
+        patch(
+            "nemo_agents_plugin.cli._api_request",
+            side_effect=[_session_response(), _deployment_page(_deployment_response())],
+        ) as api_request,
+        patch(
+            "nemo_agents_plugin.cli.httpx.Client",
+            side_effect=lambda **kwargs: real_client(transport=httpx.MockTransport(interrupt), **kwargs),
+        ),
+    ):
+        result = runner.invoke(
+            AgentsCLI().get_cli(),
+            ["chat", "--session", "debug-auth", "--input", "first turn"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    assert "Session detached" in result.stdout
+    assert [request.args[0] for request in api_request.call_args_list] == ["GET", "GET"]
+
+
 def test_session_chat_rejects_non_fabric_deployment_before_session_creation() -> None:
     with (
         patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
