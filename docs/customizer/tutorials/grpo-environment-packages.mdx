@@ -1,0 +1,427 @@
+---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+title: "GRPO Environment Packages"
+description: "Package native-v1, wheels-v1, and adapter-wheels-v1 environment FileSets for GRPO."
+---
+
+<a id="grpo-environment-packages"></a>
+
+Package a GRPO reward environment as a FileSet. Job JSON, LoRA, metrics, and cluster flags are in [GRPO and Reward Environments](/documentation/customizer-reference/grpo-and-reward-environments).
+
+A GRPO job takes **two** FileSets:
+
+| FileSet | `purpose` | Contents |
+|---|---|---|
+| Environment | `environment` | Code, Gym YAML, and `nemo-environment.yaml`. **No** prompt JSONL. |
+| Dataset | `dataset` | `training.jsonl` (required), `validation.jsonl` (optional). |
+
+Do not put `.jsonl` in the environment package. If a Gym config lists `datasets[].jsonl_fpath`, omit that block and the `data/` directory; prompts belong in the dataset FileSet.
+
+## Prerequisites
+
+Before packaging an environment, ensure you have:
+
+1. **A NeMo Platform configured with `platform.runtime: kubernetes`** — GRPO provisions a Ray cluster and has no local Docker fallback
+2. **Sandboxed Gym enabled on the cluster** by your platform operator (`sandbox_cluster_capable` and a job-storage PVC claim). Refer to [Cluster prerequisites](/documentation/customizer-reference/grpo-and-reward-environments#cluster-prerequisites); installing OpenSandbox is covered in [OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox)
+3. **The `nemo` CLI on your `PATH`**, or a source checkout where `uv run --package nmp-rl` resolves
+4. **The training image tag** your cluster runs — vendoring a wheel closure requires the `nemo-gym`, `ray`, and `openai` versions it reports
+5. **A machine with internet access** for the packaging step. Training clusters consume uploaded FileSets only. For details on which environment type require internet access too, see details below.
+
+## Pick a format
+
+| You have | Format | `config_paths` live under |
+|---|---|---|
+| A Gym server tree, and the cluster can reach a package index at job start | `native-v1` | `responses_api_agents/`, `resources_servers/`, or `responses_api_models/` |
+| A Prime Intellect hub / `verifiers` environment | `adapter-wheels-v1` | `configs/` |
+| A Gym tree or custom servers with dependencies vendored in the package | `wheels-v1` | Anywhere in the package |
+
+All three run on the same Gym runtime: the training image starts a package's servers exactly as it starts Gym's own. The format decides only **where dependencies come from** and **where `config_paths` may live**. It does not change what is supported.
+
+Use `pi-to-gym-conversion` to produce `adapter-wheels-v1`. Set `adapter.agent` to `verifiers_agent`.
+
+<Warning>
+`adapter-wheels-v1` requires network access when the job starts. The package `wheels/` directory covers the hub environment; `verifiers_agent` also installs `verifiers` from GitHub. Enable `NMP_RL_SANDBOX_ALLOW_INTERNET` (or equivalent egress) for these jobs.
+</Warning>
+
+## How Gym YAML names servers
+
+Gym loads every file in `config_paths` and starts **instances**:
+
+```yaml
+<instance_name>:           # unique at runtime; dataset agent_ref.name and YAML refs use this
+  <server_type>:           # resources_servers | responses_api_agents | responses_api_models
+    <implementation>:      # directory: {server_type}/{implementation}/
+      entrypoint: app.py
+```
+
+Refs are `{type, name}` where `name` is the **instance**, not the implementation folder. Dataset rows follow the same rule: `agent_ref.name` is an instance.
+
+Instance and implementation are often spelled the same in Gym's own configs (`math_with_judge` / `math_with_judge`), which is why the distinction is easy to miss. `example_single_tool_call.yaml` is the counter-example: instance `example_single_tool_call_simple_agent`, implementation `simple_agent`.
+
+The job looks up `{server_type}/{implementation}/` in the environment FileSet first, then in the Gym tree on the training image. A server directory counts **only if it includes `requirements.txt` or `pyproject.toml`** — never both. The process runs `python app.py` from that directory.
+
+| Server type | Role |
+|---|---|
+| `resources_servers` | Tools, state, and `verify()` reward. `domain` is **required**. |
+| `responses_api_agents` | Rollout loop (`POST /v1/responses`). |
+| `responses_api_models` | Proxy to the job’s vLLM. Name the instance `policy_model`. |
+
+<Warning>
+`domain` is validated against a closed set: `math`, `coding`, `agent`, `knowledge`, `instruction_following`, `long_context`, `safety`, `games`, `translation`, `e2e`, `rlhf`, `other`. An empty string, a missing value, or a typo makes the block an *almost-server* — Gym prints a warning banner and then raises `AlmostServerError`, aborting the run. It is not silently skipped. Agent and model blocks must not carry `domain`; Gym strips it.
+</Warning>
+
+You can reference `simple_agent`, `vllm_model`, and `verifiers_agent` without uploading their `app.py` — shipping only `responses_api_agents/simple_agent/configs/*.yaml` is correct and intended. Any other implementation must appear as `{type}/{impl}/` in the FileSet (`native-v1` and `wheels-v1`). Put YAML alone under `configs/` only when every implementation is one of those image servers (`adapter-wheels-v1`).
+
+<Warning>
+Two layout mistakes fail in ways that are hard to read:
+
+- A custom `{type}/{impl}/` directory **without** `requirements.txt` or `pyproject.toml` is not recognised as a server. If a Gym built-in shares the name, the job runs **the built-in** instead — training against the wrong environment with no error.
+- A `pyproject.toml` at the **package root** makes Gym treat the package as a Gym checkout and install that root as `nemo-gym`. Keep the Gym source-slice layout; do not repackage the environment as a setuptools distribution.
+</Warning>
+
+Include a `policy_model` definition in `config_paths`. Without it, Gym reports `ServerRefNotFoundError` (`Available responses_api_models: (none)`).
+
+```yaml
+policy_model:
+  responses_api_models:
+    vllm_model:
+      entrypoint: app.py
+      base_url: ${policy_base_url}
+      api_key: ${policy_api_key}
+      model: ${policy_model_name}
+      return_token_id_information: true
+      uses_reasoning_parser: true
+```
+
+`${policy_base_url}`, `${policy_api_key}`, and `${policy_model_name}` resolve to the job’s vLLM endpoint. List this file first in `config_paths`.
+
+| Format | Path |
+|---|---|
+| `adapter-wheels-v1`, `wheels-v1` | `configs/policy_model.yaml` |
+| `native-v1` | `responses_api_models/vllm_model/configs/policy_model.yaml` |
+
+The `native-v1` path only has to start with one of the three server-type prefixes; the folder underneath it is free. `responses_api_models/policy_model/configs/policy_model.yaml` — matching the **instance** — passes the same check. Either is fine, because Gym runs `responses_api_models/vllm_model/` from the YAML body, not from the config file’s directory. Pick one convention and keep it: naming the folder after the implementation makes the on-disk tree mirror what actually runs.
+
+## Dependencies
+
+Each Gym server installs into its own virtualenv when the job starts. There are **two** installs, and they behave differently — this is the most common source of confusion about offline runs.
+
+1. **Gym builds the virtualenv** from that server’s `requirements.txt` or `pyproject.toml`, plus `nemo-gym` at the training-image version and Gym’s pinned `ray[default]` and `openai`. The package’s `wheels/` directory is offered to this step as a *candidate pool* (`UV_FIND_LINKS`) — **a package index is still enabled**, so anything the wheelhouse misses is fetched from it.
+2. **The job then installs the package’s vendored closure** into each agent and resources-server virtualenv with `--no-index --find-links=wheels/`. Fully offline, but only for distributions already in `wheels/`, and only after step 1 has succeeded.
+
+| Format | Network at job start |
+|---|---|
+| `native-v1` | Required (package index) |
+| `wheels-v1` | Not required **if `wheels/` also satisfies step 1** |
+| `adapter-wheels-v1` | Required (`verifiers` from GitHub) |
+
+For a `wheels-v1` job to start with no egress, `wheels/` must contain:
+
+- everything the server’s `requirements.txt` names, and their transitive dependencies;
+- `nemo-gym` at exactly the version the training image reports;
+- `ray[default]` and `openai` at the versions the image pins — the virtualenv is created with `uv venv --seed`, so nothing is inherited from the image.
+
+Completeness of `wheels/` is what makes a sandboxed run work; the format name alone does not.
+
+<Note>
+Step 2 installs **unpinned** distribution names on purpose, so an already-installed package is a no-op. That means step 2 cannot correct a version that step 1 resolved from an index — another reason to make the wheelhouse complete rather than partial.
+</Note>
+
+### `requirements.txt` in a custom server directory
+
+The file’s presence is what makes Gym treat the directory as a server. Its contents then build the virtualenv:
+
+| Where the server sits | What Gym runs |
+|---|---|
+| Inside a Gym checkout | `uv pip install -r requirements.txt <pinned deps>` |
+| A staged FileSet (the normal case) | `nemo-gym==<image version>` is prepended, the `-e nemo-gym[dev] @ ../../` line is dropped, and the result is piped to `uv pip install` |
+
+That rewrite is why a Gym server directory copies cleanly out of the source tree. It is also why vendoring the image’s **exact** `nemo-gym` version matters: a mismatch means your wheel is ignored and the version is resolved from PyPI.
+
+<Warning>
+Do not ship an empty `requirements.txt`. The file must exist, but an empty one produces a virtualenv containing only `nemo-gym`, `ray` and `openai` — so any other import in `app.py` fails at the first rollout, long after the job started. List the server’s real dependencies; if it genuinely has none beyond `nemo-gym`, write a comment line rather than leaving the file blank.
+</Warning>
+
+## `adapter-wheels-v1`
+
+Convert on a machine with internet. Upload the result; training nodes do not fetch from the hub.
+
+From a platform install, run `pi-to-gym-conversion`. From this repository:
+
+```bash
+uv run --package nmp-rl pi-to-gym-conversion \
+  --hub-id primeintellect/ascii-tree \
+  --hub-version 0.1.5 \
+  --out-dir ./ascii-tree-pkg \
+  --dataset-dir ./ascii-tree-data \
+  --validation-fraction 0.1
+```
+
+Pin `--hub-version` so the vendored release is reproducible.
+
+| Flag | Purpose |
+|---|---|
+| `--hub-id` | Required for conversion (not for `--validate-only`) |
+| `--hub-version` | Hub package version |
+| `--out-dir` / `--dataset-dir` | Environment package and Gym JSONL |
+| `--vf-env-id` / `--vf-env-args` | Verifiers load id (default: last segment of the hub slug) and JSON object of loader kwargs |
+| `--dataset-size` / `--validation-fraction` | Row cap (`-1` = all); split in `[0, 1)` (`0` = train only) |
+| `--wheels-dir` | Existing `*.whl` files instead of download (directory must be non-empty) |
+| `--validate-only <dir>` | Check package layout |
+| `--upload` | Create both FileSets (`NMP_BASE_URL` required). Default names: `<slug>-env` and `<slug>-env-dataset` |
+
+```text
+ascii-tree-pkg/
+  nemo-environment.yaml
+  configs/policy_model.yaml
+  configs/verifiers_agent.yaml
+  wheels/*.whl
+ascii-tree-data/
+  training.jsonl
+  validation.jsonl                 # when --validation-fraction > 0
+```
+
+```yaml
+# nemo-environment.yaml
+format: adapter-wheels-v1
+config_paths:
+  - configs/policy_model.yaml
+  - configs/verifiers_agent.yaml
+adapter:
+  agent: verifiers_agent
+  agent_type: responses_api_agents
+metadata:
+  name: ascii-tree
+  hub_id: primeintellect/ascii-tree
+  vf_env_id: ascii-tree
+  adapter_agent: verifiers_agent
+```
+
+Set `adapter.agent` to `verifiers_agent`. Dataset rows use `agent_ref.name: verifiers_agent` and `vf_env_id` equal to `metadata.vf_env_id`.
+
+`configs/verifiers_agent.yaml` sets `max_tokens` (default 8192). That value caps generation for this agent.
+
+```bash
+uv run --package nmp-rl pi-to-gym-conversion --validate-only ./ascii-tree-pkg
+```
+
+This checks layout (manifest, `config_paths`, `wheels/`). It does not check wheel platform tags, whether the closure is complete, whether `config_paths` define the servers your rows route to, or dataset rows. Those surface at job start.
+
+## `native-v1`
+
+Keep Gym directory names. Do not flatten the tree.
+
+```text
+weather-env/
+├── nemo-environment.yaml
+├── resources_servers/
+│   └── weather_verifier/
+│       ├── app.py
+│       ├── requirements.txt
+│       └── configs/
+│           └── weather_verifier.yaml
+├── responses_api_agents/
+│   └── simple_agent/
+│       └── configs/
+│           └── weather_agent.yaml
+└── responses_api_models/
+    └── vllm_model/
+        └── configs/
+            └── policy_model.yaml
+```
+
+`responses_api_agents/simple_agent/configs/` configures the image `simple_agent`. `resources_servers/weather_verifier/` is your server, so it includes `app.py` and `requirements.txt`.
+
+```yaml
+format: native-v1
+config_paths:
+  - responses_api_models/vllm_model/configs/policy_model.yaml
+  - resources_servers/weather_verifier/configs/weather_verifier.yaml
+  - responses_api_agents/simple_agent/configs/weather_agent.yaml
+metadata:
+  name: weather-grpo
+```
+
+```yaml
+# resources_servers/weather_verifier/configs/weather_verifier.yaml
+weather_verifier:
+  resources_servers:
+    weather_verifier:
+      entrypoint: app.py
+      domain: agent
+      description: Weather tool + verify
+```
+
+```yaml
+# responses_api_agents/simple_agent/configs/weather_agent.yaml
+weather_simple_agent:
+  responses_api_agents:
+    simple_agent:
+      entrypoint: app.py
+      resources_server:
+        type: resources_servers
+        name: weather_verifier
+      model_server:
+        type: responses_api_models
+        name: policy_model
+```
+
+`resources_servers/weather_verifier/app.py` is a `SimpleResourcesServer`: one route per tool, plus the `verify()` that returns the reward.
+
+{/* nemo_gym ships in the training image, not in the venv the docs linter runs in. */}
+{/* @nemo-docs: skip-python-type-check */}
+
+```python
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+from nemo_gym.base_resources_server import (
+    BaseResourcesServerConfig,
+    BaseVerifyRequest,
+    BaseVerifyResponse,
+    SimpleResourcesServer,
+)
+
+
+class WeatherResourcesServerConfig(BaseResourcesServerConfig):
+    pass
+
+
+class GetWeatherRequest(BaseModel):
+    city: str
+
+
+class GetWeatherResponse(BaseModel):
+    city: str
+    weather_description: str
+
+
+class WeatherResourcesServer(SimpleResourcesServer):
+    config: WeatherResourcesServerConfig
+
+    def setup_webserver(self) -> FastAPI:
+        app = super().setup_webserver()
+        app.post("/get_weather")(self.get_weather)
+        return app
+
+    async def get_weather(self, body: GetWeatherRequest) -> GetWeatherResponse:
+        return GetWeatherResponse(city=body.city, weather_description=f"The weather in {body.city} is cold.")
+
+    async def verify(self, body: BaseVerifyRequest) -> BaseVerifyResponse:
+        # Score the rollout in `body` and return the reward. 1.0 is a placeholder.
+        return BaseVerifyResponse(**body.model_dump(), reward=1.0)
+
+
+if __name__ == "__main__":
+    WeatherResourcesServer.run_webserver()
+```
+
+`resources_servers/weather_verifier/requirements.txt` lists anything else `app.py` imports. `nemo-gym` is prepended for you, so a server with no other dependencies needs only a comment line — but not an empty file.
+
+Set dataset `agent_ref.name` to `weather_simple_agent`, the agent **instance**.
+
+## `wheels-v1`
+
+Use the same server directories as `native-v1`, and add `wheels/` so job start does not need a package index. `config_paths` may list files under `configs/` or under the server trees. Custom implementations need `{type}/{impl}/` with `app.py` and `requirements.txt`.
+
+```text
+weather-env/
+├── nemo-environment.yaml
+├── configs/
+│   ├── policy_model.yaml
+│   ├── weather_verifier.yaml
+│   └── weather_agent.yaml
+├── resources_servers/
+│   └── weather_verifier/
+│       ├── app.py
+│       └── requirements.txt
+└── wheels/
+    ├── nemo_gym-<image-version>-*.whl
+    └── …                                    # linux x86_64, CPython 3.13; one version per project
+```
+
+Build wheels for the training image, not for the machine you use to package — it is **Python 3.13 on `x86_64` manylinux**. Three versions must match what the Gym host process reports: `nemo-gym`, which Gym pins each virtualenv to, and `ray[default]` / `openai`, which it appends to every install. Gym runs from its own actor virtualenv under `/opt/ray_venvs`, so read them from there:
+
+```bash
+IMAGE=<training-image>
+read GYM_VERSION RAY_VERSION OPENAI_VERSION < <(docker run --rm "$IMAGE" sh -c '
+  PY=$(ls -d /opt/ray_venvs/*NemoGym*/bin/python 2>/dev/null | head -1)
+  "${PY:-python}" -c "import importlib.metadata as m; print(m.version(\"nemo-gym\"), m.version(\"ray\"), m.version(\"openai\"))"')
+
+mkdir -p weather-env/wheels
+pip download --dest weather-env/wheels \
+  --only-binary=:all: \
+  --python-version 3.13 \
+  --platform manylinux_2_39_x86_64 \
+  --platform manylinux_2_28_x86_64 \
+  --platform manylinux_2_17_x86_64 \
+  --platform manylinux2014_x86_64 \
+  "nemo-gym==$GYM_VERSION" "ray[default]==$RAY_VERSION" "openai==$OPENAI_VERSION" \
+  -r resources_servers/weather_verifier/requirements.txt
+uv run --package nmp-rl pi-to-gym-conversion --validate-only ./weather-env
+```
+
+`--platform` is repeated because pip matches these tags literally rather than expanding a compatibility range.
+
+`--validate-only` does not check wheel tags. Empty `wheels/` and rebuild it so you do not ship two versions of the same project.
+
+<Note>
+If the environment must run a NeMo Gym fork rather than the published package, `pip download nemo-gym==X` fetches the **upstream** release at that version string. Build the wheel from the fork checkout instead (`uv build --wheel <gym-root>`) and confirm the built version matches what the image reports — Gym pins each virtualenv to that version, so a mismatch silently falls back to PyPI.
+</Note>
+
+## Dataset rows
+
+```json
+{
+  "responses_create_params": {
+    "input": [{"role": "user", "content": "what's it like in sf?"}]
+  },
+  "agent_ref": {
+    "type": "responses_api_agents",
+    "name": "weather_simple_agent"
+  }
+}
+```
+
+Hub conversions also set `vf_env_id`, `task_idx`, and `agent_ref.name: verifiers_agent`. Extra fields are passed to the resources server.
+
+When the agent is `simple_agent` and the environment exposes function-calling tools, each row must also declare them under `responses_create_params.tools` — `simple_agent` reads the tool list from the row, not from the resources server:
+
+```json
+{
+  "responses_create_params": {
+    "input": [{"role": "user", "content": "what's it like in sf?"}],
+    "tools": [{"type": "function", "name": "get_weather", "description": "",
+               "parameters": {"type": "object", "properties": {"city": {"type": "string"}},
+                              "required": ["city"], "additionalProperties": false},
+               "strict": true}]
+  },
+  "agent_ref": {"type": "responses_api_agents", "name": "weather_simple_agent"}
+}
+```
+
+<Note>
+NeMo Gym’s own in-tree JSONL omits `agent_ref`, because Gym infers the agent from the config that owns the dataset. The platform requires it on **every** row. Add it when reusing Gym data.
+</Note>
+
+## Upload and submit
+
+Keep relative paths. A trailing slash on `nemo files upload ./pkg/` uploads the directory **contents**; without it, everything nests one level deeper under the directory’s basename and the manifest is no longer at the FileSet root. Run `nemo files list` to confirm before submitting.
+
+`--purpose environment` is enforced at submit, not cosmetic: an environment FileSet whose purpose is anything but `environment` or `generic` is rejected.
+
+```bash
+nemo files filesets create weather-env --workspace default --purpose environment --exist-ok
+nemo files upload ./weather-env/ weather-env --workspace default
+nemo files list weather-env --workspace default
+```
+
+Job JSON: [GRPO and Reward Environments](/documentation/customizer-reference/grpo-and-reward-environments#submit-the-job). Sandboxed Gym is configured on the platform (`NMP_RL_SANDBOXED_GYM_DEFAULT`), not in the job payload. Cluster setup: [OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox).
+
+## Next Steps
+
+- Submit the job and tune its hyperparameters in [GRPO and Reward Environments](/documentation/customizer-reference/grpo-and-reward-environments).
+- Shape prompt rows for your environment's agent in [Format a Training Dataset](/documentation/customizer-reference/tutorials/format-training-dataset).
+- Monitor reward and the other training curves in [Check Customization Job Metrics](/documentation/customizer-reference/tutorials/metrics).
