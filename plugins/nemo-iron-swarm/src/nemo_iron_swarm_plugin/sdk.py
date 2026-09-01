@@ -167,6 +167,19 @@ class _ManifestsResource:
         """Re-resolve a frozen agent-source manifest against the agent as it is now."""
         return self._platform.post(f"{self._base(workspace)}/{name}/refresh", body={}, cast_to=dict[str, Any])
 
+    def inspect_project(
+        self, project_fileset: str, *, dockerfile: str | None = None, workspace: str = "default"
+    ) -> dict[str, Any]:
+        """Read an uploaded project bundle (``POST /manifests/inspect-project``).
+
+        Returns the derived manifest fields plus ``unresolved`` — the fields the project cannot state
+        about itself, which the caller must supply.
+        """
+        body: dict[str, Any] = {"project_fileset": project_fileset}
+        if dockerfile:
+            body["dockerfile"] = dockerfile
+        return self._platform.post(f"{self._base(workspace)}/inspect-project", body=body, cast_to=dict[str, Any])
+
 
 class IronSwarmPluginResource:
     """Sync SDK namespace mounted as ``client.iron_swarm``."""

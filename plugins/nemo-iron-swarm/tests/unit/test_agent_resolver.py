@@ -19,6 +19,7 @@ import yaml
 from nemo_iron_swarm_plugin.agent_resolver import (
     AgentResolutionError,
     build_manifest_dict,
+    check_relay_artifacts_dir,
     derive_agent_env,
     derive_egress,
     derive_secret_names,
@@ -27,7 +28,6 @@ from nemo_iron_swarm_plugin.agent_resolver import (
     inject_gateway_url,
     materialize_agent_package,
     parse_agent_ref,
-    relay_artifacts_dir,
     require_guardable_harness,
     resolve_agent_to_manifest,
     shipped_dockerfile,
@@ -145,9 +145,17 @@ def test_derive_secret_names_default_when_none_declared():
     assert derive_secret_names({}) == ["INFERENCE_API_KEY"]
 
 
-def test_relay_artifacts_dir_is_read_from_the_agents_telemetry():
-    assert relay_artifacts_dir({"telemetry": {"output_dir": "./artifacts/relay"}}) == "./artifacts/relay"
-    assert relay_artifacts_dir({}) is None
+def test_telemetry_dir_complaint_names_only_a_path_iron_swarm_will_not_read():
+    """The check exists to catch a victim writing telemetry somewhere the run never looks."""
+    sandbox_dir = "/home/sandbox/.iron-swarm/relay"
+    assert check_relay_artifacts_dir({"telemetry": {"output_dir": sandbox_dir}}) is None
+    assert check_relay_artifacts_dir({}) is None
+
+    complaint = check_relay_artifacts_dir({"telemetry": {"output_dir": "./artifacts/relay"}})
+    assert complaint is not None
+    # The message has to name both paths, or it says "wrong" without saying what to write instead.
+    assert "./artifacts/relay" in complaint
+    assert sandbox_dir in complaint
 
 
 # --------------------------------------------------------------------------- resolve_agent_to_manifest
@@ -287,7 +295,11 @@ def test_the_victims_relay_telemetry_is_preserved(tmp_path):
     )
     written = yaml.safe_load(resolved.agent_config_path.read_text(encoding="utf-8"))
     assert written["telemetry"]["provider"] == "relay"
-    assert resolved.manifest["agent"]["relay_artifacts"] == "./artifacts/relay"
+    # The agent's telemetry.output_dir is a path *inside the container*, and the manifest's
+    # relay_artifacts names a directory on the *host* for the fetched copy. Forwarding one to the
+    # other made the host write /home/sandbox, which is autofs on macOS. So the manifest carries no
+    # relay_artifacts and iron-swarm's own host default applies.
+    assert "relay_artifacts" not in resolved.manifest["agent"]
 
 
 def _fake_ethos(monkeypatch: pytest.MonkeyPatch, contents: dict[str, str] | None) -> list[str]:
