@@ -129,10 +129,14 @@ resolve the same interpreter as their parent.
 | GRPO | `VllmGenerationWorker`, `SyncRolloutActor` | **`vllm`** | `vllm`, `deep_ep`, `deep_gemm`, `flashinfer` |
 | GRPO (Gym) | `NemoGym` | **`nemo_gym`** | NeMo-Gym workspace member |
 
-`dtensor_cfg._v2` defaults to false, so DPO and plain full-weight GRPO both resolve to the
-**V1** DTensor worker and the `fsdp` extra. The GRPO compiler sets `_v2: true` when the job
-asks for something only V2 implements — LoRA, expert parallelism, or `automodel_kwargs` —
-which selects **V2** and therefore the `automodel` extra.
+GRPO picks its worker from `training.policy_backend`, which the compiler maps straight onto
+`dtensor_cfg._v2`: `automodel` (the default) → **V2** and the `automodel` extra, `dtensor` →
+**V1** and the `fsdp` extra. Nothing promotes the backend implicitly — a job that pairs
+`policy_backend: dtensor` with LoRA, expert parallelism or `automodel_kwargs` is rejected in
+`GRPOTraining` before it is scheduled, since those three are V2-only.
+
+DPO does not expose the knob: `dpo_config` writes its `dtensor_cfg` as a literal with no
+`_v2` key, so DPO is always **V1** and the `fsdp` extra.
 
 **LoRA requires V2 or Megatron.** DTensor V1 asserts `lora_cfg.enabled is False`
 (`nemo_rl/models/policy/lm_policy.py`); the DTensor LoRA implementation lives in
