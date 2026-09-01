@@ -6913,7 +6913,7 @@ nemo agents execute run [OPTIONS]
 
 Job Spec flags are generated from the ExecuteAgentJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
 
-Some spec fields cannot be represented as CLI flags: `agent (other union forms)`, `environment (other union forms)`, `workdir.artifact_mounts`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+Some spec fields cannot be represented as CLI flags: `agent (other union forms)`, `environment (other union forms)`, `workdir.artifact_mounts`, `extension.config`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
 ​
 
 ##### nemo agents execute submit
@@ -6955,7 +6955,7 @@ nemo agents execute submit [OPTIONS]
 
 Job Spec flags are generated from the ExecuteAgentJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
 
-Some spec fields cannot be represented as CLI flags: `agent (other union forms)`, `environment (other union forms)`, `workdir.artifact_mounts`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+Some spec fields cannot be represented as CLI flags: `agent (other union forms)`, `environment (other union forms)`, `workdir.artifact_mounts`, `extension.config`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
 ​
 
 ##### nemo agents execute explain
