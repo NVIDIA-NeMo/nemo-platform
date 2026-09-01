@@ -27,6 +27,7 @@ group at startup. Numeric optimize is likewise auto-injected from
 - ``get``          — get an agent by name
 - ``delete``       — delete an agent
 - ``deploy``       — create a deployment for an agent (waits for ``running`` by default)
+- ``chat``         — open an interactive new or existing deployed-agent session
 - ``undeploy``     — stop and remove a deployment
 - ``logs``         — print or tail the local deployment log file
 - ``deployments``  — sub-group: list / get / delete deployments
@@ -78,8 +79,10 @@ from nemo_agents_plugin.entities import (
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform import NeMoPlatform
+from nemo_platform_ext.cli.core.api import is_tty
 from nemo_platform_ext.cli.core.formatters import Column, format_output
 from nemo_platform_ext.cli.core.help_formatter import NmpGroup
+from nemo_platform_ext.ui.prompts import is_interactive
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
@@ -871,6 +874,64 @@ def _package_render_only(
 
 def _register_platform_commands(app: typer.Typer) -> None:
     """Register Agent Resources commands (require a running cluster) onto *app*."""
+
+    @app.command(rich_help_panel="Deployed agent interaction (requires running cluster)")
+    def chat(
+        input: Optional[str] = typer.Option(
+            None,
+            "--input",
+            "-i",
+            help="Optional first message to send before prompting for the next turn.",
+        ),
+        agent_deployment: Optional[str] = typer.Option(
+            None,
+            "--agent-deployment",
+            "-d",
+            help="Deployment to start a new persisted session against.",
+        ),
+        session: Optional[str] = typer.Option(
+            None,
+            "--session",
+            "-s",
+            help="Name of an existing persisted session to resume.",
+        ),
+        session_name: Optional[str] = typer.Option(
+            None,
+            "--session-name",
+            help="Name for a new session; valid only with --agent-deployment.",
+        ),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        timeout: float = typer.Option(
+            300,
+            "--timeout",
+            "-t",
+            min=0.001,
+            envvar="NEMO_AGENTS_INVOKE_TIMEOUT",
+            help="Request timeout in seconds for each streamed agent turn.",
+        ),
+    ) -> None:
+        """Chat interactively with a new or existing deployed-agent session."""
+        _validate_session_chat_options(
+            agent_deployment=agent_deployment,
+            session=session,
+            session_name=session_name,
+            input=input,
+        )
+        if not _is_interactive_session_chat():
+            raise click.UsageError(
+                "Agent chat requires an interactive terminal. Use `nemo agents invoke` for one-shot or scripted input."
+            )
+
+        _platform_session_chat(
+            base_url=_resolve_base_url(base_url),
+            workspace=workspace,
+            agent_deployment=agent_deployment,
+            session=session,
+            session_name=session_name,
+            input=input,
+            timeout=timeout,
+        )
 
     @app.command(rich_help_panel="Agent Resources (requires running cluster)")
     def create(
@@ -1947,6 +2008,53 @@ def _platform_invoke(
         except httpx.RequestError as exc:
             print_http_request_error(exc, action="invoke agent")
             raise typer.Exit(code=1)
+
+
+def _is_interactive_session_chat() -> bool:
+    """Return whether the process can safely run the agent chat TUI."""
+    return is_interactive() and is_tty()
+
+
+def _validate_session_chat_options(
+    *,
+    agent_deployment: str | None,
+    session: str | None,
+    session_name: str | None,
+    input: str | None,
+) -> None:
+    """Validate the mutually exclusive new-session and resume selectors."""
+    if agent_deployment is not None and not agent_deployment.strip():
+        raise click.UsageError("--agent-deployment must not be empty.")
+    if session is not None and not session.strip():
+        raise click.UsageError("--session must not be empty.")
+    if session_name is not None and not session_name.strip():
+        raise click.UsageError("--session-name must not be empty.")
+    if input is not None and not input.strip():
+        raise click.UsageError("--input must not be empty.")
+
+    if (agent_deployment is None) == (session is None):
+        raise click.UsageError("Provide exactly one of --agent-deployment or --session.")
+    if session_name is not None and agent_deployment is None:
+        raise click.UsageError("--session-name can only be used with --agent-deployment.")
+
+
+def _platform_session_chat(
+    *,
+    base_url: str,
+    workspace: str,
+    agent_deployment: str | None,
+    session: str | None,
+    session_name: str | None,
+    input: str | None,
+    timeout: float,
+) -> None:
+    """Run deployed-agent session chat after command validation.
+
+    Session creation, resumption, and gateway transport are implemented by
+    the subsequent session-chat steps; this boundary keeps their behavior
+    separate from the public CLI contract.
+    """
+    raise click.ClickException("Session chat execution is not implemented yet.")
 
 
 # ---------------------------------------------------------------------------
