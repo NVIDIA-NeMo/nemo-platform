@@ -37,9 +37,14 @@ authz:
           description: "Read a fileset's stored profile"
         # Deliberately granted to no workspace role below: the profile is derived data that only
         # the profiler task produces, so the write path stays reachable by service principals
-        # alone. Users ask for a profile with filesets.profile.exec instead.
+        # alone. Users ask for a profile with filesets.profile.exec instead. `has_role: false` is
+        # what tells the orphan check that the empty grant is the intent and not an omission —
+        # without it `auth-tools.py check` reports filesets.profile.write as an orphaned
+        # permission and exits 1. (`update` does not remove role-less permissions; the mapping
+        # deletion a flag prevents is the endpoint one — see x-not-in-openapi on the PUT.)
         write:
           description: "Store a computed profile on a fileset (service principals only)"
+          has_role: false
       read:
         description: "Read filesets"
       update:
@@ -742,6 +747,11 @@ authz:
         scopes:
         - files:write
         - platform:write
+        # Real endpoint served by services/core/files/.../api/v2/filesets/endpoints.py; hidden from
+        # the public OpenAPI spec (include_in_schema=False) because only the profiler task calls it.
+        # This marks that absence as intentional so the orphan check does not delete the mapping —
+        # and an unmapped endpoint fails closed, which would 403 every profile write-back.
+        x-not-in-openapi: true
     /apis/guardrails/v2/workspaces/{workspace}/checks:
       post:
         permissions:
