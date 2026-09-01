@@ -378,6 +378,27 @@ def test_session_chat_rejects_terminal_session_before_deployment_lookup(status: 
     run_chat.assert_not_called()
 
 
+def test_session_chat_reports_missing_session() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, request=request, json={"detail": "Session 'missing' not found."})
+
+    real_client = httpx.Client
+    with (
+        patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
+        patch(
+            "nemo_agents_plugin.cli.httpx.Client",
+            side_effect=lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+        ),
+        patch("nemo_agents_plugin.cli._run_resolved_session_chat") as run_chat,
+    ):
+        result = runner.invoke(AgentsCLI().get_cli(), ["chat", "--session", "missing"])
+
+    assert result.exit_code == 1
+    assert "Session 'missing' not found. (HTTP 404 Not Found)" in result.stderr
+    assert "/apis/agents/v2/workspaces/default/sessions/missing" in result.stderr
+    run_chat.assert_not_called()
+
+
 def test_session_chat_rejects_active_session_past_its_expiration_deadline() -> None:
     with (
         patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
