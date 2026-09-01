@@ -1715,7 +1715,9 @@ class TestCompilePlatformSpec:
         def compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk):
             return expected
 
-        result = await _compile_platform_spec(compiler, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock())
+        result = await _compile_platform_spec(
+            compiler, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock(), None, None
+        )
         assert result is expected
 
     @pytest.mark.anyio
@@ -1727,7 +1729,9 @@ class TestCompilePlatformSpec:
         async def compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk):
             return expected
 
-        result = await _compile_platform_spec(compiler, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock())
+        result = await _compile_platform_spec(
+            compiler, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock(), None, None
+        )
         assert result is expected
 
     @pytest.mark.anyio
@@ -1740,7 +1744,9 @@ class TestCompilePlatformSpec:
 
         spec = FooJobConfig(foo="a", bar=1)
         with pytest.raises(HTTPException) as exc_info:
-            await _compile_platform_spec(bad_compiler, "ws", spec, spec, MagicMock(), "name", "my_svc", MagicMock())
+            await _compile_platform_spec(
+                bad_compiler, "ws", spec, spec, MagicMock(), "name", "my_svc", MagicMock(), None, None
+            )
         assert exc_info.value.status_code == 422
         assert "my_svc" in exc_info.value.detail
         assert "missing field" in exc_info.value.detail
@@ -1766,6 +1772,8 @@ class TestCompilePlatformSpec:
                 "name",
                 "my_svc",
                 MagicMock(),
+                None,
+                None,
             )
         assert exc_info.value.status_code == 503
         assert "my_svc" in exc_info.value.detail
@@ -1795,7 +1803,9 @@ class TestCompilePlatformSpec:
 
         spec = FooJobConfig(foo="a", bar=1)
         with pytest.raises(HTTPException) as exc_info:
-            await _compile_platform_spec(compiler_bad_config, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock())
+            await _compile_platform_spec(
+                compiler_bad_config, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock(), None, None
+            )
         assert exc_info.value.status_code == 422
         assert "not json serializable" in exc_info.value.detail.lower()
 
