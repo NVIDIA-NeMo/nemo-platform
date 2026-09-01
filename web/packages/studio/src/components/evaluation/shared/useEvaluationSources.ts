@@ -7,8 +7,8 @@ import type { EvaluationResponse, ExperimentResponse } from '@nemo/sdk/generated
 import { evaluationFilesetName } from '@studio/components/evaluation/experimentEvalConfig';
 import { useMemo } from 'react';
 
-/** Backend caps page_size at 100; the picker shows the most recent page. */
-export const LIST_PAGE_SIZE = 100;
+/** API maximum. The picker still shows one page, so an agent past this many is truncated. */
+export const LIST_PAGE_SIZE = 1000;
 
 /** Group key for an evaluation whose experiment fell outside the fetched page, or that somehow
  *  belongs to none. It still has a reusable config, so it stays selectable rather than vanishing. */

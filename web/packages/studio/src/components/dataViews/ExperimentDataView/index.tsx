@@ -553,9 +553,9 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
         cell: ({ row }) => (
           <QuickActionsMenuRoot
             actions={[
-              // Only offered for a row that carries a reusable eval config; without one the form
-              // would open on an evaluation it has to reject.
-              ...(evaluationFilesetName(row.original)
+              // Needs a reusable eval config and the agent that produced it: the form's picker is
+              // agent-scoped, so an untagged row opens on a step with nothing to choose.
+              ...(evaluationFilesetName(row.original) && row.original.agent_names?.[0]
                 ? [
                     {
                       label: 'New evaluation from this configuration',

@@ -118,10 +118,18 @@ describe('SubmitEvaluationModal', () => {
     const user = userEvent.setup();
     renderModal();
 
-    // The re-run path is the default, so a source is picked and a name derived from it before
-    // the user ever says which path they are on.
+    // Seed a name on the re-run path first: pick a source, let it prefill, then switch paths.
     await screen.findByText('How do you want to start?');
-    await user.click(screen.getByRole('radio', { name: /Create a new experiment/ }));
+    await user.click(screen.getByRole('radio', { name: /Re-run an existing evaluation/ }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    await user.click(await screen.findByRole('combobox', { name: /evaluation to re-run/i }));
+    await user.click(await screen.findByRole('option', { name: 'nemotron-super-3-temp-point5' }));
+    const seeded = await screen.findByLabelText<HTMLInputElement>('New Evaluation Name');
+    await waitFor(() => expect(seeded).toHaveValue('nemotron-super-3-temp-point5'));
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(await screen.findByRole('radio', { name: /Create a new experiment/ }));
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     await user.type(await screen.findByLabelText('Name'), 'model-update-tests');

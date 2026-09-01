@@ -96,7 +96,7 @@ import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import { getAgentEvaluationsTabRoute } from '@studio/routes/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Info } from 'lucide-react';
-import { type FC, useEffect, useRef, useState } from 'react';
+import { type FC, useCallback, useEffect, useRef, useState } from 'react';
 import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { useDebounce } from 'use-debounce';
@@ -414,7 +414,13 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
   // A handed-in source has already answered the first two steps, so the wizard opens on the last
   // one. Back still walks all the way out, so the choice stays reviewable rather than assumed.
-  const [step, setStep] = useState<WizardStep>(sourceEvaluation ? 'evaluation' : 'start');
+  // A handed-in source only skips the first step when its agent came with it; the picker is
+  // agent-scoped, so without one the evaluation step has nothing to show.
+  const startingStep = useCallback(
+    (): WizardStep => (sourceEvaluation && agentProp ? 'evaluation' : 'start'),
+    [sourceEvaluation, agentProp]
+  );
+  const [step, setStep] = useState<WizardStep>(startingStep);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [datasetPick, setDatasetPick] = useState<DatasetPick | null>(null);
   const [configPick, setConfigPick] = useState<ConfigPick | null>(null);
@@ -457,6 +463,9 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const selectedSource = sources.byName[evaluationName];
   const selectedEvaluation = selectedSource?.evaluation;
   const hasNoEvaluations = mode === MODE_EXPERIMENT && sources.isEmpty;
+  // Only a settled, agent-scoped, genuinely empty list disables re-run: a disabled query reports
+  // isLoading false, which would read as empty before anything was fetched.
+  const rerunUnavailable = !!selectedAgent && !sources.isLoading && sources.isEmpty;
 
   // Default the start mode once the list resolves; `selectedAgent` gates it because a disabled
   // query reports isLoading false, which would read as empty before anything was fetched.
@@ -757,7 +766,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   useEffect(() => {
     if (open) return;
     resetForm(makeDefaultValues(agentProp, sourceEvaluation));
-    setStep(sourceEvaluation ? 'evaluation' : 'start');
+    setStep(startingStep());
     suggestedRecordName.current = '';
     seededForSource.current = null;
     modeDefaultApplied.current = false;
@@ -766,7 +775,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     setDatasetPick(null);
     setConfigPick(null);
     setSubmitAttempted(false);
-  }, [open, agentProp, sourceEvaluation, resetForm]);
+  }, [open, agentProp, sourceEvaluation, resetForm, startingStep]);
 
   // Seed the locked agent and the handed-in source on open. A blanket reset here would clobber
   // the judge-model preselect above, which runs earlier in effect order.
@@ -782,7 +791,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const resetAndClose = () => {
     resetMutation();
     resetForm(makeDefaultValues(agentProp, sourceEvaluation));
-    setStep(sourceEvaluation ? 'evaluation' : 'start');
+    setStep(startingStep());
     suggestedRecordName.current = '';
     seededForSource.current = null;
     modeDefaultApplied.current = false;
@@ -942,7 +951,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                     setValue('mode', value as EvaluationMode, { shouldValidate: false });
                     clearErrors(['evaluationName', 'newName']);
                   }}
-                  items={startItems(sources.isEmpty)}
+                  items={startItems(rerunUnavailable)}
                 />
               </FormField>
             </>
