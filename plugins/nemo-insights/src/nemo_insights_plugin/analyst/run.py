@@ -99,7 +99,6 @@ async def run_analyst(
             analyst_evaluation=analyst_evaluation,
             enable_observability=enable_observability,
             model_refs=model_refs,
-            close_client=False,
         )
         return await backend.persist_result(workspace=workspace, agent=agent, result=result)
     finally:
@@ -122,9 +121,12 @@ async def run_analyst_change_set(
     analyst_evaluation: AnalystEvaluationContext | None = None,
     enable_observability: bool = True,
     model_refs: ConfiguredModelRefs | None = None,
-    close_client: bool = True,
 ) -> tuple[AnalystResult, AnalystBackend]:
-    """Build and run the analyst agent without persisting its change-set."""
+    """Build and run the analyst agent without persisting its change-set.
+
+    The caller owns *client* and is responsible for closing it; this function
+    never does.
+    """
     observability = None
     model_clients: ConfiguredModelClients | None = None
     insights_output_path = str(insights_output) if insights_output else None
@@ -160,16 +162,14 @@ async def run_analyst_change_set(
             result = await _run_agent(analyst, verbose=verbose)
         return result, backend
     finally:
+        # *client* is deliberately absent here: it belongs to the caller, who
+        # closes it once this function's work — and its own — is done.
         try:
             if observability is not None:
                 observability.shutdown()
         finally:
-            try:
-                if model_clients is not None:
-                    await model_clients.aclose()
-            finally:
-                if close_client:
-                    await client.close()
+            if model_clients is not None:
+                await model_clients.aclose()
 
 
 def _analyst_observability_enabled() -> bool:

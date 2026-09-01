@@ -75,20 +75,28 @@ class InsightsAnalystRuntime:
             or os.environ.get("NMP_BASE_URL")
             or os.environ.get("NEMO_BASE_URL")
         )
-        result, _backend = await run_analyst_change_set(
-            agent=target_agent,
-            agent_spec=_string_setting(self._settings, "agent_spec"),
-            workspace=workspace,
-            base_url=base_url,
-            client=get_async_task_sdk("insights"),
-            since=_datetime_setting(self._settings, "since"),
-            evaluation_id=_string_setting(self._settings, "evaluation_id"),
-            enable_observability=bool(self._settings.get("enable_observability", True)),
-            model_refs=ConfiguredModelRefs(
-                default=_default_model_ref(self._settings, self._models),
-                fast=_fast_model_ref(self._settings, self._models),
-            ),
+        # Every settings read can raise, so resolve them before opening the
+        # client: nothing is worth a live SDK handle that no one closes.
+        agent_spec = _string_setting(self._settings, "agent_spec")
+        since = _datetime_setting(self._settings, "since")
+        evaluation_id = _string_setting(self._settings, "evaluation_id")
+        enable_observability = bool(self._settings.get("enable_observability", True))
+        model_refs = ConfiguredModelRefs(
+            default=_default_model_ref(self._settings, self._models),
+            fast=_fast_model_ref(self._settings, self._models),
         )
+        async with get_async_task_sdk("insights") as client:
+            result, _backend = await run_analyst_change_set(
+                agent=target_agent,
+                agent_spec=agent_spec,
+                workspace=workspace,
+                base_url=base_url,
+                client=client,
+                since=since,
+                evaluation_id=evaluation_id,
+                enable_observability=enable_observability,
+                model_refs=model_refs,
+            )
         return result
 
     async def stop(self) -> None:

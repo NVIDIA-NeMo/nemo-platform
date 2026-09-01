@@ -30,19 +30,45 @@ def _agent_config(settings: dict[str, Any]) -> contract.AgentConfig:
     )
 
 
+class _StubClient:
+    """Stands in for the async SDK handle so a leak shows up as an unclosed client."""
+
+    def __init__(self, service: str) -> None:
+        self.service = service
+        self.closed = False
+
+    async def __aenter__(self) -> _StubClient:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        self.closed = True
+
+
+def _stub_sdk_factory(clients: list[_StubClient]) -> Any:
+    """Record every client handed out so a test can assert none were left open."""
+
+    def factory(service: str) -> _StubClient:
+        client = _StubClient(service)
+        clients.append(client)
+        return client
+
+    return factory
+
+
 def _request(context: dict[str, Any] | None = None) -> contract.AgentRunRequest:
     return contract.AgentRunRequest(input="Analyze telemetry.", context=context or {})
 
 
 async def test_fabric_adapter_returns_unpersisted_analyst_result(monkeypatch) -> None:
     seen: dict[str, Any] = {}
+    clients: list[_StubClient] = []
 
     async def fake_run_analyst_change_set(**kwargs: Any) -> tuple[AnalystResult, object]:
         seen.update(kwargs)
         return AnalystResult(summary="No high-impact failures found."), object()
 
     monkeypatch.setattr(fabric_adapter, "run_analyst_change_set", fake_run_analyst_change_set)
-    monkeypatch.setattr(fabric_adapter, "get_async_task_sdk", lambda service: f"client:{service}")
+    monkeypatch.setattr(fabric_adapter, "get_async_task_sdk", _stub_sdk_factory(clients))
 
     runtime = fabric_adapter.InsightsAnalystRuntime()
     await runtime.start(
@@ -74,11 +100,35 @@ async def test_fabric_adapter_returns_unpersisted_analyst_result(monkeypatch) ->
     assert seen["agent_spec"] == "# Contract"
     assert seen["workspace"] == "workspace"
     assert seen["base_url"] == "http://platform"
-    assert seen["client"] == "client:insights"
+    assert seen["client"] is clients[0]
+    assert clients[0].service == "insights"
     assert seen["since"].isoformat() == "2026-08-21T12:00:00+00:00"
     assert seen["evaluation_id"] == "eval-123"
     assert seen["model_refs"].default == "default/gpt-5"
     assert seen["model_refs"].fast == "default/gpt-5-mini"
+    # The adapter owns the client now, so a successful run must close it too.
+    assert clients[0].closed
+
+
+async def test_fabric_adapter_does_not_leak_a_client_when_a_model_ref_is_invalid(monkeypatch) -> None:
+    """A settings error must resolve before the ``async with`` opens a client at all."""
+    clients: list[_StubClient] = []
+
+    async def fail_if_called(**kwargs: Any) -> tuple[AnalystResult, object]:
+        raise AssertionError("run_analyst_change_set should not be reached")
+
+    monkeypatch.setattr(fabric_adapter, "get_async_task_sdk", _stub_sdk_factory(clients))
+    monkeypatch.setattr(fabric_adapter, "run_analyst_change_set", fail_if_called)
+
+    runtime = fabric_adapter.InsightsAnalystRuntime()
+    await runtime.start({"config": _agent_config({"agent": "research-agent", "default_model": "   "})})
+
+    result = await runtime.invoke(_request({"job_workspace": "workspace"}), cast(contract.RuntimeContext, None))
+
+    assert result.status is contract.AgentRunStatus.FAILED
+    assert result.error is not None
+    assert "harness.settings.default_model must be a non-empty string" in result.error.message
+    assert all(client.closed for client in clients), "an SDK client was built and never closed"
 
 
 async def test_fabric_adapter_reports_configuration_failure() -> None:
