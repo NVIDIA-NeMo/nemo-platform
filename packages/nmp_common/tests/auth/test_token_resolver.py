@@ -4,8 +4,8 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nmp.common.auth.jwt import TokenClaims
-from nmp.common.auth.token_resolver import ResolvedBearerToken, resolve_bearer_token
+from nmp.common.auth.token_claims import ActorClaims, TokenClaims
+from nmp.common.auth.token_resolver import ResolvedBearerToken, ResolvedTokenKind, resolve_bearer_token
 from nmp.common.config import AuthConfig
 from nmp.common.config.base import AccessKeyConfig, OIDCConfig
 
@@ -18,6 +18,62 @@ def _claims(subject: str = "alice@example.com") -> TokenClaims:
         scopes=["models:read"],
         raw_claims={"jti": "ak_example"},
     )
+
+
+def _claims_with_actor() -> TokenClaims:
+    return TokenClaims(
+        subject="user:alice",
+        email="alice@example.test",
+        groups=["researchers"],
+        scopes=["models.read"],
+        raw_claims={
+            "sub": "user:alice",
+            "email": "alice@example.test",
+            "groups": "researchers",
+            "act": {"sub": "service:jobs", "groups": "system:serviceaccounts"},
+        },
+        actor=ActorClaims(subject="service:jobs", groups=["system:serviceaccounts"]),
+    )
+
+
+def test_resolved_token_maps_actor_claims_to_delegated_principal_headers() -> None:
+    claims = _claims_with_actor()
+    resolved = ResolvedBearerToken(claims=claims, token_kind="workload_access_token")
+
+    assert resolved.principal.id == "service:jobs"
+    assert resolved.principal.groups == ["system:serviceaccounts"]
+    assert resolved.principal.on_behalf_of == "user:alice"
+    assert resolved.principal.on_behalf_of_email == "alice@example.test"
+    assert resolved.principal.on_behalf_of_groups == ["researchers"]
+    assert resolved.principal.effective_principal.id == "user:alice"
+    assert resolved.principal_headers() == {
+        "X-NMP-Principal-Id": "service:jobs",
+        "X-NMP-Principal-Groups": "system:serviceaccounts",
+        "X-NMP-Principal-On-Behalf-Of": "user:alice",
+        "X-NMP-Principal-On-Behalf-Of-Groups": "researchers",
+        "X-NMP-Principal-On-Behalf-Of-Email": "alice@example.test",
+        "X-NMP-Scopes": "models.read",
+    }
+
+
+@pytest.mark.parametrize("token_kind", ["oidc_access_token", "access_key", "workload_subject_token"])
+def test_non_workload_access_tokens_ignore_actor_claims(token_kind: ResolvedTokenKind) -> None:
+    resolved = ResolvedBearerToken(claims=_claims_with_actor(), token_kind=token_kind)
+
+    principal = resolved.principal
+
+    assert principal.id == "user:alice"
+    assert principal.email == "alice@example.test"
+    assert principal.groups == ["researchers"]
+    assert principal.on_behalf_of is None
+    assert principal.on_behalf_of_email is None
+    assert principal.on_behalf_of_groups is None
+    assert resolved.principal_headers() == {
+        "X-NMP-Principal-Id": "user:alice",
+        "X-NMP-Principal-Email": "alice@example.test",
+        "X-NMP-Principal-Groups": "researchers",
+        "X-NMP-Scopes": "models.read",
+    }
 
 
 @pytest.mark.asyncio

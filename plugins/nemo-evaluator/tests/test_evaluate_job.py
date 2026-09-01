@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal, cast
+from unittest.mock import patch
 
 import httpx
 import nemo_evaluator.cli as evaluator_cli
@@ -56,7 +57,6 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform import NotFoundError
 from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
@@ -235,6 +235,29 @@ class _FakeModels:
         return "https://igw.example.test/v1/chat/completions"
 
 
+class _FakeModelsClient:
+    """Typed ``ModelsClient`` surface the resolver builds via
+    ``client_from_platform``. ``get_model``/``get_provider`` return responses with
+    a ``.data()`` accessor, mirroring ``NemoResponse``."""
+
+    def __init__(self) -> None:
+        self.retrieved: list[tuple[str, str]] = []
+
+    def get_model(self, *, name: str, workspace: str) -> SimpleNamespace:
+        self.retrieved.append((workspace, name))
+        entity = SimpleNamespace(model_providers=["default/provider"])
+        return SimpleNamespace(data=lambda: entity)
+
+    def get_provider(self, *, name: str, workspace: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            data=lambda: SimpleNamespace(name=name, workspace=workspace, host_url="http://nim.example.test:8000")
+        )
+
+    def get_model_entity_route_openai_url(self, model_entity: object) -> str:
+        del model_entity
+        return "https://igw.example.test/v1/chat/completions"
+
+
 class _FakeProviders:
     def retrieve(self, name: str, *, workspace: str) -> SimpleNamespace:
         return SimpleNamespace(name=name, workspace=workspace, host_url="http://nim.example.test:8000")
@@ -242,8 +265,20 @@ class _FakeProviders:
 
 class _FakeSDK:
     def __init__(self) -> None:
+        self.models_client = _FakeModelsClient()
         self.models = _FakeModels()
         self.inference = SimpleNamespace(providers=_FakeProviders())
+
+
+@pytest.fixture(autouse=True)
+def _patch_resolver_client_from_platform():
+    """Route ``client_from_platform(sdk, ModelsClient)`` in the resolver back to
+    ``sdk.models_client`` so tests drive the typed client directly."""
+    with patch(
+        "nemo_evaluator.resolvers.client_from_platform",
+        side_effect=lambda sdk_or_async, _cls: sdk_or_async.models_client,
+    ):
+        yield
 
 
 def _llm_judge_ref_metric() -> LLMJudgeMetric:
@@ -479,22 +514,20 @@ async def test_platform_model_resolver_resolves_model_ref_through_sdk() -> None:
 
     model = await resolver.resolve_model(ModelRef(root="default/judge"))
 
-    assert sdk.models.retrieved == [("default", "judge")]
+    assert sdk.models_client.retrieved == [("default", "judge")]
     assert model.name == "judge"
     assert model.url == "https://igw.example.test/v1/chat/completions"
     assert model.host_url == "http://nim.example.test:8000"
 
 
 async def test_platform_model_resolver_rejects_missing_model_ref(mocker: MockerFixture) -> None:
+    from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+
     sdk = _FakeSDK()
-    response = httpx.Response(
-        404,
-        request=httpx.Request("GET", "https://nmp.test/apis/models/v2/workspaces/default/models/missing"),
-    )
     mocker.patch.object(
-        sdk.models,
-        "retrieve",
-        side_effect=NotFoundError("Model not found", response=response, body=None),
+        sdk.models_client,
+        "get_model",
+        side_effect=PluginNotFoundError(httpx.Response(404, request=httpx.Request("GET", "https://nmp.test/a"))),
     )
 
     with pytest.raises(ValueError, match="Model reference 'default/missing' not found"):

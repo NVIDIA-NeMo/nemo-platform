@@ -4,6 +4,7 @@
 import { formatNumericValue } from '@nemo/common/src/components/charts/format';
 import type { ChartReferenceLine } from '@nemo/common/src/components/charts/types';
 import type { StatTileStatus } from '@nemo/common/src/components/StatTile';
+import { formatTimeInSeconds } from '@nemo/common/src/utils/date';
 import type {
   CustomizationMetricValue,
   CustomizationStatusDetailsWithMetrics,
@@ -17,13 +18,17 @@ export const GRPO_METRIC = {
   trainReward: 'train_reward',
   /** GRPO's validation reward: `validate()` reports no loss, so this whole-pass mean is the curve. */
   validationReward: 'val_accuracy',
-  /** Not in the backend allow-list today, so it has no history and the reward band stays off. */
-  rewardSpread: 'train_total_reward/stddev',
   truncationRate: 'train_truncation_rate',
   tokenMultProbError: 'train_token_mult_prob_error',
   genKlError: 'train_gen_kl_error',
+  samplingImportanceRatio: 'train_sampling_importance_ratio',
   approxEntropy: 'train_approx_entropy',
   genTokens: 'train_gen_tokens_per_sample/mean',
+  /**
+   * Wall clock for one step. NeMo-RL logs it under a `timing/train` prefix that the logger
+   * re-spells as `timing/` before the `train_` phase prefix goes on, hence the nested name.
+   */
+  stepTime: 'train_timing/total_step_time',
 } as const;
 
 const isMetricPoint = (point: unknown): point is CustomizationMetricValue =>
@@ -46,16 +51,29 @@ export const readSeries = (
   return points.length > 0 ? points : undefined;
 };
 
-/** Parallel arrays over one shared step axis, in the shape `RangeBandSeries` wants. */
+/**
+ * The median rather than the latest or the mean: step time is spiky — a checkpoint save or one
+ * straggler rollout doubles a single step — and an outlier moves a mean but not a median.
+ */
+export const medianValue = (series: CustomizationMetricValue[] | undefined): number | undefined => {
+  if (!series?.length) return undefined;
+  const sorted = series.map((point) => point.value).sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+};
+
+/**
+ * A step takes seconds to minutes. Under a minute the decimal is what separates a 34s step from
+ * a 35s one; past it, `1m 15s` reads better than `75.0s`.
+ */
+export const formatStepDuration = (value: number): string =>
+  value < 60 ? `${value.toFixed(1)}s` : formatTimeInSeconds(value);
+
+/** Parallel arrays over one shared step axis. */
 export interface RewardChartData {
   steps: number[];
   training: (number | null)[];
-  /** `mean - σ` where a spread series exists at that step, else `null`. */
-  trainingLower: (number | null)[];
-  trainingUpper: (number | null)[];
   validation: (number | null)[];
-  /** Whether any band bound is plottable — false renders two plain lines. */
-  hasSpread: boolean;
 }
 
 const byStep = (series: CustomizationMetricValue[] | undefined): Map<number, number> =>
@@ -74,34 +92,16 @@ export const buildRewardChartData = (
 
   const trainingByStep = byStep(training);
   const validationByStep = byStep(validation);
-  const spreadByStep = byStep(readSeries(statusDetails, GRPO_METRIC.rewardSpread));
 
   const steps = [...new Set([...trainingByStep.keys(), ...validationByStep.keys()])].sort(
     (a, b) => a - b
   );
 
-  const data: RewardChartData = {
+  return {
     steps,
-    training: [],
-    trainingLower: [],
-    trainingUpper: [],
-    validation: [],
-    hasSpread: false,
+    training: steps.map((step) => trainingByStep.get(step) ?? null),
+    validation: steps.map((step) => validationByStep.get(step) ?? null),
   };
-
-  for (const step of steps) {
-    const mean = trainingByStep.get(step);
-    const spread = spreadByStep.get(step);
-    const banded = mean !== undefined && spread !== undefined;
-
-    data.training.push(mean ?? null);
-    data.trainingLower.push(banded ? mean - spread : null);
-    data.trainingUpper.push(banded ? mean + spread : null);
-    data.validation.push(validationByStep.get(step) ?? null);
-    data.hasSpread ||= banded;
-  }
-
-  return data;
 };
 
 export interface DiagnosticVerdict {
@@ -144,6 +144,15 @@ const GEN_KL_THRESHOLD_LABEL = '1e-3';
  */
 const LOGPROB_DRIFT_WATCH = 0.01;
 const LOGPROB_DRIFT_ALERT = 0.02;
+
+/**
+ * `sampling_importance_ratio` is the sequence-level twin of that drift — the mean ratio between
+ * the training policy and the one that generated the rollouts, so 1 exactly when they agree.
+ * Averaging over whole sequences rather than tokens makes it the noisier of the two, hence its
+ * own wider band rather than a share of `LOGPROB_DRIFT_*`.
+ */
+const IMPORTANCE_RATIO_WATCH = 0.05;
+const IMPORTANCE_RATIO_ALERT = 0.1;
 
 /**
  * Judged on the decline from the start rather than an absolute floor: healthy entropy depends on
@@ -190,8 +199,9 @@ export const thresholdAxisBounds = (
 const formatExponential = (value: number): string => value.toExponential(1);
 
 /**
- * Nothing emits `policy_kl_error`, `js_divergence_error` or `sampling_importance_ratio`, and
- * `train_step_time` arrives under a `timing/` prefix the RL logger deliberately routes nowhere.
+ * A subset of what the backend keeps a history for. `policy_kl_error`, `js_divergence_error` and
+ * `kl_penalty` all store curves too; each is another reading of the off-policy drift the three
+ * drift entries below already cover, so a fifth and sixth tile would only pad the grid.
  */
 export const GRPO_DIAGNOSTICS: GrpoDiagnostic[] = [
   {
@@ -228,6 +238,22 @@ export const GRPO_DIAGNOSTICS: GrpoDiagnostic[] = [
     tile: true,
   },
   {
+    id: 'samplingImportanceRatio',
+    metric: GRPO_METRIC.samplingImportanceRatio,
+    title: 'Sampling importance ratio',
+    hint: 'should hover near 1',
+    // Read against 1 rather than as a deviation from it: three decimals put the interesting digits
+    // on the tile, and "1.002" says which side of the target the run sits on where "0.2%" cannot.
+    formatValue: (value) => value.toFixed(3),
+    evaluate: (series) => {
+      const drift = Math.abs(latest(series) - 1);
+      if (drift > IMPORTANCE_RATIO_ALERT) return { status: 'error', label: 'diverged' };
+      if (drift > IMPORTANCE_RATIO_WATCH) return { status: 'warning', label: 'drifting' };
+      return OK;
+    },
+    tile: true,
+  },
+  {
     id: 'approxEntropy',
     metric: GRPO_METRIC.approxEntropy,
     title: 'Policy entropy',
@@ -246,9 +272,22 @@ export const GRPO_DIAGNOSTICS: GrpoDiagnostic[] = [
     id: 'genTokens',
     metric: GRPO_METRIC.genTokens,
     // Per rollout, not per step: the per-step total is this times a constant, so same shape.
-    title: 'Generated tokens per rollout',
+    title: 'Mean generated tokens per response',
     hint: 'response length',
     formatValue: formatNumericValue,
+    chart: true,
+  },
+  {
+    id: 'stepTime',
+    metric: GRPO_METRIC.stepTime,
+    title: 'Training step time',
+    hint: 'wall clock per step',
+    formatValue: formatStepDuration,
+    // The axis is read for pace, not precision, so it drops to whole units — and `34.0s` next to
+    // `34.5s` invites reading a tick gap as real when it is the rounding.
+    formatAxisValue: (value) => formatTimeInSeconds(value) || formatStepDuration(value),
+    // No tile here: the run's pace is summarised beside the reward chart, as a median over the
+    // whole run rather than whichever step happened to report last.
     chart: true,
   },
 ];

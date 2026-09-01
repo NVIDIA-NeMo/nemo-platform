@@ -8,7 +8,14 @@
 # per job through GymRunnerTarget.hydra_params.
 
 ARG NMP_CPU_TASKS_BASE=nmp-cpu-tasks
-FROM ${NMP_CPU_TASKS_BASE} AS runtime
+ARG NMP_PYTHON_BASE=nmp-python-base
+
+FROM ${NMP_CPU_TASKS_BASE} AS cpu-tasks
+
+FROM ${NMP_PYTHON_BASE} AS gym-builder
+COPY --from=cpu-tasks /app/.venv /app/.venv
+ENV VIRTUAL_ENV=/app/.venv \
+    PATH="/app/.venv/bin:$PATH"
 
 COPY docker/locks/nmp-gym-tasks /opt/nmp-gym-tasks-lock
 
@@ -17,8 +24,12 @@ RUN uv venv --python /usr/local/bin/python3.13 /opt/gym-venv \
         --project /opt/nmp-gym-tasks-lock \
         --locked \
         --no-dev \
-        --no-install-project \
-    && ln -s /opt/gym-venv/bin/gym /usr/local/bin/gym
+        --no-install-project
+
+FROM cpu-tasks AS runtime
+COPY --chown=1000:1000 --from=gym-builder /opt/gym-venv /opt/gym-venv
+ENV PATH="/opt/gym-venv/bin:/app/.venv/bin:$PATH" \
+    PYTHONPATH=""
 
 FROM runtime AS smoke-test
 RUN gym --help >/dev/null \

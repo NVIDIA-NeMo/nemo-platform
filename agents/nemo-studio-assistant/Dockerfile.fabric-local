@@ -64,6 +64,7 @@ LABEL org.opencontainers.image.title="nemo-studio-assistant" \
 ENV AGENT_CONFIG_PATH=/workspace/agent.yaml
 ENV PORT=8000
 ENV PATH="/workspace/.venv/bin:$PATH"
+ENV PYTHONPATH=/workspace
 
 EXPOSE 8000
 

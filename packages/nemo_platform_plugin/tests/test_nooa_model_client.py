@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nemo_platform_plugin import nooa_model_client
@@ -16,6 +16,46 @@ from nemo_platform_plugin.nooa_model_client import (
     get_fast_model,
     resolve_model_clients,
 )
+
+
+def _model_entity(**attrs):
+    defaults = dict(
+        workspace="default",
+        name="model",
+        backend_format="OPENAI_CHAT",
+        model_providers=[],
+        api_endpoint=None,
+    )
+    defaults.update(attrs)
+    return SimpleNamespace(**defaults)
+
+
+def _mock_models_client(models):
+    """Build a mock ``AsyncModelsClient`` returned by ``client_from_platform``.
+
+    ``models`` maps ``(workspace, name)`` to the Model Entity ``get_model`` should
+    return. ``get_model`` is an AsyncMock; its awaited result must expose a
+    ``.data()`` accessor mirroring ``NemoResponse``.
+    """
+    client = MagicMock()
+    client.default_headers = {}
+    client.get_model_entity_route_openai_url.return_value = "http://platform/model/example/-/v1"
+
+    async def _get_model(**kwargs):
+        entity = models.get((kwargs.get("workspace"), kwargs.get("name")))
+        return SimpleNamespace(data=lambda: entity)
+
+    client.get_model = AsyncMock(side_effect=_get_model)
+    return client
+
+
+def _patch_models_client(models):
+    client = _mock_models_client(models)
+    ctx = patch(
+        "nemo_platform_plugin.nooa_model_client.client_from_platform",
+        return_value=client,
+    )
+    return ctx, client
 
 
 def test_configured_model_refs_uses_default_for_missing_fast(monkeypatch):
@@ -43,30 +83,28 @@ def test_configured_model_refs_requires_default(monkeypatch):
 
 
 async def test_resolve_model_clients_deduplicates_same_model(monkeypatch):
-    model_entity = SimpleNamespace(
+    model_entity = _model_entity(
         workspace="default",
         name="gpt-4-1",
         backend_format="OPENAI_CHAT",
-        model_providers=[],
-        api_endpoint=None,
     )
-    client = MagicMock()
-    client.models.retrieve = AsyncMock(return_value=model_entity)
-    client.models.get_model_entity_route_openai_url.return_value = "http://platform/model/gpt-4-1/-/v1"
-    default_headers = {"x-test": "value"}
-    client.models.get_client_default_headers.return_value = default_headers
+    models = {("default", "gpt-4-1"): model_entity}
+    ctx, client = _patch_models_client(models)
+    client.get_model_entity_route_openai_url.return_value = "http://platform/model/gpt-4-1/-/v1"
+    client.default_headers = {"x-test": "value"}
     completion_client = MagicMock()
     factory = MagicMock(return_value=completion_client)
-    monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
+    with ctx:
+        monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
 
-    result = await resolve_model_clients(
-        client,
-        ConfiguredModelRefs(default="default/gpt-4-1", fast="default/gpt-4-1"),
-    )
+        result = await resolve_model_clients(
+            MagicMock(),
+            ConfiguredModelRefs(default="default/gpt-4-1", fast="default/gpt-4-1"),
+        )
 
     assert result.default is completion_client
     assert result.fast is completion_client
-    client.models.retrieve.assert_awaited_once_with("gpt-4-1", workspace="default")
+    client.get_model.assert_awaited_once_with(name="gpt-4-1", workspace="default")
     factory.assert_called_once_with(
         "openai/gpt-4-1",
         api_base="http://platform/model/gpt-4-1/-/v1",
@@ -76,28 +114,26 @@ async def test_resolve_model_clients_deduplicates_same_model(monkeypatch):
         drop_params=True,
         _skip_responses_api_bridge=True,
     )
-    assert default_headers == {"x-test": "value"}
+    assert client.default_headers == {"x-test": "value"}
 
 
 async def test_resolve_model_clients_uses_anthropic_route_shape(monkeypatch):
-    model_entity = SimpleNamespace(
+    model_entity = _model_entity(
         workspace="default",
         name="claude-sonnet-4",
         backend_format="ANTHROPIC_MESSAGES",
-        model_providers=[],
-        api_endpoint=None,
     )
-    client = MagicMock()
-    client.models.retrieve = AsyncMock(return_value=model_entity)
-    client.models.get_model_entity_route_openai_url.return_value = "http://platform/model/claude-sonnet-4/-/v1"
-    client.models.get_client_default_headers.return_value = {}
+    models = {("default", "claude-sonnet-4"): model_entity}
+    ctx, client = _patch_models_client(models)
+    client.get_model_entity_route_openai_url.return_value = "http://platform/model/claude-sonnet-4/-/v1"
     factory = MagicMock(return_value=MagicMock())
-    monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
+    with ctx:
+        monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
 
-    await resolve_model_clients(
-        client,
-        ConfiguredModelRefs(default="default/claude-sonnet-4", fast="default/claude-sonnet-4"),
-    )
+        await resolve_model_clients(
+            MagicMock(),
+            ConfiguredModelRefs(default="default/claude-sonnet-4", fast="default/claude-sonnet-4"),
+        )
 
     factory.assert_called_once_with(
         "anthropic/claude-sonnet-4",
@@ -110,35 +146,34 @@ async def test_resolve_model_clients_uses_anthropic_route_shape(monkeypatch):
 
 
 async def test_resolve_model_clients_rejects_unsupported_backend_format():
-    model_entity = SimpleNamespace(
+    model_entity = _model_entity(
         workspace="default",
         name="responses-only",
         backend_format="OPENAI_RESPONSES",
-        model_providers=[],
-        api_endpoint=None,
     )
-    client = MagicMock()
-    client.models.retrieve = AsyncMock(return_value=model_entity)
+    models = {("default", "responses-only"): model_entity}
+    ctx, _client = _patch_models_client(models)
 
-    with pytest.raises(ValueError, match="unsupported backend format 'OPENAI_RESPONSES'"):
-        await resolve_model_clients(
-            client,
-            ConfiguredModelRefs(default="default/responses-only", fast="default/responses-only"),
-        )
+    with ctx:
+        with pytest.raises(ValueError, match="unsupported backend format 'OPENAI_RESPONSES'"):
+            await resolve_model_clients(
+                MagicMock(),
+                ConfiguredModelRefs(default="default/responses-only", fast="default/responses-only"),
+            )
 
 
-async def test_resolve_model_clients_requires_workspace_qualified_refs():
-    client = MagicMock()
-
-    with pytest.raises(ValueError, match="workspace/name"):
-        await resolve_model_clients(
-            client,
-            ConfiguredModelRefs(default="unqualified", fast="unqualified"),
-        )
+async def test_resolve_model_clients_requires_workspace_qualified_refs(monkeypatch):
+    ctx, _client = _patch_models_client({})
+    with ctx:
+        with pytest.raises(ValueError, match="workspace/name"):
+            await resolve_model_clients(
+                MagicMock(),
+                ConfiguredModelRefs(default="unqualified", fast="unqualified"),
+            )
 
 
 async def test_resolve_model_clients_uses_provider_served_name(monkeypatch):
-    model_entity = SimpleNamespace(
+    model_entity = _model_entity(
         workspace="default",
         name="gpt-5-6-sol",
         backend_format="OPENAI_CHAT",
@@ -153,20 +188,19 @@ async def test_resolve_model_clients_uses_provider_served_name(monkeypatch):
             )
         ]
     )
-    client = MagicMock()
-    client.models.retrieve = AsyncMock(return_value=model_entity)
-    client.inference.providers.retrieve = AsyncMock(return_value=provider)
-    client.models.get_model_entity_route_openai_url.return_value = "http://platform/model/gpt-5-6-sol/-/v1"
-    client.models.get_client_default_headers.return_value = {}
+    ctx, client = _patch_models_client({("default", "gpt-5-6-sol"): model_entity})
+    client.get_model_entity_route_openai_url.return_value = "http://platform/model/gpt-5-6-sol/-/v1"
     factory = MagicMock(return_value=MagicMock())
-    monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
+    sdk = MagicMock()
+    sdk.inference.providers.retrieve = AsyncMock(return_value=provider)
+    with ctx:
+        monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
 
-    await resolve_model_clients(
-        client,
-        ConfiguredModelRefs(default="default/gpt-5-6-sol", fast="default/gpt-5-6-sol"),
-    )
+        await resolve_model_clients(
+            sdk,
+            ConfiguredModelRefs(default="default/gpt-5-6-sol", fast="default/gpt-5-6-sol"),
+        )
 
-    client.inference.providers.retrieve.assert_awaited_once_with("openai", workspace="default")
     factory.assert_called_once_with(
         "openai/gpt-5.6-sol",
         api_base="http://platform/model/gpt-5-6-sol/-/v1",
@@ -228,23 +262,29 @@ async def test_model_clients_close_fast_after_default_close_fails():
 
 
 async def test_resolve_model_clients_closes_constructed_client_after_failure(monkeypatch):
-    default_entity = SimpleNamespace(
+    default_entity = _model_entity(
         workspace="default",
         name="quality",
         backend_format="OPENAI_CHAT",
-        model_providers=[],
         api_endpoint=SimpleNamespace(model_id="quality"),
     )
-    client = MagicMock()
-    client.models.retrieve = AsyncMock(side_effect=[default_entity, RuntimeError("fast resolution failed")])
+
+    async def _flaky_get_model(**kwargs):
+        if kwargs.get("name") == "quality":
+            return SimpleNamespace(data=lambda: default_entity)
+        raise RuntimeError("fast resolution failed")
+
+    ctx, client = _patch_models_client({})
+    client.get_model = AsyncMock(side_effect=_flaky_get_model)
     constructed = MagicMock()
     constructed.aclose = AsyncMock()
-    monkeypatch.setattr(nooa_model_client, "_completion_client", MagicMock(return_value=constructed))
+    with ctx:
+        monkeypatch.setattr(nooa_model_client, "_completion_client", MagicMock(return_value=constructed))
 
-    with pytest.raises(RuntimeError, match="fast resolution failed"):
-        await resolve_model_clients(
-            client,
-            ConfiguredModelRefs(default="default/quality", fast="default/fast"),
-        )
+        with pytest.raises(RuntimeError, match="fast resolution failed"):
+            await resolve_model_clients(
+                MagicMock(),
+                ConfiguredModelRefs(default="default/quality", fast="default/fast"),
+            )
 
     constructed.aclose.assert_awaited_once()

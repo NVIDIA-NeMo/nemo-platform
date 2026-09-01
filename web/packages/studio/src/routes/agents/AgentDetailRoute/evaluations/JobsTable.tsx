@@ -40,7 +40,7 @@ const DurationCell: FC<{ row: EvalJobRow; durationMs?: number }> = ({ row, durat
     enabled: !isTerminal,
   });
   if (!isTerminal) return <Text>{formatTimeInSeconds(liveSeconds)}</Text>;
-  return <Text>{formatDurationMs(durationMs)}</Text>;
+  return <Text>{formatDurationMs(durationMs, { hideMsAboveMinute: true })}</Text>;
 };
 
 interface JobsTableProps {
@@ -141,6 +141,7 @@ export const JobsTable: FC<JobsTableProps> = ({ workspace, jobs, evaluations }) 
         DataViewTableContent: {
           renderEmptyState: () => (
             <TableEmptyState
+              className="py-density-3xl"
               icon={<ListChecks className="size-16" />}
               header="No evaluation jobs yet"
               emptyMessage="Runs appear here as soon as they are submitted, before any results are published."

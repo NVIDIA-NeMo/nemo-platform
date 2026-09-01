@@ -18,7 +18,9 @@ HTTP calls go through the generated platform SDK's ``intake`` resources.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import timedelta
 
 from nemo_evaluator.intake import mapping
@@ -27,10 +29,14 @@ from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform import AsyncNeMoPlatform, UnprocessableEntityError
+from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
 from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
+from nemo_platform.types.intake.ingest.atif_step_param import AtifStepParam
 from nemo_platform.types.intake.trace_filter_param import TraceFilterParam
 from pydantic import BaseModel, ConfigDict, Field
+
+logger = logging.getLogger(__name__)
 
 #: Default ceiling on concurrent per-trial publishes.
 DEFAULT_MAX_CONCURRENCY = 8
@@ -186,19 +192,40 @@ async def publish_to_intake(
                 if measurements.runtime_sec is not None
                 else None
             )
-            body = mapping.trial_to_atif_ingest(
-                trial,
-                run_id=result.run_id,
-                evaluation_name=experiment_id,
-                agent_name=agent_name,
-                started_at=started_at,
-                agent_version=agent_version,
-                model_name=model_name,
-                final_metrics=_token_final_metrics(measurements),
-                ended_at=ended_at,
-            )
-            body["workspace"] = resolved_workspace
-            await platform.intake.ingest.atif.create(**body)
+
+            def build_body(steps: Sequence[AtifStepParam] | None) -> AtifCreateParams:
+                body = mapping.trial_to_atif_ingest(
+                    trial,
+                    run_id=result.run_id,
+                    evaluation_name=experiment_id,
+                    agent_name=agent_name,
+                    started_at=started_at,
+                    agent_version=agent_version,
+                    model_name=model_name,
+                    final_metrics=_token_final_metrics(measurements),
+                    ended_at=ended_at,
+                    steps=steps,
+                )
+                body["workspace"] = resolved_workspace
+                return body
+
+            recorded_steps = await mapping.atif_steps_from_trial(trial, started_at=started_at)
+            try:
+                await platform.intake.ingest.atif.create(**build_body(recorded_steps))
+            except UnprocessableEntityError as error:
+                # The SDK's ATIF read model accepts shapes ingest does not, so a trajectory that
+                # parsed locally can still be refused. Losing the trial's scores over a trace
+                # detail is the wrong trade — fall back to the single-step trajectory a runner
+                # with no trace would have sent. Guard on emptiness rather than ``is None``: with no
+                # steps to drop, the retry would resend the body ingest just refused.
+                if not recorded_steps:
+                    raise
+                logger.warning(
+                    "Intake rejected the recorded trajectory for trial %s (%s); publishing its final output instead.",
+                    trial.id,
+                    error,
+                )
+                await platform.intake.ingest.atif.create(**build_body(None))
 
             session_id = mapping.session_id_for(result.run_id, trial.id)
             span_id = await _resolve_root_span_id(platform, workspace=resolved_workspace, session_id=session_id)

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
-import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import { Button, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { AgentsTable, type AgentTableRow } from '@studio/components/dataViews/AgentsDataView';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -14,7 +13,7 @@ import {
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
 import { CloneAgentModal } from '@studio/routes/agents/AgentsListRoute/CloneAgentModal';
-import { CreateExampleAgentModal } from '@studio/routes/agents/AgentsListRoute/CreateExampleAgentModal';
+import { NewAgentModal } from '@studio/routes/agents/AgentsListRoute/NewAgentModal';
 import { getAgentDetailRoute } from '@studio/routes/utils';
 import { CircleAlert } from 'lucide-react';
 import { type FC, useState } from 'react';
@@ -27,9 +26,8 @@ export const AgentsListRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const [createDeploymentAgent, setCreateDeploymentAgent] = useState<string | null>(null);
-  const [isCreateExampleOpen, setCreateExampleOpen] = useState(false);
+  const [isNewAgentOpen, setNewAgentOpen] = useState(false);
   const [cloneSource, setCloneSource] = useState<AgentTableRow | null>(null);
-  const [loadedAgents, setLoadedAgents] = useState<Agent[]>([]);
 
   useBreadcrumbs({
     items: [{ slotLabel: 'Agents' }],
@@ -64,8 +62,8 @@ export const AgentsListRoute: FC = () => {
           slotHeading="Agents"
           slotDescription="View and manage AI agents and their deployments."
           slotActions={
-            <Button color="brand" onClick={() => setCreateExampleOpen(true)}>
-              Create Example Agent
+            <Button color="brand" onClick={() => setNewAgentOpen(true)}>
+              New Agent
             </Button>
           }
         />
@@ -73,14 +71,12 @@ export const AgentsListRoute: FC = () => {
           onAgentRowClick={handleOpenDetails}
           onCreateDeployment={(agentName) => setCreateDeploymentAgent(agentName)}
           onCloneAgent={setCloneSource}
-          onAgentsLoaded={setLoadedAgents}
         />
       </Stack>
-      <CreateExampleAgentModal
-        open={isCreateExampleOpen}
-        onClose={() => setCreateExampleOpen(false)}
+      <NewAgentModal
+        open={isNewAgentOpen}
+        onClose={() => setNewAgentOpen(false)}
         workspace={workspace}
-        existingAgents={loadedAgents}
       />
       <CloneAgentModal
         open={cloneSource !== null}

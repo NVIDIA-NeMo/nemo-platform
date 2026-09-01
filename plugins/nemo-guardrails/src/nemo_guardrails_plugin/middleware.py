@@ -127,6 +127,14 @@ def is_streaming_response_result(result: ResponseResult) -> TypeIs[AsyncIterator
     return not isinstance(result, dict)
 
 
+def _latest_user_message(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return the latest user message as the context for output rails."""
+    for message in reversed(messages):
+        if isinstance(message, dict) and message.get("role") == "user":
+            return [message]
+    return []
+
+
 def handle_streaming_output_check(
     llm_rails: LLMRails,
     response_result: AsyncIterator[dict[str, Any]],
@@ -365,12 +373,20 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
             logger.warning("Request body is missing 'messages' key. Skipping input rails.")
             return request
 
+        if not messages or not isinstance(messages[-1], dict) or messages[-1].get("role") != "user":
+            logger.debug("Current request turn is not a user message. Skipping input rails.")
+            return request
+
         user_log_options = extract_log_options_from_request(guardrails)
+        # Input rails evaluate the current request turn. Do not replay conversation
+        # history through LLMRails: historical tool-call events can be interpreted as
+        # pending actions and prevent the current turn from reaching the input rails.
+        current_messages = messages[-1:]
         generation_response = await self._run_rails(
             source,
             request.body,
             request.headers,
-            messages=messages,
+            messages=current_messages,
             rail_types=PROCESS_REQUEST_RAIL_TYPES,
             user_log_options=user_log_options,
             error_msg="Failed to run input rails",
@@ -518,12 +534,11 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                 source, request_body, request_headers, "Failed to run streaming output rails"
             )
 
-            # Snapshot inputs so the streaming closure doesn't observe
-            # mutations after ``process_response`` returns. Deep copy
-            # ``messages`` — library walks nested dicts (and multimodal
-            # ``content`` arrays) async while streaming. Shallow copy
-            # ``request_body`` — only ``model`` (a string) is read.
-            captured_messages = copy.deepcopy(messages)
+            # Output rails need the latest user message for ``user_input``. Do not
+            # replay earlier conversation history: historical tool-call events can
+            # prevent the generated response from reaching the output rails.
+            # Deep copy because the library walks nested multimodal content async.
+            captured_messages = copy.deepcopy(_latest_user_message(messages))
             captured_request_body = dict(request_body)
 
             async def _streaming_with_lease() -> AsyncIterator[dict[str, Any]]:
@@ -574,11 +589,13 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
                 response_body_annotations=dict(response.response_body_annotations),
             )
 
+        output_messages = _latest_user_message(messages)
+        output_messages.append(build_assistant_message_from_response_result(response_result))
         generation_response = await self._run_rails(
             source,
             request_body,
             request_headers,
-            messages=messages + [build_assistant_message_from_response_result(response_result)],
+            messages=output_messages,
             rail_types=PROCESS_RESPONSE_RAIL_TYPES,
             user_log_options=user_log_options,
             error_msg="Failed to run output rails",

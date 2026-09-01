@@ -10,6 +10,21 @@ from tests.auth_idp.providers import load_provider_configs_by_mode, load_provide
 
 pytestmark = [pytest.mark.auth_idp]
 
+AUTH_CALLOUT_RESPONSE_PRINCIPAL_HEADERS = {
+    "x-nmp-principal-id",
+    "x-nmp-principal-email",
+    "x-nmp-principal-groups",
+    "x-nmp-principal-on-behalf-of",
+    "x-nmp-principal-on-behalf-of-email",
+    "x-nmp-principal-on-behalf-of-groups",
+    "x-nmp-scopes",
+}
+SEALED_EXTERNAL_PRINCIPAL_HEADERS = AUTH_CALLOUT_RESPONSE_PRINCIPAL_HEADERS
+
+
+def _exact_header_patterns(patterns: list[dict]) -> set[str]:
+    return {pattern["exact"] for pattern in patterns if "exact" in pattern}
+
 
 def test_provider_name_discovery_does_not_require_grant_secret(monkeypatch):
     monkeypatch.delenv("AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD", raising=False)
@@ -101,6 +116,17 @@ def test_authentik_compose_defaults_support_direct_docker_compose_start():
     assert "./.generated/blueprints" not in compose_text
 
 
+def test_authentik_compose_platform_config_uses_global_docker_workload_identity_switch_only():
+    config = yaml.safe_load(Path("contrib/auth/authentik/config/platform-compose-authentik.yaml").read_text())
+    workload_executor = next(
+        executor
+        for executor in config["jobs"]["executors"]
+        if executor["backend"] == "docker" and executor["provider"] == "cpu" and executor["profile"] == "workload"
+    )
+
+    assert "workload_identity" not in workload_executor["config"]
+
+
 def test_authentik_compose_uses_liveness_for_container_health_and_routes_status_through_gateway():
     compose = yaml.safe_load(Path("contrib/auth/authentik/compose/docker-compose.yml").read_text())
     envoy = yaml.safe_load(Path("contrib/auth/authentik/gateway/envoy.yaml").read_text())
@@ -160,6 +186,8 @@ def test_authentik_compose_uses_liveness_for_container_health_and_routes_status_
     ) in lua_code
     assert 'headers:remove("x-nmp-authorized")' in lua_code
     assert 'headers:remove("x-nmp-scopes")' in lua_code
+    for header in SEALED_EXTERNAL_PRINCIPAL_HEADERS:
+        assert f'headers:remove("{header}")' in lua_code
 
     assert "claim_to_headers" not in yaml.safe_dump(http_manager)
     assert all(
@@ -175,17 +203,14 @@ def test_authentik_compose_uses_liveness_for_container_health_and_routes_status_
     assert ext_authz["@type"] == "type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz"
     assert ext_authz["transport_api_version"] == "V3"
     assert ext_authz["failure_mode_allow"] is False
-    assert ext_authz["http_service"]["path_prefix"] == "/apis/auth/authenticate"
+    assert ext_authz["http_service"]["path_prefix"] == "/apis/auth/ext-authz"
     assert ext_authz["http_service"]["server_uri"] == {
         "uri": "http://nemo:8080",
         "cluster": "nemo",
         "timeout": "5s",
     }
     allowed_headers = ext_authz["http_service"]["authorization_response"]["allowed_upstream_headers"]["patterns"]
-    assert {"exact": "x-nmp-principal-id"} in allowed_headers
-    assert {"exact": "x-nmp-principal-email"} in allowed_headers
-    assert {"exact": "x-nmp-principal-groups"} in allowed_headers
-    assert {"exact": "x-nmp-scopes"} in allowed_headers
+    assert AUTH_CALLOUT_RESPONSE_PRINCIPAL_HEADERS.issubset(_exact_header_patterns(allowed_headers))
 
     protected_api_route = next(route for route in routes if route["match"] == {"prefix": "/apis/"})
     assert "typed_per_filter_config" not in protected_api_route
@@ -195,6 +220,12 @@ def test_authentik_compose_uses_liveness_for_container_health_and_routes_status_
         "@type": "type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute",
         "disabled": True,
     }
+    public_ext_authz_route = next(route for route in routes if route["match"] == {"prefix": "/apis/auth/ext-authz"})
+    assert public_ext_authz_route["typed_per_filter_config"]["envoy.filters.http.ext_authz"] == {
+        "@type": "type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute",
+        "disabled": True,
+    }
+    assert routes.index(public_ext_authz_route) < routes.index(protected_api_route)
 
 
 def test_authentik_compose_mounts_workload_token_signing_key():
@@ -241,9 +272,7 @@ def test_authentik_compose_uses_https_gateway_for_workloads():
         for executor in config["jobs"]["executors"]
         if executor["provider"] == "cpu" and executor["profile"] == "workload"
     )
-    assert workload_executor["config"]["workload_identity"]["token_endpoint"] == (
-        "https://nemo-gateway:8080/application/o/token/"
-    )
+    assert "workload_identity" not in workload_executor["config"]
     assert set(nemo["networks"]) == {"nemo-internal"}
     assert "nemo-direct" not in yaml.safe_dump(nemo)
     assert nemo["depends_on"]["gateway-tls-init"]["condition"] == "service_completed_successfully"

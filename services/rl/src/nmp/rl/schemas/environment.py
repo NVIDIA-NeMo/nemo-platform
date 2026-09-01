@@ -169,8 +169,10 @@ class VerifiersAgentInstanceConfig(BaseModel):
     top_p: float = 1.0
     # NeMo-Gym validates this against a closed set (math, coding, agent, knowledge,
     # instruction_following, long_context, safety, games, translation, e2e, rlhf, other) when
-    # it parses the global config, and an empty string makes the whole server an
-    # "almost-server" that is silently not started
+    # it parses the global config. An empty string or an off-list value fails that check while
+    # the block still looks like a server, so Gym reports it as an "almost-server" and raises
+    # AlmostServerError -- error_on_almost_servers defaults to true and nothing here turns it
+    # off, so spin-up aborts rather than skipping the server.
     domain: str = "other"
     description: str = ""
     value: str = ""

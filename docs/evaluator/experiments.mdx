@@ -234,12 +234,12 @@ session with the Evaluation's identity:
 - For Agent Trajectory Interchange Format (ATIF) and chat-completions, add a **top-level**
   `evaluation_context` object to the ingest payload
   carrying `evaluation_name` and `test_case_name`.
-- For OpenTelemetry Protocol (OTLP), set the `nemo.evaluation.name` and
-  `nemo.test_case.name` root-span attributes.
+- For OpenTelemetry Protocol (OTLP), set `nemo.evaluation.name` and
+  `nemo.test_case.name` on each trace's root span.
 
 The per-evaluator scores on the leaderboard come from **evaluator results** captured on those
-sessions, either automatically from ATIF verifier rewards or explicitly through the evaluator-results
-endpoint. Refer to
+sessions. Intake can derive them from ATIF verifier rewards. OTLP traces carry session telemetry, so
+the framework or caller must publish their scores through the evaluator-results endpoint. Refer to
 [Capture Evaluator Results](/documentation/agents/observe-agents#capture-evaluator-results) for both
 paths, and [Observe Agents](/documentation/agents/observe-agents) for the ingestion paths themselves.
 The `nemo-experiments-upload` skill walks this through end to end.
@@ -446,8 +446,8 @@ You typically do not create Evaluations manually. Common producers include:
 
 - **Optimizer**: records each run as an Experiment and its candidates as Evaluations, so results land
   automatically. Refer to [Optimize Agents](/documentation/agents/optimize-agents).
-- **Evaluation framework**: a framework like Harbor sends complete trajectories through Intake's ATIF
-  ingest, and each run becomes an Evaluation with its final metrics as evaluator results. Refer to
+- **Evaluation framework**: a framework like Harbor sends trajectories through Intake's ATIF or OTLP
+  ingest, publishes its scores as evaluator results, and records each run as an Evaluation. Refer to
   [Observe Agents](/documentation/agents/observe-agents).
 - **Direct API**: create the Experiment and Evaluations, then ingest their sessions, for a custom
   evaluation pipeline.

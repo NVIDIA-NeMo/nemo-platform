@@ -509,8 +509,7 @@ components:
         source:
           type: string
           title: Source
-          description: Local path, HTTP(S) URL, or fileset reference for a CSV/Parquet
-            input file.
+          description: HTTP(S) URL or fileset reference for a CSV/Parquet input file.
         text_column:
           type: string
           minLength: 1
@@ -532,13 +531,13 @@ components:
       description: 'Plugin boundary input spec.
 
 
-        The upstream ``AnonymizerInput`` validates local path existence at model
+        The upstream ``AnonymizerInput`` validates source locations at model
 
         construction time. The plugin keeps this looser shape at the API boundary
 
-        so fileset refs can be accepted and materialized before the upstream model
+        so HTTP(S) URLs and fileset refs can be accepted and materialized before
 
-        is constructed.'
+        the upstream model is constructed.'
     AnonymizerRequest:
       properties:
         config:
@@ -559,15 +558,15 @@ components:
       title: AnonymizerRequest
       description: "User-facing anonymizer execution request.\n\nFields:\n  config:\
         \           AnonymizerConfig \u2014 replace/rewrite mode + detection params.\n\
-        \  data:             AnonymizerInputSpec \u2014 source URL/path/fileset +\
-        \ text/id columns.\n  model_configs:    DD ``ModelConfig`` list. ``provider``\
+        \  data:             AnonymizerInputSpec \u2014 HTTP(S) URL or fileset source\
+        \ + text/id columns.\n  model_configs:    DD ``ModelConfig`` list. ``provider``\
         \ on each entry must\n                    reference a NeMo Platform inference\
         \ provider name (optionally\n                    ``workspace/provider``).\
-        \ When omitted, the upstream\n                    library defaults are used\
-        \ (which point at\n                    ``build.nvidia.com``); supplying this\
-        \ is the recommended\n                    path on NeMo Platform.\n  selected_models:\
-        \  Optional role->alias overrides. Omitted roles fall back\n             \
-        \       to the upstream library YAML defaults."
+        \ Optional on the request model for\n                    compatibility, but\
+        \ required by plugin preview/run execution\n                    so requests\
+        \ route through NeMo Platform Inference Gateway.\n  selected_models:  Optional\
+        \ role->alias overrides. Omitted roles fall back\n                    to the\
+        \ upstream library YAML defaults."
     AnonymizerStepConfig:
       properties:
         request:

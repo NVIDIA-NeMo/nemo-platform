@@ -22,12 +22,23 @@ from typing import Generator
 from unittest.mock import patch
 
 import pytest
-from nemo_platform import NeMoPlatform, PermissionDeniedError
+from nemo_platform import NeMoPlatform
+from nemo_platform import PermissionDeniedError as StainlessPermissionDeniedError
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import PermissionDeniedError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import (
+    CreateModelAdapterRequest,
+    CreateModelEntityRequest,
+    FinetuningType,
+    UpdateModelEntityRequest,
+)
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.core.auth.app.bundle import build_authorization_data as _real_build_authorization_data
 from nmp.core.files.service import FilesService
 from nmp.core.models.config import config as models_config
@@ -300,7 +311,9 @@ def viewer_workspace(sdk: NeMoPlatform):
     viewer_email = unique_email("viewer")
 
     admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-    admin_sdk.workspaces.create(name=workspace)
+    client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+        body=CreateWorkspaceRequest(name=workspace)
+    ).data()
     grant_workspace_role(
         admin_sdk,
         workspace=workspace,
@@ -313,7 +326,9 @@ def viewer_workspace(sdk: NeMoPlatform):
     config_name = short_unique_name("cfg")
     deployment_name = short_unique_name("dep")
 
-    admin_sdk.models.create(workspace=workspace, name=model_name)
+    client_from_platform(admin_sdk, ModelsClient).create_model(
+        workspace=workspace, body=CreateModelEntityRequest(name=model_name)
+    ).data()
     admin_sdk.inference.providers.create(
         workspace=workspace,
         name=provider_name,
@@ -354,12 +369,14 @@ class TestViewerModelsAccess:
 
     def test_viewer_can_list_models(self, viewer_workspace):
         workspace, viewer_sdk, _, _ = viewer_workspace
-        result = viewer_sdk.models.list(workspace=workspace)
-        assert result.data is not None
+        result = client_from_platform(viewer_sdk, ModelsClient).list_models(workspace=workspace)
+        assert list(result.items()) is not None
 
     def test_viewer_can_get_model(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        model = viewer_sdk.models.retrieve(name=names["model"], workspace=workspace)
+        model = (
+            client_from_platform(viewer_sdk, ModelsClient).get_model(name=names["model"], workspace=workspace).data()
+        )
         assert model.name == names["model"]
 
     # -- Models: denied --
@@ -367,17 +384,21 @@ class TestViewerModelsAccess:
     def test_viewer_cannot_create_model(self, viewer_workspace):
         workspace, viewer_sdk, _, _ = viewer_workspace
         with pytest.raises(PermissionDeniedError):
-            viewer_sdk.models.create(workspace=workspace, name="should-fail")
+            client_from_platform(viewer_sdk, ModelsClient).create_model(
+                workspace=workspace, body=CreateModelEntityRequest(name="should-fail")
+            ).data()
 
     def test_viewer_cannot_update_model(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
         with pytest.raises(PermissionDeniedError):
-            viewer_sdk.models.update(name=names["model"], workspace=workspace, description="nope")
+            client_from_platform(viewer_sdk, ModelsClient).update_model(
+                name=names["model"], workspace=workspace, body=UpdateModelEntityRequest(description="nope")
+            ).data()
 
     def test_viewer_cannot_delete_model(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
         with pytest.raises(PermissionDeniedError):
-            viewer_sdk.models.delete(name=names["model"], workspace=workspace)
+            client_from_platform(viewer_sdk, ModelsClient).delete_model(name=names["model"], workspace=workspace)
 
     # -- Providers: allowed --
 
@@ -395,7 +416,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_create_provider(self, viewer_workspace):
         workspace, viewer_sdk, _, _ = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.providers.create(
                 workspace=workspace,
                 name="should-fail",
@@ -404,7 +425,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_upsert_provider(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.providers.update(
                 name=names["provider"],
                 workspace=workspace,
@@ -413,7 +434,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_delete_provider(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.providers.delete(name=names["provider"], workspace=workspace)
 
     # -- Deployment Configs: allowed --
@@ -432,7 +453,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_create_deployment_config(self, viewer_workspace):
         workspace, viewer_sdk, _, _ = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name="should-fail",
@@ -443,7 +464,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_update_deployment_config(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployment_configs.update(
                 name=names["config"],
                 workspace=workspace,
@@ -454,7 +475,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_delete_deployment_config(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployment_configs.delete(name=names["config"], workspace=workspace)
 
     # -- Deployments: allowed --
@@ -473,7 +494,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_create_deployment(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployments.create(
                 workspace=workspace,
                 name="should-fail",
@@ -482,7 +503,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_update_deployment(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployments.update(
                 name=names["deployment"],
                 workspace=workspace,
@@ -491,7 +512,7 @@ class TestViewerModelsAccess:
 
     def test_viewer_cannot_delete_deployment(self, viewer_workspace):
         workspace, viewer_sdk, _, names = viewer_workspace
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             viewer_sdk.inference.deployments.delete(name=names["deployment"], workspace=workspace)
 
 
@@ -505,7 +526,9 @@ class TestEditorModelsAccess:
         model_name = short_unique_name("model")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -514,10 +537,11 @@ class TestEditorModelsAccess:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        created = editor_sdk.models.create(workspace=workspace, name=model_name)
+        models = client_from_platform(editor_sdk, ModelsClient)
+        created = models.create_model(workspace=workspace, body=CreateModelEntityRequest(name=model_name)).data()
         assert created.name == model_name
 
-        retrieved = editor_sdk.models.retrieve(name=model_name, workspace=workspace)
+        retrieved = models.get_model(name=model_name, workspace=workspace).data()
         assert retrieved.name == model_name
 
     def test_editor_can_delete_model(self, sdk: NeMoPlatform):
@@ -526,7 +550,9 @@ class TestEditorModelsAccess:
         model_name = short_unique_name("model")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -535,8 +561,9 @@ class TestEditorModelsAccess:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        editor_sdk.models.create(workspace=workspace, name=model_name)
-        editor_sdk.models.delete(name=model_name, workspace=workspace)
+        models = client_from_platform(editor_sdk, ModelsClient)
+        models.create_model(workspace=workspace, body=CreateModelEntityRequest(name=model_name)).data()
+        models.delete_model(name=model_name, workspace=workspace)
 
     def test_editor_can_create_provider(self, sdk: NeMoPlatform):
         workspace = short_unique_name("ed-prv")
@@ -544,7 +571,9 @@ class TestEditorModelsAccess:
         provider_name = short_unique_name("prov")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -566,7 +595,9 @@ class TestEditorModelsAccess:
         config_name = short_unique_name("cfg")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -594,7 +625,9 @@ class TestProviderSecretPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -616,7 +649,9 @@ class TestProviderSecretPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, SecretsClient).create_secret(
             body=PlatformSecretCreateRequest(name="my-api-key", value=SecretStr("test-value")),
             workspace=workspace,
@@ -644,7 +679,9 @@ class TestProviderSecretPermissions:
         provider_name = short_unique_name("prov")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, SecretsClient).create_secret(
             body=PlatformSecretCreateRequest(name="my-api-key", value=SecretStr("test-value")),
             workspace=workspace,
@@ -672,7 +709,9 @@ class TestProviderSecretPermissions:
             user_email = unique_email("nosecrets")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             client_from_platform(admin_sdk, SecretsClient).create_secret(
                 body=PlatformSecretCreateRequest(name="should-be-denied", value=SecretStr("test")),
                 workspace=workspace,
@@ -693,7 +732,7 @@ class TestProviderSecretPermissions:
             )
             assert provider_ok.api_key_secret_name is None
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.providers.create(
                     workspace=workspace,
                     name=short_unique_name("prov"),
@@ -708,7 +747,9 @@ class TestProviderSecretPermissions:
             user_email = unique_email("nosecrets")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             client_from_platform(admin_sdk, SecretsClient).create_secret(
                 body=PlatformSecretCreateRequest(name="should-be-denied", value=SecretStr("test")),
                 workspace=workspace,
@@ -722,7 +763,7 @@ class TestProviderSecretPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.providers.update(
                     name=short_unique_name("prov"),
                     workspace=workspace,
@@ -741,7 +782,9 @@ class TestProviderDeploymentRefPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -764,7 +807,9 @@ class TestProviderDeploymentRefPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -788,7 +833,9 @@ class TestProviderDeploymentRefPermissions:
             user_email = unique_email("noread")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -798,7 +845,7 @@ class TestProviderDeploymentRefPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.providers.create(
                     workspace=workspace,
                     name=short_unique_name("prov"),
@@ -813,7 +860,9 @@ class TestProviderDeploymentRefPermissions:
             user_email = unique_email("noread")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -823,7 +872,7 @@ class TestProviderDeploymentRefPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.providers.update(
                     name=short_unique_name("prov"),
                     workspace=workspace,
@@ -842,7 +891,9 @@ class TestDeploymentConfigPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -867,7 +918,9 @@ class TestDeploymentConfigPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -876,7 +929,7 @@ class TestDeploymentConfigPermissions:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             editor_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=short_unique_name("cfg"),
@@ -893,7 +946,9 @@ class TestDeploymentConfigPermissions:
         config_name = short_unique_name("cfg")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
@@ -926,7 +981,9 @@ class TestDeploymentConfigPermissions:
         config_name = short_unique_name("cfg")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
@@ -942,7 +999,7 @@ class TestDeploymentConfigPermissions:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(StainlessPermissionDeniedError):
             editor_sdk.inference.deployment_configs.update(
                 name=config_name,
                 workspace=workspace,
@@ -959,7 +1016,9 @@ class TestDeploymentConfigPermissions:
             user_email = unique_email("noread")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -969,7 +1028,7 @@ class TestDeploymentConfigPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.deployment_configs.create(
                     workspace=workspace,
                     name=short_unique_name("cfg"),
@@ -987,7 +1046,9 @@ class TestDeploymentConfigPermissions:
             config_name = short_unique_name("cfg")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             admin_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=config_name,
@@ -1004,7 +1065,7 @@ class TestDeploymentConfigPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.deployment_configs.update(
                     name=config_name,
                     workspace=workspace,
@@ -1026,7 +1087,9 @@ class TestDeploymentPermissions:
         config_name = short_unique_name("cfg")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
@@ -1057,7 +1120,9 @@ class TestDeploymentPermissions:
         deploy_name = short_unique_name("dep")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
@@ -1093,7 +1158,9 @@ class TestDeploymentPermissions:
             config_name = short_unique_name("cfg")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             admin_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=config_name,
@@ -1110,7 +1177,7 @@ class TestDeploymentPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.deployments.create(
                     workspace=workspace,
                     name=short_unique_name("dep"),
@@ -1126,7 +1193,9 @@ class TestDeploymentPermissions:
             deploy_name = short_unique_name("dep")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             admin_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=config_name,
@@ -1148,7 +1217,7 @@ class TestDeploymentPermissions:
 
             user_sdk = as_user(sdk, user_email)
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(StainlessPermissionDeniedError):
                 user_sdk.inference.deployments.update(
                     name=deploy_name,
                     workspace=workspace,
@@ -1168,7 +1237,9 @@ class TestFilesetPermissions:
         fileset_name = short_unique_name("fs")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, FilesClient).create_fileset(
             workspace=workspace, body=CreateFilesetRequest(name=fileset_name)
         )
@@ -1183,10 +1254,13 @@ class TestFilesetPermissions:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        model = editor_sdk.models.create(
-            workspace=workspace,
-            name=short_unique_name("mdl"),
-            fileset=f"{workspace}/{fileset_name}",
+        model = (
+            client_from_platform(editor_sdk, ModelsClient)
+            .create_model(
+                workspace=workspace,
+                body=CreateModelEntityRequest(name=short_unique_name("mdl"), fileset=f"{workspace}/{fileset_name}"),
+            )
+            .data()
         )
         assert model.fileset == f"{workspace}/{fileset_name}"
 
@@ -1197,8 +1271,12 @@ class TestFilesetPermissions:
         fileset_name = short_unique_name("fs")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.models.create(workspace=workspace, name=model_name)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
+        client_from_platform(admin_sdk, ModelsClient).create_model(
+            workspace=workspace, body=CreateModelEntityRequest(name=model_name)
+        ).data()
         client_from_platform(admin_sdk, FilesClient).create_fileset(
             workspace=workspace, body=CreateFilesetRequest(name=fileset_name)
         )
@@ -1213,10 +1291,14 @@ class TestFilesetPermissions:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        updated = editor_sdk.models.update(
-            name=model_name,
-            workspace=workspace,
-            fileset=f"{workspace}/{fileset_name}",
+        updated = (
+            client_from_platform(editor_sdk, ModelsClient)
+            .update_model(
+                name=model_name,
+                workspace=workspace,
+                body=UpdateModelEntityRequest(fileset=f"{workspace}/{fileset_name}"),
+            )
+            .data()
         )
         assert updated.fileset == f"{workspace}/{fileset_name}"
 
@@ -1227,8 +1309,12 @@ class TestFilesetPermissions:
         fileset_name = short_unique_name("adpfs")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.models.create(workspace=workspace, name=model_name)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
+        client_from_platform(admin_sdk, ModelsClient).create_model(
+            workspace=workspace, body=CreateModelEntityRequest(name=model_name)
+        ).data()
         client_from_platform(admin_sdk, FilesClient).create_fileset(
             workspace=workspace, body=CreateFilesetRequest(name=fileset_name)
         )
@@ -1243,12 +1329,18 @@ class TestFilesetPermissions:
         )
 
         editor_sdk = as_user(sdk, editor_email)
-        adapter = editor_sdk.models.adapters.create(
-            model_name,
-            workspace=workspace,
-            name=short_unique_name("adp"),
-            fileset=f"{workspace}/{fileset_name}",
-            finetuning_type="lora",
+        adapter = (
+            client_from_platform(editor_sdk, ModelsClient)
+            .create_model_adapter(
+                workspace=workspace,
+                model_name=model_name,
+                body=CreateModelAdapterRequest(
+                    name=short_unique_name("adp"),
+                    fileset=f"{workspace}/{fileset_name}",
+                    finetuning_type=FinetuningType.LORA,
+                ),
+            )
+            .data()
         )
         assert adapter.fileset == f"{workspace}/{fileset_name}"
 
@@ -1259,7 +1351,9 @@ class TestFilesetPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -1269,11 +1363,10 @@ class TestFilesetPermissions:
 
         editor_sdk = as_user(sdk, editor_email)
         with pytest.raises(PermissionDeniedError):
-            editor_sdk.models.create(
+            client_from_platform(editor_sdk, ModelsClient).create_model(
                 workspace=workspace,
-                name=short_unique_name("mdl"),
-                fileset="inaccessible-ws/some-fileset",
-            )
+                body=CreateModelEntityRequest(name=short_unique_name("mdl"), fileset="inaccessible-ws/some-fileset"),
+            ).data()
 
     def test_editor_denied_update_model_with_inaccessible_fileset(self, sdk: NeMoPlatform):
         workspace = short_unique_name("fs-dnu")
@@ -1281,8 +1374,12 @@ class TestFilesetPermissions:
         model_name = short_unique_name("mdl")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.models.create(workspace=workspace, name=model_name)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
+        client_from_platform(admin_sdk, ModelsClient).create_model(
+            workspace=workspace, body=CreateModelEntityRequest(name=model_name)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -1292,11 +1389,11 @@ class TestFilesetPermissions:
 
         editor_sdk = as_user(sdk, editor_email)
         with pytest.raises(PermissionDeniedError):
-            editor_sdk.models.update(
+            client_from_platform(editor_sdk, ModelsClient).update_model(
                 name=model_name,
                 workspace=workspace,
-                fileset="inaccessible-ws/some-fileset",
-            )
+                body=UpdateModelEntityRequest(fileset="inaccessible-ws/some-fileset"),
+            ).data()
 
     def test_editor_denied_create_adapter_with_inaccessible_fileset(self, sdk: NeMoPlatform):
         workspace = short_unique_name("fs-dna")
@@ -1304,8 +1401,12 @@ class TestFilesetPermissions:
         model_name = short_unique_name("mdl")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.models.create(workspace=workspace, name=model_name)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
+        client_from_platform(admin_sdk, ModelsClient).create_model(
+            workspace=workspace, body=CreateModelEntityRequest(name=model_name)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -1315,13 +1416,15 @@ class TestFilesetPermissions:
 
         editor_sdk = as_user(sdk, editor_email)
         with pytest.raises(PermissionDeniedError):
-            editor_sdk.models.adapters.create(
-                model_name,
+            client_from_platform(editor_sdk, ModelsClient).create_model_adapter(
                 workspace=workspace,
-                name=short_unique_name("adp"),
-                fileset="inaccessible-ws/adapter-fileset",
-                finetuning_type="lora",
-            )
+                model_name=model_name,
+                body=CreateModelAdapterRequest(
+                    name=short_unique_name("adp"),
+                    fileset="inaccessible-ws/adapter-fileset",
+                    finetuning_type=FinetuningType.LORA,
+                ),
+            ).data()
 
     def test_custom_role_denied_create_model_with_fileset_without_fileset_read(self, sdk: NeMoPlatform):
         """A role without filesets.read should be denied when creating a model with a fileset."""
@@ -1330,7 +1433,9 @@ class TestFilesetPermissions:
             user_email = unique_email("nofileset")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -1340,11 +1445,10 @@ class TestFilesetPermissions:
 
             user_sdk = as_user(sdk, user_email)
             with pytest.raises(PermissionDeniedError):
-                user_sdk.models.create(
+                client_from_platform(user_sdk, ModelsClient).create_model(
                     workspace=workspace,
-                    name=short_unique_name("mdl"),
-                    fileset=f"{workspace}/some-fileset",
-                )
+                    body=CreateModelEntityRequest(name=short_unique_name("mdl"), fileset=f"{workspace}/some-fileset"),
+                ).data()
 
 
 @pytest.mark.integration
@@ -1368,7 +1472,9 @@ class TestTrustRemoteCodePermission:
         fileset_name = short_unique_name("fs")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, FilesClient).create_fileset(
             workspace=workspace,
             body=CreateFilesetRequest(name=fileset_name, storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"}),
@@ -1382,11 +1488,15 @@ class TestTrustRemoteCodePermission:
 
         with patch.object(models_config.trust_remote_code, "hf_allow_list", ["nvidia/*"]):
             editor_sdk = as_user(sdk, editor_email)
-            created = editor_sdk.models.create(
-                workspace=workspace,
-                name=model_name,
-                fileset=f"{workspace}/{fileset_name}",
-                trust_remote_code=True,
+            created = (
+                client_from_platform(editor_sdk, ModelsClient)
+                .create_model(
+                    workspace=workspace,
+                    body=CreateModelEntityRequest(
+                        name=model_name, fileset=f"{workspace}/{fileset_name}", trust_remote_code=True
+                    ),
+                )
+                .data()
             )
         assert created.trust_remote_code is True
 
@@ -1398,7 +1508,9 @@ class TestTrustRemoteCodePermission:
             fileset_name = short_unique_name("fs")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             client_from_platform(admin_sdk, FilesClient).create_fileset(
                 workspace=workspace,
                 body=CreateFilesetRequest(
@@ -1415,12 +1527,12 @@ class TestTrustRemoteCodePermission:
             with patch.object(models_config.trust_remote_code, "hf_allow_list", ["nvidia/*"]):
                 user_sdk = as_user(sdk, user_email)
                 with pytest.raises(PermissionDeniedError) as exc_info:
-                    user_sdk.models.create(
+                    client_from_platform(user_sdk, ModelsClient).create_model(
                         workspace=workspace,
-                        name=short_unique_name("mdl"),
-                        fileset=f"{workspace}/{fileset_name}",
-                        trust_remote_code=True,
-                    )
+                        body=CreateModelEntityRequest(
+                            name=short_unique_name("mdl"), fileset=f"{workspace}/{fileset_name}", trust_remote_code=True
+                        ),
+                    ).data()
                 assert "Insufficient permissions to set the trust_remote_code" in str(exc_info.value)
 
     def test_update_model_trust_remote_code_true_has_permission_succeeds(self, sdk: NeMoPlatform):
@@ -1431,8 +1543,12 @@ class TestTrustRemoteCodePermission:
         fileset_name = short_unique_name("fs")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.models.create(workspace=workspace, name=model_name)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
+        client_from_platform(admin_sdk, ModelsClient).create_model(
+            workspace=workspace, body=CreateModelEntityRequest(name=model_name)
+        ).data()
         client_from_platform(admin_sdk, FilesClient).create_fileset(
             workspace=workspace,
             body=CreateFilesetRequest(name=fileset_name, storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"}),
@@ -1446,11 +1562,14 @@ class TestTrustRemoteCodePermission:
 
         with patch.object(models_config.trust_remote_code, "hf_allow_list", ["nvidia/*"]):
             editor_sdk = as_user(sdk, editor_email)
-            updated = editor_sdk.models.update(
-                name=model_name,
-                workspace=workspace,
-                fileset=f"{workspace}/{fileset_name}",
-                trust_remote_code=True,
+            updated = (
+                client_from_platform(editor_sdk, ModelsClient)
+                .update_model(
+                    name=model_name,
+                    workspace=workspace,
+                    body=UpdateModelEntityRequest(fileset=f"{workspace}/{fileset_name}", trust_remote_code=True),
+                )
+                .data()
             )
         assert updated.trust_remote_code is True
 
@@ -1463,8 +1582,12 @@ class TestTrustRemoteCodePermission:
             fileset_name = short_unique_name("fs")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.models.create(workspace=workspace, name=model_name)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
+            client_from_platform(admin_sdk, ModelsClient).create_model(
+                workspace=workspace, body=CreateModelEntityRequest(name=model_name)
+            ).data()
             client_from_platform(admin_sdk, FilesClient).create_fileset(
                 workspace=workspace,
                 body=CreateFilesetRequest(
@@ -1483,12 +1606,11 @@ class TestTrustRemoteCodePermission:
             ):
                 user_sdk = as_user(sdk, user_email)
                 with pytest.raises(PermissionDeniedError) as exc_info:
-                    user_sdk.models.update(
+                    client_from_platform(user_sdk, ModelsClient).update_model(
                         name=model_name,
                         workspace=workspace,
-                        fileset=f"{workspace}/{fileset_name}",
-                        trust_remote_code=True,
-                    )
+                        body=UpdateModelEntityRequest(fileset=f"{workspace}/{fileset_name}", trust_remote_code=True),
+                    ).data()
                 assert "Insufficient permissions to set the trust_remote_code" in str(exc_info.value)
 
     def test_update_model_new_fileset_not_trusted_raises_permission_error(self, sdk: NeMoPlatform):
@@ -1501,23 +1623,27 @@ class TestTrustRemoteCodePermission:
             new_fs = short_unique_name("fs2")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            files = client_from_platform(admin_sdk, FilesClient)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             # Model created with a trusted fileset (on allow list) so it has trust_remote_code=True.
-            client_from_platform(admin_sdk, FilesClient).create_fileset(
+            files = client_from_platform(admin_sdk, FilesClient)
+            files.create_fileset(
                 workspace=workspace,
                 body=CreateFilesetRequest(
                     name=trusted_fs,
                     storage={"type": "huggingface", "repo_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"},
                 ),
             )
-            admin_sdk.models.create(
+            client_from_platform(admin_sdk, ModelsClient).create_model(
                 workspace=workspace,
-                name=model_name,
-                fileset=f"{workspace}/{trusted_fs}",
-                trust_remote_code=True,
-            )
+                body=CreateModelEntityRequest(
+                    name=model_name, fileset=f"{workspace}/{trusted_fs}", trust_remote_code=True
+                ),
+            ).data()
             # New fileset resolves to a repo not on the allow list.
-            client_from_platform(admin_sdk, FilesClient).create_fileset(
+            files.create_fileset(
                 workspace=workspace,
                 body=CreateFilesetRequest(name=new_fs, storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"}),
             )
@@ -1531,11 +1657,11 @@ class TestTrustRemoteCodePermission:
             with patch.object(models_config.trust_remote_code, "hf_allow_list", ["nvidia/*"]):
                 user_sdk = as_user(sdk, user_email)
                 with pytest.raises(PermissionDeniedError) as exc_info:
-                    user_sdk.models.update(
+                    client_from_platform(user_sdk, ModelsClient).update_model(
                         name=model_name,
                         workspace=workspace,
-                        fileset=f"{workspace}/{new_fs}",
-                    )
+                        body=UpdateModelEntityRequest(fileset=f"{workspace}/{new_fs}"),
+                    ).data()
                 assert "Insufficient permissions to set the trust_remote_code" in str(exc_info.value)
 
     def test_exact_match_on_allow_list_succeeds(self, sdk: NeMoPlatform):
@@ -1547,7 +1673,9 @@ class TestTrustRemoteCodePermission:
             fileset_name = short_unique_name("fs")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             client_from_platform(admin_sdk, FilesClient).create_fileset(
                 workspace=workspace,
                 body=CreateFilesetRequest(
@@ -1566,10 +1694,14 @@ class TestTrustRemoteCodePermission:
                 models_config.trust_remote_code, "hf_allow_list", ["nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"]
             ):
                 user_sdk = as_user(sdk, user_email)
-                created = user_sdk.models.create(
-                    workspace=workspace,
-                    name=model_name,
-                    fileset=f"{workspace}/{fileset_name}",
-                    trust_remote_code=True,
+                created = (
+                    client_from_platform(user_sdk, ModelsClient)
+                    .create_model(
+                        workspace=workspace,
+                        body=CreateModelEntityRequest(
+                            name=model_name, fileset=f"{workspace}/{fileset_name}", trust_remote_code=True
+                        ),
+                    )
+                    .data()
                 )
                 assert created.trust_remote_code is True

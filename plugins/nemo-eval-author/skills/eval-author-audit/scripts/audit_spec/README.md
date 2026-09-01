@@ -1,11 +1,12 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Audit Spec Measurement Assumptions
+# Audit Spec Measurement And Coverage Assumptions
 
 The audit-spec scripts treat `audit.md` as the coverage denominator. Measurement
 reads one task trace, compares it to the audit items, and writes per-task,
-per-run, per-method artifacts for later aggregation.
+per-run, per-method artifacts. Aggregation reads those coverage artifacts and
+writes one coverage report.
 
 Current assumptions:
 
@@ -24,6 +25,25 @@ Current assumptions:
   If no run id is provided by the CLI or Harbor result metadata, measurement
   derives one from the ATIF trajectory identity, then from the trace content
   digest.
+- Aggregation input is one or more per-trace `coverage.json` files. `report.py`
+  validates those files against `schemas/audit_coverage.schema.json`, rejects
+  hard denominator mismatches against the current `audit.md`, and writes the
+  aggregate report to the path supplied with `--out`.
+- Aggregation treats audit status as review metadata, not denominator content.
+  Status-only mismatches, such as measuring while an audit is `draft` and
+  reporting after it becomes `approved`, are emitted in `warnings` without
+  rejecting the input coverage file.
+- Aggregation does not read ATIF traces, Harbor result files, or method-specific
+  `details.json` files. It only unions stable audit item names from
+  `coverage.json`.
+- The aggregate report contains count summaries plus `uncovered_items`. Each
+  uncovered item preserves the original audit item and adds generation-oriented
+  context: the reason it is uncovered, a one-sentence focus, likely needed
+  tools, and required evidence.
+- The aggregate report records `measured_kinds` from the input coverage files.
+  An uncovered item whose kind is absent from `measured_kinds` uses
+  `reason: not_measured_by_any_method`; an uncovered item whose kind was measured
+  uses `reason: not_covered_by_any_input_report`.
 - Harbor's current `Trajectory` model is treated as the reader for now, but it
   may prove too strict for measurement if valid evaluator traces include producer
   extensions, omit fields that coverage does not consume, or move to a newer ATIF

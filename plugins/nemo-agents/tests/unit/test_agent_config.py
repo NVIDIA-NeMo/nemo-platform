@@ -124,6 +124,8 @@ class TestAgentConfig:
         assert config.skills is None
         assert config.mcp is None
         assert config.tools is None
+        assert config.runtime.timeout_seconds is None
+        assert config.runtime.max_turns is None
         assert config.environment.provider == "local"
         assert config.environment.workspace == "./workspace"
         assert config.environment.artifacts == "./artifacts"
@@ -196,6 +198,23 @@ class TestAgentConfig:
         config = AgentConfig.model_validate(payload)
 
         assert config.telemetry.opentelemetry == payload["telemetry"]["opentelemetry"]
+
+    def test_runtime_constraints_validate(self) -> None:
+        payload = _example_yaml_config()
+        payload["runtime"] = {"max_turns": 20, "timeout_seconds": 120.5}
+
+        config = AgentConfig.model_validate(payload)
+
+        assert config.runtime.max_turns == 20
+        assert config.runtime.timeout_seconds == 120.5
+
+    @pytest.mark.parametrize(("field", "value"), [("max_turns", 0), ("timeout_seconds", 0)])
+    def test_runtime_constraints_must_be_positive(self, field: str, value: int) -> None:
+        payload = _example_yaml_config()
+        payload["runtime"] = {field: value}
+
+        with pytest.raises(ValidationError, match="Input should be greater than 0"):
+            AgentConfig.model_validate(payload)
 
     def test_default_harness_must_reference_configured_harness(self) -> None:
         with pytest.raises(ValidationError, match="default_harness must reference one of harnesses: codex"):

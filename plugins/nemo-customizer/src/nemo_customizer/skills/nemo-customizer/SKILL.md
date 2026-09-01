@@ -183,6 +183,10 @@ For **`automodel`/`unsloth`**, training never runs inside the `nemo` CLI process
 - **There is no `grpo` subcommand** — GRPO submits through **`nemo customization rl submit`** like DPO, selected by `training.type: "grpo"` in the job JSON. `training.type` is the union discriminator and is **required**: omitting it fails with `union_tag_not_found` rather than defaulting.
 - **GRPO needs TWO FileSets** — an `environment` (code + config, `purpose=environment`) and a `dataset` (prompt rows, `purpose=dataset`). Both are plain string refs in the job JSON. Three environment formats are supported — `native-v1`, `wheels-v1`, `adapter-wheels-v1` — and picking one is the first question to settle. Full guide: `references/gym-environments.md`.
 - **Never put `.jsonl` in the environment package** — validation rejects it outright. This bites the `native-v1` path especially: Gym's own configs point `datasets[].jsonl_fpath` at an in-tree file, so an environment copied straight from the Gym source tree fails until the data dir is stripped and the prompts move to the dataset FileSet.
+- **Gym YAML: instance ≠ implementation.** The top-level key is the **instance** (unique at runtime); the key under the server type is the **implementation directory** Gym runs (`{server_type}/{implementation}/`). Both `{type, name}` refs and a dataset row's `agent_ref.name` name the **instance**. They're often equal in Gym's own configs, which is why this gets missed. Every package also needs a `policy_model` `responses_api_models` config, listed **first** in `config_paths`, or spin-up dies with `ServerRefNotFoundError: ... Available responses_api_models: (none)`.
+- **Two things silently break a hand-built environment.** (1) A custom `{server_type}/{implementation}/` directory with **no `requirements.txt` or `pyproject.toml`** is not recognised as a server — if a Gym built-in shares the name, Gym runs *that* instead and trains the wrong environment with no error. (2) A `pyproject.toml` at the **package root** makes Gym think it is inside a Gym checkout and install the root as `nemo-gym`. Keep the Gym source-slice layout; never repackage as a setuptools distribution.
+- **`domain` is required on every `resources_servers` block** and validated against a closed set (`math`, `coding`, `agent`, `knowledge`, `instruction_following`, `long_context`, `safety`, `games`, `translation`, `e2e`, `rlhf`, `other`). Empty or invalid makes it an "almost-server" and **aborts spin-up** with `AlmostServerError` — it is not skipped. Agent and model blocks must not carry `domain`.
+- **Offline is about wheelhouse completeness, not the format name.** There are two installs: Gym builds each server's venv with an **index still enabled** (`wheels/` is only a `UV_FIND_LINKS` candidate pool), then NeMo-RL installs the closure with `--no-index`. A `wheels-v1` job is offline-clean only when `wheels/` also covers that first step — the server's requirements **plus** `nemo-gym` at the training image's exact version, `ray[default]` and `openai` at Gym's pins. `references/gym-environments.md` § **Dependency installation**.
 - **Validate the environment package before uploading** — `uv run --package nmp-rl pi-to-gym-conversion --validate-only <dir>` prints `{"valid": true, ...}` or exits 1 with the exact violation. The same checks run at submit against the FileSet listing, so this catches the failure minutes earlier and for free.
 - **GRPO convert is CLI-first** — run `pi-to-gym-conversion` on a host with internet; training clusters consume uploaded FileSets only (no hub egress). **Pin `--hub-version`**: unset takes whatever the index offers now, and a later release can narrow `Requires-Python` or ship code the training image's Python cannot run. `sandboxed` is platform config (`NMP_RL_SANDBOXED_GYM_DEFAULT`, default true), not a job JSON field.
 - **GRPO progress is read on reward, not loss** — the GRPO surrogate loss oscillates around zero and carries no signal about run quality. Report `train_reward` and `val_accuracy` (NeMo-RL's name for the validation pass's **mean reward**, not an accuracy in the classifier sense — there is no `val_reward`). When reward stalls, look at `train_truncation_rate` (rising) and `train_baseline_reward/pct_mixed` (falling toward zero means every prompt group agrees with itself, so there is no gradient left). See `references/reporting.md`.
@@ -234,10 +238,11 @@ Common steps then **branch by plugin pick**:
 
 # rl branch (GRPO; submit → Kubernetes/Ray job) — requires platform.runtime: kubernetes
 - [ ] Verify execution backend (same gate as DPO above)
-- [ ] Pick the ENVIRONMENT format — verifiers/hub env → adapter-wheels-v1; Gym source tree → native-v1; own code → wheels-v1 (see references/gym-environments.md)
-- [ ] Build the environment package: hub env → `pi-to-gym-conversion --hub-id … --hub-version … --out-dir …` on an internet-capable host; otherwise hand-build the manifest + configs (+ wheels for the two wheels formats)
-- [ ] Validate BEFORE upload: `pi-to-gym-conversion --validate-only <pkg-dir>` — cheapest possible failure
-- [ ] Upload environment (--purpose environment) and dataset (--purpose dataset) as TWO filesets; preserve relative paths; no .jsonl inside the env package
+- [ ] Confirm the cluster runs sandboxed Gym: sandbox_cluster_capable + job-storage PVC claim are operator config and fail AT SUBMIT (references/rl-kubernetes-runtime.md § Sandboxed Gym (GRPO)); ask the operator about egress before choosing native-v1
+- [ ] Pick the ENVIRONMENT format — verifiers/hub env → adapter-wheels-v1; Gym tree WITH egress → native-v1; everything else (incl. Gym tree, no egress) → wheels-v1 (see references/gym-environments.md)
+- [ ] Build the environment package: hub env → `pi-to-gym-conversion --hub-id … --hub-version … --out-dir …` on an internet-capable host; otherwise hand-build manifest + configs/policy_model.yaml + server dirs (each with requirements.txt) + wheels for the two wheels formats
+- [ ] Validate BEFORE upload: `pi-to-gym-conversion --validate-only <pkg-dir>` — cheapest possible failure. It checks LAYOUT ONLY: not wheel tags, not closure completeness, not rows
+- [ ] Upload environment (--purpose environment — enforced at submit) and dataset (--purpose dataset) as TWO filesets; trailing slash on the local dir; no .jsonl inside the env package; `nemo files list` to confirm nothing nested
 - [ ] Dataset rows are GYM ROLLOUT ROWS (prompt under responses_create_params.input + agent_ref object) — see references/dataset-formats.md § NeMo-RL (GRPO)
 - [ ] Write /tmp/job.json with training.type "grpo" + the `environment` string ref (see Fast path — rl (GRPO))
 - [ ] nemo customization rl submit /tmp/job.json --workspace default [--profile <gpu-profile>]
@@ -373,13 +378,15 @@ GRPO on a Ray cluster — **Kubernetes runtime only**, full-weight. Same runtime
 
 GRPO differs from every other backend in one structural way: it needs **two FileSets**, an **environment** (code that runs a rollout and returns a reward) and a **dataset** of prompt rows. There are no labelled completions — the reward comes from the environment.
 
-**1. Environment** — the bulk of the work, and it has its own reference: **`references/gym-environments.md`**. Pick the format first:
+**1. Environment** — the bulk of the work, and it has its own reference: **`references/gym-environments.md`**. Pick the format first. All three run on the same Gym runtime; the format decides only where dependencies come from and where `config_paths` may live:
 
 | The user has… | Format | How |
 |---|---|---|
-| A Prime Intellect hub env, or any `verifiers` env | **`adapter-wheels-v1`** | `pi-to-gym-conversion` (below) — the supported path |
-| An env already in the NeMo Gym source tree | **`native-v1`** | Package the server dir + add a manifest; **strip any `.jsonl`** |
-| Their own environment code | **`wheels-v1`** | Hand-build: manifest + configs + vendored wheel closure |
+| A Prime Intellect hub env, or any `verifiers` env | **`adapter-wheels-v1`** | `pi-to-gym-conversion` (below) — the only format with a converter |
+| A Gym server tree **and** the cluster can reach a package index at spin-up | **`native-v1`** | Package the server dir + add a manifest; **strip any `.jsonl`** |
+| Anything else — own code, **or a Gym server tree on a deny-default cluster** | **`wheels-v1`** | Hand-build: manifest + configs + server dirs + vendored wheel closure |
+
+Do not pick `native-v1` just because the environment came from Gym: it ships no wheels, so its per-server venv resolves from an index and the job needs egress. Ask the operator (`NMP_RL_SANDBOX_ALLOW_INTERNET`) before committing to it; otherwise the same tree ships as `wheels-v1`.
 
 For a hub env, run the converter on an **internet-capable host** — training clusters have no hub egress:
 
@@ -439,7 +446,7 @@ JOB=$(python3 -c "import json;print(json.load(open('/tmp/rl-submit.json'))['name
 bash plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/scripts/poll_customization_job.sh "$JOB"
 ```
 
-**Read GRPO progress on reward, not loss.** The GRPO surrogate loss oscillates near zero and says nothing about run quality. `train_reward` and `val_accuracy` are the curves that matter — `val_accuracy` is the validation pass's mean reward under NeMo-RL's name for it. `train_truncation_rate` rising or `train_baseline_reward/pct_mixed` falling toward zero explain a reward curve that stopped moving. See `references/reporting.md` § **GRPO metrics**.
+**Read GRPO progress on reward, not loss.** The GRPO surrogate loss oscillates near zero and says nothing about run quality. `train_reward` and `val_accuracy` are the curves that matter — `val_accuracy` is the validation pass's mean reward under NeMo-RL's name for it. `train_truncation_rate` rising or `train_baseline_reward/pct_mixed` falling toward zero explain a reward curve that stopped moving. See `references/reporting.md` § **RL (GRPO) example**.
 
 ## Fast path — rl (DPO)
 
@@ -602,7 +609,7 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 | Multi-GPU same node | `references/batch-sizing.md` § **Multi-GPU (same node)** (unsloth is single-GPU) |
 | Reporting: result template, Training configuration, Using the adapter / fine-tuned model | `references/reporting.md` |
 | Backend choice, execution profiles, submit failure, container images, missing image on remote platform, gated HF auth / download 502, CLI, connection errors | `references/troubleshooting.md` (§ **Parsing CLI JSON** for `2>&1` / `json.load`; § **Gated HuggingFace models** for `hf-token`) |
-| rl (DPO) needs Kubernetes job execution — verifying / configuring `runtime: kubernetes` + `kubernetes_job` executors (local platform → remote cluster, launcher image, PVC, loopback) | `references/rl-kubernetes-runtime.md` |
+| rl (DPO **and GRPO**) needs Kubernetes job execution — verifying / configuring `runtime: kubernetes` + `kubernetes_job` executors (local platform → remote cluster, launcher image, PVC, loopback), plus **sandboxed Gym**: OpenSandbox install, `sandbox_cluster_capable`, job-storage PVC, egress, rollout transport | `references/rl-kubernetes-runtime.md` |
 | **Live JSON schema — authoritative, check here first** | `uv run nemo customization automodel explain` / `uv run nemo customization unsloth explain` / `uv run nemo customization rl explain` |
 | Payload **shape** only — not the field set, defaults, or sensible values (automodel) | `plugins/nemo-automodel/tests/fixtures/qwen3_0.6b_sft_lora.json` |
 | Payload **shape** only (unsloth) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` |

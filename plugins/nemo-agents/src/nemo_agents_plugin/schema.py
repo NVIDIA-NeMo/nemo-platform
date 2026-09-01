@@ -69,6 +69,13 @@ class CreateDeploymentRequest(BaseModel):
         default="",
         description="Container image for docker/k8s modes. Ignored for subprocess.",
     )
+    use_image_entrypoint: bool = Field(
+        default=False,
+        description=(
+            "For docker/k8s modes, leave the container command and args empty so the image's "
+            "ENTRYPOINT/CMD starts the agent server."
+        ),
+    )
     environment: str | AgentEnvironmentInline | None = Field(
         default=None,
         description=(

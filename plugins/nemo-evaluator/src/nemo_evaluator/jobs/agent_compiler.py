@@ -32,6 +32,7 @@ AGENT_EVAL_STEP_NAME = "agent-evaluate"
 AGENT_EVAL_IMAGE = "nmp-cpu-tasks"
 GYM_AGENT_EVAL_IMAGE = "nmp-gym-tasks"
 AGENT_EVAL_ENTRYPOINT = ["python", "-m"]
+GYM_AGENT_EVAL_ENTRYPOINT = ["/app/.venv/bin/python", "-m"]
 AGENT_EVAL_COMMAND = ["nemo_evaluator.tasks.agent_evaluate"]
 
 
@@ -70,7 +71,7 @@ def _agent_eval_step(spec: AgentEvalSpec, profile: str | None) -> PlatformJobSte
             provider="cpu",
             container=ContainerSpec(
                 image=image,
-                entrypoint=AGENT_EVAL_ENTRYPOINT,
+                entrypoint=GYM_AGENT_EVAL_ENTRYPOINT if is_gym_target else AGENT_EVAL_ENTRYPOINT,
                 command=AGENT_EVAL_COMMAND,
             ),
         ),

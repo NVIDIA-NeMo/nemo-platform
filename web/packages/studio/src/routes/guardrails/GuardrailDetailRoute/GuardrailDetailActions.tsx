@@ -28,18 +28,19 @@ export const GuardrailDetailActions: FC<GuardrailDetailActionsProps> = ({ config
 
   const { mutateAsync: deleteConfig } = useGuardrailsDeleteConfig();
 
+  // Errors propagate deliberately: the service refuses to delete a config a VirtualModel
+  // still applies, and its 409 names them ("...is applied by default/my-vm. Detach it from
+  // those virtual models before deleting it."). ConfirmationModal toasts a thrown error's
+  // message, so letting it through says which routes are blocking; returning false would
+  // instead show a fixed "please try again", which is wrong — retrying cannot succeed.
   const handleDelete = useCallback(async (): Promise<boolean> => {
     if (!config.name) return false;
-    try {
-      await deleteConfig({ workspace, name: config.name });
-      await queryClient.invalidateQueries({
-        queryKey: [`/apis/guardrails/v2/workspaces/${workspace}/configs`],
-      });
-      void navigate(getGuardrailsRoute(workspace));
-      return true;
-    } catch {
-      return false;
-    }
+    await deleteConfig({ workspace, name: config.name });
+    await queryClient.invalidateQueries({
+      queryKey: [`/apis/guardrails/v2/workspaces/${workspace}/configs`],
+    });
+    void navigate(getGuardrailsRoute(workspace));
+    return true;
   }, [config.name, deleteConfig, navigate, queryClient, workspace]);
 
   const actions = useMemo<QuickActionItem[]>(
@@ -73,7 +74,6 @@ export const GuardrailDetailActions: FC<GuardrailDetailActionsProps> = ({ config
           simpleConfirm
           title={`Delete guardrail config: ${config.name}`}
           successText="Guardrail config deleted successfully."
-          errorText="Failed to delete the guardrail config. Please try again."
           onDelete={handleDelete}
           onClose={() => setShowDeleteModal(false)}
         />

@@ -5,13 +5,17 @@
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 import pytest
 from nemo_evaluator.intake.mapping import (
     ATIF_SCHEMA_VERSION,
     DEFAULT_AGENT_VERSION,
+    atif_steps_from_trial,
     run_task_to_evaluation_context,
     score_to_evaluator_results,
     session_id_for,
@@ -31,6 +35,7 @@ from nemo_evaluator_sdk.metrics.protocol import (
     Label,
     MetricOutput,
 )
+from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
 
 STARTED_AT = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
@@ -296,3 +301,136 @@ def test_failed_score_yields_no_rows_and_skips_every_output() -> None:
         ("accuracy.score", "scoring failed"),
         ("accuracy.passed", "scoring failed"),
     ]
+
+
+def _atif_document() -> dict[str, Any]:
+    """An ATIF trajectory shaped like the one Harbor's ATIF-capable agents write."""
+    return {
+        "schema_version": "ATIF-v1.7",
+        "session_id": "harbor-session",
+        "agent": {"name": "codex", "version": "1.0"},
+        "steps": [
+            {"step_id": 1, "source": "user", "message": "solve it", "timestamp": "2026-01-01T00:00:00+00:00"},
+            {"step_id": 2, "source": "agent", "message": "204", "timestamp": "2026-01-01T00:00:01+00:00"},
+        ],
+    }
+
+
+def _trial_with_trace(tmp_path: Path, *, document: object, evidence_format: str = "atif") -> AgentEvalTrial:
+    trace_path = tmp_path / "trajectory.json"
+    trace_path.write_text(json.dumps(document))
+    return AgentEvalTrial(
+        id="trial-1",
+        task_id="task-1",
+        status=AgentEvalTrialStatus.COMPLETED,
+        output=AgentOutput(output_text="204"),
+        evidence=CandidateEvidence(
+            descriptors={"trace": EvidenceDescriptor(kind="trace", format=evidence_format, ref=str(trace_path))}
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_atif_trace_evidence_supplies_the_real_steps(tmp_path: Path) -> None:
+    trial = _trial_with_trace(tmp_path, document=_atif_document())
+
+    steps = await atif_steps_from_trial(trial, started_at=STARTED_AT)
+
+    assert steps is not None
+    assert [step["source"] for step in steps] == ["user", "agent"]
+    assert [step["message"] for step in steps] == ["solve it", "204"]
+
+
+@pytest.mark.asyncio
+async def test_steps_without_a_timestamp_fall_back_to_the_run_start(tmp_path: Path) -> None:
+    document = _atif_document()
+    del document["steps"][1]["timestamp"]
+
+    steps = await atif_steps_from_trial(_trial_with_trace(tmp_path, document=document), started_at=STARTED_AT)
+
+    # Intake keys spans on start_time; a step with no timestamp would take the ingest clock and
+    # duplicate on re-publish instead of replacing.
+    assert steps is not None
+    assert steps[1]["timestamp"] == STARTED_AT.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_trace_evidence_that_is_not_atif_is_ignored(tmp_path: Path) -> None:
+    trial = _trial_with_trace(tmp_path, document=_atif_document(), evidence_format="json")
+
+    assert await atif_steps_from_trial(trial, started_at=STARTED_AT) is None
+
+
+@pytest.mark.asyncio
+async def test_unreadable_trace_evidence_does_not_fail_the_publish(tmp_path: Path) -> None:
+    trial = _trial_with_trace(tmp_path, document=_atif_document())
+    (tmp_path / "trajectory.json").unlink()
+
+    assert await atif_steps_from_trial(trial, started_at=STARTED_AT) is None
+
+
+@pytest.mark.asyncio
+async def test_a_trial_with_no_evidence_has_no_steps() -> None:
+    assert await atif_steps_from_trial(_trial(), started_at=STARTED_AT) is None
+
+
+def test_supplied_steps_replace_the_synthetic_single_step() -> None:
+    real_steps = [
+        {"step_id": 1, "source": "user", "message": "solve it"},
+        {"step_id": 2, "source": "agent", "message": "204"},
+    ]
+
+    body = trial_to_atif_ingest(
+        _trial(),
+        run_id="run-1",
+        evaluation_name="eval-1",
+        agent_name="codex",
+        started_at=STARTED_AT,
+        steps=real_steps,  # type: ignore[arg-type]
+    )
+
+    assert body["steps"] == real_steps
+
+
+def test_no_supplied_steps_still_emits_the_final_output_text() -> None:
+    body = trial_to_atif_ingest(
+        _trial(output_text="only answer"),
+        run_id="run-1",
+        evaluation_name="eval-1",
+        agent_name="oracle",
+        started_at=STARTED_AT,
+    )
+
+    assert [step["message"] for step in body["steps"]] == ["only answer"]
+
+
+@pytest.mark.asyncio
+async def test_step_ids_are_renumbered_to_the_sequence_ingest_requires(tmp_path: Path) -> None:
+    document = _atif_document()
+    for step in document["steps"]:
+        del step["step_id"]
+
+    steps = await atif_steps_from_trial(_trial_with_trace(tmp_path, document=document), started_at=STARTED_AT)
+
+    # Ingest rejects a trajectory whose ids are not one-based and sequential.
+    assert steps is not None
+    assert [step["step_id"] for step in steps] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_a_trajectory_with_no_steps_falls_back_to_the_synthetic_step(tmp_path: Path) -> None:
+    document = _atif_document()
+    document["steps"] = []
+
+    trial = _trial_with_trace(tmp_path, document=document)
+    body = trial_to_atif_ingest(
+        trial,
+        run_id="run-1",
+        evaluation_name="eval-1",
+        agent_name="codex",
+        started_at=STARTED_AT,
+        steps=await atif_steps_from_trial(trial, started_at=STARTED_AT),
+    )
+
+    # Ingest needs at least one step, so an empty trajectory must not empty the request.
+    assert [step["message"] for step in body["steps"]] == ["204"]

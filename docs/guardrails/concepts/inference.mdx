@@ -116,8 +116,8 @@ Create a VirtualModel that applies the guardrail configuration:
 <Tab title="CLI">
 
 ```bash
-nemo inference virtual-models create guarded-llama \
-  --default-model-entity default/meta-llama-3-1-8b-instruct \
+nemo inference virtual-models create guarded-nemotron \
+  --default-model-entity default/nvidia-nemotron-3-nano-30b-a3b \
   --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/content-safety-config"}]'
 ```
 
@@ -126,8 +126,8 @@ nemo inference virtual-models create guarded-llama \
 
 ```python
 client.inference.virtual_models.create(
-    name="guarded-llama",
-    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    name="guarded-nemotron",
+    default_model_entity="default/nvidia-nemotron-3-nano-30b-a3b",
     request_middleware=[
         {
             "name": "nemo-guardrails",
@@ -158,7 +158,7 @@ Set the `model` field to your VirtualModel's entity reference (`workspace/name` 
 <Tab title="CLI">
 
 ```bash
-nemo chat default/guarded-llama "What is the capital of France?"
+nemo chat default/guarded-nemotron "What is the capital of France?"
 ```
 
 </Tab>
@@ -168,7 +168,7 @@ nemo chat default/guarded-llama "What is the capital of France?"
 curl -s $NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{
-    "model": "default/guarded-llama",
+    "model": "default/guarded-nemotron",
     "messages": [{"role": "user", "content": "What is the capital of France?"}],
     "max_tokens": 200
   }' | jq
@@ -177,13 +177,13 @@ curl -s $NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/openai/-/v1/c
 </Tab>
 <Tab title="Python SDK">
 
-Get a pre-configured OpenAI client from the platform SDK and call it like any other OpenAI-compatible endpoint. The client's base URL points at the workspace-scoped IGW route, so `model="default/guarded-llama"` resolves through IGW's VirtualModel cache.
+Get a pre-configured OpenAI client from the platform SDK and call it like any other OpenAI-compatible endpoint. The client's base URL points at the workspace-scoped IGW route, so `model="default/guarded-nemotron"` resolves through IGW's VirtualModel cache.
 
 ```python
 oai_client = client.models.get_openai_client()
 
 response = oai_client.chat.completions.create(
-    model="default/guarded-llama",
+    model="default/guarded-nemotron",
     messages=[{"role": "user", "content": "What is the capital of France?"}],
     max_tokens=200,
 )
@@ -212,8 +212,8 @@ Instead of referencing a stored config entity via `config_id`, you can embed the
 <Tab title="CLI">
 
 ```bash
-nemo inference virtual-models create guarded-llama-inline \
-  --default-model-entity default/meta-llama-3-1-8b-instruct \
+nemo inference virtual-models create guarded-nemotron-inline \
+  --default-model-entity default/nvidia-nemotron-3-nano-30b-a3b \
   --request-middleware '[{
     "name": "nemo-guardrails",
     "config_type": "guardrail_config",
@@ -231,8 +231,8 @@ nemo inference virtual-models create guarded-llama-inline \
 ```python
 
 client.inference.virtual_models.create(
-    name="guarded-llama-inline",
-    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    name="guarded-nemotron-inline",
+    default_model_entity="default/nvidia-nemotron-3-nano-30b-a3b",
     request_middleware=[
         {
             "name": "nemo-guardrails",
@@ -306,7 +306,7 @@ If the request sets `stream: true` but the guardrail config has output flows wit
 curl -N -s $NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{
-    "model": "default/guarded-llama",
+    "model": "default/guarded-nemotron",
     "messages": [{"role": "user", "content": "Explain machine learning in simple terms."}],
     "max_tokens": 200,
     "stream": true
@@ -317,7 +317,7 @@ curl -N -s $NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/openai/-/v
 <Tab title="CLI">
 
 ```bash
-nemo chat default/guarded-llama "Explain machine learning in simple terms."
+nemo chat default/guarded-nemotron "Explain machine learning in simple terms."
 ```
 
 </Tab>
@@ -370,7 +370,7 @@ logs in production environments.
 curl -s $NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{
-    "model": "default/guarded-llama",
+    "model": "default/guarded-nemotron",
     "messages": [{"role": "user", "content": "Hello!"}],
     "guardrails": {
       "options": {
@@ -391,7 +391,7 @@ For clients that do not handle extra response fields, configure the request to r
 curl -s $NMP_BASE_URL/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{
-    "model": "default/guarded-llama",
+    "model": "default/guarded-nemotron",
     "messages": [{"role": "user", "content": "Hello!"}],
     "guardrails": {
       "return_choice": true,

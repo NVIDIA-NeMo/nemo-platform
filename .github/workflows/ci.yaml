@@ -51,6 +51,7 @@ jobs:
       e2e: ${{ steps.changes.outputs.e2e }}
       docs: ${{ steps.changes.outputs.docs }}
       web-studio: ${{ steps.changes.outputs.web-studio }}
+      github-scripts: ${{ steps.changes.outputs.github-scripts }}
       tools: ${{ steps.changes.outputs.tools }}
       docker: ${{ steps.changes.outputs.docker }}
       helm: ${{ steps.changes.outputs.helm }}
@@ -1312,11 +1313,11 @@ jobs:
           - provider: authentik
             runtime: authentik-compose
             backend: compose
-            command: compose
+            command: test compose
           - provider: authentik
             runtime: authentik-kubernetes
             backend: kubernetes
-            command: k8s
+            command: test k8s
     env:
       NMP_AUTHENTIK_K8S_RUNTIME: kind
       NMP_AUTHENTIK_K8S_NAMESPACE: nemo-authentik
@@ -1695,6 +1696,34 @@ jobs:
           path: |
             report.xml
             ${{ runner.temp }}/e2e-services-logs/
+
+  github-scripts:
+    name: GitHub JavaScript checks
+    needs: [changes]
+    if: >-
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.github-scripts == 'true'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install pnpm via corepack
+        run: npm i -g corepack@0.31.0 && corepack enable pnpm
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Test GitHub JavaScript scripts
+        run: node --test .github/scripts/tests/*.test.cjs
+      - name: Lint GitHub JavaScript scripts
+        run: web/node_modules/.bin/eslint --config .github/eslint.config.mjs .github/scripts --max-warnings 0
+      - name: Check GitHub JavaScript formatting
+        run: web/node_modules/.bin/prettier --check .github/scripts
 
   web-typecheck:
     name: Web typecheck
@@ -2197,6 +2226,7 @@ jobs:
       - wheel-build
       - wheel-test
       - python-e2e-test
+      - github-scripts
       - web-typecheck
       - web-test
       - web-format

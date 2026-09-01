@@ -52,6 +52,14 @@ describe('AgentTraceStatistics', () => {
     expect(screen.getByText('$0.03')).toBeInTheDocument();
   });
 
+  it('shows the selected range as its option label, not the raw value', () => {
+    renderRoute(
+      <AgentTraceStatistics summary={SUMMARY} buckets={BUCKETS} range="week" onRangeChange={noop} />
+    );
+
+    expect(screen.getByRole('combobox', { name: 'Statistics range' })).toHaveTextContent('Week');
+  });
+
   it('replaces the tiles and chart with actionable guidance when there are no traces', () => {
     renderRoute(
       <AgentTraceStatistics

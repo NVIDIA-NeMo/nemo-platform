@@ -4,7 +4,7 @@
 import httpx
 import pytest
 from nemo_platform_ext.auth.helpers import discover_nmp_config
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_ext.client.tls import httpx_tls_config_from_env
 
 from tests.auth_idp.authentik_live import AUTHENTIK_DOCKER_E2E_CONFIG
 
@@ -33,7 +33,7 @@ def test_authentik_discovery_exposes_gateway_reachable_device_flow(authentik_sta
             "scope": oidc.default_scopes,
         },
         timeout=30.0,
-        verify=client_verify_from_env(),
+        **httpx_tls_config_from_env(),
     )
     response.raise_for_status()
     body = response.json()
@@ -55,7 +55,7 @@ def test_authentik_cli_provider_rejects_unseeded_human_app_password(authentik_st
             "scope": "openid email offline_access groups",
         },
         timeout=30.0,
-        verify=client_verify_from_env(),
+        **httpx_tls_config_from_env(),
     )
 
     assert token_response.status_code == 400

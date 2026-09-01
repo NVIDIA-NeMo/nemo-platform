@@ -6,6 +6,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from nemo_platform_plugin.inference_middleware import VirtualModel, guardrail_config_membership_filter
 from nmp.common.api import ParsedFilter, make_filter_dep
 from nmp.common.api.common import DeleteResponse, GenericSortField, Page, PaginationData
 from nmp.common.api.utils import generate_openapi_extra_params
@@ -176,11 +177,52 @@ async def update_config(
     return updated_config
 
 
+# A guardrail config is referenced by fully qualified "workspace/name", so a VirtualModel in any
+# workspace can apply one from another — the in-use scan is deliberately cross-workspace ("-").
+_IN_USE_SCAN_PAGE_SIZE = 200
+_IN_USE_NAMES_IN_ERROR = 5
+
+
+async def _virtual_models_using_config(entities_client: EntityClient, config_ref: str) -> list[str]:
+    """VirtualModels that apply guardrail config ``config_ref``, as ``"workspace/name"`` refs.
+
+    Two passes, because neither alone is both cheap and correct.  The entity-store filter narrows
+    to candidates in SQL, but its legacy arm matches serialized middleware as raw text and so can
+    over-match (see :func:`guardrail_config_membership_filter`).  Each candidate is therefore
+    re-checked against its parsed middleware calls, which compares the ``config_type``
+    discriminator as well as the reference.  The result is exact: a config is never held hostage by
+    a VirtualModel that merely happens to contain the same string.
+
+    Collection stops once there are enough names for the error message — the caller only needs to
+    know *whether* the config is in use, plus a few examples.  A config with no references is the
+    only case that scans every candidate page, and that set is small by construction.
+    """
+    in_use: list[str] = []
+    page = 1
+    while True:
+        result = await entities_client.list(
+            VirtualModel,
+            workspace="-",
+            page=page,
+            page_size=_IN_USE_SCAN_PAGE_SIZE,
+            filter_operation=guardrail_config_membership_filter(config_ref),
+        )
+        for vm in result.data:
+            if vm.references_guardrail_config(config_ref):
+                in_use.append(f"{vm.workspace}/{vm.name}")
+                if len(in_use) >= _IN_USE_NAMES_IN_ERROR:
+                    return in_use
+        if page >= result.pagination.total_pages or not result.data:
+            return in_use
+        page += 1
+
+
 @router.delete(
     "/v2/workspaces/{workspace}/configs/{name}",
     responses={
         200: {"description": "Successful model deletion."},
         404: {"description": "Config does not exist."},
+        409: {"description": "Config is applied by one or more VirtualModels and cannot be deleted."},
         422: {"description": ("Unable to delete config due to validation error while processing request.")},
     },
 )
@@ -197,14 +239,28 @@ async def delete_config(
     except EntityNotFoundError:
         raise HTTPException(status_code=404, detail="Guardrail config not found.")
 
+    full_config_id = f"{workspace}/{config.name}" if workspace else config.name
+
+    # Deleting a config out from under a VirtualModel that applies it would leave that route
+    # pointing at a config the Inference Gateway can no longer resolve — the same dangling
+    # reference the VirtualModel endpoints reject at attach time. Refuse it here too, so the
+    # reference is validated symmetrically on both sides.
+    in_use_by = await _virtual_models_using_config(entities_client, full_config_id)
+    if in_use_by:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Guardrail config '{full_config_id}' is applied by "
+                f"{', '.join(sorted(in_use_by))}. Detach it from those virtual models before deleting it."
+            ),
+        )
+
     try:
         await entities_client.delete(GuardrailConfig, config.name, workspace=workspace)
     except EntityNotFoundError:
         raise HTTPException(status_code=404, detail="Guardrail config not found.")
     except EntityConflictError as exc:
         raise HTTPException(status_code=409, detail="Concurrent modification - please retry.") from exc
-
-    full_config_id = f"{workspace}/{config.name}" if workspace else config.name
 
     if config_registry:
         await config_registry.refresh_all()

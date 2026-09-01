@@ -160,6 +160,21 @@ export const META_MODEL_METADATA: Record<string, ModelMetadata> = {
 };
 
 export const NEMOTRON_MODEL_METADATA: Record<string, ModelMetadata> = {
+  'nvidia/nemotron-3-nano-30b-a3b': {
+    name: 'NVIDIA Nemotron 3 Nano 30B A3B',
+    creator: 'NVIDIA',
+    architecture: 'hybrid-mamba-transformer-moe',
+    description:
+      'Nemotron 3 Nano 30B-A3B is a unified reasoning and chat model with 30B total parameters and 3.5B active parameters.',
+    'max-io-tokens': '16384',
+    parameters: '30 billion (3.5 billion active)',
+    'training-data': 'Not specified',
+    'fine-tune-options': ['lora'],
+    'recommended-gpus-for-customization': {
+      lora: 1,
+    },
+    tags: ['reasoning', 'tool-calling'],
+  },
   'nvidia/nemotron-nano-llama-3.1-8b': {
     name: 'Llama-3.1 Nemotron Nano 8B v1',
     creator: 'NVIDIA',
