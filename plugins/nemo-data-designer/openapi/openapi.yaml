@@ -4177,6 +4177,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/RetrievalGenerateJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -4419,8 +4426,8 @@ components:
         enable_mining:
           type: boolean
           title: Enable Mining
-          description: When true, run GPU hard-negative mining after conversion.
-            Conversion-only is the default.
+          description: When true, run GPU hard-negative mining after conversion. Conversion-only
+            is the default.
           default: false
         model:
           type: string
@@ -4508,6 +4515,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/RetrievalPrepareJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -4696,6 +4710,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/RetrievalRunJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true

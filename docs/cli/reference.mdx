@@ -8106,6 +8106,8 @@ nemo data-designer retrieval-preview [OPTIONS]
 * `--request-id`: Set the X-Request-ID header (echoed back in ctx.request_id).
 
 Function Spec flags are generated from the RetrievalPreviewSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `generate.profile`, `generate.file_extensions`, `generate.query_counts`, `generate.reasoning_counts`, `generate.resume`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
 ​
 
 #### nemo data-designer retrieval-generate
@@ -8162,6 +8164,11 @@ nemo data-designer retrieval-generate [OPTIONS]
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
 
+Job Spec flags are generated from the RetrievalGenerateJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `profile`, `file_extensions`, `query_counts`, `reasoning_counts`, `resume`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
 #### nemo data-designer retrieval-prepare
 
 Submit to a cluster.
@@ -8187,9 +8194,8 @@ nemo data-designer retrieval-prepare [OPTIONS]
 * `--seed <INTEGER>`: Override `seed` in the spec.
 * `--max-pos-docs <INTEGER>`: Override `max_pos_docs` in the spec.
 * `--use-group-id-in-eval`: Override `use_group_id_in_eval` in the spec.
-* `--enable-mining`: Override `enable_mining` in the spec.
-* `--base-model`: Override `base_model` in the spec.
-* `--trust-remote-code`: Override `trust_remote_code` in the spec.
+* `--enable-mining`: When true, run GPU hard-negative mining after conversion. Conversion-only is the default.
+* `--model`: Platform model entity whose fileset contains the mining encoder and tokenizer.
 * `--hard-negatives-to-mine <INTEGER>`: Override `hard_negatives_to_mine` in the spec.
 * `--hard-neg-margin <FLOAT>`: Override `hard_neg_margin` in the spec.
 * `--mining-batch-size <INTEGER>`: Override `mining_batch_size` in the spec.
@@ -8197,6 +8203,15 @@ nemo data-designer retrieval-prepare [OPTIONS]
 * `--passage-prefix`: Override `passage_prefix` in the spec.
 * `--query-max-length <INTEGER>`: Override `query_max_length` in the spec.
 * `--passage-max-length <INTEGER>`: Override `passage_max_length` in the spec.
+* `--add-bos-token`: Override `add_bos_token` in the spec.
+* `--add-eos-token`: Override `add_eos_token` in the spec.
+* `--dist-backend`: Override `dist_backend` in the spec.
+* `--dist-timeout-minutes <INTEGER>`: Override `dist_timeout_minutes` in the spec.
+* `--mining.query-embedding-batch-size <INTEGER>`: Override `mining.query_embedding_batch_size` in the spec.
+* `--mining.document-embedding-batch-size <INTEGER>`: Override `mining.document_embedding_batch_size` in the spec.
+* `--mining.corpus-chunk-size <INTEGER>`: Override `mining.corpus_chunk_size` in the spec.
+* `--mining.load-embeddings-from-cache`: Override `mining.load_embeddings_from_cache` in the spec.
+* `--mining.use-negatives-from-file`: Override `mining.use_negatives_from_file` in the spec.
 * `--hf-token-secret`: Override `hf_token_secret` in the spec.
 
 **Spec Source:**
@@ -8212,6 +8227,11 @@ nemo data-designer retrieval-prepare [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the RetrievalPrepareJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `split_strategy`, `attn_implementation`, `mining.hard_neg_margin_type`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 #### nemo data-designer retrieval-run
 
@@ -8261,9 +8281,8 @@ nemo data-designer retrieval-run [OPTIONS]
 * `--prepare.seed <INTEGER>`: Override `prepare.seed` in the spec.
 * `--prepare.max-pos-docs <INTEGER>`: Override `prepare.max_pos_docs` in the spec.
 * `--prepare.use-group-id-in-eval`: Override `prepare.use_group_id_in_eval` in the spec.
-* `--prepare.enable-mining`: Override `prepare.enable_mining` in the spec.
-* `--prepare.base-model`: Override `prepare.base_model` in the spec.
-* `--prepare.trust-remote-code`: Override `prepare.trust_remote_code` in the spec.
+* `--prepare.enable-mining`: When true, run GPU hard-negative mining after conversion. Conversion-only is the default.
+* `--prepare.model`: Platform model entity whose fileset contains the mining encoder and tokenizer.
 * `--prepare.hard-negatives-to-mine <INTEGER>`: Override `prepare.hard_negatives_to_mine` in the spec.
 * `--prepare.hard-neg-margin <FLOAT>`: Override `prepare.hard_neg_margin` in the spec.
 * `--prepare.mining-batch-size <INTEGER>`: Override `prepare.mining_batch_size` in the spec.
@@ -8271,6 +8290,15 @@ nemo data-designer retrieval-run [OPTIONS]
 * `--prepare.passage-prefix`: Override `prepare.passage_prefix` in the spec.
 * `--prepare.query-max-length <INTEGER>`: Override `prepare.query_max_length` in the spec.
 * `--prepare.passage-max-length <INTEGER>`: Override `prepare.passage_max_length` in the spec.
+* `--prepare.add-bos-token`: Override `prepare.add_bos_token` in the spec.
+* `--prepare.add-eos-token`: Override `prepare.add_eos_token` in the spec.
+* `--prepare.dist-backend`: Override `prepare.dist_backend` in the spec.
+* `--prepare.dist-timeout-minutes <INTEGER>`: Override `prepare.dist_timeout_minutes` in the spec.
+* `--prepare.mining.query-embedding-batch-size <INTEGER>`: Override `prepare.mining.query_embedding_batch_size` in the spec.
+* `--prepare.mining.document-embedding-batch-size <INTEGER>`: Override `prepare.mining.document_embedding_batch_size` in the spec.
+* `--prepare.mining.corpus-chunk-size <INTEGER>`: Override `prepare.mining.corpus_chunk_size` in the spec.
+* `--prepare.mining.load-embeddings-from-cache`: Override `prepare.mining.load_embeddings_from_cache` in the spec.
+* `--prepare.mining.use-negatives-from-file`: Override `prepare.mining.use_negatives_from_file` in the spec.
 * `--prepare.hf-token-secret`: Override `prepare.hf_token_secret` in the spec.
 
 **Spec Source:**
@@ -8286,6 +8314,11 @@ nemo data-designer retrieval-run [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the RetrievalRunJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `generate.profile`, `generate.file_extensions`, `generate.query_counts`, `generate.reasoning_counts`, `generate.resume`, `prepare.split_strategy`, `prepare.attn_implementation`, `prepare.mining.hard_neg_margin_type`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ### nemo guardrail
 

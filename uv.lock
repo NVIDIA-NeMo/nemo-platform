@@ -5331,6 +5331,7 @@ nemo-data-designer-plugin = [
     { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "huggingface-hub", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nmp-customization-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pandas", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 nemo-deployments-plugin = [
@@ -6132,6 +6133,7 @@ requires-dist = [
     { name = "nmp-customization-common", marker = "extra == 'all'", editable = "packages/nmp_customization_common" },
     { name = "nmp-customization-common", marker = "extra == 'automodel-service'", editable = "packages/nmp_customization_common" },
     { name = "nmp-customization-common", marker = "extra == 'nemo-automodel-plugin'", editable = "packages/nmp_customization_common" },
+    { name = "nmp-customization-common", marker = "extra == 'nemo-data-designer-plugin'", editable = "packages/nmp_customization_common" },
     { name = "nmp-customization-common", marker = "extra == 'nemo-rl-plugin'", editable = "packages/nmp_customization_common" },
     { name = "nmp-customization-common", marker = "extra == 'nemo-unsloth-plugin'", editable = "packages/nmp_customization_common" },
     { name = "nmp-customization-common", marker = "extra == 'plugins'", editable = "packages/nmp_customization_common" },

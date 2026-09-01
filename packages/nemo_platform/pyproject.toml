@@ -315,6 +315,7 @@ nemo-customizer-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-data-designer-plugin = [
   "nemo-platform-plugin",
+  "nmp-customization-common",
   "data-designer==0.9.1",
   "huggingface-hub",
   "data-designer-nemo",

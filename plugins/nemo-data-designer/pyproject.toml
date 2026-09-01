@@ -46,12 +46,10 @@ data-designer = "nemo_data_designer_plugin.skills:get_skills_path"
 fileset-seed-datasets = "data_designer_nemo.plugins:fileset_seed_datasets_plugin"
 
 [project.optional-dependencies]
-# Not a required dep: the package is only on the DataDesignerPlugins index, not
-# PyPI. Workspace groups and nmp-cpu-tasks install this extra. The published
-# nemo-platform[services] wheel must not require it.
 retrieval-sdg = [
     "data-designer-retrieval-sdg==0.2.1",
 ]
+
 test = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
