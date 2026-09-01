@@ -130,7 +130,7 @@ The `client_id` in NeMo Platform config doesn't match the application in your Id
 
 1. Check that the gateway calls `/apis/auth/authenticate` with the original `Authorization` header before forwarding protected requests.
 
-2. Check that the gateway forwards the trusted `X-NMP-Principal-*` and `X-NMP-Scopes` headers returned by the auth service on successful authentication.
+2. Check that the gateway forwards the trusted `X-NMP-Principal-*` headers returned by the auth service on successful authentication, plus `X-NMP-Scopes` when the token carries scope claims.
 
 3. Check that auth headers are stripped from external requests. Try sending a request with `X-NMP-Principal-Id` or `X-NMP-Scopes` from outside the cluster — those headers should be stripped by the gateway.
 

@@ -90,10 +90,26 @@ Nested auth keys use a double underscore after `NMP_AUTH_`: for example,
 
 ## Scoped Access Keys
 
-Scoped Access Keys let an authenticated user create a scoped bearer token for
-non-SDK clients and automation. The implementation creates user-scoped signed
-JWT access keys, persists their lifecycle metadata, and rejects service principals.
-Users can list and revoke their own keys. Rotation is not implemented.
+Scoped Access Keys let an authenticated user create a lifecycle-managed bearer
+token for non-SDK clients and automation. The implementation creates signed JWT
+access keys, persists their lifecycle metadata, and rejects the reserved
+internal `service:` principal prefix.
+
+By default, a key is bound to the signed-in user's effective principal. A human
+PlatformAdmin can create a service-account-bound key by passing
+`service_account_id` to the API or `--service-account <id>` to the CLI. The
+issued token authenticates as `service-account:<id>`. Service-account IDs are
+NeMo Platform identities, not Kubernetes service account tokens, and they do not
+need matching IdP users or email addresses.
+
+Service account IDs must start with a letter or number and may contain letters,
+numbers, `.`, `_`, `+`, `/`, or `-`. Pass the unprefixed ID to
+`--service-account`; use the prefixed `service-account:<id>` principal when
+granting workspace roles.
+
+Users can list, suspend, unsuspend, and revoke their own user-bound keys.
+PlatformAdmins can also list, suspend, unsuspend, and revoke service-account
+keys, including keys created by other admins. Rotation is manual.
 
 Scoped Access Keys are an auth-service feature exposed under the auth CLI
 namespace (`nemo auth access-keys ...`) and the `/apis/auth/v2/access-keys` API routes.
@@ -135,6 +151,11 @@ NMP_AUTH_ACCESS_KEYS__MAX_EXPIRES_IN_SECONDS=2592000
 List-valued env vars for accepted Scoped Access Key formats are written as
 comma-separated values, for example `NMP_AUTH_ACCESS_KEYS__ACCEPTED_FORMATS=jwt`.
 
+The current access-key create API does not expose per-key API scope selection.
+For service-account access keys, constrain access with workspace role bindings,
+short finite lifetimes, suspension, and revocation. API-scope checks still apply
+to bearer tokens that contain `scope` or `scp` claims.
+
 Service-level `AuthorizationMiddleware` accepts Scoped Access Key bearer tokens
 directly when `auth.access_keys.enabled=true`. When
 `auth.access_keys.enabled=false`, the middleware does not try to authenticate
@@ -164,6 +185,10 @@ The issuer defaults to `<platform.base_url>/apis/auth` when
 `auth.token_signing.issuer` is unset. Use an externally reachable issuer URL
 when a gateway validates Scoped Access Keys before forwarding requests to
 platform services.
+
+For a CLI runbook that combines Scoped Access Key enablement checks, Intake
+workspace access, and OTLP verification, see
+[Scoped Intake Tokens](/documentation/access-control/deployment/scoped-intake-tokens).
 
 ## OIDC Workload Identity Exchange
 
