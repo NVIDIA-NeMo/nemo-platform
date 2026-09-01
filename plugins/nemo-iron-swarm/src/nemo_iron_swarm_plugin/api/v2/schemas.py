@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from nemo_iron_swarm_plugin.model_config import WarGameModels
 from nemo_platform_plugin.schema import NemoFilter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class RunFilter(NemoFilter):
@@ -43,13 +43,52 @@ class ManifestFilter(NemoFilter):
 class ManifestInit(BaseModel):
     """Body for ``POST /v2/workspaces/{workspace}/manifests`` — scaffold a named manifest.
 
-    The only source is a registered platform agent. The project-upload path is gone: it existed to
-    carry a NAT project, and Iron Swarm no longer runs one. An agent with custom tool code reaches
-    the platform as an MCP server, which keeps it registrable and therefore war-gameable.
+    Two sources. ``agent`` is a registered platform agent, which the resolver reads and renders.
+    ``project`` is an uploaded project bundle — an image whose author owns the Dockerfile, which a
+    Fabric ``agent.yaml`` cannot express. The user never writes ``iron-swarm.yaml`` either way: the
+    project source derives it and asks only for the fields a project cannot state about itself.
     """
 
     name: str = Field(description="User-defined manifest id (unique within the workspace).")
-    agent: str = Field(description="Agent reference (``name`` or ``workspace/name``) to war-game.")
+    source_type: Literal["agent", "project"] = Field(
+        default="agent",
+        description="Where the victim comes from: a registered platform agent, or an uploaded project bundle.",
+    )
+    agent: str | None = Field(
+        default=None,
+        description="Agent reference (``name`` or ``workspace/name``) to war-game. Required when "
+        "``source_type`` is 'agent'.",
+    )
+    project_fileset: str | None = Field(
+        default=None,
+        description="Fileset ref (``workspace/name``) of the uploaded project bundle. Required when "
+        "``source_type`` is 'project'.",
+    )
+    dockerfile: str | None = Field(
+        default=None,
+        description="Dockerfile path relative to the project root. Derived when the project holds exactly one.",
+    )
+    start_command: str | None = Field(
+        default=None,
+        description="Command that serves the agent. Derived from the Dockerfile's ENTRYPOINT/CMD when it is "
+        "an exec form we can resolve.",
+    )
+    binaries: list[str] | None = Field(
+        default=None,
+        description="Glob(s) matching the victim's interpreter, for the sandbox's egress policy. A glob that "
+        "matches no process grants nothing while looking like it grants something, so this is confirmed "
+        "rather than silently guessed.",
+    )
+    harness: str | None = Field(
+        default=None,
+        description="Which harness the agent runs, so the run can say up front whether a guardrail can refuse "
+        "a tool call. Not knowable from the project.",
+    )
+    relay_integration_confirmed: bool = Field(
+        default=False,
+        description="The author confirms NeMo Relay is attached (middleware + plugin.initialize()). Not "
+        "knowable from the project; without Relay the victim emits no telemetry and cannot be scored.",
+    )
     port: int | None = Field(default=None, description="Victim port (defaults to 8000).")
     secrets: list[str] | None = Field(
         default=None,
@@ -80,6 +119,28 @@ class ManifestInit(BaseModel):
         "built-in defaults.",
     )
 
+    @model_validator(mode="after")
+    def _source_matches_fields(self) -> "ManifestInit":
+        """Reject a body whose source and fields disagree, rather than resolving the wrong one.
+
+        Both fields being free-form strings, a request that names an agent *and* a project bundle has no
+        obviously-correct reading — and picking one silently would war-game a target the caller did not ask
+        for.
+        """
+        required, forbidden = (
+            ("agent", "project_fileset")
+            if self.source_type == "agent"
+            else (
+                "project_fileset",
+                "agent",
+            )
+        )
+        if not getattr(self, required):
+            raise ValueError(f"source_type '{self.source_type}' requires '{required}'")
+        if getattr(self, forbidden):
+            raise ValueError(f"source_type '{self.source_type}' does not accept '{forbidden}'")
+        return self
+
 
 class ValidateModelRequest(BaseModel):
     """Body for ``POST /v2/workspaces/{workspace}/model-config/validate`` — probe a model choice."""
@@ -101,9 +162,38 @@ class ValidateModelResponse(BaseModel):
 
 
 class InspectProjectRequest(BaseModel):
-    """Body for ``POST /v2/workspaces/{workspace}/manifests/inspect`` — detect an uploaded project."""
+    """Body for ``POST /v2/workspaces/{workspace}/manifests/inspect-project`` — read an uploaded project."""
 
-    project_fileset: str = Field(description="Fileset ref of the uploaded NAT project bundle to inspect.")
+    project_fileset: str = Field(description="Fileset ref of the uploaded project bundle to inspect.")
+    dockerfile: str | None = Field(
+        default=None,
+        description="Which Dockerfile builds the agent, when the bundle holds more than one.",
+    )
+
+
+class InspectProjectResponse(BaseModel):
+    """What the project states about itself, plus what it cannot.
+
+    ``unresolved`` is the contract with the caller: everything else on this model is a usable value, and
+    these are the only fields a human still has to supply. It is the difference between a form that asks
+    for everything and one that asks for what is genuinely unknowable.
+    """
+
+    dockerfile: str = Field(default="", description="Dockerfile path relative to the project root.")
+    dockerfiles: list[str] = Field(
+        default_factory=list, description="Every Dockerfile found, when the choice is ambiguous."
+    )
+    start_command: str = Field(default="", description="Derived from the Dockerfile's ENTRYPOINT/CMD.")
+    binaries: list[str] = Field(default_factory=list, description="Proposed interpreter globs, for confirmation.")
+    port: int = Field(default=8000, description="Derived from EXPOSE / ENV PORT.")
+    secrets: list[str] = Field(default_factory=list, description="Secret names derived from .env and ENV.")
+    egress: list[str] = Field(default_factory=list, description="Hosts the project's own files name.")
+    env: dict[str, str] = Field(default_factory=dict, description="Non-secret environment from the Dockerfile.")
+    unresolved: list[str] = Field(
+        default_factory=list,
+        description="Fields the project cannot state about itself; the caller must supply these.",
+    )
+    warnings: list[str] = Field(default_factory=list, description="Non-fatal notes about the derivation.")
 
 
 class InspectAgentRequest(BaseModel):

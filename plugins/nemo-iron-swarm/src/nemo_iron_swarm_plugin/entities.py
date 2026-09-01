@@ -60,14 +60,24 @@ class IronSwarmRun(NemoEntity, entity_type=IRON_SWARM_RUN_TYPE):
 
 
 class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
-    """A named, reusable war-game target scaffolded from a registered agent (``name`` is its id).
+    """A named, reusable war-game target (``name`` is its id), from a registered agent or an uploaded project.
 
-    The resolved agent package is persisted as a fileset the run re-downloads, so a manifest is a
-    frozen target rather than a query re-evaluated each run: editing the agent does not change an
-    existing manifest until it is refreshed.
+    Either way the package is persisted as a fileset the run re-downloads, so a manifest is a frozen
+    target rather than a query re-evaluated each run: editing the agent does not change an existing
+    manifest until it is refreshed. A project manifest has nothing to refresh *from* — its bundle is the
+    upload — which is why the two sources are distinguished rather than merged.
     """
 
+    source_type: Literal["agent", "project"] = Field(
+        default="agent",
+        description="Where the victim came from. The run reads this to decide which bundle field to expand.",
+    )
     agent: str = Field(default="", description="Registered agent reference (workspace/name) this manifest targets.")
+    project_fileset: str = Field(
+        default="",
+        description="Fileset ref holding the uploaded project bundle, for a 'project' manifest. The run "
+        "expands this instead of ``agent_fileset``.",
+    )
     agent_fileset: str = Field(
         default="",
         description="Fileset ref holding the agent package resolved from the agent — its config plus the "
@@ -160,6 +170,44 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
             agent=agent_ref,
             manifest_yaml=manifest_yaml,
             agent_fileset=agent_fileset,
+            port=port,
+            secrets=secrets,
+            egress=egress or [],
+            env=env or {},
+            warnings=warnings,
+            models=models or WarGameModels(),
+        )
+
+    @classmethod
+    def from_project_upload(
+        cls,
+        *,
+        name: str,
+        workspace: str,
+        project_fileset: str,
+        manifest_yaml: str,
+        dockerfile: str,
+        binaries: list[str],
+        port: int,
+        secrets: list[str],
+        warnings: list[str],
+        egress: list[str] | None = None,
+        env: dict[str, str] | None = None,
+        models: WarGameModels | None = None,
+    ) -> IronSwarmManifest:
+        """Build a ``project``-source manifest entity from an uploaded bundle and its derivation.
+
+        ``agent`` stays empty: there is no registered agent behind a project manifest, and inventing a
+        reference for one would make it look refreshable when nothing exists to refresh against.
+        """
+        return cls(
+            name=name,
+            workspace=workspace,
+            source_type="project",
+            project_fileset=project_fileset,
+            manifest_yaml=manifest_yaml,
+            dockerfile=dockerfile,
+            binaries=binaries,
             port=port,
             secrets=secrets,
             egress=egress or [],

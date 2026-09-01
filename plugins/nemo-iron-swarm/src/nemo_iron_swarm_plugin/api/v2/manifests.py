@@ -19,6 +19,7 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -33,6 +34,8 @@ from nemo_iron_swarm_plugin.api.v2._filters import make_filter_dep
 from nemo_iron_swarm_plugin.api.v2.schemas import (
     InspectAgentRequest,
     InspectAgentResponse,
+    InspectProjectRequest,
+    InspectProjectResponse,
     ManifestFilter,
     ManifestInit,
     ManifestUpdate,
@@ -42,10 +45,11 @@ from nemo_iron_swarm_plugin.api.v2.schemas import (
 from nemo_iron_swarm_plugin.authz import scope
 from nemo_iron_swarm_plugin.cli.client import base_url
 from nemo_iron_swarm_plugin.entities import IronSwarmManifest
-from nemo_iron_swarm_plugin.filesets import delete_fileset, upload_project_dir
+from nemo_iron_swarm_plugin.filesets import delete_fileset, download_and_extract_project, upload_project_dir
 from nemo_iron_swarm_plugin.jobs._common import resolve_model_key
 from nemo_iron_swarm_plugin.model_config import ModelConfigDefaults, WarGameModels, model_config_defaults
 from nemo_iron_swarm_plugin.model_preflight import validate_choice
+from nemo_iron_swarm_plugin.project_resolver import build_project_manifest_dict, inspect_project
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
@@ -201,6 +205,30 @@ async def inspect_agent_endpoint(workspace: str, body: InspectAgentRequest) -> I
     return InspectAgentResponse(agent=ref, port=port, secrets=secrets, warnings=warnings)
 
 
+@router.post("/manifests/inspect-project", response_model=InspectProjectResponse, tags=["Iron Swarm Manifests"])
+@scope.read
+@path_rule(callers=[CallerKind.PRINCIPAL], permissions=[IronSwarmManifestPerms.INSPECT])
+async def inspect_project_endpoint(workspace: str, body: InspectProjectRequest) -> InspectProjectResponse:
+    """Read an uploaded project bundle and report what it states about itself, and what it cannot.
+
+    Read-only: the bundle is expanded into a temp dir and thrown away. Its purpose is to let the caller
+    pre-fill everything derivable and prompt for only the rest, so bringing your own image is a short
+    form rather than authoring a manifest.
+    """
+    sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
+
+    def _inspect() -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = download_and_extract_project(sdk, body.project_fileset, Path(tmp))
+            return inspect_project(project_dir, dockerfile=body.dockerfile or None)
+
+    try:
+        derived = await run_in_threadpool(_inspect)
+    except ValueError as exc:  # unsafe/absent archive from extract_zip_safely
+        raise HTTPException(status_code=400, detail=f"Could not read the project bundle: {exc}") from exc
+    return InspectProjectResponse(**derived)
+
+
 def _yaml_with_agent_settings(manifest_yaml: str, manifest: IronSwarmManifest) -> str:
     """Return *manifest_yaml* with the manifest's stored agent settings written into it.
 
@@ -237,8 +265,12 @@ async def create_manifest(
     body: ManifestInit,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> IronSwarmManifest:
-    """`init`: resolve a registered agent into a manifest and persist it by ``name``."""
-    manifest = await _build_agent_manifest(workspace, body)
+    """`init`: resolve the named source into a manifest and persist it by ``name``."""
+    manifest = (
+        await _build_project_manifest(workspace, body)
+        if body.source_type == "project"
+        else await _build_agent_manifest(workspace, body)
+    )
     try:
         return await entity_client.create(manifest)
     except NemoEntityConflictError as exc:
@@ -304,8 +336,11 @@ async def _resolve_and_store_scaffold(
 async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarmManifest:
     """Resolve a deployed agent into a manifest and freeze its scaffold as a fileset."""
 
+    # ManifestInit's validator guarantees this for the agent source; the annotation is Optional
+    # because the project source has no agent, and the type system cannot see the validator.
+    agent_ref = body.agent or ""
     resolved, fileset = await _resolve_and_store_scaffold(
-        workspace, body.agent, egress=body.egress, port=body.port, secrets=body.secrets
+        workspace, agent_ref, egress=body.egress, port=body.port, secrets=body.secrets
     )
 
     manifest = IronSwarmManifest.from_agent_resolution(
@@ -322,6 +357,78 @@ async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarm
         models=body.models or WarGameModels(),
     )
     # resolve_agent_to_manifest has no `env` parameter, so it is absent from the YAML it produced.
+    manifest.manifest_yaml = _yaml_with_agent_settings(manifest.manifest_yaml, manifest)
+    return manifest
+
+
+async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwarmManifest:
+    """Build a manifest from an uploaded project bundle, deriving everything the project states.
+
+    The bundle is already a fileset, so unlike the agent path there is nothing to materialize and
+    nothing to freeze — the upload *is* the frozen target. Caller-supplied values win over derived
+    ones: they were asked for precisely because the project could not state them.
+    """
+    sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
+
+    def _inspect() -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmp:
+            return inspect_project(
+                download_and_extract_project(sdk, body.project_fileset or "", Path(tmp)),
+                dockerfile=body.dockerfile or None,
+            )
+
+    try:
+        derived = await run_in_threadpool(_inspect)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read the project bundle: {exc}") from exc
+
+    start_command = body.start_command or derived.get("start_command", "")
+    binaries = body.binaries or derived.get("binaries") or []
+    missing = [
+        field
+        for field, value in (
+            ("start_command", start_command),
+            ("binaries", binaries),
+            ("dockerfile", derived.get("dockerfile")),
+        )
+        if not value
+    ]
+    if missing:
+        # Refuse rather than default. Each of these fails minutes into a run, in an error that names a
+        # symptom and not this field.
+        raise HTTPException(
+            status_code=400,
+            detail=f"The project does not state {', '.join(missing)}; supply {'it' if len(missing) == 1 else 'them'} "
+            f"explicitly. {' '.join(derived.get('warnings', []))}".strip(),
+        )
+
+    manifest_dict = build_project_manifest_dict(
+        agent_name=body.name,
+        project_dir=".",
+        dockerfile=derived["dockerfile"],
+        start_command=start_command,
+        binaries=list(binaries),
+        port=body.port or derived.get("port", 8000),
+        secrets=body.secrets if body.secrets is not None else derived.get("secrets", []),
+        egress=body.egress if body.egress is not None else derived.get("egress", []),
+        harness=body.harness,
+        relay_integration_confirmed=body.relay_integration_confirmed,
+        env=body.env or derived.get("env", {}),
+    )
+    manifest = IronSwarmManifest.from_project_upload(
+        name=body.name,
+        workspace=workspace,
+        project_fileset=body.project_fileset or "",
+        manifest_yaml=yaml.safe_dump(manifest_dict, sort_keys=False),
+        dockerfile=derived["dockerfile"],
+        binaries=list(binaries),
+        port=manifest_dict["agent"]["port"],
+        secrets=manifest_dict["agent"]["secrets"],
+        egress=manifest_dict["agent"].get("egress", []),
+        env=body.env or {},
+        warnings=derived.get("warnings", []),
+        models=body.models or WarGameModels(),
+    )
     manifest.manifest_yaml = _yaml_with_agent_settings(manifest.manifest_yaml, manifest)
     return manifest
 
