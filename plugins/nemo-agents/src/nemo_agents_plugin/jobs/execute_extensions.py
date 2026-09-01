@@ -62,6 +62,15 @@ def _load_execute_agent_extension(kind: str) -> type[ExecuteAgentExtension]:
     ]
     if not matches:
         raise ValueError(f"Unknown agents.execute extension {kind!r}.")
-    if len(matches) > 1:
-        raise ValueError(f"Multiple agents.execute extensions are registered for {kind!r}.")
+
+    # A kind may legitimately be declared by more than one installed
+    # distribution: the aggregate ``nemo-platform`` wheel re-declares every
+    # bundled plugin's entry points, so a standard install sees each of them
+    # twice — once from the plugin, once from the aggregate. What must be
+    # unique is the *implementation*, not the number of declarations, so
+    # collapse identical targets and reject only genuine conflicts.
+    targets = {entry_point.value for entry_point in matches}
+    if len(targets) > 1:
+        conflicting = ", ".join(sorted(targets))
+        raise ValueError(f"Conflicting agents.execute extensions are registered for {kind!r}: {conflicting}.")
     return matches[0].load()
