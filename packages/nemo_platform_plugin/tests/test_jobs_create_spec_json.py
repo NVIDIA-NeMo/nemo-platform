@@ -11,16 +11,22 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi import FastAPI
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
+    EnvironmentVariable,
+    GPUExecutionProviderSpec,
+    JobSecret,
     PlatformJobSpec,
     PlatformJobStep,
     job_route_factory,
 )
-from pydantic import BaseModel, ConfigDict
+from nemo_platform_plugin.jobs.docker import spec_has_gpu_step
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
+from pydantic import BaseModel, ConfigDict, ValidationError
 from starlette.testclient import TestClient
 
 # Non-UTF-8 bytes like a cloudpickle metric bundle blob.
@@ -92,6 +98,83 @@ def _mock_create_response(spec: dict[str, object]) -> MagicMock:
     return response
 
 
+class _RecordingJobsClient:
+    def __init__(self) -> None:
+        self.created_body: CreatePlatformJobRequest | None = None
+
+    async def create_job(self, *, workspace: str, body: CreatePlatformJobRequest) -> MagicMock:
+        del workspace
+        self.created_body = body
+        expected_spec = {"blob": base64.b64encode(_PICKLE_BYTES).decode("ascii")}
+        return _mock_create_response(expected_spec)
+
+
+def test_job_spec_models_support_mapping_style_access() -> None:
+    env = EnvironmentVariable(name="ENV_VAR", value="value")
+    executor = CPUExecutionProviderSpec(
+        provider="cpu",
+        profile="default",
+        container=ContainerSpec(image="test"),
+    )
+    step = PlatformJobStep(
+        name="step",
+        executor=executor,
+        config={},
+        environment=[env],
+    )
+
+    assert "executor" in step
+    assert "resources" not in executor
+    assert step["environment"] == [{"name": "ENV_VAR", "value": "value"}]
+    step["executor"]["profile"] = "custom"
+    assert step.executor.profile == "custom"
+
+
+def test_job_spec_mapping_assignment_validates_executor_models() -> None:
+    step = PlatformJobStep(
+        name="step",
+        executor=CPUExecutionProviderSpec(
+            provider="cpu",
+            profile="default",
+            container=ContainerSpec(image="test"),
+        ),
+        config={},
+    )
+
+    with pytest.raises(ValidationError):
+        step["executor"] = {}
+
+    step["executor"] = {
+        "provider": "gpu",
+        "profile": "default",
+        "container": {"image": "gpu-image"},
+    }
+
+    assert isinstance(step.executor, GPUExecutionProviderSpec)
+    assert spec_has_gpu_step(PlatformJobSpec(steps=[step])) is True
+
+
+def test_job_spec_includes_inline_secrets() -> None:
+    spec = PlatformJobSpec(
+        steps=[
+            PlatformJobStep(
+                name="step",
+                executor=CPUExecutionProviderSpec(
+                    provider="cpu",
+                    profile="default",
+                    container=ContainerSpec(image="test"),
+                ),
+            )
+        ],
+        secrets=[JobSecret(name="secret-name", value="secret-value")],
+    )
+
+    assert spec["secrets"] == [{"name": "secret-name", "value": "secret-value"}]
+    assert spec.model_dump(mode="json", exclude_none=True)["secrets"] == [
+        {"name": "secret-name", "value": "secret-value"}
+    ]
+
+
 def test_create_job_forwards_transformed_spec_in_json_mode() -> None:
     """Binary fields in transformed specs must be base64 strings, not raw bytes."""
     router = job_route_factory(
@@ -107,15 +190,7 @@ def test_create_job_forwards_transformed_spec_in_json_mode() -> None:
     app.dependency_overrides[get_sdk_client] = lambda: MagicMock()
     app.dependency_overrides[get_entity_client] = lambda: MagicMock()
 
-    captured_body: dict[str, object] = {}
-
-    async def _create_job(*, workspace: str, body: object) -> MagicMock:
-        del workspace
-        captured_body["body"] = body
-        expected_spec = {"blob": base64.b64encode(_PICKLE_BYTES).decode("ascii")}
-        return _mock_create_response(expected_spec)
-
-    mock_jobs = SimpleNamespace(create_job=_create_job)
+    mock_jobs = _RecordingJobsClient()
 
     client = TestClient(app)
     with patch(
@@ -125,9 +200,9 @@ def test_create_job_forwards_transformed_spec_in_json_mode() -> None:
         response = client.post("/apis/widgets/v2/workspaces/default/jobs", json={"spec": {"label": "metric"}})
 
     assert response.status_code == 201, response.text
-    body = captured_body["body"]
+    body = mock_jobs.created_body
     assert body is not None
-    spec = body.spec if hasattr(body, "spec") else body["spec"]  # type: ignore[index]
+    spec = body.spec
     blob = spec["blob"] if isinstance(spec, dict) else spec.blob
     assert isinstance(blob, str), f"expected base64 string, got {type(blob)}"
     assert blob == base64.b64encode(_PICKLE_BYTES).decode("ascii")

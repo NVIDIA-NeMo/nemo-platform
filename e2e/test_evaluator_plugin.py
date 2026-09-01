@@ -830,9 +830,10 @@ def test_gym_agent_evaluate_job_completes(
 
         # Download the results archive to a tmp path.
         archive_path = tmp_path / "agent-eval-results.tar.gz"
-        evaluator_sdk.jobs.results.download(
-            "agent-eval-results", job=job_name, workspace=evaluator_workspace
-        ).write_to_file(archive_path)
+        archive = client_from_platform(evaluator_sdk, JobsClient).download_job_result(
+            name="agent-eval-results", job=job_name, workspace=evaluator_workspace
+        )
+        archive_path.write_bytes(archive.read())
 
         # Extract the trials.jsonl file from the archive.
         extract_dir = tmp_path / "agent-eval-results"

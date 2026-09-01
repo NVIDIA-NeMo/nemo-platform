@@ -17,20 +17,19 @@
 
 from __future__ import annotations
 
-from typing import Iterable
 from typing_extensions import Required, TypedDict
 
-from .platform_job_secret_param import PlatformJobSecretParam
-from .platform_job_step_spec_param import PlatformJobStepSpecParam
-
-__all__ = ["PlatformJobSpecParam"]
+__all__ = ["PlatformJobSecretParam"]
 
 
-class PlatformJobSpecParam(TypedDict, total=False):
-    """Specification for a platform job, containing steps and secrets."""
+class PlatformJobSecretParam(TypedDict, total=False):
+    """Inline secret material submitted with a job spec."""
 
-    steps: Required[Iterable[PlatformJobStepSpecParam]]
-    """List of steps to be executed in the job"""
+    name: Required[str]
+    """The name of the secret"""
 
-    secrets: Iterable[PlatformJobSecretParam]
-    """Secrets referenced by the job"""
+    ref_id: str
+    """Reference id for the stored secret value"""
+
+    value: str
+    """The secret value submitted with the job"""

@@ -5,17 +5,24 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Any, ClassVar, TypeVar, cast
+from typing import ClassVar, TypeVar
 from zoneinfo import ZoneInfo
 
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
 from nemo_insights_plugin.config import InsightsConfig
 from nemo_insights_plugin.entities import AnalysisConfig, AnalysisRunStatus
-from nemo_insights_plugin.jobs.analyze import AnalyzeJob, AnalyzeSpec
+from nemo_insights_plugin.jobs.analyze import AnalyzeSpec
 from nemo_insights_plugin.schedule import is_due
+from nemo_insights_plugin.sdk_resources.analysis_jobs import (
+    AnalysisJob,
+    AsyncAnalysisJobsClient,
+    CreateAnalysisJobRequest,
+    ListAnalysisJobsQueryParams,
+)
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import get_nemo_config
@@ -26,8 +33,6 @@ from nemo_platform_plugin.entity_client import (
     NemoEntityConflictError,
     NemoEntityNotFoundError,
 )
-from nemo_platform_plugin.jobs.client import AsyncJobsClient
-from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest, ListJobsQueryParams, PlatformJobSpec
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
 logger = logging.getLogger(__name__)
@@ -67,7 +72,7 @@ class InsightsAnalysisController(NemoController):
     def __init__(self) -> None:
         self._sdk: AsyncNeMoPlatform | None = None
         self._entities: NemoEntitiesClient | None = None
-        self._jobs: AsyncJobsClient | None = None
+        self._jobs: AsyncAnalysisJobsClient | None = None
         self._config: InsightsConfig | None = None
 
     @property
@@ -79,7 +84,7 @@ class InsightsAnalysisController(NemoController):
         return _require(self._entities, "entities")
 
     @property
-    def jobs(self) -> AsyncJobsClient:
+    def jobs(self) -> AsyncAnalysisJobsClient:
         return _require(self._jobs, "jobs")
 
     @property
@@ -93,11 +98,11 @@ class InsightsAnalysisController(NemoController):
         return 60.0
 
     async def on_startup(self) -> None:
-        """Initialise service-principal SDK and entity client."""
+        """Initialise service-principal SDK and typed clients."""
         self._config = get_nemo_config(InsightsConfig)
         self._sdk = get_async_platform_sdk(as_service="insights", internal=True)
         self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
-        self._jobs = client_from_platform(self._sdk, AsyncJobsClient)
+        self._jobs = client_from_platform(self._sdk, AsyncAnalysisJobsClient)
         logger.info("InsightsAnalysisController started.")
 
     async def on_shutdown(self) -> None:
@@ -119,7 +124,7 @@ class InsightsAnalysisController(NemoController):
             return []
 
     async def reconcile_one(self, obj: object) -> None:
-        config = cast(AnalysisConfig, obj)
+        config = obj if isinstance(obj, AnalysisConfig) else AnalysisConfig.model_validate(obj)
         try:
             await self._reconcile_config(config)
         except NemoEntityConflictError:
@@ -200,13 +205,14 @@ class InsightsAnalysisController(NemoController):
 
     async def _has_active_job(self, config: AnalysisConfig) -> bool:
         try:
-            jobs = await self.jobs.list_jobs(
+            query_params: ListAnalysisJobsQueryParams = {
+                "filter": json.dumps({"status": {"$in": _ACTIVE_JOB_STATUSES}}),
+                "page_size": 100,
+                "sort": "-created_at",
+            }
+            jobs = await self.jobs.list_analysis_jobs(
                 workspace=config.workspace,
-                query_params=ListJobsQueryParams(
-                    filter=cast(Any, {"source": "insights", "status": _ACTIVE_JOB_STATUSES}),
-                    page_size=100,
-                    sort="-created_at",
-                ),
+                query_params=query_params,
             )
         except Exception:
             logger.debug(
@@ -255,19 +261,12 @@ class InsightsAnalysisController(NemoController):
             fast_model=config.fast_model or config.default_model,
         )
         job_name = _job_name(config, submitted_at)
-        platform_spec = await self._compile_job_spec(
-            workspace=config.workspace,
-            spec=spec,
-            job_name=job_name,
-        )
         (
-            await self.jobs.create_job(
+            await self.jobs.create_analysis_job(
                 workspace=config.workspace,
-                body=CreatePlatformJobRequest(
-                    source="insights",
+                body=CreateAnalysisJobRequest(
                     name=job_name,
-                    spec=spec.model_dump(mode="json"),
-                    platform_spec=platform_spec,
+                    spec=spec,
                     custom_fields={"insights_analysis_agent": config.agent},
                 ),
             )
@@ -279,25 +278,9 @@ class InsightsAnalysisController(NemoController):
             config.workspace,
         )
 
-    async def _compile_job_spec(self, *, workspace: str, spec: AnalyzeSpec, job_name: str) -> PlatformJobSpec:
-        return cast(
-            PlatformJobSpec,
-            await AnalyzeJob.compile(
-                workspace=workspace,
-                spec=spec,
-                entity_client=self.entities,
-                job_name=job_name,
-                async_sdk=self.sdk,
-                profile=self.insights_config.analyst.job_profile,
-            ),
-        )
 
-
-def _job_targets_agent(job: object, agent: str) -> bool:
-    custom_fields = getattr(job, "custom_fields", None)
-    if isinstance(custom_fields, dict):
-        return custom_fields.get("insights_analysis_agent") == agent
-    return False
+def _job_targets_agent(job: AnalysisJob, agent: str) -> bool:
+    return (job.custom_fields or {}).get("insights_analysis_agent") == agent
 
 
 def _job_name(config: AnalysisConfig, submitted_at: datetime) -> str:

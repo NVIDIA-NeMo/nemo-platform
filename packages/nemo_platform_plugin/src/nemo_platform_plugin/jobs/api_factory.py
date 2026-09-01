@@ -7,6 +7,7 @@ import logging
 import os
 import tarfile
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Mapping
 from datetime import datetime
 from enum import StrEnum, auto
 from functools import partial
@@ -15,12 +16,10 @@ from types import UnionType
 from typing import (
     Annotated,
     Any,
-    Awaitable,
     Callable,
     Generic,
     Literal,
     Type,
-    TypeGuard,
     TypeVar,
     Union,
     get_args,
@@ -32,21 +31,6 @@ from anyio import open_file, to_thread
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.jobs import (
-    ComputeResourcesParam,
-    ComputeResourceSpecParam,
-    ContainerSpecParam,
-    CPUExecutionProviderParam,
-    DistributedGPUExecutionProviderParam,
-    GPUExecutionProviderParam,
-    PlatformJobEnvironmentVariableParam,
-    PlatformJobSecretEnvironmentVariableRefParam,
-    PlatformJobSpecParam,
-    PlatformJobStepSpecParam,
-    StepLifecycleParam,
-    SubprocessExecutionProviderParam,
-)
-from nemo_platform.types.jobs.platform_job_step_spec_param import Executor
 from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
 from nemo_platform_plugin.authz import AuthzScope, CallerKind, path_rule
@@ -57,6 +41,18 @@ from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
+from nemo_platform_plugin.jobs.providers import (
+    ComputeResources,
+    ComputeResourceSpec,
+    CPUExecutionProvider,
+    DistributedGPUExecutionProvider,
+    GPUExecutionProvider,
+    Provider,
+    SubprocessExecutionProvider,
+)
+from nemo_platform_plugin.jobs.providers import (
+    ContainerSpec as ProviderContainerSpec,
+)
 from nemo_platform_plugin.jobs.result_manager import download_from_result_info
 from nemo_platform_plugin.jobs.schemas import (
     PlatformJobListResultResponse,
@@ -64,6 +60,16 @@ from nemo_platform_plugin.jobs.schemas import (
     PlatformJobResultResponse,
     PlatformJobStatus,
     PlatformJobStatusResponse,
+)
+from nemo_platform_plugin.jobs.spec import (
+    PlatformJobEnvironmentVariable,
+    PlatformJobSecret,
+    PlatformJobSecretEnvironmentVariableRef,
+    PlatformJobSpec,
+    PlatformJobStepSpec,
+)
+from nemo_platform_plugin.jobs.spec import (
+    StepLifecycle as PlatformJobStepLifecycle,
 )
 from nemo_platform_plugin.jobs.types import (
     CreatePlatformJobRequest,
@@ -79,27 +85,24 @@ from pydantic import BaseModel, Field, TypeAdapter, field_validator
 
 logger = logging.getLogger(__name__)
 
-# This type is aliased to ensure we don't expose internal stainless
-# type paths to services integrating the job service.
-#
-# TODO(AIRCORE-922): remove these Stainless-generated ``*Param`` TypedDict aliases.
-# The plugin now owns pydantic equivalents in ``jobs/spec.py`` and ``jobs/providers.py``,
-# but ~10 consuming plugins construct these as dict literals (TypedDict), so repointing
-# them to the pydantic models is a cross-cutting change tracked by AIRCORE-922.
-PlatformJobSpec = PlatformJobSpecParam
-PlatformJobStep = PlatformJobStepSpecParam
-StepLifecycle = StepLifecycleParam
-ExecutorSpec = Executor
-CPUExecutionProviderSpec = CPUExecutionProviderParam
-GPUExecutionProviderSpec = GPUExecutionProviderParam
-DistributedGPUExecutionProviderSpec = DistributedGPUExecutionProviderParam
-SubprocessExecutionProviderSpec = SubprocessExecutionProviderParam
-ResourcesSpec = ComputeResourcesParam
-ResourcesLimitsSpec = ComputeResourceSpecParam
-ResourcesRequestsSpec = ComputeResourceSpecParam
-ContainerSpec = ContainerSpecParam
-EnvironmentVariable = PlatformJobEnvironmentVariableParam
-EnvironmentVariableFromSecret = PlatformJobSecretEnvironmentVariableRefParam
+# Public compatibility aliases for services that build Jobs specs through the
+# route factory. These now point at plugin-owned Pydantic models, not Stainless
+# generated SDK TypedDicts.
+PlatformJobStep = PlatformJobStepSpec
+ExecutorSpec = Provider
+ContainerSpec = ProviderContainerSpec
+CPUExecutionProviderSpec = CPUExecutionProvider
+GPUExecutionProviderSpec = GPUExecutionProvider
+DistributedGPUExecutionProviderSpec = DistributedGPUExecutionProvider
+SubprocessExecutionProviderSpec = SubprocessExecutionProvider
+ResourcesSpec = ComputeResources
+ResourcesLimitsSpec = ComputeResourceSpec
+ResourcesRequestsSpec = ComputeResourceSpec
+StepLifecycle = PlatformJobStepLifecycle
+EnvironmentVariable = PlatformJobEnvironmentVariable
+EnvironmentVariableFromSecret = PlatformJobSecretEnvironmentVariableRef
+JobSecret = PlatformJobSecret
+PlatformJobSpecLike = PlatformJobSpec | Mapping[str, Any]
 
 # Descriptions stamped onto the standard job permissions, keyed by verb. The catalog is
 # derived from the routes, so these descriptions are the source of truth for the generated
@@ -171,6 +174,13 @@ class BaseJobsSortField(StrEnum):
     CREATED_AT_DESC = "-created_at"
     UPDATED_AT_ASC = "updated_at"
     UPDATED_AT_DESC = "-updated_at"
+
+
+def _make_jobs_sort_field(job_type: str) -> type[StrEnum]:
+    return StrEnum(
+        f"{job_type}JobsSortField",
+        {name: member.value for name, member in BaseJobsSortField.__members__.items()},
+    )
 
 
 # Field-name allowlists for value-side validation in list_jobs. ``make_filter_dep``
@@ -273,22 +283,22 @@ def handle_job_spec_mismatch(job_input: Type[JobConfigT] | JobSchemaLike, spec: 
     return job_spec
 
 
-def _validate_job_spec(job: PlatformJobSpec) -> None:
+def _validate_job_spec(job: object) -> PlatformJobSpec:
     """Validate the job spec for common misconfigurations."""
+    try:
+        platform_job = PlatformJobSpec.model_validate(job)
+    except Exception as e:
+        raise PlatformJobCompilationError(f"platform job spec is invalid: {str(e)}") from e
 
     # Validate that any config's provided are serializeable to json
     try:
-        for step in job["steps"]:
-            if "config" in step:
-                json.dumps(step["config"])
+        for step in platform_job.steps:
+            json.dumps(step.config)
     except Exception as e:
         raise PlatformJobCompilationError(f"step config is not json serializable: {str(e)}")
 
-    validate_gpu_available_for_docker(job)
-
-
-def _is_platform_job_spec(job: object) -> TypeGuard[PlatformJobSpec]:
-    return isinstance(job, dict) and "steps" in job
+    validate_gpu_available_for_docker(platform_job)
+    return platform_job
 
 
 class BaseResultSerializer(BaseModel, ABC):
@@ -306,7 +316,7 @@ class BaseResultSerializer(BaseModel, ABC):
         }
 
     @abstractmethod
-    def serialize(self, output_path: Path, **kwargs) -> Response:
+    def serialize(self, output_path: Path, limit: int | None = None) -> Response:
         """
         Convert a file/dir into an appropriate fastapi output format.
         """
@@ -316,7 +326,8 @@ class BaseResultSerializer(BaseModel, ABC):
 class JSONResultSerializer(BaseResultSerializer):
     serializer_type: Literal["json"] = "json"
 
-    def serialize(self, output_path: Path, **kwargs) -> JSONResponse:
+    def serialize(self, output_path: Path, limit: int | None = None) -> JSONResponse:
+        del limit
         with output_path.open() as f:
             return JSONResponse(json.load(f))
 
@@ -364,7 +375,7 @@ class PydanticJSONLResultSerializer(BaseResultSerializer):
         }
         return ret
 
-    async def _validated_lines_iterator(self, file_path: str, limit: int | None = None):
+    async def _validated_lines_iterator(self, file_path: Path, limit: int | None = None):
         lines = 0
         line_number = 0
         async with await open_file(file_path, mode="r", encoding="utf-8") as f:
@@ -399,10 +410,8 @@ class PydanticJSONLResultSerializer(BaseResultSerializer):
                 if limit and lines >= limit:
                     return
 
-    def serialize(self, output_path: Path, limit: int | None = None, **_kwargs: object) -> StreamingResponse:
-        return StreamingResponse(
-            self._validated_lines_iterator(str(output_path), limit), media_type="application/jsonl"
-        )
+    def serialize(self, output_path: Path, limit: int | None = None) -> StreamingResponse:
+        return StreamingResponse(self._validated_lines_iterator(output_path, limit), media_type="application/jsonl")
 
 
 class PydanticResultSerializer(BaseResultSerializer):
@@ -415,7 +424,8 @@ class PydanticResultSerializer(BaseResultSerializer):
         # to use when generating the schema.
         return super().route_kwargs() | {"response_model": self.model}
 
-    def serialize(self, output_path: Path, **kwargs) -> JSONResponse:
+    def serialize(self, output_path: Path, limit: int | None = None) -> JSONResponse:
+        del limit
         with output_path.open() as f:
             json_in = json.load(f)
 
@@ -442,7 +452,8 @@ class FileResultSerializer(BaseResultSerializer):
         }
         return ret
 
-    def serialize(self, output_path: Path, **kwargs) -> FileResponse:
+    def serialize(self, output_path: Path, limit: int | None = None) -> FileResponse:
+        del limit
         if output_path.is_dir():
             filename = f"{output_path.name}.tar.gz"
             tar_path = output_path.parent / filename
@@ -479,12 +490,17 @@ class PlatformJobResultRoute(BaseModel):
 # Signature: (workspace, original_spec, transformed_spec, entity_client, job_name, sdk) -> PlatformJobSpec
 # job_name is the resolved name (user-provided or auto-generated), None when no name is available
 # sdk is always provided for accessing secrets, files, and models with user context
+# A compiler may be implemented synchronously or asynchronously. Model that in
+# the callable's return type instead of narrowing the callable itself with
+# runtime-only typing helpers.
 PlatformJobSpecCompiler = Callable[
-    [str, JobInputT, JobOutputT, EntityClient, str | None, AsyncNeMoPlatform], PlatformJobSpec
+    [str, JobInputT, JobOutputT, EntityClient, str | None, AsyncNeMoPlatform],
+    PlatformJobSpecLike | Awaitable[PlatformJobSpecLike],
 ]
 PlatformJobSpecCompilerAsync = Callable[
-    [str, JobInputT, JobOutputT, EntityClient, str | None, AsyncNeMoPlatform], Awaitable[PlatformJobSpec]
+    [str, JobInputT, JobOutputT, EntityClient, str | None, AsyncNeMoPlatform], Awaitable[PlatformJobSpecLike]
 ]
+
 
 # Input-to-output transformer types: receives job_name to use for related fields (e.g., output)
 # Signature: (original_spec, workspace, entity_client, job_name, sdk) -> transformed_spec
@@ -657,7 +673,7 @@ async def _transform_input_to_output(
 
 
 async def _compile_platform_spec(
-    compiler: PlatformJobSpecCompiler | PlatformJobSpecCompilerAsync,
+    compiler: PlatformJobSpecCompiler,
     workspace: str,
     original_spec: JobSchemaLike,
     transformed_spec: JobSchemaLike,
@@ -684,7 +700,7 @@ async def _compile_platform_spec(
     """
     try:
         submit_control_kwargs = _submit_control_kwargs(compiler, profile=profile, options=options)
-        compile_result: PlatformJobSpec | Awaitable[PlatformJobSpec]
+        compile_result: PlatformJobSpecLike | Awaitable[PlatformJobSpecLike]
         if inspect.iscoroutinefunction(compiler):
             compile_result = compiler(
                 workspace, original_spec, transformed_spec, entity_client, job_name, sdk, **submit_control_kwargs
@@ -708,10 +724,7 @@ async def _compile_platform_spec(
         else:
             platform_spec = compile_result
 
-        if not _is_platform_job_spec(platform_spec):
-            raise PlatformJobCompilationError("compiled job spec must be a mapping with steps")
-        _validate_job_spec(platform_spec)
-        return platform_spec
+        return _validate_job_spec(platform_spec)
     except PermissionError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -768,8 +781,7 @@ def job_route_factory(
     service_name: str,
     job_type: str,
     job_input: JobSchemaLike,
-    platform_job_config_compiler: PlatformJobSpecCompiler[JobInputT, JobOutputT]
-    | PlatformJobSpecCompilerAsync[JobInputT, JobOutputT],
+    platform_job_config_compiler: PlatformJobSpecCompiler[JobInputT, JobOutputT],
     route_options: list[JobRouteOption] | None = None,
     job_result_routes: list[PlatformJobResultRoute] | None = None,
     job_output: JobSchemaLike | None = None,
@@ -870,20 +882,28 @@ def job_route_factory(
     # with `job_type` as a prefix, so that the correct name is used in the openapi spec, instead of
     # multiple duplicative `TypedJob` and `TypedJobRequest` definitions (one for each factory client).
     # The first arg is the type/class name, the second arg is a tuple of base classes to inherit,
-    # and the third arg is a dict of definitions for the class body (unused in our case).
+    # and the third arg defines the runtime ``spec`` annotation used by Pydantic.
     #
     # Request uses job_input (input schema), Response uses job_output (output schema)
     # When job_output is not provided, they are the same type.
-    # Type ignore is safe here because _validate_basemodel_or_union already validated these types
-    # are either BaseModel subclasses or unions of BaseModel subclasses.
-    TypedJobRequest = type(f"{job_type}JobRequest", (BaseJobRequest[job_input],), {})  # ty: ignore[invalid-type-form]
-    TypedJobResponse = type(f"{job_type}Job", (BaseJob[job_output],), {})  # ty: ignore[invalid-type-form]
-    TypedJobsListFilter = type(f"{job_type}JobsListFilter", (BaseJobsListFilter,), {})
-
-    TypedJobsSortField = StrEnum(
-        f"{job_type}JobsSortField",  # ty: ignore[mismatched-type-name]
-        {name: member.value for name, member in BaseJobsSortField.__members__.items()},
+    # _validate_basemodel_or_union already validated these types are either
+    # BaseModel subclasses or unions of BaseModel subclasses.
+    TypedJobRequest = type(
+        f"{job_type}JobRequest",
+        (BaseJobRequest[BaseModel],),
+        {"__annotations__": {"spec": job_input}},
     )
+    TypedJobResponse = type(
+        f"{job_type}Job",
+        (BaseJob[BaseModel],),
+        {"__annotations__": {"spec": job_output}},
+    )
+    TypedJobsListFilter = type(f"{job_type}JobsListFilter", (BaseJobsListFilter,), {})
+    # Keep the OpenAPI schema names stable for generated SDK consumers.  The
+    # values are shared across job factories, but Studio imports the generated
+    # per-job symbols (for example ``EvaluateJobsSortField``), so the route
+    # annotation must expose a concrete enum named for this job type.
+    TypedJobsSortField = _make_jobs_sort_field(job_type)
 
     def from_response(job_resp: PlatformJob) -> TypedJobResponse:
         # Use job_output for deserialization (what's stored and returned)
@@ -985,22 +1005,13 @@ def job_route_factory(
             ).data()
             return from_response(job_resp)
 
-        @router.get(
-            "/jobs",
-            response_model=Page[TypedJobResponse],
-            response_model_exclude_none=True,
-            openapi_extra=generate_openapi_extra_params(
-                filter_schema=TypedJobsListFilter,
-                filter_description="Filter jobs on various criteria.",
-            ),
-        )
         async def list_jobs(
             workspace: str,
             sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
             page: int = Query(default=1, description="Page number.", gt=0),
             page_size: int = Query(default=10, description="Page size.", gt=0),
-            sort: TypedJobsSortField = Query(  # ty: ignore[invalid-type-form]
-                default=TypedJobsSortField(BaseJobsSortField.CREATED_AT_DESC.value),
+            sort: BaseJobsSortField = Query(
+                default=BaseJobsSortField.CREATED_AT_DESC,
                 description="The field to sort by. To sort in decreasing order, use `-` in front of the field name.",
             ),
             parsed: ParsedFilter = Depends(make_filter_dep(TypedJobsListFilter)),
@@ -1051,6 +1062,19 @@ def job_route_factory(
                 sort=sort,
                 filter=user_filter or None,
             )
+
+        list_jobs.__annotations__["sort"] = TypedJobsSortField
+        router.add_api_route(
+            "/jobs",
+            list_jobs,
+            methods=["GET"],
+            response_model=Page[TypedJobResponse],
+            response_model_exclude_none=True,
+            openapi_extra=generate_openapi_extra_params(
+                filter_schema=TypedJobsListFilter,
+                filter_description="Filter jobs on various criteria.",
+            ),
+        )
 
         @router.get(
             "/jobs/{name}",

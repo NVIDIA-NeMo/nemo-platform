@@ -38,6 +38,7 @@ from nemo_platform.types.jobs import (
     PlatformJobListSortField,
     PlatformJobResponse,
     PlatformJobResponsesPage,
+    PlatformJobSecret,
     PlatformJobSecretEnvironmentVariableRef,
     PlatformJobSortField,
     PlatformJobSpec,

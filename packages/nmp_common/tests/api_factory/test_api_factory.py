@@ -14,8 +14,6 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from nemo_platform.types.jobs import PlatformJobResponse as PlatformJob
-from nemo_platform.types.shared.platform_job_status import PlatformJobStatus
 from nemo_platform_plugin.client.errors import (
     ConflictError as ClientConflictError,
 )
@@ -45,6 +43,8 @@ from nemo_platform_plugin.jobs.api_factory import (
     job_route_factory,
 )
 from nemo_platform_plugin.jobs.exceptions import PlatformJobDependencyUnavailableError
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
+from nemo_platform_plugin.jobs.types import PlatformJobResponse as PlatformJob
 from nmp.common.errors.sdk_exception_handlers import register_sdk_exception_handlers
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.schemas import (
@@ -138,7 +138,7 @@ def test_validate_job_spec():
             )
         ]
     )
-    assert _validate_job_spec(valid_job) is None
+    assert _validate_job_spec(valid_job) == valid_job
 
     # Invalid job spec, because the config provided into the step's config is not json serializeable
     invalid_job = PlatformJobSpec(
@@ -385,7 +385,7 @@ def mock_service_with_job_routes():
 
 def create_mock_platform_job(
     job_id: str,
-    status: PlatformJobStatus = "completed",
+    status: PlatformJobStatus | str = PlatformJobStatus.COMPLETED,
     created_at: str = "2023-01-01T10:00:00Z",
 ) -> PlatformJob:
     """Helper function to create a mock PlatformJob for testing."""
@@ -395,11 +395,23 @@ def create_mock_platform_job(
         name=f"Job {job_id}",
         source="test_service",
         project="test-project",
-        status=status,
+        status=PlatformJobStatus(status),
         created_at=created_at,  # ty: ignore[invalid-argument-type] # type is coerced
         updated_at=created_at,  # ty: ignore[invalid-argument-type] # type is coerced
         spec={"foo": "test", "bar": 1},
-        platform_spec={"steps": []},  # ty: ignore[invalid-argument-type] # type is coerced
+        platform_spec=PlatformJobSpec(
+            steps=[
+                PlatformJobStep(
+                    name="foo_step",
+                    executor=CPUExecutionProviderSpec(
+                        provider="cpu",
+                        profile="default",
+                        container=ContainerSpec(image="foo_image"),
+                    ),
+                    config={},
+                )
+            ]
+        ),
         ownership={},
         attempt_id=f"attempt-{job_id}",
         fileset=f"fileset-{job_id}",
