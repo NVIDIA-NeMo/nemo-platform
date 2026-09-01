@@ -10,14 +10,16 @@ import type { IronSwarmManifestAttackIntensity } from './IronSwarmManifestAttack
 import type { IronSwarmManifestBenignInterviewItem } from './IronSwarmManifestBenignInterviewItem.ts';
 import type { IronSwarmManifestBenignSuiteItem } from './IronSwarmManifestBenignSuiteItem.ts';
 import type { IronSwarmManifestEnv } from './IronSwarmManifestEnv.ts';
+import type { IronSwarmManifestSourceType } from './IronSwarmManifestSourceType.ts';
 import type { WarGameModels } from './WarGameModels.ts';
 
 /**
- * A named, reusable war-game target scaffolded from a registered agent (``name`` is its id).
+ * A named, reusable war-game target (``name`` is its id), from a registered agent or an uploaded project.
  *
- * The resolved agent package is persisted as a fileset the run re-downloads, so a manifest is a
- * frozen target rather than a query re-evaluated each run: editing the agent does not change an
- * existing manifest until it is refreshed.
+ * Either way the package is persisted as a fileset the run re-downloads, so a manifest is a frozen
+ * target rather than a query re-evaluated each run: editing the agent does not change an existing
+ * manifest until it is refreshed. A project manifest has nothing to refresh *from* — its bundle is the
+ * upload — which is why the two sources are distinguished rather than merged.
  */
 export interface IronSwarmManifest {
   /** Entity name within the workspace */
@@ -29,8 +31,12 @@ export interface IronSwarmManifest {
   workspace: string;
   /** The name of the project associated with this entity. */
   project?: string;
+  /** Where the victim came from. The run reads this to decide which bundle field to expand. */
+  source_type?: IronSwarmManifestSourceType;
   /** Registered agent reference (workspace/name) this manifest targets. */
   agent?: string;
+  /** Fileset ref holding the uploaded project bundle, for a 'project' manifest. The run expands this instead of ``agent_fileset``. */
+  project_fileset?: string;
   /** Fileset ref holding the agent package resolved from the agent — its config plus the Dockerfile that serves it. Empty on manifests created before targets were frozen; those re-resolve once, then store a ref. */
   agent_fileset?: string;
   /** Path within the package to the Dockerfile the victim image is built from, so a manifest records which image it ran rather than only that it had one. */

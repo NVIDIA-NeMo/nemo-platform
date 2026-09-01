@@ -39,6 +39,8 @@ import type {
   HealthzApisIronSwarmV1HealthzGet200,
   InspectAgentRequest,
   InspectAgentResponse,
+  InspectProjectRequest,
+  InspectProjectResponse,
   IronSwarmGetEventsParams,
   IronSwarmGetJobLogsParams,
   IronSwarmGetSynthBenignJobLogsParams,
@@ -1748,7 +1750,7 @@ export function useIronSwarmListManifestsSuspense<TData = Awaited<ReturnType<typ
 
 
 /**
- * `init`: resolve a registered agent into a manifest and persist it by ``name``.
+ * `init`: resolve the named source into a manifest and persist it by ``name``.
  * @summary Create Manifest
  */
 export const ironSwarmCreateManifest = (
@@ -1881,6 +1883,77 @@ export const useIronSwarmInspectManifestsInspectAgentEndpoint = <TError = ErrorT
         TContext
       > => {
       return useMutation(getIronSwarmInspectManifestsInspectAgentEndpointMutationOptions(options), queryClient);
+    }
+
+/**
+ * Read an uploaded project bundle and report what it states about itself, and what it cannot.
+ *
+ * Read-only: the bundle is expanded into a temp dir and thrown away. Its purpose is to let the caller
+ * pre-fill everything derivable and prompt for only the rest, so bringing your own image is a short
+ * form rather than authoring a manifest.
+ * @summary Inspect Project Endpoint
+ */
+export const ironSwarmInspectManifestsInspectProjectEndpoint = (
+    workspace: string,
+    inspectProjectRequest: InspectProjectRequest,
+ signal?: AbortSignal
+) => {
+
+
+      return customFetch<InspectProjectResponse>(
+      {url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(String(workspace))}/manifests/inspect-project`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: inspectProjectRequest, signal
+    },
+      );
+    }
+
+
+
+
+export const getIronSwarmInspectManifestsInspectProjectEndpointMutationOptions = <TError = ErrorType<HTTPValidationError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmInspectManifestsInspectProjectEndpoint>>, TError,{workspace: string;data: InspectProjectRequest}, TContext>, }
+): UseMutationOptions<Awaited<ReturnType<typeof ironSwarmInspectManifestsInspectProjectEndpoint>>, TError,{workspace: string;data: InspectProjectRequest}, TContext> => {
+
+const mutationKey = ['ironSwarmInspectManifestsInspectProjectEndpoint'];
+const {mutation: mutationOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ironSwarmInspectManifestsInspectProjectEndpoint>>, {workspace: string;data: InspectProjectRequest}> = (props) => {
+          const {workspace,data} = props ?? {};
+
+          return  ironSwarmInspectManifestsInspectProjectEndpoint(workspace,data,)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IronSwarmInspectManifestsInspectProjectEndpointMutationResult = NonNullable<Awaited<ReturnType<typeof ironSwarmInspectManifestsInspectProjectEndpoint>>>
+    export type IronSwarmInspectManifestsInspectProjectEndpointMutationBody = InspectProjectRequest
+    export type IronSwarmInspectManifestsInspectProjectEndpointMutationError = ErrorType<HTTPValidationError>
+
+    /**
+ * @summary Inspect Project Endpoint
+ */
+export const useIronSwarmInspectManifestsInspectProjectEndpoint = <TError = ErrorType<HTTPValidationError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmInspectManifestsInspectProjectEndpoint>>, TError,{workspace: string;data: InspectProjectRequest}, TContext>, }
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof ironSwarmInspectManifestsInspectProjectEndpoint>>,
+        TError,
+        {workspace: string;data: InspectProjectRequest},
+        TContext
+      > => {
+      return useMutation(getIronSwarmInspectManifestsInspectProjectEndpointMutationOptions(options), queryClient);
     }
 
 /**

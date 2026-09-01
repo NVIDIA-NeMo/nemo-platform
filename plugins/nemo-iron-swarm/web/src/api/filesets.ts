@@ -51,6 +51,60 @@ export const useUploadBenignSuiteFileset = () => {
   });
 };
 
+/**
+ * Store an uploaded project bundle (.zip); the ref becomes the manifest's `project_fileset`.
+ *
+ * The bundle *is* the frozen target for a project manifest — there is no registered agent behind it
+ * to re-resolve against — so this upload is the target, not a cache of one.
+ */
+export const useUploadProjectFileset = () => {
+  const platform = usePlatformSdk();
+  return useMutation({
+    mutationFn: (params: UploadFilesetParams) =>
+      uploadToFileset(platform, params, 'project', 'application/zip'),
+  });
+};
+
+/** What an uploaded project states about itself, and what it cannot. */
+export interface InspectProjectResult {
+  dockerfile: string;
+  dockerfiles: string[];
+  start_command: string;
+  binaries: string[];
+  port: number;
+  secrets: string[];
+  egress: string[];
+  env: Record<string, string>;
+  /** Fields the project cannot state; the form must ask for exactly these. */
+  unresolved: string[];
+  warnings: string[];
+}
+
+/**
+ * Read an uploaded project bundle so the form can pre-fill what is derivable.
+ *
+ * The point of `unresolved` is that the user never writes a manifest: everything the Dockerfile
+ * states is filled in, and only the rest is asked for.
+ */
+export const useInspectProject = () =>
+  useMutation({
+    mutationFn: ({
+      workspace,
+      projectFileset,
+      dockerfile,
+    }: {
+      workspace: string;
+      projectFileset: string;
+      dockerfile?: string;
+    }) =>
+      customFetch<InspectProjectResult>({
+        url: `/apis/iron-swarm/v2/workspaces/${encodeURIComponent(workspace)}/manifests/inspect-project`,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        data: { project_fileset: projectFileset, ...(dockerfile ? { dockerfile } : {}) },
+      }),
+  });
+
 /** Auto-derived defaults for the deployed-agent create form (victim port + secret names). */
 export interface InspectAgentResult {
   agent: string;

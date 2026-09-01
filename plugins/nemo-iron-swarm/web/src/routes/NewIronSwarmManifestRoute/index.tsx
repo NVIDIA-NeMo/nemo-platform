@@ -3,7 +3,12 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAgentsForSelect } from '@iron-swarm/api/agents';
-import { useInspectAgent } from '@iron-swarm/api/filesets';
+import {
+  useInspectAgent,
+  useInspectProject,
+  useUploadProjectFileset,
+  type InspectProjectResult,
+} from '@iron-swarm/api/filesets';
 import { ModelGroupFields } from '@iron-swarm/components/ModelGroupFields';
 import { parseEnvPairs, splitList } from '@iron-swarm/formValues';
 import {
@@ -17,14 +22,23 @@ import { getIronSwarmManifestListRoute, getIronSwarmRunListRoute } from '@iron-s
 import {
   manifestFormSchema,
   type ManifestFormData,
+  type ManifestSource,
 } from '@iron-swarm/routes/NewIronSwarmManifestRoute/schema';
-import { AccessibleTitle, AccordionSection, ControlledSelect, ControlledTextInput } from '@nemo/common';
+import {
+  AccessibleTitle,
+  AccordionSection,
+  ControlledSelect,
+  ControlledTextInput,
+  FileUpload,
+  RadioCard,
+} from '@nemo/common';
 import {
   AccordionRoot,
   Button,
   Flex,
   Panel,
   PageHeader,
+  RadioGroupRoot,
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
@@ -33,12 +47,23 @@ import { FC, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router';
 
+/** The harnesses iron-swarm knows how to stage; `other` is the honest escape hatch. */
+const HARNESS_ITEMS = ['deepagents', 'hermes', 'langchain', 'langgraph', 'other'].map((value) => ({
+  value,
+  children: value,
+}));
+
 export const NewIronSwarmManifestRoute: FC = () => {
   const workspace = useWorkspace();
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
   const [models, setModels] = useState<WarGameModels>({});
+  const [source, setSource] = useState<ManifestSource>('agent');
+  const [projectFile, setProjectFile] = useState<File | null>(null);
+  const [projectFileset, setProjectFileset] = useState('');
+  const [derived, setDerived] = useState<InspectProjectResult | null>(null);
+  const [relayConfirmed, setRelayConfirmed] = useState(false);
   const { data: modelDefaults } = useIronSwarmGetModelConfigDefaults(workspace, { query: {} });
 
   useBreadcrumbs({
@@ -72,6 +97,45 @@ export const NewIronSwarmManifestRoute: FC = () => {
     );
   }, [selectedAgent, workspace, runInspectAgent, setValue]);
 
+  const uploadProject = useUploadProjectFileset();
+  const inspectProject = useInspectProject();
+
+  /**
+   * Upload the bundle, then read it back. Pre-fills every field the project states so the form only
+   * asks for the rest — the difference between bringing an image and authoring a manifest.
+   */
+  const onProjectSelected = (file: File) => {
+    setProjectFile(file);
+    setDerived(null);
+    uploadProject.mutate(
+      { workspace, manifestName: watch('name') || 'byo', file },
+      {
+        onSuccess: (ref) => {
+          setProjectFileset(ref);
+          inspectProject.mutate(
+            { workspace, projectFileset: ref },
+            {
+              onSuccess: (facts) => {
+                setDerived(facts);
+                setValue('dockerfile', facts.dockerfile);
+                setValue('startCommand', facts.start_command);
+                setValue('binaries', facts.binaries.join(', '));
+                setValue('port', String(facts.port));
+                setValue('secrets', facts.secrets.join(', '));
+                setValue('egress', facts.egress.join(', '));
+              },
+              onError: () => toast.error('Could not read the project bundle.'),
+            }
+          );
+        },
+        onError: () => toast.error('Could not upload the project bundle.'),
+      }
+    );
+  };
+
+  /** A field the project could not state, so the form has to ask for it. */
+  const asks = (field: string) => derived?.unresolved.includes(field) ?? false;
+
   const { data: agents = [], isLoading: agentsLoading } = useAgentsForSelect(workspace);
   const agentItems = useMemo(
     () =>
@@ -90,9 +154,13 @@ export const NewIronSwarmManifestRoute: FC = () => {
     },
   });
 
-  const onSubmitAgent = handleSubmit((data) => {
-    if (!data.agent) {
+  const onSubmit = handleSubmit((data) => {
+    if (source === 'agent' && !data.agent) {
       setError('agent', { message: 'Select a deployed agent' });
+      return;
+    }
+    if (source === 'project' && !projectFileset) {
+      toast.error('Upload the project bundle first.');
       return;
     }
     const egress = splitList(data.egress);
@@ -103,11 +171,22 @@ export const NewIronSwarmManifestRoute: FC = () => {
       setError('port', { message: 'Enter a whole number' });
       return;
     }
+    const binaries = splitList(data.binaries);
     createManifest.mutate({
       workspace,
       data: {
         name: data.name,
-        agent: data.agent,
+        ...(source === 'agent'
+          ? { agent: data.agent }
+          : {
+              source_type: 'project',
+              project_fileset: projectFileset,
+              relay_integration_confirmed: relayConfirmed,
+              ...(data.dockerfile ? { dockerfile: data.dockerfile } : {}),
+              ...(data.startCommand ? { start_command: data.startCommand } : {}),
+              ...(binaries.length ? { binaries } : {}),
+              ...(data.harness ? { harness: data.harness } : {}),
+            }),
         ...(egress.length ? { egress } : {}),
         ...(secrets.length ? { secrets } : {}),
         ...(Object.keys(env).length ? { env } : {}),
@@ -135,14 +214,121 @@ export const NewIronSwarmManifestRoute: FC = () => {
               }}
             />
 
-            <form onSubmit={onSubmitAgent}>
+            <form onSubmit={onSubmit}>
                 <Stack gap="density-xl">
-                  <ControlledSelect
-                    useControllerProps={{ control, name: 'agent' }}
-                    loading={agentsLoading}
-                    items={agentItems}
-                    formFieldProps={{ slotLabel: 'Deployed Agent' }}
-                  />
+                  <RadioGroupRoot
+                    name="manifest-source"
+                    value={source}
+                    onValueChange={(value: string) => setSource(value as ManifestSource)}
+                  >
+                    <Flex gap="density-md" data-testid="manifest-source">
+                      <RadioCard
+                        value="agent"
+                        checked={source === 'agent'}
+                        label="Registered agent"
+                        description="An agent already registered on the platform."
+                      />
+                      <RadioCard
+                        value="project"
+                        checked={source === 'project'}
+                        label="Bring your own"
+                        description="An image whose Dockerfile you own. We read it and ask only for the rest."
+                      />
+                    </Flex>
+                  </RadioGroupRoot>
+
+                  {source === 'agent' ? (
+                    <ControlledSelect
+                      useControllerProps={{ control, name: 'agent' }}
+                      loading={agentsLoading}
+                      items={agentItems}
+                      formFieldProps={{ slotLabel: 'Deployed Agent' }}
+                    />
+                  ) : (
+                    <Stack gap="density-lg" data-testid="project-upload">
+                      <FileUpload
+                        accept={{ 'application/zip': ['.zip'] }}
+                        files={projectFile ? [projectFile] : []}
+                        onDropAccepted={(files: File[]) => files[0] && onProjectSelected(files[0])}
+                        onRemoveFile={() => {
+                          setProjectFile(null);
+                          setProjectFileset('');
+                          setDerived(null);
+                        }}
+                        helperText={
+                          uploadProject.isPending
+                            ? 'Uploading…'
+                            : inspectProject.isPending
+                              ? 'Reading the Dockerfile…'
+                              : 'A .zip of the directory holding your Dockerfile.'
+                        }
+                      />
+                      {derived?.warnings.map((warning) => (
+                        <Text key={warning} kind="body/regular/sm" className="text-subtle">
+                          ! {warning}
+                        </Text>
+                      ))}
+                      {derived && (
+                        <ControlledTextInput
+                          useControllerProps={{ control, name: 'dockerfile' }}
+                          formFieldProps={{
+                            slotLabel: 'Dockerfile',
+                            slotHelp: asks('dockerfile')
+                              ? 'Several were found — name the one that builds the agent.'
+                              : 'Detected. Edit to override.',
+                          }}
+                        />
+                      )}
+                      {derived && (
+                        <ControlledTextInput
+                          useControllerProps={{ control, name: 'startCommand' }}
+                          formFieldProps={{
+                            slotLabel: 'Start Command',
+                            slotHelp: asks('start_command')
+                              ? 'The ENTRYPOINT is a shell form, so it cannot be read. Must be absolute — ' +
+                                'the sandbox replaces PATH.'
+                              : 'Derived from the Dockerfile. Edit to override.',
+                          }}
+                        />
+                      )}
+                      {derived && (
+                        <ControlledTextInput
+                          useControllerProps={{ control, name: 'binaries' }}
+                          formFieldProps={{
+                            slotLabel: 'Interpreter Globs',
+                            slotHelp:
+                              'Comma-separated. Scopes which processes may egress; a glob matching no ' +
+                              'process grants nothing while looking like it grants something.',
+                          }}
+                        />
+                      )}
+                      {derived && (
+                        <ControlledSelect
+                          useControllerProps={{ control, name: 'harness' }}
+                          items={HARNESS_ITEMS}
+                          formFieldProps={{
+                            slotLabel: 'Harness',
+                            slotHelp:
+                              'Not readable from the project. Decides whether a guardrail can refuse a ' +
+                              'tool call at all.',
+                          }}
+                        />
+                      )}
+                      {derived && (
+                        <label className="flex items-center gap-2" data-testid="relay-confirmed">
+                          <input
+                            type="checkbox"
+                            checked={relayConfirmed}
+                            onChange={(event) => setRelayConfirmed(event.target.checked)}
+                          />
+                          <Text kind="body/regular/sm">
+                            NeMo Relay is attached to this agent (middleware + plugin.initialize()).
+                            Without it the victim emits no telemetry and the run cannot be scored.
+                          </Text>
+                        </label>
+                      )}
+                    </Stack>
+                  )}
                   <ControlledTextInput
                     useControllerProps={{ control, name: 'egress' }}
                     formFieldProps={{
