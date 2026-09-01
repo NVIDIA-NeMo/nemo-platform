@@ -1317,6 +1317,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/AutomodelJobInput'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -2857,6 +2864,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/RlJobInput'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -3451,6 +3465,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/UnslothJobInput'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
