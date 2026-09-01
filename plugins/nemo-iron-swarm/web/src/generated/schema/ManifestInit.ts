@@ -7,20 +7,36 @@
  * iron-swarm (plugin)
  */
 import type { ManifestInitEnv } from './ManifestInitEnv.ts';
+import type { ManifestInitSourceType } from './ManifestInitSourceType.ts';
 import type { WarGameModels } from './WarGameModels.ts';
 
 /**
  * Body for ``POST /v2/workspaces/{workspace}/manifests`` — scaffold a named manifest.
  *
- * The only source is a registered platform agent. The project-upload path is gone: it existed to
- * carry a NAT project, and Iron Swarm no longer runs one. An agent with custom tool code reaches
- * the platform as an MCP server, which keeps it registrable and therefore war-gameable.
+ * Two sources. ``agent`` is a registered platform agent, which the resolver reads and renders.
+ * ``project`` is an uploaded project bundle — an image whose author owns the Dockerfile, which a
+ * Fabric ``agent.yaml`` cannot express. The user never writes ``iron-swarm.yaml`` either way: the
+ * project source derives it and asks only for the fields a project cannot state about itself.
  */
 export interface ManifestInit {
   /** User-defined manifest id (unique within the workspace). */
   name: string;
-  /** Agent reference (``name`` or ``workspace/name``) to war-game. */
-  agent: string;
+  /** Where the victim comes from: a registered platform agent, or an uploaded project bundle. */
+  source_type?: ManifestInitSourceType;
+  /** Agent reference (``name`` or ``workspace/name``) to war-game. Required when ``source_type`` is 'agent'. */
+  agent?: string;
+  /** Fileset ref (``workspace/name``) of the uploaded project bundle. Required when ``source_type`` is 'project'. */
+  project_fileset?: string;
+  /** Dockerfile path relative to the project root. Derived when the project holds exactly one. */
+  dockerfile?: string;
+  /** Command that serves the agent. Derived from the Dockerfile's ENTRYPOINT/CMD when it is an exec form we can resolve. */
+  start_command?: string;
+  /** Glob(s) matching the victim's interpreter, for the sandbox's egress policy. A glob that matches no process grants nothing while looking like it grants something, so this is confirmed rather than silently guessed. */
+  binaries?: string[];
+  /** Which harness the agent runs, so the run can say up front whether a guardrail can refuse a tool call. Not knowable from the project. */
+  harness?: string;
+  /** The author confirms NeMo Relay is attached (middleware + plugin.initialize()). Not knowable from the project; without Relay the victim emits no telemetry and cannot be scored. */
+  relay_integration_confirmed?: boolean;
   /** Victim port (defaults to 8000). */
   port?: number;
   /** Env-var names the victim requires. Derived from the agent's own declarations (``models.*.api_key_env``, MCP server env) when omitted. */
