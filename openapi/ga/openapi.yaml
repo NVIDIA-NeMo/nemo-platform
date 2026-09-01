@@ -9887,6 +9887,34 @@ components:
       - policy
       title: ClavataRailOptions
       description: Configuration data for the Clavata API
+    ColumnLayout:
+      properties:
+        order:
+          items:
+            type: string
+          type: array
+          title: Order
+          description: 'Column ids in display order. Empty means no saved order: the
+            table falls back to its natural column order.'
+        hidden:
+          items:
+            type: string
+          type: array
+          title: Hidden
+          description: Column ids hidden from the table. Any column not listed is
+            shown.
+      type: object
+      title: ColumnLayout
+      description: "A saved table layout for a group's evaluations list: column order\
+        \ and which columns are hidden.\n\nColumn ids are Studio's, not this API's\
+        \ \u2014 the evaluations table builds a column per evaluator and\nper metadata\
+        \ key found in the loaded rows, so the set is workspace- and data-specific\
+        \ and cannot be\nenumerated here. Ids are stored as given and echoed back\
+        \ unvalidated; Studio ignores any that no\nlonger resolve.\n\nVisibility is\
+        \ stored as the *hidden* ids rather than a visible/hidden map for every column,\
+        \ so a\ncolumn that appears later (a new evaluator, a new metadata key) shows\
+        \ up by default instead of\nbeing invisible because a layout saved before\
+        \ it existed never mentioned it."
     ComputeResourceSpec:
       properties:
         cpu:
@@ -12140,6 +12168,12 @@ components:
           description: Default X/Y metrics for the experiment's Pareto view. Omit
             to preserve the existing value on update; on create, defaults to cost
             vs. latency.
+        column_layout:
+          allOf:
+          - $ref: '#/components/schemas/ColumnLayout'
+          description: Saved column order and hidden columns for the experiment's
+            evaluations table. Omit to preserve the existing layout on update; on
+            create, defaults to an empty layout.
         is_favorite:
           type: boolean
           title: Is Favorite
@@ -12189,6 +12223,11 @@ components:
           title: Default Sort
         pareto:
           $ref: '#/components/schemas/ParetoConfig'
+        column_layout:
+          allOf:
+          - $ref: '#/components/schemas/ColumnLayout'
+          description: Saved column order and hidden columns for the experiment's
+            evaluations table. Null when none has been saved.
         is_favorite:
           type: boolean
           title: Is Favorite
@@ -12291,6 +12330,12 @@ components:
           description: Default X/Y metrics for the experiment's Pareto view. Omit
             to preserve the existing value on update; on create, defaults to cost
             vs. latency.
+        column_layout:
+          allOf:
+          - $ref: '#/components/schemas/ColumnLayout'
+          description: Saved column order and hidden columns for the experiment's
+            evaluations table. Omit to preserve the existing layout on update; on
+            create, defaults to an empty layout.
         is_favorite:
           type: boolean
           title: Is Favorite

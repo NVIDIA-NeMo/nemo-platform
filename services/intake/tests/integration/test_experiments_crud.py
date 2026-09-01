@@ -847,3 +847,34 @@ def test_patch_evaluation_dedupes_experiment_ids(client: TestClient) -> None:
     listed = client.get(EXPERIMENTS)
     grp = next(g for g in listed.json()["data"] if g["id"] == group["id"])
     assert grp["evaluation_count"] == 1
+
+
+def test_experiment_group_column_layout_defaults_and_round_trips(client: TestClient) -> None:
+    # Omitting column_layout leaves the table on its natural layout rather than inventing an order.
+    created = client.post(EXPERIMENTS, json={"name": "columns-cfg"})
+    assert created.status_code == 201, created.text
+    assert created.json()["column_layout"] is None
+    assert client.get(f"{EXPERIMENTS}/columns-cfg").json()["column_layout"] is None
+
+    # A saved layout round-trips through PUT, ids echoed back as given.
+    layout = {
+        "order": ["name", "evaluator-llm-judge.answers_question", "created_at"],
+        "hidden": ["created_by", "metadata-run_id"],
+    }
+    updated = client.put(f"{EXPERIMENTS}/columns-cfg", json={"name": "columns-cfg", "column_layout": layout})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["column_layout"] == layout
+
+    # An update that omits column_layout preserves the saved layout rather than clearing it.
+    preserved = client.put(f"{EXPERIMENTS}/columns-cfg", json={"name": "columns-cfg", "summary": "unrelated edit"})
+    assert preserved.status_code == 200, preserved.text
+    assert preserved.json()["column_layout"] == layout
+
+    # An empty layout is a saved layout, not an absent one: it stays distinguishable from null so the
+    # client knows not to re-apply its default hidden columns over a deliberate "show everything".
+    reset = client.put(
+        f"{EXPERIMENTS}/columns-cfg",
+        json={"name": "columns-cfg", "column_layout": {"order": [], "hidden": []}},
+    )
+    assert reset.status_code == 200, reset.text
+    assert reset.json()["column_layout"] == {"order": [], "hidden": []}

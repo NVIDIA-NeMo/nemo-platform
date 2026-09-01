@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Annotated, Self
 
 from nmp.common.entities.values import DatetimeFilter, Filter, NumberFilter, map_entity_field
-from nmp.intake.entities.experiments import Experiment, ExperimentGroup, ParetoConfig
+from nmp.intake.entities.experiments import ColumnLayout, Experiment, ExperimentGroup, ParetoConfig
 from nmp.intake.repository.evaluation_session import EvaluationSessionRow
 from nmp.intake.spans.domain import (
     INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT,
@@ -55,6 +55,13 @@ class ExperimentRequest(BaseModel):
         description=(
             "Default X/Y metrics for the experiment's Pareto view. Omit to preserve the existing value on "
             "update; on create, defaults to cost vs. latency."
+        ),
+    )
+    column_layout: ColumnLayout | None = Field(
+        default=None,
+        description=(
+            "Saved column order and hidden columns for the experiment's evaluations table. Omit to preserve "
+            "the existing layout on update; on create, defaults to an empty layout."
         ),
     )
     is_favorite: bool = Field(
@@ -185,6 +192,13 @@ class ExperimentResponse(BaseModel):
     metadata: dict[str, str] | None = None
     default_sort: str
     pareto: ParetoConfig = Field(default_factory=ParetoConfig)
+    column_layout: ColumnLayout | None = Field(
+        default=None,
+        description=(
+            "Saved column order and hidden columns for the experiment's evaluations table. Null when "
+            "none has been saved."
+        ),
+    )
     is_favorite: bool = Field(default=False, description="Whether this Experiment is marked as a favorite.")
     show_evaluations_over_time: bool = Field(
         default=False,
@@ -213,6 +227,7 @@ class ExperimentResponse(BaseModel):
             metadata=entity.metadata,
             default_sort=entity.default_sort,
             pareto=entity.pareto,
+            column_layout=entity.column_layout,
             is_favorite=entity.is_favorite,
             show_evaluations_over_time=entity.show_evaluations_over_time,
             baseline_evaluation_name=entity.baseline_evaluation_name,

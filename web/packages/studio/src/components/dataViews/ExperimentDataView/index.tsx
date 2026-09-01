@@ -30,6 +30,10 @@ import { AddToGroupModal } from '@studio/components/dataViews/ExperimentDataView
 import '@studio/components/dataViews/ExperimentDataView/ExperimentDataView.css';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentDataView/MeanValueTooltipCell';
 import {
+  seedColumnState,
+  useColumnLayout,
+} from '@studio/components/dataViews/ExperimentDataView/useColumnLayout';
+import {
   type EvaluationRow,
   type ListEvaluationsSortParam,
   useExperimentEvaluations,
@@ -41,9 +45,8 @@ import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvalu
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
-import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { Columns3, FolderMinus, FolderPlus, Pin, Repeat2 } from 'lucide-react';
-import { type ComponentProps, type FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 export type { EvaluationRow };
@@ -179,33 +182,32 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
   // this leaderboard is where you notice a run worth varying.
   const [rerunSource, setRerunSource] = useState<EvaluationRow | null>(null);
 
-  // Persist column order to localStorage, keyed by experiment group ID.
-  const [savedColumnOrder, saveColumnOrder] = useLocalStorage<string[]>(
-    `nemo-studio:experiment-columns:${experimentId}`,
-    []
-  );
-
   // Seed the sort from default_sort so its column header reflects the order on load. Memoized so the
   // reference is stable across renders (until default_sort changes).
   const defaultSort = useMemo(() => seedSortFromDefault(group.default_sort), [group.default_sort]);
+
+  // Seeded once, from the layout saved on the experiment. Keyed by group id at the route level, so a
+  // different experiment remounts this view rather than reusing another's columns.
+  const seededColumns = useMemo(() => seedColumnState(group.column_layout), [group.column_layout]);
 
   const dataViewState = useStudioDataViewState<EvaluationFilter>({
     defaultSort,
     // The evaluations leaderboard supports multi-column sort (shift-click) — score vs. cost etc.
     multiSort: true,
-    columnVisibility: { created_by: false, updated_at: false },
+    columnVisibility: seededColumns.columnVisibility,
     // Keep the pin toggle, row selection, and the row actions menu reachable while horizontally
     // scrolling this wide table.
     columnPinning: { left: ['pin', 'row-selection'], right: ['row-actions'] },
     filterFieldMap: getEvaluationFilterField,
-    columnOrder: savedColumnOrder ?? [],
+    columnOrder: seededColumns.columnOrder,
   });
 
-  // Write column order to localStorage whenever it changes after the first reorder.
-  const { columnOrder } = dataViewState;
-  useEffect(() => {
-    if (columnOrder.state.length > 0) saveColumnOrder(columnOrder.state);
-  }, [columnOrder.state, saveColumnOrder]);
+  const columnLayout = useColumnLayout({
+    workspace,
+    group,
+    columnOrder: dataViewState.columnOrder.state,
+    columnVisibility: dataViewState.columnVisibility.state,
+  });
 
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
@@ -655,18 +657,34 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
           </Button>
         )}
         toolbarSlotEnd={
-          <EditColumnsMenu
-            kind="secondary"
-            showChevron={false}
-            // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
-            // spacer sets a min width on the menu (which sizes to its widest child).
-            slotContent={<div aria-hidden className="h-0 w-[230px]" />}
-          >
-            <>
-              <Columns3 />
-              <span className="hide-mobile">Columns</span>
-            </>
-          </EditColumnsMenu>
+          // Held at its natural width so the toolbar's search field absorbs the space instead: the
+          // slot shrinks by default, which clipped the Save button off the end of the toolbar.
+          <div className="flex shrink-0 items-center gap-2">
+            <EditColumnsMenu
+              kind="secondary"
+              showChevron={false}
+              // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
+              // spacer sets a min width on the menu (which sizes to its widest child).
+              slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+            >
+              <>
+                <Columns3 />
+                <span className="hide-mobile">Columns</span>
+              </>
+            </EditColumnsMenu>
+            {/* Only present once the layout differs from the saved one: a permanently visible Save
+                with nothing to save reads as an action the table is waiting on. */}
+            {columnLayout.hasUnsavedLayout && (
+              <Button
+                kind="primary"
+                size="small"
+                disabled={columnLayout.isSaving}
+                onClick={columnLayout.save}
+              >
+                {columnLayout.isSaving ? 'Saving…' : 'Save columns'}
+              </Button>
+            )}
+          </div>
         }
         attributes={{
           DataViewRoot: {
