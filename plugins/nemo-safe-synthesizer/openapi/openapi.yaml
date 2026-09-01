@@ -847,6 +847,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/SafeSynthesizerJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true

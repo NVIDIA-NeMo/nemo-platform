@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -19,6 +20,7 @@ from nemo_agents_plugin.entities import (
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     Agent,
     AgentEnvironmentInline,
+    AgentInline,
     ComputeSpecInline,
 )
 from nemo_agents_plugin.environment_resolution import (
@@ -69,7 +71,7 @@ from nemo_platform_plugin.jobs.constants import (
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, parse_entity_ref
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +133,12 @@ _RESERVED_ENV_VAR_NAMES = frozenset(
 class ExecuteAgentJobConfig(BaseModel):
     model_config = {"json_schema_mode_override": "validation"}
 
-    agent: str = Field(pattern=ENTITY_REF_PATTERN, description="Agent entity name or workspace/name ref.")
+    agent: str | AgentInline = Field(
+        description=(
+            "Agent to execute: an Agent entity name or workspace/name ref, or an inline "
+            "agent definition for a config composed at request time."
+        ),
+    )
     input: str = Field(description="Prompt to pass to the agent.")
     environment: str | AgentEnvironmentInline | None = Field(
         default=None,
@@ -151,6 +158,28 @@ class ExecuteAgentJobConfig(BaseModel):
         gt=0,
         description="Maximum time to wait for Fabric to return an execution result.",
     )
+
+    @field_validator("agent")
+    @classmethod
+    def _validate_agent(cls, value: str | AgentInline) -> str | AgentInline:
+        """Apply this job's own requirements to whichever arm the caller used.
+
+        ``AgentInline`` is deliberately as permissive as the ``Agent`` entity it
+        backs, so the narrowing lives here rather than on the shared model: an
+        entity can legitimately hold a NAT workflow config, but this job cannot
+        run one.
+        """
+        if isinstance(value, str):
+            # The ref pattern moved off the field so the union's other arm can
+            # carry a config; keep enforcing it for the string arm.
+            if not re.fullmatch(ENTITY_REF_PATTERN, value):
+                raise ValueError(f"Agent ref {value!r} must be an entity name or a 'workspace/name' ref.")
+            return value
+
+        _validate_agent_config_format(value.config_format)
+        if not value.config:
+            raise ValueError("Inline agent definitions require a non-empty config.")
+        return value
 
 
 class ResolvedAgentConfig(BaseModel):
@@ -206,19 +235,15 @@ class ExecuteAgentJob(NemoJob):
         """
         del is_local
         request = cast(ExecuteAgentJobConfig, input_spec)
-        agent_ref = parse_entity_ref(request.agent, default_workspace=workspace)
         typed_entity_client = cast(Any, entity_client)
-        try:
-            agent = await typed_entity_client.get(Agent, name=agent_ref.name, workspace=agent_ref.workspace)
-        except NemoEntityNotFoundError as exc:
-            raise ValueError(f"Agent '{request.agent}' not found.") from exc
+        source = await _resolve_agent_source(request.agent, workspace=workspace, entity_client=typed_entity_client)
 
-        _validate_agent_config_format(agent.config_format)
+        _validate_agent_config_format(source.config_format)
         resolved_agent_config = resolve_agent_config_for_deployment(
-            agent.config_format,
-            agent.config,
-            workspace=agent.workspace,
-            agent_name=agent.name,
+            source.config_format,
+            source.config,
+            workspace=source.workspace,
+            agent_name=source.name,
         )
 
         # Resolve and merge the referenced AgentEnvironment. The EnvironmentSpec is
@@ -250,10 +275,10 @@ class ExecuteAgentJob(NemoJob):
         return ExecuteAgentStepConfig(
             request=request,
             agent=ResolvedAgentConfig(
-                name=agent.name,
-                workspace=agent.workspace,
+                name=source.name,
+                workspace=source.workspace,
                 config=merged.config,
-                config_format=agent.config_format,
+                config_format=source.config_format,
             ),
             workdir=workdir,
             compute=resolved_env.compute_spec,
@@ -407,6 +432,61 @@ class ExecuteAgentJob(NemoJob):
             _save_json_result(ctx, FABRIC_ERROR_RESULT_NAME, ctx.storage.ephemeral / FABRIC_ERROR_FILENAME, payload)
         except Exception:
             logger.warning("Failed to save Fabric error result.", exc_info=True)
+
+
+class _AgentSource(BaseModel):
+    """The agent definition to execute, however the request supplied it."""
+
+    name: str
+    workspace: str
+    config: dict[str, Any]
+    config_format: str
+
+
+async def _resolve_agent_source(
+    agent: str | AgentInline,
+    *,
+    workspace: str,
+    entity_client: Any,
+) -> _AgentSource:
+    """Resolve the request's agent arm into one shape the rest of ``to_spec`` uses.
+
+    An inline config is not persisted anywhere: it is validated here so a bad
+    definition fails on the create request, then snapshotted onto the step config
+    exactly as an entity-backed config is. Its name comes from the config itself
+    and it is attributed to the job's workspace.
+
+    NOTE: an inline config is currently gated only by the job's own
+    ``agents.execute.create`` permission, whereas reaching the same outcome
+    through an entity additionally requires ``agents.agents.create``. Closing
+    that gap needs a body-conditional permission, which the shared jobs route
+    factory has no hook for today.
+    """
+    if isinstance(agent, AgentInline):
+        # Format and non-emptiness are already enforced by
+        # ``ExecuteAgentJobConfig._validate_agent``; this is the spec check.
+        try:
+            inline_config = AgentConfig.model_validate(agent.config)
+        except Exception as exc:
+            raise ValueError(f"Inline agent config is invalid: {exc}") from exc
+        return _AgentSource(
+            name=inline_config.name,
+            workspace=workspace,
+            config=agent.config,
+            config_format=agent.config_format,
+        )
+
+    agent_ref = parse_entity_ref(agent, default_workspace=workspace)
+    try:
+        entity = await entity_client.get(Agent, name=agent_ref.name, workspace=agent_ref.workspace)
+    except NemoEntityNotFoundError as exc:
+        raise ValueError(f"Agent '{agent}' not found.") from exc
+    return _AgentSource(
+        name=entity.name,
+        workspace=entity.workspace,
+        config=entity.config,
+        config_format=entity.config_format,
+    )
 
 
 def _has_workdir_inputs(workdir: AgentWorkdir) -> bool:

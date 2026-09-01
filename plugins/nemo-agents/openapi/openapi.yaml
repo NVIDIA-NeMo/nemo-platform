@@ -3627,20 +3627,6 @@ components:
   schemas:
     Agent:
       properties:
-        name:
-          type: string
-          title: Name
-          description: Entity name within the workspace
-          default: ''
-        workspace:
-          type: string
-          pattern: ^[\w\-\+.@:]+$
-          title: Workspace
-          description: Workspace identifier
-        project:
-          title: Project
-          description: The name of the project associated with this entity.
-          type: string
         description:
           type: string
           title: Description
@@ -3658,6 +3644,20 @@ components:
             `nat-workflow-v1` is the default legacy NAT workflow format; `nemo-agents-spec-v1`
             identifies the Platform-owned agent.yaml spec format.
           default: nat-workflow-v1
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
         id:
           type: string
           title: Id
@@ -4241,6 +4241,37 @@ components:
         Entity type: ``agent_environment_spec``
 
         Referenced by an AgentEnvironment''s ``environment_spec`` (by name or inline).'
+    AgentInline:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description of the agent.
+          default: ''
+        config:
+          additionalProperties: true
+          type: object
+          title: Config
+          description: Agent config dict interpreted according to config_format.
+        config_format:
+          type: string
+          title: Config Format
+          description: platform-internal schema version tag for the agent config dict.
+            `nat-workflow-v1` is the default legacy NAT workflow format; `nemo-agents-spec-v1`
+            identifies the Platform-owned agent.yaml spec format.
+          default: nat-workflow-v1
+      type: object
+      title: AgentInline
+      description: "Inline Agent - an agent definition without entity identity.\n\n\
+        The shared shape behind the :class:`Agent` entity: the entity embeds these\n\
+        fields and adds name/workspace, and a field that accepts an agent can take\n\
+        either a ``\"workspace/name\"`` ref string or this model. Lets a caller\n\
+        execute an agent it composes at request time \u2014 models chosen per request,\n\
+        settings scoped to one run \u2014 without first persisting an Agent.\n\nDeliberately\
+        \ as permissive as the entity: consumers impose their own\nrequirements rather\
+        \ than this model narrowing them for everyone. The\n``agents.execute`` job,\
+        \ for example, accepts only ``nemo-agents-spec-v1``\nand rejects a config\
+        \ that is not a valid agent spec."
     AgentSession:
       properties:
         name:
@@ -4466,6 +4497,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/AnalyzeBatchConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5083,6 +5121,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/EvaluateAgentSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5301,6 +5346,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/EvaluateSuiteSubmitConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5464,10 +5516,14 @@ components:
     ExecuteAgentJobConfig:
       properties:
         agent:
-          type: string
-          pattern: ^[\w\-.]+(/[\w\-.]+)?$
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to AgentInline.
+          - $ref: '#/components/schemas/AgentInline'
           title: Agent
-          description: Agent entity name or workspace/name ref.
+          description: 'Agent to execute: an Agent entity name or workspace/name ref,
+            or an inline agent definition for a config composed at request time.'
         input:
           type: string
           title: Input
@@ -5581,6 +5637,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/ExecuteAgentJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5966,6 +6029,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/OptimizeSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -6185,6 +6255,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/OptimizeSkillsConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -6451,6 +6528,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/PackageAgentInput'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true

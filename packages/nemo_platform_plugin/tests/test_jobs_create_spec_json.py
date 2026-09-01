@@ -133,3 +133,94 @@ def test_create_job_forwards_transformed_spec_in_json_mode() -> None:
     assert blob == base64.b64encode(_PICKLE_BYTES).decode("ascii")
     # Must be JSON-serializable for the typed jobs client (raw bytes would 500).
     json.dumps({"spec": spec})
+
+
+def test_create_job_forwards_profile_and_options_to_compiler() -> None:
+    """Submitter controls belong to the compiler, not Pydantic's ignored extras."""
+    seen: dict[str, object] = {}
+
+    async def _capturing_compiler(
+        workspace: str,
+        original_spec: _InputSpec,
+        transformed_spec: _InputSpec,
+        entity_client: object,
+        job_name: str | None,
+        sdk: object,
+        profile: str | None = None,
+        options: dict | None = None,
+    ) -> PlatformJobSpec:
+        del workspace, original_spec, transformed_spec, entity_client, job_name, sdk
+        seen.update(profile=profile, options=options)
+        return PlatformJobSpec(
+            steps=[
+                PlatformJobStep(
+                    name="step",
+                    executor=CPUExecutionProviderSpec(
+                        provider="cpu",
+                        profile=profile or "default",
+                        container=ContainerSpec(image="test"),
+                    ),
+                    config={},
+                )
+            ]
+        )
+
+    router = job_route_factory(
+        service_name="widgets",
+        job_type="Widget",
+        job_input=_InputSpec,
+        platform_job_config_compiler=_capturing_compiler,
+    )
+    app = FastAPI()
+    app.include_router(router, prefix="/apis/widgets/v2/workspaces/{workspace}")
+    app.dependency_overrides[get_sdk_client] = lambda: MagicMock()
+    app.dependency_overrides[get_entity_client] = lambda: MagicMock()
+
+    async def _create_job(*, workspace: str, body: object) -> MagicMock:
+        del workspace, body
+        return _mock_create_response({"label": "metric"})
+
+    mock_jobs = SimpleNamespace(create_job=_create_job)
+
+    client = TestClient(app)
+    with patch(
+        "nemo_platform_plugin.jobs.api_factory.client_from_platform",
+        return_value=mock_jobs,
+    ):
+        response = client.post(
+            "/apis/widgets/v2/workspaces/default/jobs",
+            json={
+                "spec": {"label": "metric"},
+                "profile": "research",
+                "options": {"slurm": {"nodes": 4}},
+            },
+        )
+
+    assert response.status_code == 201, response.text
+    assert seen == {"profile": "research", "options": {"slurm": {"nodes": 4}}}
+
+
+def test_create_job_rejects_unsupported_profile_and_options() -> None:
+    router = job_route_factory(
+        service_name="widgets",
+        job_type="Widget",
+        job_input=_InputSpec,
+        platform_job_config_compiler=_compiler,
+    )
+    app = FastAPI()
+    app.include_router(router, prefix="/apis/widgets/v2/workspaces/{workspace}")
+    app.dependency_overrides[get_sdk_client] = lambda: MagicMock()
+    app.dependency_overrides[get_entity_client] = lambda: MagicMock()
+
+    client = TestClient(app)
+    response = client.post(
+        "/apis/widgets/v2/workspaces/default/jobs",
+        json={
+            "spec": {"label": "metric"},
+            "profile": "research",
+            "options": {"slurm": {"nodes": 4}},
+        },
+    )
+
+    assert response.status_code == 422, response.text
+    assert "does not support submit field(s): profile, options" in response.json()["detail"]

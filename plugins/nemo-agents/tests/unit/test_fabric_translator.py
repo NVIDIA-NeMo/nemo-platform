@@ -306,6 +306,83 @@ class TestTranslateAgentConfig:
         assert harness is not None
         assert harness.adapter_id == adapter_id
 
+    def test_every_configured_model_is_forwarded(self) -> None:
+        """FabricConfig.models is a keyed map; secondary keys must survive translation."""
+        payload = _example_yaml_config()
+        payload["models"]["fast"] = {"provider": "openai", "model": "openai/gpt-5.4-mini"}
+        payload["models"]["judge"] = {"provider": "openai", "model": "openai/gpt-5.4-judge"}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert set(fabric_config.models) == {"default", "fast", "judge"}
+        assert fabric_config.models["fast"].model == "openai/gpt-5.4-mini"
+        assert fabric_config.models["judge"].model == "openai/gpt-5.4-judge"
+
+    def test_selected_harness_model_is_published_as_default(self) -> None:
+        """harness.model outranks models.default, and lands on the "default" key."""
+        payload = _example_yaml_config()
+        payload["models"]["fast"] = {"provider": "openai", "model": "openai/gpt-5.4-mini"}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        # The hermes harness declares its own model; models.default is shadowed.
+        assert fabric_config.models["default"].model == "nvidia/nemotron-3-nano-30b-a3b"
+        assert fabric_config.models["fast"].model == "openai/gpt-5.4-mini"
+
+    def test_models_default_is_published_when_the_harness_declares_no_model(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "codex"
+        payload["models"]["fast"] = {"provider": "openai", "model": "openai/gpt-5.4-mini"}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.models["default"].model == "openai/gpt-5.4"
+        assert fabric_config.models["fast"].model == "openai/gpt-5.4-mini"
+
+    def test_gateway_credential_bound_on_every_routed_model(self) -> None:
+        """A secondary IGW-routed model needs its api_key_env too, not just the primary."""
+        payload = _example_yaml_config()
+        payload["default_harness"] = "codex"
+        payload["models"]["fast"] = {
+            "provider": "openai",
+            "model": "openai/gpt-5.4-mini",
+            "base_url": "http://platform:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.models["fast"].api_key_env == PLATFORM_IGW_API_KEY_ENV
+        assert fabric_config.environment is not None
+        assert fabric_config.environment.env[PLATFORM_IGW_API_KEY_ENV] == PLATFORM_IGW_API_KEY_PLACEHOLDER
+
+    def test_non_routed_secondary_model_is_left_uncredentialed(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "codex"
+        payload["models"]["fast"] = {
+            "provider": "nvidia",
+            "model": "nvidia/nemotron-3-nano-30b-a3b",
+            "base_url": "https://integrate.api.nvidia.com/v1",
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.models["fast"].api_key_env is None
+
+    def test_harness_only_model_still_translates_without_a_models_map(self) -> None:
+        payload = _example_yaml_config()
+        payload["models"] = {}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert set(fabric_config.models) == {"default"}
+        assert fabric_config.models["default"].model == "nvidia/nemotron-3-nano-30b-a3b"
+
     def test_unknown_selected_harness_rejected(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
 
@@ -319,6 +396,34 @@ class TestTranslateAgentConfig:
         config = AgentConfig.model_validate(payload)
 
         with pytest.raises(FabricTranslationError, match="Unsupported harness kind 'custom'"):
+            translate_agent_config(config)
+
+    @pytest.mark.parametrize(
+        "adapter_id",
+        [
+            "nvidia.fabric.insights-analyst",
+            "nvidia.fabric.some.future.adapter",
+        ],
+    )
+    def test_fully_qualified_adapter_id_passes_through(self, adapter_id: str) -> None:
+        """Plugin-owned adapters ship their own descriptor, so no short-name entry is needed."""
+        payload = _example_yaml_config()
+        payload["default_harness"] = "selected"
+        payload["harnesses"] = {"selected": {"kind": adapter_id}}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.harness is not None
+        assert fabric_config.harness.adapter_id == adapter_id
+
+    def test_adapter_id_passthrough_requires_the_nvidia_fabric_prefix(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "selected"
+        payload["harnesses"] = {"selected": {"kind": "acme.fabric.custom"}}
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="Unsupported harness kind 'acme.fabric.custom'"):
             translate_agent_config(config)
 
     def test_missing_model_rejected(self) -> None:

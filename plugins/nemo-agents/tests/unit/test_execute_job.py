@@ -18,6 +18,7 @@ from nemo_agents_plugin.entities import (
     AgentEnvironment,
     AgentEnvironmentInline,
     AgentEnvironmentSpec,
+    AgentInline,
     ComputeResources,
     ComputeSpecInline,
     EnvironmentSpecInline,
@@ -1160,3 +1161,142 @@ def test_execute_job_create_route_maps_reserved_secret_env_to_422() -> None:
 
     assert response.status_code == 422, response.text
     assert "reserved job env var name" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Inline agent definitions
+# ---------------------------------------------------------------------------
+
+
+def test_job_config_accepts_an_inline_agent_definition() -> None:
+    config = ExecuteAgentJobConfig(
+        agent=AgentInline(config=_agent_config(), config_format="nemo-agents-spec-v1"), input="hello"
+    )
+
+    assert isinstance(config.agent, AgentInline)
+    assert config.agent.config_format == "nemo-agents-spec-v1"
+
+
+def test_job_config_still_rejects_a_malformed_agent_ref() -> None:
+    """The ref pattern moved into a validator; the string arm must keep enforcing it."""
+    with pytest.raises(ValueError, match="must be an entity name or a 'workspace/name' ref"):
+        ExecuteAgentJobConfig(agent="not a valid ref!", input="hello")
+
+
+@pytest.mark.asyncio
+async def test_to_spec_resolves_an_inline_agent_without_touching_the_entity_store() -> None:
+    entity_client = AsyncMock()
+
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(
+            agent=AgentInline(config=_agent_config(), config_format="nemo-agents-spec-v1"), input="hello"
+        ),
+        workspace="research",
+        entity_client=entity_client,
+        async_sdk=_sdk_with_files(),
+        is_local=False,
+    )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    # Name comes from the config; the run is attributed to the job's workspace.
+    assert step_config.agent.name == "calc"
+    assert step_config.agent.workspace == "research"
+    assert step_config.agent.config_format == "nemo-agents-spec-v1"
+    entity_client.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_to_spec_snapshots_the_inline_config_like_an_entity_backed_one() -> None:
+    """Provenance parity: the resolved config is stored on the step either way."""
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(
+            agent=AgentInline(config=_agent_config(), config_format="nemo-agents-spec-v1"), input="hello"
+        ),
+        workspace="default",
+        entity_client=AsyncMock(),
+        async_sdk=_sdk_with_files(),
+        is_local=False,
+    )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    assert (
+        step_config.agent.config["models"]["default"]["base_url"]
+        == "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_to_spec_rejects_a_malformed_inline_agent_config() -> None:
+    with pytest.raises(ValueError, match="Inline agent config is invalid"):
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(
+                agent=AgentInline(config={"config_format": "nemo-agents-spec-v1"}, config_format="nemo-agents-spec-v1"),
+                input="x",
+            ),
+            workspace="default",
+            entity_client=AsyncMock(),
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_to_spec_rejects_a_non_fabric_inline_config_format() -> None:
+    with pytest.raises(ValueError, match="is not supported"):
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(
+                agent=AgentInline(config={"workflow": {}}, config_format="nat-workflow-v1"), input="x"
+            ),
+            workspace="default",
+            entity_client=AsyncMock(),
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_to_spec_merges_an_environment_into_an_inline_agent() -> None:
+    """Inline configs go through the same environment merge as entity-backed ones."""
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(
+            agent=AgentInline(config=_agent_config(), config_format="nemo-agents-spec-v1"),
+            input="hello",
+            environment=AgentEnvironmentInline(
+                environment_spec=EnvironmentSpecInline(env={"FEATURE_FLAG": "on"}),
+            ),
+        ),
+        workspace="default",
+        entity_client=AsyncMock(),
+        async_sdk=_sdk_with_files(),
+        is_local=False,
+    )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    assert step_config.agent.config["environment"]["env"]["FEATURE_FLAG"] == "on"
+
+
+def test_agent_inline_matches_the_agent_entity_shape() -> None:
+    """AgentInline is the Agent entity's fields without identity, so Agent inherits it."""
+    assert issubclass(Agent, AgentInline)
+    for field, info in AgentInline.model_fields.items():
+        entity_field = Agent.model_fields[field]
+        assert entity_field.is_required() == info.is_required(), field
+        assert entity_field.default == info.default, field
+
+
+def test_inline_agent_rejects_a_non_fabric_config_format_at_request_time() -> None:
+    """The narrowing lives on the job, not on the shared AgentInline model."""
+    with pytest.raises(ValueError, match="only support 'nemo-agents-spec-v1'"):
+        ExecuteAgentJobConfig(agent=AgentInline(config={"workflow": {}}), input="hello")
+
+
+def test_inline_agent_rejects_an_empty_config() -> None:
+    with pytest.raises(ValueError, match="require a non-empty config"):
+        ExecuteAgentJobConfig(agent=AgentInline(config={}, config_format="nemo-agents-spec-v1"), input="hello")
+
+
+def test_agent_entity_may_still_hold_a_nat_workflow_config() -> None:
+    """AgentInline stays permissive so the entity keeps its legacy default."""
+    entity = Agent(name="legacy", workspace="default", config={"workflow": {}})
+
+    assert entity.config_format == "nat-workflow-v1"

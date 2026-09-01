@@ -279,6 +279,37 @@ NAT_WORKFLOW_CONFIG_FORMAT = "nat-workflow-v1"
 NEMO_AGENTS_SPEC_CONFIG_FORMAT = "nemo-agents-spec-v1"
 """Canonical format tag for the Platform-owned agent.yaml spec format."""
 
+
+class AgentInline(BaseModel):
+    """Inline Agent - an agent definition without entity identity.
+
+    The shared shape behind the :class:`Agent` entity: the entity embeds these
+    fields and adds name/workspace, and a field that accepts an agent can take
+    either a ``"workspace/name"`` ref string or this model. Lets a caller
+    execute an agent it composes at request time — models chosen per request,
+    settings scoped to one run — without first persisting an Agent.
+
+    Deliberately as permissive as the entity: consumers impose their own
+    requirements rather than this model narrowing them for everyone. The
+    ``agents.execute`` job, for example, accepts only ``nemo-agents-spec-v1``
+    and rejects a config that is not a valid agent spec.
+    """
+
+    description: str = Field(default="", description="Human-readable description of the agent.")
+    config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Agent config dict interpreted according to config_format.",
+    )
+    config_format: str = Field(
+        default=NAT_WORKFLOW_CONFIG_FORMAT,
+        description=(
+            "platform-internal schema version tag for the agent config dict. "
+            "`nat-workflow-v1` is the default legacy NAT workflow format; "
+            "`nemo-agents-spec-v1` identifies the Platform-owned agent.yaml spec format."
+        ),
+    )
+
+
 # Container deployments deliver the Ethos fileset through a ConfigMap (k8s) or a
 # single env var (docker), both of which cap out around 1MiB. Bound the tree at
 # both ends of the pipe so an agent root pointed at a whole checkout fails at
@@ -349,7 +380,7 @@ class AgentEnvironment(NemoEntity, AgentEnvironmentInline, entity_type="agent_en
 
 # TODO: first-class environment, sandbox, and harness specs are planned for the
 # Agent entity. Add those specs to this object once the contract is finalized.
-class Agent(NemoEntity, entity_type="agent"):
+class Agent(NemoEntity, AgentInline, entity_type="agent"):
     """An agent definition — stores agent config and metadata.
 
     Entity type: ``agent``
@@ -360,20 +391,6 @@ class Agent(NemoEntity, entity_type="agent"):
     are **not** stored on the entity because the paths are fully derivable
     from ``(workspace, name)``.
     """
-
-    description: str = Field(default="", description="Human-readable description of the agent.")
-    config: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Agent config dict interpreted according to config_format.",
-    )
-    config_format: str = Field(
-        default=NAT_WORKFLOW_CONFIG_FORMAT,
-        description=(
-            "platform-internal schema version tag for the agent config dict. "
-            "`nat-workflow-v1` is the default legacy NAT workflow format; "
-            "`nemo-agents-spec-v1` identifies the Platform-owned agent.yaml spec format."
-        ),
-    )
 
 
 class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
