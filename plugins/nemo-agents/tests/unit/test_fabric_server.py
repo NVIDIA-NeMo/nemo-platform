@@ -140,6 +140,38 @@ def test_shutdown_removes_a_staged_agent_root(
         mounted.chmod(0o755)
 
 
+def test_failed_startup_removes_a_staged_agent_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mounted = tmp_path / "mounted"
+    mounted.mkdir()
+    config_path = _write_agent_config(mounted)
+    mounted.chmod(0o555)
+    staged: list[Path] = []
+    real_resolve = server.resolve_runtime_base_dir
+
+    def record(path: Path) -> Any:
+        base_dir = real_resolve(path)
+        staged.append(base_dir.path)
+        return base_dir
+
+    async def fail(config: AgentConfig, *, base_dir: Path) -> object:
+        raise AgentConfigLoadError("invalid agent")
+
+    monkeypatch.setattr(server, "resolve_runtime_base_dir", record)
+    monkeypatch.setattr(server, "_validate_agent_config", fail)
+    app = create_fabric_serving_app(config_path)
+    try:
+        with pytest.raises(AgentConfigLoadError), TestClient(app):
+            pass
+
+        assert len(staged) == 1
+        assert not staged[0].exists()
+    finally:
+        mounted.chmod(0o755)
+
+
 def test_startup_loads_and_validates_agent_config(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],

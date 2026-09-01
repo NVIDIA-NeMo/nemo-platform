@@ -249,41 +249,43 @@ def create_fabric_serving_app(
         agent_config = load_agent_config(config_path)
         runtime_base_dir = await asyncio.to_thread(resolve_runtime_base_dir, config_path)
         base_dir = runtime_base_dir.path
-        validation_result = await _validate_agent_config(agent_config, base_dir=base_dir)
-        app.state.agent_config = agent_config
-        app.state.base_dir = base_dir
-        app.state.validation_result = validation_result
-        session_registry = FabricSessionRegistry()
-        app.state.session_registry = session_registry
-        session_manager = FabricSessionManager(
-            agent_config,
-            base_dir=base_dir,
-            session_registry=session_registry,
-            max_concurrent_invocations=settings.max_concurrent_invocations,
-        )
-        app.state.session_manager = session_manager
-        cleanup_shutdown = asyncio.Event()
-        cleanup_task = asyncio.create_task(
-            _run_idle_session_cleanup(
-                session_manager,
-                idle_timeout_seconds=settings.idle_session_timeout_seconds,
-                cleanup_interval_seconds=settings.session_cleanup_interval_seconds,
-                shutdown_event=cleanup_shutdown,
-            )
-        )
-        logger.info("Validated Fabric-backed agent config at %s", config_path)
+        # Startup can still fail past this point, and a staged root must not outlive
+        # the process that made it even when the runtime never comes up.
         try:
-            yield
-        finally:
-            cleanup_shutdown.set()
+            validation_result = await _validate_agent_config(agent_config, base_dir=base_dir)
+            app.state.agent_config = agent_config
+            app.state.base_dir = base_dir
+            app.state.validation_result = validation_result
+            session_registry = FabricSessionRegistry()
+            app.state.session_registry = session_registry
+            session_manager = FabricSessionManager(
+                agent_config,
+                base_dir=base_dir,
+                session_registry=session_registry,
+                max_concurrent_invocations=settings.max_concurrent_invocations,
+            )
+            app.state.session_manager = session_manager
+            cleanup_shutdown = asyncio.Event()
+            cleanup_task = asyncio.create_task(
+                _run_idle_session_cleanup(
+                    session_manager,
+                    idle_timeout_seconds=settings.idle_session_timeout_seconds,
+                    cleanup_interval_seconds=settings.session_cleanup_interval_seconds,
+                    shutdown_event=cleanup_shutdown,
+                )
+            )
+            logger.info("Validated Fabric-backed agent config at %s", config_path)
             try:
-                await cleanup_task
+                yield
             finally:
+                cleanup_shutdown.set()
                 try:
+                    await cleanup_task
+                finally:
                     # A staged root is only safe to remove once no runtime can still write to it.
                     await session_manager.close_all_sessions()
-                finally:
-                    await asyncio.to_thread(release_runtime_base_dir, runtime_base_dir)
+        finally:
+            await asyncio.to_thread(release_runtime_base_dir, runtime_base_dir)
 
     app = FastAPI(title="NeMo Agents Fabric Server", lifespan=lifespan)
     runtime_instance_id = str(uuid.uuid4())
