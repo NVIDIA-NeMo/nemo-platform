@@ -28,6 +28,7 @@ group at startup. Numeric optimize is likewise auto-injected from
 - ``delete``       — delete an agent
 - ``deploy``       — create a deployment for an agent (waits for ``running`` by default)
 - ``chat``         — open an interactive new or existing deployed-agent session
+- ``sessions``     — sub-group: list / get / close persisted sessions
 - ``undeploy``     — stop and remove a deployment
 - ``logs``         — print or tail the local deployment log file
 - ``deployments``  — sub-group: list / get / delete deployments
@@ -48,6 +49,7 @@ from datetime import datetime
 from pathlib import Path
 from pkgutil import resolve_name
 from typing import Any, ClassVar, Literal, Optional, cast
+from urllib.parse import urlencode
 
 import click
 import httpx
@@ -107,6 +109,14 @@ _DEPLOYMENT_LIST_COLUMNS = [
     Column("workspace"),
     Column("status"),
     Column("endpoint"),
+    Column("created_at"),
+]
+_SESSION_LIST_COLUMNS = [
+    Column("name"),
+    Column("status"),
+    Column("deployment_id"),
+    Column("last_active_at"),
+    Column("expires_at"),
     Column("created_at"),
 ]
 _ENVIRONMENT_LIST_COLUMNS = [
@@ -932,6 +942,93 @@ def _register_platform_commands(app: typer.Typer) -> None:
             input=input,
             timeout=timeout,
         )
+
+    sessions_app = typer.Typer(
+        name="sessions",
+        help="Discover and manage persisted deployed-agent sessions.",
+        no_args_is_help=True,
+    )
+    app.add_typer(sessions_app, rich_help_panel="Deployed agent interaction (requires running cluster)")
+
+    @sessions_app.command(name="list")
+    def sessions_list(
+        ctx: typer.Context,
+        agent_deployment: Optional[str] = typer.Option(
+            None,
+            "--agent-deployment",
+            "-d",
+            help="Limit results to sessions bound to this deployment.",
+        ),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format for the list of sessions.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values in table/markdown/csv output.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List persisted sessions, newest first."""
+        base_url = _resolve_base_url(base_url)
+        deployment_id = None
+        if agent_deployment is not None:
+            if not agent_deployment.strip():
+                raise click.UsageError("--agent-deployment must not be empty.")
+            deployment_id = _get_deployment_id(
+                base_url=base_url,
+                workspace=workspace,
+                deployment_name=agent_deployment,
+            )
+
+        resp = _api_request(
+            "GET",
+            base_url,
+            _sessions_list_path(workspace=workspace, deployment_id=deployment_id),
+        )
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_SESSION_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @sessions_app.command(name="get")
+    def sessions_get(
+        name: str = typer.Argument(..., help="Session name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get a persisted session by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/sessions/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @sessions_app.command(name="close")
+    def sessions_close(
+        name: str = typer.Argument(..., help="Session name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Close a session and release its deployed runtime."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(
+                f"Close session '{name}'? It cannot be resumed after it is closed.",
+                abort=True,
+            )
+        _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/sessions/{name}/close")
+        typer.echo(f"Session '{name}' closed.")
 
     @app.command(rich_help_panel="Agent Resources (requires running cluster)")
     def create(
@@ -2060,6 +2157,27 @@ def _platform_session_chat(
 # ---------------------------------------------------------------------------
 # Platform API helpers
 # ---------------------------------------------------------------------------
+
+
+def _sessions_list_path(*, workspace: str, deployment_id: str | None = None) -> str:
+    """Build the session-list path with the API's deep-object deployment filter."""
+    path = f"/apis/agents/v2/workspaces/{workspace}/sessions"
+    if deployment_id is None:
+        return path
+    return f"{path}?{urlencode({'filter[deployment_id]': deployment_id})}"
+
+
+def _get_deployment_id(*, base_url: str, workspace: str, deployment_name: str) -> str:
+    """Resolve a deployment's entity ID for APIs that filter by immutable ID."""
+    deployment = _api_request(
+        "GET",
+        base_url,
+        f"/apis/agents/v2/workspaces/{workspace}/deployments/{deployment_name}",
+    )
+    deployment_id = deployment.get("id") if isinstance(deployment, dict) else None
+    if not isinstance(deployment_id, str) or not deployment_id:
+        raise click.ClickException(f"Deployment '{deployment_name}' response did not include a valid ID.")
+    return deployment_id
 
 
 def _unwrap_list(resp: Any) -> list[dict[str, Any]]:
