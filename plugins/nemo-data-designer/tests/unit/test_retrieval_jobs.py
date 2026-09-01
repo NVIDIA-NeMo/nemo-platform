@@ -104,7 +104,7 @@ async def test_retrieval_generate_compile_ignores_subprocess_profiles() -> None:
 @pytest.mark.asyncio
 async def test_retrieval_prepare_compile_uses_one_container_profile() -> None:
     spec = RetrievalPrepareStepConfig(
-        job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", skip_mining=False),
+        job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", enable_mining=True),
         phase="convert",
         model_fileset="default/retrieval-model",
         model_trust_remote_code=True,
@@ -178,7 +178,7 @@ def test_retrieval_generate_run_writes_artifacts(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_retrieval_prepare_convert_only_is_cpu() -> None:
     spec = RetrievalPrepareStepConfig(
-        job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", skip_mining=True),
+        job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", enable_mining=False),
         phase="convert",
     )
     compiled = await RetrievalPrepareJob.compile(
@@ -206,7 +206,7 @@ async def test_retrieval_prepare_resolves_model_fileset_for_mining() -> None:
         new=AsyncMock(return_value=model),
     ) as fetch:
         step = await RetrievalPrepareJob.to_spec(
-            RetrievalPrepareJobConfig(sdg_input="default/stage0", skip_mining=False),
+            RetrievalPrepareJobConfig(sdg_input="default/stage0", enable_mining=True),
             workspace="default",
             entity_client=Mock(),
             async_sdk=AsyncMock(),
@@ -222,7 +222,7 @@ async def test_retrieval_prepare_resolves_model_fileset_for_mining() -> None:
 @pytest.mark.asyncio
 async def test_retrieval_prepare_compile_adds_gpu_mining_step() -> None:
     spec = RetrievalPrepareStepConfig(
-        job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", skip_mining=False),
+        job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", enable_mining=True),
         phase="convert",
         model_fileset="default/retrieval-model",
         model_trust_remote_code=True,
@@ -267,7 +267,7 @@ def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
         json.dumps({"corpus": {}, "data": [{"question": "q", "pos_doc": ["p"], "neg_doc": []}]}), encoding="utf-8"
     )
     spec = RetrievalPrepareStepConfig(
-        job_config=RetrievalPrepareJobConfig(sdg_input=str(sdg), skip_mining=True),
+        job_config=RetrievalPrepareJobConfig(sdg_input=str(sdg), enable_mining=False),
         phase="convert",
     )
     conversion = SimpleNamespace(train_file=train_file)
@@ -297,7 +297,7 @@ def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
 def test_retrieval_prepare_rejects_mine_phase(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     spec = RetrievalPrepareStepConfig(
-        job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", skip_mining=False),
+        job_config=RetrievalPrepareJobConfig(sdg_input="default/stage0", enable_mining=True),
         phase="mine",
     )
     with pytest.raises(RuntimeError, match="retrieval_mine"):
@@ -311,7 +311,7 @@ async def test_retrieval_run_compile_chains_generate_then_prepare() -> None:
     dd_ctx.get_model_providers = AsyncMock(return_value=providers)
     spec = RetrievalRunJobConfig(
         generate=_generate_config(),
-        prepare=RetrievalPrepareJobConfig(skip_mining=True),
+        prepare=RetrievalPrepareJobConfig(enable_mining=False),
     )
     with patch(
         "nemo_data_designer_plugin.jobs.retrieval_generate.create_data_designer_context",

@@ -266,8 +266,8 @@ func runExec(args []string, stdinReader io.Reader) (int, error) {
 		scanner := bufio.NewScanner(reader)
 		for scanner.Scan() {
 			line := scanner.Text()
-			fmt.Println(line)                           // Print to console without any extra formatting, so it can be captured by stdout logging collectors
-			slog.Log(context.Background(), level, line) // Submit structured log to OTEL pipeline within the platform
+			fmt.Println(line)                                           // Print to console without any extra formatting, so it can be captured by stdout logging collectors
+			slog.Log(context.Background(), logLevel(line, level), line) // Submit structured log to OTEL pipeline within the platform
 		}
 	}
 
@@ -308,4 +308,23 @@ func runExec(args []string, stdinReader io.Reader) (int, error) {
 
 	logger.Printf("Process completed successfully.")
 	return exitCode, nil
+}
+
+// logLevel preserves an application's explicit textual level even when the
+// application writes all logs to stderr. Many Python logging configurations do
+// that, so treating every stderr line as an error mislabels INFO and WARNING
+// records in OpenTelemetry. Unprefixed stderr remains an error.
+func logLevel(line string, fallback slog.Level) slog.Level {
+	switch {
+	case strings.Contains(line, "[DEBUG]"):
+		return slog.LevelDebug
+	case strings.Contains(line, "[INFO]"):
+		return slog.LevelInfo
+	case strings.Contains(line, "[WARNING]"), strings.Contains(line, "[WARN]"):
+		return slog.LevelWarn
+	case strings.Contains(line, "[ERROR]"), strings.Contains(line, "[CRITICAL]"):
+		return slog.LevelError
+	default:
+		return fallback
+	}
 }

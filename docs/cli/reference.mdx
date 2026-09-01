@@ -7929,7 +7929,7 @@ nemo data-designer retrieval prepare [OPTIONS]
 
 * `--sdg-input`: Stage 0 fileset, generation_result.json, or hf:// URI.
 * `--train-input-file`
-* `--skip-mining, --mine`: Skip GPU hard-negative mining (default).
+* `--mine, --no-mine`: Run GPU hard-negative mining after conversion. Conversion-only is the default.
 * `--workspace, -w`: [default: default]
 
 **Help:**
@@ -8187,7 +8187,7 @@ nemo data-designer retrieval-prepare [OPTIONS]
 * `--seed <INTEGER>`: Override `seed` in the spec.
 * `--max-pos-docs <INTEGER>`: Override `max_pos_docs` in the spec.
 * `--use-group-id-in-eval`: Override `use_group_id_in_eval` in the spec.
-* `--skip-mining`: Override `skip_mining` in the spec.
+* `--enable-mining`: Override `enable_mining` in the spec.
 * `--base-model`: Override `base_model` in the spec.
 * `--trust-remote-code`: Override `trust_remote_code` in the spec.
 * `--hard-negatives-to-mine <INTEGER>`: Override `hard_negatives_to_mine` in the spec.
@@ -8261,7 +8261,7 @@ nemo data-designer retrieval-run [OPTIONS]
 * `--prepare.seed <INTEGER>`: Override `prepare.seed` in the spec.
 * `--prepare.max-pos-docs <INTEGER>`: Override `prepare.max_pos_docs` in the spec.
 * `--prepare.use-group-id-in-eval`: Override `prepare.use_group_id_in_eval` in the spec.
-* `--prepare.skip-mining`: Override `prepare.skip_mining` in the spec.
+* `--prepare.enable-mining`: Override `prepare.enable_mining` in the spec.
 * `--prepare.base-model`: Override `prepare.base_model` in the spec.
 * `--prepare.trust-remote-code`: Override `prepare.trust_remote_code` in the spec.
 * `--prepare.hard-negatives-to-mine <INTEGER>`: Override `prepare.hard_negatives_to_mine` in the spec.

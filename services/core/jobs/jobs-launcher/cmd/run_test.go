@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,30 @@ import (
 
 	"github.com/NVIDIA-NeMo/nemo-platform/services/core/jobs/jobs-launcher/nmpclient"
 )
+
+func TestLogLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     string
+		fallback slog.Level
+		want     slog.Level
+	}{
+		{name: "info on stderr", line: "[19:40:10] [INFO] Progress", fallback: slog.LevelError, want: slog.LevelInfo},
+		{name: "warning on stderr", line: "[WARNING] skipped row", fallback: slog.LevelError, want: slog.LevelWarn},
+		{name: "error on stdout", line: "[ERROR] request failed", fallback: slog.LevelInfo, want: slog.LevelError},
+		{name: "critical on stderr", line: "[CRITICAL] process failed", fallback: slog.LevelError, want: slog.LevelError},
+		{name: "unprefixed stderr", line: "Traceback (most recent call last):", fallback: slog.LevelError, want: slog.LevelError},
+		{name: "unprefixed stdout", line: "plain output", fallback: slog.LevelInfo, want: slog.LevelInfo},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := logLevel(test.line, test.fallback); got != test.want {
+				t.Fatalf("logLevel(%q, %s) = %s, want %s", test.line, test.fallback, got, test.want)
+			}
+		})
+	}
+}
 
 func TestRunCommand(t *testing.T) {
 	cases := []struct {

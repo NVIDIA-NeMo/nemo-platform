@@ -131,7 +131,7 @@ def test_prepare_job_convert_phase_runs_unmocked(stage0_jsonl: Path, tmp_path: P
     ctx.results.save.return_value = SimpleNamespace(model_dump=lambda: {"name": "artifacts"})
 
     step = RetrievalPrepareStepConfig(
-        job_config=RetrievalPrepareJobConfig(sdg_input=str(stage0_jsonl.parent), skip_mining=True),
+        job_config=RetrievalPrepareJobConfig(sdg_input=str(stage0_jsonl.parent), enable_mining=False),
         phase="convert",
     )
     result = RetrievalPrepareJob().run(step.model_dump(mode="json"), ctx=ctx, sdk=Mock())

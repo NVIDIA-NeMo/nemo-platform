@@ -52,14 +52,18 @@ def retrieval_prepare(
         None, "--sdg-input", help="Stage 0 fileset, generation_result.json, or hf:// URI."
     ),
     train_input_file: str | None = typer.Option(None, "--train-input-file"),
-    skip_mining: bool = typer.Option(True, "--skip-mining/--mine", help="Skip GPU hard-negative mining (default)."),
+    enable_mining: bool = typer.Option(
+        False,
+        "--mine/--no-mine",
+        help="Run GPU hard-negative mining after conversion. Conversion-only is the default.",
+    ),
     workspace: str = typer.Option("default", "--workspace", "-w"),
 ) -> None:
     """Build a retrieval-prepare spec. Auto CLI: ``nemo data-designer retrieval-prepare``."""
     spec = RetrievalPrepareJobConfig(
         sdg_input=sdg_input,
         train_input_file=train_input_file,
-        skip_mining=skip_mining,
+        enable_mining=enable_mining,
     )
     typer.echo("Submit with:")
     typer.echo(

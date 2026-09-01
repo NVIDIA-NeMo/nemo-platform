@@ -4416,10 +4416,12 @@ components:
           - cluster
           title: Split Strategy
           default: random
-        skip_mining:
+        enable_mining:
           type: boolean
-          title: Skip Mining
-          default: true
+          title: Enable Mining
+          description: When true, run GPU hard-negative mining after conversion.
+            Conversion-only is the default.
+          default: false
         model:
           type: string
           title: Model

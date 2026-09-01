@@ -39,18 +39,17 @@ nemo data-designer retrieval-preview --spec '{"generate":{"corpus":"default/my-d
 
 ## Prepare (Stage 1)
 
-Conversion (CPU) produces `eval_beir/` and training JSON. GPU mining is off by default
-(`skip_mining: true`). Skip SDG by pointing at `nvidia/Retrieval-Synthetic-NVDocs-v1`
+Conversion (CPU) produces `eval_beir/` and training JSON. GPU mining is off by default.
+Skip SDG by pointing at `nvidia/Retrieval-Synthetic-NVDocs-v1`
 or an existing `generation_result.json`.
 
 ```bash
 nemo data-designer retrieval-prepare --spec '{
-  "sdg_input": "default/stage0-out",
-  "skip_mining": true
+  "sdg_input": "default/stage0-out"
 }'
 ```
 
-Enable mining (GPU, ~40GB) with `"skip_mining": false`. The `model` field identifies
+Enable mining (GPU, ~40GB) with `"enable_mining": true`. The `model` field identifies
 a platform model entity whose fileset is downloaded by `nmp-customizer-tasks` into
 the shared job storage. `nmp-automodel-training` then loads the encoder and tokenizer
 from that local directory with Hugging Face networking disabled. Conversion-only
@@ -66,7 +65,7 @@ local platform uses `gpu`; Kubernetes uses `default`.
 ```bash
 nemo data-designer retrieval-run --spec '{
   "generate": {"corpus": "default/my-docs", "provider": "default/nvidia-build", "profile": "embed"},
-  "prepare": {"skip_mining": true}
+  "prepare": {}
 }'
 ```
 

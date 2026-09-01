@@ -112,7 +112,10 @@ class RetrievalPrepareJobConfig(BaseModel):
     max_pos_docs: int = Field(default=5, ge=1)
     use_group_id_in_eval: bool = False
     split_strategy: Literal["random", "dedupped", "cluster"] = "random"
-    skip_mining: bool = True
+    enable_mining: bool = Field(
+        default=False,
+        description="When true, run GPU hard-negative mining after conversion. Conversion-only is the default.",
+    )
     model: str = Field(
         default="nvidia/Nemotron-3-Embed-1B-BF16",
         description="Platform model entity whose fileset contains the mining encoder and tokenizer.",

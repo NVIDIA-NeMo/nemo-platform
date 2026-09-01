@@ -49,7 +49,7 @@ class RetrievalPrepareJob(NemoJob):
             raise ValueError("One of sdg_input or train_input_file is required.")
         if job_config.sdg_input and job_config.train_input_file:
             raise ValueError("sdg_input and train_input_file are mutually exclusive.")
-        if job_config.skip_mining:
+        if not job_config.enable_mining:
             return RetrievalPrepareStepConfig(job_config=job_config, phase="convert")
 
         model = await fetch_model_entity(job_config.model, workspace, cast(AsyncNeMoPlatform, async_sdk))
@@ -87,7 +87,7 @@ class RetrievalPrepareJob(NemoJob):
                 async_sdk=async_sdk,
             )
         ]
-        if not spec.job_config.skip_mining:
+        if spec.job_config.enable_mining:
             if not spec.model_fileset:
                 raise ValueError("Retrieval mining requires a resolved model fileset")
             mine_spec = spec.model_copy(update={"phase": "mine"})
@@ -155,7 +155,7 @@ def _run_convert(job: RetrievalPrepareJobConfig, output_dir: Path, ctx: JobConte
 
     train_file = _stage_train_file(Path(train_file), output_dir)
 
-    if job.skip_mining:
+    if not job.enable_mining:
         inline_path = output_dir / "training.jsonl"
         wrapped_to_inline_jsonl(train_file, inline_path)
         artifacts = ctx.results.save(name="artifacts", local_path=output_dir)
