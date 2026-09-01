@@ -2166,6 +2166,10 @@ def _platform_session_chat(
             deployment_name=agent_deployment,
             session_name=session_name,
         )
+        typer.echo(
+            f"Session '{created_session.name}' created. Resume with:\n"
+            f"  nemo agents chat --session {created_session.name} --workspace {workspace} --base-url {base_url}"
+        )
         _run_resolved_session_chat(
             base_url=base_url,
             workspace=workspace,
@@ -2183,6 +2187,7 @@ def _platform_session_chat(
             workspace=workspace,
             session_name=session,
         )
+        typer.echo("Resuming runtime context; prior messages are not redisplayed.")
         _run_resolved_session_chat(
             base_url=base_url,
             workspace=workspace,
@@ -2213,6 +2218,13 @@ def _run_resolved_session_chat(
         f"/deployments/{deployment.name}/-/v1/chat/completions"
     )
     headers = {**_resolve_context_headers(), SESSION_ID_HEADER: session_id}
+    display_info = {
+        "Deployment": deployment.name,
+        "Session": session.name,
+        "Status": session.status.value,
+    }
+    if session.expires_at is not None:
+        display_info["Expires"] = session.expires_at.isoformat()
 
     try:
         with httpx.Client(timeout=timeout) as client:
@@ -2235,8 +2247,9 @@ def _run_resolved_session_chat(
 
             run_chat_tui(
                 send_turn=send_turn,
-                display_info={"Deployment": deployment.name, "Session": session.name},
+                display_info=display_info,
                 initial_message=input,
+                exit_action="detach",
             )
     except httpx.TimeoutException as exc:
         typer.echo(

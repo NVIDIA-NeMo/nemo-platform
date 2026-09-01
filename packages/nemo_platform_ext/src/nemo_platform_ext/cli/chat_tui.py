@@ -10,7 +10,7 @@ import logging
 import re
 import sys
 from types import TracebackType
-from typing import Any, Callable, Iterator, Protocol
+from typing import Any, Callable, Iterator, Literal, Protocol
 
 import click
 from nemo_platform._streaming import SSEDecoder
@@ -123,13 +123,14 @@ def run_chat_tui(
     system_message: str | None = None,
     initial_message: str | None = None,
     record_assistant_message: RecordAssistantMessage | None = None,
+    exit_action: Literal["exit", "detach"] = "exit",
 ) -> None:
     """Run the shared interactive chat UI against a caller-provided transport."""
     root_logger = logging.getLogger()
     initial_level = root_logger.level
     try:
         root_logger.setLevel(logging.CRITICAL)
-        _print_welcome_header(display_info, temperature, max_tokens, system_message)
+        _print_welcome_header(display_info, temperature, max_tokens, system_message, exit_action)
 
         last_thinking_content = ""
         thinking_displayed = False
@@ -155,6 +156,7 @@ def run_chat_tui(
                         user_input,
                         last_thinking_content,
                         thinking_displayed,
+                        exit_action,
                     )
                     if new_thinking_state is not None:
                         thinking_displayed = new_thinking_state
@@ -169,7 +171,7 @@ def run_chat_tui(
                         record_assistant_message(assistant_message)
 
         except (KeyboardInterrupt, EOFError):
-            _exit_gracefully()
+            _exit_gracefully(exit_action)
 
     finally:
         root_logger.setLevel(initial_level)
@@ -307,13 +309,19 @@ def _clear_prompt_line() -> None:
     console.file.flush()
 
 
-def _exit_gracefully() -> None:
+def _exit_gracefully(exit_action: Literal["exit", "detach"]) -> None:
     console.print("\n")
-    console.print(Panel.fit("[bold]Chat session ended[/bold]", border_style="dim", padding=(0, 2)))
+    message = "Session detached" if exit_action == "detach" else "Chat session ended"
+    console.print(Panel.fit(f"[bold]{message}[/bold]", border_style="dim", padding=(0, 2)))
     raise click.exceptions.Exit(0)
 
 
-def _handle_special_command(command: str, last_thinking: str, thinking_displayed: bool) -> bool | None:
+def _handle_special_command(
+    command: str,
+    last_thinking: str,
+    thinking_displayed: bool,
+    exit_action: Literal["exit", "detach"],
+) -> bool | None:
     if command in {"/thinking", "/t"}:
         if not last_thinking:
             console.print(Panel.fit("No reasoning content in the last response", border_style="yellow", padding=(0, 1)))
@@ -334,11 +342,12 @@ def _handle_special_command(command: str, last_thinking: str, thinking_displayed
         return True
 
     if command in {"/help", "/h"}:
+        exit_help = "Detach from the session" if exit_action == "detach" else "Exit the chat"
         console.print(
             Panel(
                 "[cyan]/thinking[/cyan] - Show/hide model reasoning from last response\n"
                 "[cyan]/help[/cyan] - Show this help message\n"
-                "[cyan]Ctrl+C[/cyan] - Exit the chat",
+                f"[cyan]Ctrl+C[/cyan] - {exit_help}",
                 title="[bold]Available Commands[/bold]",
                 border_style="blue",
                 padding=(0, 1),
@@ -361,6 +370,7 @@ def _print_welcome_header(
     temperature: float | None,
     max_tokens: int | None,
     system_message: str | None,
+    exit_action: Literal["exit", "detach"],
 ) -> None:
     config_lines = [f"[cyan]{key}:[/cyan] {value}" for key, value in display_info.items()]
 
@@ -374,7 +384,7 @@ def _print_welcome_header(
     welcome_panel = Panel(
         "\n".join(config_lines),
         title="[bold green]🤖 NeMo Platform Chat Session[/bold green]",
-        subtitle="Press Ctrl+C to exit",
+        subtitle=f"Press Ctrl+C to {exit_action}",
         border_style="green",
         padding=(1, 2),
     )

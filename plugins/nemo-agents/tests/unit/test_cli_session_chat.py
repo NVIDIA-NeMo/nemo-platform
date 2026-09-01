@@ -223,6 +223,10 @@ def test_session_chat_creates_named_session_and_passes_values_to_transport() -> 
         )
 
     assert result.exit_code == 0, result.stderr
+    assert (
+        "Session 'debug-auth' created. Resume with:\n"
+        "  nemo agents chat --session debug-auth --workspace default --base-url http://localhost:8080" in result.stdout
+    )
     assert api_request.call_args_list == [
         call(
             "GET",
@@ -291,6 +295,7 @@ def test_session_chat_resumes_active_session_and_passes_values_to_transport() ->
         )
 
     assert result.exit_code == 0, result.stderr
+    assert "Resuming runtime context; prior messages are not redisplayed." in result.stdout
     assert api_request.call_args_list == [
         call(
             "GET",
@@ -425,6 +430,7 @@ def test_session_chat_rejects_invalid_session_lookup_response() -> None:
 
 def test_resolved_session_chat_streams_each_current_turn_with_session_and_auth_headers() -> None:
     requests: list[httpx.Request] = []
+    expires_at = datetime(2026, 9, 1, 18, 30, tzinfo=UTC)
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
@@ -440,8 +446,14 @@ def test_resolved_session_chat_streams_each_current_turn_with_session_and_auth_h
     transport = httpx.MockTransport(handler)
 
     def exercise_tui(**kwargs: Any) -> None:
-        assert kwargs["display_info"] == {"Deployment": "fabric-deployment", "Session": "debug-auth"}
+        assert kwargs["display_info"] == {
+            "Deployment": "fabric-deployment",
+            "Session": "debug-auth",
+            "Status": "active",
+            "Expires": expires_at.isoformat(),
+        }
         assert kwargs["initial_message"] == "first turn"
+        assert kwargs["exit_action"] == "detach"
         for user_input in (kwargs["initial_message"], "second turn"):
             response_text, usage = collect_stream_response(kwargs["send_turn"](user_input))
             assert response_text == f"reply:{user_input}"
@@ -459,7 +471,7 @@ def test_resolved_session_chat_streams_each_current_turn_with_session_and_auth_h
             base_url="http://platform.test/",
             workspace="team-a",
             deployment=AgentDeployment.model_validate(_deployment_response()),
-            session=AgentSession.model_validate(_session_response()),
+            session=AgentSession.model_validate(_session_response(expires_at=expires_at)),
             session_id="session-id",
             input="first turn",
             timeout=42,
@@ -473,6 +485,30 @@ def test_resolved_session_chat_streams_each_current_turn_with_session_and_auth_h
     ]
     assert all(request.headers[SESSION_ID_HEADER] == "session-id" for request in requests)
     assert all(request.headers["Authorization"] == "Bearer token" for request in requests)
+
+
+@pytest.mark.parametrize("exception", [KeyboardInterrupt, EOFError])
+def test_session_chat_interrupt_detaches_without_closing(exception: type[BaseException]) -> None:
+    with (
+        patch("nemo_agents_plugin.cli._is_interactive_session_chat", return_value=True),
+        patch(
+            "nemo_agents_plugin.cli._api_request",
+            side_effect=[_session_response(), _deployment_page(_deployment_response())],
+        ) as api_request,
+        patch("nemo_platform_ext.cli.chat_tui.Prompt.ask", side_effect=exception),
+    ):
+        result = runner.invoke(AgentsCLI().get_cli(), ["chat", "--session", "debug-auth"])
+
+    assert result.exit_code == 0, result.stderr
+    assert "Session detached" in result.stdout
+    assert api_request.call_args_list == [
+        call("GET", "http://localhost:8080", "/apis/agents/v2/workspaces/default/sessions/debug-auth"),
+        call(
+            "GET",
+            "http://localhost:8080",
+            "/apis/agents/v2/workspaces/default/deployments?page=1&page_size=100",
+        ),
+    ]
 
 
 def test_session_chat_rejects_non_fabric_deployment_before_session_creation() -> None:
