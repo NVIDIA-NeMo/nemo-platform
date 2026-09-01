@@ -47,7 +47,7 @@ nemo-fabric==0.2.0
 nemo-fabric-adapters-deepagents==0.2.0
 nemo-fabric-adapters-hermes==0.2.0
 nemoguardrails==0.23.0
-nemo-relay==0.7.2
+nemo-relay==0.7.3
 nemo-safe-synthesizer==0.1.7
 ngcsdk==4.34.10
 numpy==2.5.2
