@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Forward merge alert
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  notify:
+    name: Notify failed forward merge
+    if: >-
+      github.event.issue.pull_request != null &&
+      github.event.comment.user.login == 'rapids-bot[bot]' &&
+      startsWith(github.event.issue.title, 'Forward-merge ') &&
+      startsWith(github.event.comment.body, '**FAILURE** - Unable to forward-merge')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack alert
+        env:
+          COMMENT_URL: ${{ github.event.comment.html_url }}
+          PR_TITLE: ${{ github.event.issue.title }}
+          PR_URL: ${{ github.event.issue.html_url }}
+          REPOSITORY: ${{ github.repository }}
+          SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
+        run: |
+          text="$(printf '%s\n' \
+            ':warning: *Forward merge needs attention*' \
+            "Repository: ${REPOSITORY}" \
+            "PR: <${PR_URL}|${PR_TITLE}>" \
+            '' \
+            'The bot could not merge automatically and will not retry. Manual recovery is required.' \
+            "<${COMMENT_URL}|View failure details>")"
+          payload="$(jq -n --arg text "${text}" '{text: $text}')"
+          curl --fail-with-body --retry 2 \
+            --header "Content-Type: application/json" \
+            --data "${payload}" \
+            "${SLACK_ALERTS_WEBHOOK}"
