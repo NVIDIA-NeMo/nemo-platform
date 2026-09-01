@@ -51,7 +51,6 @@ from pkgutil import resolve_name
 from typing import Any, ClassVar, Literal, Optional, cast
 from urllib.parse import urlencode
 
-import click
 import httpx
 import typer
 import yaml
@@ -67,6 +66,7 @@ from nemo_agents_plugin.cli_context import (
 from nemo_agents_plugin.cli_context import (
     resolve_context_headers as _resolve_context_headers,
 )
+from nemo_agents_plugin.deployment_routing import is_deployment_routable
 from nemo_agents_plugin.entities import (
     AGENT_SPEC_FILENAME,
     CONTAINER_DEPLOYMENT_MODES,
@@ -76,6 +76,8 @@ from nemo_agents_plugin.entities import (
     MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    AgentDeployment,
+    AgentSession,
     ethos_fileset_name,
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
@@ -91,11 +93,13 @@ from nemo_platform_plugin.cli_progress import request_progress
 from nemo_platform_plugin.discovery import AGENT_CLI_GROUP, discover_entry_points
 from nemo_platform_plugin.job import NemoJob
 from typer.main import get_command as _typer_get_command
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_WORKSPACE = "default"
 _LIST_OUTPUT_FORMAT = Literal["table", "json", "yaml", "csv", "markdown", "raw"]
+
 _AGENT_LIST_COLUMNS = [
     Column("name"),
     Column("workspace"),
@@ -929,9 +933,12 @@ def _register_platform_commands(app: typer.Typer) -> None:
             input=input,
         )
         if not _is_interactive_session_chat():
-            raise click.UsageError(
-                "Agent chat requires an interactive terminal. Use `nemo agents invoke` for one-shot or scripted input."
+            typer.echo(
+                "Error: Agent chat requires an interactive terminal. "
+                "Use `nemo agents invoke` for one-shot or scripted input.",
+                err=True,
             )
+            raise typer.Exit(code=2)
 
         _platform_session_chat(
             base_url=_resolve_base_url(base_url),
@@ -982,7 +989,8 @@ def _register_platform_commands(app: typer.Typer) -> None:
         deployment_id = None
         if agent_deployment is not None:
             if not agent_deployment.strip():
-                raise click.UsageError("--agent-deployment must not be empty.")
+                typer.echo("Error: --agent-deployment must not be empty.", err=True)
+                raise typer.Exit(code=2)
             deployment_id = _get_deployment_id(
                 base_url=base_url,
                 workspace=workspace,
@@ -2035,7 +2043,6 @@ def _local_fabric_invoke(config: dict[str, Any], inputs: list[Any], *, base_dir:
     from nemo_agents_plugin.fabric.invocation import invoke_agent_config_once
     from nemo_agents_plugin.fabric.runtime import FabricRuntimeExecutionError
     from nemo_agents_plugin.fabric.translator import FabricTranslationError
-    from pydantic import ValidationError
 
     try:
         agent_config = AgentConfig.model_validate(config)
@@ -2121,18 +2128,24 @@ def _validate_session_chat_options(
 ) -> None:
     """Validate the mutually exclusive new-session and resume selectors."""
     if agent_deployment is not None and not agent_deployment.strip():
-        raise click.UsageError("--agent-deployment must not be empty.")
+        typer.echo("Error: --agent-deployment must not be empty.", err=True)
+        raise typer.Exit(code=2)
     if session is not None and not session.strip():
-        raise click.UsageError("--session must not be empty.")
+        typer.echo("Error: --session must not be empty.", err=True)
+        raise typer.Exit(code=2)
     if session_name is not None and not session_name.strip():
-        raise click.UsageError("--session-name must not be empty.")
+        typer.echo("Error: --session-name must not be empty.", err=True)
+        raise typer.Exit(code=2)
     if input is not None and not input.strip():
-        raise click.UsageError("--input must not be empty.")
+        typer.echo("Error: --input must not be empty.", err=True)
+        raise typer.Exit(code=2)
 
     if (agent_deployment is None) == (session is None):
-        raise click.UsageError("Provide exactly one of --agent-deployment or --session.")
+        typer.echo("Error: Provide exactly one of --agent-deployment or --session.", err=True)
+        raise typer.Exit(code=2)
     if session_name is not None and agent_deployment is None:
-        raise click.UsageError("--session-name can only be used with --agent-deployment.")
+        typer.echo("Error: --session-name can only be used with --agent-deployment.", err=True)
+        raise typer.Exit(code=2)
 
 
 def _platform_session_chat(
@@ -2145,13 +2158,45 @@ def _platform_session_chat(
     input: str | None,
     timeout: float,
 ) -> None:
-    """Run deployed-agent session chat after command validation.
+    """Resolve a new or existing persisted session, then enter its chat transport."""
+    if agent_deployment is not None:
+        deployment, created_session, session_id = _create_session_for_deployment(
+            base_url=base_url,
+            workspace=workspace,
+            deployment_name=agent_deployment,
+            session_name=session_name,
+        )
+        _run_resolved_session_chat(
+            base_url=base_url,
+            workspace=workspace,
+            deployment=deployment,
+            session=created_session,
+            session_id=session_id,
+            input=input,
+            timeout=timeout,
+        )
+        return
 
-    Session creation, resumption, and gateway transport are implemented by
-    the subsequent session-chat steps; this boundary keeps their behavior
-    separate from the public CLI contract.
-    """
-    raise click.ClickException("Session chat execution is not implemented yet.")
+    if session is not None:
+        typer.echo("Error: Existing session resumption is not implemented yet.", err=True)
+        raise typer.Exit(code=1)
+    typer.echo("Error: Provide exactly one of --agent-deployment or --session.", err=True)
+    raise typer.Exit(code=2)
+
+
+def _run_resolved_session_chat(
+    *,
+    base_url: str,
+    workspace: str,
+    deployment: AgentDeployment,
+    session: AgentSession,
+    session_id: str,
+    input: str | None,
+    timeout: float,
+) -> None:
+    """Run the shared TUI for an already-resolved session."""
+    typer.echo("Error: Session chat transport is not implemented yet.", err=True)
+    raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -2176,8 +2221,78 @@ def _get_deployment_id(*, base_url: str, workspace: str, deployment_name: str) -
     )
     deployment_id = deployment.get("id") if isinstance(deployment, dict) else None
     if not isinstance(deployment_id, str) or not deployment_id:
-        raise click.ClickException(f"Deployment '{deployment_name}' response did not include a valid ID.")
+        typer.echo(f"Error: Deployment '{deployment_name}' response did not include a valid ID.", err=True)
+        raise typer.Exit(code=1)
     return deployment_id
+
+
+def _create_session_for_deployment(
+    *,
+    base_url: str,
+    workspace: str,
+    deployment_name: str,
+    session_name: str | None,
+) -> tuple[AgentDeployment, AgentSession, str]:
+    """Validate a Fabric deployment and create its persisted Platform session."""
+    deployment_response = _api_request(
+        "GET",
+        base_url,
+        f"/apis/agents/v2/workspaces/{workspace}/deployments/{deployment_name}",
+    )
+    deployment_id = deployment_response.get("id") if isinstance(deployment_response, dict) else None
+    if not isinstance(deployment_id, str) or not deployment_id:
+        typer.echo(f"Error: Deployment '{deployment_name}' response did not include a valid ID.", err=True)
+        raise typer.Exit(code=1)
+    try:
+        deployment = AgentDeployment.model_validate(deployment_response)
+    except ValidationError:
+        typer.echo(f"Error: Deployment '{deployment_name}' returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+    if deployment.name != deployment_name or deployment.workspace != workspace:
+        typer.echo(f"Error: Deployment '{deployment_name}' returned mismatched identity metadata.", err=True)
+        raise typer.Exit(code=1)
+
+    config_format = deployment.config.get("config_format")
+    if config_format != NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+        typer.echo(
+            f"Error: Deployment '{deployment.name}' is not Fabric-backed (config_format={config_format!r}).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if not is_deployment_routable(deployment):
+        typer.echo(
+            f"Error: Deployment '{deployment.name}' is not routable "
+            f"(mode='{deployment.deployment_mode}', status='{deployment.status}').",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    payload = {"deployment_id": deployment_id}
+    if session_name is not None:
+        payload["name"] = session_name
+    response = _api_request(
+        "POST",
+        base_url,
+        f"/apis/agents/v2/workspaces/{workspace}/sessions",
+        json_body=payload,
+    )
+    session_id = response.get("id") if isinstance(response, dict) else None
+    if not isinstance(session_id, str) or not session_id:
+        typer.echo("Error: Session creation response did not include a valid ID.", err=True)
+        raise typer.Exit(code=1)
+    try:
+        created_session = AgentSession.model_validate(response)
+    except ValidationError:
+        typer.echo("Error: Session creation returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+    if created_session.workspace != workspace or created_session.deployment_id != deployment_id:
+        typer.echo("Error: Session creation returned mismatched deployment or workspace metadata.", err=True)
+        raise typer.Exit(code=1)
+    if session_name is not None and created_session.name != session_name:
+        typer.echo("Error: Session creation returned a different name than requested.", err=True)
+        raise typer.Exit(code=1)
+
+    return deployment, created_session, session_id
 
 
 def _unwrap_list(resp: Any) -> list[dict[str, Any]]:
