@@ -43,6 +43,7 @@ from nemo_platform_plugin.inference_middleware import (
     ResponseResult,
     ImmediateResponse,
     InferenceMiddlewareError,
+    VirtualModel,
 )
 
 class MyMiddleware(NemoInferenceMiddleware):
@@ -53,10 +54,10 @@ class MyMiddleware(NemoInferenceMiddleware):
     async def on_shutdown(self) -> None:
         """Release resources on graceful shutdown."""
 
-    async def on_virtual_model_upserted(self, virtual_model) -> None:
+    async def on_virtual_model_upserted(self, virtual_model: VirtualModel) -> None:
         """Pre-warm per-VirtualModel resources (e.g. load a classifier for this VM)."""
 
-    async def on_virtual_model_destroyed(self, virtual_model) -> None:
+    async def on_virtual_model_destroyed(self, virtual_model: VirtualModel) -> None:
         """Release resources held for this VirtualModel."""
 
     async def get_middleware_config(self, config_type: str, config_id: str):

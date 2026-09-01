@@ -34,6 +34,7 @@ from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
     InferenceMiddlewareError,
     InferenceMiddlewareUnavailableError,
+    VirtualModel,
 )
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
@@ -65,8 +66,8 @@ class MyMiddleware(NemoInferenceMiddleware):
 
     async def on_shutdown(self) -> None: ...
 
-    async def on_virtual_model_upserted(self, virtual_model) -> None: ...
-    async def on_virtual_model_destroyed(self, virtual_model) -> None: ...
+    async def on_virtual_model_upserted(self, virtual_model: VirtualModel) -> None: ...
+    async def on_virtual_model_destroyed(self, virtual_model: VirtualModel) -> None: ...
 
     # ── Config resolution (needed only for config_id support) ──────────
     async def get_middleware_config(self, config_type: str, config_id: str) -> Any:
