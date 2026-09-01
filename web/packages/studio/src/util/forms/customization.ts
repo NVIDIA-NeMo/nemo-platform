@@ -467,6 +467,19 @@ const cleanIntegrations = (
   return wandb || mlflow ? { ...(wandb && { wandb }), ...(mlflow && { mlflow }) } : undefined;
 };
 
+/**
+ * react-hook-form materialises a parent object as soon as one of its nested controls
+ * registers, so an untouched group arrives as `{}` (or all-undefined) rather than absent.
+ * Sending that is not the same as sending nothing: the backend rejects a reward_shaping
+ * with no penalty set, and would read an empty reward_scaling as an identity mapping the
+ * user never asked for.
+ */
+const omitIfEmpty = <T extends object>(group: T | undefined | null): T | undefined => {
+  if (!group) return undefined;
+  const kept = Object.entries(group).filter(([, v]) => v != null);
+  return kept.length > 0 ? (Object.fromEntries(kept) as T) : undefined;
+};
+
 /** An empty list is not a filter — send nothing so the backend keeps its own default. */
 const emptyToUndefined = (v: string[] | undefined | null) => (v && v.length > 0 ? v : undefined);
 
@@ -540,8 +553,8 @@ export const formToRlCreate = (f: CustomizationFormFields): RlJobsJobRequest => 
           truncated_importance_sampling_type: f.grpo.truncated_importance_sampling_type,
           truncated_importance_sampling_ratio: f.grpo.truncated_importance_sampling_ratio,
           truncated_importance_sampling_ratio_min: f.grpo.truncated_importance_sampling_ratio_min,
-          reward_scaling: f.grpo.reward_scaling,
-          reward_shaping: f.grpo.reward_shaping,
+          reward_scaling: omitIfEmpty(f.grpo.reward_scaling),
+          reward_shaping: omitIfEmpty(f.grpo.reward_shaping),
           policy_backend: f.grpo.policy_backend,
           batching_strategy: f.grpo.batching_strategy,
           sequence_length_round: f.grpo.sequence_length_round,
