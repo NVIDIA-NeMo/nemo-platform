@@ -2735,3 +2735,264 @@ class TestInstallableContractVersion:
 
         with pytest.raises(ValueError, match="local build identifier"):
             template.render_fabric_dockerfile(fabric_agent_config)
+
+
+class TestFabricWheelInstall:
+    """A source checkout reports a version no index serves, so packaging from one
+    requires installing a locally built wheel instead of resolving the pin.
+
+    The wheel arrives by env var rather than a flag so it reaches the platform
+    job as well as the CLI; a flag would fix only one of the two."""
+
+    def test_render_installs_the_wheel_instead_of_the_pin(self, fabric_agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        result = render_fabric_dockerfile(fabric_agent_config, wheel_filename="nemo_platform-0.4.0-py3-none-any.whl")
+
+        assert '"/workspace/nemo_platform-0.4.0-py3-none-any.whl[nemo-agents-plugin]"' in result
+        assert "nemo-platform[nemo-agents-plugin]==" not in result
+
+    def test_a_wheel_lifts_the_unpublished_version_guard(
+        self, fabric_agent_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import nemo_agents_plugin.container.template as template
+
+        monkeypatch.setattr(template, "get_contract_version", lambda: "0.4.0.post176.dev0+50998e7b84")
+
+        # Without a wheel the same version is refused.
+        with pytest.raises(ValueError, match="local build identifier"):
+            template.render_fabric_dockerfile(fabric_agent_config)
+
+        assert template.render_fabric_dockerfile(fabric_agent_config, wheel_filename="x.whl")
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_wheel_is_staged_into_the_context_and_removed(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0-py3-none-any.whl"
+        wheel.write_bytes(b"not really a wheel")
+        context = fabric_agent_config.parent
+        staged_during_build: dict[str, bool] = {}
+        mock_build.side_effect = lambda **kwargs: staged_during_build.setdefault(
+            "present", (context / wheel.name).exists()
+        )
+
+        build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
+
+        assert staged_during_build["present"], "the wheel must exist while docker build runs"
+        assert not (context / wheel.name).exists(), "the staged wheel must not outlive the build"
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_env_var_supplies_the_wheel(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+        from nemo_agents_plugin.container.template import WHEEL_ENV
+
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+        monkeypatch.setenv(WHEEL_ENV, str(wheel))
+        context = fabric_agent_config.parent
+        seen: dict[str, bool] = {}
+        mock_build.side_effect = lambda **kwargs: seen.setdefault("present", (context / wheel.name).exists())
+
+        build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+        assert seen["present"], "the env-supplied wheel must be staged for the build"
+        assert not (context / wheel.name).exists()
+
+    @pytest.mark.parametrize(
+        ("filename", "create", "match"),
+        [("missing.whl", False, "wheel not found"), ("notawheel.txt", True, "not a wheel")],
+    )
+    def test_bad_wheel_paths_are_rejected(
+        self, fabric_agent_config: Path, tmp_path: Path, filename: str, create: bool, match: str
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / filename
+        if create:
+            wheel.write_bytes(b"")
+
+        with pytest.raises(ValueError, match=match):
+            build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True)
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_a_file_appearing_mid_build_is_not_clobbered(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The pre-render check is not atomic with the copy, so the copy creates
+        exclusively — otherwise losing that race overwrites a file and the cleanup
+        then deletes it."""
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+        collision = fabric_agent_config.parent / wheel.name
+
+        # Simulate another process winning the race after the check, before the copy.
+        original_write = Path.write_text
+
+        def _plant(self: Path, *args: Any, **kwargs: Any) -> int:
+            if self.name == "Dockerfile.generated":
+                collision.write_text("USER OWNED")
+            return original_write(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "write_text", _plant)
+
+        with pytest.raises(ManagedFileConflictError):
+            build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
+
+        monkeypatch.undo()
+        assert collision.read_text() == "USER OWNED"
+        mock_build.assert_not_called()
+
+    def test_the_image_advertises_the_wheel_version_not_the_host(
+        self, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Labels and the content-addressable id describe the runtime inside the
+        image, so a wheel has to decide them — otherwise an image can advertise
+        one version while running another, and two different images share an id."""
+        import nemo_agents_plugin.container.builder as builder
+        import nemo_agents_plugin.container.template as template
+
+        monkeypatch.setattr(template, "get_contract_version", lambda: "9.9.9.dev0+hostonly")
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0.post176.dev0+abc123-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+
+        assert builder.wheel_contract_version(wheel) == "0.4.0.post176.dev0+abc123"
+
+        captured: dict[str, object] = {}
+        real_render = template.render_fabric_dockerfile
+        monkeypatch.setattr(
+            builder,
+            "docker_build",
+            lambda **kwargs: captured.setdefault("tag", kwargs["tag"]),
+        )
+        monkeypatch.setattr(
+            template,
+            "render_fabric_dockerfile",
+            lambda *a, **kw: (
+                captured.setdefault("contract_version", kw.get("contract_version")) or real_render(*a, **kw)
+            ),
+        )
+
+        builder.build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
+
+        assert captured["contract_version"] == "0.4.0.post176.dev0+abc123"
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_a_supplied_dockerfile_ignores_the_wheel(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A caller-supplied Dockerfile never sees the staged wheel, so letting the
+        wheel decide the version would advertise a runtime the image cannot contain."""
+        import nemo_agents_plugin.container.builder as builder
+        import nemo_agents_plugin.container.template as template
+
+        monkeypatch.setattr(template, "get_contract_version", lambda: "9.9.9")
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0.post176.dev0+abc123-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+        dockerfile = tmp_path / "Dockerfile"
+        dockerfile.write_text("FROM scratch\n")
+        context = fabric_agent_config.parent
+
+        monkeypatch.setenv(template.WHEEL_ENV, str(wheel))
+        notices: list[str] = []
+        builder.build_fabric_agent_image(
+            fabric_agent_config,
+            dockerfile=dockerfile,
+            skip_validation=True,
+            agent_author="x",
+            on_progress=notices.append,
+        )
+        with_wheel = mock_build.call_args.kwargs["tag"]
+        assert not (context / wheel.name).exists()
+        assert any(template.WHEEL_ENV in line for line in notices)
+
+        monkeypatch.delenv(template.WHEEL_ENV)
+        builder.build_fabric_agent_image(
+            fabric_agent_config, dockerfile=dockerfile, skip_validation=True, agent_author="x"
+        )
+
+        assert with_wheel == mock_build.call_args.kwargs["tag"], "the wheel must not reach the image identity"
+
+    @pytest.mark.parametrize(
+        "filename",
+        ["some_other_package-1.0-py3-none-any.whl", "notawheelname.whl"],
+    )
+    def test_a_wheel_for_another_package_is_rejected(self, tmp_path: Path, filename: str) -> None:
+        from nemo_agents_plugin.container.builder import wheel_contract_version
+
+        with pytest.raises(ValueError):
+            wheel_contract_version(tmp_path / filename)
+
+    @pytest.mark.parametrize("rule", ["*.whl", "/*.whl", "**/*.whl", "nemo_platform-*.whl"])
+    def test_a_user_rule_cannot_exclude_the_staged_wheel(
+        self, fabric_agent_config: Path, tmp_path: Path, rule: str
+    ) -> None:
+        """A user-owned .dockerignore is preserved, and any of these rules would
+        drop the wheel from the context. BuildKit prefers the per-Dockerfile
+        ignore file, so the wheel is re-included there rather than the rules
+        being second-guessed."""
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+        context = fabric_agent_config.parent
+        (context / ".dockerignore").write_text(f"# user owned\n{rule}\n")
+        scoped = context / "Dockerfile.generated.dockerignore"
+        seen: dict[str, str] = {}
+
+        with patch("nemo_agents_plugin.container.builder.docker_build") as mock_build:
+            mock_build.side_effect = lambda **kwargs: seen.setdefault("ignore", scoped.read_text())
+            build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
+
+        assert rule in seen["ignore"], "the user's rules must be carried over"
+        assert seen["ignore"].rstrip().endswith(f"!{wheel.name}"), "the wheel must be re-included last"
+        assert not scoped.exists(), "the scoped ignore file must not outlive the build"
+
+    def test_no_scoped_ignore_file_without_a_wheel(self, fabric_agent_config: Path) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        context = fabric_agent_config.parent
+        seen: dict[str, bool] = {}
+
+        with patch("nemo_agents_plugin.container.builder.docker_build") as mock_build:
+            mock_build.side_effect = lambda **kwargs: seen.setdefault(
+                "present", (context / "Dockerfile.generated.dockerignore").exists()
+            )
+            build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+        assert not seen["present"]
+
+    def test_refuses_to_clobber_a_file_the_user_owns(self, fabric_agent_config: Path, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+        collision = fabric_agent_config.parent / wheel.name
+        collision.write_text("USER OWNED")
+
+        with pytest.raises(ManagedFileConflictError):
+            build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True)
+
+        assert collision.read_text() == "USER OWNED"
