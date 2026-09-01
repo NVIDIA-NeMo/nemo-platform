@@ -58,11 +58,7 @@ export interface UseCustomizationJobStatusResult {
 }
 
 interface UseCustomizationJobStatusOptions {
-  /**
-   * Defaults to true. TanStack schedules `refetchInterval` per observer, so a second consumer of
-   * this hook doubles the request rate against `/status` rather than sharing the first one's
-   * polling — callers that only need the steps in some states should opt out of the rest.
-   */
+  /** Defaults to true. Set false to skip polling when a second consumer doesn't need it yet. */
   enabled?: boolean;
 }
 

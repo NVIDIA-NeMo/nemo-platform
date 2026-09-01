@@ -69,9 +69,7 @@ export const CustomizationJobDetailsRoute: FC = () => {
   const showChat = Boolean(output_model) && status === 'completed';
   const isTerminalStatus = Boolean(status && CJobTerminalStatuses.includes(status));
 
-  // The mapped failure cause only exists in the step/task tree, not on the job record. Enabled
-  // only once the job is terminal: a banner is impossible before then, and polling is off by that
-  // point, so this shares CustomizationOverview's cached response instead of adding a second poll.
+  // Steps aren't on the job record; only fetch them once terminal, since a banner is impossible before then.
   const { steps } = useCustomizationJobStatus(workspace, customizationJobName, backend, status, {
     enabled: isTerminalStatus,
   });
@@ -79,8 +77,7 @@ export const CustomizationJobDetailsRoute: FC = () => {
 
   const [activeTab, setActiveTab] = useState('overview');
 
-  // The chat tab unmounts when the job is no longer completed; leaving it selected would blank
-  // the page, so fall back to a tab that is always rendered.
+  // Chat unmounts once the job is no longer completed; fall back to a tab that always renders.
   const selectedTab = activeTab === 'chat' && !showChat ? 'overview' : activeTab;
 
   // Fetch the output model entity so we can check deployment status

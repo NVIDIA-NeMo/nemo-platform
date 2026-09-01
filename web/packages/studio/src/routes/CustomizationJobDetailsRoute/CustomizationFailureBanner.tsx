@@ -7,16 +7,9 @@ import type { FC } from 'react';
 
 interface Props {
   failure: CustomizationFailure;
-  /** Opens the Logs tab scoped to the failing step. Omitted when the step is unknown. */
   onViewLogs?: () => void;
 }
 
-/**
- * Why a customization job failed, above the tabs so it stays visible on Overview and Logs alike.
- *
- * The message comes from `resolveCustomizationFailure`, which digs the mapped cause out of the
- * step/task status tree — the job record itself only carries generic infrastructure text.
- */
 export const CustomizationFailureBanner: FC<Props> = ({ failure, onViewLogs }) => {
   const { message, failingStepLabel, errorType, isGeneric } = failure;
 
@@ -39,7 +32,6 @@ export const CustomizationFailureBanner: FC<Props> = ({ failure, onViewLogs }) =
       }
     >
       <Stack gap="density-xs">
-        {/* Mapped messages are multi-sentence prose with numbered remediation steps. */}
         <Text kind="body/regular/sm" className="whitespace-pre-wrap">
           {message}
         </Text>

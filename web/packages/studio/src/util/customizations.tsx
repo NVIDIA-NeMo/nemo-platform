@@ -398,10 +398,7 @@ interface TrainingDiagnosticsContext {
   failedAtStepLabel?: string;
 }
 
-/**
- * Where the run ended up: the failing step if it errored, total time once finished, current stage
- * while running. Every backend's tile set ends with it.
- */
+/** Where the run ended up: failing step, total time once finished, or current stage while running. */
 const getRunStateTile = (
   telemetry: CustomizationTrainingTelemetry,
   { isTerminal, duration, failedAtStepLabel }: TrainingDiagnosticsContext
