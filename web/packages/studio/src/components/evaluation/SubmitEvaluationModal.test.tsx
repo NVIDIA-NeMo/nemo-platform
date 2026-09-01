@@ -210,12 +210,14 @@ describe('SubmitEvaluationModal', () => {
 
     // Straight to naming the run — the first two answers came in with the source.
     const nameField = await screen.findByLabelText<HTMLInputElement>('New evaluation name');
-    await waitFor(() => expect(nameField.value).toBe('nemotron-super-3-temp-point5-2'));
+    await waitFor(() => expect(nameField.value).toBe('nemotron-super-3-temp-point5'));
     // The picker sits on this step too, so the name appears in its options as well; the point is
     // that the help text under it states which experiment the chosen run belongs to.
-    expect(
-      screen.getByRole('combobox', { name: /evaluation to re-run/i })
-    ).toHaveAccessibleDescription(/Experiment: primary-use-cases-benchmark/);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('combobox', { name: /evaluation to re-run/i })
+      ).toHaveAccessibleDescription(/Experiment: primary-use-cases-benchmark/)
+    );
 
     const user = userEvent.setup();
     await user.clear(nameField);

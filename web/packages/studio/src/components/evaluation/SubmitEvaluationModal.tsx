@@ -36,6 +36,7 @@ import {
   Stack,
   Stepper,
   Text,
+  Tooltip,
   Upload,
 } from '@nvidia/foundations-react-core';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
@@ -63,7 +64,6 @@ import {
   experimentSettingsSchemaShape,
 } from '@studio/components/evaluation/shared/experimentSettings';
 import { ExperimentSettingsFields } from '@studio/components/evaluation/shared/ExperimentSettingsFields';
-import { suggestRunName } from '@studio/components/evaluation/shared/suggestRunName';
 import { useEvaluationSources } from '@studio/components/evaluation/shared/useEvaluationSources';
 import {
   bareName,
@@ -95,18 +95,27 @@ import { LINK_DOCS_STUDIO_EXPERIMENTS, LINK_EVAL_DOCS } from '@studio/constants/
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import { getAgentEvaluationsTabRoute } from '@studio/routes/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Info } from 'lucide-react';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { useDebounce } from 'use-debounce';
 import { z } from 'zod';
 
-const START_ITEMS = [
+const startItems = (rerunDisabled: boolean) => [
   {
     value: MODE_EXPERIMENT,
+    disabled: rerunDisabled,
     children: (
       <Stack gap="density-xs">
-        <Text kind="label/bold/md">Re-run an existing evaluation</Text>
+        <Flex align="center" gap="density-xs">
+          <Text kind="label/bold/md">Re-run an existing evaluation</Text>
+          {rerunDisabled && (
+            <Tooltip slotContent="No existing evaluations to re-run.">
+              <Info size={14} aria-label="Why is this option disabled?" />
+            </Tooltip>
+          )}
+        </Flex>
         <Text kind="body/regular/sm" color="secondary">
           Reuses the eval config saved on a previous run. The new run joins that run&apos;s
           experiment, so the two sit side by side on its leaderboard.
@@ -196,8 +205,7 @@ const makeDefaultValues = (
 ): SubmitEvaluationFormData => ({
   agent: agent ?? '',
   judgeModel: '',
-  // Re-running is the common case and the cheaper one; a user who wants a new experiment says so
-  // on the first step.
+  // Provisional: the preselect effect corrects this once the evaluation list resolves.
   mode: MODE_EXPERIMENT,
   newName: '',
   evaluationRecordName: '',
@@ -400,6 +408,8 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
   // Ref keeps the override's required-ness current for the zod schema getter at validation time.
   const judgeRequiredRef = useRef(false);
+  // Latches once the evaluation list resolves; after that the field is the user's.
+  const modeDefaultApplied = useRef(false);
   const [schema] = useState(() => makeSubmitEvaluationSchema(() => judgeRequiredRef.current));
 
   // A handed-in source has already answered the first two steps, so the wizard opens on the last
@@ -448,6 +458,14 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const selectedEvaluation = selectedSource?.evaluation;
   const hasNoEvaluations = mode === MODE_EXPERIMENT && sources.isEmpty;
 
+  // Default the start mode once the list resolves; `selectedAgent` gates it because a disabled
+  // query reports isLoading false, which would read as empty before anything was fetched.
+  useEffect(() => {
+    if (!open || !selectedAgent || sources.isLoading || modeDefaultApplied.current) return;
+    modeDefaultApplied.current = true;
+    if (sources.isEmpty) setValue('mode', MODE_DEFAULT);
+  }, [open, selectedAgent, sources.isLoading, sources.isEmpty, setValue]);
+
   // Nothing is preselected here. A step whose whole job is "choose the run to re-run" should not
   // answer itself — Next stays disabled until the user picks, and stepBlocker says why. (A run
   // handed in by "New evaluation from this configuration" arrives in the form's default values,
@@ -482,12 +500,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const [debouncedRecordName] = useDebounce(recordPreview, DEFAULT_DEBOUNCE_MS);
   const isCreateMode = mode === MODE_DEFAULT;
 
-  // Seed the run's name from whichever evaluation is selected, so re-running starts from a name
-  // one edit away from the right one instead of an empty field.
-  //
-  // Seeded once per source: after that the field is the user's, and clearing it to retype must not
-  // hand the suggestion straight back. Picking a different source seeds again — but only over the
-  // previous suggestion or an empty field, never over a name that was typed.
+  // Prefill the run's name with the source's own; seeded once per source, never over a typed name.
   const suggestedRecordName = useRef('');
   const seededForSource = useRef<string | null>(null);
   useEffect(() => {
@@ -495,13 +508,9 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     if (seededForSource.current === evaluationName) return;
     seededForSource.current = evaluationName;
     if (rawRecordName && rawRecordName !== suggestedRecordName.current) return;
-    const suggestion = suggestRunName(
-      evaluationName,
-      sources.sources.map((source) => source.evaluation.name)
-    );
-    suggestedRecordName.current = suggestion;
-    setValue('evaluationRecordName', suggestion, { shouldValidate: false });
-  }, [mode, evaluationName, rawRecordName, sources.sources, setValue]);
+    suggestedRecordName.current = evaluationName;
+    setValue('evaluationRecordName', evaluationName, { shouldValidate: false });
+  }, [mode, evaluationName, rawRecordName, setValue]);
 
   // Leaving the re-run path retires the derived name. It is borrowed from whichever run was
   // selected there, and carrying it onto a brand-new experiment's first evaluation would name that
@@ -512,6 +521,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     if (!rawRecordName || rawRecordName !== suggestedRecordName.current) return;
     suggestedRecordName.current = '';
     seededForSource.current = null;
+    modeDefaultApplied.current = false;
     setValue('evaluationRecordName', '');
   }, [mode, rawRecordName, setValue]);
 
@@ -750,6 +760,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     setStep(sourceEvaluation ? 'evaluation' : 'start');
     suggestedRecordName.current = '';
     seededForSource.current = null;
+    modeDefaultApplied.current = false;
     datasetToken.current += 1;
     configToken.current += 1;
     setDatasetPick(null);
@@ -774,6 +785,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     setStep(sourceEvaluation ? 'evaluation' : 'start');
     suggestedRecordName.current = '';
     seededForSource.current = null;
+    modeDefaultApplied.current = false;
     clearDatasetPick();
     clearConfigPick();
     setSubmitAttempted(false);
@@ -930,7 +942,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                     setValue('mode', value as EvaluationMode, { shouldValidate: false });
                     clearErrors(['evaluationName', 'newName']);
                   }}
-                  items={START_ITEMS}
+                  items={startItems(sources.isEmpty)}
                 />
               </FormField>
             </>

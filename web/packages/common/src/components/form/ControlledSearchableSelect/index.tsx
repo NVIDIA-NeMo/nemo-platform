@@ -250,7 +250,7 @@ export const ControlledSearchableSelect = ({
           status={status || (error ? 'error' : undefined)}
           {...selectProps}
         />
-        <SelectContent className="w-(--radix-popper-anchor-width)">
+        <SelectContent>
           <SelectListbox>
             <Block className="p-2 w-full sticky top-0 bg-surface z-10">
               <TextInput
