@@ -235,7 +235,7 @@ def test_chat_prompt_runs_once_with_plain_text_output(runner: CliRunner) -> None
 
     with (
         patch("nemo_platform_ext.cli.core.context.CLIContext.get_client", return_value=mock_client),
-        patch("nemo_platform_ext.cli.commands.use_cases.chat.Prompt.ask") as mock_prompt,
+        patch("nemo_platform_ext.cli.chat_tui.Prompt.ask") as mock_prompt,
     ):
         result = runner.invoke(
             app,
@@ -367,7 +367,7 @@ def test_chat_interactive_with_prompt_sends_initial_message_then_prompts(runner:
     with (
         patch("nemo_platform_ext.cli.core.context.CLIContext.get_client", return_value=mock_client),
         patch("nemo_platform_ext.cli.commands.use_cases.chat._is_interactive_chat_session", return_value=True),
-        patch("nemo_platform_ext.cli.commands.use_cases.chat.Prompt.ask", side_effect=KeyboardInterrupt) as mock_prompt,
+        patch("nemo_platform_ext.cli.chat_tui.Prompt.ask", side_effect=KeyboardInterrupt) as mock_prompt,
     ):
         result = runner.invoke(app, ["chat", "my-model", "hi", "--interactive"])
 
@@ -377,6 +377,39 @@ def test_chat_interactive_with_prompt_sends_initial_message_then_prompts(runner:
     post = mock_client.inference.gateway.openai.with_streaming_response.post
     post.assert_called_once()
     assert captured_messages == [{"role": "user", "content": "hi"}]
+
+
+def test_chat_interactive_preserves_model_history_across_shared_tui_turns(runner: CliRunner) -> None:
+    """The shared TUI must leave model transcript management with the model-chat command."""
+    responses = [_mock_streaming_response("hello"), _mock_streaming_response("follow-up answer")]
+    mock_client = _mock_client_with_openai_response(responses[0])
+    captured_messages: list[list[dict[str, str]]] = []
+
+    def capture_post(**kwargs):
+        captured_messages.append(deepcopy(kwargs["body"]["messages"]))
+        return responses[len(captured_messages) - 1]
+
+    mock_client.inference.gateway.openai.with_streaming_response.post.side_effect = capture_post
+
+    with (
+        patch("nemo_platform_ext.cli.core.context.CLIContext.get_client", return_value=mock_client),
+        patch("nemo_platform_ext.cli.commands.use_cases.chat._is_interactive_chat_session", return_value=True),
+        patch(
+            "nemo_platform_ext.cli.chat_tui.Prompt.ask",
+            side_effect=["What did I just say?", KeyboardInterrupt],
+        ),
+    ):
+        result = runner.invoke(app, ["chat", "my-model", "hi", "--interactive"])
+
+    assert result.exit_code == 0
+    assert captured_messages == [
+        [{"role": "user", "content": "hi"}],
+        [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+            {"role": "user", "content": "What did I just say?"},
+        ],
+    ]
 
 
 def test_chat_interactive_requires_tty(runner: CliRunner) -> None:
