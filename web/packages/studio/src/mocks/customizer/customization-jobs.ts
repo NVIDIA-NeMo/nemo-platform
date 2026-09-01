@@ -299,11 +299,62 @@ export const grpoCustomizationJob: RlJob = {
   status_details: grpoStatusDetails,
 };
 
+/**
+ * The mapped message the training runner reports on an OOM, taken from the `CudaError` rule in
+ * `services/rl/src/nmp/rl/tasks/training/errors/error_rules.yaml`.
+ */
+export const grpoCudaErrorMessage =
+  'Your job ran out of GPU memory during training. To reduce memory usage: 1) Reduce ' +
+  'micro_batch_size, 2) Reduce max_seq_length, 3) Use LoRA/PEFT instead of all_weights ' +
+  'fine-tuning, 4) Increase tensor_parallel_size to shard the model across more GPUs, or ' +
+  '5) Request GPUs with more memory.';
+
+/** GRPO run that died partway through training: reward series stops well short of max_steps. */
+const failedGrpoStatusDetails = {
+  phase: 'training',
+  step: 300,
+  max_steps: 500,
+  num_epochs: 1,
+  epoch: 0,
+  percentage_done: 60,
+  train_reward: 0.45,
+  train_truncation_rate: 0.061,
+  'train_timing/total_step_time': 33.6,
+  metrics: {
+    train_loss: [],
+    val_loss: [],
+    train_reward: series([0.18, 0.34, 0.45]),
+    val_accuracy: [
+      { value: 0.31, step: 100, epoch: 1 },
+      { value: 0.49, step: 300, epoch: 1 },
+    ],
+    train_truncation_rate: series([0.09, 0.072, 0.061]),
+    'train_timing/total_step_time': series([29.8, 31.6, 33.6]),
+  },
+  // What the Kubernetes backend leaves on the job. Deliberately useless: the resolver has to
+  // reach into the step/task tree to find the mapped cause.
+  message: 'One or more tasks are in error state',
+};
+
+/** GRPO job that failed during training with a mapped `CudaError`. */
+export const failedGrpoCustomizationJob: RlJob = {
+  ...grpoCustomizationJob,
+  id: 'cust-2Hs7VnKp4RtQmXd9Lb3Wfe',
+  name: 'grpo-qwen-math-0819-oom',
+  created_at: '2026-08-19T09:14:03.220000',
+  updated_at: '2026-08-19T10:02:41.775000',
+  description: 'GRPO against the math verifier environment',
+  status: 'error',
+  status_details: failedGrpoStatusDetails,
+  error_details: { message: 'One or more tasks are in error state' },
+};
+
 export const customizationJobs = [
   customizationJob1,
   customizationJob2,
   customizationJob3,
   grpoCustomizationJob,
+  failedGrpoCustomizationJob,
 ];
 
 export const customizationJobSteps = [
@@ -346,5 +397,65 @@ export const customizationJobSteps = [
     tasks: [],
     created_at: '2025-06-25T21:42:10.100000',
     updated_at: '2025-06-25T21:42:14.242833',
+  },
+];
+
+/**
+ * Single-node GRPO failure as the Kubernetes backend leaves it: the mapped `CudaError` sits on
+ * the failing task, while the step and job above it carry only generic infrastructure text.
+ */
+export const failedGrpoJobSteps = [
+  {
+    id: 'step-download',
+    name: 'model-dataset-environment-download',
+    status: 'completed',
+    status_details: { message: 'completed' },
+    error_details: {},
+    tasks: [],
+    created_at: '2026-08-19T09:14:10.000000',
+    updated_at: '2026-08-19T09:21:44.000000',
+  },
+  {
+    id: 'step-training',
+    name: 'grpo-training',
+    status: 'error',
+    status_details: { message: 'Job has errored pods, check tasks for error details' },
+    error_details: { message: 'One or more tasks are in error state' },
+    tasks: [
+      {
+        id: 'task-7c1f9d2a-4b8e-4f31-9a2c-6d5e8b3a1c07',
+        name: 'task-7c1f9d2a-4b8e-4f31-9a2c-6d5e8b3a1c07',
+        status: 'error',
+        status_details: { phase: 'training', step: 300 },
+        error_details: {
+          message: grpoCudaErrorMessage,
+          type: 'CudaError',
+          detail: 'OutOfMemoryError: CUDA out of memory. Tried to allocate 896.00 MiB',
+        },
+        error_stack:
+          'torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 896.00 MiB. GPU 0 has a total capacity of 79.15 GiB of which 412.00 MiB is free.',
+        created_at: '2026-08-19T09:21:50.000000',
+        updated_at: '2026-08-19T10:02:38.000000',
+      },
+    ],
+    created_at: '2026-08-19T09:21:44.000000',
+    updated_at: '2026-08-19T10:02:41.775000',
+  },
+];
+
+/**
+ * Multi-node GRPO failure. The Volcano backend never passes `error_details` when building a step
+ * update, so the only text anywhere in the tree is the step's `status_details.message`.
+ */
+export const failedVolcanoGrpoJobSteps = [
+  {
+    id: 'step-training',
+    name: 'grpo-training',
+    status: 'error',
+    status_details: { message: 'Job failed' },
+    error_details: null,
+    tasks: [],
+    created_at: '2026-08-19T09:21:44.000000',
+    updated_at: '2026-08-19T10:02:41.775000',
   },
 ];

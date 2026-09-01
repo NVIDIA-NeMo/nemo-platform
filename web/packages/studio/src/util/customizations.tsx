@@ -18,7 +18,6 @@ import {
   isRlJob,
   isUnslothJob,
   type CustomizationJob,
-  type CustomizationJobStatusDetails,
 } from '@studio/util/customizationBackend';
 import { formatElapsedTime } from '@studio/util/date';
 import { formatStepDuration, GRPO_METRIC, medianValue, readSeries } from '@studio/util/grpoMetrics';
@@ -154,29 +153,6 @@ export const getTrainingBatchSize = (customizationJob?: CustomizationJob): numbe
     return customizationJob.spec.batch?.per_device_train_batch_size ?? 0;
   }
   return 0;
-};
-
-/** Log entry in customization job status_details.status_logs */
-interface StatusDetails {
-  message?: string;
-  detail?: string;
-}
-
-/**
- * Returns the error message of the first failure log from a customization job's status details.
- */
-export const getFailureMessage = (statusDetails: CustomizationJobStatusDetails): string => {
-  const logs: StatusDetails[] = (statusDetails.status_logs as StatusDetails[]) || [];
-  const hasFailure = logs.find((log) => log.message?.includes('Failed'));
-  if (hasFailure) {
-    return logs.map((log) => log.detail || '').join('\n');
-  }
-  return '';
-};
-
-export const getProgressLogs = (statusDetails: CustomizationJobStatusDetails): StatusDetails[] => {
-  const logs = (statusDetails.status_logs as StatusDetails[]) || [];
-  return logs;
 };
 
 /**
@@ -418,14 +394,27 @@ export const getJobDuration = (
 interface TrainingDiagnosticsContext {
   isTerminal: boolean;
   duration: string;
+  /** Display name of the failing pipeline step, when the job errored. */
+  failedAtStepLabel?: string;
 }
 
-/** Total time once finished, current stage while running. Every backend's tile set ends with it. */
+/** Where the run ended up: failing step, total time once finished, or current stage while running. */
 const getRunStateTile = (
   telemetry: CustomizationTrainingTelemetry,
-  { isTerminal, duration }: TrainingDiagnosticsContext
-): StatTileProps =>
-  isTerminal
+  { isTerminal, duration, failedAtStepLabel }: TrainingDiagnosticsContext
+): StatTileProps => {
+  if (failedAtStepLabel) {
+    return {
+      label: 'Run State',
+      value: 'Failed',
+      hint: `during ${failedAtStepLabel}`,
+      // Every panel renders the run-state tile unbordered, and StatTile's border tint only
+      // applies to the bordered branch — so `hintStatus` is what actually reads as failure here.
+      hintStatus: 'error',
+      status: 'error',
+    };
+  }
+  return isTerminal
     ? { label: 'Duration', value: duration, hint: 'total run time' }
     : {
         label: 'Phase',
@@ -434,6 +423,7 @@ const getRunStateTile = (
           : NOT_AVAILABLE,
         hint: 'current stage',
       };
+};
 
 export const getTrainingDiagnosticsTiles = (
   telemetry: CustomizationTrainingTelemetry,

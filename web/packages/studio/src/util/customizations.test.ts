@@ -18,13 +18,11 @@ import {
   getCustomizationTrainingProgress,
   getCustomizationTrainingSteps,
   getDatasetUri,
-  getFailureMessage,
   getFinetuningType,
   getFormattedCustomizationStatus,
   getJobDuration,
   getJobStartDate,
   getFormattedTrainingType,
-  getProgressLogs,
   formatMetricValue,
   formatStepCount,
   getLossTiles,
@@ -154,43 +152,6 @@ describe('getTrainingBatchSize', () => {
 
   it('uses per_device_train_batch_size for unsloth', () => {
     expect(getTrainingBatchSize(unslothJob({ batch: { per_device_train_batch_size: 4 } }))).toBe(4);
-  });
-});
-
-describe('getFailureMessage', () => {
-  it('returns joined details when failure log exists', () => {
-    const statusDetails = {
-      status_logs: [
-        { message: 'Failed to train', detail: 'OOM error' },
-        { message: 'cleanup', detail: 'resources freed' },
-      ],
-    } as unknown as CustomizationJobStatusDetails;
-    expect(getFailureMessage(statusDetails)).toBe('OOM error\nresources freed');
-  });
-
-  it('returns empty string when no failure logs', () => {
-    const statusDetails = {
-      status_logs: [{ message: 'Running', detail: 'step 1' }],
-    } as unknown as CustomizationJobStatusDetails;
-    expect(getFailureMessage(statusDetails)).toBe('');
-  });
-
-  it('returns empty string when status_logs is missing', () => {
-    const statusDetails = {} as unknown as CustomizationJobStatusDetails;
-    expect(getFailureMessage(statusDetails)).toBe('');
-  });
-});
-
-describe('getProgressLogs', () => {
-  it('returns status_logs array', () => {
-    const logs = [{ message: 'step 1' }];
-    const statusDetails = { status_logs: logs } as unknown as CustomizationJobStatusDetails;
-    expect(getProgressLogs(statusDetails)).toEqual(logs);
-  });
-
-  it('returns empty array when status_logs is missing', () => {
-    const statusDetails = {} as unknown as CustomizationJobStatusDetails;
-    expect(getProgressLogs(statusDetails)).toEqual([]);
   });
 });
 
@@ -725,6 +686,34 @@ describe('getGrpoProgressTiles', () => {
     );
 
     expect(tiles[1]).toEqual({ label: 'Phase', value: 'Training', hint: 'current stage' });
+  });
+
+  it('names the failing step instead of the duration when the run errored', () => {
+    const tiles = getGrpoProgressTiles(
+      { phase: 'training', epoch: 0, numEpochs: 1 },
+      {
+        isTerminal: true,
+        duration: '00:48:38',
+        failedAtStepLabel: 'GRPO training',
+      }
+    );
+
+    expect(tiles[1]).toEqual({
+      label: 'Run State',
+      value: 'Failed',
+      hint: 'during GRPO training',
+      hintStatus: 'error',
+      status: 'error',
+    });
+  });
+
+  it('marks the failure on the hint, which is the only part styled on an unbordered tile', () => {
+    const [, runState] = getGrpoProgressTiles(
+      {},
+      { isTerminal: true, duration: '48m 38s', failedAtStepLabel: 'model upload' }
+    );
+
+    expect(runState.hintStatus).toBe('error');
   });
 });
 
