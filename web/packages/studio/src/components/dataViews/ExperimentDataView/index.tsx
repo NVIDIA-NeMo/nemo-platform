@@ -673,14 +673,10 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({
               </>
             </EditColumnsMenu>
             {/* Only present once the layout differs from the saved one: a permanently visible Save
-                with nothing to save reads as an action the table is waiting on. */}
+                with nothing to save reads as an action the table is waiting on. Left at the default
+                size so it matches the Columns trigger it sits against. */}
             {columnLayout.hasUnsavedLayout && (
-              <Button
-                kind="primary"
-                size="small"
-                disabled={columnLayout.isSaving}
-                onClick={columnLayout.save}
-              >
+              <Button kind="primary" disabled={columnLayout.isSaving} onClick={columnLayout.save}>
                 {columnLayout.isSaving ? 'Saving…' : 'Save columns'}
               </Button>
             )}
