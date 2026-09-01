@@ -49,7 +49,6 @@ class RetrievalMineJobConfig(BaseModel):
 
     def to_mining_config(
         self,
-        *,
         model_path: Path,
         trust_remote_code: bool,
         train_file: Path,
@@ -101,7 +100,6 @@ def run_mine(
     job: RetrievalMineJobConfig,
     output_dir: Path,
     ctx: JobContext,
-    *,
     model_trust_remote_code: bool,
 ) -> dict[str, Any]:
     train_file = output_dir / "train.json"

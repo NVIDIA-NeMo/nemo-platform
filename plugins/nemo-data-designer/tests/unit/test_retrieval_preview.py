@@ -13,10 +13,21 @@ from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobCo
 from nemo_platform_plugin.functions.frames import Done, Error
 
 
+def _generate_config(tmp_path) -> RetrievalGenerateJobConfig:
+    return RetrievalGenerateJobConfig(
+        corpus=str(tmp_path),
+        provider="default/nvidia-build",
+        artifact_extraction_model="nvidia/nemotron-3-nano-30b-a3b",
+        qa_generation_model="nvidia/nemotron-3-nano-30b-a3b",
+        quality_judge_model="nvidia/nemotron-3-nano-30b-a3b",
+        embed_model="nvidia/nemotron-3-embed-1b",
+    )
+
+
 @pytest.mark.asyncio
 async def test_retrieval_preview_uses_preview_generation(tmp_path) -> None:
     spec = RetrievalPreviewSpec(
-        generate=RetrievalGenerateJobConfig(corpus=str(tmp_path), provider="default/nvidia-build"),
+        generate=_generate_config(tmp_path),
         num_records=1,
     )
     (tmp_path / "doc.txt").write_text("hello", encoding="utf-8")
@@ -52,7 +63,7 @@ async def test_retrieval_preview_uses_preview_generation(tmp_path) -> None:
 @pytest.mark.asyncio
 async def test_retrieval_preview_returns_error_frame_for_worker_failure(tmp_path) -> None:
     spec = RetrievalPreviewSpec(
-        generate=RetrievalGenerateJobConfig(corpus=str(tmp_path), provider="default/nvidia-build"),
+        generate=_generate_config(tmp_path),
     )
     providers = [dd.ModelProvider(name="default/nvidia-build", endpoint="http://igw")]
     dd_ctx = AsyncMock()

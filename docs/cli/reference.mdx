@@ -7907,7 +7907,8 @@ nemo data-designer retrieval generate [OPTIONS]
 
 * `--corpus`: Corpus fileset ref or hf:// URI.
 * `--provider`: Inference Gateway provider (workspace/name).
-* `--profile <CHOICE>`: embed or rerank model defaults. [possible values: embed, rerank; default: embed]
+* `--chat-model`: Chat model for artifact extraction, Q&A, and judging.
+* `--embed-model`: Embedding model.
 * `--workspace, -w`: [default: default]
 * `--print-spec`: Print JSON spec instead of submitting.
 
@@ -7950,7 +7951,8 @@ nemo data-designer retrieval preview [OPTIONS]
 
 * `--corpus`: Corpus fileset ref or hf:// URI.
 * `--provider`: Inference Gateway provider (workspace/name).
-* `--profile <CHOICE>`: [possible values: embed, rerank; default: embed]
+* `--chat-model`: Chat model for artifact extraction, Q&A, and judging.
+* `--embed-model`: Embedding model.
 * `--workspace, -w`: [default: default]
 
 **Help:**
@@ -8082,10 +8084,10 @@ nemo data-designer retrieval-preview [OPTIONS]
 * `--generate.similarity-threshold <FLOAT>`: Override `generate.similarity_threshold` in the spec.
 * `--generate.buffer-size <INTEGER>`: Override `generate.buffer_size` in the spec.
 * `--generate.num-records <INTEGER>`: Override `generate.num_records` in the spec.
-* `--generate.artifact-extraction-model`: Override `generate.artifact_extraction_model` in the spec.
-* `--generate.qa-generation-model`: Override `generate.qa_generation_model` in the spec.
-* `--generate.quality-judge-model`: Override `generate.quality_judge_model` in the spec.
-* `--generate.embed-model`: Override `generate.embed_model` in the spec.
+* `--generate.artifact-extraction-model`: Chat model for artifact extraction.
+* `--generate.qa-generation-model`: Chat model for question/answer generation.
+* `--generate.quality-judge-model`: Chat model for quality judging.
+* `--generate.embed-model`: Embedding model for retrieval SDG.
 * `--generate.hf-token-secret`: Override `generate.hf_token_secret` in the spec.
 * `--num-records <INTEGER>`: Override `num_records` in the spec.
 
@@ -8107,7 +8109,7 @@ nemo data-designer retrieval-preview [OPTIONS]
 
 Function Spec flags are generated from the RetrievalPreviewSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
 
-Some spec fields cannot be represented as CLI flags: `generate.profile`, `generate.file_extensions`, `generate.query_counts`, `generate.reasoning_counts`, `generate.resume`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+Some spec fields cannot be represented as CLI flags: `generate.file_extensions`, `generate.query_counts`, `generate.reasoning_counts`, `generate.resume`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
 ​
 
 #### nemo data-designer retrieval-generate
@@ -8144,10 +8146,10 @@ nemo data-designer retrieval-generate [OPTIONS]
 * `--similarity-threshold <FLOAT>`: Override `similarity_threshold` in the spec.
 * `--buffer-size <INTEGER>`: Override `buffer_size` in the spec.
 * `--num-records <INTEGER>`: Override `num_records` in the spec.
-* `--artifact-extraction-model`: Override `artifact_extraction_model` in the spec.
-* `--qa-generation-model`: Override `qa_generation_model` in the spec.
-* `--quality-judge-model`: Override `quality_judge_model` in the spec.
-* `--embed-model`: Override `embed_model` in the spec.
+* `--artifact-extraction-model`: Chat model for artifact extraction.
+* `--qa-generation-model`: Chat model for question/answer generation.
+* `--quality-judge-model`: Chat model for quality judging.
+* `--embed-model`: Embedding model for retrieval SDG.
 * `--hf-token-secret`: Override `hf_token_secret` in the spec.
 
 **Spec Source:**
@@ -8166,7 +8168,7 @@ nemo data-designer retrieval-generate [OPTIONS]
 
 Job Spec flags are generated from the RetrievalGenerateJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
 
-Some spec fields cannot be represented as CLI flags: `profile`, `file_extensions`, `query_counts`, `reasoning_counts`, `resume`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+Some spec fields cannot be represented as CLI flags: `file_extensions`, `query_counts`, `reasoning_counts`, `resume`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
 ​
 
 #### nemo data-designer retrieval-prepare
@@ -8267,10 +8269,10 @@ nemo data-designer retrieval-run [OPTIONS]
 * `--generate.similarity-threshold <FLOAT>`: Override `generate.similarity_threshold` in the spec.
 * `--generate.buffer-size <INTEGER>`: Override `generate.buffer_size` in the spec.
 * `--generate.num-records <INTEGER>`: Override `generate.num_records` in the spec.
-* `--generate.artifact-extraction-model`: Override `generate.artifact_extraction_model` in the spec.
-* `--generate.qa-generation-model`: Override `generate.qa_generation_model` in the spec.
-* `--generate.quality-judge-model`: Override `generate.quality_judge_model` in the spec.
-* `--generate.embed-model`: Override `generate.embed_model` in the spec.
+* `--generate.artifact-extraction-model`: Chat model for artifact extraction.
+* `--generate.qa-generation-model`: Chat model for question/answer generation.
+* `--generate.quality-judge-model`: Chat model for quality judging.
+* `--generate.embed-model`: Embedding model for retrieval SDG.
 * `--generate.hf-token-secret`: Override `generate.hf_token_secret` in the spec.
 * `--prepare.sdg-input`: Fileset or hf:// URI to Stage 0 output or generation_result.json.
 * `--prepare.train-input-file`: Fileset containing a pre-converted wrapped train.json; skips conversion.
@@ -8317,7 +8319,7 @@ nemo data-designer retrieval-run [OPTIONS]
 
 Job Spec flags are generated from the RetrievalRunJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
 
-Some spec fields cannot be represented as CLI flags: `generate.profile`, `generate.file_extensions`, `generate.query_counts`, `generate.reasoning_counts`, `generate.resume`, `prepare.split_strategy`, `prepare.attn_implementation`, `prepare.mining.hard_neg_margin_type`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+Some spec fields cannot be represented as CLI flags: `generate.file_extensions`, `generate.query_counts`, `generate.reasoning_counts`, `generate.resume`, `prepare.split_strategy`, `prepare.attn_implementation`, `prepare.mining.hard_neg_margin_type`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
 ​
 
 ### nemo guardrail

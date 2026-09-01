@@ -38,7 +38,6 @@ class RetrievalPrepareJob(NemoJob):
     async def to_spec(
         cls,
         input_spec: BaseModel,
-        *,
         workspace: str,
         entity_client: object,
         async_sdk: object,
@@ -68,7 +67,6 @@ class RetrievalPrepareJob(NemoJob):
     @classmethod
     async def compile(
         cls,
-        *,
         workspace: str,
         spec: BaseModel,
         entity_client: object,
@@ -110,7 +108,7 @@ class RetrievalPrepareJob(NemoJob):
             )
         return PlatformJobSpec(steps=steps)
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform) -> dict:
+    def run(self, config: dict, ctx: JobContext, sdk: NeMoPlatform) -> dict:
         step = RetrievalPrepareStepConfig.model_validate(config)
         if step.phase == "mine":
             raise RuntimeError("Mining runs as nmp.automodel.tasks.retrieval_mine, not this module")

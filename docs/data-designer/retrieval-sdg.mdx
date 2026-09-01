@@ -27,18 +27,25 @@ NeMo Platform exposes Nemotron embed/rerank Stage 0 (`sdg`) and Stage 1
 nemo data-designer retrieval-generate --workspace default --spec '{
   "corpus": "default/my-docs",
   "provider": "default/nvidia-build",
-  "profile": "embed"
+  "artifact_extraction_model": "nvidia/nemotron-3-nano-30b-a3b",
+  "qa_generation_model": "nvidia/nemotron-3-nano-30b-a3b",
+  "quality_judge_model": "nvidia/nemotron-3-nano-30b-a3b",
+  "embed_model": "nvidia/nemotron-3-embed-1b"
 }'
 ```
 
-`profile` selects Nemotron defaults (`embed` uses Ultra 550B + nemotron-3-embed-1b;
-`rerank` uses Nano 30B + llama-3.2-nv-embedqa-1b-v2). All four model roles call
-Inference Gateway through `provider` (workspace/name). Do not pass raw `NVIDIA_API_KEY`.
+Pass the chat and embedding model names served by Inference Gateway. All four
+model roles call IGW through `provider` (workspace/name), with optional
+`chat_provider` / `embed_provider` overrides. Do not pass raw `NVIDIA_API_KEY`.
 
 Equivalent helper:
 
 ```bash
-nemo data-designer retrieval generate --corpus default/my-docs --provider default/nvidia-build --profile embed
+nemo data-designer retrieval generate \
+  --corpus default/my-docs \
+  --provider default/nvidia-build \
+  --chat-model nvidia/nemotron-3-nano-30b-a3b \
+  --embed-model nvidia/nemotron-3-embed-1b
 ```
 
 Output fileset includes Q&A JSONL and `generation_result.json`.
@@ -46,7 +53,7 @@ Output fileset includes Q&A JSONL and `generation_result.json`.
 Preview without a full job:
 
 ```bash
-nemo data-designer retrieval-preview --spec '{"generate":{"corpus":"default/my-docs","provider":"default/nvidia-build"},"num_records":1}'
+nemo data-designer retrieval-preview --spec '{"generate":{"corpus":"default/my-docs","provider":"default/nvidia-build","artifact_extraction_model":"nvidia/nemotron-3-nano-30b-a3b","qa_generation_model":"nvidia/nemotron-3-nano-30b-a3b","quality_judge_model":"nvidia/nemotron-3-nano-30b-a3b","embed_model":"nvidia/nemotron-3-embed-1b"},"num_records":1}'
 ```
 
 ## Prepare (Stage 1)
@@ -77,7 +84,14 @@ local platform uses `gpu`; Kubernetes uses `default`.
 
 ```bash
 nemo data-designer retrieval-run --spec '{
-  "generate": {"corpus": "default/my-docs", "provider": "default/nvidia-build", "profile": "embed"},
+  "generate": {
+    "corpus": "default/my-docs",
+    "provider": "default/nvidia-build",
+    "artifact_extraction_model": "nvidia/nemotron-3-nano-30b-a3b",
+    "qa_generation_model": "nvidia/nemotron-3-nano-30b-a3b",
+    "quality_judge_model": "nvidia/nemotron-3-nano-30b-a3b",
+    "embed_model": "nvidia/nemotron-3-embed-1b"
+  },
   "prepare": {}
 }'
 ```
@@ -91,7 +105,14 @@ in-config workflow chaining.
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobConfig
 
 client.data_designer.retrieval_generate(
-    RetrievalGenerateJobConfig(corpus="default/my-docs", provider="default/nvidia-build", profile="embed")
+    RetrievalGenerateJobConfig(
+        corpus="default/my-docs",
+        provider="default/nvidia-build",
+        artifact_extraction_model="nvidia/nemotron-3-nano-30b-a3b",
+        qa_generation_model="nvidia/nemotron-3-nano-30b-a3b",
+        quality_judge_model="nvidia/nemotron-3-nano-30b-a3b",
+        embed_model="nvidia/nemotron-3-embed-1b",
+    )
 )
 ```
 

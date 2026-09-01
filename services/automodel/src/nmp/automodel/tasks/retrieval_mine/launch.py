@@ -13,7 +13,7 @@ from pathlib import Path
 _MINING_SCRIPT = Path(__file__).with_name("mine_hard_negatives.py")
 
 
-def run_hard_negative_mining(*, config_file: Path, nproc_per_node: str | None = None) -> None:
+def run_hard_negative_mining(config_file: Path, nproc_per_node: str | None = None) -> None:
     """Run distributed hard-negative mining with ``config_file`` as the recipe config.
 
     Rank count is ``GPUS_PER_NODE`` when set, otherwise torchrun's ``gpu`` (visible devices).

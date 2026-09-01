@@ -41,7 +41,14 @@ def _executor(step: PlatformJobStep) -> dict[str, Any]:
 
 
 def _generate_config(**overrides: object) -> RetrievalGenerateJobConfig:
-    payload = {"corpus": "default/docs", "provider": "default/nvidia-build", "profile": "embed"}
+    payload = {
+        "corpus": "default/docs",
+        "provider": "default/nvidia-build",
+        "artifact_extraction_model": "nvidia/nemotron-3-nano-30b-a3b",
+        "qa_generation_model": "nvidia/nemotron-3-nano-30b-a3b",
+        "quality_judge_model": "nvidia/nemotron-3-nano-30b-a3b",
+        "embed_model": "nvidia/nemotron-3-embed-1b",
+    }
     payload.update(overrides)
     return RetrievalGenerateJobConfig.model_validate(payload)
 
@@ -372,7 +379,7 @@ def test_create_job_schema_rejects_dataframe_seeds() -> None:
 def test_preview_spec_reuses_generate_config() -> None:
     spec = RetrievalPreviewSpec(generate=_generate_config(), num_records=2)
     assert spec.num_records == 2
-    assert spec.generate.profile == "embed"
+    assert spec.generate.embed_model == "nvidia/nemotron-3-embed-1b"
 
 
 def test_prepare_mining_options_are_typed() -> None:
@@ -432,12 +439,24 @@ def test_retrieval_cli_prints_spec() -> None:
     runner = CliRunner()
     result = runner.invoke(
         retrieval_app,
-        ["generate", "--corpus", "default/docs", "--provider", "default/nvidia-build", "--print-spec"],
+        [
+            "generate",
+            "--corpus",
+            "default/docs",
+            "--provider",
+            "default/nvidia-build",
+            "--chat-model",
+            "nvidia/nemotron-3-nano-30b-a3b",
+            "--embed-model",
+            "nvidia/nemotron-3-embed-1b",
+            "--print-spec",
+        ],
     )
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["corpus"] == "default/docs"
-    assert payload["profile"] == "embed"
+    assert payload["qa_generation_model"] == "nvidia/nemotron-3-nano-30b-a3b"
+    assert payload["embed_model"] == "nvidia/nemotron-3-embed-1b"
 
 
 def test_retrieval_prepare_cli_requires_exactly_one_input() -> None:

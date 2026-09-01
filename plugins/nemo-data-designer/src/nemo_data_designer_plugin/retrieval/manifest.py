@@ -10,7 +10,7 @@ GENERATION_MANIFEST_FILENAME = "generation_result.json"
 GENERATION_MANIFEST_SCHEMA_VERSION = 1
 
 
-def write_generation_manifest(*, output_dir: Path, output_path: Path, dataset_name: str) -> Path:
+def write_generation_manifest(output_dir: Path, output_path: Path, dataset_name: str) -> Path:
     """Write the Stage 0 handoff manifest next to generation artifacts."""
     output_dir.mkdir(parents=True, exist_ok=True)
     try:

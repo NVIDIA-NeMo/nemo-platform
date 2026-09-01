@@ -10,21 +10,34 @@ so upstream field renames or new validators fail here instead of inside a job.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import get_args
 from unittest.mock import patch
 
 import data_designer.config as dd
 import pytest
-from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobConfig
-from nemo_data_designer_plugin.retrieval.conversion import execute_conversion
-from nemo_data_designer_plugin.retrieval.generation import build_generation_run_config
-from nemo_data_designer_plugin.retrieval.profiles import (
+from nemo_data_designer_plugin.jobs.retrieval_spec import (
     DEFAULT_QUERY_COUNTS,
     DEFAULT_REASONING_COUNTS,
-    RetrievalProfile,
-    profile_models,
+    RetrievalGenerateJobConfig,
 )
+from nemo_data_designer_plugin.retrieval.conversion import execute_conversion
+from nemo_data_designer_plugin.retrieval.generation import build_generation_run_config
 from pydantic import ValidationError
+
+_CHAT = "nvidia/nemotron-3-nano-30b-a3b"
+_EMBED = "nvidia/nemotron-3-embed-1b"
+
+
+def _job(**overrides: object) -> RetrievalGenerateJobConfig:
+    payload = {
+        "corpus": "default/docs",
+        "provider": "default/nvidia-build",
+        "artifact_extraction_model": _CHAT,
+        "qa_generation_model": _CHAT,
+        "quality_judge_model": _CHAT,
+        "embed_model": _EMBED,
+    }
+    payload.update(overrides)
+    return RetrievalGenerateJobConfig.model_validate(payload)
 
 
 def _build(job: RetrievalGenerateJobConfig, tmp_path: Path):
@@ -41,7 +54,6 @@ def _build(job: RetrievalGenerateJobConfig, tmp_path: Path):
         chat_provider_name=chat_provider,
         embed_provider_name=embed_provider,
         model_providers=[dd.ModelProvider(name=name, endpoint=f"http://igw/{name}") for name in provider_names],
-        profile=job.profile,
         file_extensions=job.file_extensions,
         min_text_length=job.min_text_length,
         sentences_per_chunk=job.sentences_per_chunk,
@@ -73,26 +85,23 @@ def test_platform_defaults_match_upstream_count_keys() -> None:
     assert DEFAULT_REASONING_COUNTS == UPSTREAM_REASONING
 
 
-@pytest.mark.parametrize("profile", get_args(RetrievalProfile))
-def test_spec_defaults_build_a_real_generation_run_config(profile: RetrievalProfile, tmp_path: Path) -> None:
-    job = RetrievalGenerateJobConfig(corpus=str(tmp_path), provider="default/nvidia-build", profile=profile)
+def test_spec_builds_a_real_generation_run_config(tmp_path: Path) -> None:
+    job = _job(corpus=str(tmp_path))
     config = _build(job, tmp_path)
 
-    defaults = profile_models(profile)
     assert [p.name for p in config.model_providers] == ["default/nvidia-build"]
     assert config.pipeline.qa_generation_provider == "default/nvidia-build"
     assert config.pipeline.embed_provider == "default/nvidia-build"
-    assert config.pipeline.qa_generation_model == defaults.chat_model
-    assert config.pipeline.embed_model == defaults.embed_model
+    assert config.pipeline.qa_generation_model == _CHAT
+    assert config.pipeline.embed_model == _EMBED
     assert type(config.seed_source).__name__ == "DocumentChunkerSeedSource"
 
 
 def test_chat_and_embedding_providers_can_be_split(tmp_path: Path) -> None:
-    job = RetrievalGenerateJobConfig(
+    job = _job(
         corpus=str(tmp_path),
         provider="default/local-chat",
         embed_provider="default/local-embed",
-        profile="rerank",
     )
     config = _build(job, tmp_path)
 
@@ -105,20 +114,20 @@ def test_chat_and_embedding_providers_can_be_split(tmp_path: Path) -> None:
 
 def test_count_distribution_mismatch_is_rejected_at_spec_time() -> None:
     with pytest.raises(ValidationError, match="must sum to num_pairs"):
-        RetrievalGenerateJobConfig(corpus="default/docs", provider="default/nvidia-build", num_pairs=9)
+        _job(num_pairs=9)
 
     with pytest.raises(ValidationError, match="keys must match"):
-        RetrievalGenerateJobConfig(
-            corpus="default/docs",
-            provider="default/nvidia-build",
-            query_counts={"multi_hop": 7},
-        )
+        _job(query_counts={"multi_hop": 7})
+
+
+def test_models_are_required() -> None:
+    with pytest.raises(ValidationError):
+        RetrievalGenerateJobConfig.model_validate({"corpus": "default/docs", "provider": "default/nvidia-build"})
 
 
 def test_custom_counts_that_sum_correctly_build_a_real_config(tmp_path: Path) -> None:
-    job = RetrievalGenerateJobConfig(
+    job = _job(
         corpus=str(tmp_path),
-        provider="default/nvidia-build",
         num_pairs=10,
         query_counts={"multi_hop": 4, "structural": 3, "contextual": 3},
         reasoning_counts={

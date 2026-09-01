@@ -14,7 +14,6 @@ _HF_PREFIX = "hf://"
 
 def materialize_corpus(
     corpus: str,
-    *,
     dest: Path,
     sdk: NeMoPlatform,
     workspace: str,
@@ -37,7 +36,7 @@ def materialize_corpus(
     return _download_fileset(corpus, dest=dest, sdk=sdk, workspace=workspace)
 
 
-def _download_hf(corpus: str, dest: Path, *, token: str | None) -> Path:
+def _download_hf(corpus: str, dest: Path, token: str | None) -> Path:
     from huggingface_hub import snapshot_download
 
     rest = corpus[len(_HF_PREFIX) :]
@@ -65,7 +64,7 @@ def _download_hf(corpus: str, dest: Path, *, token: str | None) -> Path:
     return local_dir / subdir if subdir else local_dir
 
 
-def _download_fileset(corpus: str, *, dest: Path, sdk: NeMoPlatform, workspace: str) -> Path:
+def _download_fileset(corpus: str, dest: Path, sdk: NeMoPlatform, workspace: str) -> Path:
     try:
         fileset_workspace, fileset, fragment = parse_fileset_ref(corpus, workspace_fallback=workspace)
     except FilesetPathError as exc:

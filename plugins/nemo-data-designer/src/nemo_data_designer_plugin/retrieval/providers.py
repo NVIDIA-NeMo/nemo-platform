@@ -6,24 +6,18 @@ from __future__ import annotations
 import data_designer.config as dd
 from data_designer_nemo.context import DataDesignerContext
 from data_designer_nemo.errors import NDDInvalidConfigError
-from nemo_data_designer_plugin.retrieval.profiles import RetrievalProfile, profile_models
 
 
 def build_retrieval_model_configs(
-    *,
-    profile: RetrievalProfile,
     provider: str,
+    artifact_extraction_model: str,
+    qa_generation_model: str,
+    quality_judge_model: str,
+    embed_model: str,
     chat_provider: str | None = None,
     embed_provider: str | None = None,
-    artifact_extraction_model: str | None = None,
-    qa_generation_model: str | None = None,
-    quality_judge_model: str | None = None,
-    embed_model: str | None = None,
 ) -> list[dd.ModelConfig]:
     """Build IGW-facing model configs for the four retrieval SDG roles."""
-    defaults = profile_models(profile)
-    chat = defaults.chat_model
-    embed = defaults.embed_model
     chat_provider = chat_provider or provider
     embed_provider = embed_provider or provider
     chat_params = dd.ChatCompletionInferenceParams()
@@ -31,25 +25,25 @@ def build_retrieval_model_configs(
     return [
         dd.ModelConfig(
             alias="retrieval-artifact-extraction",
-            model=artifact_extraction_model or chat,
+            model=artifact_extraction_model,
             provider=chat_provider,
             inference_parameters=chat_params,
         ),
         dd.ModelConfig(
             alias="retrieval-qa-generation",
-            model=qa_generation_model or chat,
+            model=qa_generation_model,
             provider=chat_provider,
             inference_parameters=chat_params,
         ),
         dd.ModelConfig(
             alias="retrieval-quality-judge",
-            model=quality_judge_model or chat,
+            model=quality_judge_model,
             provider=chat_provider,
             inference_parameters=chat_params,
         ),
         dd.ModelConfig(
             alias="retrieval-embed",
-            model=embed_model or embed,
+            model=embed_model,
             provider=embed_provider,
             inference_parameters=embed_params,
         ),

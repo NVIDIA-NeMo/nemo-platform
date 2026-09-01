@@ -4045,13 +4045,6 @@ components:
           title: Embed Provider
           description: Optional provider override for embedding calls.
           type: string
-        profile:
-          type: string
-          enum:
-          - embed
-          - rerank
-          title: Profile
-          default: embed
         corpus_id:
           type: string
           title: Corpus Id
@@ -4143,17 +4136,21 @@ components:
           type: integer
           minimum: 1.0
         artifact_extraction_model:
+          type: string
           title: Artifact Extraction Model
-          type: string
+          description: Chat model for artifact extraction.
         qa_generation_model:
+          type: string
           title: Qa Generation Model
-          type: string
+          description: Chat model for question/answer generation.
         quality_judge_model:
+          type: string
           title: Quality Judge Model
-          type: string
+          description: Chat model for quality judging.
         embed_model:
-          title: Embed Model
           type: string
+          title: Embed Model
+          description: Embedding model for retrieval SDG.
         hf_token_secret:
           title: Hf Token Secret
           type: string
@@ -4161,6 +4158,10 @@ components:
       required:
       - corpus
       - provider
+      - artifact_extraction_model
+      - qa_generation_model
+      - quality_judge_model
+      - embed_model
       title: RetrievalGenerateJobConfig
       description: Submitter-facing spec for Stage 0 retrieval SDG.
     RetrievalGenerateJobRequest:

@@ -15,7 +15,6 @@ RETRIEVAL_SDG_SCHEMA_VERSION = 1
 
 
 def execute_conversion(
-    *,
     input_path: Path,
     output_dir: Path,
     corpus_id: str,

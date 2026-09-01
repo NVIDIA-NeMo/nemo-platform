@@ -31,7 +31,6 @@ class RetrievalGenerateJob(NemoJob):
     async def to_spec(
         cls,
         input_spec: BaseModel,
-        *,
         workspace: str,
         entity_client: object,
         async_sdk: object,
@@ -42,7 +41,6 @@ class RetrievalGenerateJob(NemoJob):
         job_config = cast(RetrievalGenerateJobConfig, input_spec)
         dd_ctx = create_data_designer_context(async_sdk, workspace)
         model_configs = build_retrieval_model_configs(
-            profile=job_config.profile,
             provider=job_config.provider,
             chat_provider=job_config.chat_provider,
             embed_provider=job_config.embed_provider,
@@ -62,7 +60,6 @@ class RetrievalGenerateJob(NemoJob):
     @classmethod
     async def compile(
         cls,
-        *,
         workspace: str,
         spec: BaseModel,
         entity_client: object,
@@ -83,7 +80,7 @@ class RetrievalGenerateJob(NemoJob):
             ]
         )
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform) -> dict:
+    def run(self, config: dict, ctx: JobContext, sdk: NeMoPlatform) -> dict:
         step = RetrievalGenerateStepConfig.model_validate(config)
         job = step.job_config
         output_dir = work_dir(ctx, "stage0_sdg")
@@ -102,7 +99,6 @@ class RetrievalGenerateJob(NemoJob):
             chat_provider_name=step.chat_provider_name,
             embed_provider_name=step.embed_provider_name,
             model_providers=step.model_providers,
-            profile=job.profile,
             file_extensions=job.file_extensions,
             min_text_length=job.min_text_length,
             sentences_per_chunk=job.sentences_per_chunk,

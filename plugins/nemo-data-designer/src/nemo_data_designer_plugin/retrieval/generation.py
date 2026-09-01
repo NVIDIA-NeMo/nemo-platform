@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Literal
 
 import data_designer.config as dd
 from nemo_data_designer_plugin.retrieval.manifest import write_generation_manifest
-from nemo_data_designer_plugin.retrieval.profiles import RetrievalProfile, profile_models
 
 if TYPE_CHECKING:
     from data_designer_retrieval_sdg import GenerationPreviewResult, GenerationResult, GenerationRunConfig
@@ -17,7 +16,6 @@ RETRIEVAL_SDG_SCHEMA_VERSION = 1
 
 
 def build_generation_run_config(
-    *,
     corpus_dir: Path,
     output_dir: Path,
     artifact_path: Path,
@@ -25,7 +23,6 @@ def build_generation_run_config(
     chat_provider_name: str,
     embed_provider_name: str,
     model_providers: list[dd.ModelProvider],
-    profile: RetrievalProfile,
     file_extensions: list[str] | None,
     min_text_length: int,
     sentences_per_chunk: int,
@@ -42,10 +39,10 @@ def build_generation_run_config(
     buffer_size: int,
     resume: str,
     num_records: int | None,
-    artifact_extraction_model: str | None,
-    qa_generation_model: str | None,
-    quality_judge_model: str | None,
-    embed_model: str | None,
+    artifact_extraction_model: str,
+    qa_generation_model: str,
+    quality_judge_model: str,
+    embed_model: str,
     multi_doc: bool = False,
     bundle_size: int = 2,
     bundle_strategy: Literal["sequential", "doc_balanced", "interleaved"] = "sequential",
@@ -58,7 +55,6 @@ def build_generation_run_config(
         GenerationRunConfig,
     )
 
-    defaults = profile_models(profile)
     extensions = file_extensions or [".txt", ".md", ".text", ""]
     seed_source = DocumentChunkerSeedSource(
         path=str(corpus_dir),
@@ -83,13 +79,13 @@ def build_generation_run_config(
         reasoning_counts=reasoning_counts,
         min_complexity=min_complexity,
         similarity_threshold=similarity_threshold,
-        artifact_extraction_model=artifact_extraction_model or defaults.chat_model,
+        artifact_extraction_model=artifact_extraction_model,
         artifact_extraction_provider=chat_provider_name,
-        qa_generation_model=qa_generation_model or defaults.chat_model,
+        qa_generation_model=qa_generation_model,
         qa_generation_provider=chat_provider_name,
-        quality_judge_model=quality_judge_model or defaults.chat_model,
+        quality_judge_model=quality_judge_model,
         quality_judge_provider=chat_provider_name,
-        embed_model=embed_model or defaults.embed_model,
+        embed_model=embed_model,
         embed_provider=embed_provider_name,
     )
     return GenerationRunConfig(
@@ -108,7 +104,7 @@ def build_generation_run_config(
 
 
 def execute_generation(
-    config: GenerationRunConfig, *, preview: bool = False
+    config: GenerationRunConfig, preview: bool = False
 ) -> GenerationResult | GenerationPreviewResult:
     from data_designer_retrieval_sdg import preview_generation, run_generation
 

@@ -37,7 +37,6 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
     async def run(
         self,
         spec: RetrievalPreviewSpec,
-        *,
         ctx: FunctionContext,
         async_sdk: AsyncNeMoPlatform,
         is_local: bool = False,
@@ -45,7 +44,6 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
         job = spec.generate
         dd_ctx = create_data_designer_context(async_sdk, ctx.workspace)
         model_configs = build_retrieval_model_configs(
-            profile=job.profile,
             provider=job.provider,
             chat_provider=job.chat_provider,
             embed_provider=job.embed_provider,
@@ -79,7 +77,6 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
                     chat_provider_name=job.chat_provider or job.provider,
                     embed_provider_name=job.embed_provider or job.provider,
                     model_providers=model_providers,
-                    profile=job.profile,
                     file_extensions=job.file_extensions,
                     min_text_length=job.min_text_length,
                     sentences_per_chunk=job.sentences_per_chunk,

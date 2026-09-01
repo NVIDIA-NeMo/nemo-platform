@@ -36,7 +36,6 @@ def cpu_retrieval_step(
     module: str,
     spec: BaseModel,
     profile: str | None,
-    *,
     module_args: list[str] | None = None,
     image: str = "nmp-cpu-tasks",
 ) -> PlatformJobStep:
@@ -86,7 +85,6 @@ async def retrieval_step(
     name: str,
     module: str,
     spec: BaseModel,
-    *,
     profile: str | None,
     async_sdk: object,
     gpu: bool = False,
@@ -99,7 +97,6 @@ async def retrieval_step(
 
 async def model_download_step(
     fileset: str,
-    *,
     profile: str | None,
     async_sdk: object,
 ) -> PlatformJobStep:

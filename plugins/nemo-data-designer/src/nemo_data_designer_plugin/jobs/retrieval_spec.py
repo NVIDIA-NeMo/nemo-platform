@@ -6,8 +6,19 @@ from __future__ import annotations
 from typing import Literal, Self
 
 import data_designer.config as dd
-from nemo_data_designer_plugin.retrieval.profiles import DEFAULT_QUERY_COUNTS, DEFAULT_REASONING_COUNTS
 from pydantic import BaseModel, Field, model_validator
+
+# Key sets required by data-designer-retrieval-sdg GenerationPipelineConfig.
+DEFAULT_QUERY_COUNTS = {"multi_hop": 3, "structural": 2, "contextual": 2}
+DEFAULT_REASONING_COUNTS = {
+    "factual": 1,
+    "relational": 1,
+    "inferential": 1,
+    "temporal": 1,
+    "procedural": 1,
+    "causal": 1,
+    "visual": 1,
+}
 
 
 class RetrievalGenerateJobConfig(BaseModel):
@@ -25,7 +36,6 @@ class RetrievalGenerateJobConfig(BaseModel):
         default=None,
         description="Optional provider override for embedding calls.",
     )
-    profile: Literal["embed", "rerank"] = "embed"
     corpus_id: str = "retrieval_sdg"
     dataset_name: str | None = None
     file_extensions: list[str] | None = None
@@ -44,10 +54,10 @@ class RetrievalGenerateJobConfig(BaseModel):
     buffer_size: int = Field(default=200, ge=1)
     resume: Literal["never", "always", "if_possible"] = "never"
     num_records: int | None = Field(default=None, ge=1)
-    artifact_extraction_model: str | None = None
-    qa_generation_model: str | None = None
-    quality_judge_model: str | None = None
-    embed_model: str | None = None
+    artifact_extraction_model: str = Field(description="Chat model for artifact extraction.")
+    qa_generation_model: str = Field(description="Chat model for question/answer generation.")
+    quality_judge_model: str = Field(description="Chat model for quality judging.")
+    embed_model: str = Field(description="Embedding model for retrieval SDG.")
     hf_token_secret: str | None = None
 
     @model_validator(mode="after")
