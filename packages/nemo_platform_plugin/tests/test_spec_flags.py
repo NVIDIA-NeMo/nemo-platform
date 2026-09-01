@@ -118,7 +118,7 @@ class TestWalkSpecLeaves:
 
         unavailable: list[str] = []
         walk_spec_leaves(_Mixed, unavailable=unavailable)
-        assert unavailable == ["agent (inline form)"]
+        assert unavailable == ["agent (other union forms)"]
 
     def test_two_scalar_arms_plus_model_arm_is_skipped(self) -> None:
         # Ambiguous which scalar flag type to expose, so this remains
@@ -238,8 +238,8 @@ class TestEpilog:
 
     def test_unavailable_paths_render_as_extra_note(self) -> None:
         leaves = walk_spec_leaves(_Spec)
-        text = build_epilog(schema=_Spec, leaves=leaves, kind="Function", unavailable=["agent (inline form)"])
-        assert "agent (inline form)" in text
+        text = build_epilog(schema=_Spec, leaves=leaves, kind="Function", unavailable=["agent (other union forms)"])
+        assert "agent (other union forms)" in text
         assert "--spec or --spec-file" in text
 
     def test_no_unavailable_paths_omits_note(self) -> None:
