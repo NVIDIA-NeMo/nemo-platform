@@ -504,11 +504,15 @@ async def fetch_proxy_response(
     leak. Other responses are buffered and parsed as JSON.
 
     When *served_model_name* and *restored_model_id* are both supplied, upstream
-    error bodies (4xx/5xx, including a non-2xx status returned mid-stream) have
-    the served model name rewritten to the entity ref before the body is placed
-    on the ``HTTPException`` — matching the happy-path rewrite so
-    ``served_model_name`` never leaks in error cases. See
-    :func:`_rewrite_model_field_in_error_body`.
+    error bodies (a 4xx/5xx *status* response) have the served model name rewritten
+    to the entity ref before the body is placed on the ``HTTPException`` — matching
+    the happy-path rewrite so ``served_model_name`` never leaks in these error cases.
+    See :func:`_rewrite_model_field_in_error_body`. This is best-effort UX scrubbing,
+    not a hard guarantee: an error a provider delivers *inside* an HTTP-200 SSE stream
+    (an error event mid-stream) does not pass through here — such events only have
+    their structured ``model`` fields rewritten by
+    :func:`_rewrite_model_field_in_stream`, so a served name embedded in that event's
+    free-form message string is not scrubbed.
 
     Returns:
         A ``(response_result, headers, status_code)`` tuple.
@@ -539,9 +543,9 @@ async def fetch_proxy_response(
                 error_body,
             )
             # Rewrite the served model name out of the error body so the caller
-            # never sees the upstream's served_model_name in error cases, matching
-            # the happy-path rewrite. A non-2xx returned mid-stream lands here too,
-            # because the status check precedes the SSE branch below.
+            # never sees the upstream's served_model_name for a non-2xx *status*
+            # response, matching the happy-path rewrite. (An error delivered inside
+            # an HTTP-200 SSE stream does not reach here; see the docstring.)
             if served_model_name is not None and restored_model_id is not None:
                 error_body = _rewrite_model_field_in_error_body(error_body, served_model_name, restored_model_id)
             if response.status in (401, 403, 404):
