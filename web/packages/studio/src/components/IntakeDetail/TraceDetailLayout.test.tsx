@@ -12,8 +12,7 @@ describe('TraceDetailLayout', () => {
     render(<TraceDetailLayout navigation="Trajectory">Details</TraceDetailLayout>);
 
     const sidebar = screen.getByTestId('trace-trajectory-sidebar');
-    const layout = sidebar.parentElement!;
-    vi.spyOn(layout, 'getBoundingClientRect').mockReturnValue({
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       bottom: 600,
       height: 600,
       left: 0,

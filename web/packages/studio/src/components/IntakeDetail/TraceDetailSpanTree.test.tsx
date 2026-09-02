@@ -32,19 +32,23 @@ describe('TraceSpanTree', () => {
     );
 
     const traceTrigger = screen.getByTitle('View trace');
-    expect(traceTrigger).toHaveAttribute('data-state', 'open');
-    await user.click(traceTrigger);
-    expect(traceTrigger).toHaveAttribute('data-state', 'closed');
-    expect(onSelectTrace).toHaveBeenCalledWith('trace-agent-run-001');
-
-    await user.click(traceTrigger);
     const rootSpanLabel = screen.getByText('Answer customer policy question', {
       selector: 'span.truncate',
     });
-    const rootSpanTrigger = rootSpanLabel.closest('summary')!;
-    expect(rootSpanTrigger).toHaveAttribute('data-state', 'open');
-    await user.click(rootSpanTrigger);
-    expect(rootSpanTrigger).toHaveAttribute('data-state', 'closed');
+    expect(traceTrigger).toHaveAttribute('data-state', 'open');
+    expect(rootSpanLabel).toBeVisible();
+    await user.click(traceTrigger);
+    expect(traceTrigger).toHaveAttribute('data-state', 'closed');
+    expect(rootSpanLabel).not.toBeVisible();
+    expect(onSelectTrace).toHaveBeenCalledWith('trace-agent-run-001');
+
+    await user.click(traceTrigger);
+    const childSpanLabel = screen.getByText('Generate final response', {
+      selector: 'span.truncate',
+    });
+    expect(childSpanLabel).toBeVisible();
+    await user.click(rootSpanLabel);
+    expect(childSpanLabel).not.toBeVisible();
     expect(onSelectSpan).toHaveBeenCalledWith('span-root-001', 'trace-agent-run-001');
   });
 
