@@ -50,7 +50,15 @@ class TestAccessKeys:
             description="description",
             expires_in_seconds=1,
             name="x",
+            rotates="ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+            scope=["string"],
             service_account_id="service_account_id",
+            workspaces=[
+                {
+                    "workspace": "workspace",
+                    "roles": ["string"],
+                }
+            ],
         )
         assert_matches_type(AccessKeyCreateResponse, access_key, path=["response"])
 
@@ -258,7 +266,15 @@ class TestAsyncAccessKeys:
             description="description",
             expires_in_seconds=1,
             name="x",
+            rotates="ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+            scope=["string"],
             service_account_id="service_account_id",
+            workspaces=[
+                {
+                    "workspace": "workspace",
+                    "roles": ["string"],
+                }
+            ],
         )
         assert_matches_type(AccessKeyCreateResponse, access_key, path=["response"])
 

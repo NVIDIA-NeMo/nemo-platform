@@ -53,3 +53,6 @@ class AccessKeyMetadataResponse(BaseModel):
 
     name: Optional[str] = None
     """Optional human-readable Scoped Access Key label."""
+
+    scope: Optional[List[str]] = None
+    """Services this key is restricted to. An empty list means the key is unscoped."""

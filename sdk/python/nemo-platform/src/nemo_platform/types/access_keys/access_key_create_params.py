@@ -17,8 +17,11 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Iterable, Optional
 from typing_extensions import TypedDict
+
+from ..._types import SequenceNotStr
+from .access_key_workspace_grant_param import AccessKeyWorkspaceGrantParam
 
 __all__ = ["AccessKeyCreateParams"]
 
@@ -41,9 +44,24 @@ class AccessKeyCreateParams(TypedDict, total=False):
     The token jti remains the stable identifier.
     """
 
+    rotates: Optional[str]
+    """JTI of a prior Scoped Access Key owned by the caller to revoke after creation.
+
+    Intended primarily for personal keys without a service-account identity.
+    """
+
+    scope: Optional[SequenceNotStr[str]]
+    """
+    Optional service names that restrict this key to read and write access for those
+    services.
+    """
+
     service_account_id: Optional[str]
     """Optional non-human service account to bind the key to.
 
     Service-bound keys can only be created by a PlatformAdmin and authenticate as
     service-account:<id>.
     """
+
+    workspaces: Optional[Iterable[AccessKeyWorkspaceGrantParam]]
+    """Optional workspace memberships to grant to the newly created key principal."""

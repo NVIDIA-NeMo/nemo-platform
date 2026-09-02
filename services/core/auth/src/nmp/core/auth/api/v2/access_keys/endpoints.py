@@ -8,6 +8,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
+from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.auth.access_keys.issuer import (
     AccessKeyFeatureDisabledError,
     AccessKeyOperationNotImplementedError,
@@ -20,6 +21,7 @@ from nmp.common.auth.access_keys import (
 )
 from nmp.common.config import get_auth_config
 from nmp.common.entities import EntityConflictError
+from nmp.common.service.dependencies import get_sdk_client
 from nmp.core.auth.app.access_keys import (
     AccessKeyNotFoundError,
     AccessKeyRegistry,
@@ -108,11 +110,13 @@ async def _is_platform_admin(auth_client: AuthClient) -> bool:
 def get_access_key_issuer(
     auth_client: AuthClient = Depends(get_auth_client),
     registry: AccessKeyRegistry = Depends(get_access_key_registry),
+    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
 ) -> PersistentAccessKeyIssuer:
     return PersistentAccessKeyIssuer(
         get_auth_config(),
         auth_client.principal.effective_principal,
         registry,
+        sdk,
         admin_override=lambda: _is_platform_admin(auth_client),
     )
 

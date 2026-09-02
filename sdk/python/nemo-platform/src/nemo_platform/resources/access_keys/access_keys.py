@@ -17,11 +17,11 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Iterable, Optional
 
 import httpx
 
-from ..._types import Body, Omit, Query, Headers, NotGiven, omit, not_given
+from ..._types import Body, Omit, Query, Headers, NotGiven, SequenceNotStr, omit, not_given
 from ..._utils import path_template, maybe_transform, async_maybe_transform
 from ..._compat import cached_property
 from ..._resource import SyncAPIResource, AsyncAPIResource
@@ -36,6 +36,7 @@ from ...types.access_keys import access_key_list_params, access_key_create_param
 from ...types.access_keys.access_key_list_response import AccessKeyListResponse
 from ...types.access_keys.access_key_create_response import AccessKeyCreateResponse
 from ...types.access_keys.access_key_revoke_response import AccessKeyRevokeResponse
+from ...types.access_keys.access_key_workspace_grant_param import AccessKeyWorkspaceGrantParam
 from ...types.access_keys.access_key_status_change_response import AccessKeyStatusChangeResponse
 
 __all__ = ["AccessKeysResource", "AsyncAccessKeysResource"]
@@ -67,7 +68,10 @@ class AccessKeysResource(SyncAPIResource):
         description: Optional[str] | Omit = omit,
         expires_in_seconds: Optional[int] | Omit = omit,
         name: Optional[str] | Omit = omit,
+        rotates: Optional[str] | Omit = omit,
+        scope: Optional[SequenceNotStr[str]] | Omit = omit,
         service_account_id: Optional[str] | Omit = omit,
+        workspaces: Optional[Iterable[AccessKeyWorkspaceGrantParam]] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -89,8 +93,16 @@ class AccessKeysResource(SyncAPIResource):
           name: Optional human-readable Scoped Access Key label. The token jti remains the
               stable identifier.
 
+          rotates: JTI of a prior Scoped Access Key owned by the caller to revoke after creation.
+              Intended primarily for personal keys without a service-account identity.
+
+          scope: Optional service names that restrict this key to read and write access for those
+              services.
+
           service_account_id: Optional non-human service account to bind the key to. Service-bound keys can
               only be created by a PlatformAdmin and authenticate as service-account:<id>.
+
+          workspaces: Optional workspace memberships to grant to the newly created key principal.
 
           extra_headers: Send extra headers
 
@@ -107,7 +119,10 @@ class AccessKeysResource(SyncAPIResource):
                     "description": description,
                     "expires_in_seconds": expires_in_seconds,
                     "name": name,
+                    "rotates": rotates,
+                    "scope": scope,
                     "service_account_id": service_account_id,
+                    "workspaces": workspaces,
                 },
                 access_key_create_params.AccessKeyCreateParams,
             ),
@@ -295,7 +310,10 @@ class AsyncAccessKeysResource(AsyncAPIResource):
         description: Optional[str] | Omit = omit,
         expires_in_seconds: Optional[int] | Omit = omit,
         name: Optional[str] | Omit = omit,
+        rotates: Optional[str] | Omit = omit,
+        scope: Optional[SequenceNotStr[str]] | Omit = omit,
         service_account_id: Optional[str] | Omit = omit,
+        workspaces: Optional[Iterable[AccessKeyWorkspaceGrantParam]] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -317,8 +335,16 @@ class AsyncAccessKeysResource(AsyncAPIResource):
           name: Optional human-readable Scoped Access Key label. The token jti remains the
               stable identifier.
 
+          rotates: JTI of a prior Scoped Access Key owned by the caller to revoke after creation.
+              Intended primarily for personal keys without a service-account identity.
+
+          scope: Optional service names that restrict this key to read and write access for those
+              services.
+
           service_account_id: Optional non-human service account to bind the key to. Service-bound keys can
               only be created by a PlatformAdmin and authenticate as service-account:<id>.
+
+          workspaces: Optional workspace memberships to grant to the newly created key principal.
 
           extra_headers: Send extra headers
 
@@ -335,7 +361,10 @@ class AsyncAccessKeysResource(AsyncAPIResource):
                     "description": description,
                     "expires_in_seconds": expires_in_seconds,
                     "name": name,
+                    "rotates": rotates,
+                    "scope": scope,
                     "service_account_id": service_account_id,
+                    "workspaces": workspaces,
                 },
                 access_key_create_params.AccessKeyCreateParams,
             ),

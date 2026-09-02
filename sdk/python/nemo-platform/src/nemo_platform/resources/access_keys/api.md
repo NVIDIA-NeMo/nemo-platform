@@ -1,6 +1,3 @@
-<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
 # AccessKeys
 
 Types:
@@ -15,6 +12,7 @@ from nemo_platform.types.access_keys import (
     AccessKeyNotImplementedErrorResponse,
     AccessKeyRevokeResponse,
     AccessKeyStatusChangeResponse,
+    AccessKeyWorkspaceGrant,
 )
 ```
 

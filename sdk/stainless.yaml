@@ -985,6 +985,7 @@ resources:
       access_key_not_implemented_error_response: AccessKeyNotImplementedErrorResponse
       access_key_revoke_response: AccessKeyRevokeResponse
       access_key_status_change_response: AccessKeyStatusChangeResponse
+      access_key_workspace_grant: AccessKeyWorkspaceGrant
     methods:
       list: get /apis/auth/v2/access-keys
       create: post /apis/auth/v2/access-keys
