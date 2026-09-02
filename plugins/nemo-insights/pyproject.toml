@@ -58,5 +58,8 @@ packages = ["src/nemo_insights_plugin"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "integration: service integration tests",
+]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
