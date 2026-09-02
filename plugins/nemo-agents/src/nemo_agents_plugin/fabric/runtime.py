@@ -189,17 +189,7 @@ async def run_fabric_agent_once(
 ) -> FabricRuntimeResult:
     """Start an ephemeral Fabric runtime, invoke it once, and stop it."""
     fabric_client = fabric or Fabric()
-    deadline = None if request.timeout_seconds is None else asyncio.get_running_loop().time() + request.timeout_seconds
-
-    try:
-        runtime = await asyncio.wait_for(
-            _start_one_shot_runtime(request, fabric=fabric_client),
-            timeout=_remaining_timeout(deadline),
-        )
-    except TimeoutError as error:
-        raise FabricRuntimeTimeoutError(
-            _timeout_error_message(request.timeout_seconds),
-        ) from error
+    runtime = await _start_one_shot_runtime(request, fabric=fabric_client)
 
     runtime_entered = False
     try:
@@ -208,7 +198,7 @@ async def run_fabric_agent_once(
             try:
                 result = await asyncio.wait_for(
                     runtime.invoke(request=_with_platform_invocation_context(request)),
-                    timeout=_remaining_timeout(deadline),
+                    timeout=request.timeout_seconds,
                 )
             except TimeoutError as error:
                 raise FabricRuntimeTimeoutError(
@@ -222,12 +212,6 @@ async def run_fabric_agent_once(
         raise _runtime_context_error(error, entered=runtime_entered) from error
 
     return _normalize_fabric_run_result(result)
-
-
-def _remaining_timeout(deadline: float | None) -> float | None:
-    if deadline is None:
-        return None
-    return max(0.0, deadline - asyncio.get_running_loop().time())
 
 
 @asynccontextmanager

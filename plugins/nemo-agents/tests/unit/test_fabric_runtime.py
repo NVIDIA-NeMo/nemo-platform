@@ -61,6 +61,7 @@ class _FakeRuntime:
         invoke_error: Exception | None = None,
         invoke_delay: float = 0.0,
         enter_error: Exception | None = None,
+        enter_delay: float = 0.0,
         exit_error: Exception | None = None,
         stream: _FakeInvokeStream | None = None,
     ) -> None:
@@ -68,6 +69,7 @@ class _FakeRuntime:
         self.invoke_error = invoke_error
         self.invoke_delay = invoke_delay
         self.enter_error = enter_error
+        self.enter_delay = enter_delay
         self.exit_error = exit_error
         self.entered = False
         self.exited = False
@@ -78,6 +80,8 @@ class _FakeRuntime:
         self.stream = stream
 
     async def __aenter__(self) -> "_FakeRuntime":
+        if self.enter_delay:
+            await asyncio.sleep(self.enter_delay)
         if self.enter_error is not None:
             raise self.enter_error
         self.entered = True
@@ -247,20 +251,21 @@ class TestRunFabricAgentOnce:
         assert fake_runtime.exited is True
         assert fake_runtime.exit_calls == 1
 
-    async def test_timeout_includes_runtime_startup(self) -> None:
-        fake_runtime = _FakeRuntime()
-        fake_fabric = _FakeFabric(runtime=fake_runtime, start_delay=1.0)
+    async def test_runtime_setup_does_not_consume_invocation_timeout(self) -> None:
+        fake_runtime = _FakeRuntime(enter_delay=0.06, invoke_delay=0.06)
         request = FabricOneShotRequest(
             fabric_config=cast(FabricConfig, object()),
             base_dir=Path("/tmp/agent"),
-            timeout_seconds=0.01,
+            timeout_seconds=0.1,
         )
 
-        with pytest.raises(FabricRuntimeTimeoutError, match="timed out after 0.01s"):
-            await run_fabric_agent_once(request, fabric=fake_fabric)
+        result = await run_fabric_agent_once(
+            request,
+            fabric=_FakeFabric(runtime=fake_runtime, start_delay=0.06),
+        )
 
-        assert fake_runtime.entered is False
-        assert fake_runtime.exit_calls == 0
+        assert result.status == "succeeded"
+        assert fake_runtime.exit_calls == 1
 
     async def test_wraps_runtime_timeout_without_configured_deadline(self) -> None:
         timeout_error = TimeoutError("adapter timed out")
@@ -435,6 +440,28 @@ class TestStreamFabricAgentOnce:
         assert fabric_request.request_id == "platform-request-1"
         assert fabric_request.context == {"source": "server"}
         assert result.response == "hello"
+
+    async def test_runtime_setup_does_not_consume_result_timeout(self) -> None:
+        class _SlowInvokeStream(_FakeInvokeStream):
+            async def result(self) -> Any:
+                await asyncio.sleep(0.06)
+                return await super().result()
+
+        fake_runtime = _FakeRuntime(stream=_SlowInvokeStream(), enter_delay=0.06)
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+            timeout_seconds=0.1,
+        )
+
+        async with stream_fabric_agent_once(
+            request,
+            fabric=_FakeFabric(runtime=fake_runtime, start_delay=0.06),
+        ) as stream:
+            result = await stream.result()
+
+        assert result.status == "succeeded"
+        assert fake_runtime.exit_calls == 1
 
     async def test_cleans_up_runtime_when_stream_start_fails(self) -> None:
         fake_runtime = _FakeRuntime(invoke_error=fabric_runtime.FabricError("stream unavailable"))

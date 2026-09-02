@@ -171,6 +171,8 @@ class _StreamingChatCompletionIterator:
         self._events: AsyncGenerator[str, None] | None = None
         self._close_fabric_stream_on_exit = True
         self._close_task: asyncio.Task[None] | None = None
+        self._close_deadline: float | None = None
+        self._close_observer_added = False
         self._closed = False
 
     def __aiter__(self) -> AsyncIterator[str]:
@@ -186,6 +188,9 @@ class _StreamingChatCompletionIterator:
         except StopAsyncIteration:
             await self.aclose()
             raise
+        except asyncio.CancelledError:
+            self._start_cleanup()
+            raise
         except BaseException:
             await self.aclose()
             raise
@@ -193,9 +198,44 @@ class _StreamingChatCompletionIterator:
     async def aclose(self) -> None:
         if self._closed:
             return
+        close_task = self._start_cleanup()
+        assert self._close_deadline is not None
+        remaining = max(0.0, self._close_deadline - asyncio.get_running_loop().time())
+        try:
+            await asyncio.wait_for(asyncio.shield(close_task), timeout=remaining)
+        except TimeoutError:
+            self._observe_background_cleanup(close_task)
+
+    def _start_cleanup(self) -> asyncio.Task[None]:
         if self._close_task is None:
             self._close_task = asyncio.create_task(self._cleanup())
-        await asyncio.shield(self._close_task)
+            self._close_deadline = asyncio.get_running_loop().time() + _FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS
+        return self._close_task
+
+    def _observe_background_cleanup(self, close_task: asyncio.Task[None]) -> None:
+        if self._close_observer_added:
+            return
+        self._close_observer_added = True
+        close_task.add_done_callback(self._log_background_cleanup_result)
+        logger.warning(
+            "Timed out waiting for Fabric stream cleanup after %gs; cleanup will continue in the background.",
+            _FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS,
+        )
+
+    def _log_background_cleanup_result(self, close_task: asyncio.Task[None]) -> None:
+        if close_task.cancelled():
+            logger.warning(
+                "Background Fabric stream cleanup was cancelled for completion %s.",
+                self._completion_id,
+            )
+            return
+        error = close_task.exception()
+        if error is not None:
+            logger.error(
+                "Background Fabric stream cleanup failed for completion %s.",
+                self._completion_id,
+                exc_info=(type(error), error, error.__traceback__),
+            )
 
     async def _cleanup(self) -> None:
         if self._events is not None:
@@ -233,16 +273,7 @@ class _FabricStreamingResponse(StreamingResponse):
         try:
             await super().__call__(scope, receive, send)
         finally:
-            try:
-                await asyncio.wait_for(
-                    asyncio.shield(self._iterator.aclose()),
-                    timeout=_FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS,
-                )
-            except TimeoutError:
-                logger.warning(
-                    "Timed out waiting for Fabric stream cleanup after %gs; cleanup will continue in the background.",
-                    _FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS,
-                )
+            await asyncio.shield(self._iterator.aclose())
 
 
 async def _close_interrupted_stream(fabric_stream: FabricRuntimeStream) -> None:

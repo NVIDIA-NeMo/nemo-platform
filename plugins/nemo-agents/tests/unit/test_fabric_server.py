@@ -44,11 +44,13 @@ class _FakeStreamContext:
         *,
         exit_checkpoint: bool = False,
         exit_waiter: asyncio.Event | None = None,
+        exit_error: BaseException | None = None,
     ) -> None:
         self.stream = stream
         self.enter_error = enter_error
         self.exit_checkpoint = exit_checkpoint
         self.exit_waiter = exit_waiter
+        self.exit_error = exit_error
         self.exit_calls = 0
         self.exit_completions = 0
 
@@ -63,6 +65,8 @@ class _FakeStreamContext:
             await asyncio.sleep(0)
         if self.exit_waiter is not None:
             await self.exit_waiter.wait()
+        if self.exit_error is not None:
+            raise self.exit_error
         self.exit_completions += 1
 
 
@@ -775,9 +779,101 @@ async def test_streaming_response_bounds_cleanup_wait_without_cancelling_cleanup
     assert "cleanup will continue in the background" in caplog.text
 
     cleanup_release.set()
-    await iterator.aclose()
+    assert iterator._close_task is not None
+    await iterator._close_task
 
     assert stream_context.exit_completions == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_response_bounds_cleanup_after_direct_task_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cleanup_release = asyncio.Event()
+    fabric_stream = _FakeFabricStream(
+        [{"data": {"choices": [{"delta": {"content": "partial"}}]}}],
+        block_after_records=True,
+    )
+    stream_context = _FakeStreamContext(fabric_stream, exit_waiter=cleanup_release)
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+    body_sent = asyncio.Event()
+    monkeypatch.setattr(server, "_FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS", 0.01)
+
+    async def receive() -> Any:
+        await asyncio.Event().wait()
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body" and message.get("body"):
+            body_sent.set()
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.4"}})
+    response_task = asyncio.create_task(response(scope, receive, cast(Any, send)))
+    await body_sent.wait()
+    response_task.cancel()
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(response_task, timeout=1)
+
+    assert stream_context.exit_calls == 1
+    assert stream_context.exit_completions == 0
+    assert "cleanup will continue in the background" in caplog.text
+
+    cleanup_release.set()
+    assert iterator._close_task is not None
+    await iterator._close_task
+
+    assert stream_context.exit_completions == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_response_logs_cleanup_failure_after_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cleanup_release = asyncio.Event()
+    cleanup_error = RuntimeError("cleanup failed")
+    fabric_stream = _FakeFabricStream()
+    stream_context = _FakeStreamContext(
+        fabric_stream,
+        exit_waiter=cleanup_release,
+        exit_error=cleanup_error,
+    )
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+    monkeypatch.setattr(server, "_FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS", 0.01)
+
+    async def receive() -> Any:
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.4"}})
+    with caplog.at_level("WARNING"):
+        with pytest.raises(ClientDisconnect):
+            await response(scope, receive, cast(Any, send))
+
+        cleanup_release.set()
+        assert iterator._close_task is not None
+        with pytest.raises(RuntimeError, match="cleanup failed"):
+            await iterator._close_task
+        await asyncio.sleep(0)
+
+    assert "Background Fabric stream cleanup failed for completion chatcmpl-test." in caplog.text
 
 
 def test_chat_completion_maps_failed_run_result(
