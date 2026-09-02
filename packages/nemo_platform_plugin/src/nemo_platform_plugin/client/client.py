@@ -28,7 +28,7 @@ from contextlib import asynccontextmanager, contextmanager
 from datetime import timezone
 from functools import cache
 from pathlib import Path
-from typing import Any, Self, TypeVar, cast, get_args, get_origin, overload
+from typing import Any, Generic, Self, TypeVar, cast, get_args, get_origin, overload
 from urllib.parse import quote
 
 import httpx
@@ -70,6 +70,7 @@ from nemo_platform_plugin.client.types import (
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+HttpClientT = TypeVar("HttpClientT", httpx.Client, httpx.AsyncClient)
 
 logger = logging.getLogger(__name__)
 
@@ -127,12 +128,6 @@ def _resolve_implicit_workload_auth(
         base_url=base_url,
         subject_token_file=Path(subject_token_file),
     )
-
-
-# Instance-dict slot holding lazily discovered plugin SDK resources. Each
-# resource is bound to the client that built it, so ``with_options()`` drops
-# this slot on the clone rather than handing out originals.
-_RESOURCE_CACHE_ATTR = "_discovered_resources"
 
 
 @cache
@@ -339,7 +334,7 @@ class _InferenceNamespace:
     through a synchronous ``send()``.
     """
 
-    def __init__(self, client: "BaseNemoClient") -> None:
+    def __init__(self, client: NemoClient | AsyncNemoClient) -> None:
         self._client = client
 
     def _models_client(self) -> NemoClient | AsyncNemoClient:
@@ -347,7 +342,7 @@ class _InferenceNamespace:
 
         if isinstance(self._client, AsyncNemoClient):
             return AsyncModelsClient.from_client(self._client)
-        return ModelsClient.from_client(cast(NemoClient, self._client))
+        return ModelsClient.from_client(self._client)
 
     @property
     def providers(self) -> NemoClient | AsyncNemoClient:
@@ -367,15 +362,17 @@ class _InferenceNamespace:
 
         if isinstance(self._client, AsyncNemoClient):
             return AsyncVirtualModelsClient.from_client(self._client)
-        return VirtualModelsClient.from_client(cast(NemoClient, self._client))
+        return VirtualModelsClient.from_client(self._client)
 
 
-class BaseNemoClient:
+class BaseNemoClient(Generic[HttpClientT]):
     """Shared logic for sync and async NeMo clients.
 
     Handles URL construction and request serialisation.
     Subclasses provide the actual HTTP transport (sync or async).
     """
+
+    _http: HttpClientT
 
     def __init__(
         self,
@@ -404,9 +401,9 @@ class BaseNemoClient:
     def _client(self) -> httpx.Client | httpx.AsyncClient:
         """Underlying httpx transport.
 
-        Plugin SDK resources access ``platform._client`` to make raw HTTP
-        calls. Exposing it here lets them work with NemoClient after the
-        Stainless SDK is retired.
+        Legacy plugin SDK resources access ``NeMoPlatform._client`` to make raw
+        HTTP calls. Exposing the same transport property here lets those
+        resources work with ``NemoClient`` while they migrate.
         """
         return self._http
 
@@ -414,30 +411,6 @@ class BaseNemoClient:
     def default_headers(self) -> dict[str, str]:
         """Default headers sent with every request."""
         return self._default_headers or {}
-
-    def __getattr__(self, name: str) -> Any:
-        """Delegate unknown attributes to plugin SDK discovery.
-
-        Mirrors NeMoPlatform.__getattr__: discovers plugin SDK resources
-        via entry points and instantiates them with self as the platform.
-        This handles sdk.auditor, sdk.evaluator, sdk.agents, sdk.iron_swarm,
-        sdk.anonymizer, sdk.customizer, and any other plugin-level resource
-        not covered by the convenience properties.
-        """
-        from nemo_platform_plugin.discovery import discover_sdk
-
-        resources = discover_sdk().get(name)
-        if resources is None:
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
-
-        resource_cls = resources.async_resource if isinstance(self, AsyncNemoClient) else resources.sync_resource
-        if resource_cls is None:
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
-
-        cache = self.__dict__.setdefault(_RESOURCE_CACHE_ATTR, {})
-        if name not in cache:
-            cache[name] = resource_cls(self)
-        return cache[name]
 
     @property
     def workspace(self) -> str | None:
@@ -510,10 +483,6 @@ class BaseNemoClient:
             client.with_options(timeout=300).update_fileset(...)
         """
         clone = copy.copy(self)
-        # Discovered resources are bound to the client that created them, so a
-        # shallow copy must not inherit them: the clone re-resolves each one
-        # against itself and picks up the overrides below.
-        clone.__dict__.pop(_RESOURCE_CACHE_ATTR, None)
         if headers:
             clone._default_headers = {**self._default_headers, **headers}
         if retry is not None:
@@ -620,7 +589,7 @@ class BaseNemoClient:
         return self._resource_client(IronSwarmClient, AsyncIronSwarmClient)
 
     @property
-    def inference(self) -> _InferenceNamespace:
+    def inference(self: NemoClient | AsyncNemoClient) -> _InferenceNamespace:
         return _InferenceNamespace(self)
 
     def _resolve_query_params(self, request: PreparedRequest) -> dict[str, str | int | bool] | None:
@@ -638,7 +607,7 @@ class BaseNemoClient:
         return filtered or None
 
 
-class NemoClient(BaseNemoClient):
+class NemoClient(BaseNemoClient[httpx.Client]):
     """Sync HTTP client for NeMo Platform APIs."""
 
     _auth: TokenProvider | None
@@ -902,7 +871,7 @@ class NemoClient(BaseNemoClient):
         return fetch
 
 
-class AsyncNemoClient(BaseNemoClient):
+class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
     """Async HTTP client for NeMo Platform APIs.
 
     Async twin of :class:`NemoClient`.

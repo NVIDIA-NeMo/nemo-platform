@@ -3,21 +3,33 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import Protocol, runtime_checkable
+
 from fastapi import FastAPI
 from nemo_automodel_plugin.contributor import AutomodelContributor
+
+
+@runtime_checkable
+class _RouteWithPath(Protocol):
+    path: str
+
+
+@runtime_checkable
+class _RouteWithEffectiveCandidates(Protocol):
+    def effective_candidates(self) -> Iterable[object]: ...
 
 
 def _route_paths(app: FastAPI) -> set[str]:
     """Collect all route paths, compatible with FastAPI 0.138+ _IncludedRouter."""
     paths: set[str] = set()
-    queue = list(app.routes)
+    queue: list[object] = list(app.routes)
     while queue:
         route = queue.pop()
-        if hasattr(route, "path"):
+        if isinstance(route, _RouteWithPath):
             paths.add(route.path)
-        fn = getattr(route, "effective_candidates", None)
-        if callable(fn):
-            queue.extend(fn())  # type: ignore[arg-type]
+        if isinstance(route, _RouteWithEffectiveCandidates):
+            queue.extend(route.effective_candidates())
     return paths
 
 
@@ -38,7 +50,7 @@ def test_contributor_get_cli_exposes_flat_verbs() -> None:
     assert isinstance(cli, typer.Typer)
     assert cli.info.name == "automodel"
     assert not any(g.name == "jobs" for g in cli.registered_groups)
-    assert {cmd.name for cmd in cli.registered_commands} >= {"run", "submit", "explain"}
+    assert {cmd.name for cmd in cli.registered_commands} == {"submit", "explain"}
 
 
 def test_contributor_exposes_sdk_resources() -> None:

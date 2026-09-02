@@ -5,7 +5,7 @@
 
 The override machinery is shared in :mod:`nmp.customization_common.cli.overrides`; this
 module supplies the Unsloth specifics: the ``UnslothJobInput`` schema (via
-``load_job_json``), the ``JOB_JSON`` help text, and the run-disabled message.
+``load_job_json``) and the ``JOB_JSON`` help text.
 """
 
 import json
@@ -17,10 +17,6 @@ from nmp.customization_common.cli.overrides import apply_job_cli_overrides
 from nemo_unsloth_plugin.schema import UnslothJobInput
 
 _JOB_JSON_HELP = "Path to Unsloth job JSON (UnslothJobInput schema)."
-_RUN_DISABLED_MESSAGE = (
-    "Unsloth does not support local run. Submit to the platform API instead:\n"
-    "  nemo customization unsloth submit <job.json> -w <workspace>"
-)
 
 
 def load_job_json(path: Path) -> str:
@@ -31,10 +27,9 @@ def load_job_json(path: Path) -> str:
 
 
 def apply_unsloth_job_cli_overrides(group: typer.Typer) -> None:
-    """Flat ``unsloth`` CLI: ``submit JOB.json``; ``run`` is disabled."""
+    """Flat ``unsloth`` CLI: ``submit JOB.json``."""
     apply_job_cli_overrides(
         group,
         load_job_json=load_job_json,
         job_json_help=_JOB_JSON_HELP,
-        run_disabled_message=_RUN_DISABLED_MESSAGE,
     )

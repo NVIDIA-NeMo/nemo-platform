@@ -161,7 +161,7 @@ def test_write_operator_env_never_creates_a_world_readable_file(tmp_path: Path) 
 # ── run job env injection ────────────────────────────────────────────────
 
 
-def test_run_job_injects_operator_env_without_overriding_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_job_injects_operator_env_when_shell_env_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     plugin_config = _config(tmp_path)
     plugin_config.venv_path.mkdir(parents=True)
     plugin_config.iron_swarm_bin.parent.mkdir(parents=True, exist_ok=True)
@@ -170,6 +170,7 @@ def test_run_job_injects_operator_env_without_overriding_shell(tmp_path: Path, m
     plugin_config.garak_python.touch()
     plugin_config.operator_env_file.write_text(f"{INFERENCE_API_KEY_ENVVAR}=from-dotenv\n", encoding="utf-8")
 
+    monkeypatch.delenv(INFERENCE_API_KEY_ENVVAR, raising=False)
     monkeypatch.setattr("nemo_iron_swarm_plugin.jobs.run.IronSwarmConfig.get", lambda: plugin_config)
     monkeypatch.setattr("nemo_iron_swarm_plugin.jobs._common.sys.stdin.isatty", lambda: False)
 
@@ -201,7 +202,8 @@ def test_run_job_does_not_override_explicit_shell_env(tmp_path: Path, monkeypatc
     plugin_config.garak_python.touch()
     plugin_config.operator_env_file.write_text(f"{INFERENCE_API_KEY_ENVVAR}=from-dotenv\n", encoding="utf-8")
 
-    monkeypatch.setenv(INFERENCE_API_KEY_ENVVAR, "from-shell")
+    shell_value = "from-shell-sentinel"
+    monkeypatch.setenv(INFERENCE_API_KEY_ENVVAR, shell_value)
     monkeypatch.setattr("nemo_iron_swarm_plugin.jobs.run.IronSwarmConfig.get", lambda: plugin_config)
     monkeypatch.setattr("nemo_iron_swarm_plugin.jobs._common.sys.stdin.isatty", lambda: False)
 
@@ -221,7 +223,8 @@ def test_run_job_does_not_override_explicit_shell_env(tmp_path: Path, monkeypatc
     monkeypatch.setattr(job, "report_progress", lambda *a, **k: None)
     job.run({"config": str(manifest)}, ctx=ctx, sdk=None)
 
-    assert captured["env"][INFERENCE_API_KEY_ENVVAR] == "from-shell"
+    assert captured["env"][INFERENCE_API_KEY_ENVVAR] == shell_value
+    assert os.environ[INFERENCE_API_KEY_ENVVAR] == shell_value
 
 
 # ── missing_secrets ──────────────────────────────────────────────────────

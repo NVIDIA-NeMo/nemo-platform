@@ -105,12 +105,14 @@ def test_cli_submit_accepts_job_json_file(monkeypatch: pytest.MonkeyPatch) -> No
     assert submitted["spec"]["model"] == "default/qwen3-1.7b"
 
 
-def test_cli_run_is_disabled() -> None:
+def test_cli_help_lists_submit_and_explain_only() -> None:
     automodel_cli = AutomodelContributor().get_cli()
     runner = CliRunner()
-    result = runner.invoke(automodel_cli, ["run", str(FIXTURES / "minimal_sft_lora.json")])
-    assert result.exit_code == 1
-    assert "does not support local run" in result.stderr
+    result = runner.invoke(automodel_cli, ["--help"])
+    assert result.exit_code == 0
+    assert "submit" in result.stdout
+    assert "explain" in result.stdout
+    assert "run" not in result.stdout
 
 
 def test_cli_expose_input_and_output_schemas() -> None:
