@@ -116,6 +116,26 @@ def test_inline_jsonl_skips_unrecognized_document_shapes(tmp_path: Path) -> None
     assert lines == [{"query": "keep text", "pos_doc": "alpha", "neg_doc": ["gamma"]}]
 
 
+def test_inline_jsonl_treats_null_document_lists_as_empty(tmp_path: Path) -> None:
+    wrapped = tmp_path / "train.json"
+    wrapped.write_text(
+        json.dumps(
+            {
+                "corpus": {},
+                "data": [
+                    {"question": "drop null pos", "pos_doc": None, "neg_doc": ["gamma"]},
+                    {"question": "keep null neg", "pos_doc": ["alpha"], "neg_doc": None},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "training.jsonl"
+    wrapped_to_inline_jsonl(wrapped, out)
+    lines = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+    assert lines == [{"query": "keep null neg", "pos_doc": "alpha", "neg_doc": []}]
+
+
 def test_unroll_skips_null_pos_doc_and_missing_question_id() -> None:
     unrolled = unroll_training_data(
         [

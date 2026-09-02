@@ -29,7 +29,7 @@ def retrieval_generate(
     chat_model: str = typer.Option(..., "--chat-model", help="Chat model for artifact extraction, Q&A, and judging."),
     embed_model: str = typer.Option(..., "--embed-model", help="Embedding model."),
     workspace: str = typer.Option("default", "--workspace", "-w"),
-    spec_out: bool = typer.Option(False, "--print-spec", help="Print JSON spec instead of submitting."),
+    spec_out: bool = typer.Option(False, "--print-spec", help="Print JSON spec instead of a submission command."),
 ) -> None:
     """Build a spec for the auto-generated ``retrieval-generate`` job command."""
     spec = RetrievalGenerateJobConfig(

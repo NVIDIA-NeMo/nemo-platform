@@ -70,8 +70,8 @@ def wrapped_to_inline_jsonl(train_json: Path, output_jsonl: Path, corpus_parquet
 
 def _inline_rows(record: dict[str, Any], resolver: _CorpusResolver) -> list[dict[str, Any]]:
     """Inline rows for one wrapped record, empty when unresolved ids made it unusable."""
-    requested_negatives = record.get("neg_doc", [])
-    positives = resolver.resolve_all(record.get("pos_doc", []))
+    requested_negatives = record.get("neg_doc") or []
+    positives = resolver.resolve_all(record.get("pos_doc") or [])
     negatives = resolver.resolve_all(requested_negatives)
 
     if not positives:
