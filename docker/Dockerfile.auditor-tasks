@@ -79,7 +79,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "langchain-core>=1.2.22" \
     "orjson>=3.11.6" \
     "cryptography>=50.0.0,<51" \
-    "nltk>=3.10.0"
+    "nltk>=3.10.3"
 
 # CVE Remediation
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -91,7 +91,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "wheel>=0.46.2" \
     "orjson>=3.11.6" \
     "cryptography>=50.0.0,<51" \
-    "nltk>=3.10.0"
+    "nltk>=3.10.3"
 
 ARG NMP_COLLECT_SOURCES=0
 ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
