@@ -171,3 +171,6 @@ iron-swarm.yaml
 docs/superpowers/
 # Per-worker fatal-signal tracebacks (PYTEST_CRASH_DUMP_DIR)
 crash-dumps/
+
+# cmux per-project workspace config (machine/user-local, not shared)
+.cmux/
