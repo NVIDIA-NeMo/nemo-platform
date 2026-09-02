@@ -76,9 +76,9 @@ class AnalysisRun(NemoEntity, entity_type="insights_analysis_run"):
     job. Insights mints that name before submitting, so the link between a run
     and its job is *derivable* rather than written back after the fact. That
     removes the dual write, and with it the failure mode where a job exists
-    that no run points at: a run whose job name 404s simply never landed and
-    can be resubmitted under the same name, and a resubmission that collides is
-    proof the original landed.
+    that no run points at: a run whose job name 404s simply never landed. There
+    is no resubmit-under-an-existing-name route yet, so such a run is a read
+    today, not something a caller can drive back to completion.
 
     Progress is deliberately absent. Status, logs, and results belong to the
     Job and are read from it; mirroring them here would go stale immediately.
