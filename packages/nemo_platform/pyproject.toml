@@ -391,6 +391,8 @@ nemo-guardrails-plugin = [
 nemo-insights-plugin = [
   "fastapi>=0.115",
   "httpx",
+  "nemo-fabric-adapter-contract>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-common>=0.2.0,<0.3.0",
   "nemo-platform-plugin",
   "nooa>=0.0.9",
   "opentelemetry-exporter-otlp>=1.42.1",
@@ -650,6 +652,10 @@ nemo_agents_example_calculator = "calculator_agent.register"
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nat.plugins"]
 nemo_agents_files_telemetry = "nemo_agents_plugin.telemetry.files_service_exporter"
+
+# Generated from [tool.bundle-package]; do not edit this table by hand.
+[project.entry-points."nemo.agents.execute_extensions"]
+"insights.analysis" = "nemo_insights_plugin.execute_extensions:InsightsAnalysisExtension"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.cli"]
