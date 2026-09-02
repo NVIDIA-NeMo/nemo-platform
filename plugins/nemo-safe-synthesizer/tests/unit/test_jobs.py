@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -307,15 +308,55 @@ async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk, mock
             await _compile(spec, mock_sdk)
 
 
-def test_plugin_job_config_rejects_conflicting_pretrained_model_sources():
-    with pytest.raises(ValueError, match="Use either 'pretrained_model_job' or 'config.training.pretrained_model'"):
-        PluginJobConfig.model_validate(
+def test_plugin_job_config_prefers_pretrained_model_job_over_conflicting_source(caplog):
+    with caplog.at_level(logging.WARNING):
+        result = PluginJobConfig.model_validate(
+            {
+                "data_source": DEFAULT_DATA_SOURCE,
+                "pretrained_model_job": "prior-safe-synth-job",
+                "config": {"training": {"pretrained_model": "some-other-model"}},
+            }
+        )
+
+    assert result.pretrained_model_job == "prior-safe-synth-job"
+    assert result.config.training.pretrained_model == "HuggingFaceTB/SmolLM3-3B"
+    assert any(
+        "pretrained_model_job" in record.message and "pretrained_model" in record.message for record in caplog.records
+    )
+
+
+def test_plugin_job_config_pretrained_model_job_matches_default_no_warning(caplog):
+    with caplog.at_level(logging.WARNING):
+        result = PluginJobConfig.model_validate(
             {
                 "data_source": DEFAULT_DATA_SOURCE,
                 "pretrained_model_job": "prior-safe-synth-job",
                 "config": {"training": {"pretrained_model": "HuggingFaceTB/SmolLM3-3B"}},
             }
         )
+
+    assert result.pretrained_model_job == "prior-safe-synth-job"
+    assert result.config.training.pretrained_model == "HuggingFaceTB/SmolLM3-3B"
+    assert not any(
+        "pretrained_model_job" in record.message and "pretrained_model" in record.message for record in caplog.records
+    )
+
+
+def test_plugin_job_config_pretrained_model_job_alone_no_warning(caplog):
+    with caplog.at_level(logging.WARNING):
+        result = PluginJobConfig.model_validate(
+            {
+                "data_source": DEFAULT_DATA_SOURCE,
+                "pretrained_model_job": "prior-safe-synth-job",
+                "config": {},
+            }
+        )
+
+    assert result.pretrained_model_job == "prior-safe-synth-job"
+    assert result.config.training.pretrained_model == "HuggingFaceTB/SmolLM3-3B"
+    assert not any(
+        "pretrained_model_job" in record.message and "pretrained_model" in record.message for record in caplog.records
+    )
 
 
 @pytest.mark.asyncio
