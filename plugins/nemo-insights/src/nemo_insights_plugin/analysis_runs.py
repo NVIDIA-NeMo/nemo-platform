@@ -30,7 +30,7 @@ from nemo_insights_plugin.analyst.agent_config import AGENT_CONFIG_FORMAT, build
 from nemo_insights_plugin.authz import scope
 from nemo_insights_plugin.entities import AnalysisRun
 from nemo_insights_plugin.schema import AnalysisRunPage, AnalysisRunResponse, CreateAnalysisRunRequest
-from nemo_platform import APIStatusError, AsyncNeMoPlatform
+from nemo_platform import APIConnectionError, APIStatusError, AsyncNeMoPlatform
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.dependencies import get_sdk_client
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError, get_entity_client
@@ -93,6 +93,21 @@ async def create_analysis_run(
         # new name and no resubmit-under-an-existing-name route exists yet.
         logger.warning("Analysis run %r recorded but its job was not created: %s", saved.name, exc)
         raise HTTPException(status_code=exc.status_code, detail=_error_detail(exc)) from exc
+    except APIConnectionError as exc:
+        # Same stranded run, but a sibling of APIStatusError rather than a
+        # subclass, so it needs its own arm — and it is the case most likely to
+        # be worth retrying, since the request may never have reached Jobs.
+        # Log the run name: without it the orphan cannot be found afterwards.
+        logger.warning("Analysis run %r recorded but the Jobs service was unreachable: %s", saved.name, exc)
+        raise HTTPException(
+            status_code=503,
+            # Name the run: it exists, and this is the caller's only chance to
+            # learn what was persisted before the response is all they have.
+            detail={
+                "message": "Could not reach the Jobs service to submit the analysis run.",
+                "run": saved.name,
+            },
+        ) from exc
     return AnalysisRunResponse(run=saved, job=job)
 
 

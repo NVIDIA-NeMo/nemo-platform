@@ -25,7 +25,7 @@ from nemo_insights_plugin.analysis_runs import (
 )
 from nemo_insights_plugin.entities import AnalysisRun
 from nemo_insights_plugin.schema import AnalysisRunPage
-from nemo_platform import APIStatusError, AsyncNeMoPlatform
+from nemo_platform import APIConnectionError, APIStatusError, AsyncNeMoPlatform
 from nemo_platform_plugin.entities.base import ListResponse, PaginationInfo
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.entity_naming import NAME_MAX_LENGTH, NAME_PATTERN
@@ -346,6 +346,25 @@ async def test_a_failed_submission_leaves_the_run_record_in_place() -> None:
     assert excinfo.value.status_code == 422
     assert excinfo.value.detail == "bad model ref"
     assert len(entities.created) == 1
+
+
+async def test_an_unreachable_jobs_service_leaves_a_findable_run_record() -> None:
+    """APIConnectionError is a sibling of APIStatusError, so it needs its own arm.
+
+    This is the case a retry could plausibly fix, so the orphan has to be
+    findable afterwards rather than vanishing into an unhandled 500.
+    """
+    unreachable = APIConnectionError(request=httpx.Request("POST", "http://platform/jobs/execute"))
+    jobs = _StubExecuteJobs(error=unreachable)
+    entities = _StubEntities()
+
+    with pytest.raises(HTTPException) as excinfo:
+        await create_analysis_run("default", _request(), _sdk(jobs), _entities(entities))
+
+    assert excinfo.value.status_code == 503
+    assert len(entities.created) == 1
+    # The caller cannot recover a run it was never told the name of.
+    assert excinfo.value.detail["run"] == entities.created[0].name
 
 
 async def test_a_failed_submission_falls_back_to_the_raw_error_body() -> None:
