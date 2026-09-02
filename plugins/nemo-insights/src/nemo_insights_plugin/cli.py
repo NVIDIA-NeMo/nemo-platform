@@ -50,6 +50,7 @@ from nemo_insights_plugin.sdk_resources.analysis_runs import (
 )
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.nooa_model_client import configured_model_refs
 from nooa import GenerationError
 
@@ -866,7 +867,7 @@ async def _wait_for_run(
         poll_interval=poll_interval,
         on_status=_status_reporter(),
     )
-    return _json(response.model_dump(mode="json")), response.job_status == "completed"
+    return _json(response.model_dump(mode="json")), response.job_status == PlatformJobStatus.COMPLETED.value
 
 
 def _json(payload: object) -> str:
