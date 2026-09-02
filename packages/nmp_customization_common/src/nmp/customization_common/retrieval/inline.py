@@ -34,13 +34,13 @@ class _CorpusResolver:
         if isinstance(doc, str):
             return doc
         if not isinstance(doc, dict):
-            return str(doc)
+            return None
         for key in ("text", "contents"):
             if key in doc:
                 return str(doc[key])
         doc_id = doc.get("id")
         if doc_id is None:
-            return str(doc)
+            return None
         return self.corpus_by_id.get(str(doc_id))
 
 

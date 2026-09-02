@@ -91,3 +91,38 @@ def test_inline_jsonl_skips_unresolved_corpus_ids(tmp_path: Path, caplog: pytest
     assert lines == [{"query": "keep me", "pos_doc": "positive text", "neg_doc": ["negative text"]}]
     assert "Skipped 3 unresolved corpus document(s)" in caplog.text
     assert "dropped 2 unusable record(s)" in caplog.text
+
+
+def test_inline_jsonl_skips_unrecognized_document_shapes(tmp_path: Path) -> None:
+    wrapped = tmp_path / "train.json"
+    wrapped.write_text(
+        json.dumps(
+            {
+                "corpus": {},
+                "data": [
+                    {
+                        "question": "keep text",
+                        "pos_doc": ["alpha", {"docid": 7, "score": 0.4}, 12],
+                        "neg_doc": [{"contents": "gamma"}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "training.jsonl"
+    wrapped_to_inline_jsonl(wrapped, out)
+    lines = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+    assert lines == [{"query": "keep text", "pos_doc": "alpha", "neg_doc": ["gamma"]}]
+
+
+def test_unroll_skips_null_pos_doc_and_missing_question_id() -> None:
+    unrolled = unroll_training_data(
+        [
+            {"question": "keep", "pos_doc": None, "neg_doc": []},
+            {"question": "split", "corpus_id": "c", "pos_doc": ["a", "b"], "neg_doc": ["n"]},
+        ]
+    )
+    assert unrolled[0]["pos_doc"] is None
+    assert [row["question_id"] for row in unrolled[1:]] == ["_0", "_1"]
+    assert [row["pos_doc"] for row in unrolled[1:]] == [["a"], ["b"]]

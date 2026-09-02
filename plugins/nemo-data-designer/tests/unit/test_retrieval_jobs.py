@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -466,3 +467,24 @@ def test_retrieval_prepare_cli_requires_exactly_one_input() -> None:
     assert both.exit_code != 0
     assert "exactly one" in missing.output
     assert "exactly one" in both.output
+
+
+def test_retrieval_cli_shell_quotes_workspace_and_spec() -> None:
+    from nemo_data_designer_plugin.cli.retrieval import retrieval_app
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(
+        retrieval_app,
+        [
+            "prepare",
+            "--sdg-input",
+            "default/stage0",
+            "--workspace",
+            "team's-ws",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "retrieval-prepare" in result.output
+    quoted = shlex.join(["--workspace", "team's-ws"])
+    assert quoted in result.output
+    assert "--spec" in result.output

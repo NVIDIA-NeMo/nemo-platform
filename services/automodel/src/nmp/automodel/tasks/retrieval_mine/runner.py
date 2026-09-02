@@ -127,11 +127,15 @@ def run_mine(
     config_file.write_text(yaml.safe_dump(mining_config, sort_keys=False), encoding="utf-8")
     run_hard_negative_mining(config_file=config_file)
     unrolled = unroll_training_file(mined, output_dir / "train_mined.automodel_unrolled.json")
+    training_jsonl = output_dir / "training.jsonl"
     wrapped_to_inline_jsonl(
         unrolled,
-        output_dir / "training.jsonl",
+        training_jsonl,
         output_dir / "corpus" / "train.parquet",
     )
+    with training_jsonl.open(encoding="utf-8") as handle:
+        if next(handle, None) is None:
+            raise ValueError(f"No training rows written to {training_jsonl}")
     artifacts = ctx.results.save(name="artifacts", local_path=output_dir)
     return {
         "exit_code": 0,

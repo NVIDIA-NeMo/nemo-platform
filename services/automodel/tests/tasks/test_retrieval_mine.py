@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pytest
 import yaml
 from nmp.automodel.tasks.retrieval_mine.runner import RetrievalMineJobConfig, RetrievalMiningOptions, run_mine
 
@@ -85,9 +86,46 @@ def test_run_mine_selects_shallowest_train_file_deterministically(tmp_path: Path
         config = yaml.safe_load(Path(str(kwargs["config_file"])).read_text(encoding="utf-8"))
         assert config["mining"]["train_qa_file_path"] == str(shallow)
         Path(config["mining"]["train_file_output_path"]).write_text(
-            json.dumps({"corpus": {}, "data": []}),
+            json.dumps(
+                {
+                    "corpus": {},
+                    "data": [
+                        {
+                            "question_id": "q1",
+                            "question": "q",
+                            "corpus_id": "c",
+                            "pos_doc": ["p"],
+                            "neg_doc": ["n"],
+                        }
+                    ],
+                }
+            ),
             encoding="utf-8",
         )
 
     with patch("nmp.automodel.tasks.retrieval_mine.runner.run_hard_negative_mining", side_effect=_fake_mine):
         run_mine(RetrievalMineJobConfig(), output_dir, ctx, model_trust_remote_code=False)
+
+
+def test_run_mine_rejects_empty_training_jsonl(tmp_path: Path) -> None:
+    output_dir = tmp_path / "stage1_data_prep"
+    output_dir.mkdir()
+    (tmp_path / "model").mkdir()
+    (output_dir / "train.json").write_text(json.dumps({"corpus": {}, "data": []}), encoding="utf-8")
+    ctx = Mock()
+    ctx.workspace = "default"
+    ctx.results.save.return_value = SimpleNamespace(model_dump=lambda: {"name": "artifacts"})
+
+    def _fake_mine(**kwargs: object) -> None:
+        config = yaml.safe_load(Path(str(kwargs["config_file"])).read_text(encoding="utf-8"))
+        Path(config["mining"]["train_file_output_path"]).write_text(
+            json.dumps({"corpus": {}, "data": []}),
+            encoding="utf-8",
+        )
+
+    with (
+        patch("nmp.automodel.tasks.retrieval_mine.runner.run_hard_negative_mining", side_effect=_fake_mine),
+        pytest.raises(ValueError, match="No training rows"),
+    ):
+        run_mine(RetrievalMineJobConfig(), output_dir, ctx, model_trust_remote_code=False)
+    ctx.results.save.assert_not_called()

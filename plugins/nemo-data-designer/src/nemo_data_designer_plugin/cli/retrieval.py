@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 
 import typer
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobConfig, RetrievalPrepareJobConfig
@@ -39,14 +40,11 @@ def retrieval_generate(
         quality_judge_model=chat_model,
         embed_model=embed_model,
     )
-    payload = json.dumps(spec.model_dump(mode="json"), indent=2)
+    payload = spec.model_dump(mode="json")
     if spec_out:
-        typer.echo(payload)
+        typer.echo(json.dumps(payload, indent=2))
         return
-    typer.echo("Submit with:")
-    typer.echo(
-        f"  nemo data-designer retrieval-generate --workspace {workspace} --spec '{json.dumps(spec.model_dump(mode='json'))}'"
-    )
+    _echo_submit_command("retrieval-generate", workspace, payload)
 
 
 @retrieval_app.command("prepare")
@@ -70,10 +68,7 @@ def retrieval_prepare(
         train_input_file=train_input_file,
         enable_mining=enable_mining,
     )
-    typer.echo("Submit with:")
-    typer.echo(
-        f"  nemo data-designer retrieval-prepare --workspace {workspace} --spec '{json.dumps(spec.model_dump(mode='json'))}'"
-    )
+    _echo_submit_command("retrieval-prepare", workspace, spec.model_dump(mode="json"))
 
 
 @retrieval_app.command("preview")
@@ -94,5 +89,22 @@ def retrieval_preview(
         embed_model=embed_model,
     )
     spec = {"generate": generate.model_dump(mode="json"), "num_records": 1}
+    _echo_submit_command("retrieval-preview", workspace, spec)
+
+
+def _echo_submit_command(job_name: str, workspace: str, spec: dict) -> None:
     typer.echo("Submit with:")
-    typer.echo(f"  nemo data-designer retrieval-preview --workspace {workspace} --spec '{json.dumps(spec)}'")
+    typer.echo(
+        "  "
+        + shlex.join(
+            [
+                "nemo",
+                "data-designer",
+                job_name,
+                "--workspace",
+                workspace,
+                "--spec",
+                json.dumps(spec),
+            ]
+        )
+    )

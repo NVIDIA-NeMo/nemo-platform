@@ -12,11 +12,11 @@ def unroll_training_data(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Unroll records with multiple positive docs into one-positive records."""
     unrolled: list[dict[str, Any]] = []
     for record in data:
-        pos_docs = record.get("pos_doc", [])
+        pos_docs = record.get("pos_doc") or []
         if len(pos_docs) <= 1:
             unrolled.append(record)
             continue
-        base_question_id = record["question_id"]
+        base_question_id = record.get("question_id", "")
         for idx, pos_doc in enumerate(pos_docs):
             unrolled.append(
                 {
