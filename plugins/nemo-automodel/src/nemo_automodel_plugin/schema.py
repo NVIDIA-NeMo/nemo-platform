@@ -196,20 +196,39 @@ class AutomodelJobInput(AutomodelSchema):
             raise ValueError("spec.output_model was removed. Use spec.output instead.")
         return data
 
-    @model_validator(mode="after")
-    def _apply_retrieval_recipe_defaults(self) -> Self:
+    def with_resolved_recipe(self, checkpoint_head_type: str) -> Self:
+        """Return the canonical job input after resolving its recipe and defaults."""
         recipe = self.training.recipe
-        if recipe not in ("bi_encoder", "cross_encoder"):
-            return self
+        if recipe == "auto" and checkpoint_head_type in ("embedding", "cross_encoder"):
+            recipe = "bi_encoder" if checkpoint_head_type == "embedding" else "cross_encoder"
+
+        training = self.training.model_copy(update={"recipe": recipe})
+        if recipe == "bi_encoder":
+            learning_rate, warmup_steps = 1e-5, 5
+        elif recipe == "cross_encoder":
+            learning_rate, warmup_steps = 3e-6, 100
+        else:
+            return self.model_copy(update={"training": training})
+
+        batch_updates: dict[str, int] = {}
         if "global_batch_size" not in self.batch.model_fields_set:
-            self.batch.global_batch_size = 128
+            batch_updates["global_batch_size"] = 128
         if "micro_batch_size" not in self.batch.model_fields_set:
-            self.batch.micro_batch_size = 4
+            batch_updates["micro_batch_size"] = 4
+
+        optimizer_updates: dict[str, float | int] = {}
         if "learning_rate" not in self.optimizer.model_fields_set:
-            self.optimizer.learning_rate = 1e-5 if recipe == "bi_encoder" else 3e-6
+            optimizer_updates["learning_rate"] = learning_rate
         if "warmup_steps" not in self.optimizer.model_fields_set:
-            self.optimizer.warmup_steps = 5 if recipe == "bi_encoder" else 100
-        return self
+            optimizer_updates["warmup_steps"] = warmup_steps
+
+        return self.model_copy(
+            update={
+                "training": training,
+                "batch": self.batch.model_copy(update=batch_updates),
+                "optimizer": self.optimizer.model_copy(update=optimizer_updates),
+            }
+        )
 
 
 class AutomodelJobOutput(AutomodelSchema):

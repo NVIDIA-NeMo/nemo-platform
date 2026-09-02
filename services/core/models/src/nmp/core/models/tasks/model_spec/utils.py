@@ -136,9 +136,7 @@ def infer_model_head_type(model_dir: str) -> tuple[ModelHeadType, str]:
 
     auto_map = config.get("auto_map", {})
     if isinstance(auto_map, dict):
-        if "AutoModelForSequenceClassification" in auto_map:
-            cross_encoder_signals.append("auto_map:AutoModelForSequenceClassification")
-        elif "AutoModel" in auto_map and ("bidirec" in model_type or "pooling" in config):
+        if "AutoModel" in auto_map and ("bidirec" in model_type or "pooling" in config):
             embedding_signals.append("auto_map:AutoModel")
 
     if "pooling" in config and not cross_encoder_signals:
@@ -163,6 +161,12 @@ def infer_model_head_type(model_dir: str) -> tuple[ModelHeadType, str]:
         cross_encoder_signals.extend(
             f"architecture:{architecture}" for architecture in sequence_classification_architectures
         )
+    if (
+        isinstance(auto_map, dict)
+        and "AutoModelForSequenceClassification" in auto_map
+        and (is_single_score_head or has_reranking_metadata)
+    ):
+        cross_encoder_signals.append("auto_map:AutoModelForSequenceClassification")
 
     supporting_tags = sorted(tags.intersection(_SUPPORTING_TAGS))
     if supporting_tags:

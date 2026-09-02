@@ -52,11 +52,11 @@ def _model_path(model_entity: Optional[ModelEntity]) -> str:
     if model_entity is None:
         return MODEL_STORE_PATH
     spec = getattr(model_entity, "spec", None)
-    if (
-        getattr(spec, "is_embedding_model", False)
-        and getattr(model_entity, "base_model", None)
-        and getattr(model_entity, "finetuning_type", None)
-    ):
+    head_type = getattr(spec, "head_type", None)
+    is_embedding = head_type == "embedding" or (
+        head_type in (None, "unknown") and getattr(spec, "is_embedding_model", False)
+    )
+    if is_embedding and getattr(model_entity, "base_model", None) and getattr(model_entity, "finetuning_type", None):
         return VLLM_HF_ALTERNATE_PATH
     return MODEL_STORE_PATH
 

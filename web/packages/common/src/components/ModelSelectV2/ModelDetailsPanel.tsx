@@ -22,7 +22,7 @@ export const ModelDetailsPanel: FC<ModelDetailsPanelProps> = ({ model, adapter }
   const updatedAt = adapter?.updated_at ?? model.updated_at;
   const isChatModel = model.spec?.is_chat;
   const headType = model.spec?.head_type;
-  const isEmbeddingModel = headType === 'embedding' || (!headType && model.spec?.is_embedding_model);
+  const isEmbeddingModel = headType === 'embedding' || Boolean(model.spec?.is_embedding_model);
   const isCrossEncoder = headType === 'cross_encoder';
 
   // Hooks must be called unconditionally per React rules; empty string is safe fallback

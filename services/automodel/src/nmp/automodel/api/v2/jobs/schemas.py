@@ -308,23 +308,24 @@ class _TrainingBase(BaseModel):
 
     model_config = {"protected_namespaces": ()}
 
-    @model_validator(mode="after")
-    def _apply_retrieval_recipe_defaults(self) -> Self:
-        if self.recipe == "bi_encoder":
+    def with_resolved_recipe(self, recipe: str) -> Self:
+        """Return this training config with its resolved recipe defaults."""
+        if recipe == "bi_encoder":
             lr, warmup = 1e-5, 5
-        elif self.recipe == "cross_encoder":
+        elif recipe == "cross_encoder":
             lr, warmup = 3e-6, 100
         else:
-            return self
+            return self.model_copy(update={"recipe": recipe})
+        updates: dict[str, object] = {"recipe": recipe}
         if "batch_size" not in self.model_fields_set:
-            self.batch_size = 128
+            updates["batch_size"] = 128
         if "micro_batch_size" not in self.model_fields_set:
-            self.micro_batch_size = 4
+            updates["micro_batch_size"] = 4
         if "learning_rate" not in self.model_fields_set:
-            self.learning_rate = lr
+            updates["learning_rate"] = lr
         if "warmup_steps" not in self.model_fields_set:
-            self.warmup_steps = warmup
-        return self
+            updates["warmup_steps"] = warmup
+        return self.model_copy(update=updates)
 
     @property
     def finetuning_type(self) -> FinetuningType:

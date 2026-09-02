@@ -263,6 +263,22 @@ class ModelSpec(BaseModel):
         deprecated=True,
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _sync_head_type_and_embedding_alias(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        head_type = data.get("head_type")
+        alias = bool(data.get("is_embedding_model", False))
+        if head_type in ("causal_lm", "embedding", "cross_encoder"):
+            data["is_embedding_model"] = head_type == "embedding"
+            return data
+        if alias:
+            data["head_type"] = "embedding"
+            data["is_embedding_model"] = True
+        return data
+
     # Basic model information
     checkpoint_model_name: str = Field(description="Checkpoint Model identifier or model path")
     family: str = Field(description="Model architecture family (e.g., 'llama', 'mixtral', 'gpt2')")

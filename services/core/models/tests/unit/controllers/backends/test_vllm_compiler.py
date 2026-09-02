@@ -71,7 +71,7 @@ def test_compile_vllm_args_basic():
 
 def test_compile_vllm_args_uses_hf_alternate_for_customized_embedding():
     model_entity = _model_entity(
-        spec=_spec(is_embedding_model=True),
+        spec=_spec(head_type="embedding"),
         base_model="default/base-embed",
         finetuning_type="all_weights",
     )
@@ -79,8 +79,28 @@ def test_compile_vllm_args_uses_hf_alternate_for_customized_embedding():
     assert args[0] == vllm_compiler.VLLM_HF_ALTERNATE_PATH
 
 
+def test_compile_vllm_args_uses_hf_alternate_for_legacy_embedding_alias():
+    model_entity = _model_entity(
+        spec=_spec(head_type="unknown", is_embedding_model=True),
+        base_model="default/base-embed",
+        finetuning_type="all_weights",
+    )
+    args = vllm_compiler.compile_vllm_args(_view(gpu=1, model_name="embed"), model_entity)
+    assert args[0] == vllm_compiler.VLLM_HF_ALTERNATE_PATH
+
+
+def test_compile_vllm_args_cross_encoder_does_not_use_hf_alternate():
+    model_entity = _model_entity(
+        spec=_spec(head_type="cross_encoder", is_embedding_model=True),
+        base_model="default/base-rerank",
+        finetuning_type="all_weights",
+    )
+    args = vllm_compiler.compile_vllm_args(_view(gpu=1, model_name="rerank"), model_entity)
+    assert args[0] == vllm_compiler.MODEL_STORE_PATH
+
+
 def test_compile_vllm_args_uses_root_for_base_embedding():
-    model_entity = _model_entity(spec=_spec(is_embedding_model=True))
+    model_entity = _model_entity(spec=_spec(head_type="embedding", is_embedding_model=True))
     args = vllm_compiler.compile_vllm_args(_view(gpu=1, model_name="embed"), model_entity)
     assert args[0] == vllm_compiler.MODEL_STORE_PATH
 

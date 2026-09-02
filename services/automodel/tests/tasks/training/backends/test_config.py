@@ -647,6 +647,18 @@ def test_auto_recipe_maps_cross_encoder_head_to_cross_encoder_model(tmp_path: Pa
     assert compiled["model"]["attn_implementation"] == "sdpa"
 
 
+def test_auto_recipe_prefers_cross_encoder_head_over_stale_embedding_alias(tmp_path: Path) -> None:
+    config, prepared = _embed_training_config(tmp_path)
+    config.training.recipe = TrainingRecipe.AUTO
+    config.model.is_embedding_model = True
+    config.model.checkpoint_head_type = "cross_encoder"
+
+    compiled = _compile_retrieval(config, tmp_path, prepared)
+
+    assert resolve_compiled_recipe(config) == TrainingRecipe.CROSS_ENCODER
+    assert compiled["model"]["_target_"].endswith("NeMoAutoModelCrossEncoder.from_pretrained")
+
+
 def test_bi_encoder_compile_uses_fused_adam_and_job_embedding_config(tmp_path: Path) -> None:
     config, prepared = _embed_training_config(
         tmp_path,

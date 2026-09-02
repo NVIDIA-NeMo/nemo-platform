@@ -151,6 +151,23 @@ class TestInferModelHeadType:
         assert head_type == "unknown"
         assert reason == "inconclusive:no_strong_head_signals"
 
+    def test_sequence_classification_auto_map_is_not_enough_without_rerank_evidence(self, tmp_path: Path) -> None:
+        model_dir = tmp_path / "model"
+        model_dir.mkdir()
+        _write_json(
+            model_dir / "config.json",
+            {
+                "architectures": ["BertModel"],
+                "num_labels": 3,
+                "auto_map": {"AutoModelForSequenceClassification": "modeling.CustomClassifier"},
+            },
+        )
+
+        head_type, reason = infer_model_head_type(str(model_dir))
+
+        assert head_type == "unknown"
+        assert "auto_map:AutoModelForSequenceClassification" not in reason
+
     @pytest.mark.parametrize(
         "repo_id, expected",
         [

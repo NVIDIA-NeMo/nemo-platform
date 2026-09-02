@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from nmp.customization_common.contributor.transform import generated_output_name
 from nmp.customization_common.service.platform_client import check_dataset_access, fetch_model_entity
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from nemo_platform import AsyncNeMoPlatform
 
 
-def _infer_output_type(input_spec: AutomodelJobInput, checkpoint_head_type: str) -> str:
+def _infer_output_type(input_spec: AutomodelJobInput, checkpoint_head_type: str) -> Literal["model", "adapter"]:
     recipe = input_spec.training.recipe
     is_bi_encoder = recipe == "bi_encoder" or (recipe == "auto" and checkpoint_head_type == "embedding")
     if is_bi_encoder:
@@ -47,6 +47,8 @@ async def transform_input_to_output(
         checkpoint_head_type = getattr(model_entity.spec, "head_type", None) or "unknown"
         if checkpoint_head_type == "unknown" and getattr(model_entity.spec, "is_embedding_model", False):
             checkpoint_head_type = "embedding"
+
+    input_spec = input_spec.with_resolved_recipe(checkpoint_head_type)
 
     output_type = _infer_output_type(input_spec, checkpoint_head_type)
 

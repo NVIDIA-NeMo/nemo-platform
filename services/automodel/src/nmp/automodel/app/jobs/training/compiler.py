@@ -158,6 +158,7 @@ def compile_training_step(
     v4_compatible = _resolve_v4_compatible(me)
     training = job_spec.training
     training_recipe = _resolve_training_recipe(me, training.recipe)
+    training = training.with_resolved_recipe(training_recipe.value)
     if isinstance(training, DistillationTraining) and training_recipe != TrainingRecipe.SFT:
         raise ValueError("Knowledge distillation only supports the sft recipe.")
     p = training.parallelism

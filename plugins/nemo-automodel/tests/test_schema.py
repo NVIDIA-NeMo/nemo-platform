@@ -77,14 +77,14 @@ def test_encoder_recipes_apply_nemotron_job_defaults() -> None:
             "dataset": {"training": "default/train"},
             "training": {"training_type": "sft", "recipe": "bi_encoder", "finetuning_type": "all_weights"},
         }
-    )
+    ).with_resolved_recipe("embedding")
     rerank = AutomodelJobInput.model_validate(
         {
             "model": "rerank",
             "dataset": {"training": "default/train"},
             "training": {"training_type": "sft", "recipe": "cross_encoder", "finetuning_type": "all_weights"},
         }
-    )
+    ).with_resolved_recipe("cross_encoder")
 
     assert embed.batch.global_batch_size == 128
     assert embed.batch.micro_batch_size == 4
@@ -103,8 +103,28 @@ def test_encoder_recipe_defaults_do_not_override_explicit_hparams() -> None:
             "batch": {"global_batch_size": 16, "micro_batch_size": 2},
             "optimizer": {"learning_rate": 2e-5, "warmup_steps": 1},
         }
-    )
+    ).with_resolved_recipe("embedding")
     assert spec.batch.global_batch_size == 16
     assert spec.batch.micro_batch_size == 2
     assert spec.optimizer.learning_rate == 2e-5
     assert spec.optimizer.warmup_steps == 1
+
+
+def test_auto_recipe_does_not_apply_retrieval_defaults_until_resolved() -> None:
+    spec = AutomodelJobInput.model_validate(
+        {
+            "model": "embed",
+            "dataset": {"training": "default/train"},
+            "training": {"training_type": "sft", "recipe": "auto", "finetuning_type": "all_weights"},
+        }
+    )
+    assert spec.batch.global_batch_size == 8
+    assert spec.optimizer.learning_rate == 5e-6
+
+    resolved = spec.with_resolved_recipe("embedding")
+    assert spec.training.recipe == "auto"
+    assert spec.batch.global_batch_size == 8
+    assert resolved.training.recipe == "bi_encoder"
+    assert resolved.batch.global_batch_size == 128
+    assert resolved.optimizer.learning_rate == 1e-5
+    assert resolved.optimizer.warmup_steps == 5

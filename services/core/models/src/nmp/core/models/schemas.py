@@ -19,7 +19,7 @@ from nmp.core.models.constants import (
     MODEL_REF_PATTERN_DESCRIPTION,
     is_valid_model_ref,
 )
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # NAME_PATTERN uses lookaround; rust-regex cannot compile it.
 ENTITY_NAME_CONFIG = ConfigDict(regex_engine="python-re")
@@ -165,6 +165,22 @@ class ModelSpec(BaseModel):
         description="Deprecated compatibility alias for head_type == 'embedding'.",
         deprecated=True,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sync_head_type_and_embedding_alias(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        head_type = data.get("head_type")
+        alias = bool(data.get("is_embedding_model", False))
+        if head_type in ("causal_lm", "embedding", "cross_encoder"):
+            data["is_embedding_model"] = head_type == "embedding"
+            return data
+        if alias:
+            data["head_type"] = "embedding"
+            data["is_embedding_model"] = True
+        return data
 
     # Basic model information
     checkpoint_model_name: str = Field(description="Checkpoint Model identifier or model path")
@@ -956,7 +972,7 @@ class Adapter(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
 
     @field_validator("model")
-    def validate_model(cls, v: str | None) -> str:
+    def validate_model(cls, v: str | None) -> str | None:
         if v is not None and not is_valid_model_ref(v):
             raise ValueError(MODEL_REF_PATTERN_DESCRIPTION)
         return v
@@ -1130,7 +1146,7 @@ class CreateAdapterRequest(CreateModelAdapterRequest):
     )
 
     @field_validator("model")
-    def validate_model(cls, v: str | None) -> str:
+    def validate_model(cls, v: str | None) -> str | None:
         if v is not None and not is_valid_model_ref(v):
             raise ValueError(MODEL_REF_PATTERN_DESCRIPTION)
         return v

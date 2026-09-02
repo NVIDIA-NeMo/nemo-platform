@@ -170,9 +170,9 @@ def test_compile_training_step_carries_embedding_config() -> None:
 
 
 def test_sft_training_applies_nemotron_defaults_for_encoder_recipes() -> None:
-    embed = SFTTraining.model_validate({"recipe": "bi_encoder"})
-    rerank = SFTTraining.model_validate({"recipe": "cross_encoder"})
-    sft = SFTTraining.model_validate({"recipe": "sft"})
+    embed = SFTTraining.model_validate({"recipe": "bi_encoder"}).with_resolved_recipe("bi_encoder")
+    rerank = SFTTraining.model_validate({"recipe": "cross_encoder"}).with_resolved_recipe("cross_encoder")
+    sft = SFTTraining.model_validate({"recipe": "sft"}).with_resolved_recipe("sft")
 
     assert embed.batch_size == 128
     assert embed.micro_batch_size == 4
@@ -188,7 +188,7 @@ def test_sft_training_applies_nemotron_defaults_for_encoder_recipes() -> None:
 def test_sft_training_encoder_defaults_do_not_override_explicit_hparams() -> None:
     training = SFTTraining.model_validate(
         {"recipe": "bi_encoder", "batch_size": 16, "learning_rate": 2e-5, "warmup_steps": 1}
-    )
+    ).with_resolved_recipe("bi_encoder")
     assert training.batch_size == 16
     assert training.learning_rate == 2e-5
     assert training.warmup_steps == 1
@@ -202,6 +202,58 @@ def test_resolve_training_recipe_auto_uses_cross_encoder_head() -> None:
     me.spec.model_fields_set = {"head_type"}
     me.spec.head_type = "cross_encoder"
     assert _resolve_training_recipe(me, "auto") == TrainingRecipe.CROSS_ENCODER
+
+
+def test_compile_training_step_applies_retrieval_defaults_after_auto_resolution() -> None:
+    from nmp.automodel.app.jobs.training.compiler import compile_training_step
+
+    me = _make_mock_model_entity()
+    me.spec = Mock()
+    me.spec.model_fields_set = {"head_type"}
+    me.spec.head_type = "embedding"
+    me.spec.chat_template = None
+    me.spec.checkpoint_model_name = None
+    me.spec.moe_config = None
+    me.spec.family = None
+    me.spec.is_chat = False
+
+    job_output = CustomizationJobOutput(
+        model="default/test-target",
+        dataset="default/my-dataset",
+        training=SFTTraining(recipe="auto"),
+        output=_output(output_type=OutputNameType.MODEL),
+    )
+    step = compile_training_step(job_output, base_env=[], me=me)
+    cfg = step.config if hasattr(step, "config") else step["config"]
+    assert cfg["training"]["recipe"] == "bi_encoder"
+    assert cfg["batch"]["global_batch_size"] == 128
+    assert cfg["optimizer"]["learning_rate"] == 1e-5
+    assert cfg["optimizer"]["warmup_steps"] == 5
+
+
+def test_compile_training_step_auto_defaults_keep_explicit_lr() -> None:
+    from nmp.automodel.app.jobs.training.compiler import compile_training_step
+
+    me = _make_mock_model_entity()
+    me.spec = Mock()
+    me.spec.model_fields_set = {"head_type"}
+    me.spec.head_type = "embedding"
+    me.spec.chat_template = None
+    me.spec.checkpoint_model_name = None
+    me.spec.moe_config = None
+    me.spec.family = None
+    me.spec.is_chat = False
+
+    job_output = CustomizationJobOutput(
+        model="default/test-target",
+        dataset="default/my-dataset",
+        training=SFTTraining(recipe="auto", learning_rate=2e-5),
+        output=_output(output_type=OutputNameType.MODEL),
+    )
+    step = compile_training_step(job_output, base_env=[], me=me)
+    cfg = step.config if hasattr(step, "config") else step["config"]
+    assert cfg["optimizer"]["learning_rate"] == 2e-5
+    assert cfg["batch"]["global_batch_size"] == 128
 
 
 @pytest.mark.asyncio

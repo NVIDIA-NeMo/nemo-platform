@@ -61,10 +61,10 @@ def resolve_compiled_recipe(customizer_config: TrainingStepConfig) -> TrainingRe
     if recipe != TrainingRecipe.AUTO:
         return recipe
     head = getattr(customizer_config.model, "checkpoint_head_type", "unknown")
-    if getattr(customizer_config.model, "is_embedding_model", False) or head == "embedding":
-        return TrainingRecipe.BI_ENCODER
     if head == "cross_encoder":
         return TrainingRecipe.CROSS_ENCODER
+    if getattr(customizer_config.model, "is_embedding_model", False) or head == "embedding":
+        return TrainingRecipe.BI_ENCODER
     return TrainingRecipe.SFT
 
 
