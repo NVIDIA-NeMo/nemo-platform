@@ -142,6 +142,45 @@ class TestEntrypointCachePaths:
             "output_path": str(storage / "output_model"),
         }
 
+    def test_uses_legacy_storage_env_for_runtime_mount(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from nmp.common.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
+        from nmp.customization_common.service.path_utils import (
+            CURRENT_PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+            LEGACY_PERSISTENT_JOB_STORAGE_PATH_ENVVARS,
+        )
+        from nmp.unsloth.tasks.training.backends import unsloth_sft
+
+        config_file = tmp_path / "step.json"
+        config_file.write_text(json.dumps(_step_config().model_dump(mode="json")))
+
+        storage = tmp_path / "legacy-job"
+        monkeypatch.setenv("NEMO_JOB_STEP_CONFIG_FILE_PATH", str(config_file))
+        monkeypatch.delenv(CURRENT_PERSISTENT_JOB_STORAGE_PATH_ENVVAR, raising=False)
+        monkeypatch.delenv(PERSISTENT_JOB_STORAGE_PATH_ENVVAR, raising=False)
+        monkeypatch.setenv(LEGACY_PERSISTENT_JOB_STORAGE_PATH_ENVVARS[0], str(storage))
+        monkeypatch.delenv("UNSLOTH_COMPILE_LOCATION", raising=False)
+        monkeypatch.delenv("HF_HOME", raising=False)
+
+        captured: dict[str, str | None] = {}
+
+        def _stub_train_sft(*_args: object, **_kwargs: object) -> dict[str, object]:
+            captured["UNSLOTH_COMPILE_LOCATION"] = os.environ.get("UNSLOTH_COMPILE_LOCATION")
+            captured["HF_HOME"] = os.environ.get("HF_HOME")
+            return {}
+
+        monkeypatch.setattr(unsloth_sft, "train_sft", _stub_train_sft)
+
+        rc = main()
+
+        assert rc == 0
+        ephemeral = storage / "ephemeral"
+        assert captured["UNSLOTH_COMPILE_LOCATION"] == str(ephemeral / "unsloth_compiled_cache")
+        assert captured["HF_HOME"] == str(ephemeral / "hf")
+
 
 class TestEntrypointWithoutStepConfig:
     def test_returns_2_when_step_config_env_missing(
