@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from data_designer_nemo.filesystem import make_filesystem
 from filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
@@ -36,12 +36,15 @@ def materialize_corpus(
     return _download_fileset(corpus, dest=dest, sdk=sdk, workspace=workspace)
 
 
-def _download_hf(corpus: str, dest: Path, token: str | None) -> Path:
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError as exc:
-        raise ImportError("hf:// corpus staging requires nemo-data-designer-plugin[retrieval-sdg].") from exc
+def _validated_hf_subdir(subdir: str) -> str:
+    """Keep Hugging Face URI suffixes inside the snapshot staging directory."""
+    posix = PurePosixPath(subdir.replace("\\", "/"))
+    if posix.is_absolute() or any(part == ".." for part in posix.parts):
+        raise ValueError(f"Invalid hf:// URI subdirectory {subdir!r}: must be a relative path without '..' components")
+    return posix.as_posix()
 
+
+def _download_hf(corpus: str, dest: Path, token: str | None) -> Path:
     rest = corpus[len(_HF_PREFIX) :]
     parts = rest.split("/", 2)
     if len(parts) < 2:
@@ -52,7 +55,12 @@ def _download_hf(corpus: str, dest: Path, token: str | None) -> Path:
     if "@" in parts[1]:
         dataset_name, revision = parts[1].rsplit("@", 1)
         repo_id = f"{parts[0]}/{dataset_name}"
-    subdir = parts[2] if len(parts) > 2 else None
+    subdir = _validated_hf_subdir(parts[2]) if len(parts) > 2 and parts[2] else None
+
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise ImportError("hf:// corpus staging requires nemo-data-designer-plugin[retrieval-sdg].") from exc
 
     local_dir = Path(
         snapshot_download(

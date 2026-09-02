@@ -53,6 +53,23 @@ def test_generation_manifest_rejects_non_object_json(tmp_path: Path) -> None:
         resolve_generation_input(manifest)
 
 
+@pytest.mark.parametrize(
+    "corpus",
+    [
+        "hf://org/dataset/../../sibling",
+        "hf://org/dataset//sibling",
+    ],
+)
+def test_hf_corpus_rejects_path_traversal(tmp_path: Path, corpus: str) -> None:
+    with pytest.raises(ValueError, match="subdirectory"):
+        materialize_corpus(
+            corpus,
+            dest=tmp_path / "corpus",
+            sdk=Mock(),
+            workspace="default",
+        )
+
+
 def test_hf_corpus_requires_retrieval_extra(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "huggingface_hub", types.ModuleType("huggingface_hub"))
     with pytest.raises(ImportError, match=r"nemo-data-designer-plugin\[retrieval-sdg\]"):
