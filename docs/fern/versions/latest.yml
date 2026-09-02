@@ -74,12 +74,6 @@ navigation:
               - page: Evaluate a Harbor Task Suite
                 slug: harbor-runner
                 path: ../../evaluator/agent-eval/harbor-runner.mdx
-              - page: Evaluate a NeMo Gym Environment
-                slug: gym-runner
-                path: ../../evaluator/agent-eval/gym-runner.mdx
-              - page: Evaluate with a NeMo Fabric Harness
-                slug: fabric-runner
-                path: ../../evaluator/agent-eval/fabric-runner.mdx
               - page: Score by Component
                 slug: score-by-component
                 path: ../../evaluator/agent-eval/score-by-component.mdx
@@ -358,8 +352,6 @@ navigation:
             path: ../../studio/agents.mdx
           - page: Data Designer
             path: ../../studio/data-designer-build.mdx
-          - page: Experiments
-            path: ../../studio/experiments.mdx
           - page: Monitor
             path: ../../studio/monitor.mdx
           - page: Plugin UIs
