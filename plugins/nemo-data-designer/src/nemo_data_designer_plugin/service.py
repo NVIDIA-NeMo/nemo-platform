@@ -24,13 +24,20 @@ class DataDesignerService(NemoService):
     dependencies: ClassVar[list[str]] = ["entities", "auth", "jobs", "secrets", "files", "inference-gateway"]
 
     def get_routers(self) -> list[RouterSpec]:
+        from nemo_data_designer_plugin.config import get_config
         from nemo_data_designer_plugin.functions.preview import PreviewFunction
+        from nemo_data_designer_plugin.functions.retrieval_preview import RetrievalPreviewFunction
         from nemo_data_designer_plugin.jobs.create import CreateJob
+        from nemo_data_designer_plugin.jobs.retrieval_generate import RetrievalGenerateJob
+        from nemo_data_designer_plugin.jobs.retrieval_prepare import RetrievalPrepareJob
+        from nemo_data_designer_plugin.jobs.retrieval_run import RetrievalRunJob
         from nemo_platform_plugin.authz import AuthzScope
         from nemo_platform_plugin.functions.routes import add_function_routes
         from nemo_platform_plugin.jobs.routes import add_job_routes
 
         scope = AuthzScope("data-designer")
+        prefix = "/v2/workspaces/{workspace}"
+        job_profile = get_config().job_executor_profile
         return [
             RouterSpec(
                 add_function_routes(
@@ -38,15 +45,43 @@ class DataDesignerService(NemoService):
                     authz=scope,
                     permission_description="Preview a Data Designer config",
                 ),
-                prefix="/v2/workspaces/{workspace}",
+                prefix=prefix,
                 tag="Data Designer",
                 description="Streaming preview of a Data Designer config.",
             ),
             RouterSpec(
+                add_function_routes(
+                    RetrievalPreviewFunction,
+                    authz=scope,
+                    permission_description="Preview retrieval synthetic data generation",
+                ),
+                prefix=prefix,
+                tag="Data Designer",
+                description="Streaming preview of retrieval synthetic data generation.",
+            ),
+            RouterSpec(
                 add_job_routes(CreateJob, authz=scope),
-                prefix="/v2/workspaces/{workspace}",
+                prefix=prefix,
                 tag="Data Designer",
                 description="Job endpoints",
+            ),
+            RouterSpec(
+                add_job_routes(RetrievalGenerateJob, default_profile=job_profile, authz=scope),
+                prefix=prefix,
+                tag="Data Designer",
+                description="Retrieval synthetic data generation job endpoints.",
+            ),
+            RouterSpec(
+                add_job_routes(RetrievalPrepareJob, default_profile=job_profile, authz=scope),
+                prefix=prefix,
+                tag="Data Designer",
+                description="Retrieval dataset preparation job endpoints.",
+            ),
+            RouterSpec(
+                add_job_routes(RetrievalRunJob, default_profile=job_profile, authz=scope),
+                prefix=prefix,
+                tag="Data Designer",
+                description="Retrieval generation and preparation job endpoints.",
             ),
         ]
 

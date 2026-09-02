@@ -315,6 +315,7 @@ nemo-customizer-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-data-designer-plugin = [
   "nemo-platform-plugin",
+  "nmp-customization-common",
   "data-designer==0.9.1",
   "data-designer-nemo",
   "httpx>=0.27",
@@ -702,6 +703,7 @@ auditor = "nemo_auditor.docs:get_docs_path"
 [project.entry-points."nemo.functions"]
 "anonymizer.preview" = "nemo_anonymizer_plugin.functions.preview:PreviewFunction"
 "data-designer.preview" = "nemo_data_designer_plugin.functions.preview:PreviewFunction"
+"data-designer.retrieval-preview" = "nemo_data_designer_plugin.functions.retrieval_preview:RetrievalPreviewFunction"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.inference_middleware"]
@@ -727,6 +729,9 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "customization.rl.jobs" = "nemo_rl_plugin.jobs.jobs:RlJob"
 "customization.unsloth.jobs" = "nemo_unsloth_plugin.jobs.jobs:UnslothJob"
 "safe-synthesizer.generate" = "nemo_safe_synthesizer_plugin.jobs.generate:GenerateJob"
+"data-designer.retrieval-generate" = "nemo_data_designer_plugin.jobs.retrieval_generate:RetrievalGenerateJob"
+"data-designer.retrieval-prepare" = "nemo_data_designer_plugin.jobs.retrieval_prepare:RetrievalPrepareJob"
+"data-designer.retrieval-run" = "nemo_data_designer_plugin.jobs.retrieval_run:RetrievalRunJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.optimization.backends"]

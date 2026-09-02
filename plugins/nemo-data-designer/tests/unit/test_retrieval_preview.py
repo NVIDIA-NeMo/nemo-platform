@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
+
+import data_designer.config as dd
+import pytest
+from nemo_data_designer_plugin.functions.retrieval_preview import RetrievalPreviewFrame, RetrievalPreviewFunction
+from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobConfig, RetrievalPreviewSpec
+from nemo_platform_plugin.functions.frames import Done, Error
+
+
+def _generate_config(tmp_path) -> RetrievalGenerateJobConfig:
+    return RetrievalGenerateJobConfig(
+        corpus=str(tmp_path),
+        provider="default/nvidia-build",
+        artifact_extraction_model="nvidia/nemotron-3-nano-30b-a3b",
+        qa_generation_model="nvidia/nemotron-3-nano-30b-a3b",
+        quality_judge_model="nvidia/nemotron-3-nano-30b-a3b",
+        embed_model="nvidia/nemotron-3-embed-1b",
+    )
+
+
+@pytest.mark.asyncio
+async def test_retrieval_preview_uses_preview_generation(tmp_path) -> None:
+    spec = RetrievalPreviewSpec(
+        generate=_generate_config(tmp_path),
+        num_records=1,
+    )
+    (tmp_path / "doc.txt").write_text("hello", encoding="utf-8")
+    providers = [dd.ModelProvider(name="default/nvidia-build", endpoint="http://igw")]
+    dd_ctx = AsyncMock()
+    dd_ctx.get_model_providers = AsyncMock(return_value=providers)
+    ctx = Mock()
+    ctx.workspace = "default"
+    preview_result = SimpleNamespace(num_seed_records=1, num_preview_records=1)
+    frames = []
+    with (
+        patch(
+            "nemo_data_designer_plugin.functions.retrieval_preview.create_data_designer_context",
+            return_value=dd_ctx,
+        ),
+        patch(
+            "nemo_data_designer_plugin.retrieval.generation.execute_generation",
+            return_value=preview_result,
+        ) as execute,
+        patch(
+            "nemo_data_designer_plugin.functions.retrieval_preview.async_to_sync_sdk",
+            return_value=Mock(),
+        ),
+    ):
+        async for frame in RetrievalPreviewFunction().run(spec, ctx=ctx, async_sdk=AsyncMock(), is_local=True):
+            frames.append(frame)
+    execute.assert_called_once()
+    assert execute.call_args.kwargs["preview"] is True
+    assert any(isinstance(frame, RetrievalPreviewFrame) for frame in frames)
+    assert isinstance(frames[-1], Done)
+
+
+@pytest.mark.asyncio
+async def test_retrieval_preview_returns_error_frame_for_worker_failure(tmp_path) -> None:
+    spec = RetrievalPreviewSpec(
+        generate=_generate_config(tmp_path),
+    )
+    providers = [dd.ModelProvider(name="default/nvidia-build", endpoint="http://igw")]
+    dd_ctx = AsyncMock()
+    dd_ctx.get_model_providers = AsyncMock(return_value=providers)
+    ctx = Mock(workspace="default")
+
+    with (
+        patch(
+            "nemo_data_designer_plugin.functions.retrieval_preview.create_data_designer_context",
+            return_value=dd_ctx,
+        ),
+        patch(
+            "nemo_data_designer_plugin.functions.retrieval_preview.materialize_corpus",
+            side_effect=ValueError("bad corpus"),
+        ),
+        patch(
+            "nemo_data_designer_plugin.functions.retrieval_preview.async_to_sync_sdk",
+            return_value=Mock(),
+        ),
+    ):
+        frames = [
+            frame
+            async for frame in RetrievalPreviewFunction().run(
+                spec,
+                ctx=ctx,
+                async_sdk=AsyncMock(),
+                is_local=True,
+            )
+        ]
+
+    assert len(frames) == 1
+    assert isinstance(frames[0], Error)
+    assert frames[0].message == "bad corpus"

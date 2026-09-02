@@ -24,7 +24,6 @@ from nmp.common.service import Service
 from nmp.platform_runner.loader import ControllerRunFunc
 from nmp.platform_runner.registry import (
     AVAILABLE_SIDECARS,
-    SERVICE_SIDECAR_DEPENDENCIES,
     get_available_controllers,
     get_available_services,
     get_controller_groups,
@@ -138,13 +137,6 @@ def default_runtime_root() -> Path:
     return default_state_root() / "run"
 
 
-def _sidecars_for_services(service_names: set[str]) -> set[str]:
-    selected: set[str] = set()
-    for service_name in service_names:
-        selected.update(SERVICE_SIDECAR_DEPENDENCIES.get(service_name, set()))
-    return selected
-
-
 _IPV4_LOOPBACK = "127.0.0.1"
 _IPV6_LOOPBACK = "::1"
 _IPV4_WILDCARDS = frozenset({"0.0.0.0"})
@@ -232,8 +224,6 @@ def resolve_run_configuration(
         # service group plus the default controller set.
         selected_services.update(service_groups["all"])
         selected_controllers.update(default_controllers)
-
-    selected_sidecars.update(_sidecars_for_services(selected_services))
 
     invalid_sidecars = selected_sidecars - set(available_sidecars)
     if invalid_sidecars:
