@@ -317,6 +317,27 @@ def test_list_prints_a_page_of_runs(app: typer.Typer, monkeypatch: pytest.Monkey
     assert json.loads(result.stdout)["data"][0]["name"] == RUN_NAME
 
 
+def test_list_defaults_to_newest_first(app: typer.Typer, monkeypatch: pytest.MonkeyPatch) -> None:
+    runs = _StubAnalysisRuns()
+    _install_client(monkeypatch, runs)
+
+    result = runner.invoke(app, ["analysis-runs", "list"])
+
+    assert result.exit_code == 0, result.output
+    assert runs.list_calls[0]["sort"] == "-created_at"
+
+
+def test_list_forwards_an_explicit_sort(app: typer.Typer, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The route accepts a sort, so the CLI has to be able to reach it."""
+    runs = _StubAnalysisRuns()
+    _install_client(monkeypatch, runs)
+
+    result = runner.invoke(app, ["analysis-runs", "list", "--sort", "created_at"])
+
+    assert result.exit_code == 0, result.output
+    assert runs.list_calls[0]["sort"] == "created_at"
+
+
 def test_get_prints_the_run_and_its_job(app: typer.Typer, monkeypatch: pytest.MonkeyPatch) -> None:
     runs = _StubAnalysisRuns()
     _install_client(monkeypatch, runs)

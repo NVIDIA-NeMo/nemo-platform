@@ -596,6 +596,11 @@ class InsightsCLI(NemoCLI):
             ),
             page: int = typer.Option(1, "--page", help="Page number (1-indexed)."),
             page_size: int = typer.Option(20, "--page-size", help="Items per page."),
+            sort: str = typer.Option(
+                "-created_at",
+                "--sort",
+                help="Sort field; prefix with '-' for descending.",
+            ),
         ) -> None:
             """List analysis runs. Job state is not joined — read one run to get it."""
             typer.echo(
@@ -606,6 +611,7 @@ class InsightsCLI(NemoCLI):
                         base_url=base_url,
                         page=page,
                         page_size=page_size,
+                        sort=sort,
                     )
                 )
             )
@@ -818,6 +824,7 @@ async def _list_analysis_runs(
     base_url: str,
     page: int,
     page_size: int,
+    sort: str,
 ) -> str:
     async with _client(base_url) as client:
         result = await client.insights.analysis_runs.list_runs(
@@ -825,6 +832,7 @@ async def _list_analysis_runs(
             agent=agent,
             page=page,
             page_size=page_size,
+            sort=sort,
         )
     return _json(result.model_dump(mode="json"))
 
