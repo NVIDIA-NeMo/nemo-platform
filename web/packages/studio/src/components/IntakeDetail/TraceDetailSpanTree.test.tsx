@@ -55,11 +55,7 @@ describe('TraceSpanTree', () => {
   it('shows the full trajectory label in a tooltip on hover', async () => {
     const user = userEvent.setup();
     render(
-      <TraceSpanTree
-        trajectories={[makeTrajectory()]}
-        activeSpanId={null}
-        onSelectSpan={vi.fn()}
-      />
+      <TraceSpanTree trajectories={[makeTrajectory()]} activeSpanId={null} onSelectSpan={vi.fn()} />
     );
 
     const traceLabel = screen.getByText(LONG_TRACE_NAME, { selector: 'span.truncate' });

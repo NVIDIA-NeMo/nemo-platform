@@ -23,6 +23,12 @@ describe('TraceDetailLayout', () => {
       y: 0,
       toJSON: () => ({}),
     });
+    const getComputedStyle = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudoElement) => {
+      const styles = getComputedStyle(element, pseudoElement);
+      Object.defineProperty(styles, 'columnGap', { configurable: true, value: '16px' });
+      return styles;
+    });
 
     const resizeHandle = screen.getByRole('separator', {
       name: 'Resize trace trajectory sidebar',
@@ -33,8 +39,12 @@ describe('TraceDetailLayout', () => {
 
     expect(sidebar).toHaveStyle({ width: '500px' });
     expect(resizeHandle).toHaveAttribute('aria-valuenow', '500');
+    expect(resizeHandle).toHaveAttribute('aria-valuemax', '664');
 
     resizeHandle.focus();
+    await user.keyboard('{End}');
+    expect(sidebar).toHaveStyle({ width: '664px' });
+
     await user.keyboard('{Home}');
     expect(sidebar).toHaveStyle({ width: '288px' });
 

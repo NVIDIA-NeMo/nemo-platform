@@ -31,8 +31,10 @@ export const TraceDetailLayout: FC<TraceDetailLayoutProps> = ({ navigation, chil
   const [isResizing, setIsResizing] = useState(false);
 
   const measureSidebarMaxWidth = useCallback((): number => {
-    const containerWidth = containerRef.current?.getBoundingClientRect().width ?? 0;
-    return Math.max(SIDEBAR_MIN_WIDTH_PX, containerWidth - DETAIL_MIN_WIDTH_PX);
+    const container = containerRef.current;
+    const containerWidth = container?.getBoundingClientRect().width ?? 0;
+    const columnGap = container ? Number.parseFloat(getComputedStyle(container).columnGap) || 0 : 0;
+    return Math.max(SIDEBAR_MIN_WIDTH_PX, containerWidth - DETAIL_MIN_WIDTH_PX - columnGap);
   }, []);
 
   useEffect(() => {
