@@ -153,17 +153,18 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
         accessor((row) => row.evaluation?.name ?? row.job?.evaluationName ?? undefined, {
           id: 'name',
           header: 'Evaluation',
-          cell: ({ getValue }) => {
-            const name = getValue<string | undefined>();
-            return <Text title={name}>{name ?? '—'}</Text>;
+          cell: ({ row }) => {
+            const name = row.original.evaluation?.name ?? row.original.job?.evaluationName;
+            return <Text title={name ?? undefined}>{name ?? '—'}</Text>;
           },
         }),
         accessor((row) => (row.evaluation ? primaryExperimentName(row.evaluation) : undefined), {
           id: 'experiment',
           header: 'Experiment',
           size: 200,
-          cell: ({ getValue }) => {
-            const name = getValue<string | undefined>();
+          cell: ({ row }) => {
+            const { evaluation } = row.original;
+            const name = evaluation ? primaryExperimentName(evaluation) : undefined;
             return <Text title={name}>{name ?? '—'}</Text>;
           },
         }),
@@ -216,8 +217,8 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
           id: 'tokens',
           header: 'Avg Tokens',
           enableSorting: false,
-          cell: ({ getValue }) => {
-            const mean = getValue<number | undefined>();
+          cell: ({ row }) => {
+            const mean = row.original.evaluation?.tokens?.mean;
             return <Text>{mean != null ? Math.round(mean).toLocaleString() : '—'}</Text>;
           },
         }),
@@ -225,8 +226,8 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
           id: 'total_tokens',
           header: 'Total Tokens',
           enableSorting: false,
-          cell: ({ getValue }) => {
-            const sum = getValue<number | undefined>();
+          cell: ({ row }) => {
+            const sum = row.original.evaluation?.tokens?.sum;
             return <Text>{sum != null ? Math.round(sum).toLocaleString() : '—'}</Text>;
           },
         }),
@@ -234,8 +235,14 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
           id: 'duration',
           header: 'Duration',
           enableSorting: false,
-          cell: ({ row, getValue }) => (
-            <DurationCell job={row.original.job} durationMs={getValue<number | undefined>()} />
+          // Keyed by job: an evaluation row outlives the job it shows, and `useLiveSeconds` locks
+          // its start date once, so a rerun would otherwise tick from the previous job's start.
+          cell: ({ row }) => (
+            <DurationCell
+              key={row.original.job?.id}
+              job={row.original.job}
+              durationMs={evalDurationMs(row.original.evaluation?.metadata)}
+            />
           ),
         }),
         accessor(createdAtMs, {
