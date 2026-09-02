@@ -78,16 +78,11 @@ configToml: |
 
   [kubernetes]
   kubeconfig_path = ""
-  # Sandboxes land in the NMP temp workspace NS (shared with kata profile).
-  # Isolation is via absent [secure_runtime] + template labels, not a separate NS.
-  namespace = "nmp-temp1"
+  namespace = "opensandbox-crun"
   informer_enabled = true
   informer_resync_seconds = 300
   informer_watch_timeout_seconds = 60
   snapshot_create_timeout_seconds = 900
-  # How long the server waits for a sandbox pod to reach Running-with-IP. Raised from the
-  # upstream default of 60s
-  sandbox_create_timeout_seconds = 900
   workload_provider = "batchsandbox"
   image_pull_policy = "IfNotPresent"
   batchsandbox_template_file = "/etc/opensandbox/batchsandbox-template-crun.yaml"

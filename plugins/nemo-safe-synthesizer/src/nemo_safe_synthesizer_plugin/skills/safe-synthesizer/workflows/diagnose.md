@@ -63,13 +63,6 @@ Then confirm the Files API URL is reachable and the target workspace contains th
 - If the submission path supports waiting, retry creation with its documented wait or polling option.
 - Inspect job result names from the artifacts workflow.
 
-## Source Files for Development Debugging
-
-Only inspect these when the user asks to change or debug plugin code:
-
-- `plugins/nemo-safe-synthesizer/src/nemo_safe_synthesizer_plugin/api/v2/jobs/endpoints.py`
-- `plugins/nemo-safe-synthesizer/src/nemo_safe_synthesizer_plugin/tasks/safe_synthesizer/__main__.py`
-
 ## Next Steps
 
 - Re-run with the command shape in `workflows/run.md`.

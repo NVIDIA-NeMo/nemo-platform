@@ -5,14 +5,14 @@
 
 import logging
 import time
-from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 import jwt
 from jwt.types import Options
 from nmp.common.config import AuthConfig
 
+from . import token_claims
+from .json_payload import JsonObject, JsonObjectDeserializationError, JsonObjectDeserializer
 from .jwks import AsyncJWKSClient
 
 logger = logging.getLogger(__name__)
@@ -26,34 +26,10 @@ _JWKS_CACHE_LIFESPAN = 3600  # 1 hour
 # IdP JWKS URI or token endpoint are picked up without a restart.
 _DISCOVERY_CACHE_TTL = 3600  # 1 hour
 
-
-@dataclass
-class TokenClaims:
-    """Validated token claims."""
-
-    subject: str
-    email: Optional[str]
-    groups: list[str]
-    scopes: list[str]
-    raw_claims: dict
-
-
-def groups_from_claim(value: object) -> list[str]:
-    """Parse a groups JWT claim that may be a comma-separated string or a list."""
-    if isinstance(value, str):
-        return [g.strip() for g in value.split(",") if g.strip()]
-    if isinstance(value, list):
-        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
-    return []
-
-
-def scopes_from_claim(value: object) -> list[str]:
-    """Parse a scopes JWT claim that may be whitespace-delimited or a list."""
-    if isinstance(value, str):
-        return value.split()
-    if isinstance(value, list):
-        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
-    return []
+__all__ = [
+    "JWTValidator",
+    "UnsignedJWTRejectedError",
+]
 
 
 class UnsignedJWTRejectedError(Exception):
@@ -65,11 +41,13 @@ class JWTValidator:
 
     def __init__(self, config: AuthConfig):
         self.config = config
-        self._jwks_client: Optional[AsyncJWKSClient] = None
-        self._discovery_cache: Optional[dict] = None
+        self._claims_extractor = token_claims.TokenClaimsExtractor(config)
+        self._json_deserializer = JsonObjectDeserializer()
+        self._jwks_client: AsyncJWKSClient | None = None
+        self._discovery_cache: JsonObject | None = None
         self._discovery_cache_time: float = 0.0
 
-    async def _discover_oidc_config(self) -> dict:
+    async def _discover_oidc_config(self) -> JsonObject:
         """Fetch OIDC discovery document from issuer.
 
         Results are cached with a TTL. After expiry the document is
@@ -84,9 +62,27 @@ class JWTValidator:
         async with httpx.AsyncClient() as client:
             response = await client.get(discovery_url, timeout=10.0)
             response.raise_for_status()
-            self._discovery_cache = response.json()
+            try:
+                self._discovery_cache = self._json_deserializer.deserialize(response.content)
+            except JsonObjectDeserializationError as exc:
+                raise jwt.InvalidTokenError("OIDC discovery was not a JSON object") from exc
             self._discovery_cache_time = now
             return self._discovery_cache
+
+    async def jwks_uri(self) -> str:
+        """Return the configured or discovered OIDC JWKS URI."""
+        if self.config.oidc.jwks_uri:
+            return self.config.oidc.jwks_uri
+        discovery = await self._discover_oidc_config()
+        jwks_uri = discovery.get("jwks_uri")
+        if not isinstance(jwks_uri, str) or not jwks_uri:
+            raise jwt.InvalidTokenError("OIDC discovery did not include jwks_uri")
+        return jwks_uri
+
+    async def jwks(self) -> JsonObject:
+        """Return the cached-or-fetched OIDC JWKS document."""
+        jwks_client = await self._get_jwks_client()
+        return await jwks_client.get_jwks()
 
     async def _get_jwks_client(self) -> AsyncJWKSClient:
         """Get or create JWKS client for token validation.
@@ -99,44 +95,11 @@ class JWTValidator:
         if self._jwks_client:
             return self._jwks_client
 
-        jwks_uri = self.config.oidc.jwks_uri
-        if not jwks_uri:
-            discovery = await self._discover_oidc_config()
-            jwks_uri = discovery["jwks_uri"]
-
+        jwks_uri = await self.jwks_uri()
         self._jwks_client = AsyncJWKSClient(jwks_uri, lifespan=_JWKS_CACHE_LIFESPAN)
         return self._jwks_client
 
-    def _extract_token_claims(self, claims: dict) -> Optional[TokenClaims]:
-        """Extract principal information and scopes from claims."""
-        subject = claims.get(self.config.oidc.subject_claim, claims.get("sub"))
-        if not isinstance(subject, str) or not subject:
-            logger.warning("Token is missing a valid subject claim")
-            return None
-
-        email = claims.get(self.config.oidc.email_claim)
-
-        groups: list[str] = []
-        for claim_name in [self.config.oidc.groups_claim, "cognito:groups"]:
-            if claim_name in claims:
-                groups = groups_from_claim(claims[claim_name])
-                break
-
-        scope_value = claims.get("scope") or claims.get("scp")
-        scopes = scopes_from_claim(scope_value)
-        prefix = self.config.oidc.scope_prefix
-        if prefix:
-            scopes = [scope.removeprefix(prefix) for scope in scopes]
-
-        return TokenClaims(
-            subject=subject,
-            email=email,
-            groups=groups,
-            scopes=scopes,
-            raw_claims=claims,
-        )
-
-    async def validate_token(self, token: str) -> Optional[TokenClaims]:
+    async def validate_token(self, token: str) -> token_claims.TokenClaims | None:
         """Validate a JWT token and extract claims.
 
         Args:
@@ -173,7 +136,7 @@ class JWTValidator:
                         "require": ["sub", "exp", "iat"],
                     },
                 )
-                return self._extract_token_claims(claims)
+                return self._claims_extractor.extract(claims)
 
             jwks_client = await self._get_jwks_client()
             signing_key = await jwks_client.get_signing_key_from_jwt(token)
@@ -204,7 +167,7 @@ class JWTValidator:
             if token_issuer not in allowed_issuers:
                 logger.warning(f"Invalid token issuer: {token_issuer} not in {allowed_issuers}")
                 return None
-            return self._extract_token_claims(claims)
+            return self._claims_extractor.extract(claims)
 
         except jwt.ExpiredSignatureError:
             logger.warning("Token has expired")

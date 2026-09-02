@@ -663,6 +663,66 @@ class TestProcessRequest:
         # Original request body must not be mutated (IGW aliases nested values).
         assert request_body["messages"][-1]["content"] == "Hi! I am Mr. John!"
 
+    async def test_input_rails_receive_only_current_turn_after_tool_history(
+        self, middleware: GuardrailsMiddleware
+    ) -> None:
+        current_user = {"role": "user", "content": "What about tomorrow?"}
+        request_body = {
+            "model": "ws/llama",
+            "messages": [
+                {"role": "user", "content": "Look up the weather"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "type": "function",
+                            "function": {"name": "weather", "arguments": "{}"},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call-1", "content": "sunny"},
+                current_user,
+            ],
+        }
+        generation_response = _make_generation_response(is_blocked=False, content="What about tomorrow?")
+        run_rails = AsyncMock(return_value=generation_response)
+
+        with patch.object(middleware, "_run_rails", new=run_rails):
+            result = await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert not isinstance(result, ImmediateResponse)
+        assert run_rails.call_args.kwargs["messages"] == [current_user]
+        assert result["messages"] == request_body["messages"]
+
+    async def test_input_rails_skip_request_ending_with_tool_result(self, middleware: GuardrailsMiddleware) -> None:
+        request_body = {
+            "model": "ws/llama",
+            "messages": [
+                {"role": "user", "content": "Look up the weather"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "type": "function",
+                            "function": {"name": "weather", "arguments": "{}"},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call-1", "content": "sunny"},
+            ],
+        }
+
+        with patch.object(middleware, "_run_rails") as run_rails:
+            result = await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert result == request_body
+        assert result is not request_body
+        run_rails.assert_not_called()
+
     async def test_input_masking_skips_non_string_user_content(self, middleware: GuardrailsMiddleware) -> None:
         # Multimodal content is unsupported for PII write-back; leave the request alone
         # even when response.content looks like a redacted string (or a stringified list).
@@ -853,6 +913,22 @@ class TestProcessRequest:
             with pytest.raises(InferenceMiddlewareUnavailableError, match="Failed to run input rails"):
                 await _process_request(middleware, request_body, {}, _entity_source())
 
+    async def test_missing_activation_log_raises_500(self, middleware: GuardrailsMiddleware) -> None:
+        """When NeMo Guardrails returns a ``GenerationResponse`` without a log,
+        ``process_request`` must surface a 500 rather than silently treating
+        the request as blocked (the old fail-closed behaviour that produced a
+        200 ``content_filter`` response indistinguishable from a genuine block).
+        """
+        request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Hello"}]}
+        no_log_response = GenerationResponse(response="ok", log=None)
+
+        with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=no_log_response)):
+            with pytest.raises(InferenceMiddlewareError) as exc_info:
+                await _process_request(middleware, request_body, {}, _entity_source())
+
+        assert exc_info.value.status_code == 500
+        assert "Unable to determine guardrail result" in exc_info.value.detail
+
 
 # ---------------------------------------------------------------------------
 # process_response
@@ -963,9 +1039,25 @@ class TestHandleStreamingOutputCheck:
 
 class TestProcessResponse:
     async def test_streaming_runs_output_rails(self, middleware: GuardrailsMiddleware) -> None:
+        latest_user = {"role": "user", "content": "What about tomorrow?"}
         request_body = {
             "model": "ws/llama",
-            "messages": [{"role": "user", "content": "Hello"}],
+            "messages": [
+                {"role": "user", "content": "Look up the weather"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "type": "function",
+                            "function": {"name": "weather", "arguments": "{}"},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call-1", "content": "sunny"},
+                latest_user,
+            ],
             "stream": True,
         }
 
@@ -992,7 +1084,7 @@ class TestProcessResponse:
             generator: AsyncIterator[str],
             messages: list[dict[str, Any]],
         ) -> AsyncIterator[str]:
-            assert messages == request_body["messages"]
+            assert messages == [latest_user]
             async for token in generator:
                 yield token.upper()
 
@@ -1367,6 +1459,33 @@ class TestProcessResponse:
                     _entity_source(output_flows=["self check output"]),
                 )
 
+    async def test_missing_activation_log_raises_500(self, middleware: GuardrailsMiddleware) -> None:
+        """Companion to ``TestProcessRequest.test_missing_activation_log_raises_500``:
+        output rails must also surface a 500 when NeMo Guardrails returns a
+        ``GenerationResponse`` with no log, rather than silently treating the
+        response as blocked.
+        """
+        request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Hello"}]}
+        response_result = {
+            "id": "chatcmpl-123",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hi"}, "finish_reason": "stop"}],
+        }
+        no_log_response = GenerationResponse(response="ok", log=None)
+
+        with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=no_log_response)):
+            with pytest.raises(InferenceMiddlewareError) as exc_info:
+                await _process_response(
+                    middleware,
+                    response_result,
+                    request_body,
+                    {},
+                    {},
+                    _entity_source(output_flows=["self check output"]),
+                )
+
+        assert exc_info.value.status_code == 500
+        assert "Unable to determine guardrail result" in exc_info.value.detail
+
     async def test_blocked_output_rail(self, middleware: GuardrailsMiddleware) -> None:
         request_body = {"model": "ws/llama", "messages": [{"role": "user", "content": "Hello"}]}
         response_result = {
@@ -1423,6 +1542,49 @@ class TestProcessResponse:
 
         assert result == response_result
         mock_build.assert_called_once()
+
+    async def test_output_rails_receive_latest_user_and_response_without_tool_history(
+        self, middleware: GuardrailsMiddleware
+    ) -> None:
+        latest_user = {"role": "user", "content": "What about tomorrow?"}
+        assistant_response = {"role": "assistant", "content": "Tomorrow will be sunny."}
+        request_body = {
+            "model": "ws/llama",
+            "messages": [
+                {"role": "user", "content": "Look up the weather"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "type": "function",
+                            "function": {"name": "weather", "arguments": "{}"},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call-1", "content": "sunny"},
+                latest_user,
+            ],
+        }
+        response_result = {
+            "id": "chatcmpl-123",
+            "choices": [{"index": 0, "message": assistant_response, "finish_reason": "stop"}],
+        }
+        passed_response = _make_generation_response(is_blocked=False, content=assistant_response["content"])
+        run_rails = AsyncMock(return_value=passed_response)
+
+        with patch.object(middleware, "_run_rails", new=run_rails):
+            await _process_response(
+                middleware,
+                response_result,
+                request_body,
+                {},
+                {},
+                _entity_source(output_flows=["self check output"]),
+            )
+
+        assert run_rails.call_args.kwargs["messages"] == [latest_user, assistant_response]
 
     @pytest.mark.parametrize("is_blocked", [True, False])
     async def test_input_generation_response_propagated(

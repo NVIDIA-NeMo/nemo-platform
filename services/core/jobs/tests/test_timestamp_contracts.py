@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import assert_type
 
-from nemo_platform.types.jobs import PlatformJobStepWithContext
+from nemo_platform_plugin.jobs.types import PlatformJobStepWithContext
 
 
 def test_platform_job_step_with_context_parses_wire_timestamps_to_datetime() -> None:
@@ -21,7 +21,7 @@ def test_platform_job_step_with_context_parses_wire_timestamps_to_datetime() -> 
         }
     )
 
-    assert_type(step.created_at, datetime | None)
-    assert_type(step.updated_at, datetime | None)
+    assert_type(step.created_at, datetime)
+    assert_type(step.updated_at, datetime)
     assert isinstance(step.created_at, datetime)
     assert isinstance(step.updated_at, datetime)

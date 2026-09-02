@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ConfigMap mounted by opensandbox-server-kata.
+# Pins BatchSandbox pods onto nodes kata-deploy labeled.
+# RuntimeClass/kata-qemu already carries katacontainers.io/kata-runtime;
+# repeating it here fails faster and keeps the label visible on the CR.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensandbox-batchsandbox-template-kata-qemu
+  namespace: opensandbox-system
+  labels:
+    app.kubernetes.io/part-of: opensandbox
+    opensandbox.nvidia.com/isolation-class: kata-qemu
+data:
+  batchsandbox-template.yaml: |
+    metadata:
+      labels:
+        opensandbox.nvidia.com/isolation-class: kata-qemu
+        opensandbox.nvidia.com/runtime: kata-qemu
+    spec:
+      replicas: 1
+      template:
+        spec:
+          restartPolicy: Never
+          terminationGracePeriodSeconds: 60
+          # Sandbox pods are built from this template by the OpenSandbox server
+          # not by the jobs controller, so neither the jobs controller's
+          # image_pull_secrets nor the chart's top-level imagePullSecrets reaches them.
+          # This name is required as written. If your pull Secret is named
+          # differently, change it here before kubectl apply. The Secret must
+          # exist in the sandbox / job namespace.
+          imagePullSecrets:
+            - name: nvcrimagepullsecret
+          # Schedule onto nodes kata-deploy labeled. Replace or extend this
+          # if you pin sandboxes with a custom KVM label as well.
+          nodeSelector:
+            katacontainers.io/kata-runtime: "true"
+          tolerations:
+            - operator: Exists

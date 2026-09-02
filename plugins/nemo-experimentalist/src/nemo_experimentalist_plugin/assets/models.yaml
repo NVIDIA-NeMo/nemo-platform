@@ -101,10 +101,6 @@ models:
     provider: DeepSeek
     range: fast_cheap
     notes: Fast reasoning at low cost.
-  - model_id: nvidia/meta/llama-3.1-8b-instruct
-    provider: Meta
-    range: fast_cheap
-    notes: Tiny, very fast.
   - model_id: azure/openai/o3
     provider: OpenAI
     range: reasoning_specialized
@@ -117,7 +113,7 @@ models:
     provider: Moonshot
     range: reasoning_specialized
     notes: Strong open-weight reasoning.
-  - model_id: nvidia/nvidia/Nemotron-3-Nano-30B-A3B
+  - model_id: nvidia/nvidia/nemotron-3-nano-30b-a3b
     provider: NVIDIA
     range: reasoning_specialized
     notes: Nemotron Nano A3B reasoning.

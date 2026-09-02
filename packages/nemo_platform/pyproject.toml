@@ -267,7 +267,9 @@ nemo-agents-plugin = [
   "python-on-whales>=0.60",
   "anthropic>=0.88.0",
   "rich>=13.7.1",
-  "nemo-fabric[claude,codex,deepagents,relay]>=0.2.0,<0.3.0",
+  "nemo-fabric[claude,codex,relay]>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-deepagents>=0.2.0,<0.3.0",
+  "deepagents>=0.7.8,<0.8",
   "nemo-fabric-adapters-hermes>=0.2.0,<0.3.0; python_version < '3.14'",
 ]
 

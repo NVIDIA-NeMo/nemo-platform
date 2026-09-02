@@ -79,16 +79,11 @@ configToml: |
 
   [kubernetes]
   kubeconfig_path = ""
-  # Sandboxes land in the NMP temp workspace NS (shared with crun profile).
-  # Isolation is via [secure_runtime] / RuntimeClass + template labels, not a separate NS.
-  namespace = "nmp-temp1"
+  namespace = "opensandbox-kata"
   informer_enabled = true
   informer_resync_seconds = 300
   informer_watch_timeout_seconds = 60
   snapshot_create_timeout_seconds = 900
-  # Raised from the upstream 60s default; kata adds VM boot on top of the image pull, so it
-  # needs the headroom at least as much as the crun profile.
-  sandbox_create_timeout_seconds = 900
   workload_provider = "batchsandbox"
   image_pull_policy = "IfNotPresent"
   batchsandbox_template_file = "/etc/opensandbox/batchsandbox-template-kata-qemu.yaml"

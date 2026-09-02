@@ -3,6 +3,7 @@
 
 """Model provider reconciliation logic for Models Controller."""
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -16,7 +17,7 @@ from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.inference.model_provider import ModelProvider
 from nemo_platform.types.inference.virtual_model import VirtualModel
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.datetime_utils import ensure_utc
 from nmp.common.entities.constants import NAME_PATTERN
 from nmp.common.entities.utils import parse_entity_ref
@@ -679,6 +680,15 @@ class ModelProviderReconciler:
                 name=provider.name,
                 timeout=self._controller_config.provider_discovery_timeout_seconds,
             )
+
+            if isinstance(models_response, str):
+                # Attempt to parse JSON, in case the value is valid JSON but the
+                # content-type header was not sent.
+                try:
+                    models_response = json.loads(models_response)
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning(f"Non-OpenAI compliant response format from {provider_id}")
+                    return DiscoveryNonCompliant()
 
             if not isinstance(models_response, dict) or "data" not in models_response:
                 logger.warning(f"Non-OpenAI compliant response format from {provider_id}")

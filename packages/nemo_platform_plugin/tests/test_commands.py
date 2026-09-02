@@ -475,6 +475,31 @@ class TestSpecFlagRename:
         assert result.exit_code == 0
         assert json.loads(result.output)["message"] == "Hello, FromYaml!"
 
+    def test_run_missing_spec_file_exits_cleanly(self, tmp_path: Path) -> None:
+        missing_file = tmp_path / "missing.yaml"
+        app = _app_with_jobs(_GreetJob)
+        result = runner.invoke(
+            app,
+            ["greet", "run", "--spec-file", str(missing_file)],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 1
+        combined = (result.output or "") + (result.stderr or "")
+        assert "invalid spec" in combined
+        assert str(missing_file) in combined
+
+    def test_run_directory_spec_file_exits_cleanly(self, tmp_path: Path) -> None:
+        app = _app_with_jobs(_GreetJob)
+        result = runner.invoke(
+            app,
+            ["greet", "run", "--spec-file", str(tmp_path)],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 1
+        combined = (result.output or "") + (result.stderr or "")
+        assert "invalid spec" in combined
+        assert str(tmp_path) in combined
+
     def test_run_config_alias_still_works(self) -> None:
         """--config remains as a deprecated alias for --spec during the transition."""
         app = _app_with_jobs(_GreetJob)
@@ -547,6 +572,24 @@ class TestSubmitOptionsPassthrough:
         assert result.exit_code != 0
         combined = (result.output or "") + (result.stderr or "")
         assert "top-level mapping" in combined
+
+    def test_submit_missing_options_file_exits_cleanly(self, tmp_path: Path) -> None:
+        missing_file = tmp_path / "missing-options.yaml"
+        app = _app_with_jobs(_GreetJob)
+        result = runner.invoke(
+            app,
+            [
+                "greet",
+                "submit",
+                "--options-file",
+                str(missing_file),
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 1
+        combined = (result.output or "") + (result.stderr or "")
+        assert "invalid options" in combined
+        assert str(missing_file) in combined
 
 
 # ---------------------------------------------------------------------------

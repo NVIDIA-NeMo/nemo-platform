@@ -15,21 +15,30 @@ server and the typed HTTP client share one definition.
 
 from __future__ import annotations
 
-from typing import Optional, Self
+from typing import Any, Optional, Self
 
 from nemo_platform_plugin.entity_naming import NAME_PATTERN, NAME_PATTERN_DESCRIPTION
+from nemo_platform_plugin.jobs._mapping_access import JobSpecModel
 from nemo_platform_plugin.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nemo_platform_plugin.jobs.providers import Provider
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 
-class PlatformJobSecretEnvironmentVariableRef(BaseModel):
+class PlatformJobSecretEnvironmentVariableRef(JobSpecModel):
     """Reference to a secret to populate an environment variable for a job step."""
 
     name: str = Field(description="The name of the secret to reference")
 
 
-class PlatformJobEnvironmentVariable(BaseModel):
+class PlatformJobSecret(JobSpecModel):
+    """Inline secret material submitted with a job spec."""
+
+    name: str = Field(description="The name of the secret")
+    value: Optional[str] = Field(default=None, description="The secret value submitted with the job")
+    ref_id: Optional[str] = Field(default=None, description="Reference id for the stored secret value")
+
+
+class PlatformJobEnvironmentVariable(JobSpecModel):
     """Environment variable for a job step"""
 
     name: str = Field(description="The environment variable name")
@@ -51,7 +60,7 @@ class PlatformJobEnvironmentVariable(BaseModel):
         return self
 
 
-class StepLifecycle(BaseModel):
+class StepLifecycle(JobSpecModel):
     """Controller-level lifecycle configuration for a job step.
 
     These settings control how the jobs controller manages the step,
@@ -66,7 +75,7 @@ class StepLifecycle(BaseModel):
     )
 
 
-class PlatformJobStepSpec(BaseModel):
+class PlatformJobStepSpec(JobSpecModel):
     """Specification for a single step in a platform job."""
 
     name: str = Field(
@@ -82,6 +91,13 @@ class PlatformJobStepSpec(BaseModel):
     lifecycle: StepLifecycle = Field(
         default_factory=StepLifecycle, description="Lifecycle configuration settings for the step"
     )
+
+    @field_validator("environment", mode="before")
+    @classmethod
+    def _coerce_empty_mapping_environment(cls, value: Any) -> Any:
+        if value == {}:
+            return []
+        return value
 
     @property
     def requires_persistent_storage(self) -> bool:
@@ -99,10 +115,11 @@ class PlatformJobStepSpec(BaseModel):
     model_config = ConfigDict(regex_engine="python-re")
 
 
-class PlatformJobSpec(BaseModel):
+class PlatformJobSpec(JobSpecModel):
     """Specification for a platform job, containing steps and secrets."""
 
     steps: list[PlatformJobStepSpec] = Field(description="List of steps to be executed in the job")
+    secrets: Optional[list[PlatformJobSecret]] = Field(default=None, description="Secrets referenced by the job")
 
     @model_validator(mode="after")
     def validate_steps(self) -> Self:
@@ -123,7 +140,7 @@ ProfileRef = str
 BackendRef = str
 
 
-class BaseExecutionProfile(BaseModel):
+class BaseExecutionProfile(JobSpecModel):
     """Execution configuration for a job.
 
     Base class for the concrete execution profiles in

@@ -82,6 +82,78 @@ def test_inference_resources_transport_matches_flavour(client_factory, transport
     assert isinstance(client.inference.virtual_models._http, transport_type)
 
 
+def test_convenience_properties_return_sync_clients_for_sync_client() -> None:
+    from nemo_platform_plugin.agents.client import AgentsClient
+    from nemo_platform_plugin.auditor.client import AuditorClient
+    from nemo_platform_plugin.data_designer.client import DataDesignerClient
+    from nemo_platform_plugin.evaluator.client import EvaluatorClient
+    from nemo_platform_plugin.files.client import FilesClient
+    from nemo_platform_plugin.guardrail.client import GuardrailClient
+    from nemo_platform_plugin.iron_swarm.client import IronSwarmClient
+    from nemo_platform_plugin.jobs.client import JobsClient
+    from nemo_platform_plugin.models.client import ModelsClient
+    from nemo_platform_plugin.projects.client import ProjectsClient
+    from nemo_platform_plugin.secrets.client import SecretsClient
+    from nemo_platform_plugin.workspaces.client import WorkspacesClient
+
+    client = NemoClient(base_url=BASE)
+    expected_resources = [
+        ("files", FilesClient),
+        ("models", ModelsClient),
+        ("workspaces", WorkspacesClient),
+        ("secrets", SecretsClient),
+        ("jobs", JobsClient),
+        ("agents", AgentsClient),
+        ("auditor", AuditorClient),
+        ("guardrail", GuardrailClient),
+        ("evaluator", EvaluatorClient),
+        ("projects", ProjectsClient),
+        ("data_designer", DataDesignerClient),
+        ("iron_swarm", IronSwarmClient),
+    ]
+
+    for attr, expected_type in expected_resources:
+        resource = getattr(client, attr)
+        assert isinstance(resource, expected_type)
+        assert isinstance(resource._http, httpx.Client)
+
+
+def test_convenience_properties_return_async_clients_for_async_client() -> None:
+    from nemo_platform_plugin.agents.client import AsyncAgentsClient
+    from nemo_platform_plugin.auditor.client import AsyncAuditorClient
+    from nemo_platform_plugin.data_designer.client import AsyncDataDesignerClient
+    from nemo_platform_plugin.evaluator.client import AsyncEvaluatorClient
+    from nemo_platform_plugin.files.client import AsyncFilesClient
+    from nemo_platform_plugin.guardrail.client import AsyncGuardrailClient
+    from nemo_platform_plugin.iron_swarm.client import AsyncIronSwarmClient
+    from nemo_platform_plugin.jobs.client import AsyncJobsClient
+    from nemo_platform_plugin.models.client import AsyncModelsClient
+    from nemo_platform_plugin.projects.client import AsyncProjectsClient
+    from nemo_platform_plugin.secrets.client import AsyncSecretsClient
+    from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
+
+    client = AsyncNemoClient(base_url=BASE)
+    expected_resources = [
+        ("files", AsyncFilesClient),
+        ("models", AsyncModelsClient),
+        ("workspaces", AsyncWorkspacesClient),
+        ("secrets", AsyncSecretsClient),
+        ("jobs", AsyncJobsClient),
+        ("agents", AsyncAgentsClient),
+        ("auditor", AsyncAuditorClient),
+        ("guardrail", AsyncGuardrailClient),
+        ("evaluator", AsyncEvaluatorClient),
+        ("projects", AsyncProjectsClient),
+        ("data_designer", AsyncDataDesignerClient),
+        ("iron_swarm", AsyncIronSwarmClient),
+    ]
+
+    for attr, expected_type in expected_resources:
+        resource = getattr(client, attr)
+        assert isinstance(resource, expected_type)
+        assert isinstance(resource._http, httpx.AsyncClient)
+
+
 # ---------------------------------------------------------------------------
 # with_options() clone isolation
 # ---------------------------------------------------------------------------

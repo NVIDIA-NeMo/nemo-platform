@@ -131,7 +131,11 @@ const SeededIntakeTracesTable: FC<
                 onClearFilters={dataViewState.resetFilters}
               />
             ) : (
-              <EntityEmptyState entity="telemetryTraces" variant="first-use" />
+              <EntityEmptyState
+                entity="telemetryTraces"
+                variant="first-use"
+                workspace={workspace}
+              />
             ),
         },
       }}

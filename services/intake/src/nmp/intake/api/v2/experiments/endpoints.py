@@ -57,6 +57,7 @@ from nmp.intake.experiments.read_service import (
     EvaluationTelemetryUnavailableError,
     InvalidEvaluationSessionStatusError,
 )
+from nmp.intake.readiness import CLICKHOUSE_UNAVAILABLE_MESSAGE
 from nmp.intake.repository.evaluation_rollup import EvaluationRollup, ScoreRollup
 from nmp.intake.repository.evaluation_session import MetricSortTooLargeError
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
@@ -808,14 +809,9 @@ async def list_evaluation_sessions(
             ),
         ) from exc
     except EvaluationTelemetryUnavailableError as exc:
-        detail = (
-            "Telemetry store unavailable."
-            if exc.configured
-            else "ClickHouse is unavailable; per-session reads require telemetry storage."
-        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=detail,
+            detail=CLICKHOUSE_UNAVAILABLE_MESSAGE,
         ) from exc
     data = [EvaluationSessionResponse.from_row(row, mode=mode) for row in result.rows]
     return Page(

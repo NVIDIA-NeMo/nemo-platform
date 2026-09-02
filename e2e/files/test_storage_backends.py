@@ -19,10 +19,13 @@ from pathlib import Path
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import BadRequestError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, NGCStorageConfig
 from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 
 # ---------------------------------------------------------------------------
 # NGC configuration
@@ -82,10 +85,11 @@ def hf_token() -> str:
 def hf_secret(sdk: NeMoPlatform, workspace: str, hf_token: str) -> Iterator[str]:
     """Create a secret containing the HF token, cleaned up after test."""
     secret_name = f"e2e-hf-tok-{uuid.uuid4().hex[:8]}"
-    sdk.secrets.create(workspace=workspace, name=secret_name, value=hf_token)
+    secrets = client_from_platform(sdk, SecretsClient)
+    secrets.create_secret(workspace=workspace, body=PlatformSecretCreateRequest(name=secret_name, value=hf_token))
     yield secret_name
     try:
-        sdk.secrets.delete(workspace=workspace, name=secret_name)
+        secrets.delete_secret(workspace=workspace, name=secret_name)
     except Exception:
         pass  # Best-effort cleanup; the workspace is deleted anyway
 
@@ -202,7 +206,8 @@ class TestNGCFileset:
         """Bad NGC configurations are rejected with 400."""
         value = secret_value if secret_value is not None else ngc_api_key
         secret_name = f"e2e-ngc-err-{uuid.uuid4().hex[:8]}"
-        sdk.secrets.create(workspace=workspace, name=secret_name, value=value)
+        secrets = client_from_platform(sdk, SecretsClient)
+        secrets.create_secret(workspace=workspace, body=PlatformSecretCreateRequest(name=secret_name, value=value))
         try:
             storage = NGCStorageConfig(
                 api_key_secret=secret_name,
@@ -220,7 +225,7 @@ class TestNGCFileset:
                     ),
                 )
         finally:
-            sdk.secrets.delete(workspace=workspace, name=secret_name)
+            secrets.delete_secret(workspace=workspace, name=secret_name)
 
     def test_create_error_nonexistent_secret(self, files_client: FilesClient, workspace: str):
         """Referencing a secret that doesn't exist is rejected with 400."""

@@ -8,11 +8,29 @@ import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import { gateGuardrailsRoutes, getWorkspaceVirtualModelsRoute } from '@studio/routes/utils';
 import { lazy } from 'react';
-import type { RouteObject } from 'react-router';
+import { Navigate, type RouteObject } from 'react-router';
 
 const VirtualModelsListRoute = lazy(() =>
   import('@studio/routes/VirtualModelsListRoute').then((module) => ({
     default: module.VirtualModelsListRoute,
+  }))
+);
+
+const VirtualModelDetailRoute = lazy(() =>
+  import('@studio/routes/virtualModels/VirtualModelDetailRoute').then((m) => ({
+    default: m.VirtualModelDetailRoute,
+  }))
+);
+
+const VirtualModelDetailsTab = lazy(() =>
+  import('@studio/routes/virtualModels/VirtualModelDetailsTab').then((m) => ({
+    default: m.VirtualModelDetailsTab,
+  }))
+);
+
+const VirtualModelChatTab = lazy(() =>
+  import('@studio/routes/virtualModels/VirtualModelChatTab').then((m) => ({
+    default: m.VirtualModelChatTab,
   }))
 );
 
@@ -21,6 +39,25 @@ export const virtualModelsRoutes: RouteObject[] = gateGuardrailsRoutes([
     path: ROUTES.workspace.virtualModels,
     element: <VirtualModelsListRoute />,
     errorElement: <RouteErrorPanel title="Virtual Models" />,
+  },
+  {
+    path: ROUTES.workspace.virtualModelDetail,
+    element: <VirtualModelDetailRoute />,
+    errorElement: <RouteErrorPanel title="Virtual Models" />,
+    children: [
+      {
+        index: true,
+        element: <Navigate to="details" replace />,
+      },
+      {
+        path: ROUTES.workspace.virtualModelDetails,
+        element: <VirtualModelDetailsTab />,
+      },
+      {
+        path: ROUTES.workspace.virtualModelChat,
+        element: <VirtualModelChatTab />,
+      },
+    ],
   },
 ]);
 

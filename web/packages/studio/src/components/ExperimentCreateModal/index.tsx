@@ -15,26 +15,20 @@ import { FormModal, type FormModalProps } from '@nemo/common/src/components/Form
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { getListExperimentsQueryKey, useCreateExperiment } from '@nemo/sdk/generated/platform/api';
-import {
-  CodeSnippet,
-  FormField,
-  Stack,
-  TabsContent,
-  TabsList,
-  TabsRoot,
-  TabsTrigger,
-  TextArea,
-  TextInput,
-} from '@nvidia/foundations-react-core';
+import { FormField, Stack, TextInput } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
-import { DefaultSortControl } from '@studio/components/DefaultSortControl';
-import { DEFAULT_SORT } from '@studio/components/DefaultSortControl/util';
 import {
+  EXPERIMENT_SETTINGS_NAMES,
+  experimentSettingsPayload,
+} from '@studio/components/evaluation/shared/experimentSettings';
+import { ExperimentSettingsFields } from '@studio/components/evaluation/shared/ExperimentSettingsFields';
+import {
+  experimentCreateDefaults,
   experimentCreateSchema,
   type ExperimentCreateFormFields,
 } from '@studio/components/ExperimentCreateModal/constants';
 import { AxiosError } from 'axios';
-import { useState, type FC } from 'react';
+import { type FC } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 
 export interface ExperimentCreateModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
@@ -53,15 +47,14 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
     formState: { errors, isSubmitting },
     setValue,
     setError,
+    control,
   } = useForm<ExperimentCreateFormFields>({
     resolver: zodResolver(experimentCreateSchema),
     mode: 'onChange',
+    defaultValues: experimentCreateDefaults,
   });
 
   const formDisabled = isSubmitting;
-  // Default sort is a single `sort`-param string driven by a custom control (not a registered input),
-  // so it's managed outside react-hook-form and merged into the payload in onSubmit.
-  const [defaultSort, setDefaultSort] = useState<string>(DEFAULT_SORT);
 
   const toast = useToast();
 
@@ -74,8 +67,7 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
   });
 
   const resetAndClose = () => {
-    reset();
-    setDefaultSort(DEFAULT_SORT);
+    reset(experimentCreateDefaults);
     onClose();
   };
 
@@ -83,11 +75,7 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
     try {
       await createExperiment({
         workspace,
-        data: {
-          name: data.name,
-          description: data.description,
-          default_sort: defaultSort,
-        },
+        data: { name: data.name, ...experimentSettingsPayload(data) },
       });
       resetAndClose();
     } catch (error) {
@@ -134,73 +122,31 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
       open={open}
       className="w-[800px] min-h-[400px]"
     >
-      <TabsRoot defaultValue="create" className="w-full min-w-0">
-        <TabsList>
-          <TabsTrigger value="create">Create experiment</TabsTrigger>
-          <TabsTrigger value="assistant">NeMo Assistant</TabsTrigger>
-          <TabsTrigger value="cli">CLI command</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="create" className="px-0 w-full">
-          <Stack gap="density-2xl" className="w-full">
-            <FormField
-              slotLabel="Name"
-              slotError={errors.name?.message}
-              status={errors.name && 'error'}
-            >
-              <TextInput
-                autoFocus
-                disabled={formDisabled}
-                status={errors.name && 'error'}
-                {...register('name')}
-                onChange={(e) =>
-                  setValue('name', (e.target as HTMLInputElement).value.replace(/[\s-]+/g, '-'), {
-                    shouldValidate: true,
-                  })
-                }
-              />
-            </FormField>
-
-            <FormField
-              slotLabel="Description (optional)"
-              slotError={errors.description?.message}
-              status={errors.description && 'error'}
-            >
-              <TextArea
-                disabled={formDisabled}
-                status={errors.description && 'error'}
-                {...register('description')}
-              />
-            </FormField>
-            <DefaultSortControl
-              value={defaultSort}
-              onChange={setDefaultSort}
-              disabled={formDisabled}
-            />
-          </Stack>
-        </TabsContent>
-
-        <TabsContent value="assistant" className="px-0 w-full">
-          <CodeSnippet
-            className="min-w-full"
-            value="To be determined"
-            language="text"
-            kind="block"
-          />
-        </TabsContent>
-
-        <TabsContent value="cli" className="px-0 w-full">
-          <CodeSnippet
-            className="min-w-full"
-            value={
-              'nemo exp run --group --dataset support-bench-v3\n' +
-              '  --evaluators correctness,helpfulness,groundedness,tool-error'
+      <Stack gap="density-2xl" className="w-full min-w-0">
+        <FormField
+          slotLabel="Name"
+          slotError={errors.name?.message}
+          status={errors.name && 'error'}
+        >
+          <TextInput
+            autoFocus
+            disabled={formDisabled}
+            status={errors.name && 'error'}
+            {...register('name')}
+            onChange={(e) =>
+              setValue('name', (e.target as HTMLInputElement).value.replace(/[\s-]+/g, '-'), {
+                shouldValidate: true,
+              })
             }
-            language="bash"
-            kind="block"
           />
-        </TabsContent>
-      </TabsRoot>
+        </FormField>
+
+        <ExperimentSettingsFields
+          control={control}
+          names={EXPERIMENT_SETTINGS_NAMES}
+          disabled={formDisabled}
+        />
+      </Stack>
     </FormModal>
   );
 };

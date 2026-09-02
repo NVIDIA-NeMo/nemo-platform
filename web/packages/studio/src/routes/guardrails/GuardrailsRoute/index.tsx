@@ -43,18 +43,17 @@ export const GuardrailsRoute: FC = () => {
     items: [{ href: getGuardrailsRoute(workspace), slotLabel: 'Guardrails' }],
   });
 
+  // Errors propagate deliberately — see the matching handler in GuardrailDetailActions. The
+  // service's 409 for a config still applied by a VirtualModel names the routes blocking the
+  // delete, and ConfirmationModal toasts a thrown error's message.
   const handleDelete = useCallback(async (): Promise<boolean> => {
     if (!configToDelete?.name) return false;
-    try {
-      await deleteConfig({ workspace, name: configToDelete.name });
-      // Invalidate by URL prefix — matches all pages/sorts for this workspace
-      await queryClient.invalidateQueries({
-        queryKey: [`/apis/guardrails/v2/workspaces/${workspace}/configs`],
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    await deleteConfig({ workspace, name: configToDelete.name });
+    // Invalidate by URL prefix — matches all pages/sorts for this workspace
+    await queryClient.invalidateQueries({
+      queryKey: [`/apis/guardrails/v2/workspaces/${workspace}/configs`],
+    });
+    return true;
   }, [configToDelete, deleteConfig, queryClient, workspace]);
 
   const handleBulkDelete = useCallback(async (): Promise<boolean> => {
@@ -120,7 +119,6 @@ export const GuardrailsRoute: FC = () => {
           simpleConfirm
           title={`Delete guardrail config: ${configToDelete.name}`}
           successText="Guardrail config deleted successfully."
-          errorText="Failed to delete the guardrail config. Please try again."
           onDelete={handleDelete}
           onClose={() => setConfigToDelete(null)}
         />

@@ -196,7 +196,15 @@ class TestTranslateAgentConfig:
                     "transport": "stdio",
                     "url": "repo-mcp --root .",
                     "exposure": "fabric_managed",
-                }
+                    "allowed_tools": ["read_file", "search_files"],
+                    "blocked_tools": ["write_file"],
+                },
+                "disabled": {
+                    "transport": "streamable-http",
+                    "url": "https://mcp.example.com",
+                    "allowed_tools": [],
+                    "custom_headers": {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"},
+                },
             }
         }
         payload["tools"] = {"blocked": ["shell", "browser"]}
@@ -214,6 +222,10 @@ class TestTranslateAgentConfig:
         assert mcp.servers["repo"].transport == "stdio"
         assert mcp.servers["repo"].url == "repo-mcp --root ."
         assert mcp.servers["repo"].exposure == "fabric_managed"
+        assert mcp.servers["repo"].allowed_tools == ["read_file", "search_files"]
+        assert mcp.servers["repo"].blocked_tools == ["write_file"]
+        assert mcp.servers["disabled"].allowed_tools == []
+        assert mcp.servers["disabled"].custom_headers == {"Authorization": "Bearer ${MCP_ACCESS_TOKEN}"}
         assert tools.blocked == ["shell", "browser"]
 
     def test_top_level_prompts_rejected_until_shared_prompt_contract_exists(self) -> None:
@@ -237,8 +249,10 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config, harness_name="codex")
 
-        assert fabric_config.environment.env["CUSTOM"] == "from-spec"
-        assert fabric_config.environment.env["NMP_WORKSPACE"] == "runtime-ws"
+        environment = fabric_config.environment
+        assert environment is not None
+        assert environment.env["CUSTOM"] == "from-spec"
+        assert environment.env["NMP_WORKSPACE"] == "runtime-ws"
 
     def test_environment_mirror_fields_forwarded(self) -> None:
         payload = copy.deepcopy(_example_yaml_config())
@@ -254,10 +268,22 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config, harness_name="codex")
 
-        assert fabric_config.environment.control_location == "in_env_control"
-        assert fabric_config.environment.ownership == "fabric_owned"
-        assert fabric_config.environment.connection == {"url": "http://sandbox"}
-        assert fabric_config.environment.metadata == {"team": "platform"}
+        environment = fabric_config.environment
+        assert environment is not None
+        assert environment.control_location == "in_env_control"
+        assert environment.ownership == "fabric_owned"
+        assert environment.connection == {"url": "http://sandbox"}
+        assert environment.metadata == {"team": "platform"}
+
+    def test_runtime_constraints_forwarded(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["runtime"] = {"max_turns": 20, "timeout_seconds": 120.5}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.runtime.max_turns == 20
+        assert fabric_config.runtime.timeout_seconds == 120.5
 
     @pytest.mark.parametrize(
         ("kind", "adapter_id"),
@@ -284,6 +310,83 @@ class TestTranslateAgentConfig:
         assert harness is not None
         assert harness.adapter_id == adapter_id
 
+    def test_every_configured_model_is_forwarded(self) -> None:
+        """FabricConfig.models is a keyed map; secondary keys must survive translation."""
+        payload = _example_yaml_config()
+        payload["models"]["fast"] = {"provider": "openai", "model": "openai/gpt-5.4-mini"}
+        payload["models"]["judge"] = {"provider": "openai", "model": "openai/gpt-5.4-judge"}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert set(fabric_config.models) == {"default", "fast", "judge"}
+        assert fabric_config.models["fast"].model == "openai/gpt-5.4-mini"
+        assert fabric_config.models["judge"].model == "openai/gpt-5.4-judge"
+
+    def test_selected_harness_model_is_published_as_default(self) -> None:
+        """harness.model outranks models.default, and lands on the "default" key."""
+        payload = _example_yaml_config()
+        payload["models"]["fast"] = {"provider": "openai", "model": "openai/gpt-5.4-mini"}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        # The hermes harness declares its own model; models.default is shadowed.
+        assert fabric_config.models["default"].model == "nvidia/nemotron-3-nano-30b-a3b"
+        assert fabric_config.models["fast"].model == "openai/gpt-5.4-mini"
+
+    def test_models_default_is_published_when_the_harness_declares_no_model(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "codex"
+        payload["models"]["fast"] = {"provider": "openai", "model": "openai/gpt-5.4-mini"}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.models["default"].model == "openai/gpt-5.4"
+        assert fabric_config.models["fast"].model == "openai/gpt-5.4-mini"
+
+    def test_gateway_credential_bound_on_every_routed_model(self) -> None:
+        """A secondary IGW-routed model needs its api_key_env too, not just the primary."""
+        payload = _example_yaml_config()
+        payload["default_harness"] = "codex"
+        payload["models"]["fast"] = {
+            "provider": "openai",
+            "model": "openai/gpt-5.4-mini",
+            "base_url": "http://platform:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1",
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.models["fast"].api_key_env == PLATFORM_IGW_API_KEY_ENV
+        assert fabric_config.environment is not None
+        assert fabric_config.environment.env[PLATFORM_IGW_API_KEY_ENV] == PLATFORM_IGW_API_KEY_PLACEHOLDER
+
+    def test_non_routed_secondary_model_is_left_uncredentialed(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "codex"
+        payload["models"]["fast"] = {
+            "provider": "nvidia",
+            "model": "nvidia/nemotron-3-nano-30b-a3b",
+            "base_url": "https://integrate.api.nvidia.com/v1",
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.models["fast"].api_key_env is None
+
+    def test_harness_only_model_still_translates_without_a_models_map(self) -> None:
+        payload = _example_yaml_config()
+        payload["models"] = {}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert set(fabric_config.models) == {"default"}
+        assert fabric_config.models["default"].model == "nvidia/nemotron-3-nano-30b-a3b"
+
     def test_unknown_selected_harness_rejected(self) -> None:
         config = AgentConfig.model_validate(_example_yaml_config())
 
@@ -297,6 +400,34 @@ class TestTranslateAgentConfig:
         config = AgentConfig.model_validate(payload)
 
         with pytest.raises(FabricTranslationError, match="Unsupported harness kind 'custom'"):
+            translate_agent_config(config)
+
+    @pytest.mark.parametrize(
+        "adapter_id",
+        [
+            "nvidia.fabric.insights-analyst",
+            "nvidia.fabric.some.future.adapter",
+        ],
+    )
+    def test_fully_qualified_adapter_id_passes_through(self, adapter_id: str) -> None:
+        """Plugin-owned adapters ship their own descriptor, so no short-name entry is needed."""
+        payload = _example_yaml_config()
+        payload["default_harness"] = "selected"
+        payload["harnesses"] = {"selected": {"kind": adapter_id}}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        assert fabric_config.harness is not None
+        assert fabric_config.harness.adapter_id == adapter_id
+
+    def test_adapter_id_passthrough_requires_the_nvidia_fabric_prefix(self) -> None:
+        payload = _example_yaml_config()
+        payload["default_harness"] = "selected"
+        payload["harnesses"] = {"selected": {"kind": "acme.fabric.custom"}}
+        config = AgentConfig.model_validate(payload)
+
+        with pytest.raises(FabricTranslationError, match="Unsupported harness kind 'acme.fabric.custom'"):
             translate_agent_config(config)
 
     def test_missing_model_rejected(self) -> None:
@@ -349,6 +480,42 @@ class TestTranslateAgentConfig:
             },
         }
 
+    def test_relay_telemetry_prefers_platform_registered_agent_name(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["telemetry"]["enabled"] = True
+        payload["telemetry"]["agent_name"] = "example-agent-hzwy9s"
+        payload["telemetry"]["opentelemetry"] = {
+            "enabled": True,
+            "endpoints": [{"type": "full", "endpoint": "http://otel-collector:4317"}],
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        relay = fabric_config.relay
+        assert relay is not None
+        observability = relay.observability
+        assert observability is not None
+        assert observability.model_dump(exclude_none=True)["atif"]["agent_name"] == "example-agent-hzwy9s"
+        opentelemetry = observability.opentelemetry
+        assert opentelemetry is not None
+        assert opentelemetry.endpoints[0].service_name == "example-agent-hzwy9s"
+
+    def test_relay_telemetry_keeps_explicit_atif_agent_name(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["telemetry"]["enabled"] = True
+        payload["telemetry"]["agent_name"] = "example-agent-hzwy9s"
+        payload["telemetry"]["atif"]["agent_name"] = "author-chosen-name"
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        relay = fabric_config.relay
+        assert relay is not None
+        observability = relay.observability
+        assert observability is not None
+        assert observability.model_dump(exclude_none=True)["atif"]["agent_name"] == "author-chosen-name"
+
     def test_relay_atof_endpoint_sinks_translate_to_stream_sinks(self) -> None:
         payload = copy.deepcopy(_example_yaml_config())
         payload["telemetry"]["enabled"] = True
@@ -384,3 +551,44 @@ class TestTranslateAgentConfig:
                 "field_name_policy": "preserve",
             },
         ]
+
+    def test_relay_opentelemetry_export_translates_to_fabric(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["telemetry"]["enabled"] = True
+        payload["telemetry"]["opentelemetry"] = {
+            "enabled": True,
+            "endpoints": [
+                {
+                    "type": "full",
+                    "endpoint": "http://otel-collector:4317",
+                    "transport": "grpc",
+                    "header_env": {"Authorization": "OTEL_AUTH_HEADER"},
+                    "resource_attributes": {"deployment.environment": "test"},
+                },
+                {
+                    "type": "gen_ai",
+                    "endpoint": "http://shared-collector:4318/v1/traces",
+                    "service_name": "shared-agent-service",
+                },
+            ],
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        relay = fabric_config.relay
+        assert relay is not None
+        observability = relay.observability
+        assert observability is not None
+        opentelemetry = observability.opentelemetry
+        assert opentelemetry is not None
+        assert opentelemetry.enabled is True
+        assert len(opentelemetry.endpoints) == 2
+        endpoint = opentelemetry.endpoints[0]
+        assert endpoint.type == "full"
+        assert endpoint.endpoint == "http://otel-collector:4317"
+        assert endpoint.transport == "grpc"
+        assert endpoint.header_env == {"Authorization": "OTEL_AUTH_HEADER"}
+        assert endpoint.resource_attributes == {"deployment.environment": "test"}
+        assert endpoint.service_name == "example-agent"
+        assert opentelemetry.endpoints[1].service_name == "shared-agent-service"

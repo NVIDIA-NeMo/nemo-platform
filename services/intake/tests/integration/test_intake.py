@@ -4,22 +4,30 @@
 """Integration tests for the Intake service route surface."""
 
 from collections.abc import Generator
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
 from nemo_platform import NeMoPlatform
+from nmp.intake.config import ClickHouseConfig, IntakeConfig
 from nmp.intake.service import IntakeService
 from nmp.testing.client import SDKTestClientAdapter, create_test_client
 
 
 @pytest.fixture(scope="module")
 def http_client() -> Generator[TestClient, None, None]:
-    """TestClient with IntakeService."""
-    with create_test_client(
-        IntakeService,
-        client_type=TestClient,
-    ) as client:
-        yield client
+    """Route-surface client that does not require a live ClickHouse."""
+    intake_config = IntakeConfig(
+        clickhouse_config=ClickHouseConfig(url="http://127.0.0.1:1"),
+    )
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(IntakeService, "is_ready", AsyncMock(return_value=True))
+        with create_test_client(
+            IntakeService,
+            client_type=TestClient,
+            service_configs={IntakeService: intake_config},
+        ) as client:
+            yield client
 
 
 @pytest.fixture(scope="module")

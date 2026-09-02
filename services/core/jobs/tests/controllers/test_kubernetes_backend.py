@@ -10,6 +10,12 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from kubernetes import client
 from kubernetes.client.rest import ApiException
+from nmp.common.auth import (
+    KUBERNETES_POD_UID_REFERENCE_NAME,
+    NMP_PRINCIPAL_ENVVAR,
+    WorkloadDelegationConflictError,
+    reference_delegation_name,
+)
 from nmp.common.config import ImagePullSecret, PlatformConfig
 from nmp.common.jobs.constants import (
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
@@ -73,6 +79,7 @@ from nmp.core.jobs.controllers.backends.kubernetes.common import (
     delete_configmap,
     name_for_step,
 )
+from nmp.core.jobs.controllers.backends.workload_tokens import WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS
 from pydantic import ValidationError
 
 DEFAULT_STORAGE = KubernetesJobStorageConfig(pvc_name="job-storage-pvc")
@@ -80,6 +87,83 @@ DEFAULT_JOB_METADATA = KubernetesObjectMetadata(
     labels={"owner": "alpha"}, annotations={"example.com/annotation": "bravo"}
 )
 DEFAULT_POD_METADATA = KubernetesObjectMetadata(labels={"foo": "bar"}, annotations={"example.com/annotation": "value"})
+
+
+def _kubernetes_job_for_step(
+    step: PlatformJobStepWithContext,
+    *,
+    status: client.V1JobStatus | None = None,
+    service_account_name: str = "default",
+) -> client.V1Job:
+    labels = common_labels_for_step(step)
+    labels[JOB_EXECUTION_BACKEND_LABEL] = "kubernetes_job"
+    labels[JOB_EXECUTION_PROFILE_LABEL] = "default"
+    return client.V1Job(
+        metadata=client.V1ObjectMeta(
+            name=name_for_step(step),
+            namespace="test-namespace",
+            labels=labels,
+        ),
+        spec=client.V1JobSpec(
+            template=client.V1PodTemplateSpec(
+                spec=client.V1PodSpec(
+                    containers=[],
+                    service_account_name=service_account_name,
+                )
+            )
+        ),
+        status=status
+        or client.V1JobStatus(
+            active=1,
+            completion_time=None,
+            failed=None,
+            succeeded=None,
+        ),
+    )
+
+
+def _kubernetes_pod(uid: str, *, phase: str = "Running") -> client.V1Pod:
+    return client.V1Pod(
+        metadata=client.V1ObjectMeta(
+            name=f"pod-{uid}",
+            namespace="test-namespace",
+            uid=uid,
+        ),
+        status=client.V1PodStatus(
+            phase=phase,
+            container_statuses=[
+                client.V1ContainerStatus(
+                    image="test-image",
+                    image_id="test-image-id",
+                    name="nemo-job-task",
+                    ready=phase == "Running",
+                    restart_count=0,
+                    state=client.V1ContainerState(
+                        running=client.V1ContainerStateRunning(started_at=datetime.datetime.now(datetime.timezone.utc))
+                        if phase == "Running"
+                        else None,
+                        terminated=client.V1ContainerStateTerminated(
+                            exit_code=0,
+                            reason="Completed",
+                        )
+                        if phase == "Succeeded"
+                        else None,
+                    ),
+                )
+            ],
+        ),
+    )
+
+
+@pytest.fixture
+def workload_exchange_auth_config():
+    return SimpleNamespace(
+        oidc=SimpleNamespace(
+            workload_token_exchange_enabled=True,
+            workload_audience="nemo-platform",
+            audience=None,
+        )
+    )
 
 
 @pytest.fixture
@@ -909,14 +993,14 @@ def test_kubernetes_job_rejects_reserved_step_auth_env_vars(kubernetes_job, cpu_
 
 
 def test_kubernetes_job_injects_projected_workload_identity_token_when_exchange_enabled(
-    kubernetes_job, cpu_execution_provider, test_step_pending
+    kubernetes_job, cpu_execution_provider, test_step_pending_with_auth_context
 ):
-    kubernetes_job._execution_profile_config.workload_identity_token_expiration_seconds = 600
-    kubernetes_job._execution_profile_config.workload_identity_token_audience = "test-audience"
+    kubernetes_job._execution_profile_config.workload_identity.token_expiration_seconds = 600
+    kubernetes_job._execution_profile_config.workload_identity.token_audience = "test-audience"
     auth_config = SimpleNamespace(oidc=SimpleNamespace(workload_token_exchange_enabled=True))
 
     with patch("nmp.common.config.get_auth_config", return_value=auth_config):
-        kubernetes_job.schedule(cpu_execution_provider, test_step_pending)
+        kubernetes_job.schedule(cpu_execution_provider, test_step_pending_with_auth_context)
 
     call_args = kubernetes_job._batch_v1.create_namespaced_job.call_args
     job_body = call_args.kwargs["body"]
@@ -925,6 +1009,7 @@ def test_kubernetes_job_injects_projected_workload_identity_token_when_exchange_
 
     env_vars = {env.name: env.value for env in main_container.env}
     assert env_vars[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+    assert NMP_PRINCIPAL_ENVVAR not in env_vars
 
     workload_identity_volume = next(
         volume for volume in pod_spec.volumes if volume.name == WORKLOAD_IDENTITY_VOLUME_NAME
@@ -937,6 +1022,25 @@ def test_kubernetes_job_injects_projected_workload_identity_token_when_exchange_
     mount = next(vm for vm in main_container.volume_mounts if vm.name == WORKLOAD_IDENTITY_VOLUME_NAME)
     assert mount.mount_path == WORKLOAD_IDENTITY_VOLUME_PATH
     assert mount.read_only is True
+
+
+def test_kubernetes_job_does_not_mount_workload_identity_without_auth_context(
+    kubernetes_job, cpu_execution_provider, test_step_pending
+):
+    auth_config = SimpleNamespace(oidc=SimpleNamespace(workload_token_exchange_enabled=True))
+
+    with patch("nmp.common.config.get_auth_config", return_value=auth_config):
+        kubernetes_job.schedule(cpu_execution_provider, test_step_pending)
+
+    call_args = kubernetes_job._batch_v1.create_namespaced_job.call_args
+    job_body = call_args.kwargs["body"]
+    pod_spec = job_body.spec.template.spec
+    main_container = pod_spec.containers[0]
+
+    env_vars = {env.name: env.value for env in main_container.env}
+    assert WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR not in env_vars
+    assert all(volume.name != WORKLOAD_IDENTITY_VOLUME_NAME for volume in pod_spec.volumes)
+    assert all(mount.name != WORKLOAD_IDENTITY_VOLUME_NAME for mount in main_container.volume_mounts)
 
 
 def test_schedule_job_with_args(kubernetes_job, cpu_execution_provider, test_step_pending):
@@ -1828,6 +1932,39 @@ def test_schedule_nemo_job_secrets_format_same_and_cross_workspace(kubernetes_jo
     }
 
 
+def test_schedule_injects_opensandbox_secret_env_when_cluster_capable(
+    kubernetes_job, cpu_execution_provider, test_step_pending, mock_platform_config
+):
+    mock_platform_config.sandbox_cluster_capable = True
+    mock_platform_config.sandbox_server_domain = "opensandbox-server.opensandbox-system.svc.cluster.local"
+    mock_platform_config.sandbox_api_key_secret = "opensandbox-server-api-key"
+    mock_platform_config.sandbox_api_key_secret_key = "api-key"
+
+    kubernetes_job.schedule(cpu_execution_provider, test_step_pending)
+    job_body = kubernetes_job._batch_v1.create_namespaced_job.call_args.kwargs["body"]
+    env_by_name = {env.name: env for env in job_body.spec.template.spec.containers[0].env}
+
+    assert env_by_name["OPEN_SANDBOX_DOMAIN"].value == ("opensandbox-server.opensandbox-system.svc.cluster.local")
+    secret_ref = env_by_name["OPEN_SANDBOX_API_KEY"].value_from.secret_key_ref
+    assert secret_ref.name == "opensandbox-server-api-key"
+    assert secret_ref.key == "api-key"
+    assert env_by_name["OPEN_SANDBOX_API_KEY"].value is None
+
+
+def test_schedule_omits_opensandbox_env_when_cluster_not_capable(
+    kubernetes_job, cpu_execution_provider, test_step_pending, mock_platform_config
+):
+    mock_platform_config.sandbox_cluster_capable = False
+    mock_platform_config.sandbox_server_domain = "opensandbox-server.opensandbox-system.svc.cluster.local"
+    mock_platform_config.sandbox_api_key_secret = "opensandbox-server-api-key"
+
+    kubernetes_job.schedule(cpu_execution_provider, test_step_pending)
+    job_body = kubernetes_job._batch_v1.create_namespaced_job.call_args.kwargs["body"]
+    env_names = {env.name for env in job_body.spec.template.spec.containers[0].env}
+    assert "OPEN_SANDBOX_DOMAIN" not in env_names
+    assert "OPEN_SANDBOX_API_KEY" not in env_names
+
+
 def test_schedule_without_storage_no_label(kubernetes_job, cpu_execution_provider):
     """Test that scheduling without persistent storage sets the persistent storage label to 'false'."""
     # Create a step without PERSISTENT_JOB_STORAGE_PATH_ENVVAR
@@ -2197,8 +2334,6 @@ def test_kubernetes_job_schedule_with_auth_context(
 
 def test_kubernetes_job_schedule_without_auth_context(kubernetes_job, cpu_execution_provider, test_step_pending):
     """Test that auth env vars are NOT set when auth_context is absent."""
-    from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR
-
     # Mock successful job creation
     kubernetes_job._batch_v1.create_namespaced_job.return_value = MagicMock()
 
@@ -2222,6 +2357,244 @@ def test_kubernetes_job_schedule_without_auth_context(kubernetes_job, cpu_execut
     assert "NMP_JOB_LAUNCHER_OTLP_LOGS_HEADERS" not in env_var_names
     assert "NMP_JOB_LAUNCHER_LOGS_EXPORTER" not in env_var_names
     assert "NMP_JOB_LAUNCHER_OTLP_LOGS_PROTOCOL" not in env_var_names
+
+
+def test_kubernetes_job_registers_pod_uid_workload_delegation(
+    kubernetes_job, test_step_pending_with_auth_context, workload_exchange_auth_config
+):
+    test_step_pending_with_auth_context.status = PlatformJobStatus.PENDING
+    ttl_seconds_active = 900
+    kubernetes_job._execution_profile_config.ttl_seconds_active = ttl_seconds_active
+    pod = _kubernetes_pod("pod-uid-123")
+    k8s_job = _kubernetes_job_for_step(test_step_pending_with_auth_context)
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = k8s_job
+    kubernetes_job._core_v1.list_namespaced_pod.return_value = client.V1PodList(items=[pod])
+    before_sync = datetime.datetime.now(datetime.timezone.utc)
+
+    expected_name = reference_delegation_name(
+        workload_audience="nemo-platform",
+        workload_subject="system:serviceaccount:test-namespace:default",
+        bound_reference_name=KUBERNETES_POD_UID_REFERENCE_NAME,
+        bound_reference_value="pod-uid-123",
+    )
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(kubernetes_job._workload_delegations, "_register_workload_delegation") as register_delegation,
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.update_all_tasks", return_value=False),
+        patch.object(kubernetes_job, "get_kube_job_events", return_value=[]),
+    ):
+        update = kubernetes_job.sync(test_step_pending_with_auth_context)
+
+    assert update.status == PlatformJobStatus.ACTIVE
+    register_delegation.assert_called_once()
+    delegation = register_delegation.call_args.args[0]
+    assert delegation.name == expected_name
+    assert delegation.workload_subject == "system:serviceaccount:test-namespace:default"
+    assert delegation.workload_audience == "nemo-platform"
+    assert delegation.workload_workspace == test_step_pending_with_auth_context.workspace
+    assert delegation.job_id == test_step_pending_with_auth_context.job
+    assert delegation.attempt_id == test_step_pending_with_auth_context.attempt_id
+    assert delegation.step_id == test_step_pending_with_auth_context.id
+    assert delegation.auth_context.principal_id == "creator@example.com"
+    assert delegation.bound_reference_name == KUBERNETES_POD_UID_REFERENCE_NAME
+    assert delegation.bound_reference_value == "pod-uid-123"
+    assert delegation.opaque_subject_token_hash is None
+    expected_ttl_seconds = ttl_seconds_active + WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS
+    assert (
+        before_sync + datetime.timedelta(seconds=expected_ttl_seconds)
+        <= delegation.expires_at
+        <= datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=expected_ttl_seconds)
+    )
+
+
+def test_kubernetes_job_skips_workload_delegation_when_pod_uid_is_missing(
+    kubernetes_job, test_step_pending_with_auth_context, workload_exchange_auth_config
+):
+    test_step_pending_with_auth_context.status = PlatformJobStatus.PENDING
+    pod = _kubernetes_pod("pod-uid-123")
+    pod.metadata.uid = None
+    k8s_job = _kubernetes_job_for_step(test_step_pending_with_auth_context)
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = k8s_job
+    kubernetes_job._core_v1.list_namespaced_pod.return_value = client.V1PodList(items=[pod])
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(kubernetes_job._workload_delegations, "_register_workload_delegation") as register_delegation,
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.update_all_tasks", return_value=False),
+        patch.object(kubernetes_job, "get_kube_job_events", return_value=[]),
+    ):
+        update = kubernetes_job.sync(test_step_pending_with_auth_context)
+
+    assert update.status == PlatformJobStatus.ACTIVE
+    register_delegation.assert_not_called()
+
+
+def test_kubernetes_job_skips_workload_delegation_when_job_labels_are_missing(
+    kubernetes_job, test_step_pending_with_auth_context, workload_exchange_auth_config
+):
+    test_step_pending_with_auth_context.status = PlatformJobStatus.PENDING
+    k8s_job = _kubernetes_job_for_step(test_step_pending_with_auth_context)
+    del k8s_job.metadata.labels[JOB_STEP_ID_LABEL]
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = k8s_job
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(kubernetes_job._workload_delegations, "_register_workload_delegation") as register_delegation,
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.update_all_tasks", return_value=False),
+        patch.object(kubernetes_job, "get_kube_job_events", return_value=[]),
+    ):
+        update = kubernetes_job.sync(test_step_pending_with_auth_context)
+
+    assert update.status == PlatformJobStatus.PENDING
+    register_delegation.assert_not_called()
+
+
+def test_kubernetes_job_workload_delegation_conflict_is_not_recreated(
+    kubernetes_job, test_step_pending_with_auth_context, workload_exchange_auth_config
+):
+    test_step_pending_with_auth_context.status = PlatformJobStatus.PENDING
+    pod = _kubernetes_pod("pod-uid-123")
+    k8s_job = _kubernetes_job_for_step(test_step_pending_with_auth_context)
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = k8s_job
+    kubernetes_job._core_v1.list_namespaced_pod.return_value = client.V1PodList(items=[pod])
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(
+            kubernetes_job._workload_delegations,
+            "_register_workload_delegation",
+            side_effect=WorkloadDelegationConflictError("exists"),
+        ) as register_delegation,
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.update_all_tasks", return_value=False),
+        patch.object(kubernetes_job, "get_kube_job_events", return_value=[]),
+    ):
+        first_update = kubernetes_job.sync(test_step_pending_with_auth_context)
+        second_update = kubernetes_job.sync(test_step_pending_with_auth_context)
+
+    assert first_update.status == PlatformJobStatus.ACTIVE
+    assert second_update.status == PlatformJobStatus.ACTIVE
+    register_delegation.assert_called_once()
+
+
+def test_kubernetes_job_registration_failure_does_not_block_status_and_retries(
+    kubernetes_job, test_step_pending_with_auth_context, workload_exchange_auth_config
+):
+    test_step_pending_with_auth_context.status = PlatformJobStatus.PENDING
+    pod = _kubernetes_pod("pod-uid-123")
+    k8s_job = _kubernetes_job_for_step(test_step_pending_with_auth_context)
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = k8s_job
+    kubernetes_job._core_v1.list_namespaced_pod.return_value = client.V1PodList(items=[pod])
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(
+            kubernetes_job._workload_delegations,
+            "_register_workload_delegation",
+            side_effect=RuntimeError("store offline"),
+        ) as register_delegation,
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.update_all_tasks", return_value=False),
+        patch.object(kubernetes_job, "get_kube_job_events", return_value=[]),
+    ):
+        first_update = kubernetes_job.sync(test_step_pending_with_auth_context)
+        second_update = kubernetes_job.sync(test_step_pending_with_auth_context)
+
+    assert first_update.status == PlatformJobStatus.ACTIVE
+    assert second_update.status == PlatformJobStatus.ACTIVE
+    assert register_delegation.call_count == 2
+    job_key = f"test-namespace/{name_for_step(test_step_pending_with_auth_context)}"
+    assert kubernetes_job._workload_delegations._delegations_by_target_key.get(job_key, set()) == set()
+
+
+def test_kubernetes_job_revokes_pod_uid_workload_delegation_when_job_finishes(
+    kubernetes_job, test_step_pending_with_auth_context, workload_exchange_auth_config
+):
+    test_step_pending_with_auth_context.status = PlatformJobStatus.ACTIVE
+    pod = _kubernetes_pod("pod-uid-123", phase="Succeeded")
+    k8s_job = _kubernetes_job_for_step(
+        test_step_pending_with_auth_context,
+        status=client.V1JobStatus(
+            active=None,
+            completion_time=datetime.datetime.now(datetime.timezone.utc),
+            failed=None,
+            succeeded=1,
+        ),
+    )
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = k8s_job
+    kubernetes_job._core_v1.list_namespaced_pod.return_value = client.V1PodList(items=[pod])
+
+    expected_name = reference_delegation_name(
+        workload_audience="nemo-platform",
+        workload_subject="system:serviceaccount:test-namespace:default",
+        bound_reference_name=KUBERNETES_POD_UID_REFERENCE_NAME,
+        bound_reference_value="pod-uid-123",
+    )
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(kubernetes_job._workload_delegations, "_revoke_workload_delegation") as revoke_delegation,
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.update_all_tasks", return_value=False),
+        patch.object(kubernetes_job, "get_kube_job_events", return_value=[]),
+    ):
+        update = kubernetes_job.sync(test_step_pending_with_auth_context)
+
+    assert update.status == PlatformJobStatus.COMPLETED
+    revoke_delegation.assert_called_once_with(expected_name)
+
+
+def test_kubernetes_job_revokes_recorded_workload_delegation_when_pods_are_gone(
+    kubernetes_job, test_step_pending_with_auth_context, workload_exchange_auth_config
+):
+    test_step_pending_with_auth_context.status = PlatformJobStatus.ACTIVE
+    k8s_job = _kubernetes_job_for_step(
+        test_step_pending_with_auth_context,
+        status=client.V1JobStatus(
+            active=None,
+            completion_time=datetime.datetime.now(datetime.timezone.utc),
+            failed=None,
+            succeeded=1,
+        ),
+    )
+    job_key = f"test-namespace/{name_for_step(test_step_pending_with_auth_context)}"
+    kubernetes_job._workload_delegations._delegations_by_target_key[job_key] = {"ref:recorded-delegation"}
+    kubernetes_job._batch_v1.read_namespaced_job.return_value = k8s_job
+    kubernetes_job._core_v1.list_namespaced_pod.return_value = client.V1PodList(items=[])
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(kubernetes_job._workload_delegations, "_revoke_workload_delegation") as revoke_delegation,
+        patch("nmp.core.jobs.controllers.backends.kubernetes.kubernetes_job.update_all_tasks", return_value=False),
+        patch.object(kubernetes_job, "get_kube_job_events", return_value=[]),
+    ):
+        update = kubernetes_job.sync(test_step_pending_with_auth_context)
+
+    assert update.status == PlatformJobStatus.COMPLETED
+    revoke_delegation.assert_called_once_with("ref:recorded-delegation")
+    assert job_key not in kubernetes_job._workload_delegations._delegations_by_target_key
+
+
+def test_kubernetes_job_revokes_pod_uid_workload_delegation_when_job_deleted(
+    kubernetes_job, test_step_pending_with_auth_context, workload_exchange_auth_config
+):
+    pod = _kubernetes_pod("pod-uid-123", phase="Succeeded")
+    k8s_job = _kubernetes_job_for_step(test_step_pending_with_auth_context)
+    kubernetes_job._core_v1.list_namespaced_pod.return_value = client.V1PodList(items=[pod])
+
+    expected_name = reference_delegation_name(
+        workload_audience="nemo-platform",
+        workload_subject="system:serviceaccount:test-namespace:default",
+        bound_reference_name=KUBERNETES_POD_UID_REFERENCE_NAME,
+        bound_reference_value="pod-uid-123",
+    )
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(kubernetes_job._workload_delegations, "_revoke_workload_delegation") as revoke_delegation,
+    ):
+        kubernetes_job.terminate_job(k8s_job)
+
+    revoke_delegation.assert_called_once_with(expected_name)
+    kubernetes_job._batch_v1.delete_namespaced_job.assert_called_once()
 
 
 def test_cleanup_steps_with_multi_step_job_only_first_step_complete(kubernetes_job):

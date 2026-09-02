@@ -11,7 +11,7 @@ from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.customization_common.schema import NamespacedModel
 from nmp.customization_common.schemas.values import OutputNameType
 from nmp.customization_common.training.reporting import ProgressReportingConfig
-from nmp.rl.app.jobs.training.schemas import OptimizerType
+from nmp.rl.app.jobs.training.schemas import BatchingStrategy, OptimizerType, PolicyBackend
 from nmp.rl.entities.values import TrainingType
 from pydantic import ConfigDict, Discriminator, Field, model_validator
 
@@ -36,9 +36,101 @@ class ParallelismParams(RlSchema):
     expert_parallel_size: int = Field(
         default=1,
         gt=0,
-        description="Expert parallel size for MoE models. GRPO only; a value above 1 selects the DTensor v2 backend.",
+        description="Expert parallel size for MoE models. GRPO only, and implemented only by "
+        "policy_backend='automodel'.",
     )
     sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
+
+
+class RewardShapingParams(RlSchema):
+    """DAPO-style reward shaping (NeMo-RL ``grpo.reward_shaping``).
+
+    Both penalties act on responses the generation cap cut off, which score zero on a
+    verifier that needs a complete answer. ``overlong_*`` ramps a penalty in over the last
+    ``overlong_buffer_length`` tokens before ``max_response_length``; ``stop_properly_penalty_coef``
+    scales the reward of anything truncated outright.
+    """
+
+    overlong_buffer_length: int | None = Field(
+        default=None,
+        gt=0,
+        description="Tokens before max_response_length over which the penalty ramps to full.",
+    )
+    overlong_buffer_penalty: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Penalty applied at the end of the buffer.",
+    )
+    max_response_length: int | None = Field(
+        default=None,
+        gt=0,
+        description="Length beyond which a response is penalised. Usually the generation cap.",
+    )
+    stop_properly_penalty_coef: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Scale factor on the reward of a truncated response. 0 zeroes it, 1 is no penalty.",
+    )
+
+    @model_validator(mode="after")
+    def _overlong_penalty_is_fully_specified(self) -> Self:
+        """The three overlong fields are only meaningful together.
+
+        NeMo-RL reads them independently and would silently skip the penalty if one were
+        missing, which looks identical to shaping being off.
+        """
+        overlong = (
+            self.overlong_buffer_length,
+            self.overlong_buffer_penalty,
+            self.max_response_length,
+        )
+        if any(v is not None for v in overlong) and not all(v is not None for v in overlong):
+            raise ValueError(
+                "reward_shaping needs overlong_buffer_length, overlong_buffer_penalty and "
+                "max_response_length together, or none of them."
+            )
+        if all(v is None for v in overlong) and self.stop_properly_penalty_coef is None:
+            raise ValueError(
+                "reward_shaping is enabled but specifies no penalty. Set the overlong_* trio, "
+                "stop_properly_penalty_coef, or omit reward_shaping entirely."
+            )
+        # apply_reward_shaping takes the stop_properly branch first and returns from it, so the
+        # overlong parameters are read only when that coefficient is unset. NeMo-RL logs which
+        # ones it ignored and carries on, which is a quiet way to run without the shaping the
+        # job asked for.
+        if self.stop_properly_penalty_coef is not None and any(v is not None for v in overlong):
+            raise ValueError(
+                "reward_shaping accepts either stop_properly_penalty_coef or the overlong_* "
+                "parameters, not both: NeMo-RL applies the stop-properly penalty and ignores "
+                "the overlong ones."
+            )
+        return self
+
+
+class RewardScalingParams(RlSchema):
+    """Linear reward rescaling (NeMo-RL ``grpo.reward_scaling``).
+
+    Each reward is clamped to ``[source_min, source_max]`` and mapped onto
+    ``[target_min, target_max]``. The DAPO recipes use it to move a binary verifier's
+    ``[0, 1]`` onto ``[-1, 1]``, so a wrong answer carries negative reward rather than
+    merely less positive reward.
+    """
+
+    source_min: float = Field(default=0.0, description="Low end of the incoming reward range.")
+    source_max: float = Field(default=1.0, description="High end of the incoming reward range.")
+    target_min: float = Field(default=0.0, description="Low end of the rescaled range.")
+    target_max: float = Field(default=1.0, description="High end of the rescaled range.")
+
+    @model_validator(mode="after")
+    def _ranges_are_non_degenerate(self) -> Self:
+        # A zero-width source collapses every reward onto one value, which zeroes the
+        # advantage and stalls the run without raising anywhere downstream.
+        if self.source_min >= self.source_max:
+            raise ValueError("reward_scaling.source_min must be below source_max.")
+        if self.target_min >= self.target_max:
+            raise ValueError("reward_scaling.target_min must be below target_max.")
+        return self
 
 
 class LoRAParams(RlSchema):
@@ -55,9 +147,12 @@ class LoRAParams(RlSchema):
         default=None,
         description="Module name patterns to exclude from LoRA.",
     )
-    use_triton: bool = Field(
-        default=True,
-        description="Use Triton LoRA kernels (DTensor v2). Set false when tensor_parallel_size > 1.",
+    use_triton: bool | None = Field(
+        default=None,
+        description="Use Automodel's Triton LoRA kernels: faster, but incompatible with "
+        "tensor_parallel_size > 1 (they take raw tensors, and TP makes the adapter weights "
+        "DTensors). Unset lets the compiler pick -- true at TP 1, false above. Setting it true "
+        "with TP > 1 is rejected, not silently downgraded.",
     )
 
 
@@ -165,6 +260,15 @@ class GRPOTraining(_TrainingBase):
         default=None,
         description="LoRA hyperparameters. Defaults applied when finetuning_type is lora.",
     )
+    policy_backend: PolicyBackend = Field(
+        default=PolicyBackend.AUTOMODEL,
+        description="NeMo-RL policy worker that trains the model. `automodel` (default) builds on "
+        "NeMo Automodel + Transformer Engine; it handles full-weight training and is the only "
+        "backend with LoRA, expert parallelism and automodel_kwargs. `dtensor` uses stock "
+        "HuggingFace modules on PyTorch FSDP2 -- no Transformer Engine, so it is the pre-Hopper "
+        "option, without those three features. Never switched implicitly: asking `dtensor` for an "
+        "`automodel`-only feature is rejected.",
+    )
     val_at_start: bool = Field(
         default=False,
         description="Run a validation pass before the first training step. Enable it to measure "
@@ -265,18 +369,107 @@ class GRPOTraining(_TrainingBase):
     )
     max_grad_norm: float = Field(default=1.0, ge=0.0, description="Maximum gradient norm for clipping.")
 
+    # --- Truncated importance sampling (DAPO) ---
+    truncated_importance_sampling_type: Literal["tis", "icepop", "seq-mask-tis"] | None = Field(
+        default=None,
+        description="Bound the rollout-vs-training importance weights, so a policy that has drifted "
+        "from the one that generated the batch cannot dominate the update. Watch "
+        "`token_mult_prob_error`: a value climbing past ~1.05 is the drift this corrects. "
+        "`tis` clamps weights into the range; `icepop` zeroes out-of-range tokens "
+        "(reference bounds 0.5-5); `seq-mask-tis` zeroes whole sequences by their geometric-mean "
+        "ratio (reference bounds 0.999-1.002). None leaves it off, which is NeMo-RL's default.",
+    )
+    truncated_importance_sampling_ratio: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Upper bound on the importance weight. Required whenever "
+        "`truncated_importance_sampling_type` is set.",
+    )
+    truncated_importance_sampling_ratio_min: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Lower bound on the importance weight. Required for `icepop` and `seq-mask-tis`; "
+        "optional for `tis`, which floors at 0 when unset.",
+    )
+
+    # --- Dynamic sampling (DAPO) ---
+    use_dynamic_sampling: bool = Field(
+        default=False,
+        description="Discard prompt groups whose rewards have zero standard deviation, and keep "
+        "generating until the step has a full batch of groups that do not. Those groups contribute "
+        "exactly no gradient, so on a dataset the model finds too hard (or too easy) most of a step "
+        "is otherwise wasted -- watch `baseline_reward/pct_mixed` for how much. Costs roughly "
+        "`1 / pct_mixed` times the generation per step.",
+    )
+    dynamic_sampling_max_gen_batches: int = Field(
+        default=10,
+        gt=0,
+        description="How many generation batches one step may consume trying to fill itself before "
+        "the run fails. Only read when `use_dynamic_sampling` is true.",
+    )
+    batch_multiplier: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="Over-generate each step by this factor so dynamic sampling has candidates to "
+        "filter. Set it near `1 / pct_mixed`. Rejected above 1.0 unless `use_dynamic_sampling` is "
+        "true, which is what NeMo-RL asserts at startup.",
+    )
+
+    # --- Reward shaping (DAPO) ---
+    reward_shaping: RewardShapingParams | None = Field(
+        default=None,
+        description="Penalise over-long and improperly-terminated responses before the loss sees "
+        "the reward. None leaves shaping off.",
+    )
+    reward_scaling: RewardScalingParams | None = Field(
+        default=None,
+        description="Linearly rescale each reward before advantages are computed. None leaves "
+        "scaling off. The DAPO recipes set target_min to -1.0, which turns a binary verifier's "
+        "0 into a negative reward instead of a merely smaller positive one.",
+    )
+
+    # --- Micro-batch construction ---
+    batching_strategy: BatchingStrategy = Field(
+        default=BatchingStrategy.DYNAMIC,
+        description="How rollouts are grouped into training micro-batches. `dynamic` fills each "
+        "micro-batch to a token budget so short rollouts share a batch instead of each paying for a "
+        "full-length pad. `sequence_packing` concatenates rollouts into packed sequences; it is "
+        "rejected for context_parallel_size > 1. `static` is one rollout per slot.",
+    )
+    train_mb_tokens: int | None = Field(
+        default=None,
+        gt=0,
+        description="Token budget per training micro-batch, read by `dynamic` and `sequence_packing`. "
+        "Defaults to max_seq_length * micro_batch_size, the peak `static` already provisions for. "
+        "Lower it if you OOM.",
+    )
+    sequence_length_round: int = Field(
+        default=64,
+        gt=0,
+        description="Round bucketed micro-batch sequence lengths up to a multiple of this. Only read by `dynamic`.",
+    )
+
     # --- Per-architecture backend settings ---
     automodel_kwargs: dict[str, Any] | None = Field(
         default=None,
-        description="Passed to policy.dtensor_cfg.automodel_kwargs; selects the DTensor v2 backend. "
+        description="Passed to policy.dtensor_cfg.automodel_kwargs; requires policy_backend='automodel'. "
         "{'force_hf': true} loads the stock HuggingFace modules; a {'backend': {...}} block picks "
         "the Transformer-Engine / DeepEP MoE implementation. Unset means Automodel auto-detects.",
     )
     router_aux_loss_coef: float | None = Field(
         default=None,
         ge=0.0,
-        description="MoE router auxiliary-loss coefficient, applied as a HuggingFace config override. "
-        "Use 0.0 to drop the load-balancing term during RL. Unset keeps the model's own value.",
+        description="MoE router auxiliary-loss coefficient, applied as a top-level HuggingFace config "
+        "override. Use 0.0 to drop the load-balancing term during RL. Unset keeps the model's own "
+        "value. Models that nest their config (Qwen3.5 reads it under `text_config`) need "
+        "`hf_config_overrides` instead — a top-level key they do not read is absorbed silently.",
+    )
+    hf_config_overrides: dict[str, Any] | None = Field(
+        default=None,
+        description="Passed to NeMo-RL's `policy.hf_config_overrides` verbatim, which forwards it to "
+        "the training model as HuggingFace config kwargs and to vLLM as `hf_overrides`. Nested keys "
+        "are preserved, so this reaches models that namespace their config, e.g. "
+        '`{"text_config": {"router_aux_loss_coef": 0.0}}` for Qwen3.5.',
     )
     vllm_tensor_parallel_size: int | None = Field(
         default=None,
@@ -298,6 +491,110 @@ class GRPOTraining(_TrainingBase):
             self.lora = LoRAParams()
         if self.finetuning_type == "all_weights" and self.lora is not None:
             raise ValueError("lora must be omitted when finetuning_type is all_weights")
+        return self
+
+    @model_validator(mode="after")
+    def _triton_lora_kernels_require_no_tensor_parallelism(self) -> Self:
+        """Triton LoRA kernels cannot take the DTensors that TP produces.
+
+        ``TritonLinearLoRA.forward`` passes the adapter weights straight to a Triton kernel,
+        and ``lora_kernel.py`` never calls ``.to_local()``. NeMo-RL turns the pairing into a
+        bare assert in ``automodel/setup.py``, which fires inside a Ray worker only after the
+        model loads. Unset means "compiler picks", so only an explicit ``true`` is rejected.
+        """
+        tp = self.parallelism.tensor_parallel_size
+        if self.lora is not None and self.lora.use_triton is True and tp > 1:
+            raise ValueError(
+                f"lora.use_triton=true is incompatible with parallelism.tensor_parallel_size={tp}: "
+                "Automodel's Triton LoRA kernels do not accept the DTensor-sharded adapter weights "
+                "tensor parallelism produces. Leave lora.use_triton unset to let the compiler pick, "
+                "set it false, or drop to tensor_parallel_size=1."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _policy_backend_supports_requested_features(self) -> Self:
+        """Reject capabilities the chosen backend does not implement.
+
+        ``DTensorPolicyWorker`` (V1) asserts ``lora_cfg.enabled is False`` and reads neither
+        ``expert_parallel_size`` nor ``automodel_kwargs`` -- so left to NeMo-RL, LoRA dies in
+        a Ray worker and the other two are silently ignored. All conflicts are reported at
+        once so one fix-up round suffices.
+        """
+        if self.policy_backend is not PolicyBackend.DTENSOR:
+            return self
+        conflicts = []
+        if self.finetuning_type == "lora":
+            conflicts.append("finetuning_type='lora'")
+        if self.parallelism.expert_parallel_size > 1:
+            conflicts.append(f"parallelism.expert_parallel_size={self.parallelism.expert_parallel_size}")
+        if self.automodel_kwargs:
+            conflicts.append("automodel_kwargs")
+        if conflicts:
+            raise ValueError(
+                f"{', '.join(conflicts)} {'is' if len(conflicts) == 1 else 'are'} only supported with "
+                "policy_backend='automodel'. Set policy_backend='automodel' (it also handles "
+                "full-weight training), or drop the unsupported settings to stay on 'dtensor'."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _hf_config_overrides_do_not_collide(self) -> Self:
+        # router_aux_loss_coef writes the same top-level key, and HuggingFace absorbs an
+        # unknown kwarg without complaining -- so a silent loser here means the MoE aux
+        # loss stays on and only shows up as degraded accuracy many steps in.
+        if self.router_aux_loss_coef is not None and "router_aux_loss_coef" in (self.hf_config_overrides or {}):
+            raise ValueError(
+                "router_aux_loss_coef is set both directly and inside hf_config_overrides. "
+                "Keep one: use hf_config_overrides when the model nests it (e.g. Qwen3.5 reads "
+                "it under text_config)."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _truncated_importance_sampling_is_usable(self) -> Self:
+        """Mirror the asserts ClippedPGLossFn makes at startup.
+
+        Each of these otherwise fails inside the driver after the model is loaded and the
+        first rollout batch has been generated, which is an expensive way to learn about a
+        typo in the job spec.
+        """
+        tis_type = self.truncated_importance_sampling_type
+        ratio, ratio_min = (
+            self.truncated_importance_sampling_ratio,
+            self.truncated_importance_sampling_ratio_min,
+        )
+        if tis_type is None:
+            if ratio is not None or ratio_min is not None:
+                raise ValueError(
+                    "truncated_importance_sampling_ratio/_min are ignored unless "
+                    "truncated_importance_sampling_type is set."
+                )
+            return self
+        if not self.use_importance_sampling_correction:
+            raise ValueError("truncated importance sampling requires use_importance_sampling_correction=true.")
+        if ratio is None:
+            raise ValueError(
+                f"truncated_importance_sampling_ratio is required when "
+                f"truncated_importance_sampling_type is {tis_type!r}."
+            )
+        if tis_type in ("icepop", "seq-mask-tis") and ratio_min is None:
+            raise ValueError(
+                f"truncated_importance_sampling_ratio_min is required when "
+                f"truncated_importance_sampling_type is {tis_type!r}."
+            )
+        if ratio_min is not None and ratio_min > ratio:
+            raise ValueError(
+                "truncated_importance_sampling_ratio_min must not exceed truncated_importance_sampling_ratio."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _batch_multiplier_requires_dynamic_sampling(self) -> Self:
+        # NeMo-RL asserts exactly this at startup; without dynamic sampling the extra
+        # prompts are generated and then trained on, silently changing the batch size.
+        if self.batch_multiplier != 1.0 and not self.use_dynamic_sampling:
+            raise ValueError("batch_multiplier may only be set when use_dynamic_sampling is true.")
         return self
 
     @model_validator(mode="after")

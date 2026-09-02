@@ -649,6 +649,131 @@ async def test_validate_access_key_token_rejects_service_principal_subject(tmp_p
         await issuer.create_async(AccessKeyCreateRequest(name="bad-service-key", expires_in_seconds=600))
 
 
+async def test_service_account_cannot_create_an_access_key_for_itself(tmp_path):
+    config = _access_key_config(tmp_path)
+    issuer = AccessKeyIssuerService(
+        config=config,
+        principal=Principal(id="service-account:otel-collector"),
+        now=lambda: 1785280000,
+    )
+
+    with pytest.raises(AccessKeyValidationError, match="service-account principals"):
+        await issuer.create_async(AccessKeyCreateRequest(name="self-renewal", expires_in_seconds=600))
+
+
+async def test_service_account_cannot_create_a_service_bound_access_key_even_with_allow_flag(tmp_path):
+    config = _access_key_config(tmp_path)
+    issuer = AccessKeyIssuerService(
+        config=config,
+        principal=Principal(id="service-account:otel-collector"),
+        now=lambda: 1785280000,
+    )
+    request = AccessKeyCreateRequest(service_account_id="otel-collector", expires_in_seconds=600)
+
+    # allow_service_account=True models a (mis)configuration where a service-account principal
+    # was somehow granted PlatformAdmin; the identity check must still block self/peer renewal.
+    with pytest.raises(AccessKeyValidationError, match="service-account principals"):
+        await issuer.create_async(request, allow_service_account=True)
+
+
+async def test_privileged_service_principal_cannot_create_a_service_bound_access_key_even_with_allow_flag(tmp_path):
+    config = _access_key_config(tmp_path)
+    issuer = AccessKeyIssuerService(
+        config=config,
+        principal=Principal(id="service:auth"),
+        now=lambda: 1785280000,
+    )
+    request = AccessKeyCreateRequest(service_account_id="otel-collector", expires_in_seconds=600)
+
+    with pytest.raises(AccessKeyValidationError, match="service principals"):
+        await issuer.create_async(request, allow_service_account=True)
+
+
+async def test_service_account_access_key_requires_explicit_admin_authorization(tmp_path):
+    config = _access_key_config(tmp_path)
+    issuer = AccessKeyIssuerService(
+        config=config,
+        principal=Principal(id="admin@example.com", groups=["platform-admins"]),
+        now=lambda: 1785280000,
+    )
+    request = AccessKeyCreateRequest(service_account_id="otel-collector", expires_in_seconds=600)
+
+    with pytest.raises(AccessKeyValidationError, match="PlatformAdmin"):
+        await issuer.create_async(request)
+
+
+async def test_service_account_access_key_uses_non_privileged_machine_identity(tmp_path):
+    config = _access_key_config(tmp_path, max_expires_in_seconds=None)
+    issuer = AccessKeyIssuerService(
+        config=config,
+        principal=Principal(id="admin@example.com", email="admin@example.com", groups=["platform-admins"]),
+        now=lambda: 1785280000,
+    )
+    created = await issuer.create_async(
+        AccessKeyCreateRequest(service_account_id="otel-collector", expires_in_seconds=None),
+        allow_service_account=True,
+    )
+    claims = jwt.decode(created.token, options={"verify_signature": False})
+    jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
+    validated = await validate_access_key_token(config, created.token, jwks_override=jwks)
+
+    assert created.principal == "service-account:otel-collector"
+    assert created.entity_type == "SERVICE_ACCOUNT"
+    assert claims["sub"] == "service-account:otel-collector"
+    assert claims["nmp_access_key"]["entity_type"] == "SERVICE_ACCOUNT"
+    assert "email" not in claims
+    assert "groups" not in claims
+    assert validated is not None
+    assert validated.subject == "service-account:otel-collector"
+
+
+async def test_validate_access_key_token_rejects_service_entity_type_for_user_subject(tmp_path):
+    config = _access_key_config(tmp_path)
+    issuer = AccessKeyIssuerService(
+        config=config,
+        principal=Principal(id="alice@example.com"),
+        now=lambda: 1785280000,
+    )
+    created = await issuer.create_async(AccessKeyCreateRequest(expires_in_seconds=600))
+    claims = jwt.decode(created.token, options={"verify_signature": False})
+    claims["nmp_access_key"]["entity_type"] = "SERVICE_ACCOUNT"
+    signing_key = await access_keys_mod._access_key_signing_key_async(config)
+    token = jwt.encode(
+        claims,
+        signing_key.private_key,
+        algorithm="RS256",
+        headers={"kid": config.token_signing.key_id},
+    )
+    jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
+
+    assert await validate_access_key_token(config, token, jwks_override=jwks) is None
+
+
+async def test_validate_access_key_token_rejects_service_subject_without_service_entity_type(tmp_path):
+    config = _access_key_config(tmp_path)
+    issuer = AccessKeyIssuerService(
+        config=config,
+        principal=Principal(id="admin@example.com"),
+        now=lambda: 1785280000,
+    )
+    created = await issuer.create_async(
+        AccessKeyCreateRequest(service_account_id="otel-collector", expires_in_seconds=600),
+        allow_service_account=True,
+    )
+    claims = jwt.decode(created.token, options={"verify_signature": False})
+    claims["nmp_access_key"].pop("entity_type")
+    signing_key = await access_keys_mod._access_key_signing_key_async(config)
+    token = jwt.encode(
+        claims,
+        signing_key.private_key,
+        algorithm="RS256",
+        headers={"kid": config.token_signing.key_id},
+    )
+    jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
+
+    assert await validate_access_key_token(config, token, jwks_override=jwks) is None
+
+
 async def test_validate_access_key_token_rejects_expired_key(tmp_path):
     config = _access_key_config(tmp_path)
     issuer = AccessKeyIssuerService(

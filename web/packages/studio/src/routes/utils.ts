@@ -221,6 +221,21 @@ export const getWorkspaceVirtualModelsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.virtualModels, { workspace });
 };
 
+export const getVirtualModelDetailRoute = (workspace: string, virtualModelName: string): string => {
+  return generatePath(ROUTES.workspace.virtualModelDetail, { workspace, virtualModelName });
+};
+
+export const getVirtualModelDetailsRoute = (
+  workspace: string,
+  virtualModelName: string
+): string => {
+  return generatePath(ROUTES.workspace.virtualModelDetails, { workspace, virtualModelName });
+};
+
+export const getVirtualModelChatRoute = (workspace: string, virtualModelName: string): string => {
+  return generatePath(ROUTES.workspace.virtualModelChat, { workspace, virtualModelName });
+};
+
 export const getWorkspaceDeploymentsRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.deployments, { workspace });
 };
@@ -422,6 +437,13 @@ export const getGuardrailConfigRoute = (workspace: string, guardrailConfigName: 
 
 export const getGuardrailChecksRoute = (workspace: string, guardrailConfigName: string) => {
   return generatePath(ROUTES.workspace.guardrailChecks, {
+    workspace,
+    guardrailConfigName,
+  });
+};
+
+export const getGuardrailVirtualModelsRoute = (workspace: string, guardrailConfigName: string) => {
+  return generatePath(ROUTES.workspace.guardrailVirtualModels, {
     workspace,
     guardrailConfigName,
   });

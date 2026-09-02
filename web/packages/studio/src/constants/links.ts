@@ -8,6 +8,7 @@ const GITHUB_REPO_URL = 'https://github.com/NVIDIA-NeMo/nemo-platform';
 export const LINK_DOCS_STUDIO = `${DOCS_BASE_URL}studio`;
 export const LINK_DOCS_STUDIO_CUSTOMIZATION = `${DOCS_BASE_URL}customizer-reference`;
 export const LINK_DOCS_STUDIO_EVALUATION = `${DOCS_BASE_URL}evaluate-models`;
+export const LINK_DOCS_STUDIO_EXPERIMENTS = `${DOCS_BASE_URL}studio/experiments`;
 export const LINK_DOCS_PROJECT = `${DOCS_BASE_URL}get-started/core-concepts/projects`;
 export const LINK_DOCS_DATASETS = `${DOCS_BASE_URL}get-started/core-concepts/manage-files`;
 export const LINK_DOCS_MODELS = `${DOCS_BASE_URL}models-and-inference`;
@@ -19,6 +20,9 @@ export const LINK_DOCS_SAFE_SYNTHESIZER = `${DOCS_BASE_URL}synthesize-safe-data`
 
 // SDK documentation links
 export const LINK_DOCS_SDK = `${DOCS_BASE_URL}reference/python-sdk`;
+
+// GRPO documentation links
+export const LINK_DOCS_GRPO_TRAINING = `${DOCS_BASE_URL}customizer-reference/grpo-and-reward-environments`;
 
 // Fine Tune documentation links
 export const LINK_DOCS_FINE_TUNE_CONFIGURATION_DECISIONS = `${DOCS_BASE_URL}customizer-reference/tutorials/understanding-models-and-training#making-configuration-decisions`;
@@ -55,4 +59,4 @@ export const LINK_DOCS_JOBS = `${DOCS_BASE_URL}studio#jobs`;
 export const LINK_DOCS_SECRETS = `${DOCS_BASE_URL}get-started/core-concepts/manage-secrets`;
 
 // Evaluations
-export const LINK_DOCS_EXPERIMENTS_CLI = `${DOCS_BASE_URL}reference/cli-reference`;
+export const LINK_DOCS_EXPERIMENTS_CLI = `${DOCS_BASE_URL}evaluate-models/experiments`;

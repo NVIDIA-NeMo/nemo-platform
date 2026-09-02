@@ -178,6 +178,43 @@ class AuthClient(BaseModel):
 
         return AuthorizationResult(allowed=allowed, reason=reason)
 
+    async def _pdp_check(self, pdp_endpoint: str, auth_input: dict, result_key: str, check_name: str) -> bool:
+        """Send a single-shot PDP check and extract a boolean result.
+
+        Shared by has_permissions/has_role: both open/close the PDP http client the
+        same way and map httpx errors to the same HTTPException pair, differing only
+        in the endpoint, request payload, and which result field holds the answer.
+
+        ``check_name`` is a lowercase phrase (e.g. "permission check", "role check")
+        used to build both the log message and the HTTPException detail, matching the
+        wording each caller used before this helper was factored out.
+        """
+        from fastapi import HTTPException
+
+        client = self.http_client
+        should_close = False
+        if client is None:
+            client = self._new_pdp_http_client()
+            should_close = True
+
+        try:
+            response = await client.post(
+                self.config.get_pdp_url(pdp_endpoint),
+                json={"input": auth_input},
+                headers=self._pdp_request_headers,
+            )
+            response.raise_for_status()
+            return bool(response.json().get("result", {}).get(result_key, False))
+        except httpx.HTTPError as exc:
+            logger.error("Failed to contact auth endpoint for %s: %s", check_name, str(exc))
+            raise HTTPException(status_code=503, detail=f"{check_name.capitalize()} service unavailable") from exc
+        except Exception as exc:
+            logger.error("Unexpected error during %s: %s", check_name, str(exc))
+            raise HTTPException(status_code=500, detail=f"Internal {check_name} error") from exc
+        finally:
+            if should_close:
+                await client.aclose()
+
     async def has_permissions(self, workspace_id: str, permissions: List[str]) -> bool:
         """Check if the current principal has specific permissions in a workspace.
 
@@ -208,8 +245,6 @@ class AuthClient(BaseModel):
                     pass
             ```
         """
-        from fastapi import HTTPException
-
         validate_permission_strings(permissions, context="AuthClient.has_permissions")
 
         # If auth is disabled, allow all permissions
@@ -220,59 +255,51 @@ class AuthClient(BaseModel):
         if not self.policy_decision_point_base_url:
             raise RuntimeError("Policy Decision Point URL not configured for permission checks")
 
-        # Use injected http_client (from middleware) or create a new one
-        # See architecture/docs/http-client-injection.md for injection patterns.
-        client = self.http_client
-        should_close = False
-        if client is None:
-            client = self._new_pdp_http_client()
-            should_close = True
+        # Prepare input with all principal identifiers (acting user when delegating)
+        auth_input = {
+            "principal_id": self.principal.id,
+            "workspace": workspace_id,
+            "permissions": permissions,
+        }
+        if self.principal.effective_email:
+            auth_input["principal_email"] = self.principal.effective_email
+        if self.principal.effective_groups:
+            auth_input["principal_groups"] = self.principal.effective_groups
+        if self.principal.on_behalf_of:
+            auth_input["on_behalf_of_principal_id"] = self.principal.on_behalf_of
 
-        try:
-            auth_url = self.config.get_pdp_url("has_permissions")
+        allowed = await self._pdp_check("has_permissions", auth_input, "allowed", "permission check")
 
-            # Prepare input with all principal identifiers (acting user when delegating)
-            auth_input = {
-                "principal_id": self.principal.id,
-                "workspace": workspace_id,
-                "permissions": permissions,
-            }
-            if self.principal.effective_email:
-                auth_input["principal_email"] = self.principal.effective_email
-            if self.principal.effective_groups:
-                auth_input["principal_groups"] = self.principal.effective_groups
-            if self.principal.on_behalf_of:
-                auth_input["on_behalf_of_principal_id"] = self.principal.on_behalf_of
+        logger.info(
+            "Permission check for principal=%s workspace=%s permissions=%s: %s",
+            self.principal.id,
+            workspace_id,
+            permissions,
+            "ALLOWED" if allowed else "DENIED",
+        )
 
-            response = await client.post(
-                auth_url,
-                json={"input": auth_input},
-                headers=self._pdp_request_headers,
-            )
-            response.raise_for_status()
+        return allowed
 
-            result = response.json()
-            allowed = result.get("result", {}).get("allowed", False)
+    async def has_role(self, workspace_id: str, role: str) -> bool:
+        """Check whether the current effective principal has a role in a workspace."""
+        if not self.auth_enabled:
+            return True
+        if not self.policy_decision_point_base_url:
+            raise RuntimeError("Policy Decision Point URL not configured for role checks")
 
-            logger.info(
-                "Permission check for principal=%s workspace=%s permissions=%s: %s",
-                self.principal.id,
-                workspace_id,
-                permissions,
-                "ALLOWED" if allowed else "DENIED",
-            )
+        auth_input = {
+            "principal_id": self.principal.effective_id,
+            "workspace": workspace_id,
+            "role": role,
+        }
+        if self.principal.effective_email:
+            auth_input["principal_email"] = self.principal.effective_email
+        if self.principal.effective_groups:
+            auth_input["principal_groups"] = self.principal.effective_groups
+        if self.principal.on_behalf_of:
+            auth_input["on_behalf_of_principal_id"] = self.principal.on_behalf_of
 
-            return allowed
-
-        except httpx.HTTPError as e:
-            logger.error("Failed to contact auth endpoint for permission check: %s", str(e))
-            raise HTTPException(status_code=503, detail="Permission check service unavailable")
-        except Exception as e:
-            logger.error("Unexpected error during permission check: %s", str(e))
-            raise HTTPException(status_code=500, detail="Internal permission check error")
-        finally:
-            if should_close:
-                await client.aclose()
+        return await self._pdp_check("has_role", auth_input, "has_role", "role check")
 
     async def on_behalf_of_has_permissions(self, workspace_id: str, permissions: List[str]) -> bool:
         """Check if the on-behalf-of principal has specific permissions in a workspace.

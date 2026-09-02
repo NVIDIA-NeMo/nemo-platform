@@ -57,14 +57,20 @@ export interface UseCustomizationJobStatusResult {
   isError: boolean;
 }
 
+interface UseCustomizationJobStatusOptions {
+  /** Defaults to true. Set false to skip polling when a second consumer doesn't need it yet. */
+  enabled?: boolean;
+}
+
 export const useCustomizationJobStatus = (
   workspace: string,
   name: string,
   backend: CustomizationBackend | undefined,
-  jobStatus?: PlatformJobStatus
+  jobStatus?: PlatformJobStatus,
+  { enabled = true }: UseCustomizationJobStatusOptions = {}
 ): UseCustomizationJobStatusResult => {
   const endpoint = backend ? STATUS_ENDPOINTS[backend] : undefined;
-  const canFetch = Boolean(endpoint && workspace && name);
+  const canFetch = Boolean(endpoint && workspace && name && enabled);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: endpoint ? endpoint.getQueryKey(workspace, name) : PENDING_BACKEND_QUERY_KEY,

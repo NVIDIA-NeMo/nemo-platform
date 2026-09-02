@@ -17,17 +17,17 @@ from typing import Any, Protocol
 import yaml
 from nemo_agents_plugin.entities import (
     AGENT_CONFIG_FILENAME,
+    AGENT_SPEC_FILENAME,
     ETHOS_FILENAME,
     MAX_ETHOS_STAGED_BYTES,
     ethos_fileset_name,
 )
-from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
 from nemo_deployments_plugin.entities import ConfigFile
 from nemo_platform import NotFoundError as PlatformNotFoundError
 from nemo_platform_plugin.client.errors import NotFoundError as PluginClientNotFoundError
 
 logger = logging.getLogger(__name__)
-_CONTRACT_FILENAMES = {ETHOS_FILENAME, LEGACY_CONTRACT_FILENAME}
+_CONTRACT_FILENAMES = {ETHOS_FILENAME, AGENT_SPEC_FILENAME}
 
 
 class FabricArtifactStagingError(ValueError):
@@ -64,7 +64,7 @@ async def stage_fabric_ethos_dir(
 
     The container byte cap does not apply here: it bounds ConfigMap and env
     delivery, neither of which is in this path. What lands on the platform host
-    is bounded by ``_check_agent_root_bounds`` at CLI upload time only — a
+    is bounded by ``_collect_text_agent_artifacts`` at CLI upload time only — a
     fileset written straight through the files API is unbounded here. That is
     the intended trust boundary for local subprocess mode, not an oversight.
 

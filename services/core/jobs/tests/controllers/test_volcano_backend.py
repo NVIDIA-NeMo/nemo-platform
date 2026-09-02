@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import datetime
+from types import SimpleNamespace
 from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
+from kubernetes import client
 from kubernetes.client.rest import ApiException
+from nmp.common.auth import KUBERNETES_POD_UID_REFERENCE_NAME, AuthContext, reference_delegation_name
 from nmp.common.jobs.constants import (
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
     NEMO_JOB_FILESET_ENVVAR,
@@ -35,15 +38,22 @@ from nmp.core.jobs.app.schemas import (
     PlatformJobSecretEnvironmentVariableRef,
     PlatformJobStepSpec,
 )
+from nmp.core.jobs.controllers.backends.base import (
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+    WORKLOAD_IDENTITY_VOLUME_NAME,
+)
 from nmp.core.jobs.controllers.backends.kubernetes.common import (
     KubernetesJobStorageConfig,
     KubernetesObjectMetadata,
+    common_labels_for_step,
     name_for_step,
 )
 from nmp.core.jobs.controllers.backends.kubernetes.volcano_job import (
     VolcanoJobBackend,
     VolcanoJobExecutionProfileConfig,
 )
+from nmp.core.jobs.controllers.backends.workload_tokens import WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS
 from pydantic import ValidationError
 
 DEFAULT_STORAGE = KubernetesJobStorageConfig(pvc_name="job-storage-pvc")
@@ -151,6 +161,105 @@ def volcano_job(
         volcano_job._core_v1 = kubernetes_client_mock["core_v1"]
         volcano_job._custom_v1 = kubernetes_client_mock["custom_v1"]
         yield volcano_job
+
+
+@pytest.fixture
+def workload_exchange_auth_config():
+    return SimpleNamespace(
+        oidc=SimpleNamespace(
+            workload_token_exchange_enabled=True,
+            workload_audience="nemo-platform",
+            audience=None,
+        )
+    )
+
+
+@pytest.fixture
+def test_step_pending_with_auth_context(test_step_pending: PlatformJobStepWithContext) -> PlatformJobStepWithContext:
+    step = test_step_pending.model_copy(deep=True)
+    step.auth_context = AuthContext(
+        principal_id="creator@example.com",
+        principal_email="creator@example.com",
+        principal_groups=["engineering", "ml-team"],
+    )
+    return step
+
+
+@pytest.fixture
+def test_step_active_with_auth_context(test_step_active: PlatformJobStepWithContext) -> PlatformJobStepWithContext:
+    step = test_step_active.model_copy(deep=True)
+    step.auth_context = AuthContext(
+        principal_id="creator@example.com",
+        principal_email="creator@example.com",
+        principal_groups=["engineering", "ml-team"],
+    )
+    return step
+
+
+def _volcano_job_for_step(
+    step: PlatformJobStepWithContext,
+    *,
+    phase: str = "Running",
+    service_account_name: str = "default",
+) -> dict:
+    labels = common_labels_for_step(step)
+    labels[JOB_EXECUTION_BACKEND_LABEL] = "volcano_job"
+    labels[JOB_EXECUTION_PROFILE_LABEL] = "default"
+    return {
+        "metadata": {
+            "name": name_for_step(step),
+            "namespace": "test-namespace",
+            "labels": labels,
+        },
+        "spec": {
+            "tasks": [
+                {
+                    "name": "worker",
+                    "template": {
+                        "spec": {
+                            "serviceAccountName": service_account_name,
+                        }
+                    },
+                }
+            ]
+        },
+        "status": {
+            "state": {
+                "phase": phase,
+                "lastTransitionTime": datetime.datetime.now(datetime.UTC).isoformat(),
+            }
+        },
+    }
+
+
+def _kubernetes_pod(uid: str, *, phase: str = "Running") -> client.V1Pod:
+    return client.V1Pod(
+        metadata=client.V1ObjectMeta(
+            name=f"pod-{uid}",
+            namespace="test-namespace",
+            uid=uid,
+        ),
+        status=client.V1PodStatus(
+            phase=phase,
+            container_statuses=[
+                client.V1ContainerStatus(
+                    image="test-image",
+                    image_id="test-image-id",
+                    name="nemo-job-task",
+                    ready=phase == "Running",
+                    restart_count=0,
+                    state=client.V1ContainerState(
+                        running=client.V1ContainerStateRunning(started_at=datetime.datetime.now(datetime.UTC))
+                        if phase == "Running"
+                        else None,
+                        terminated=client.V1ContainerStateTerminated(exit_code=0, reason="Completed")
+                        if phase == "Succeeded"
+                        else None,
+                    ),
+                )
+            ],
+        ),
+    )
 
 
 # test_kubernetes_backend has tests for build_affinity, build_metadata, build_tolerations. These have been refactored to
@@ -275,6 +384,37 @@ def test_schedule_job_success(
 
         # Ensure that config warnings are disabled
         assert env_vars["NMP_CONFIG_WARNINGS_DISABLED"] == "1"
+
+
+def test_schedule_job_with_auth_context_mounts_projected_workload_identity_token(
+    volcano_job: VolcanoJobBackend,
+    distributed_gpu_execution_provider,
+    test_step_pending_with_auth_context: PlatformJobStepWithContext,
+    workload_exchange_auth_config,
+):
+    volcano_job._custom_v1.create_namespaced_custom_object.return_value = MagicMock()  # ty: ignore[invalid-assignment]
+    volcano_job._execution_profile_config.workload_identity.token_expiration_seconds = 600
+    volcano_job._execution_profile_config.workload_identity.token_audience = "test-audience"
+
+    with patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config):
+        volcano_job.schedule(distributed_gpu_execution_provider, test_step_pending_with_auth_context)
+
+    call_args = volcano_job._custom_v1.create_namespaced_custom_object.call_args  # ty: ignore[possibly-unbound-attribute]
+    job_body = call_args.kwargs["body"]
+
+    for task in job_body["spec"]["tasks"]:
+        pod_spec = task["template"]["spec"]
+        main_container = pod_spec["containers"][0]
+        env_vars = {env["name"]: env.get("value") for env in main_container["env"]}
+        assert env_vars[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+
+        volume_mounts = {mount["name"]: mount for mount in main_container["volumeMounts"]}
+        assert WORKLOAD_IDENTITY_VOLUME_NAME in volume_mounts
+
+        volumes = {volume["name"]: volume for volume in pod_spec["volumes"]}
+        projection = volumes[WORKLOAD_IDENTITY_VOLUME_NAME]["projected"]["sources"][0]["serviceAccountToken"]
+        assert projection["audience"] == "test-audience"
+        assert projection["expirationSeconds"] == 600
 
 
 def test_created_step_does_not_ttl_before_backend_acceptance(
@@ -529,6 +669,31 @@ def test_volcano_job_nemo_job_secrets_format_same_and_cross_workspace(
     }
 
 
+def test_schedule_injects_opensandbox_secret_env_when_cluster_capable(
+    volcano_job: VolcanoJobBackend,
+    distributed_gpu_execution_provider,
+    test_step_pending: PlatformJobStepWithContext,
+    mock_platform_config,
+):
+    mock_platform_config.sandbox_cluster_capable = True
+    mock_platform_config.sandbox_server_domain = "opensandbox-server.opensandbox-system.svc.cluster.local"
+    mock_platform_config.sandbox_api_key_secret = "opensandbox-server-api-key"
+    mock_platform_config.sandbox_api_key_secret_key = "api-key"
+
+    volcano_job._custom_v1.create_namespaced_custom_object.return_value = MagicMock()  # ty: ignore[invalid-assignment]
+    volcano_job.schedule(distributed_gpu_execution_provider, test_step_pending)
+
+    job_body = volcano_job._custom_v1.create_namespaced_custom_object.call_args.kwargs["body"]  # ty: ignore[possibly-unbound-attribute]
+    for task in job_body["spec"]["tasks"]:
+        env_by_name = {env["name"]: env for env in task["template"]["spec"]["containers"][0]["env"]}
+        assert env_by_name["OPEN_SANDBOX_DOMAIN"]["value"] == (
+            "opensandbox-server.opensandbox-system.svc.cluster.local"
+        )
+        secret_ref = env_by_name["OPEN_SANDBOX_API_KEY"]["valueFrom"]["secretKeyRef"]
+        assert secret_ref["name"] == "opensandbox-server-api-key"
+        assert secret_ref["key"] == "api-key"
+
+
 def test_schedule_job_with_args(
     volcano_job: VolcanoJobBackend, distributed_gpu_execution_provider, test_step_pending: PlatformJobStepWithContext
 ):
@@ -749,6 +914,61 @@ def test_sync_job_active(volcano_job: VolcanoJobBackend, test_step_pending: Plat
     assert job_update.status == PlatformJobStatus.ACTIVE
 
 
+def test_sync_job_active_registers_pod_uid_workload_delegation(
+    volcano_job: VolcanoJobBackend,
+    test_step_pending_with_auth_context: PlatformJobStepWithContext,
+    workload_exchange_auth_config,
+):
+    test_step_pending_with_auth_context.status = PlatformJobStatus.PENDING
+    ttl_seconds_active = 900
+    volcano_job._execution_profile_config.ttl_seconds_active = ttl_seconds_active
+    pod = _kubernetes_pod("pod-uid-123")
+    mock_job = _volcano_job_for_step(test_step_pending_with_auth_context, phase="Running")
+    volcano_job._custom_v1.get_namespaced_custom_object.return_value = mock_job  # ty: ignore[invalid-assignment]
+    volcano_job._core_v1.list_namespaced_pod.return_value = client.V1PodList(items=[pod])  # ty: ignore[attr-defined]
+    before_sync = datetime.datetime.now(datetime.UTC)
+
+    expected_name = reference_delegation_name(
+        workload_audience="nemo-platform",
+        workload_subject="system:serviceaccount:test-namespace:default",
+        bound_reference_name=KUBERNETES_POD_UID_REFERENCE_NAME,
+        bound_reference_value="pod-uid-123",
+    )
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(volcano_job._workload_delegations, "_register_workload_delegation") as register_delegation,
+        patch(
+            "nmp.core.jobs.controllers.backends.kubernetes.volcano_job.update_all_tasks",
+            return_value=False,
+        ),
+        patch.object(volcano_job, "get_volcano_job_events", return_value=[]),
+        patch.object(volcano_job, "get_volcano_pod_group_events", return_value=[]),
+    ):
+        update = volcano_job.sync(test_step_pending_with_auth_context)
+
+    assert update.status == PlatformJobStatus.ACTIVE
+    register_delegation.assert_called_once()
+    delegation = register_delegation.call_args.args[0]
+    assert delegation.name == expected_name
+    assert delegation.workload_subject == "system:serviceaccount:test-namespace:default"
+    assert delegation.workload_audience == "nemo-platform"
+    assert delegation.workload_workspace == test_step_pending_with_auth_context.workspace
+    assert delegation.job_id == test_step_pending_with_auth_context.job
+    assert delegation.attempt_id == test_step_pending_with_auth_context.attempt_id
+    assert delegation.step_id == test_step_pending_with_auth_context.id
+    assert delegation.auth_context.principal_id == "creator@example.com"
+    assert delegation.bound_reference_name == KUBERNETES_POD_UID_REFERENCE_NAME
+    assert delegation.bound_reference_value == "pod-uid-123"
+    assert delegation.opaque_subject_token_hash is None
+    expected_ttl_seconds = ttl_seconds_active + WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS
+    assert (
+        before_sync + datetime.timedelta(seconds=expected_ttl_seconds)
+        <= delegation.expires_at
+        <= datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=expected_ttl_seconds)
+    )
+
+
 def test_sync_job_completed(volcano_job: VolcanoJobBackend, test_step_pending: PlatformJobStepWithContext):
     """Test syncing a completed job."""
     # Mock completed job status
@@ -761,6 +981,40 @@ def test_sync_job_completed(volcano_job: VolcanoJobBackend, test_step_pending: P
     job_update = volcano_job.sync(test_step_pending)
 
     assert job_update.status == PlatformJobStatus.COMPLETED
+
+
+def test_sync_job_completed_revokes_pod_uid_workload_delegation(
+    volcano_job: VolcanoJobBackend,
+    test_step_active_with_auth_context: PlatformJobStepWithContext,
+    workload_exchange_auth_config,
+):
+    test_step_active_with_auth_context.status = PlatformJobStatus.ACTIVE
+    pod = _kubernetes_pod("pod-uid-123", phase="Succeeded")
+    mock_job = _volcano_job_for_step(test_step_active_with_auth_context, phase="Completed")
+    volcano_job._custom_v1.get_namespaced_custom_object.return_value = mock_job  # ty: ignore[invalid-assignment]
+    volcano_job._core_v1.list_namespaced_pod.return_value = client.V1PodList(items=[pod])  # ty: ignore[attr-defined]
+
+    expected_name = reference_delegation_name(
+        workload_audience="nemo-platform",
+        workload_subject="system:serviceaccount:test-namespace:default",
+        bound_reference_name=KUBERNETES_POD_UID_REFERENCE_NAME,
+        bound_reference_value="pod-uid-123",
+    )
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(volcano_job._workload_delegations, "_revoke_workload_delegation") as revoke_delegation,
+        patch(
+            "nmp.core.jobs.controllers.backends.kubernetes.volcano_job.update_all_tasks",
+            return_value=False,
+        ),
+        patch.object(volcano_job, "get_volcano_job_events", return_value=[]),
+        patch.object(volcano_job, "get_volcano_pod_group_events", return_value=[]),
+    ):
+        update = volcano_job.sync(test_step_active_with_auth_context)
+
+    assert update.status == PlatformJobStatus.COMPLETED
+    revoke_delegation.assert_called_once_with(expected_name)
 
 
 def test_sync_job_failed(volcano_job: VolcanoJobBackend, test_step_pending: PlatformJobStepWithContext):
@@ -806,6 +1060,27 @@ def test_sync_active_when_volcano_job_not_found(
     assert "Job not found" in job_update.error_details.get("message", "")
     # Must not attempt to delete a non-existent job
     volcano_job._custom_v1.delete_namespaced_custom_object.assert_not_called()  # ty: ignore[possibly-unbound-attribute]
+
+
+def test_sync_active_when_volcano_job_not_found_revokes_recorded_workload_delegation(
+    volcano_job: VolcanoJobBackend,
+    test_step_active_with_auth_context: PlatformJobStepWithContext,
+    workload_exchange_auth_config,
+):
+    test_step_active_with_auth_context.status = PlatformJobStatus.ACTIVE
+    job_key = f"test-namespace/{name_for_step(test_step_active_with_auth_context)}"
+    volcano_job._workload_delegations._delegations_by_target_key[job_key] = {"ref:recorded-delegation"}
+    volcano_job._custom_v1.get_namespaced_custom_object.side_effect = ApiException(status=404)  # ty: ignore[invalid-assignment]
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(volcano_job._workload_delegations, "_revoke_workload_delegation") as revoke_delegation,
+    ):
+        job_update = volcano_job.sync(test_step_active_with_auth_context)
+
+    assert job_update.status == PlatformJobStatus.ERROR
+    revoke_delegation.assert_called_once_with("ref:recorded-delegation")
+    assert job_key not in volcano_job._workload_delegations._delegations_by_target_key
 
 
 def test_name_for_job_truncation(volcano_job: VolcanoJobBackend):
@@ -1056,6 +1331,35 @@ def test_terminate_job_skips_delete_when_not_managed_by_jobs_controller(volcano_
 
     volcano_job._custom_v1.delete_namespaced_custom_object.assert_not_called()  # type: ignore[possibly-unbound-attribute]
     volcano_job._core_v1.delete_namespaced_config_map.assert_not_called()  # type: ignore[possibly-unbound-attribute]
+
+
+def test_terminate_job_revokes_pod_uid_workload_delegation(
+    volcano_job: VolcanoJobBackend,
+    test_step_pending_with_auth_context: PlatformJobStepWithContext,
+    workload_exchange_auth_config,
+):
+    pod = _kubernetes_pod("pod-uid-123", phase="Succeeded")
+    mock_job = _volcano_job_for_step(test_step_pending_with_auth_context, phase="Running")
+    volcano_job._core_v1.list_namespaced_pod.return_value = client.V1PodList(items=[pod])  # ty: ignore[attr-defined]
+    volcano_job._core_v1.read_namespaced_config_map.return_value = MagicMock(  # ty: ignore[attr-defined]
+        metadata=MagicMock(labels={JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER})
+    )
+
+    expected_name = reference_delegation_name(
+        workload_audience="nemo-platform",
+        workload_subject="system:serviceaccount:test-namespace:default",
+        bound_reference_name=KUBERNETES_POD_UID_REFERENCE_NAME,
+        bound_reference_value="pod-uid-123",
+    )
+
+    with (
+        patch("nmp.common.config.get_auth_config", return_value=workload_exchange_auth_config),
+        patch.object(volcano_job._workload_delegations, "_revoke_workload_delegation") as revoke_delegation,
+    ):
+        volcano_job.terminate_job(mock_job)
+
+    revoke_delegation.assert_called_once_with(expected_name)
+    volcano_job._custom_v1.delete_namespaced_custom_object.assert_called_once()  # ty: ignore[possibly-unbound-attribute]
 
 
 def test_terminate_job_volcano_not_installed(volcano_job: VolcanoJobBackend):

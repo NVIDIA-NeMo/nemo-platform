@@ -21,6 +21,9 @@ from nemo_iron_swarm_plugin.entities import (
 )
 from nemo_iron_swarm_plugin.jobs import benign_suite
 from nemo_iron_swarm_plugin.jobs.errors import RunFailure
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import EntitiesClient
+from nemo_platform_plugin.entities.types import EntityCreateInput, EntityUpdate
 from nemo_platform_plugin.entity_client import NemoEntitiesClient
 from nemo_platform_plugin.job_context import JobContext
 
@@ -74,7 +77,11 @@ def _create_run(sdk: Any, *, workspace: str, data: dict[str, Any]) -> str | None
     if sdk is None or not hasattr(sdk, "entities"):
         return None
     try:
-        entity = sdk.entities.create(IRON_SWARM_RUN_TYPE, workspace=workspace, data=data)
+        entity = (
+            client_from_platform(sdk, EntitiesClient)
+            .create_entity(entity_type=IRON_SWARM_RUN_TYPE, workspace=workspace, body=EntityCreateInput(data=data))
+            .data()
+        )
         return getattr(entity, "name", None)
     except Exception:  # recording is best-effort, not part of the war-game
         logger.warning("failed to persist IronSwarmRun record", exc_info=True)
@@ -120,7 +127,11 @@ def _run_facts(sdk: Any, *, workspace: str, name: str) -> tuple[str, int]:
     if sdk is None or not hasattr(sdk, "entities"):
         return "", 0
     try:
-        record = sdk.entities.get_entity_by_name(name=name, entity_type=IRON_SWARM_RUN_TYPE, workspace=workspace)
+        record = (
+            client_from_platform(sdk, EntitiesClient)
+            .get_entity_by_name(name=name, entity_type=IRON_SWARM_RUN_TYPE, workspace=workspace)
+            .data()
+        )
         data = getattr(record, "data", {}) or {}
         port = data.get("port")
         return str(data.get("agent") or ""), int(port) if isinstance(port, int) else 0
@@ -134,7 +145,9 @@ def _update_run(sdk: Any, *, workspace: str, name: str, data: dict[str, Any]) ->
     if sdk is None or not hasattr(sdk, "entities"):
         return
     try:
-        sdk.entities.update_entity_by_name(name=name, entity_type=IRON_SWARM_RUN_TYPE, workspace=workspace, data=data)
+        client_from_platform(sdk, EntitiesClient).update_entity_by_name(
+            name=name, entity_type=IRON_SWARM_RUN_TYPE, workspace=workspace, body=EntityUpdate(data=data)
+        ).data()
     except Exception:  # recording is best-effort, not part of the war-game
         logger.warning("failed to update IronSwarmRun record", exc_info=True)
 
@@ -144,8 +157,10 @@ def _manifest_rounds(sdk: Any, manifest_id: str, ctx: JobContext) -> int:
     if sdk is None or not hasattr(sdk, "entities"):
         return 1
     try:
-        record = sdk.entities.get_entity_by_name(
-            name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=ctx.workspace
+        record = (
+            client_from_platform(sdk, EntitiesClient)
+            .get_entity_by_name(name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=ctx.workspace)
+            .data()
         )
         rounds = (getattr(record, "data", {}) or {}).get("rounds")
         return rounds if isinstance(rounds, int) and rounds >= 1 else 1
@@ -159,8 +174,10 @@ def _manifest_models(sdk: Any, manifest_id: str, ctx: JobContext) -> dict[str, A
     if sdk is None or not hasattr(sdk, "entities"):
         return {}
     try:
-        record = sdk.entities.get_entity_by_name(
-            name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=ctx.workspace
+        record = (
+            client_from_platform(sdk, EntitiesClient)
+            .get_entity_by_name(name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=ctx.workspace)
+            .data()
         )
         models = (getattr(record, "data", {}) or {}).get("models")
         return models if isinstance(models, dict) else {}
@@ -174,8 +191,10 @@ def _cached_benign_suite(sdk: Any, manifest_id: str, ctx: JobContext) -> list[di
     if sdk is None or not hasattr(sdk, "entities"):
         return []
     try:
-        record = sdk.entities.get_entity_by_name(
-            name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=ctx.workspace
+        record = (
+            client_from_platform(sdk, EntitiesClient)
+            .get_entity_by_name(name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=ctx.workspace)
+            .data()
         )
         suite = (getattr(record, "data", {}) or {}).get("benign_suite") or []
         return [row for row in suite if isinstance(row, dict)]
@@ -216,15 +235,17 @@ def _persist_benign_suite(
     if sdk is None or not hasattr(sdk, "entities") or not suite:
         return
     try:
-        record = sdk.entities.get_entity_by_name(
-            name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=workspace
+        record = (
+            client_from_platform(sdk, EntitiesClient)
+            .get_entity_by_name(name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=workspace)
+            .data()
         )
         data = dict(getattr(record, "data", {}) or {})
         data["benign_suite"] = suite
         if interview:
             data["benign_interview"] = interview
-        sdk.entities.update_entity_by_name(
-            name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=workspace, data=data
+        client_from_platform(sdk, EntitiesClient).update_entity_by_name(
+            name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=workspace, body=EntityUpdate(data=data)
         )
     except Exception:  # caching is best-effort, not part of the war-game
         logger.warning("failed to cache benign suite on manifest %s", manifest_id, exc_info=True)

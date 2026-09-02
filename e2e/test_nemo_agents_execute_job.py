@@ -13,6 +13,8 @@ from typing import Any
 import pytest
 from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
 from nmp.testing import MockProviderResponse, add_mock_provider
 from nmp.testing.e2e import wait_for_platform_job
 
@@ -37,7 +39,7 @@ def _job_diagnostic_message(sdk: NeMoPlatform, job: Any, workspace: str, prefix:
     if job.error_details:
         parts.append(f"Error details: {job.error_details}")
     try:
-        logs = sdk.jobs.get_logs(workspace=workspace, name=job.name)
+        logs = client_from_platform(sdk, JobsClient).list_job_logs(workspace=workspace, name=job.name)
         if logs.data:
             parts.append(f"Job logs ({len(logs.data)} entries):")
             for entry in logs.data:

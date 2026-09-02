@@ -29,7 +29,7 @@ deployment. The default is `subprocess`; `docker` and `k8s` run the agent as a
 durable container through the deployments plugin.
 
 | Mode | Runs as | Survives a platform restart | Requires |
-|------|---------|-----------------------------|----------|
+| ------ | --------- | ----------------------------- | ---------- |
 | `subprocess` (default) | A local FastAPI server on the platform host | No | Nothing extra |
 | `docker` | A Docker container | Yes | A container image and a configured `docker` executor |
 | `k8s` | A Kubernetes Deployment + Service | Yes | A container image and a configured `k8s` executor |
@@ -37,6 +37,188 @@ durable container through the deployments plugin.
 In every mode the agent is reached the same way — through the Agents gateway,
 which resolves the agent's active deployment and proxies the request, so
 clients do not need to know which mode the agent runs in.
+
+---
+
+## Agent Environments
+
+An agent config declares what an agent needs (MCP servers, environment
+variables, and the names of the credentials it reads) without pinning any of it
+to a place to run. An **agent environment** supplies those specifics for a given
+context. This allows one agent to be reused across different contexts. For instance,
+a single agent can run with dev credentials and full tool access in one
+environment, and with more restricted credentials, read-only tools, and a larger compute box in
+another environment.
+
+An environment is built from three resources:
+
+| Resource | Holds |
+| ---------- | ------- |
+| `environment-spec` | Per-server secret refs, environment variables, and tool settings merged into the agent config. |
+| `compute-spec` | The CPU/memory request. Referenced by name, or provided inline when you create the `environment`. |
+| `environment` | Binds an `environment-spec` and an optional `compute-spec` into one named handle you deploy against. |
+
+Secrets are referenced by name (`workspace/secret-name`) and resolved from the
+platform [Secrets service](/documentation/get-started/core-concepts/manage-secrets)
+at run time, so credential values never live in the agent config or the
+environment spec.
+
+### Example
+
+#### Define the Agent
+
+The agent config declares a `github` MCP server and the env var it reads its
+credential from. It holds no secret and names no environment. See
+[Agent Definition](/documentation/agents#agent-definition) for the full
+`agent.yaml` reference.
+
+```yaml
+config_format: nemo-agents-spec-v1
+name: research-agent
+description: Researches a GitHub repo and summarizes its dependencies and risks.
+
+instructions:
+  system:
+    content: |
+      You are a repository research assistant. Use the github tools to read the
+      repo and summarize what it does, its main dependencies, and any risks.
+
+default_harness: deepagents
+harnesses:
+  deepagents:
+    kind: deepagents
+    settings:
+      deepagents: {}
+
+models:
+  default:
+    provider: nvidia
+    model: nvidia-nemotron-3-nano-30b-a3b
+    api_key_env: NVIDIA_API_KEY
+
+mcp:
+  servers:
+    github:
+      transport: stdio
+      url: docker
+      args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"]
+```
+
+Register it:
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+nemo agents create --name research-agent --agent-config research-agent/agent.yaml
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+import yaml
+
+with open("research-agent/agent.yaml") as f:
+    config = yaml.safe_load(f)
+client.agents.create(
+    name="research-agent",
+    config=config,
+    config_format=config["config_format"],
+)
+```
+
+</Tab>
+
+</Tabs>
+
+#### Create an Environment
+
+The environment fulfills the agent's `github` server with a stored secret and a
+tool scope, and provides an inline compute size. Create the secret first, then
+the `environment-spec`, then the `environment` that references it.
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+printf '%s' "$GITHUB_PAT" | nemo secrets create research-github-pat --from-file -
+
+nemo agents environment-specs create research \
+  --spec '{"provider":"local","env":{"LOG_LEVEL":"debug"},"mcp":{"github":{"url":"docker","env":{"GITHUB_TOOLSETS":"repos,issues"},"secrets":{"GITHUB_PERSONAL_ACCESS_TOKEN":"default/research-github-pat"}}}}'
+
+nemo agents environments create research \
+  --environment-spec default/research \
+  --spec '{"compute_spec":{"resources":{"limits":{"cpu":"2","memory":"4Gi"}}}}'
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+client.secrets.create(name="research-github-pat", value=os.environ["GITHUB_PAT"])
+
+client.agents.environment_specs.create(
+    name="research",
+    provider="local",
+    env={"LOG_LEVEL": "debug"},
+    mcp={
+        "github": {
+            "url": "docker",
+            "env": {"GITHUB_TOOLSETS": "repos,issues"},
+            "secrets": {"GITHUB_PERSONAL_ACCESS_TOKEN": "default/research-github-pat"},
+        }
+    },
+)
+
+client.agents.environments.create(
+    name="research",
+    environment_spec="default/research",
+    compute_spec={"resources": {"limits": {"cpu": "2", "memory": "4Gi"}}},
+)
+```
+
+</Tab>
+
+</Tabs>
+
+#### Reference the Environment in an AgentDeployment
+
+Deploy the agent under the environment. Its spec is merged into the agent
+config, and its secret refs and compute are snapshotted onto the deployment.
+Where both set the same field, the environment-spec's value wins.
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+nemo agents deploy \
+  --agent research-agent \
+  --name research-deployment \
+  --environment default/research
+
+nemo agents deployments get research-deployment
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+client.agents.deployments.create(
+    agent="research-agent",
+    name="research-deployment",
+    environment="default/research",
+)
+
+client.agents.deployments.get("research-deployment")
+```
+
+</Tab>
+
+</Tabs>
 
 ---
 
@@ -174,6 +356,12 @@ nemo agents package \
 image pre-loaded onto the nodes) — the k8s backend does not use image pull
 secrets. Pass the image with `--image`, or set
 `agents.deployments.default_image` in the platform configuration.
+
+For hand-built images that already contain an agent server, pass
+`--use-image-entrypoint` so the deployment preserves the image ENTRYPOINT/CMD
+instead of injecting the platform-packaged agent server command.
+The image must bind `0.0.0.0:$PORT`, serve `/health`, and read config from
+`AGENT_CONFIG_PATH` for Fabric or `NAT_CONFIG_PATH` for NAT.
 
 </Note>
 

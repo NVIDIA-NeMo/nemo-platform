@@ -5,6 +5,14 @@ import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { useModelChatAvailability } from '@studio/hooks/useModelChatAvailability';
 import { useModelLoraEnabled } from '@studio/hooks/useModelLoraEnabled';
 
+/**
+ * Whether a model can be fine-tuned: it needs a fileset holding the base weights.
+ * All three customization backends require one at job-compile time and reject the
+ * job with a 422 otherwise, so this is also what the base-model pickers filter on.
+ */
+export const canFineTuneModel = (model: ModelEntity | null | undefined): boolean =>
+  Boolean(model?.fileset);
+
 export interface ModelCustomizationEligibility {
   canFineTune: boolean;
   canPromptTune: boolean;
@@ -26,7 +34,7 @@ export interface ModelCustomizationEligibility {
 export const useModelCustomizationEligibility = (
   model: ModelEntity | undefined
 ): ModelCustomizationEligibility => {
-  const canFineTune = Boolean(model?.fileset);
+  const canFineTune = canFineTuneModel(model);
 
   const { isChatAvailable, isLoading: isChatLoading } = useModelChatAvailability(model);
   const { isLoraEnabled, isLoading: isLoraLoading } = useModelLoraEnabled(model);

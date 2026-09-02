@@ -10,6 +10,15 @@ from nemo_evaluator.jobs.agent_spec import GymRunnerTarget
 from nemo_evaluator.jobs.runner_targets import UnsubmittableRunnerError, runner_to_target
 from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRuntimeConfig
 
+#: Target fields with no counterpart on the runtime config, so a round-trip cannot check them.
+#:
+#: * ``kind`` discriminates the target union.
+#: * ``env_secrets`` holds references the service resolves into the job environment, so a *running*
+#:   runner has already had them delivered as ordinary variables and has no reference to restate.
+#: * ``agent_ref_name`` routes rollouts on the sandboxed host path only; the CLI runner resolves its
+#:   agent from Gym config instead, so there is nothing on the runtime config to compare against.
+WIRE_ONLY_TARGET_FIELDS = {"kind", "env_secrets", "agent_ref_name"}
+
 
 def _configured() -> GymRuntimeConfig:
     """A config with every field set away from its default.
@@ -43,9 +52,10 @@ def test_a_gym_runner_describes_itself_as_a_submittable_target() -> None:
 
     assert isinstance(target, GymRunnerTarget)
     assert target.kind == "gym"
-    # Every field arrives, unchanged. `kind` is the only addition — it discriminates the union and
-    # has no runtime counterpart.
-    assert target.model_dump(exclude={"kind"}) == config.model_dump()
+    # Every runtime field arrives, unchanged. What is excluded is the set with no runtime
+    # counterpart, listed in one place so a new wire-only field is a deliberate addition here
+    # rather than a puzzling failure.
+    assert target.model_dump(exclude=WIRE_ONLY_TARGET_FIELDS) == config.model_dump()
 
 
 def test_every_field_actually_travels_rather_than_defaulting() -> None:
@@ -56,7 +66,7 @@ def test_every_field_actually_travels_rather_than_defaulting() -> None:
     defaults = {
         name: field.get_default(call_default_factory=True) for name, field in GymRuntimeConfig.model_fields.items()
     }
-    carried = runner_to_target(GymAgentTaskRunner(config=config)).model_dump(exclude={"kind"})
+    carried = runner_to_target(GymAgentTaskRunner(config=config)).model_dump(exclude=WIRE_ONLY_TARGET_FIELDS)
 
     indistinguishable = [name for name, value in carried.items() if value == defaults.get(name)]
     assert not indistinguishable, (

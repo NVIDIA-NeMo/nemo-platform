@@ -30,7 +30,15 @@ def _make_jwt(claims: dict) -> str:
     return f"{h}.{p}.{s}"
 
 
-def _write_config(tmp_path, *, user_type="oauth", token=None, refresh_token=None, api_key=None):
+def _write_config(
+    tmp_path,
+    *,
+    user_type="oauth",
+    token=None,
+    refresh_token=None,
+    api_key=None,
+    certificate_authority=None,
+):
     """Write a minimal nmp config file and return its path."""
     if user_type == "oauth":
         user = {
@@ -44,9 +52,13 @@ def _write_config(tmp_path, *, user_type="oauth", token=None, refresh_token=None
     else:
         user = {"name": "default", "type": "no-auth"}
 
+    cluster = {"name": "default", "base_url": "http://localhost:8080"}
+    if certificate_authority:
+        cluster["certificate_authority"] = certificate_authority
+
     config = {
         "current_context": "default",
-        "clusters": [{"name": "default", "base_url": "http://localhost:8080"}],
+        "clusters": [cluster],
         "users": [user],
         "contexts": [
             {
@@ -149,6 +161,57 @@ class TestCreateClientOAuth:
             client.close()
 
         assert mock_default_httpx_client.call_args.kwargs["verify"] == "/tmp/nemo-ca.pem"
+
+    @patch("nemo_platform_ext.client.factory.DefaultHttpxClient")
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    def test_oauth_uses_context_certificate_authority(
+        self, _mock_discover, mock_default_httpx_client, tmp_path, monkeypatch
+    ):
+        token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "user1"})
+        context_ca = str(tmp_path / "context-ca.pem")
+        config_path = _write_config(
+            tmp_path,
+            token=token,
+            refresh_token="refresh_abc",
+            certificate_authority=context_ca,
+        )
+        http_client = httpx.Client()
+        mock_default_httpx_client.return_value = http_client
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        client = create_client(config_path=config_path)
+        try:
+            assert client is not None
+        finally:
+            client.close()
+
+        assert mock_default_httpx_client.call_args.kwargs["verify"] == context_ca
+        assert _mock_discover.call_args.kwargs["certificate_authority"] == context_ca
+
+    @patch("nemo_platform_ext.client.factory.DefaultHttpxClient")
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    def test_env_ca_bundle_overrides_context_certificate_authority(
+        self, _mock_discover, mock_default_httpx_client, tmp_path, monkeypatch
+    ):
+        token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "user1"})
+        config_path = _write_config(
+            tmp_path,
+            token=token,
+            refresh_token="refresh_abc",
+            certificate_authority="/tmp/context-ca.pem",
+        )
+        http_client = httpx.Client()
+        mock_default_httpx_client.return_value = http_client
+        monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/env-ca.pem")
+
+        client = create_client(config_path=config_path)
+        try:
+            assert client is not None
+        finally:
+            client.close()
+
+        assert mock_default_httpx_client.call_args.kwargs["verify"] == "/tmp/env-ca.pem"
+        assert _mock_discover.call_args.kwargs["certificate_authority"] == "/tmp/context-ca.pem"
 
     @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
     @patch("nemo_platform_ext.auth.token_provider.httpx.post")
@@ -298,6 +361,39 @@ class TestCreateClientWorkloadIdentity:
         assert mock_exchange.call_args.kwargs["audience"] == "nemo-platform"
         assert mock_exchange.call_args.kwargs["scope"] == "openid email groups"
 
+    @patch("nemo_platform_ext.client.factory.DefaultHttpxClient")
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_WORKLOAD_NMP_CONFIG)
+    @patch("nemo_platform_ext.auth.workload_exchange.token_exchange_grant")
+    def test_workload_identity_discovery_uses_context_certificate_authority(
+        self, mock_exchange, _mock_discover, mock_default_httpx_client, tmp_path, monkeypatch
+    ):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token-one\n", encoding="utf-8")
+        context_ca = str(tmp_path / "context-ca.pem")
+        access_token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "workload-user"})
+        mock_exchange.return_value = {"access_token": access_token, "expires_in": 300}
+        config_path = _write_config(tmp_path, user_type="no-auth", certificate_authority=context_ca)
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        def default_httpx_client(*args, **kwargs):
+            kwargs["verify"] = True
+            return httpx.Client(*args, **kwargs)
+
+        mock_default_httpx_client.side_effect = default_httpx_client
+
+        client = create_client(config_path=config_path)
+        try:
+            request = client._client.build_request("GET", "http://localhost:8080/test")
+            client._client._event_hooks["request"][0](request)
+            assert request.headers["Authorization"] == f"Bearer {access_token}"
+        finally:
+            client.close()
+
+        assert _mock_discover.call_args.kwargs["certificate_authority"] == context_ca
+        assert mock_exchange.call_args.kwargs["certificate_authority"] == context_ca
+        assert mock_default_httpx_client.call_args.kwargs["verify"] == context_ca
+
     @pytest.mark.asyncio
     @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_WORKLOAD_NMP_CONFIG)
     @patch("nemo_platform_ext.auth.workload_exchange.token_exchange_grant")
@@ -386,6 +482,28 @@ class TestCreateClientNoAuth:
         # No auth headers should be set
         assert "Authorization" not in client._custom_headers
 
+    @patch("nemo_platform_ext.client.factory.DefaultHttpxClient")
+    def test_non_oauth_context_uses_context_certificate_authority(
+        self, mock_default_httpx_client, tmp_path, monkeypatch
+    ):
+        context_ca = str(tmp_path / "context-ca.pem")
+        config_path = _write_config(
+            tmp_path,
+            user_type="no-auth",
+            certificate_authority=context_ca,
+        )
+        http_client = httpx.Client()
+        mock_default_httpx_client.return_value = http_client
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        client = create_client(config_path=config_path)
+        try:
+            assert str(client.base_url).rstrip("/") == "http://localhost:8080"
+        finally:
+            client.close()
+
+        mock_default_httpx_client.assert_called_once_with(verify=context_ca)
+
 
 class TestCreateClientTimeout:
     @patch("nemo_platform_ext.client.factory.NeMoPlatform")
@@ -428,6 +546,50 @@ class TestCreateClientProviderReuse:
         provider_kwargs = mock_provider_cls.call_args.kwargs
         assert callable(provider_kwargs["load_tokens"])
         assert callable(provider_kwargs["refresh_lock"])
+
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    @patch("nemo_platform_ext.client.factory.DefaultHttpxClient")
+    @patch("nemo_platform_ext.client.factory.OIDCTokenProvider")
+    def test_context_certificate_authority_participates_in_provider_cache_key(
+        self, mock_provider_cls, mock_default_httpx_client, _mock_discover, tmp_path, monkeypatch
+    ):
+        token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "user1"})
+        first_ca = str(tmp_path / "first-ca.pem")
+        second_ca = str(tmp_path / "second-ca.pem")
+        config_path = _write_config(
+            tmp_path,
+            token=token,
+            refresh_token="refresh_abc",
+            certificate_authority=first_ca,
+        )
+        first_provider = MagicMock()
+        first_provider.get_access_token.return_value = token
+        first_provider.reload_tokens.return_value = False
+        second_provider = MagicMock()
+        second_provider.get_access_token.return_value = token
+        second_provider.reload_tokens.return_value = False
+        mock_provider_cls.side_effect = [first_provider, second_provider]
+        mock_default_httpx_client.side_effect = [httpx.Client(), httpx.Client()]
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        first_client = create_client(config_path=config_path)
+        config_path = _write_config(
+            tmp_path,
+            token=token,
+            refresh_token="refresh_abc",
+            certificate_authority=second_ca,
+        )
+        second_client = create_client(config_path=config_path)
+        try:
+            assert first_client is not None
+            assert second_client is not None
+        finally:
+            second_client.close()
+            first_client.close()
+
+        assert mock_provider_cls.call_count == 2
+        certificate_authorities = [call.kwargs["certificate_authority"] for call in mock_provider_cls.call_args_list]
+        assert certificate_authorities == [first_ca, second_ca]
 
 
 class TestCreateClientOverrides:
@@ -563,6 +725,7 @@ class TestClientConstructorBootstrapBypass:
             workspace="test-workspace",
             default_headers=None,
             http_client=None,
+            client_verify=True,
         )
 
         client = NeMoPlatform()
@@ -592,6 +755,30 @@ class TestClientConstructorBootstrapBypass:
         mock_build_client_kwargs.assert_not_called()
         mock_default_httpx_client.assert_called_once_with(verify="/tmp/nemo-ca.pem")
 
+    @patch("nemo_platform._client.DefaultHttpxClient")
+    @patch("nemo_platform_ext.client.factory.build_client_init_kwargs")
+    def test_sync_constructor_uses_context_certificate_authority(
+        self, mock_build_client_kwargs, mock_default_httpx_client, monkeypatch
+    ):
+        mock_build_client_kwargs.return_value = MagicMock(
+            base_url="https://config-host:8443",
+            workspace="test-workspace",
+            default_headers=None,
+            http_client=None,
+            client_verify="/ctx/ca.pem",
+        )
+        mock_default_httpx_client.return_value = httpx.Client()
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        client = NeMoPlatform(config_path=Path("/tmp/config.yaml"))
+        try:
+            assert str(client.base_url).rstrip("/") == "https://config-host:8443"
+            assert client.workspace == "test-workspace"
+        finally:
+            client.close()
+
+        mock_default_httpx_client.assert_called_once_with(verify="/ctx/ca.pem")
+
     @patch("nemo_platform_ext.client.factory.build_client_init_kwargs")
     def test_sync_copy_with_access_token_bootstraps_instead_of_reusing_http_client(self, mock_build_client_kwargs):
         mock_build_client_kwargs.return_value = MagicMock(
@@ -599,6 +786,7 @@ class TestClientConstructorBootstrapBypass:
             workspace="test-workspace",
             default_headers={"Authorization": "Bearer replacement-token"},
             http_client=None,
+            client_verify=True,
         )
 
         client = NeMoPlatform(base_url="http://original-host:8081", workspace="original-workspace")
@@ -620,6 +808,7 @@ class TestClientConstructorBootstrapBypass:
             workspace="test-workspace",
             default_headers=None,
             http_client=None,
+            client_verify=True,
         )
 
         client = NeMoPlatform(base_url="http://override-host:8081", workspace="test-workspace")
@@ -637,6 +826,7 @@ class TestClientConstructorBootstrapBypass:
             workspace="test-workspace",
             default_headers=None,
             http_client=None,
+            client_verify=True,
         )
 
         client = NeMoPlatform(config_path=Path("/tmp/config.yaml"), context_name="target-context")
@@ -695,6 +885,7 @@ class TestClientConstructorBootstrapBypass:
             workspace="test-workspace",
             default_headers=None,
             http_client=None,
+            client_verify=True,
         )
 
         client = AsyncNeMoPlatform()
@@ -726,6 +917,31 @@ class TestClientConstructorBootstrapBypass:
         mock_default_httpx_client.assert_called_once_with(verify="/tmp/nemo-ca.pem")
 
     @pytest.mark.asyncio
+    @patch("nemo_platform._client.DefaultAsyncHttpxClient")
+    @patch("nemo_platform_ext.client.factory.build_async_client_init_kwargs")
+    async def test_async_constructor_uses_context_certificate_authority(
+        self, mock_build_client_kwargs, mock_default_httpx_client, monkeypatch
+    ):
+        mock_build_client_kwargs.return_value = MagicMock(
+            base_url="https://config-host:8443",
+            workspace="test-workspace",
+            default_headers=None,
+            http_client=None,
+            client_verify="/ctx/ca.pem",
+        )
+        mock_default_httpx_client.return_value = httpx.AsyncClient()
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        client = AsyncNeMoPlatform(config_path=Path("/tmp/config.yaml"))
+        try:
+            assert str(client.base_url).rstrip("/") == "https://config-host:8443"
+            assert client.workspace == "test-workspace"
+        finally:
+            await client.close()
+
+        mock_default_httpx_client.assert_called_once_with(verify="/ctx/ca.pem")
+
+    @pytest.mark.asyncio
     @patch("nemo_platform_ext.client.factory.build_async_client_init_kwargs")
     async def test_async_copy_with_access_token_bootstraps_instead_of_reusing_http_client(
         self, mock_build_client_kwargs
@@ -735,6 +951,7 @@ class TestClientConstructorBootstrapBypass:
             workspace="test-workspace",
             default_headers={"Authorization": "Bearer replacement-token"},
             http_client=None,
+            client_verify=True,
         )
 
         client = AsyncNeMoPlatform(base_url="http://original-host:8081", workspace="original-workspace")
@@ -759,6 +976,7 @@ class TestClientConstructorBootstrapBypass:
             workspace="test-workspace",
             default_headers=None,
             http_client=None,
+            client_verify=True,
         )
 
         client = AsyncNeMoPlatform(base_url="http://override-host:8081", workspace="test-workspace")
@@ -796,6 +1014,7 @@ class TestClientConstructorBootstrapBypass:
             workspace="test-workspace",
             default_headers=None,
             http_client=None,
+            client_verify=True,
         )
 
         client = AsyncNeMoPlatform(config_path=Path("/tmp/config.yaml"), context_name="target-context")
@@ -810,7 +1029,7 @@ class TestClientConstructorBootstrapBypass:
 
 class TestAsyncNeMoPlatformInit:
     @pytest.mark.asyncio
-    @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
     async def test_async_client_uses_config_for_api_key(self, _mock_discover, tmp_path):
         config_path = _write_config(tmp_path, user_type="api-key", api_key="nvapi-test-key-123")
 

@@ -17,6 +17,7 @@ required-version = ">=0.9.14,<0.10.0"
 members = [
   "packages/nmp_build_tools",
   "packages/filesets",
+  "packages/models",
   "sdk/python/nemo-platform",
   "packages/nemo_platform_plugin",
   "packages/nmp_common",
@@ -27,6 +28,7 @@ members = [
 [tool.uv.sources]
 nmp-build-tools = { workspace = true }
 filesets = { workspace = true }
+models = { workspace = true }
 nemo-platform-sdk = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nmp-common = { workspace = true }

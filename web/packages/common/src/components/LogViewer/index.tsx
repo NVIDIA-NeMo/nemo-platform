@@ -10,14 +10,17 @@ import type { PlatformJobLog } from '@nemo/sdk/generated/platform/schema';
 import {
   Block,
   Button,
-  CodeSnippet,
+  CodeSnippetActions,
+  CodeSnippetCode,
+  CodeSnippetCopyButton,
+  CodeSnippetRoot,
   Flex,
   Spinner,
   Tag,
   Text,
 } from '@nvidia/foundations-react-core';
 import classNames from 'classnames';
-import { ArrowUp, Download, WrapText } from 'lucide-react';
+import { ArrowUp, Copy, Download, WrapText } from 'lucide-react';
 import { FC, useMemo, useState } from 'react';
 
 const DEFAULT_ROW_COUNT = 30;
@@ -95,30 +98,13 @@ export const LogViewer: FC<LogViewerProps> = ({
           </Tag>
         </Block>
       )}
-      <CodeSnippet
-        language="shell"
-        value={logText}
+      <CodeSnippetRoot
         kind="block"
         collapsible={false}
         rows={fillHeight ? undefined : rows}
-        onCopySuccess={() => notify('Copied to clipboard!', 'success', { durationMs: 3000 })}
         className="min-h-auto h-full"
-        attributes={{
-          CodeSnippetCode: {
-            ref: codeScrollRef,
-            className: classNames(
-              'min-w-0 max-w-full',
-              { 'h-full !overflow-y-auto': fillHeight },
-              // Keep scroll on when wrapping: wrapped rows exceed the fixed height.
-              { '!overflow-y-hidden': !showAllLogs && !wrapLines },
-              {
-                'whitespace-pre-wrap [overflow-wrap:anywhere] [&_code]:whitespace-pre-wrap [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]':
-                  wrapLines,
-              }
-            ),
-          },
-        }}
-        slotActions={
+      >
+        <CodeSnippetActions>
           <Flex className="w-full" justify="between" wrap="wrap">
             <Text kind="mono/md">
               {displayedLogs.length} {!showAllLogs && hasMoreLogs && `of ${logs.length}`} lines
@@ -127,6 +113,7 @@ export const LogViewer: FC<LogViewerProps> = ({
               <Button
                 size="tiny"
                 kind={wrapLines ? 'secondary' : 'tertiary'}
+                title="Wrap lines"
                 aria-label="Wrap lines"
                 aria-pressed={wrapLines}
                 onClick={() => setWrapLines((prev) => !prev)}
@@ -134,14 +121,43 @@ export const LogViewer: FC<LogViewerProps> = ({
                 <WrapText />
               </Button>
               {downloadFilename && (
-                <Button size="tiny" kind="tertiary" onClick={handleDownload}>
+                <Button
+                  size="tiny"
+                  kind="tertiary"
+                  title="Download logs"
+                  aria-label="Download logs"
+                  onClick={handleDownload}
+                >
                   <Download />
                 </Button>
               )}
             </Flex>
           </Flex>
-        }
-      />
+          <CodeSnippetCopyButton
+            value={logText}
+            title="Copy logs"
+            aria-label="Copy logs"
+            onClick={() => notify('Copied to clipboard!', 'success', { durationMs: 3000 })}
+          >
+            <Copy />
+          </CodeSnippetCopyButton>
+        </CodeSnippetActions>
+        <CodeSnippetCode
+          value={logText}
+          language="shell"
+          ref={codeScrollRef}
+          className={classNames(
+            'min-w-0 max-w-full',
+            { 'h-full !overflow-y-auto': fillHeight },
+            // Keep scroll on when wrapping: wrapped rows exceed the fixed height.
+            { '!overflow-y-hidden': !showAllLogs && !wrapLines },
+            {
+              'whitespace-pre-wrap [overflow-wrap:anywhere] [&_code]:whitespace-pre-wrap [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]':
+                wrapLines,
+            }
+          )}
+        />
+      </CodeSnippetRoot>
     </Block>
   );
 };

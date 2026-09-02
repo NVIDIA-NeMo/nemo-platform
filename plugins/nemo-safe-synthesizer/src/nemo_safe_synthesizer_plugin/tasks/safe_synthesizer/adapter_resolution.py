@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 from nemo_safe_synthesizer.cli.artifact_structure import RunName, Workdir
 from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
+from nemo_safe_synthesizer_plugin.job_config import DEFAULT_PRETRAINED_MODEL
 
 if TYPE_CHECKING:
     from nemo_safe_synthesizer.sdk.library_builder import SafeSynthesizer
@@ -21,7 +22,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("safe_synthesizer")
 
-DEFAULT_PRETRAINED_MODEL = "HuggingFaceTB/SmolLM3-3B"
 EMBEDDED_RUN_CONFIG_NAME = "safe-synthesizer-config.json"
 
 

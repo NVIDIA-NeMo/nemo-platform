@@ -30,7 +30,6 @@ group at startup. Numeric optimize is likewise auto-injected from
 - ``undeploy``     — stop and remove a deployment
 - ``logs``         — print or tail the local deployment log file
 - ``deployments``  — sub-group: list / get / delete deployments
-- ``ethos``        — sub-group: migrate an agent's Ethos artifacts to their final names
 """
 
 from __future__ import annotations
@@ -40,15 +39,16 @@ import json
 import logging
 import os
 import re
-import shutil
 import sys
 import tempfile
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from pkgutil import resolve_name
 from typing import Any, ClassVar, Literal, Optional, cast
 
+import click
 import httpx
 import typer
 import yaml
@@ -65,7 +65,10 @@ from nemo_agents_plugin.cli_context import (
     resolve_context_headers as _resolve_context_headers,
 )
 from nemo_agents_plugin.entities import (
+    AGENT_SPEC_FILENAME,
     CONTAINER_DEPLOYMENT_MODES,
+    ETHOS_FILENAME,
+    ETHOS_LOCAL_ROOT,
     MAX_ETHOS_STAGED_BYTES,
     MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
@@ -74,11 +77,15 @@ from nemo_agents_plugin.entities import (
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
+from nemo_platform import NeMoPlatform
 from nemo_platform_ext.cli.core.formatters import Column, format_output
+from nemo_platform_ext.cli.core.help_formatter import NmpGroup
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
-from nemo_platform_plugin.discovery import discover_agent_cli
+from nemo_platform_plugin.discovery import AGENT_CLI_GROUP, discover_entry_points
+from nemo_platform_plugin.job import NemoJob
+from typer.main import get_command as _typer_get_command
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +106,100 @@ _DEPLOYMENT_LIST_COLUMNS = [
     Column("endpoint"),
     Column("created_at"),
 ]
+_ENVIRONMENT_LIST_COLUMNS = [
+    Column("name"),
+    Column("workspace"),
+    Column("environment_spec"),
+    Column("compute_spec"),
+    Column("description"),
+    Column("created_at"),
+]
+_ENVIRONMENT_SPEC_LIST_COLUMNS = [
+    Column("name"),
+    Column("workspace"),
+    Column("provider"),
+    Column("description"),
+    Column("created_at"),
+]
+_COMPUTE_SPEC_LIST_COLUMNS = [
+    Column("name"),
+    Column("workspace"),
+    Column("description"),
+    Column("created_at"),
+]
+
+
+_AGENT_CLI_PANEL = "Platform agents"
+
+
+@dataclass(frozen=True)
+class _LazyAgentCliEntry:
+    """Metadata-only stand-in for a not-yet-imported agent CLI extension.
+
+    ``help`` is a generic placeholder (entry-point metadata carries no
+    description) — same trade-off the top-level ``nemo`` CLI already makes
+    for lazily-loaded plugin commands (see ``functional_plugin_entry`` in
+    ``nemo_platform_ext.cli.manifest``).
+    """
+
+    import_path: str
+    help: str
+    panel: str = _AGENT_CLI_PANEL
+    hidden: bool = False
+
+
+class _LazyAgentCliGroup(NmpGroup):
+    """Group that defers importing plugin agent-CLI extensions until needed.
+
+    ``discover_agent_cli()`` (``nemo_platform_plugin.discovery``) fully imports
+    every ``nemo.cli.agents`` entry point up front, which makes plain ``nemo
+    agents -h`` pay the import cost of every contributing plugin (e.g. the
+    nemo-insights analyst stack) even though none of them is being invoked.
+    This group instead lists subcommand names from cheap entry-point metadata
+    and only imports/builds a given plugin's Typer app when that specific
+    subcommand name is resolved by Click — including when rendering its own
+    one-line help, which ``NmpGroup.format_commands`` reads from
+    ``_lazy_entries`` instead of calling ``get_command`` for every row.
+    Mirrors ``ManifestBackedNmpGroup`` (top-level lazy loading in
+    ``nemo_platform_ext.cli.core.lazy_load``) one level down.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        callback = getattr(self, "callback", None)
+        self._lazy_entries: dict[str, _LazyAgentCliEntry] = getattr(callback, "__nmp_lazy_agent_cli__", {})
+
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        names = list(self.commands)
+        for name in self._lazy_entries:
+            if name not in self.commands:
+                names.append(name)
+        return names
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        command = super().get_command(ctx, cmd_name)
+        if command is not None:
+            return command
+
+        entry = self._lazy_entries.get(cmd_name)
+        if entry is None:
+            return None
+
+        try:
+            cli_cls = resolve_name(entry.import_path)
+            cli = cli_cls().get_cli()
+        except Exception:
+            logger.warning("Failed to load agent CLI extension %r; skipping", cmd_name, exc_info=True)
+            return None
+
+        loaded = self._patch_command(_typer_get_command(cli))
+        loaded.name = cmd_name
+        loaded.hidden = loaded.hidden or entry.hidden
+        panel = getattr(loaded, "rich_help_panel", None)
+        if panel is None or type(panel).__name__ == "DefaultPlaceholder":
+            loaded.rich_help_panel = entry.panel
+        self.commands[cmd_name] = loaded
+        return loaded
 
 
 class AgentsCLI(NemoCLI):
@@ -112,6 +213,7 @@ class AgentsCLI(NemoCLI):
             name="agents",
             help=self.description,
             no_args_is_help=False,
+            cls=_LazyAgentCliGroup,
         )
 
         @app.callback(invoke_without_command=True)
@@ -120,20 +222,39 @@ class AgentsCLI(NemoCLI):
                 typer.echo(ctx.get_help())
                 raise typer.Exit(0)
 
+        # Metadata-only discovery: reads entry-point names without importing
+        # the plugin modules they point at. Actual imports happen lazily in
+        # ``_LazyAgentCliGroup.get_command`` only for the subcommand resolved.
+        agents_callback.__nmp_lazy_agent_cli__ = {
+            name: _LazyAgentCliEntry(
+                import_path=entry_point.value,
+                help=f"Agent CLI commands contributed by the {name!r} plugin.",
+            )
+            for name, entry_point in discover_entry_points(AGENT_CLI_GROUP).items()
+        }
+
         _register_local_commands(app)
         _register_package_command(app)
         _register_platform_commands(app)
-        _register_ethos_commands(app)
+        _register_environment_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
-        for name, cli_cls in discover_agent_cli().items():
-            try:
-                cli = cli_cls().get_cli()
-            except Exception:
-                logger.warning("Failed to load agent CLI extension %r; skipping", name, exc_info=True)
-                continue
-            app.add_typer(cli, name=name, rich_help_panel="Platform agents")
         return app
+
+    def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
+        """Amend the auto-generated job groups with commands the three verbs cannot express.
+
+        ``optimize`` gains ``prepare-fileset``: ``submit`` requires an already-staged bundle, so
+        the staging step needs a home, and it belongs next to the verb that consumes it.
+        """
+        if job_cls.name != "optimize":
+            return
+        try:
+            from nemo_agents_plugin.jobs.optimize_cli import register_prepare_fileset_command
+        except ImportError:
+            logger.warning("nemo-optimization unavailable; skipping optimize prepare-fileset", exc_info=True)
+            return
+        register_prepare_fileset_command(group)
 
 
 # ---------------------------------------------------------------------------
@@ -773,17 +894,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         config_dict = _load_yaml(agent_config)
         config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
-        migration_warning: tuple[str, ...] = ()
-        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-            config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
-            from nemo_agents_plugin.ethos_migrate import registration_migration_warning
-
-            migration_warning = registration_migration_warning(name, workspace, agent_config)
-            for line in migration_warning:
-                typer.echo(line, err=True)
-        elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
-            # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
-            # user context at deploy time.
+        if config_format in {NEMO_AGENTS_SPEC_CONFIG_FORMAT, NAT_WORKFLOW_CONFIG_FORMAT}:
+            # Resolve ${NEMO_DEFAULT_MODEL} client-side — the agents service has
+            # no user context at deploy time.
             config_dict = inject_default_model(config_dict)
             if _contains_default_model_placeholder(config_dict):
                 typer.echo(
@@ -793,7 +906,11 @@ def _register_platform_commands(app: typer.Typer) -> None:
                     err=True,
                 )
                 raise typer.Exit(code=1)
-        else:
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
+            for line in _spec_package_warning(name, agent_config):
+                typer.echo(line, err=True)
+        elif config_format != NAT_WORKFLOW_CONFIG_FORMAT:
             typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
             raise typer.Exit(code=1)
         payload = {
@@ -810,7 +927,6 @@ def _register_platform_commands(app: typer.Typer) -> None:
                     workspace=workspace,
                     agent_root=agent_config.parent,
                     base_url=base_url,
-                    omit_legacy_contract=bool(migration_warning),
                 )
             except Exception as exc:
                 typer.echo(
@@ -910,6 +1026,25 @@ def _register_platform_commands(app: typer.Typer) -> None:
             "-i",
             help="Container image for docker/k8s modes (falls back to deployments.default_image).",
         ),
+        use_image_entrypoint: bool = typer.Option(
+            False,
+            "--use-image-entrypoint",
+            help=(
+                "For docker/k8s modes, preserve the image ENTRYPOINT/CMD instead of "
+                "injecting the platform-owned agent server command."
+            ),
+        ),
+        environment: Optional[str] = typer.Option(
+            None,
+            "--environment",
+            "-e",
+            help=(
+                "AgentEnvironment to deploy under, as a 'workspace/name' ref "
+                "(e.g. 'default/repo-research-ben'). Its EnvironmentSpec is merged "
+                "into the agent config and its ComputeSpec/secret refs are "
+                "snapshotted onto the deployment at create time."
+            ),
+        ),
         wait: bool = typer.Option(
             True,
             "--wait/--no-wait",
@@ -953,13 +1088,23 @@ def _register_platform_commands(app: typer.Typer) -> None:
         if image and mode == "subprocess":
             typer.echo("--image requires --mode docker or k8s.", err=True)
             raise typer.Exit(code=2)
+        if use_image_entrypoint and mode == "subprocess":
+            typer.echo("--use-image-entrypoint requires --mode docker or k8s.", err=True)
+            raise typer.Exit(code=2)
 
         base_url = _resolve_base_url(base_url)
+        if environment is not None and not environment.strip():
+            typer.echo("--environment must not be empty.", err=True)
+            raise typer.Exit(code=2)
         payload: dict = {"agent": agent, "deployment_mode": mode}
         if name:
             payload["name"] = name
         if image:
             payload["image"] = image
+        if use_image_entrypoint:
+            payload["use_image_entrypoint"] = True
+        if environment is not None:
+            payload["environment"] = environment
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)
         if not wait:
             typer.echo(json.dumps(resp, indent=2))
@@ -1211,73 +1356,312 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Ethos artifact commands
+# Environment / EnvironmentSpec / ComputeSpec commands
 # ---------------------------------------------------------------------------
 
 
-def _register_ethos_commands(app: typer.Typer) -> None:
-    """Register the ``ethos`` sub-group onto *app*.
+def _spec_body_from_inputs(
+    *,
+    name: str,
+    spec_file: Optional[Path],
+    spec_json: Optional[str],
+) -> dict:
+    """Build a create-request body from a ``--spec-file`` or ``--spec`` input.
 
-    Glue only: migration validation and changes live in
-    :mod:`nemo_agents_plugin.ethos_migrate`.
+    Exactly one of *spec_file* / *spec_json* may be given. The resulting mapping
+    is merged under ``{"name": name, ...}`` (the caller's ``name`` wins). Returns
+    just ``{"name": name}`` when neither is provided (an empty inline spec).
     """
-    ethos_app = typer.Typer(name="ethos", help="Manage an agent's Ethos artifacts.", no_args_is_help=True)
-    app.add_typer(ethos_app, rich_help_panel="Agent Resources (requires running cluster)")
+    if spec_file is not None and spec_json is not None:
+        typer.echo("Error: pass only one of --spec-file or --spec.", err=True)
+        raise typer.Exit(code=2)
 
-    @ethos_app.command(name="migrate")
-    def ethos_migrate(
-        name: str = typer.Option(..., "--name", "-n", help="Agent name."),
+    body: dict = {}
+    if spec_file is not None:
+        try:
+            loaded = _load_yaml(spec_file)  # YAML is a superset of JSON
+        except (OSError, yaml.YAMLError) as exc:
+            typer.echo(f"Error: could not read spec file {spec_file}: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        if not isinstance(loaded, dict):
+            typer.echo(f"Error: spec file {spec_file} must contain a mapping.", err=True)
+            raise typer.Exit(code=2)
+        body = loaded
+    elif spec_json is not None:
+        try:
+            loaded = json.loads(spec_json)
+        except json.JSONDecodeError as exc:
+            typer.echo(f"Error: --spec is not valid JSON: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        if not isinstance(loaded, dict):
+            typer.echo("Error: --spec must be a JSON object.", err=True)
+            raise typer.Exit(code=2)
+        body = loaded
+
+    return {**body, "name": name}
+
+
+def _register_environment_commands(app: typer.Typer) -> None:
+    """Register ``environment-specs``, ``environments``, and ``compute-specs`` sub-groups.
+
+    These are the request/fulfill entities an AgentDeployment or ``agents.execute``
+    job references via its ``environment`` field: an EnvironmentSpec fulfills the
+    dependencies an Agent declares (endpoints, plaintext env, secret refs); a
+    ComputeSpec supplies k8s-style resources; an AgentEnvironment composes the two.
+    Bodies are the ``*Inline`` shapes (see ``entities.py``); create takes a
+    ``--spec-file`` (JSON/YAML) or an inline ``--spec`` JSON string.
+    """
+    _PANEL = "Agent Resources (requires running cluster)"
+
+    # -- environment-specs ---------------------------------------------------
+    espec_app = typer.Typer(name="environment-specs", help="Manage agent environment specs.", no_args_is_help=True)
+    app.add_typer(espec_app, rich_help_panel=_PANEL)
+
+    @espec_app.command(name="create")
+    def environment_spec_create(
+        name: str = typer.Argument(..., help="Unique environment-spec name."),
+        spec_file: Optional[Path] = typer.Option(
+            None, "--spec-file", "-f", help="Path to a JSON/YAML EnvironmentSpec body (without 'name')."
+        ),
+        spec: Optional[str] = typer.Option(None, "--spec", help="Inline EnvironmentSpec body as a JSON object string."),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
-        dry_run: bool = typer.Option(
-            False,
-            "--dry-run",
-            help="Assess the migration without writing or deleting artifacts.",
-        ),
-        cleanup: bool = typer.Option(
-            False,
-            "--cleanup",
-            help="Delete matching legacy artifacts after you verify completed targets.",
-        ),
         base_url: BaseUrlOption = None,
     ) -> None:
-        """Move an agent's platform-managed package and Fileset to their Ethos names.
+        """Create an environment spec from a file or inline JSON."""
+        base_url = _resolve_base_url(base_url)
+        body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
+        resp = _api_request(
+            "POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs", json_body=body
+        )
+        typer.echo(json.dumps(resp, indent=2))
 
-        Additive migration preserves legacy artifacts. Cleanup deletes them only
-        after matching targets are verified.
-        """
-        from nemo_agents_plugin.ethos_migrate import (
-            MigrationError,
-            MigrationRequest,
-            run_migration,
-            validate_agent_name,
+    @espec_app.command(name="list")
+    def environment_spec_list(
+        ctx: typer.Context,
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List environment specs."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs")
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_ENVIRONMENT_SPEC_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
         )
 
-        # Reject an unsafe name before anything else, so a usage error never
-        # needs a reachable platform and never reaches a path operation.
-        try:
-            validate_agent_name(name)
-        except MigrationError as exc:
-            typer.echo(f"Error: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
+    @espec_app.command(name="get")
+    def environment_spec_get(
+        name: str = typer.Argument(..., help="Environment-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get an environment spec by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs/{name}")
+        typer.echo(json.dumps(resp, indent=2))
 
-        try:
-            sdk = _platform_sdk(_resolve_base_url(base_url))
-            request = MigrationRequest(
-                agent=name,
-                workspace=workspace,
-                dry_run=dry_run,
-                cleanup=cleanup,
-            )
-            report = run_migration(request, sdk=sdk)
-        except MigrationError as exc:
-            typer.echo(f"Error: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
-        except Exception as exc:
-            typer.echo(f"Error: migration failed: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
+    @espec_app.command(name="delete")
+    def environment_spec_delete(
+        name: str = typer.Argument(..., help="Environment-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Delete an environment spec by name."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Delete environment-spec '{name}'?", abort=True)
+        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/environment-specs/{name}")
+        typer.echo(f"Environment-spec '{name}' deleted.")
 
-        for line in report.lines:
-            typer.echo(line)
+    # -- environments --------------------------------------------------------
+    env_app = typer.Typer(name="environments", help="Manage agent environments.", no_args_is_help=True)
+    app.add_typer(env_app, rich_help_panel=_PANEL)
+
+    @env_app.command(name="create")
+    def environment_create(
+        name: str = typer.Argument(..., help="Unique environment name."),
+        environment_spec: Optional[str] = typer.Option(
+            None, "--environment-spec", help="'workspace/name' ref to a stored AgentEnvironmentSpec."
+        ),
+        compute_spec: Optional[str] = typer.Option(
+            None, "--compute-spec", help="'workspace/name' ref to a stored AgentComputeSpec."
+        ),
+        spec_file: Optional[Path] = typer.Option(
+            None, "--spec-file", "-f", help="Path to a JSON/YAML AgentEnvironment body (without 'name')."
+        ),
+        spec: Optional[str] = typer.Option(
+            None, "--spec", help="Inline AgentEnvironment body as a JSON object string."
+        ),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Create an AgentEnvironment.
+
+        Use --environment-spec / --compute-spec for the common ref case, or
+        --spec-file / --spec for a fully inline body. The ref flags override the
+        matching keys from a file/inline body.
+        """
+        base_url = _resolve_base_url(base_url)
+        body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
+        if environment_spec is not None:
+            body["environment_spec"] = environment_spec
+        if compute_spec is not None:
+            body["compute_spec"] = compute_spec
+        resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments", json_body=body)
+        typer.echo(json.dumps(resp, indent=2))
+
+    @env_app.command(name="list")
+    def environment_list(
+        ctx: typer.Context,
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List environments."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments")
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_ENVIRONMENT_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @env_app.command(name="get")
+    def environment_get(
+        name: str = typer.Argument(..., help="Environment name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get an environment by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @env_app.command(name="delete")
+    def environment_delete(
+        name: str = typer.Argument(..., help="Environment name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Delete an environment by name."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Delete environment '{name}'?", abort=True)
+        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/environments/{name}")
+        typer.echo(f"Environment '{name}' deleted.")
+
+    # -- compute-specs -------------------------------------------------------
+    cspec_app = typer.Typer(name="compute-specs", help="Manage agent compute specs.", no_args_is_help=True)
+    app.add_typer(cspec_app, rich_help_panel=_PANEL)
+
+    @cspec_app.command(name="create")
+    def compute_spec_create(
+        name: str = typer.Argument(..., help="Unique compute-spec name."),
+        spec_file: Optional[Path] = typer.Option(
+            None, "--spec-file", "-f", help="Path to a JSON/YAML ComputeSpec body (without 'name')."
+        ),
+        spec: Optional[str] = typer.Option(None, "--spec", help="Inline ComputeSpec body as a JSON object string."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Create a compute spec from a file or inline JSON."""
+        base_url = _resolve_base_url(base_url)
+        body = _spec_body_from_inputs(name=name, spec_file=spec_file, spec_json=spec)
+        resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs", json_body=body)
+        typer.echo(json.dumps(resp, indent=2))
+
+    @cspec_app.command(name="list")
+    def compute_spec_list(
+        ctx: typer.Context,
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List compute specs."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs")
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_COMPUTE_SPEC_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @cspec_app.command(name="get")
+    def compute_spec_get(
+        name: str = typer.Argument(..., help="Compute-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get a compute spec by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @cspec_app.command(name="delete")
+    def compute_spec_delete(
+        name: str = typer.Argument(..., help="Compute-spec name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Delete a compute spec by name."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Delete compute-spec '{name}'?", abort=True)
+        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/compute-specs/{name}")
+        typer.echo(f"Compute-spec '{name}' deleted.")
 
 
 # ---------------------------------------------------------------------------
@@ -1659,40 +2043,56 @@ def _api_request(method: str, base_url: str, path: str, *, json_body: dict[str, 
 
 def _platform_sdk(base_url: str) -> Any:
     """Return an auth-aware platform SDK client for fileset upload/delete."""
-    from nemo_platform import NeMoPlatform
-
     headers = _resolve_context_headers()
     if headers:
         return NeMoPlatform(base_url=base_url, default_headers=headers)
     return NeMoPlatform(base_url=base_url)
 
 
-def _check_agent_root_bounds(agent_root: Path) -> None:
-    """Reject an agent root too large to deliver into a container deployment.
+def _collect_text_agent_artifacts(
+    agent_root: Path,
+    *,
+    excluded_paths: set[Path] | None = None,
+    warn_on_binary: bool = False,
+) -> list[tuple[Path, bytes]]:
+    """Return the UTF-8 files that can be delivered as Fabric config files.
 
-    The upload is recursive with no server-side filtering, so an ``agent.yaml``
-    sitting in a source checkout would ship the whole tree and then fail at
-    container start when the ConfigMap/env payload is built. Fail here instead,
-    naming the limit that was exceeded.
+    Container deployments carry agent artifacts as text-only ``ConfigFile``
+    values. Binary neighbors such as ``__pycache__/*.pyc`` and wheels are not
+    agent configuration, so omit them from the fileset instead of making agent
+    creation fail later during container staging.
 
     Symlinks are rejected rather than skipped: the upload enumerates them and
-    ships their target content, so skipping one here would both stage files from
-    outside *agent_root* and let them evade the limits below.
+    would otherwise ship target content from outside *agent_root*.
     """
+    excluded_paths = excluded_paths or set()
     total_bytes = 0
     file_count = 0
-    for path in agent_root.rglob("*"):
+    artifacts: list[tuple[Path, bytes]] = []
+    for path in sorted(agent_root.rglob("*")):
+        relative_path = path.relative_to(agent_root)
         if path.is_symlink():
             raise ValueError(
                 f"agent directory {str(agent_root)!r} contains symlink "
-                f"{path.relative_to(agent_root).as_posix()!r}; the fileset upload follows "
+                f"{relative_path.as_posix()!r}; the fileset upload follows "
                 "symlinks, which would stage content from outside the agent directory. "
                 "Replace it with a regular file or move the target inside the agent directory"
             )
-        if not path.is_file():
+        if not path.is_file() or relative_path in excluded_paths:
+            continue
+        try:
+            content = path.read_bytes()
+            content.decode("utf-8")
+        except UnicodeDecodeError:
+            if warn_on_binary:
+                typer.echo(
+                    f"Warning: skipping non-UTF-8 agent artifact {relative_path.as_posix()!r}; "
+                    "Fabric fileset staging supports text files only.",
+                    err=True,
+                )
             continue
         file_count += 1
-        total_bytes += path.stat().st_size
+        total_bytes += len(content)
         if file_count > MAX_ETHOS_STAGED_FILES:
             raise ValueError(
                 f"agent directory {str(agent_root)!r} holds more than "
@@ -1705,6 +2105,53 @@ def _check_agent_root_bounds(agent_root: Path) -> None:
                 f"{MAX_ETHOS_STAGED_BYTES} byte limit for container config delivery; "
                 "point --agent-config at a directory containing only the agent's own artifacts"
             )
+        artifacts.append((relative_path, content))
+    return artifacts
+
+
+def _clear_existing_ethos_artifacts(
+    *,
+    sdk: NeMoPlatform,
+    fileset: str,
+    workspace: str,
+) -> None:
+    """Remove the previous executable snapshot while preserving durable Ethos."""
+    from nemo_platform import NotFoundError as PlatformNotFoundError
+    from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+
+    preserved = {ETHOS_FILENAME}
+
+    try:
+        existing = sdk.files.list(fileset=fileset, workspace=workspace).data
+    except (FileNotFoundError, PlatformNotFoundError, PluginNotFoundError):
+        return
+
+    for artifact in existing:
+        remote_path = artifact.path
+        if remote_path in preserved:
+            continue
+        try:
+            sdk.files.delete(remote_path=remote_path, fileset=fileset, workspace=workspace)
+        except (FileNotFoundError, PlatformNotFoundError, PluginNotFoundError):
+            # Another client may have removed the same stale file after the list.
+            continue
+
+
+def _spec_package_warning(agent: str, agent_config: Path) -> tuple[str, ...]:
+    """Return skill guidance when *agent_config* lives in a spec package."""
+    if not agent or agent in {".", ".."} or "\0" in agent:
+        return ()
+    if "/" in agent or "\\" in agent or Path(agent).is_absolute() or Path(agent).name != agent:
+        return ()
+    package = Path(ETHOS_LOCAL_ROOT) / f"{agent}-spec"
+    if agent_config.parent.resolve() != package.resolve():
+        return ()
+    if not (package / AGENT_SPEC_FILENAME).is_file():
+        return ()
+    return (
+        f"Warning: This package uses {AGENT_SPEC_FILENAME}.",
+        f"Run the nemo-ethos skill to write {ETHOS_FILENAME}, then delete the {agent}-spec package.",
+    )
 
 
 def _upload_ethos_fileset(
@@ -1713,51 +2160,49 @@ def _upload_ethos_fileset(
     workspace: str,
     agent_root: Path,
     base_url: str,
-    omit_legacy_contract: bool = False,
 ) -> None:
-    """Upload *agent_root* into the conventional ``{agent}-ethos`` fileset.
+    """Replace the executable snapshot in the conventional Ethos fileset.
 
     *agent_root* is ``agent.yaml``'s parent directory (Fabric ``base_dir``).
-    Agent YAML must live in a dedicated agent root so sibling artifacts
-    (skills, prompts) upload without shipping an unrelated checkout tree. A
-    legacy contract is omitted so the explicit migration can complete the
-    target Fileset without a conflict.
+    UTF-8 sibling artifacts such as skills and prompts are uploaded; binary
+    neighbors are skipped because deployment ``ConfigFile`` values are text.
+    Existing runtime artifacts are removed first so recreating an agent cannot
+    reuse a stale bundle. Durable ``ETHOS.md`` is preserved, while
+    ``AGENT-SPEC.md`` is omitted so a spec package does not leave its legacy
+    contract in the Ethos fileset.
     """
     from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
 
-    _check_agent_root_bounds(agent_root)
+    excluded_paths = {Path(ETHOS_FILENAME), Path(AGENT_SPEC_FILENAME)}
+    artifacts = _collect_text_agent_artifacts(
+        agent_root,
+        excluded_paths=excluded_paths,
+        warn_on_binary=True,
+    )
     fileset = ethos_fileset_name(agent_name)
     sdk = _platform_sdk(base_url)
-    if omit_legacy_contract:
-        from nemo_agents_plugin.ethos_migrate import LEGACY_CONTRACT_FILENAME
-        from nemo_platform import NotFoundError as PlatformNotFoundError
-        from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+    with tempfile.TemporaryDirectory(prefix=f".{agent_name}-ethos-upload-") as directory:
+        staged = Path(directory) / agent_root.name
+        staged.mkdir()
+        for relative_path, content in artifacts:
+            destination = staged / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(content)
 
-        with tempfile.TemporaryDirectory(prefix=f".{agent_name}-ethos-upload-") as directory:
-            staged = Path(directory) / agent_root.name
-            shutil.copytree(agent_root, staged)
-            (staged / LEGACY_CONTRACT_FILENAME).unlink()
-            upload_to_fileset(
-                staged,
-                fileset=fileset,
-                workspace=workspace,
-                sdk=sdk,
-            )
-        try:
-            sdk.files.delete(
-                remote_path=LEGACY_CONTRACT_FILENAME,
-                fileset=fileset,
-                workspace=workspace,
-            )
-        except (PlatformNotFoundError, PluginNotFoundError):
-            pass
-        return
-    upload_to_fileset(
-        agent_root,
-        fileset=fileset,
-        workspace=workspace,
-        sdk=sdk,
-    )
+        # Validate and stage the complete replacement before touching the remote
+        # fileset. The durable Ethos contract survives even when it is absent
+        # from this executable snapshot.
+        _clear_existing_ethos_artifacts(
+            sdk=sdk,
+            fileset=fileset,
+            workspace=workspace,
+        )
+        upload_to_fileset(
+            staged,
+            fileset=fileset,
+            workspace=workspace,
+            sdk=sdk,
+        )
 
 
 def _delete_agent_entity(*, agent_name: str, workspace: str, base_url: str) -> None:

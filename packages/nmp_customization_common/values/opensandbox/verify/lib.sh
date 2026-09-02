@@ -72,7 +72,7 @@ require_profile() {
     crun)
       SERVER_DEPLOY="opensandbox-server-crun"
       SERVER_SVC="opensandbox-server-crun"
-      WORKLOAD_NS="nmp-temp1"
+      WORKLOAD_NS="opensandbox-crun"
       API_SECRET="opensandbox-server-crun-api-key"
       EXPECT_RUNTIME_CLASS=""          # cluster default (crun)
       EXPECT_KATA_NODE="false"
@@ -80,7 +80,7 @@ require_profile() {
     kata-qemu)
       SERVER_DEPLOY="opensandbox-server-kata"
       SERVER_SVC="opensandbox-server-kata"
-      WORKLOAD_NS="nmp-temp1"
+      WORKLOAD_NS="opensandbox-kata"
       API_SECRET="opensandbox-server-kata-api-key"
       EXPECT_RUNTIME_CLASS="kata-qemu"
       EXPECT_KATA_NODE="true"
@@ -168,16 +168,9 @@ wait_sandbox_running() {
   local deadline=$((SECONDS + READY_TIMEOUT_S))
   local resp state
   while (( SECONDS < deadline )); do
-    # A bare assignment from a command substitution inherits curl's exit status, so
-    # under `set -e` a single transient failure while the sandbox is still coming up
-    # would abort the script and defeat READY_TIMEOUT_S. Treat a failed poll as
-    # "not ready yet" and retry until the deadline.
-    if ! resp="$(curl -fsS \
+    resp="$(curl -fsS \
       -H "OPEN-SANDBOX-API-KEY: ${API_KEY}" \
-      "${BASE_URL}/v1/sandboxes/${SANDBOX_ID}" 2>/dev/null)"; then
-      sleep 3
-      continue
-    fi
+      "${BASE_URL}/v1/sandboxes/${SANDBOX_ID}")"
     state="$(json_field "${resp}" 'o.get("status",{}).get("state","")')"
     if [[ "${state}" == "Running" ]]; then
       ok "sandbox Running"

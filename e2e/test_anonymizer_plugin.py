@@ -36,8 +36,12 @@ from nemo_anonymizer_plugin.sdk.job_resources import (
 )
 from nemo_anonymizer_plugin.sdk.resources import AnonymizerPreviewResult
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.testing import MockProviderResponse, add_mock_provider, short_unique_name
 
 pytestmark = [
@@ -324,20 +328,22 @@ def _wait_for_anonymizer_job(job: AnonymizerJobResource, *, timeout_seconds: flo
 
 def _cleanup_anonymizer_job(sdk: NeMoPlatform, job_name: str) -> None:
     with suppress(Exception):
-        sdk.jobs.cancel(name=job_name, workspace=sdk.workspace)
+        jobs = client_from_platform(sdk, JobsClient)
+        jobs.cancel_job(name=job_name, workspace=sdk.workspace)
     with suppress(Exception):
-        sdk.jobs.delete(name=job_name, workspace=sdk.workspace)
+        jobs.delete_job(name=job_name, workspace=sdk.workspace)
 
 
 @pytest.fixture(scope="module")
 def anonymizer_workspace(sdk: NeMoPlatform) -> Iterator[str]:
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     name = short_unique_name("e2e-anon")
-    sdk.workspaces.create(name=name)
+    workspaces.create_workspace(body=CreateWorkspaceRequest(name=name)).data()
     try:
         yield name
     finally:
         with suppress(Exception):
-            sdk.workspaces.delete(name)
+            workspaces.delete_workspace(name=name).data()
 
 
 @pytest.fixture(scope="module")

@@ -4,10 +4,11 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -17,13 +18,11 @@ from nemo_agents_plugin.cli import (
     MAX_ETHOS_STAGED_BYTES,
     MAX_ETHOS_STAGED_FILES,
     AgentsCLI,
-    _check_agent_root_bounds,
+    _collect_text_agent_artifacts,
+    _spec_package_warning,
+    _upload_ethos_fileset,
 )
-from nemo_agents_plugin.ethos_migrate import (
-    LEGACY_CONTRACT_FILENAME,
-    LEGACY_PACKAGE_SUFFIX,
-    registration_migration_warning,
-)
+from nemo_agents_plugin.entities import AGENT_SPEC_FILENAME
 from typer.testing import CliRunner
 
 
@@ -33,6 +32,49 @@ class _ValidatedAgentConfig:
 
     def model_dump(self, *, exclude_none: bool = False) -> dict[str, Any]:
         return self._config
+
+
+class _FakeEthosFiles:
+    def __init__(self, existing_paths: Sequence[str] = (), *, delete_error: Exception | None = None) -> None:
+        self.existing_paths = existing_paths
+        self.delete_error = delete_error
+        self.deleted: list[str] = []
+
+    def list(self, *, fileset: str, workspace: str) -> SimpleNamespace:
+        assert fileset == "fabric-agent-ethos"
+        assert workspace == "default"
+        return SimpleNamespace(data=[SimpleNamespace(path=path) for path in self.existing_paths])
+
+    def delete(self, *, remote_path: str, fileset: str, workspace: str) -> None:
+        assert fileset == "fabric-agent-ethos"
+        assert workspace == "default"
+        self.deleted.append(remote_path)
+        if self.delete_error is not None:
+            raise self.delete_error
+
+
+def _upload_ethos_snapshot(agent_root: Path, *, existing_paths: Sequence[str] = ()) -> tuple[set[str], list[str]]:
+    files = _FakeEthosFiles(existing_paths)
+    sdk = SimpleNamespace(files=files)
+    uploaded: set[str] = set()
+
+    def _capture_upload(local_dir: Path, *, fileset: str, workspace: str, sdk: Any) -> None:
+        assert fileset == "fabric-agent-ethos"
+        assert workspace == "default"
+        uploaded.update(path.relative_to(local_dir).as_posix() for path in local_dir.rglob("*") if path.is_file())
+
+    with (
+        patch("nemo_agents_plugin.cli._platform_sdk", return_value=sdk),
+        patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", _capture_upload),
+    ):
+        _upload_ethos_fileset(
+            agent_name="fabric-agent",
+            workspace="default",
+            agent_root=agent_root,
+            base_url="http://test",
+        )
+
+    return uploaded, files.deleted
 
 
 def _install_mock_transport(
@@ -235,6 +277,10 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
                 "harnesses:",
                 "  hermes:",
                 "    kind: hermes",
+                "models:",
+                "  default:",
+                "    provider: nvidia",
+                "    model: ${NEMO_DEFAULT_MODEL}",
                 "",
             ]
         )
@@ -244,6 +290,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
         "name": "fabric-agent",
         "default_harness": "hermes",
         "harnesses": {"hermes": {"kind": "hermes", "settings": {}}},
+        "models": {"default": {"provider": "nvidia", "model": "user-default-model"}},
         "environment": {"provider": "local"},
     }
     captured: dict[str, Any] = {}
@@ -260,6 +307,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
     app = AgentsCLI().get_cli()
     with (
         _install_mock_transport(handler),
+        patch("nemo_agents_plugin.utils.get_default_model", return_value="user-default-model"),
         patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
         patch("nemo_agents_plugin.cli._upload_ethos_fileset") as mock_upload,
     ):
@@ -272,6 +320,7 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
     sent = _json.loads(captured["body"])
     assert captured["base_dir"] == tmp_path
     assert captured["validated_config"]["config_format"] == "nemo-agents-spec-v1"
+    assert captured["validated_config"]["models"]["default"]["model"] == "user-default-model"
     assert sent["config"] == normalized_config
     assert sent["config_format"] == "nemo-agents-spec-v1"
     mock_upload.assert_called_once_with(
@@ -279,12 +328,11 @@ def test_create_validates_platform_agent_config_before_post(tmp_path) -> None:
         workspace="default",
         agent_root=tmp_path,
         base_url="http://test",
-        omit_legacy_contract=False,
     )
 
 
 def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    package = tmp_path / "agents" / f"fabric-agent{LEGACY_PACKAGE_SUFFIX}"
+    package = tmp_path / "agents" / "fabric-agent-spec"
     package.mkdir(parents=True)
     config = package / "agent.yaml"
     config.write_text(
@@ -300,7 +348,7 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
             ]
         )
     )
-    (package / LEGACY_CONTRACT_FILENAME).write_text("# Contract\n")
+    (package / AGENT_SPEC_FILENAME).write_text("# Contract\n")
     monkeypatch.chdir(tmp_path)
     normalized_config = {
         "config_format": "nemo-agents-spec-v1",
@@ -326,16 +374,7 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
         uploaded["workspace"] = workspace
         uploaded["sdk_base_url"] = sdk.base_url
 
-    class FakeFiles:
-        def delete(self, *, remote_path: str, fileset: str, workspace: str) -> None:
-            uploaded["deleted"] = (remote_path, fileset, workspace)
-            from nemo_platform import NotFoundError
-
-            raise NotFoundError(
-                response=httpx.Response(404, request=httpx.Request("DELETE", "http://test")),
-                body=None,
-                message="not found",
-            )
+    files = _FakeEthosFiles([AGENT_SPEC_FILENAME], delete_error=FileNotFoundError())
 
     app = AgentsCLI().get_cli()
     with (
@@ -344,45 +383,140 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
         patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", fake_upload),
         patch("nemo_agents_plugin.cli._platform_sdk") as mock_sdk,
     ):
-        mock_sdk.return_value = type("SDK", (), {"base_url": "http://test", "files": FakeFiles()})()
+        mock_sdk.return_value = SimpleNamespace(base_url="http://test", files=files)
         result = CliRunner().invoke(
             app,
             ["create", "--name", "fabric-agent", "--agent-config", str(config), "--base-url", "http://test"],
         )
 
     assert result.exit_code == 0, result.stderr
-    assert result.stderr.splitlines()[-3:] == list(registration_migration_warning("fabric-agent", "default", config))
+    warning = _spec_package_warning("fabric-agent", config)
+    assert result.stderr.splitlines()[-len(warning) :] == list(warning)
     assert uploaded["files"] == {"agent.yaml"}
-    assert uploaded["deleted"] == (LEGACY_CONTRACT_FILENAME, "fabric-agent-ethos", "default")
+    assert files.deleted == [AGENT_SPEC_FILENAME]
     assert uploaded["fileset"] == "fabric-agent-ethos"
     assert uploaded["workspace"] == "default"
     assert uploaded["sdk_base_url"] == "http://test"
 
 
-def test_check_agent_root_bounds_allows_small_agent_root(tmp_path) -> None:
+def test_spec_package_warning_points_at_nemo_ethos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    package = tmp_path / "agents" / "acme-bot-spec"
+    package.mkdir(parents=True)
+    config = package / "agent.yaml"
+    config.write_text("name: acme-bot\n")
+    (package / AGENT_SPEC_FILENAME).write_text("# spec\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert _spec_package_warning("acme-bot", config) == (
+        "Warning: This package uses AGENT-SPEC.md.",
+        "Run the nemo-ethos skill to write ETHOS.md, then delete the acme-bot-spec package.",
+    )
+    assert _spec_package_warning("acme-bot", tmp_path / "agent.yaml") == ()
+    escaped = tmp_path / "escaped-spec"
+    escaped.mkdir()
+    (escaped / "agent.yaml").write_text("name: escaped\n")
+    (escaped / AGENT_SPEC_FILENAME).write_text("# spec\n")
+    assert _spec_package_warning("../escaped", escaped / "agent.yaml") == ()
+
+
+def test_agents_cli_has_no_ethos_migrate_command() -> None:
+    result = CliRunner().invoke(AgentsCLI().get_cli(), ["ethos", "migrate", "--help"])
+
+    assert result.exit_code != 0
+
+
+def test_collect_text_agent_artifacts_allows_small_agent_root(tmp_path: Path) -> None:
     (tmp_path / "agent.yaml").write_text("name: a\n")
     (tmp_path / "skills").mkdir()
     (tmp_path / "skills" / "SKILL.md").write_text("# skill\n")
 
-    _check_agent_root_bounds(tmp_path)
+    _collect_text_agent_artifacts(tmp_path)
 
 
-def test_check_agent_root_bounds_rejects_oversized_agent_root(tmp_path) -> None:
+def test_upload_ethos_fileset_skips_non_utf8_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    agent_root = tmp_path / "agent"
+    agent_root.mkdir()
+    (agent_root / "agent.yaml").write_text("name: fabric-agent\n", encoding="utf-8")
+    cache = agent_root / "__pycache__"
+    cache.mkdir()
+    (cache / "tool.pyc").write_bytes(b"\xff\xfe\x00binary")
+
+    uploaded, deleted = _upload_ethos_snapshot(agent_root)
+
+    assert uploaded == {"agent.yaml"}
+    assert deleted == []
+    assert "skipping non-UTF-8 agent artifact '__pycache__/tool.pyc'" in capsys.readouterr().err
+
+
+def test_upload_ethos_fileset_replaces_stale_runtime_artifacts(tmp_path: Path) -> None:
+    agent_root = tmp_path / "agent"
+    skill = agent_root / "skills" / "review"
+    skill.mkdir(parents=True)
+    (agent_root / "agent.yaml").write_text("name: fabric-agent\n", encoding="utf-8")
+    (skill / "SKILL.md").write_text("# Review\n", encoding="utf-8")
+
+    uploaded, deleted = _upload_ethos_snapshot(
+        agent_root,
+        existing_paths=[
+            "ETHOS.md",
+            AGENT_SPEC_FILENAME,
+            "agent.yaml",
+            "skills/old/SKILL.md",
+            "__pycache__/tool.pyc",
+        ],
+    )
+
+    assert deleted == [AGENT_SPEC_FILENAME, "agent.yaml", "skills/old/SKILL.md", "__pycache__/tool.pyc"]
+    assert uploaded == {"agent.yaml", "skills/review/SKILL.md"}
+
+
+def test_upload_ethos_fileset_preserves_remote_ethos_over_local(tmp_path: Path) -> None:
+    agent_root = tmp_path / "agent"
+    agent_root.mkdir()
+    (agent_root / "agent.yaml").write_text("name: fabric-agent\n", encoding="utf-8")
+    (agent_root / "ETHOS.md").write_text("# Local Ethos\n", encoding="utf-8")
+    remote = {"ETHOS.md": b"# Remote Ethos\n"}
+    files = _FakeEthosFiles(list(remote))
+    sdk = SimpleNamespace(files=files)
+
+    def _capture_upload(local_dir: Path, **_: Any) -> None:
+        remote.update(
+            (path.relative_to(local_dir).as_posix(), path.read_bytes())
+            for path in local_dir.rglob("*")
+            if path.is_file()
+        )
+
+    with (
+        patch("nemo_agents_plugin.cli._platform_sdk", return_value=sdk),
+        patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", _capture_upload),
+    ):
+        _upload_ethos_fileset(
+            agent_name="fabric-agent",
+            workspace="default",
+            agent_root=agent_root,
+            base_url="http://test",
+        )
+
+    assert remote == {"ETHOS.md": b"# Remote Ethos\n", "agent.yaml": b"name: fabric-agent\n"}
+    assert files.deleted == []
+
+
+def test_collect_text_agent_artifacts_rejects_oversized_agent_root(tmp_path: Path) -> None:
     (tmp_path / "big.bin").write_bytes(b"x" * (MAX_ETHOS_STAGED_BYTES + 1))
 
     with pytest.raises(ValueError, match="byte limit for container config delivery"):
-        _check_agent_root_bounds(tmp_path)
+        _collect_text_agent_artifacts(tmp_path)
 
 
-def test_check_agent_root_bounds_rejects_too_many_files(tmp_path) -> None:
+def test_collect_text_agent_artifacts_rejects_too_many_files(tmp_path: Path) -> None:
     for index in range(MAX_ETHOS_STAGED_FILES + 1):
         (tmp_path / f"f{index}.txt").write_text("x")
 
     with pytest.raises(ValueError, match="more than"):
-        _check_agent_root_bounds(tmp_path)
+        _collect_text_agent_artifacts(tmp_path)
 
 
-def test_check_agent_root_bounds_rejects_file_symlink(tmp_path) -> None:
+def test_collect_text_agent_artifacts_rejects_file_symlink(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside.bin"
     outside.write_bytes(b"x" * (MAX_ETHOS_STAGED_BYTES + 1))
     agent_root = tmp_path / "agent"
@@ -391,10 +525,10 @@ def test_check_agent_root_bounds_rejects_file_symlink(tmp_path) -> None:
     (agent_root / "link.bin").symlink_to(outside)
 
     with pytest.raises(ValueError, match="contains symlink 'link.bin'"):
-        _check_agent_root_bounds(agent_root)
+        _collect_text_agent_artifacts(agent_root)
 
 
-def test_check_agent_root_bounds_rejects_directory_symlink(tmp_path) -> None:
+def test_collect_text_agent_artifacts_rejects_directory_symlink(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside"
     outside.mkdir()
     (outside / "a.txt").write_text("x")
@@ -404,7 +538,7 @@ def test_check_agent_root_bounds_rejects_directory_symlink(tmp_path) -> None:
     (agent_root / "linkdir").symlink_to(outside, target_is_directory=True)
 
     with pytest.raises(ValueError, match="contains symlink 'linkdir'"):
-        _check_agent_root_bounds(agent_root)
+        _collect_text_agent_artifacts(agent_root)
 
 
 def test_create_fabric_rolls_back_agent_when_fileset_upload_fails(tmp_path) -> None:
@@ -772,3 +906,256 @@ def test_list_connection_error_prints_request_context_and_hint() -> None:
     assert "Request: GET http://test/apis/agents/v2/workspaces/default/agents" in result.stderr
     assert "Target: agents API route /apis/agents/v2/workspaces/default/agents" in result.stderr
     assert "nemo config view" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# environment / environment-spec / compute-spec commands
+# ---------------------------------------------------------------------------
+
+
+def test_deploy_forwards_environment_ref() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            [
+                "deploy",
+                "--agent",
+                "a1",
+                "--environment",
+                "default/env1",
+                "--no-wait",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    body = _j.loads(captured["body"])
+    assert body["agent"] == "a1"
+    assert body["environment"] == "default/env1"
+
+
+def test_deploy_forwards_image_entrypoint_mode() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            [
+                "deploy",
+                "--agent",
+                "a1",
+                "--mode",
+                "docker",
+                "--image",
+                "hand-built-agent:latest",
+                "--use-image-entrypoint",
+                "--no-wait",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    body = _j.loads(captured["body"])
+    assert body["agent"] == "a1"
+    assert body["deployment_mode"] == "docker"
+    assert body["image"] == "hand-built-agent:latest"
+    assert body["use_image_entrypoint"] is True
+
+
+def test_deploy_rejects_image_entrypoint_for_subprocess() -> None:
+    called = False
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["deploy", "--agent", "a1", "--use-image-entrypoint", "--no-wait", "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 2
+    assert "--use-image-entrypoint requires --mode docker or k8s." in result.stderr
+    assert not called
+
+
+def test_deploy_rejects_empty_environment() -> None:
+    called = False
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(201, json={"name": "d1", "status": "pending"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["deploy", "--agent", "a1", "--environment", "   ", "--no-wait", "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 2
+    assert "--environment must not be empty." in result.stderr
+    assert not called  # no API call made
+
+
+def test_environment_spec_create_from_file(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    spec.write_text('{"env": {"LOG_LEVEL": "debug"}, "secrets": {"TOK": "default/tok"}}')
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["url"] = str(req.url)
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "ben"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["environment-specs", "create", "ben", "--spec-file", str(spec), "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    assert captured["url"].endswith("/environment-specs")
+    body = _j.loads(captured["body"])
+    assert body["name"] == "ben"
+    assert body["env"] == {"LOG_LEVEL": "debug"}
+    assert body["secrets"] == {"TOK": "default/tok"}
+
+
+def test_environment_spec_create_from_inline_json() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "prod"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["environment-specs", "create", "prod", "--spec", '{"provider": "local"}', "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    body = _j.loads(captured["body"])
+    assert body == {"provider": "local", "name": "prod"}
+
+
+def test_environment_spec_create_rejects_both_sources(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    spec.write_text("{}")
+    app = AgentsCLI().get_cli()
+    result = CliRunner().invoke(
+        app,
+        ["environment-specs", "create", "x", "--spec-file", str(spec), "--spec", "{}", "--base-url", "http://test"],
+    )
+    assert result.exit_code == 2
+    assert "only one of --spec-file or --spec" in result.stderr
+
+
+def test_environment_create_with_ref_flags() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["url"] = str(req.url)
+        captured["body"] = req.read()
+        return httpx.Response(201, json={"name": "env1"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            [
+                "environments",
+                "create",
+                "env1",
+                "--environment-spec",
+                "default/ben",
+                "--compute-spec",
+                "default/big",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    import json as _j
+
+    assert captured["url"].endswith("/environments")
+    body = _j.loads(captured["body"])
+    assert body["name"] == "env1"
+    assert body["environment_spec"] == "default/ben"
+    assert body["compute_spec"] == "default/big"
+
+
+def test_compute_spec_create_and_list() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured.setdefault("methods", []).append(req.method)
+        if req.method == "POST":
+            captured["body"] = req.read()
+            return httpx.Response(201, json={"name": "big"})
+        return httpx.Response(200, json={"data": [{"name": "big", "workspace": "default"}], "pagination": {}})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        create = CliRunner().invoke(
+            app,
+            [
+                "compute-specs",
+                "create",
+                "big",
+                "--spec",
+                '{"resources": {"limits": {"cpu": "2"}}}',
+                "--base-url",
+                "http://test",
+            ],
+        )
+        listing = CliRunner().invoke(app, ["compute-specs", "list", "--format", "json", "--base-url", "http://test"])
+
+    assert create.exit_code == 0, create.stderr
+    assert listing.exit_code == 0, listing.stderr
+    import json as _j
+
+    assert _j.loads(captured["body"])["name"] == "big"
+
+
+def test_environment_delete_confirmation() -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert req.method == "DELETE"
+        return httpx.Response(204)
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(app, ["environments", "delete", "env1", "--yes", "--base-url", "http://test"])
+
+    assert result.exit_code == 0, result.stderr
+    assert "Environment 'env1' deleted." in result.stdout

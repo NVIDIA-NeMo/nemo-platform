@@ -3627,20 +3627,6 @@ components:
   schemas:
     Agent:
       properties:
-        name:
-          type: string
-          title: Name
-          description: Entity name within the workspace
-          default: ''
-        workspace:
-          type: string
-          pattern: ^[\w\-\+.@:]+$
-          title: Workspace
-          description: Workspace identifier
-        project:
-          title: Project
-          description: The name of the project associated with this entity.
-          type: string
         description:
           type: string
           title: Description
@@ -3658,6 +3644,20 @@ components:
             `nat-workflow-v1` is the default legacy NAT workflow format; `nemo-agents-spec-v1`
             identifies the Platform-owned agent.yaml spec format.
           default: nat-workflow-v1
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
         id:
           type: string
           title: Id
@@ -3888,6 +3888,12 @@ components:
           description: Container image for docker/k8s modes. Empty for subprocess;
             falls back to AgentsConfig.deployments.default_image.
           default: ''
+        use_image_entrypoint:
+          type: boolean
+          title: Use Image Entrypoint
+          description: 'Container modes only: preserve the image ENTRYPOINT/CMD instead
+            of injecting the platform-owned NAT/Fabric server command.'
+          default: false
         plugin_deployment:
           type: string
           title: Plugin Deployment
@@ -4235,6 +4241,37 @@ components:
         Entity type: ``agent_environment_spec``
 
         Referenced by an AgentEnvironment''s ``environment_spec`` (by name or inline).'
+    AgentInline:
+      properties:
+        description:
+          type: string
+          title: Description
+          description: Human-readable description of the agent.
+          default: ''
+        config:
+          additionalProperties: true
+          type: object
+          title: Config
+          description: Agent config dict interpreted according to config_format.
+        config_format:
+          type: string
+          title: Config Format
+          description: platform-internal schema version tag for the agent config dict.
+            `nat-workflow-v1` is the default legacy NAT workflow format; `nemo-agents-spec-v1`
+            identifies the Platform-owned agent.yaml spec format.
+          default: nat-workflow-v1
+      type: object
+      title: AgentInline
+      description: "Inline Agent - an agent definition without entity identity.\n\n\
+        The shared shape behind the :class:`Agent` entity: the entity embeds these\n\
+        fields and adds name/workspace, and a field that accepts an agent can take\n\
+        either a ``\"workspace/name\"`` ref string or this model. Lets a caller\n\
+        execute an agent it composes at request time \u2014 models chosen per request,\n\
+        settings scoped to one run \u2014 without first persisting an Agent.\n\nDeliberately\
+        \ as permissive as the entity: consumers impose their own\nrequirements rather\
+        \ than this model narrowing them for everyone. The\n``agents.execute`` job,\
+        \ for example, accepts only ``nemo-agents-spec-v1``\nand rejects a config\
+        \ that is not a valid agent spec."
     AgentSession:
       properties:
         name:
@@ -4259,17 +4296,25 @@ components:
         status:
           allOf:
           - $ref: '#/components/schemas/SessionStatus'
-          description: 'Lifecycle status: active | closed.'
+          description: 'Lifecycle status: active | expired | lost | closed.'
           default: active
+        first_active_at:
+          title: First Active At
+          description: UTC timestamp of the first accepted invocation; immutable once
+            set.
+          nullable: true
+          type: string
+          format: date-time
         last_active_at:
           title: Last Active At
-          description: UTC timestamp of the last activity in the session.
+          description: UTC timestamp of the latest accepted or completed invocation;
+            null until the first invocation is accepted.
           nullable: true
           type: string
           format: date-time
         expires_at:
           title: Expires At
-          description: UTC timestamp when the session expires, if expiration is configured.
+          description: UTC rolling idle deadline derived from the latest session activity.
           nullable: true
           type: string
           format: date-time
@@ -4452,6 +4497,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/AnalyzeBatchConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -4640,6 +4692,12 @@ components:
           title: Image
           description: Container image for docker/k8s modes. Ignored for subprocess.
           default: ''
+        use_image_entrypoint:
+          type: boolean
+          title: Use Image Entrypoint
+          description: For docker/k8s modes, leave the container command and args
+            empty so the image's ENTRYPOINT/CMD starts the agent server.
+          default: false
         environment:
           anyOf:
           - type: string
@@ -5063,6 +5121,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/EvaluateAgentSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5281,6 +5346,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/EvaluateSuiteSubmitConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5444,10 +5516,14 @@ components:
     ExecuteAgentJobConfig:
       properties:
         agent:
-          type: string
-          pattern: ^[\w\-.]+(/[\w\-.]+)?$
+          anyOf:
+          - type: string
+            title: Reference
+            description: A reference to AgentInline.
+          - $ref: '#/components/schemas/AgentInline'
           title: Agent
-          description: Agent entity name or workspace/name ref.
+          description: 'Agent to execute: an Agent entity name or workspace/name ref,
+            or an inline agent definition for a config composed at request time.'
         input:
           type: string
           title: Input
@@ -5561,6 +5637,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/ExecuteAgentJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -5946,6 +6029,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/OptimizeSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -6165,6 +6255,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/OptimizeSkillsConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -6247,8 +6344,20 @@ components:
       properties:
         optimize_config:
           type: string
+          minLength: 1
           title: Optimize Config
-          description: Absolute path to the Fabric-native optimization YAML file.
+          description: "Location of the Fabric-native optimization YAML.  With optimize_config_fileset\
+            \ set \u2014 required for `submit` \u2014 this is a path relative to the\
+            \ fileset root.  Without it (local `nemo agents optimize run` only) it\
+            \ is an absolute path on the host running the CLI."
+        optimize_config_fileset:
+          title: Optimize Config Fileset
+          description: 'Fileset holding the optimization bundle: the config named
+            by optimize_config plus every asset it references (Agent under Test package,
+            dataset, eval.fabric.base_dir tree, hooks and MCP configs).  Stage one
+            with `nemo agents optimize prepare-fileset`.  Required for `submit`, where
+            the job has no access to the client''s filesystem.'
+          type: string
         workspace:
           type: string
           title: Workspace
@@ -6258,7 +6367,19 @@ components:
         agent:
           title: Agent
           description: Optional platform agent reference ('name' or 'workspace/name').
-            When omitted, optimize_config must include an inline Fabric agent package.
+            When omitted, the optimization config must include an inline Fabric agent
+            package.
+          type: string
+          minLength: 1
+        output:
+          title: Output
+          description: "Where to publish the study artifacts (optimized config, trials\
+            \ dataframe, pareto plots, ATIF evidence) once the study succeeds \u2014\
+            \ either a local directory (path-shaped: starts with '/', './', '../',\
+            \ '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').\
+            \  Filesets are created on demand if missing.  This is in addition to\
+            \ the per-job artifacts that ``ctx.results.save`` always registers; it\
+            \ gives remote clients a stable, addressable location to read from."
           type: string
       type: object
       required:
@@ -6319,6 +6440,25 @@ components:
           title: Skip Validation
           description: Bypass Fabric package validation before building.
           default: false
+        registry:
+          title: Registry
+          description: "Push the built image to this registry (e.g. 'nvcr.io/my-org').\
+            \ The host executing the push must already be authenticated to it \u2014\
+            \ the local machine for `run`, the platform's job-execution host for `submit`/the\
+            \ REST API. Credentials are never accepted over this API."
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$
+        push_tag:
+          title: Push Tag
+          description: "Fully-qualified remote tag. Defaults to '<registry>/<image>',\
+            \ where <image> is the namespaced local reference 'nemo-agents/{workspace}/{tag}'.\
+            \ Requires 'registry'. Must start with '<registry>/nemo-agents/{workspace}/'\
+            \ \u2014 Docker tags are daemon-global while the auth boundary here is\
+            \ the workspace, so an unscoped push_tag would let this workspace overwrite\
+            \ another workspace's image, or redirect the push to a registry other\
+            \ than the one declared."
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$
       additionalProperties: false
       type: object
       required:
@@ -6388,6 +6528,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/PackageAgentInput'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -6520,6 +6667,25 @@ components:
           title: Skip Validation
           description: Bypass Fabric package validation before building.
           default: false
+        registry:
+          title: Registry
+          description: "Push the built image to this registry (e.g. 'nvcr.io/my-org').\
+            \ The host executing the push must already be authenticated to it \u2014\
+            \ the local machine for `run`, the platform's job-execution host for `submit`/the\
+            \ REST API. Credentials are never accepted over this API."
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$
+        push_tag:
+          title: Push Tag
+          description: "Fully-qualified remote tag. Defaults to '<registry>/<image>',\
+            \ where <image> is the namespaced local reference 'nemo-agents/{workspace}/{tag}'.\
+            \ Requires 'registry'. Must start with '<registry>/nemo-agents/{workspace}/'\
+            \ \u2014 Docker tags are daemon-global while the auth boundary here is\
+            \ the workspace, so an unscoped push_tag would let this workspace overwrite\
+            \ another workspace's image, or redirect the push to a registry other\
+            \ than the one declared."
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$
         workspace:
           type: string
           title: Workspace
@@ -6844,6 +7010,8 @@ components:
       type: string
       enum:
       - active
+      - expired
+      - lost
       - closed
       title: SessionStatus
       description: Lifecycle status of an agent session.

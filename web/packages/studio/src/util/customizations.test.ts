@@ -1,25 +1,28 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { RlGRPOTraining, RlJobOutput } from '@nemo/sdk/generated/customizer/schema';
 import type { FinetuningType } from '@nemo/sdk/generated/platform/schema';
 import type {
   CustomizationJob,
   CustomizationJobStatusDetails,
 } from '@studio/util/customizationBackend';
 import {
+  getGrpoProgressTiles,
+  getGrpoRunConfig,
+  getGrpoRunProgressSummary,
+  getGrpoSummaryTiles,
   formatFinetuningType,
   formatTrainingPhase,
   getBaseModel,
   getCustomizationTrainingProgress,
   getCustomizationTrainingSteps,
   getDatasetUri,
-  getFailureMessage,
   getFinetuningType,
   getFormattedCustomizationStatus,
   getJobDuration,
   getJobStartDate,
   getFormattedTrainingType,
-  getProgressLogs,
   formatMetricValue,
   formatStepCount,
   getLossTiles,
@@ -36,6 +39,18 @@ const automodelJob = (spec: Record<string, unknown>): CustomizationJob =>
 /** Minimal unsloth job (carries `hardware`). */
 const unslothJob = (spec: Record<string, unknown>): CustomizationJob =>
   ({ spec: { hardware: {}, ...spec } }) as unknown as CustomizationJob;
+
+/** Minimal RL job (no `parallelism`/`hardware` at the spec root, and a `training.type`). */
+const rlJob = (spec: Partial<RlJobOutput>): CustomizationJob => ({
+  name: 'rl-job',
+  spec: {
+    model: '',
+    dataset: '',
+    training: { type: 'grpo' },
+    output: { name: '', fileset: '' },
+    ...spec,
+  },
+});
 
 describe('getFormattedTrainingType', () => {
   it('Returns the correctly formatted training type', () => {
@@ -86,6 +101,24 @@ describe('getBaseModel', () => {
   it('returns empty string when the model is missing', () => {
     expect(getBaseModel(automodelJob({}))).toBe('');
   });
+
+  it('returns the model reference for RL jobs, which used to read as blank', () => {
+    expect(getBaseModel(rlJob({ model: 'qwen/qwen2.5-7b-instruct' }))).toBe(
+      'qwen/qwen2.5-7b-instruct'
+    );
+  });
+});
+
+describe('getFinetuningType', () => {
+  it('returns the finetuning type for GRPO, so the page header keeps that segment', () => {
+    expect(getFinetuningType(rlJob({ training: { type: 'grpo', finetuning_type: 'lora' } }))).toBe(
+      'lora'
+    );
+  });
+
+  it('stays blank for DPO, which has no finetuning type', () => {
+    expect(getFinetuningType(rlJob({ training: { type: 'dpo' } }))).toBe('');
+  });
 });
 
 describe('getDatasetUri', () => {
@@ -104,6 +137,12 @@ describe('getDatasetUri', () => {
   it('returns empty string when job is undefined', () => {
     expect(getDatasetUri(undefined)).toBe('');
   });
+
+  it('returns the bare fileset reference for RL jobs', () => {
+    expect(getDatasetUri(rlJob({ dataset: 'default/deepscaler-train' }))).toBe(
+      'default/deepscaler-train'
+    );
+  });
 });
 
 describe('getTrainingBatchSize', () => {
@@ -113,43 +152,6 @@ describe('getTrainingBatchSize', () => {
 
   it('uses per_device_train_batch_size for unsloth', () => {
     expect(getTrainingBatchSize(unslothJob({ batch: { per_device_train_batch_size: 4 } }))).toBe(4);
-  });
-});
-
-describe('getFailureMessage', () => {
-  it('returns joined details when failure log exists', () => {
-    const statusDetails = {
-      status_logs: [
-        { message: 'Failed to train', detail: 'OOM error' },
-        { message: 'cleanup', detail: 'resources freed' },
-      ],
-    } as unknown as CustomizationJobStatusDetails;
-    expect(getFailureMessage(statusDetails)).toBe('OOM error\nresources freed');
-  });
-
-  it('returns empty string when no failure logs', () => {
-    const statusDetails = {
-      status_logs: [{ message: 'Running', detail: 'step 1' }],
-    } as unknown as CustomizationJobStatusDetails;
-    expect(getFailureMessage(statusDetails)).toBe('');
-  });
-
-  it('returns empty string when status_logs is missing', () => {
-    const statusDetails = {} as unknown as CustomizationJobStatusDetails;
-    expect(getFailureMessage(statusDetails)).toBe('');
-  });
-});
-
-describe('getProgressLogs', () => {
-  it('returns status_logs array', () => {
-    const logs = [{ message: 'step 1' }];
-    const statusDetails = { status_logs: logs } as unknown as CustomizationJobStatusDetails;
-    expect(getProgressLogs(statusDetails)).toEqual(logs);
-  });
-
-  it('returns empty array when status_logs is missing', () => {
-    const statusDetails = {} as unknown as CustomizationJobStatusDetails;
-    expect(getProgressLogs(statusDetails)).toEqual([]);
   });
 });
 
@@ -379,10 +381,339 @@ describe('getLossTiles', () => {
     });
   });
 
+  it('reads a flat metric as neutral rather than as a failure', () => {
+    // A run that ended where it started has not gone wrong; it has gone nowhere. Tinting that red
+    // reads as an error, which for a stalled reward is a real state, not a fault.
+    const [training] = getLossTiles(
+      {
+        metrics: {
+          train_loss: [
+            { step: 0, value: 1.5 },
+            { step: 10, value: 1.5 },
+          ],
+        },
+      },
+      true
+    );
+
+    expect(training).toEqual({
+      label: 'Final Training Loss',
+      value: '1.5000',
+      hint: '+0.0000 from start',
+      hintStatus: 'neutral',
+    });
+  });
+
   it('omits the delta hint when only one metric point has been reported', () => {
     const tiles = getLossTiles({ metrics: { train_loss: [{ step: 0, value: 1.5 }] } }, true);
 
     expect(tiles[0]).toEqual({ label: 'Final Training Loss', value: '1.5000' });
+  });
+});
+
+describe('getGrpoSummaryTiles', () => {
+  it('dashes out every tile when the run reported nothing', () => {
+    expect(getGrpoSummaryTiles(undefined, true)).toEqual([
+      { label: 'Final Mean Reward', value: '—', hint: 'across all sampled rollouts' },
+      { label: 'Validation Reward', value: '—', hint: 'held-out prompts' },
+      { label: 'Median Step Time', value: '—', hint: 'wall clock per step' },
+      { label: 'Truncation Rate', value: '—', hint: 'hit the length limit' },
+    ]);
+  });
+
+  it('tints a rising reward as success — the opposite of loss', () => {
+    const [reward] = getGrpoSummaryTiles(
+      {
+        metrics: {
+          train_reward: [
+            { step: 1, value: 0.18 },
+            { step: 500, value: 0.64 },
+          ],
+        },
+      },
+      true
+    );
+
+    // The delta sits beside the value rather than in the hint, because the tile keeps its context.
+    expect(reward).toEqual({
+      label: 'Final Mean Reward',
+      value: '0.6400',
+      trailingLabel: '+0.4600 from start',
+      trailingLabelStatus: 'success',
+      hint: 'across all sampled rollouts',
+    });
+  });
+
+  it('names the step the last validation pass ran at', () => {
+    const [, validation] = getGrpoSummaryTiles(
+      { metrics: { val_accuracy: [{ step: 300, value: 0.58 }] } },
+      true
+    );
+
+    expect(validation).toEqual({
+      label: 'Validation Reward',
+      value: '0.5800',
+      hint: 'held-out prompts, step 300',
+    });
+  });
+
+  it('summarises step time as the median of the run, not the latest step', () => {
+    const [, , stepTime] = getGrpoSummaryTiles(
+      {
+        metrics: {
+          'train_timing/total_step_time': [
+            { step: 1, value: 29.8 },
+            { step: 2, value: 33.6 },
+            { step: 3, value: 34.8 },
+            // A checkpoint save doubles one step; the median is what the run actually costs.
+            { step: 4, value: 71.2 },
+          ],
+        },
+      },
+      true
+    );
+
+    expect(stepTime).toEqual({
+      label: 'Median Step Time',
+      value: '34.2s',
+      hint: 'wall clock per step',
+    });
+  });
+
+  it('renders the truncation rate as a percentage', () => {
+    const [, , , truncation] = getGrpoSummaryTiles(
+      { metrics: { train_truncation_rate: [{ step: 500, value: 0.041 }] } },
+      true
+    );
+
+    expect(truncation).toEqual({
+      label: 'Truncation Rate',
+      value: '4.1%',
+      hint: 'hit the length limit',
+    });
+  });
+
+  it('labels the reward tile "Latest" until the job reaches a terminal status', () => {
+    expect(getGrpoSummaryTiles(undefined)[0].label).toBe('Latest Mean Reward');
+  });
+});
+
+describe('getGrpoRunProgressSummary', () => {
+  const grpoJob = (
+    statusDetails: CustomizationJobStatusDetails,
+    training: Partial<RlGRPOTraining> = { num_generations_per_prompt: 8, num_prompts_per_step: 8 }
+  ): CustomizationJob => {
+    const job = rlJob({ training: { type: 'grpo', ...training } });
+    return { ...job, status_details: statusDetails } as CustomizationJob;
+  };
+
+  it('reports the in-flight step and the rollouts it implies', () => {
+    const job = grpoJob({ step: 340, max_steps: 500 });
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe(
+      'step 340 of 500 · 21.8k rollouts generated'
+    );
+  });
+
+  it('keeps the "of" total once the job is terminal, so an early stop is visible', () => {
+    const job = grpoJob({ step: 340, max_steps: 500 });
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), true)).toBe(
+      'step 340 of 500 · 21.8k rollouts generated'
+    );
+  });
+
+  it('reports how many steps ran once the job is terminal with no known target', () => {
+    const job = grpoJob({ step: 500 });
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), true)).toBe(
+      '500 steps ran · 32k rollouts generated'
+    );
+  });
+
+  it('uses present tense for an in-flight job with no known target yet', () => {
+    const job = grpoJob({ step: 12 });
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe(
+      'step 12 · 768 rollouts generated'
+    );
+  });
+
+  it('omits the rollout count when the spec has no group-size/prompts-per-step to derive it from', () => {
+    const job = grpoJob({ step: 10, max_steps: 100 }, {});
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe('step 10 of 100');
+  });
+
+  it('falls back to batch_size when num_prompts_per_step is omitted, as the service derives it', () => {
+    // The SDK documents num_prompts_per_step as derived from batch_size / num_generations_per_prompt
+    // when unset, so their product is just batch_size — a real job commonly omits it.
+    const job = grpoJob(
+      { step: 10, max_steps: 100 },
+      { num_generations_per_prompt: 8, batch_size: 64 }
+    );
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe(
+      'step 10 of 100 · 640 rollouts generated'
+    );
+  });
+
+  it('falls back to batch_size when num_generations_per_prompt is omitted, as the service derives it', () => {
+    // The SDK documents num_generations_per_prompt as derived from batch_size / num_prompts_per_step
+    // when unset, so their product is just batch_size — the mirror image of the case above.
+    const job = grpoJob({ step: 10, max_steps: 100 }, { num_prompts_per_step: 8, batch_size: 64 });
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe(
+      'step 10 of 100 · 640 rollouts generated'
+    );
+  });
+
+  it('is empty for a non-GRPO job', () => {
+    const job = { ...rlJob({ training: { type: 'dpo' } }), status_details: { step: 10 } };
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe('');
+  });
+
+  it('is empty when the job has not reported a step yet', () => {
+    const job = grpoJob({});
+
+    expect(getGrpoRunProgressSummary(job, getTrainingTelemetry(job), false)).toBe('');
+  });
+});
+
+describe('getGrpoRunConfig', () => {
+  const spec = (
+    training: Partial<RlGRPOTraining> = {},
+    rest: Record<string, unknown> = {}
+  ): RlJobOutput & { training: RlGRPOTraining } =>
+    ({
+      model: 'qwen/qwen2.5-7b-instruct',
+      dataset: 'default/deepscaler-train',
+      environment: 'default/math-verifier-env',
+      training: { type: 'grpo', ...training },
+      ...rest,
+    }) as RlJobOutput & { training: RlGRPOTraining };
+
+  it('reads the environment and prompt dataset straight off the spec', () => {
+    const config = getGrpoRunConfig(spec());
+
+    expect(config.environment).toBe('default/math-verifier-env');
+    expect(config.promptDataset).toBe('default/deepscaler-train');
+  });
+
+  it('reports DTensor, since Megatron is built inert for GRPO', () => {
+    expect(getGrpoRunConfig(spec({ finetuning_type: 'all_weights' })).trainingBackend).toBe(
+      'DTensor · Full weights'
+    );
+  });
+
+  it.each([
+    ['LoRA', { finetuning_type: 'lora' as const }],
+    ['expert parallelism', { parallelism: { expert_parallel_size: 2 } }],
+    ['automodel kwargs', { automodel_kwargs: { force_hf: true } }],
+  ])('selects the v2 backend for %s, which only v2 implements', (_label, training) => {
+    expect(getGrpoRunConfig(spec(training)).trainingBackend).toContain('DTensor v2');
+  });
+
+  it('does not read an empty automodel_kwargs as selecting v2', () => {
+    // The schema says unset means "auto-detect", and `{}` is a plausible API round-trip of that.
+    expect(getGrpoRunConfig(spec({ automodel_kwargs: {} })).trainingBackend).toBe(
+      'DTensor · Full weights'
+    );
+  });
+
+  it('spells out the parallelism plan, defaulting the unset degrees to 1', () => {
+    expect(getGrpoRunConfig(spec({ parallelism: { tensor_parallel_size: 4 } })).parallelism).toBe(
+      'TP 4 · PP 1 · CP 1'
+    );
+
+    expect(
+      getGrpoRunConfig(
+        spec({
+          parallelism: {
+            tensor_parallel_size: 4,
+            context_parallel_size: 2,
+            expert_parallel_size: 8,
+            sequence_parallel: true,
+          },
+        })
+      ).parallelism
+    ).toBe('TP 4 · PP 1 · CP 2 · EP 8 · sequence parallel');
+  });
+
+  it('describes generation as colocated, which is what the service pins', () => {
+    // Not the mockup's "async, separate GPUs": the service pins colocated with async off.
+    expect(getGrpoRunConfig(spec({ vllm_tensor_parallel_size: 2 })).generation).toBe(
+      'vLLM, colocated · TP 2'
+    );
+  });
+
+  it('defaults the vLLM tensor parallel size to what fits in a node', () => {
+    expect(
+      getGrpoRunConfig(spec({ parallelism: { tensor_parallel_size: 8, num_gpus_per_node: 4 } }))
+        .generation
+    ).toBe('vLLM, colocated · TP 4');
+  });
+
+  it('reports sequence packing as disabled, which the service pins for GRPO', () => {
+    expect(getGrpoRunConfig(spec()).sequencePacking).toBe('Disabled');
+  });
+});
+
+describe('getGrpoProgressTiles', () => {
+  it('adds the run-state tile to the epoch progress; step is on the page header instead', () => {
+    expect(
+      getGrpoProgressTiles(
+        { step: 500, maxSteps: 500, epoch: 1, numEpochs: 1 },
+        {
+          isTerminal: true,
+          duration: '00:42:11',
+        }
+      )
+    ).toEqual([
+      { label: 'Epochs Completed', value: '1 / 1' },
+      { label: 'Duration', value: '00:42:11', hint: 'total run time' },
+    ]);
+  });
+
+  it('shows the current phase while the run is still going', () => {
+    const tiles = getGrpoProgressTiles(
+      { phase: 'training' },
+      {
+        isTerminal: false,
+        duration: '00:00:10',
+      }
+    );
+
+    expect(tiles[1]).toEqual({ label: 'Phase', value: 'Training', hint: 'current stage' });
+  });
+
+  it('names the failing step instead of the duration when the run errored', () => {
+    const tiles = getGrpoProgressTiles(
+      { phase: 'training', epoch: 0, numEpochs: 1 },
+      {
+        isTerminal: true,
+        duration: '00:48:38',
+        failedAtStepLabel: 'GRPO training',
+      }
+    );
+
+    expect(tiles[1]).toEqual({
+      label: 'Run State',
+      value: 'Failed',
+      hint: 'during GRPO training',
+      hintStatus: 'error',
+      status: 'error',
+    });
+  });
+
+  it('marks the failure on the hint, which is the only part styled on an unbordered tile', () => {
+    const [, runState] = getGrpoProgressTiles(
+      {},
+      { isTerminal: true, duration: '48m 38s', failedAtStepLabel: 'model upload' }
+    );
+
+    expect(runState.hintStatus).toBe('error');
   });
 });
 
@@ -626,5 +957,11 @@ describe('formatStepCount', () => {
   it('compacts counts long enough to widen the column', () => {
     expect(formatStepCount(1_234_567)).toBe('1.2M');
     expect(formatStepCount(10_000)).toBe('10K');
+  });
+
+  it('lowers the floor and the suffix case when asked, for prose rather than a tile', () => {
+    expect(formatStepCount(210, { floor: 0 })).toBe('210');
+    expect(formatStepCount(174_000, { floor: 0, lowercase: true })).toBe('174k');
+    expect(formatStepCount(9_999, { floor: 0, lowercase: true })).toBe('10k');
   });
 });

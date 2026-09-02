@@ -19,6 +19,9 @@ from nemo_iron_swarm_plugin.cli.client import base_url
 from nemo_iron_swarm_plugin.entities import IRON_SWARM_MANIFEST_TYPE
 from nemo_iron_swarm_plugin.filesets import download_and_extract_project, upload_project_dir
 from nemo_iron_swarm_plugin.jobs.errors import CATEGORY_FILESET, CATEGORY_MANIFEST, IronSwarmRunError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import EntitiesClient
+from nemo_platform_plugin.entities.types import EntityUpdate
 from nemo_platform_plugin.job_context import JobContext
 
 logger = logging.getLogger(__name__)
@@ -147,8 +150,10 @@ def _materialize_manifest(
         raise IronSwarmRunError(
             CATEGORY_MANIFEST, "running a saved manifest requires the platform SDK (submit the job, don't run locally)."
         )
-    record = sdk.entities.get_entity_by_name(
-        name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=ctx.workspace
+    record = (
+        client_from_platform(sdk, EntitiesClient)
+        .get_entity_by_name(name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=ctx.workspace)
+        .data()
     )
     data = {**(getattr(record, "data", {}) or {}), **(config_overrides or {})}
     manifest_dir = ctx.storage.persistent
@@ -255,8 +260,11 @@ def _persist_upgraded_bundle(sdk: Any, manifest_id: str, ctx: JobContext, record
         updated = {**(getattr(record, "data", {}) or {})}
         updated["agent_fileset"] = fileset
         updated["manifest_yaml"] = yaml.safe_dump(resolved.manifest, sort_keys=False)
-        sdk.entities.update_entity_by_name(
-            name=manifest_id, entity_type=IRON_SWARM_MANIFEST_TYPE, workspace=ctx.workspace, data=updated
+        client_from_platform(sdk, EntitiesClient).update_entity_by_name(
+            name=manifest_id,
+            entity_type=IRON_SWARM_MANIFEST_TYPE,
+            workspace=ctx.workspace,
+            body=EntityUpdate(data=updated),
         )
     except Exception:  # the war-game matters more than the upgrade; it retries next run
         logger.warning("could not freeze manifest %s on this run", manifest_id, exc_info=True)

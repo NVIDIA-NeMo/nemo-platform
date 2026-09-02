@@ -37,7 +37,9 @@ For **rl (DPO)** the output is a **full-weight model entity** (no adapter): labe
 | **Final validation loss** | Last entry in `status_details.metrics.val_loss`. If the list is empty, report `n/a (no validation run)` and note whether validation data was configured. Automodel validates once per epoch by default. Unsloth validates once per epoch when `dataset.validation_path` is set and `schedule.eval_steps` is omitted (platform default: `max(1, effective_steps - 1)`). |
 | **Notes** | See **Notes by status** below |
 
-**Metrics extraction** — after polling, always run `nemo jobs get-status <job-id>` and read `status_details.metrics` (all backends accumulate `train_loss` and `val_loss` time series there). Include both final losses in the report even when status is `error` if training completed before the failure (e.g. entity registration failed after upload).
+**Metrics extraction** — after polling, always run `nemo jobs get-status <job-id>` and read `status_details.metrics` (every backend accumulates time series there). Include the final losses in the report even when status is `error` if training completed before the failure (e.g. entity registration failed after upload).
+
+**GRPO does not report on loss** — `val_loss` is always empty and `train_loss` is a policy-gradient surrogate that oscillates near zero regardless of run quality. Use the GRPO section below instead of the two loss rows above.
 
 ## Notes by status
 
@@ -136,6 +138,42 @@ Map rows from the `training` (DPOTraining) block; there is no LoRA/save-method. 
 | GPU | 1 node × 1 GPU |
 | Output | full-weight model entity |
 ```
+
+## RL (GRPO) example
+
+GRPO has no labelled completions and no meaningful loss, so the loss rows in **Field guidance** do not apply. Report reward instead.
+
+| Field | Source | Notes |
+|-------|--------|-------|
+| **Mean training reward** | last value of `metrics.train_reward` | The headline. Include the delta from the first point. |
+| **Validation reward** | last value of `metrics.val_accuracy` | NeMo-RL names the validation pass's **mean reward** `accuracy`; it is not an accuracy in the classifier sense. There is no `val_reward`. |
+| **Steps** | `status_details.step` / `max_steps` | |
+| **Rollouts generated** | `status_details.step` × `status_details.rollouts_per_step` | `rollouts_per_step` is reported once at training start. |
+| **Truncation rate** | last value of `metrics.train_truncation_rate` | Rising truncation is a common reason reward stops improving. |
+| **Step time** | last value of `metrics.train_timing/total_step_time` | Seconds of wall clock per training step. The per-phase breakdown (`train_timing/generation`, `train_timing/policy_training`, …) reports as a current value, not a series — read it when a step suddenly slows. |
+| **Algorithm** | `status_details.training_type` | `grpo` or `dpo`. `backend` is `nemo_rl` for both, so this is the only field that distinguishes them. |
+
+### Training health
+
+Report these only when reward is flat or falling — they explain *why*, and are noise otherwise.
+
+| Series | Healthy | What a bad value means |
+|--------|---------|------------------------|
+| `train_baseline_reward/pct_mixed` | well above 0 | The share of prompt groups whose rollouts disagreed. GRPO scores each rollout against the others in its group, so a group where every rollout got the same reward produces no gradient. Falling toward 0 means the run has stopped learning, and it shows here before the reward curve flattens. |
+| `train_approx_entropy` | stable | Falling steadily is entropy collapse: generations degenerate while reward can still look acceptable. |
+| `train_token_mult_prob_error` | near 1 | Rollout and training logprobs disagreeing. |
+| `train_sampling_importance_ratio` | near 1 | Same drift, measured as a ratio. |
+| `train_gen_kl_error`, `train_policy_kl_error`, `train_js_divergence_error` | small | Distance from the reference policy. |
+| `train_truncation_rate` | low | Responses hitting the generation cap. Consider `overlong_filtering` or a larger `max_seq_length`. |
+
+### Reward spread — read the caveat before charting it
+
+`train_total_reward/stddev`, `/p25` and `/p75` describe the spread of rewards within a step. **Both are close to useless when the environment returns a binary 0/1 reward**, which most verifier environments do:
+
+- `stddev` on a Bernoulli variable is a deterministic function of the mean — √(p(1−p)). It carries no information beyond `train_reward`.
+- `p25`/`p75` collapse to a three-state step function: `[0, 0]` while mean reward ≤ 0.25, `[0, 1]` between 0.25 and 0.75, `[1, 1]` above. A p25 pinned at 0 for a whole run is correct, not a bug.
+
+For a binary-reward environment, report `baseline_reward/pct_0` / `pct_1` / `pct_mixed` as the spread instead — that is group composition, it moves meaningfully, and it is what the algorithm actually learns from. The dispersion series are worth charting when rewards are continuous or built from several components.
 
 ## Using the output (`completed` only)
 

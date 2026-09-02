@@ -113,9 +113,9 @@ export const renderSeriesLines = (
         strokeWidth={2}
         strokeDasharray={entry.dashed ? '6 4' : undefined}
         strokeOpacity={hoveredId && hoveredId !== entry.id ? FADED_SERIES_OPACITY : 1}
-        dot={showMarks ?? (entry.data?.length ?? 0) <= 3}
+        dot={entry.showMarks ?? showMarks ?? (entry.data?.length ?? 0) <= 3}
         activeDot={{ r: 4 }}
-        connectNulls={false}
+        connectNulls={entry.connectNulls ?? false}
         isAnimationActive={false}
       />
     ));

@@ -28,7 +28,7 @@ class WorkloadTokenExchangeErrorResponse(BaseModel):
     error: str
     """
     OAuth 2.0 or RFC 8693 token exchange error code, such as invalid_client,
-    invalid_request, invalid_grant, invalid_scope, or invalid_target.
+    invalid_request, invalid_scope, or invalid_target.
     """
 
     error_description: Optional[str] = None

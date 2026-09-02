@@ -95,8 +95,8 @@ First, list the providers registered in your deployment so you can pick one that
 
 ```python
 providers = client.inference.providers.list(workspace="default")
-for provider in providers["data"]:
-    print(provider["name"], provider.get("host_url"))
+for provider in providers.data:
+    print(provider.name, provider.host_url)
 ```
 
 Use a `provider` name from this output in the target below. The model identifier format depends on the provider — check the provider's API documentation or served-model list if unsure.
@@ -106,9 +106,9 @@ Define the model under test. This example uses garak's `nim.NVOpenAIChat` genera
 ```python
 target = auditor.targets.create(
     workspace="default",
-    name="llama-31-8b",
+    name="nemotron-3-nano-30b",
     type="nim.NVOpenAIChat",
-    model="nvidia/meta/llama-3.1-8b-instruct",
+    model="nvidia/nvidia/nemotron-3-nano-30b-a3b",
     options={
         "nim": {
             "max_tokens": 1024,
@@ -135,7 +135,7 @@ The `nmp_uri_spec` sentinel inside `options.nim` tells the plugin to resolve a c
 ```python
 result = auditor.run(
     config="quick-scan",
-    target="llama-31-8b",
+    target="nemotron-3-nano-30b",
     workspace="default",
 )
 
@@ -202,7 +202,7 @@ Delete the entities you created:
 
 ```python
 auditor.configs.delete(workspace="default", name="quick-scan")
-auditor.targets.delete(workspace="default", name="llama-31-8b")
+auditor.targets.delete(workspace="default", name="nemotron-3-nano-30b")
 ```
 
 Report artifacts are left in place under the scheduler's temporary directory; the OS reaps them eventually.

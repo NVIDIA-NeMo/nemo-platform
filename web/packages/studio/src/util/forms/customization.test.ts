@@ -5,6 +5,7 @@ import {
   FORM_DEFAULTS,
   customizationFormSchema,
   formToAutomodelCreate,
+  formToRlCreate,
   formToUnslothCreate,
   type CustomizationFormFields,
 } from '@studio/util/forms/customization';
@@ -28,6 +29,18 @@ const validUnsloth = (): CustomizationFormFields => {
   data.outputName = 'my-output';
   data.unsloth.model.name = 'default/qwen3-1.7b';
   data.unsloth.dataset.path = 'default/train-ds';
+  return data;
+};
+
+/** A fully-valid GRPO form value (model, dataset and reward environment filled). */
+const validGrpo = (): CustomizationFormFields => {
+  const data = structuredClone(FORM_DEFAULTS);
+  data.backend = 'rl';
+  data.outputName = 'my-output';
+  data.rl.model = 'default/qwen3-1.7b';
+  data.rl.dataset = 'default/train-ds';
+  data.grpo.trainingType = 'grpo';
+  data.grpo.environmentFileset = 'default/ascii-tree-env';
   return data;
 };
 
@@ -253,5 +266,69 @@ describe('formToUnslothCreate', () => {
     data.unsloth.training!.finetuning_type = 'lora';
     data.unsloth.model.load_in_4bit = true;
     expect(formToUnslothCreate(data).spec.model.load_in_4bit).toBe(true);
+  });
+});
+
+describe('formToRlCreate (GRPO)', () => {
+  /**
+   * react-hook-form materialises these parent objects as soon as their nested sliders
+   * register, so an untouched group reaches the mapper as all-undefined rather than
+   * absent. The backend rejects a reward_shaping carrying no penalty, so forwarding it
+   * fails a submit the user never configured.
+   */
+  it('omits reward groups the user never filled in', () => {
+    const spec = formToRlCreate(validGrpo()).spec;
+    const training = spec.training as unknown as Record<string, unknown>;
+    expect(training.reward_shaping).toBeUndefined();
+    expect(training.reward_scaling).toBeUndefined();
+  });
+
+  it('omits a reward group whose fields are all cleared', () => {
+    const data = validGrpo();
+    data.grpo.reward_shaping = {
+      overlong_buffer_length: undefined,
+      overlong_buffer_penalty: undefined,
+      max_response_length: undefined,
+      stop_properly_penalty_coef: undefined,
+    };
+    const training = formToRlCreate(data).spec.training as unknown as Record<string, unknown>;
+    expect(training.reward_shaping).toBeUndefined();
+  });
+
+  it('keeps a reward group once any field is set', () => {
+    const data = validGrpo();
+    data.grpo.reward_shaping = { stop_properly_penalty_coef: 0.5 };
+    const training = formToRlCreate(data).spec.training as unknown as Record<string, unknown>;
+    expect(training.reward_shaping).toEqual({ stop_properly_penalty_coef: 0.5 });
+  });
+
+  it('sends the batch multiplier only while dynamic sampling is on', () => {
+    const off = validGrpo();
+    off.grpo.use_dynamic_sampling = false;
+    off.grpo.batch_multiplier = 1.5;
+    expect(
+      (formToRlCreate(off).spec.training as unknown as Record<string, unknown>).batch_multiplier
+    ).toBeUndefined();
+
+    const on = validGrpo();
+    on.grpo.use_dynamic_sampling = true;
+    on.grpo.batch_multiplier = 1.5;
+    expect(
+      (formToRlCreate(on).spec.training as unknown as Record<string, unknown>).batch_multiplier
+    ).toBe(1.5);
+  });
+
+  it('drops empty LoRA module lists rather than sending them as filters', () => {
+    const data = validGrpo();
+    data.grpo.finetuning_type = 'lora';
+    data.grpo.lora = { ...data.grpo.lora, target_modules: [], exclude_modules: ['*out_proj*'] };
+    const lora = (formToRlCreate(data).spec.training as unknown as Record<string, unknown>)
+      .lora as Record<string, unknown>;
+    expect(lora.target_modules).toBeUndefined();
+    expect(lora.exclude_modules).toEqual(['*out_proj*']);
+  });
+
+  it('omits integrations when every field is blank', () => {
+    expect(formToRlCreate(validGrpo()).spec.integrations).toBeUndefined();
   });
 });

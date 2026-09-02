@@ -36,9 +36,7 @@ kubectl get runtimeclass kata-qemu >/dev/null
 kubectl get nodes -l katacontainers.io/kata-runtime=true --no-headers
 
 echo "=== namespaces ==="
-# Control plane in opensandbox-system; sandboxes (both crun + kata) in nmp-temp1.
-# Orphaned opensandbox-crun / opensandbox-kata namespaces are not deleted automatically.
-for ns in opensandbox-system nmp-temp1; do
+for ns in opensandbox-system opensandbox-crun opensandbox-kata; do
   kubectl create namespace "${ns}" --dry-run=client -o yaml | kubectl apply -f -
 done
 
@@ -56,31 +54,16 @@ ensure_api_key_secret() {
     echo "Secret ${name} already exists — keeping"
     return
   fi
-  # The script runs under `set -x`, and the key must never reach the trace, the
-  # terminal, or a CI log. Disable xtrace for the handling of the key itself and
-  # pass it via a 0600 temp file so it also stays out of kubectl's argv (visible
-  # in `ps` for the lifetime of the process).
-  { set +x; } 2>/dev/null
   local key="${!env_var:-}"
-  local generated="no"
   if [[ -z "${key}" ]]; then
     key="$(openssl rand -hex 32)"
-    generated="yes"
-  fi
-  local key_file
-  key_file="$(umask 077 && mktemp)"
-  printf '%s' "${key}" >"${key_file}"
-  unset key
-  kubectl create secret generic "${name}" \
-    -n opensandbox-system \
-    --from-file=api-key="${key_file}"
-  rm -f "${key_file}"
-  set -x
-  if [[ "${generated}" == "yes" ]]; then
     echo "Generated ${name} (set ${env_var}=... to supply your own)"
   else
-    echo "Created ${name} from \$${env_var}"
+    echo "Creating ${name} from \$${env_var}"
   fi
+  kubectl create secret generic "${name}" \
+    -n opensandbox-system \
+    --from-literal=api-key="${key}"
 }
 ensure_api_key_secret opensandbox-server-crun-api-key CRUN_API_KEY
 ensure_api_key_secret opensandbox-server-kata-api-key KATA_API_KEY
@@ -102,8 +85,6 @@ helm upgrade --install opensandbox-server-kata "${SERVER_CHART}" \
 
 echo "=== wait ==="
 kubectl rollout status deploy/opensandbox-controller-manager -n opensandbox-system --timeout=180s
-# ConfigMap-only changes do not always roll pods; restart servers so they remount config.toml.
-kubectl rollout restart deploy/opensandbox-server-crun deploy/opensandbox-server-kata -n opensandbox-system
 kubectl rollout status deploy/opensandbox-server-crun -n opensandbox-system --timeout=180s
 kubectl rollout status deploy/opensandbox-server-kata -n opensandbox-system --timeout=180s
 

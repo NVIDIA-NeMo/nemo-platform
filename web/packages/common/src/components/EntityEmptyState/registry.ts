@@ -214,6 +214,11 @@ export const ENTITY_EMPTY_STATES: Record<EmptyStateEntityKey, EmptyStateDescript
   telemetryTraces: {
     heading: 'No traces yet',
     subheading: 'Trace summaries will appear here after spans are ingested.',
+    cliCommand:
+      'nemo intake ingest otlp v1 traces create --input-file <otlp-traces>.json --workspace <workspace>',
+    // The skill id is what makes an agent load it; rewording it to prose matches nothing.
+    skillPrompt:
+      'Help me import traces into the "<workspace>" workspace with the nemo-intake skill.',
   },
   telemetrySpans: {
     heading: 'No spans yet',

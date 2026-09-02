@@ -20,8 +20,8 @@ from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError, extract_h
 from nemo_data_designer_plugin.sdk.job_results import DataDesignerJobResults
 from nemo_data_designer_plugin.sdk.logging import with_logging
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types import PlatformJobStatus
 from nemo_platform_plugin.jobs.archive import safe_extract_tar
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
@@ -78,9 +78,9 @@ class _WaitLogCollector:
     def accept_logs(self, current_logs: list[dict[str, str]]) -> None:
         for log in current_logs[len(self.seen_logs) :]:
             self.seen_logs.append(log)
-            if not log["name"].startswith("data_designer"):
+            if not log.get("name", "").startswith("data_designer"):
                 continue
-            level = log["levelname"].lower()
+            level = log.get("levelname", "").lower()
             if level == "info":
                 logger.info(log["message"])
             elif level in {"warning", "warn"}:

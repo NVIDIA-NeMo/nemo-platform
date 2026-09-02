@@ -155,9 +155,14 @@ def discover_entry_points(group: str) -> dict[str, EntryPoint]:
         Mapping of entry-point name → entry-point metadata object.
     """
     allowlist = _plugin_allowlist(group)
+    # importlib.metadata.entry_points() order reflects distribution discovery
+    # order on sys.path, which is not guaranteed stable across environments
+    # (e.g. macOS vs Linux). Sort by name so every caller — including
+    # typer.core.TyperGroup, which preserves registration order rather than
+    # sorting like click.Group — produces deterministic, reproducible output.
     return {
         ep.name: ep
-        for ep in entry_points(group=group)
+        for ep in sorted(entry_points(group=group), key=lambda ep: ep.name)
         if allowlist is None or _manifest_plugin_name(group, ep.name) in allowlist
     }
 
@@ -231,8 +236,8 @@ def discover_manifests() -> dict[str, PluginManifest]:
                 # ``dist.metadata`` is ``email.message.Message``-compatible
                 # and supports ``.get`` at runtime; ty's stub for
                 # ``importlib.metadata.PackageMetadata`` doesn't expose it.
-                version = dist.metadata.get("Version", "") if dist is not None else ""  # ty: ignore[unresolved-attribute]
-                description = dist.metadata.get("Summary", "") if dist is not None else ""  # ty: ignore[unresolved-attribute]
+                version = dist.metadata.get("Version", "") if dist is not None else ""
+                description = dist.metadata.get("Summary", "") if dist is not None else ""
             except Exception:
                 version = ""
                 description = ""

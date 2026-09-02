@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from nemo_platform import NeMoPlatform
 from nmp.common.auth.client import AuthClient
 from nmp.common.auth.exceptions import InvalidPermissionFormatError, InvalidScopeFormatError
@@ -140,7 +141,6 @@ class TestHasPermissionsPdpPayloadWithDelegation:
                 http_client=mock_http_client,
             )
             assert await auth_client.has_permissions("ws", ["models.read"]) is True
-
         body = mock_post.call_args[1]["json"]["input"]
         assert body["principal_id"] == "service:evaluator"
         assert body["on_behalf_of_principal_id"] == "user@example.com"
@@ -203,6 +203,67 @@ class TestHasPermissionsPdpPayloadWithDelegation:
             mock_post.side_effect = decide_post
             auth_client = AuthClient(principal=principal, config=auth_config, http_client=mock_http_client)
             assert await auth_client.has_permissions("ws", ["models.read"]) is True
+
+
+class TestHasRole:
+    @pytest.mark.asyncio
+    async def test_has_role_sends_effective_delegate_claims(self, auth_config, principal_service_delegating):
+        mock_http_client = httpx.AsyncClient()
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": {"has_role": True}}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(mock_http_client, "post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = mock_response
+            auth_client = AuthClient(
+                principal=principal_service_delegating,
+                config=auth_config,
+                http_client=mock_http_client,
+            )
+            assert await auth_client.has_role("system", "PlatformAdmin") is True
+
+        body = mock_post.call_args.kwargs["json"]["input"]
+        assert body == {
+            "principal_id": "user@example.com",
+            "principal_email": "user@example.com",
+            "principal_groups": ["workspace-editors"],
+            "on_behalf_of_principal_id": "user@example.com",
+            "workspace": "system",
+            "role": "PlatformAdmin",
+        }
+
+    @pytest.mark.asyncio
+    async def test_has_role_maps_pdp_transport_failure_to_service_unavailable(self, auth_config, principal):
+        mock_http_client = httpx.AsyncClient()
+        request = httpx.Request("POST", "http://localhost:8181/v1/data/authz/has_role")
+
+        with patch.object(
+            mock_http_client,
+            "post",
+            new_callable=AsyncMock,
+            side_effect=httpx.ConnectError("PDP unavailable", request=request),
+        ):
+            auth_client = AuthClient(principal=principal, config=auth_config, http_client=mock_http_client)
+            with pytest.raises(HTTPException) as exc_info:
+                await auth_client.has_role("system", "PlatformAdmin")
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail == "Role check service unavailable"
+
+    @pytest.mark.asyncio
+    async def test_has_role_maps_invalid_pdp_response_to_internal_error(self, auth_config, principal):
+        mock_http_client = httpx.AsyncClient()
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.side_effect = ValueError("invalid JSON")
+
+        with patch.object(mock_http_client, "post", new_callable=AsyncMock, return_value=mock_response):
+            auth_client = AuthClient(principal=principal, config=auth_config, http_client=mock_http_client)
+            with pytest.raises(HTTPException) as exc_info:
+                await auth_client.has_role("system", "PlatformAdmin")
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "Internal role check error"
 
 
 class TestAuthorizeRequestPdpPayloadWithDelegation:

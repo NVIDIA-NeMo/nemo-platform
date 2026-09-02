@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import re
+import subprocess
 from pathlib import Path
 
 import typer
@@ -27,6 +30,76 @@ def _load_docs_generator():
 _docs_generator = _load_docs_generator()
 generate_docs = _docs_generator.generate_docs
 generate_index_snippet = _docs_generator.generate_index_snippet
+enable_plugin_cli_docs = _docs_generator._enable_plugin_cli_docs
+documented_plugin_clis = _docs_generator._DOCUMENTED_PLUGIN_CLIS
+plugin_docs_discovery_env = _docs_generator._PLUGIN_DOCS_DISCOVERY_ENV
+
+
+def test_cli_docs_use_supported_plugins_regardless_of_environment(monkeypatch):
+    assert documented_plugin_clis == (
+        "agents",
+        "anonymizer",
+        "auditor",
+        "customization",
+        "data-designer",
+        "evaluator",
+        "insights",
+        "safe-synthesizer",
+    )
+
+    for name in plugin_docs_discovery_env:
+        monkeypatch.setenv(name, "iron-swarm")
+
+    enable_plugin_cli_docs()
+
+    assert all(os.environ[name] == value for name, value in plugin_docs_discovery_env.items())
+    assert os.environ["NEMO_PLUGIN_ALLOWLIST"] == "*"
+    assert os.environ["NEMO_PLUGIN_CLI_ALLOWLIST"] == ",".join(documented_plugin_clis)
+    assert "iron-swarm" not in documented_plugin_clis
+
+
+def test_cli_docs_main_includes_supported_plugin_commands(tmp_path):
+    env = os.environ.copy()
+    env.update({name: "iron-swarm" for name in plugin_docs_discovery_env})
+    repo_root = Path(_docs_generator.__file__).resolve().parents[3]
+
+    result = subprocess.run(
+        ["uv", "run", "--project", str(repo_root), str(_docs_generator.__file__), "summary"],
+        check=True,
+        capture_output=True,
+        env=env,
+        text=True,
+        cwd=tmp_path,
+    )
+
+    functional_plugins_row = next(
+        line for line in result.stdout.splitlines() if line.startswith("| Functional plugins |")
+    )
+    for plugin_name in documented_plugin_clis:
+        assert f"`{plugin_name}`" in functional_plugins_row
+    assert "`iron-swarm`" not in functional_plugins_row
+
+
+def test_cli_docs_main_documents_supported_plugin_subcommands(tmp_path):
+    env = os.environ.copy()
+    env.update({name: "iron-swarm" for name in plugin_docs_discovery_env})
+    repo_root = Path(_docs_generator.__file__).resolve().parents[3]
+
+    result = subprocess.run(
+        ["uv", "run", "--project", str(repo_root), str(_docs_generator.__file__), "reference"],
+        check=True,
+        capture_output=True,
+        env=env,
+        text=True,
+        cwd=tmp_path,
+    )
+
+    for plugin_name in documented_plugin_clis:
+        assert f"### nemo {plugin_name}\n" in result.stdout
+        assert re.search(rf"^#### nemo {re.escape(plugin_name)} \S", result.stdout, re.MULTILINE), (
+            f"expected at least one documented subcommand for `nemo {plugin_name}`"
+        )
+    assert "iron-swarm" not in result.stdout
 
 
 def test_index_snippet_skips_hidden_lazy_commands_without_loading():

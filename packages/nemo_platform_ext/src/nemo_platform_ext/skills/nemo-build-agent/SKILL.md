@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: nemo-build-agent
-description: End-to-end NeMo Platform agent implementation from an approved agent spec. Registers and deploys the agent, generates evaluation data, runs evaluation, and signs off. Use for full spec-to-deployed-agent work, including builds from an existing legacy NAT workflow.
+description: End-to-end NeMo Platform agent implementation from an approved Ethos. Registers and deploys the agent, generates evaluation data, runs evaluation, and signs off. Use for full Ethos-to-deployed-agent work, including builds from an existing legacy NAT workflow.
 triggers:
   - nemo-build-agent
   - build the agent
@@ -12,14 +12,14 @@ triggers:
   - scaffold the agent
   - make me an agent
   - build an agent on nemo
-  - build from the agent spec
+  - build from the agent Ethos
   - ship the agent
   - nemo build
   - deploy my existing NAT agent
 not-for:
   - nemo-agent-config (use for focused agent.yaml authoring or migration)
   - nemo-explore (use to gather design before building)
-  - nemo-spec (use to write the spec file before building)
+  - nemo-ethos (use to write the Ethos before building)
   - nemo-try-agent (use to query an already deployed agent)
   - nemo-setup (use to install the platform first)
   - deploy-sandbox (use to deploy the built agent as a governed OpenShell sandbox)
@@ -29,7 +29,7 @@ preconditions:
   - workspace_exists
   - provider_registered
   - agents_plugin_available
-  - agent_spec_exists
+  - ethos_exists
 compatibility: nemo-platform >= 0.1.0; running platform; requires agents plugin; writes files under agents/; uses nemo-agents-spec-v1 by default and preserves NAT workflow YAML as a compatibility path; macOS or Linux; safe under sandbox.
 maturity: active
 license: Apache-2.0
@@ -39,7 +39,7 @@ allowed-tools: [Bash, Read, Write, Edit]
 
 # NeMo Platform agent build
 
-Build a deployable NeMo Platform agent from an approved `AGENT-SPEC.md`. Use
+Build a deployable NeMo Platform agent from an approved `ETHOS.md`. Use
 the Platform-managed `nemo-agents-spec-v1` `agent.yaml` path by default. Treat
 NAT workflow YAML as a supported compatibility path, not the default output.
 
@@ -77,19 +77,21 @@ NAT_WORKFLOW_PATH=<path-to-workflow-yaml>
 3. Check for existing Agent entities and deployments. Ask whether to reuse or
    replace them. Follow the lifecycle branches below before create or deploy.
 4. For an unchanged NAT-only run, confirm `$NAT_WORKFLOW_PATH` exists and read
-   it before continuing. Do not require `AGENT-SPEC.md` or a spec fileset.
+   it before continuing. Do not require `ETHOS.md` or an Ethos fileset.
 5. For the default Platform-managed path, confirm
-   `agents/$AGENT_NAME-spec/AGENT-SPEC.md` exists. If it does not, route through
-   `nemo-explore` and `nemo-spec` first.
-6. Read the spec and extract the agent name, instructions, capabilities,
+   `agents/$AGENT_NAME-ethos/ETHOS.md` exists. If it does not, route through
+   `nemo-explore` and `nemo-ethos` first. If
+   `agents/$AGENT_NAME-spec/AGENT-SPEC.md` exists instead, route to
+   `nemo-explore`.
+6. Read the Ethos and extract the agent name, instructions, capabilities,
    model requirements, tools, constraints, and success criteria.
-7. Confirm the canonical spec fileset exists:
+7. Confirm the canonical Ethos fileset exists:
 
    ```bash
-   .venv/bin/nemo files filesets get "${AGENT_NAME}-spec" \
+   .venv/bin/nemo files filesets get "${AGENT_NAME}-ethos" \
      --workspace "${WORKSPACE:-default}" >/dev/null 2>&1 \
-     && echo "spec_fileset_ok" \
-     || { echo "spec_fileset_missing - run nemo-spec first"; exit 1; }
+     && echo "ethos_fileset_ok" \
+     || { echo "ethos_fileset_missing - run nemo-ethos first"; exit 1; }
    ```
 
 Steps 5 through 7 apply only to the default Platform-managed path or an explicit
@@ -139,14 +141,14 @@ and deploy commands in Step 1:
 For a new build, invoke `nemo-agent-config` and create:
 
 ```txt
-agents/<agent-name>-spec/
-  AGENT-SPEC.md
+agents/<agent-name>-ethos/
+  ETHOS.md
   agent.yaml
 ```
 
 Delegate authoring to `nemo-agent-config`. It selects the supported harness and
 uses `nemo-model-selection` to verify the exact model against that harness's
-model contract before writing the model block. Translate the approved spec into
+model contract before writing the model block. Translate the approved Ethos into
 system instructions, skills, MCP servers, tools, environment paths, and
 telemetry. Keep every local path relative to the directory containing
 `agent.yaml`.
@@ -161,7 +163,7 @@ Before registration, inspect `skills.paths`:
   ```bash
   IMAGE_TAG="${AGENT_NAME}:local"
   .venv/bin/nemo agents package \
-    --agent "agents/$AGENT_NAME-spec/agent.yaml" \
+    --agent "agents/$AGENT_NAME-ethos/agent.yaml" \
     --tag "$IMAGE_TAG"
   ```
 
@@ -190,7 +192,7 @@ for explicit confirmation immediately before running it:
 ```bash
 .venv/bin/nemo agents create \
   --name "$AGENT_NAME" \
-  --agent-config "agents/$AGENT_NAME-spec/agent.yaml"
+  --agent-config "agents/$AGENT_NAME-ethos/agent.yaml"
 ```
 
 After create succeeds, show the deploy command and ask for explicit
@@ -252,8 +254,9 @@ confirmation before running it:
 
 ## Step 2: Try the deployed agent
 
-For the default path, invoke one question from each category in the spec. For
-an unchanged NAT-only run without a spec, use representative questions from the
+For the default path, invoke one question from each category in the Ethos
+`Scope` section (`Categories`). Do not invent a separate category heading. For
+an unchanged NAT-only run without an Ethos, use representative questions from the
 workflow and the user's stated requirements:
 
 ```bash
@@ -273,12 +276,12 @@ continue to evaluation.
 
 Before Step 3, branch explicitly:
 
-1. For an unchanged NAT-only run without `AGENT-SPEC.md`, stop after the smoke
+1. For an unchanged NAT-only run without `ETHOS.md`, stop after the smoke
    test. Do not execute Steps 3–5 and do not require an evaluation fileset.
-2. Continue into the spec-driven purpose selection and Data Designer flow only
-   when the user requests it and `agents/$AGENT_NAME-spec/AGENT-SPEC.md` exists.
-   If the user requests evaluation but the spec is absent, create and confirm
-   the spec first; do not continue to Step 3 yet.
+2. Continue into the Ethos-driven purpose selection and Data Designer flow only
+   when the user requests it and `agents/$AGENT_NAME-ethos/ETHOS.md` exists.
+   If the user requests evaluation but the Ethos is absent, create and confirm
+   the Ethos first; do not continue to Step 3 yet.
 
 ## Step 3: Generate synthetic data
 
@@ -286,17 +289,17 @@ Use Data Designer for every synthetic dataset. Do not hand-author evaluation,
 knowledge-base, benchmark, persona, or training data.
 
 1. Always select evaluation as a required data purpose. Read
-   `agents/$AGENT_NAME-spec/AGENT-SPEC.md` and list any additional plausible
+   `agents/$AGENT_NAME-ethos/ETHOS.md` and list any additional plausible
    purposes: knowledge/RAG corpus, benchmark, personas/adversarial inputs,
    training, or another user-requested purpose.
 2. Wait for the user to choose any additional purposes. Evaluation cannot be
-   omitted. If they delegate the decision, add a knowledge base when the spec
+   omitted. If they delegate the decision, add a knowledge base when the Ethos
    requires retrieval and adversarial personas when it contains safety
    constraints.
 3. Invoke `data-designer` once per selected purpose, passing the agent name,
-   purpose, and spec path.
+   purpose, and Ethos path.
 4. Require every generated config to read product context from
-   `AGENT-SPEC.md`; do not duplicate that context inline.
+   `ETHOS.md`; do not duplicate that context inline.
 5. Run each generated config. For evaluation, validate the generated records,
    verify the resulting fileset exists, and record its exact dataset reference
    as `EVAL_DATASET_REF`.
@@ -309,7 +312,7 @@ exist before evaluation proceeds.
 
 If the generated data must be available during invocation, connect it through
 the selected harness's supported skills, MCP, or tool configuration. Update
-`agents/$AGENT_NAME-spec/agent.yaml` through `nemo-agent-config`, then follow the
+`agents/$AGENT_NAME-ethos/agent.yaml` through `nemo-agent-config`, then follow the
 confirmed replacement branch before creating and deploying the Agent again.
 
 Do not invent a generic retriever field. If the selected harness cannot consume
@@ -354,7 +357,7 @@ After all validation succeeds:
 
 Poll until the job reaches `completed` or `failed`, then download aggregate
 scores. Show the score table and compare it with the success bar in
-`AGENT-SPEC.md`.
+`ETHOS.md`.
 
 ```bash
 for i in $(seq 1 24); do
@@ -373,7 +376,7 @@ done
 For `nemo-agents-spec-v1`, `AgentConfig` has no guardrail field and the current
 skills do not define a supported composition between an Agent and an IGW
 guardrailed VirtualModel. Do not add guardrail fields to `agent.yaml` or claim
-that guardrails are attached. If the spec requires guardrails, report this as an
+that guardrails are attached. If the Ethos requires guardrails, report this as an
 unmet requirement and stop before sign-off. `nemo-guardrails` may be used to
 configure IGW VirtualModel middleware as a separate workflow, but do not treat
 it as integrated with the Agent until its model routing has been explicitly
@@ -390,7 +393,7 @@ enforced without blocking the legitimate request.
 
 ## Step 6: Sign off
 
-Invoke the success-criteria prompt from the spec against
+Invoke the success-criteria prompt from the Ethos against
 `$DEPLOYMENT_NAME`. Print the verbatim response as the formal sign-off. Do not
 claim success until the deployment is `running`, evaluation has completed, and
 the sign-off returns an actual model response.
@@ -409,9 +412,9 @@ the sign-off returns an actual model response.
 
 ## Hard rules
 
-- Default new builds to `agents/$AGENT_NAME-spec/agent.yaml` with
+- Default new builds to `agents/$AGENT_NAME-ethos/agent.yaml` with
   `config_format: nemo-agents-spec-v1`.
-- Keep `AGENT-SPEC.md` as the human-readable design and `agent.yaml` as the
+- Keep `ETHOS.md` as the human-readable design and `agent.yaml` as the
   machine-readable implementation config.
 - Preserve legacy NAT YAML unless the user explicitly requests migration.
 - Do not mix NAT-only keys such as `functions`, `llms`, `workflow`, or

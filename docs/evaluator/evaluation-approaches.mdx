@@ -45,9 +45,10 @@ Entry point: [Evaluation Metrics](/documentation/evaluate-models/metrics).
 
 You start from **tasks**. Each task gives an agent an instruction and any inputs it needs; the agent
 performs the task through a **runner**, producing a **trial** — the agent's final output plus
-evidence such as its trajectory (an [Agent Trajectory Interchange Format (ATIF)](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trace of steps and tool calls), final filesystem state, and
-logs. Container-based runners also provide an environment (and its final state) the agent works in.
-Metrics then score the trial. Because the trajectory is part of the trial, you can score not
+evidence such as [Agent Trajectory Interchange Format (ATIF)](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md)
+steps and tool calls or OTLP resource spans, final filesystem state, and logs. Container-based runners
+also provide an environment (and its final state) the agent works in. Metrics then score the trial.
+Because trace evidence is part of the trial, you can score not
 just *whether the answer is right* but *how the agent worked* — for example, whether it used the
 expected tool.
 
@@ -70,13 +71,13 @@ Entry point: [Agent Evaluation](/documentation/evaluate-models/agent-eval).
 |---|---|---|
 | **Unit of evaluation** | a dataset row | a task, and the trial it produces |
 | **What produces the candidate** | a model/pipeline generates an output per row | an agent performs the task (via a runner) |
-| **What you score** | the output, against a reference | the trial: final output **and** trajectory/evidence |
-| **Evidence available to the scorer** | the output (and row fields) | ATIF trace, tool calls, final state, logs |
+| **What you score** | the output, against a reference | the trial: final output **and** trace/evidence |
+| **Evidence available to the scorer** | the output (and row fields) | ATIF steps/tool calls or OTLP resource spans, final state, logs |
 | **Metric assignment** | one metric set applied to every row | each task defines its own metrics (heterogeneous suites) |
-| **Scoring granularity** | per-row metric + aggregate | task · trajectory · component (views) · session |
+| **Scoring granularity** | per-row metric + aggregate | task · trace/evidence · component (views) · session |
 | **Target** | a `Model` or `Agent` (plus the dataset) | a `Model`, a deployed `Agent` (HTTP), or a custom runner |
 | **Entry point** | metrics (`RunConfig`, dataset rows) | `AgentEvaluator` + `AgentEvalTask` |
-| **Result** | metric results + aggregates | an `AgentEvalResult` bundle (trials incl. ATIF trajectory & file evidence, scores, summary, report) |
+| **Result** | metric results + aggregates | an `AgentEvalResult` bundle (trials incl. ATIF trajectory, OTLP traces & file evidence, scores, summary, report) |
 | **Best for** | model quality, RAG, regression on labeled data | agents, tool use, multi-step behavior, skills, model/skill A/B |
 
 ## Which should I use?
@@ -92,7 +93,7 @@ does it matters — use **task-driven**.
 - **Dataset-driven** — you have (or can produce) a labeled dataset and want to score outputs against
   references: LLM quality, RAG, or a regression suite.
 - **Task-driven** — the system under test is an agent that uses tools or takes multiple steps, you
-  want to score the trajectory as well as the outcome, your suite is **heterogeneous** so different
+  want to score trace evidence as well as the outcome, your suite is **heterogeneous** so different
   tasks need different metrics (e.g. a coding agent producing docs, Q&A, tests, and net-new code), or
   you're running a skills / model A/B on agentic tasks.
 - **Both** — the two compose. It's common to track base model quality with dataset-driven metrics
