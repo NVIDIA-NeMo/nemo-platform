@@ -14,6 +14,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -73,7 +74,7 @@ class FabricServingSettings:
 def _to_fabric_invocation_request(
     request: ChatCompletionRequest,
     *,
-    session_id: str,
+    session_id: str | None,
 ) -> FabricInvocationRequest:
     """Translate the chat transcript into a Platform-owned Fabric request."""
     messages = request.messages
@@ -83,9 +84,10 @@ def _to_fabric_invocation_request(
         if len(messages) == 1
         else "\n\n".join(f"{message.role}: {message.content}" for message in messages)
     )
+    caller_context = {"session_id": session_id} if session_id is not None else {}
     return FabricInvocationRequest(
         input=input_text,
-        caller_context={"session_id": session_id},
+        caller_context=caller_context,
     )
 
 
@@ -305,29 +307,40 @@ def create_fabric_serving_app(
         response: Response,
         session_id: Annotated[str | None, Header(alias=SESSION_ID_HEADER)] = None,
     ) -> ChatCompletionResponse | StreamingResponse:
-        try:
-            session = await app.state.session_manager.resolve_session(session_id)
-        except FabricSessionNotFoundError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
-        except FabricSessionStartError as error:
-            raise HTTPException(status_code=503, detail=str(error)) from error
+        response_headers: dict[str, str] | None = None
+        if session_id is None:
+            invocation_request = _to_fabric_invocation_request(request, session_id=None)
+            invoke = app.state.session_manager.invoke_once
+            stream = app.state.session_manager.stream_once
+        else:
+            try:
+                session = await app.state.session_manager.resolve_session(session_id)
+            except FabricSessionNotFoundError as error:
+                raise HTTPException(status_code=404, detail=str(error)) from error
+            except FabricSessionStartError as error:
+                raise HTTPException(status_code=503, detail=str(error)) from error
+            invocation_request = _to_fabric_invocation_request(request, session_id=session.session_id)
+            response_headers = _session_headers(session.session_id)
+            invoke = partial(app.state.session_manager.invoke_session, session)
+            stream = partial(app.state.session_manager.stream_session, session)
 
-        invocation_request = _to_fabric_invocation_request(request, session_id=session.session_id)
         if request.stream:
-            stream_context = app.state.session_manager.stream_session(session, invocation_request)
+            stream_context = stream(invocation_request)
             try:
                 fabric_stream = await stream_context.__aenter__()
+            except FabricSessionStartError as error:
+                raise HTTPException(status_code=503, detail=str(error), headers=response_headers) from error
             except FabricSessionNotFoundError as error:
                 raise HTTPException(
                     status_code=404,
                     detail=str(error),
-                    headers=_session_headers(session.session_id),
+                    headers=response_headers,
                 ) from error
             except FabricRuntimeExecutionError as error:
                 raise HTTPException(
                     status_code=502,
                     detail=str(error),
-                    headers=_session_headers(session.session_id),
+                    headers=response_headers,
                 ) from error
             return StreamingResponse(
                 _iter_streaming_chat_completion(
@@ -337,35 +350,37 @@ def create_fabric_serving_app(
                     model=_request_model_name(request),
                 ),
                 media_type="text/event-stream",
-                headers=_session_headers(session.session_id),
+                headers=response_headers,
             )
 
         try:
-            result = await app.state.session_manager.invoke_session(session, invocation_request)
+            result = await invoke(invocation_request)
+        except FabricSessionStartError as error:
+            raise HTTPException(status_code=503, detail=str(error), headers=response_headers) from error
         except FabricSessionNotFoundError as error:
             raise HTTPException(
                 status_code=404,
                 detail=str(error),
-                headers=_session_headers(session.session_id),
+                headers=response_headers,
             ) from error
         except FabricRuntimeTimeoutError as error:
             raise HTTPException(
                 status_code=504,
                 detail=str(error),
-                headers=_session_headers(session.session_id),
+                headers=response_headers,
             ) from error
         except FabricRuntimeExecutionError as error:
             raise HTTPException(
                 status_code=502,
                 detail=str(error),
-                headers=_session_headers(session.session_id),
+                headers=response_headers,
             ) from error
 
         if result.status != "succeeded":
             raise HTTPException(
                 status_code=502,
                 detail=_failed_result_detail(result),
-                headers=_session_headers(session.session_id),
+                headers=response_headers,
             )
 
         try:
@@ -374,10 +389,11 @@ def create_fabric_serving_app(
             raise HTTPException(
                 status_code=502,
                 detail=str(error),
-                headers=_session_headers(session.session_id),
+                headers=response_headers,
             ) from error
 
-        response.headers[SESSION_ID_HEADER] = session.session_id
+        if response_headers is not None:
+            response.headers.update(response_headers)
         return completion
 
     @app.delete("/v1/sessions/{session_id}", status_code=204)

@@ -18,9 +18,10 @@ from nemo_agents_plugin.fabric.runtime import (
     FabricRuntimeTimeoutError,
     invoke_fabric_runtime,
     run_fabric_agent_once,
+    stream_fabric_agent_once,
     stream_fabric_runtime,
 )
-from nemo_fabric import FabricConfig  # ty: ignore[unresolved-import]
+from nemo_fabric import FabricConfig
 
 
 class _FabricMapping:
@@ -148,14 +149,16 @@ class _FakeFabric:
         *,
         base_dir: Path | str,
         overrides: dict[str, Any] | None = None,
+        streaming: bool = False,
     ) -> _FakeRuntime:
-        self.start_calls.append(
-            {
-                "base_dir": base_dir,
-                "fabric_config": fabric_config,
-                "overrides": overrides,
-            }
-        )
+        call = {
+            "base_dir": base_dir,
+            "fabric_config": fabric_config,
+            "overrides": overrides,
+        }
+        if streaming:
+            call["streaming"] = True
+        self.start_calls.append(call)
         if self.start_error is not None:
             raise self.start_error
         return self.runtime
@@ -276,6 +279,55 @@ class TestRunFabricAgentOnce:
         assert result.telemetry == [{"provider": "relay", "kind": "trace"}]
         assert result.events == [{"kind": "runtime_start", "message": "started"}]
         assert result.metadata == {"adapter_runner": "python"}
+
+
+@pytest.mark.asyncio
+class TestStreamFabricAgentOnce:
+    async def test_keeps_ephemeral_runtime_alive_for_stream_context(self) -> None:
+        fabric_config = cast(FabricConfig, object())
+        fake_runtime = _FakeRuntime()
+        fake_fabric = _FakeFabric(runtime=fake_runtime)
+        request = FabricOneShotRequest(
+            fabric_config=fabric_config,
+            base_dir=Path("/tmp/agent"),
+            input="hello",
+            request_id="platform-request-1",
+            caller_context={"source": "server"},
+        )
+
+        async with stream_fabric_agent_once(request, fabric=fake_fabric) as stream:
+            assert fake_runtime.entered is True
+            assert fake_runtime.exited is False
+            assert [record async for record in stream.records()] == [{"type": "span", "message": "thinking"}]
+            result = await stream.result()
+
+        assert fake_runtime.exited is True
+        assert fake_fabric.start_calls == [
+            {
+                "base_dir": Path("/tmp/agent"),
+                "fabric_config": fabric_config,
+                "overrides": None,
+                "streaming": True,
+            }
+        ]
+        fabric_request = fake_runtime.invoke_stream_requests[0]
+        assert fabric_request.input == "hello"
+        assert fabric_request.request_id == "platform-request-1"
+        assert fabric_request.context == {"source": "server"}
+        assert result.response == "hello"
+
+    async def test_cleans_up_runtime_when_stream_start_fails(self) -> None:
+        fake_runtime = _FakeRuntime(invoke_error=fabric_runtime.FabricError("stream unavailable"))
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+
+        with pytest.raises(FabricRuntimeExecutionError, match="stream unavailable"):
+            async with stream_fabric_agent_once(request, fabric=_FakeFabric(runtime=fake_runtime)):
+                pass
+
+        assert fake_runtime.exited is True
 
 
 @pytest.mark.asyncio

@@ -15,12 +15,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Mapping, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 # CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
-from nemo_fabric import (  # ty: ignore[unresolved-import]
+from nemo_fabric import (
     Fabric,
     FabricConfig,
     FabricError,
@@ -200,6 +201,37 @@ async def run_fabric_agent_once(
         ) from error
 
     return _normalize_fabric_run_result(result)
+
+
+@asynccontextmanager
+async def stream_fabric_agent_once(
+    request: FabricOneShotRequest,
+    *,
+    fabric: Any | None = None,
+) -> AsyncIterator[FabricRuntimeStream]:
+    """Start an ephemeral Fabric runtime and keep it alive for one stream."""
+    fabric_client = fabric or Fabric()
+
+    try:
+        async with await fabric_client.start_runtime(
+            request.fabric_config,
+            base_dir=request.base_dir,
+            overrides=request.overrides,
+            streaming=True,
+        ) as runtime:
+            yield stream_fabric_runtime(
+                runtime,
+                FabricInvocationRequest(
+                    input=request.input,
+                    request_id=request.request_id,
+                    caller_context=request.caller_context,
+                    timeout_seconds=request.timeout_seconds,
+                ),
+            )
+    except FabricError as error:
+        raise FabricRuntimeExecutionError(
+            f"Fabric runtime streaming failed: {error}",
+        ) from error
 
 
 async def _invoke_fabric_agent_once(

@@ -300,23 +300,20 @@ def test_rejects_invalid_serving_settings() -> None:
         FabricServingSettings(session_cleanup_interval_seconds=0)
 
 
-def test_chat_completion_without_session_id_opens_and_returns_session(
+def test_chat_completion_without_session_id_invokes_once_without_creating_session(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config_path = _write_agent_config(tmp_path)
     app = create_fabric_serving_app(config_path)
-    resolve_calls: list[str | None] = []
-    invocation_calls: list[tuple[Any, Any]] = []
-    runtime = object()
+    invocation_calls: list[Any] = []
 
-    async def resolve_session(session_id: str | None) -> Any:
-        resolve_calls.append(session_id)
-        return SimpleNamespace(session_id="session-1", runtime=runtime)
+    async def resolve_session(session_id: str) -> Any:
+        pytest.fail(f"headerless request resolved session {session_id!r}")
 
-    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
-        invocation_calls.append((session, request))
+    async def invoke_once(request: Any) -> FabricRuntimeResult:
+        invocation_calls.append(request)
         return FabricRuntimeResult(
             status="succeeded",
             output={"response": "hello", "usage": {"total_tokens": 3}},
@@ -326,14 +323,14 @@ def test_chat_completion_without_session_id_opens_and_returns_session(
 
     with TestClient(app) as client:
         monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
-        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_once", invoke_once)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
         )
 
     assert response.status_code == 200
-    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert SESSION_ID_HEADER not in response.headers
     assert response.json() == {
         "id": "invocation-1",
         "object": "chat.completion",
@@ -347,11 +344,9 @@ def test_chat_completion_without_session_id_opens_and_returns_session(
         ],
         "usage": {"total_tokens": 3},
     }
-    assert resolve_calls == [None]
-    resolved_session, invocation_request = invocation_calls[0]
-    assert resolved_session.runtime is runtime
+    invocation_request = invocation_calls[0]
     assert invocation_request.input == "hello"
-    assert invocation_request.caller_context == {"session_id": "session-1"}
+    assert invocation_request.caller_context == {}
 
 
 def test_chat_completion_with_session_id_reuses_session(
@@ -361,9 +356,9 @@ def test_chat_completion_with_session_id_reuses_session(
 ) -> None:
     config_path = _write_agent_config(tmp_path)
     app = create_fabric_serving_app(config_path)
-    resolve_calls: list[str | None] = []
+    resolve_calls: list[str] = []
 
-    async def resolve_session(session_id: str | None) -> Any:
+    async def resolve_session(session_id: str) -> Any:
         resolve_calls.append(session_id)
         return SimpleNamespace(session_id="session-1", runtime=object())
 
@@ -400,22 +395,18 @@ def test_chat_completion_maps_runtime_errors(
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
 
-    async def resolve_session(session_id: str | None) -> Any:
-        return SimpleNamespace(session_id="session-1", runtime=object())
-
-    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
+    async def invoke_once(request: Any) -> FabricRuntimeResult:
         raise error
 
     with TestClient(app) as client:
-        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
-        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_once", invoke_once)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
         )
 
     assert response.status_code == status_code
-    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert SESSION_ID_HEADER not in response.headers
     assert response.json() == {"detail": str(error)}
 
 
@@ -435,7 +426,7 @@ def test_chat_completion_maps_session_resolution_errors(
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
 
-    async def resolve_session(session_id: str | None) -> Any:
+    async def resolve_session(session_id: str) -> Any:
         raise error
 
     with TestClient(app) as client:
@@ -451,41 +442,35 @@ def test_chat_completion_maps_session_resolution_errors(
     assert response.json() == {"detail": str(error)}
 
 
-def test_streaming_chat_completion_maps_stream_start_errors(
+def test_streaming_chat_completion_without_session_maps_stream_start_errors(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
 
-    async def resolve_session(session_id: str | None) -> Any:
-        return SimpleNamespace(session_id="session-1", runtime=object())
-
-    def stream_session(session: Any, request: Any) -> _FakeStreamContext:
+    def stream_once(request: Any) -> _FakeStreamContext:
         return _FakeStreamContext(enter_error=FabricRuntimeExecutionError("stream failed"))
 
     with TestClient(app) as client:
-        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
-        monkeypatch.setattr(app.state.session_manager, "stream_session", stream_session)
+        monkeypatch.setattr(app.state.session_manager, "stream_once", stream_once)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}], "stream": True},
         )
 
     assert response.status_code == 502
-    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert SESSION_ID_HEADER not in response.headers
     assert response.json() == {"detail": "stream failed"}
 
 
-def test_streaming_chat_completion_returns_openai_sse_response(
+def test_streaming_chat_completion_without_session_uses_one_shot_stream(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
-    resolve_calls: list[str | None] = []
-    stream_calls: list[tuple[Any, Any]] = []
-    runtime = object()
+    stream_calls: list[Any] = []
     fabric_stream = _FakeFabricStream(
         [
             {"kind": "scope", "scope_category": "start", "name": "request"},
@@ -496,17 +481,12 @@ def test_streaming_chat_completion_returns_openai_sse_response(
     )
     stream_context = _FakeStreamContext(fabric_stream)
 
-    async def resolve_session(session_id: str | None) -> Any:
-        resolve_calls.append(session_id)
-        return SimpleNamespace(session_id="session-1", runtime=runtime)
-
-    def stream_session(session: Any, request: Any) -> _FakeStreamContext:
-        stream_calls.append((session, request))
+    def stream_once(request: Any) -> _FakeStreamContext:
+        stream_calls.append(request)
         return stream_context
 
     with TestClient(app) as client:
-        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
-        monkeypatch.setattr(app.state.session_manager, "stream_session", stream_session)
+        monkeypatch.setattr(app.state.session_manager, "stream_once", stream_once)
         with client.stream(
             "POST",
             "/v1/chat/completions",
@@ -516,12 +496,10 @@ def test_streaming_chat_completion_returns_openai_sse_response(
 
     assert response.status_code == 200
     assert "text/event-stream" in response.headers["content-type"]
-    assert response.headers[SESSION_ID_HEADER] == "session-1"
-    assert resolve_calls == [None]
-    resolved_session, invocation_request = stream_calls[0]
-    assert resolved_session.runtime is runtime
+    assert SESSION_ID_HEADER not in response.headers
+    invocation_request = stream_calls[0]
     assert invocation_request.input == "hello"
-    assert invocation_request.caller_context == {"session_id": "session-1"}
+    assert invocation_request.caller_context == {}
     assert stream_context.exit_calls == 1
     assert fabric_stream.aclose_calls == 0
 
@@ -538,9 +516,9 @@ def test_streaming_chat_completion_reuses_supplied_session_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
-    resolve_calls: list[str | None] = []
+    resolve_calls: list[str] = []
 
-    async def resolve_session(session_id: str | None) -> Any:
+    async def resolve_session(session_id: str) -> Any:
         resolve_calls.append(session_id)
         return SimpleNamespace(session_id="session-1", runtime=object())
 
@@ -639,25 +617,21 @@ def test_chat_completion_maps_failed_run_result(
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
 
-    async def resolve_session(session_id: str | None) -> Any:
-        return SimpleNamespace(session_id="session-1", runtime=object())
-
-    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
+    async def invoke_once(request: Any) -> FabricRuntimeResult:
         return FabricRuntimeResult(
             status="failed",
             error={"stage": "invoke", "message": "adapter failed"},
         )
 
     with TestClient(app) as client:
-        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
-        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_once", invoke_once)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
         )
 
     assert response.status_code == 502
-    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert SESSION_ID_HEADER not in response.headers
     assert response.json() == {"detail": "adapter failed"}
 
 
