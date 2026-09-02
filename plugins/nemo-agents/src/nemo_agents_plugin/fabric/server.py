@@ -205,6 +205,12 @@ class _StreamingChatCompletionIterator:
             await asyncio.wait_for(asyncio.shield(close_task), timeout=remaining)
         except TimeoutError:
             self._observe_background_cleanup(close_task)
+        except Exception:
+            self._closed = True
+            logger.exception(
+                "Fabric stream cleanup failed for completion %s.",
+                self._completion_id,
+            )
 
     def _start_cleanup(self) -> asyncio.Task[None]:
         if self._close_task is None:
@@ -224,6 +230,7 @@ class _StreamingChatCompletionIterator:
 
     def _log_background_cleanup_result(self, close_task: asyncio.Task[None]) -> None:
         if close_task.cancelled():
+            self._closed = True
             logger.warning(
                 "Background Fabric stream cleanup was cancelled for completion %s.",
                 self._completion_id,
@@ -231,6 +238,7 @@ class _StreamingChatCompletionIterator:
             return
         error = close_task.exception()
         if error is not None:
+            self._closed = True
             logger.error(
                 "Background Fabric stream cleanup failed for completion %s.",
                 self._completion_id,

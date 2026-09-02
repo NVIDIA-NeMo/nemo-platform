@@ -712,6 +712,38 @@ async def test_streaming_response_closes_stream_after_client_disconnect() -> Non
 
 
 @pytest.mark.asyncio
+async def test_streaming_response_cleanup_failure_does_not_mask_client_disconnect(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cleanup_error = RuntimeError("cleanup failed")
+    fabric_stream = _FakeFabricStream()
+    stream_context = _FakeStreamContext(fabric_stream, exit_error=cleanup_error)
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+
+    async def receive() -> Any:
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.4"}})
+    with caplog.at_level("ERROR"):
+        with pytest.raises(ClientDisconnect):
+            await response(scope, receive, cast(Any, send))
+
+    assert "Fabric stream cleanup failed for completion chatcmpl-test." in caplog.text
+    assert iterator._closed
+    await iterator.aclose()
+
+
+@pytest.mark.asyncio
 async def test_streaming_response_completes_cleanup_after_asgi_cancellation() -> None:
     fabric_stream = _FakeFabricStream(
         [{"data": {"choices": [{"delta": {"content": "partial"}}]}}],
@@ -874,6 +906,8 @@ async def test_streaming_response_logs_cleanup_failure_after_timeout(
         await asyncio.sleep(0)
 
     assert "Background Fabric stream cleanup failed for completion chatcmpl-test." in caplog.text
+    assert iterator._closed
+    await iterator.aclose()
 
 
 def test_chat_completion_maps_failed_run_result(
