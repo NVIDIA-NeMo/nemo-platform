@@ -11,7 +11,7 @@ path exercises the Analyst-as-Agent implementation.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from nemo_insights_plugin._perms import AnalysisRunPerms
@@ -20,17 +20,19 @@ from nemo_insights_plugin.authz import scope
 from nemo_platform import APIStatusError, AsyncNeMoPlatform
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.dependencies import get_sdk_client
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 INSIGHTS_ANALYSIS_EXTENSION_KIND = "insights.analysis"
 
 router = APIRouter(tags=["Insights Analysis Runs"])
 
+NonBlankString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
 
 class CreateAnalysisRunRequest(BaseModel):
     """Client-facing request to run the Insights Analyst through ``agents.execute``."""
 
-    agent: str = Field(description="Agent whose telemetry should be analyzed.")
+    agent: NonBlankString = Field(description="Agent whose telemetry should be analyzed.")
     default_model: str = Field(
         description=(
             "Workspace-qualified Model Entity ref ('<workspace>/<name>') the Analyst uses for "
@@ -44,7 +46,7 @@ class CreateAnalysisRunRequest(BaseModel):
             "the same reason as default_model."
         ),
     )
-    ethos: str | None = Field(
+    ethos: NonBlankString | None = Field(
         default=None,
         description=(
             "Optional Ethos Markdown for the agent under test. Sent inline rather than as a "
@@ -55,7 +57,7 @@ class CreateAnalysisRunRequest(BaseModel):
         default=None,
         description="Optional lower bound enforced on the Analyst's trace/span reads.",
     )
-    evaluation_id: str | None = Field(
+    evaluation_id: NonBlankString | None = Field(
         default=None,
         description="Optional run scope AND-pinned onto every span read.",
     )

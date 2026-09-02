@@ -118,6 +118,30 @@ def test_ethos_is_omitted_when_unset() -> None:
     assert "ethos" not in config.agent.config["harnesses"]["insights"]["settings"]
 
 
+@pytest.mark.parametrize("field", ["agent", "evaluation_id", "ethos"])
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+def test_blank_settings_are_rejected(field: str, blank: str) -> None:
+    """These reach the adapter verbatim, which rejects a blank only once the job is running."""
+    body = {"agent": "demo-agent", "default_model": DEFAULT_MODEL, "fast_model": FAST_MODEL, field: blank}
+
+    with pytest.raises(ValidationError):
+        CreateAnalysisRunRequest.model_validate(body)
+
+
+def test_surrounding_whitespace_is_trimmed_before_it_reaches_the_inline_analyst() -> None:
+    request = _request(agent="  demo-agent  ", evaluation_id="  eval-123\n", ethos="\n# Ethos\n")
+
+    config = ExecuteAgentJobConfig.model_validate(build_execute_agent_job_config(request, workspace="team-a"))
+
+    assert isinstance(config.agent, AgentInline)
+    settings = config.agent.config["harnesses"]["insights"]["settings"]
+    assert settings["agent"] == "demo-agent"
+    assert settings["evaluation_id"] == "eval-123"
+    assert settings["ethos"] == "# Ethos"
+    assert config.extension is not None
+    assert config.extension.config["agent"] == "demo-agent"
+
+
 def test_model_refs_are_required() -> None:
     """The pair lives only in the operator's CLI config, so the request must carry it."""
     with pytest.raises(ValidationError):
