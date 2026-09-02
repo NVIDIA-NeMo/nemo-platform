@@ -32,6 +32,7 @@ def build_analyst_agent_config(
     workspace: str,
     default_model: str,
     fast_model: str,
+    ethos: str | None = None,
     since: datetime | None = None,
     evaluation_id: str | None = None,
     base_url: str | None = None,
@@ -47,6 +48,8 @@ def build_analyst_agent_config(
         default_model: Workspace-qualified Model Entity ref for analysis work.
         fast_model: Workspace-qualified Model Entity ref for context
             summarization.
+        ethos: Optional Ethos Markdown for the agent under test. Inlined into
+            the harness settings because the adapter has no Files access.
         since: Optional lower bound enforced on trace/span reads.
         evaluation_id: Optional run scope AND-pinned onto every span read.
         base_url: Optional Platform base URL. Unset lets the job's own
@@ -57,6 +60,8 @@ def build_analyst_agent_config(
         A config dict suitable for ``AgentInline.config``.
     """
     settings: dict[str, Any] = {"agent": agent, "workspace": workspace}
+    if ethos is not None:
+        settings["ethos"] = ethos
     if since is not None:
         settings["since"] = since.isoformat()
     if evaluation_id is not None:

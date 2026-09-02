@@ -101,6 +101,23 @@ def test_read_scope_reaches_the_inline_analyst_settings() -> None:
     assert settings["evaluation_id"] == "eval-123"
 
 
+def test_ethos_is_inlined_into_the_analyst_harness_settings() -> None:
+    """Parity with AnalyzeSpec.ethos: the Fabric adapter has no Files access to resolve a ref."""
+    request = _request(ethos="# Ethos\n\nBe careful.")
+
+    config = ExecuteAgentJobConfig.model_validate(build_execute_agent_job_config(request, workspace="default"))
+
+    assert isinstance(config.agent, AgentInline)
+    assert config.agent.config["harnesses"]["insights"]["settings"]["ethos"] == "# Ethos\n\nBe careful."
+
+
+def test_ethos_is_omitted_when_unset() -> None:
+    config = ExecuteAgentJobConfig.model_validate(build_execute_agent_job_config(_request(), workspace="default"))
+
+    assert isinstance(config.agent, AgentInline)
+    assert "ethos" not in config.agent.config["harnesses"]["insights"]["settings"]
+
+
 def test_model_refs_are_required() -> None:
     """The pair lives only in the operator's CLI config, so the request must carry it."""
     with pytest.raises(ValidationError):

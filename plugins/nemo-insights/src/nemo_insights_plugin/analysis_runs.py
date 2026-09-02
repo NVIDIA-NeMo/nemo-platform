@@ -44,6 +44,13 @@ class CreateAnalysisRunRequest(BaseModel):
             "the same reason as default_model."
         ),
     )
+    ethos: str | None = Field(
+        default=None,
+        description=(
+            "Optional Ethos Markdown for the agent under test. Sent inline rather than as a "
+            "reference: the execute job's Fabric adapter has no Files access."
+        ),
+    )
     since: datetime | None = Field(
         default=None,
         description="Optional lower bound enforced on the Analyst's trace/span reads.",
@@ -124,6 +131,7 @@ def _inline_analyst(request: CreateAnalysisRunRequest, *, workspace: str) -> dic
             workspace=workspace,
             default_model=request.default_model,
             fast_model=request.fast_model,
+            ethos=request.ethos,
             since=request.since,
             evaluation_id=request.evaluation_id,
         ),

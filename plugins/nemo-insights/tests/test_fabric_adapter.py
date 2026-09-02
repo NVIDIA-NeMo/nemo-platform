@@ -76,7 +76,7 @@ async def test_fabric_adapter_returns_unpersisted_analyst_result(monkeypatch) ->
             "config": _agent_config(
                 {
                     "agent": "research-agent",
-                    "agent_spec": "# Contract",
+                    "ethos": "# Ethos",
                     "base_url": "http://platform",
                     "since": "2026-08-21T12:00:00+00:00",
                     "evaluation_id": "eval-123",
@@ -97,7 +97,7 @@ async def test_fabric_adapter_returns_unpersisted_analyst_result(monkeypatch) ->
         },
     }
     assert seen["agent"] == "research-agent"
-    assert seen["agent_spec"] == "# Contract"
+    assert seen["ethos"] == "# Ethos"
     assert seen["workspace"] == "workspace"
     assert seen["base_url"] == "http://platform"
     assert seen["client"] is clients[0]

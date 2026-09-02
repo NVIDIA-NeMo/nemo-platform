@@ -43,7 +43,6 @@ class ClientConstructionError(Exception):
 async def run_analyst(
     *,
     agent: str,
-    agent_spec: str | None = None,
     ethos: str | None,
     workspace: str,
     base_url: str | None,
@@ -64,7 +63,6 @@ async def run_analyst(
 
     Args:
         agent: Agent under test.
-        agent_spec: Optional agent spec Markdown for the agent under test.
         ethos: Optional Ethos Markdown for the agent under test.
         workspace: Platform workspace.
         base_url: Platform base URL. ``None`` uses the active platform context.
@@ -87,7 +85,7 @@ async def run_analyst(
     try:
         result, backend = await run_analyst_change_set(
             agent=agent,
-            agent_spec=agent_spec,
+            ethos=ethos,
             workspace=workspace,
             base_url=base_url,
             client=client,
@@ -108,7 +106,6 @@ async def run_analyst(
 async def run_analyst_change_set(
     *,
     agent: str,
-    agent_spec: str | None,
     ethos: str | None = None,
     workspace: str,
     base_url: str | None,

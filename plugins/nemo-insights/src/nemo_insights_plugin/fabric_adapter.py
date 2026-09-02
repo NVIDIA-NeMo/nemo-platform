@@ -77,7 +77,7 @@ class InsightsAnalystRuntime:
         )
         # Every settings read can raise, so resolve them before opening the
         # client: nothing is worth a live SDK handle that no one closes.
-        agent_spec = _string_setting(self._settings, "agent_spec")
+        ethos = _string_setting(self._settings, "ethos")
         since = _datetime_setting(self._settings, "since")
         evaluation_id = _string_setting(self._settings, "evaluation_id")
         enable_observability = bool(self._settings.get("enable_observability", True))
@@ -88,7 +88,7 @@ class InsightsAnalystRuntime:
         async with get_async_task_sdk("insights") as client:
             result, _backend = await run_analyst_change_set(
                 agent=target_agent,
-                agent_spec=agent_spec,
+                ethos=ethos,
                 workspace=workspace,
                 base_url=base_url,
                 client=client,
