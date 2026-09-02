@@ -193,15 +193,21 @@ def _apply_telemetry(fabric_config: Any, config: AgentConfig, model: ModelConfig
     )
 
 
+def _telemetry_agent_name(config: AgentConfig) -> str:
+    """Return the name traces should be tagged with for this agent."""
+    return config.telemetry.agent_name or config.name
+
+
 def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict[str, Any]:
     telemetry = config.telemetry
+    agent_name = _telemetry_agent_name(config)
     observability: dict[str, Any] = {"version": 3}
 
     if telemetry.atif is not None:
         atif = dict(telemetry.atif)
         if telemetry.output_dir is not None:
             atif.setdefault("output_directory", telemetry.output_dir)
-        atif.setdefault("agent_name", config.name)
+        atif.setdefault("agent_name", agent_name)
         atif.setdefault("model_name", model.model)
         observability["atif"] = atif
 
@@ -211,7 +217,7 @@ def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict
     if telemetry.opentelemetry is not None:
         observability["opentelemetry"] = _relay_opentelemetry_config(
             telemetry.opentelemetry,
-            agent_name=config.name,
+            agent_name=agent_name,
         )
 
     return observability
