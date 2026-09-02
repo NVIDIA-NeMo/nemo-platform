@@ -481,7 +481,7 @@ class _EnvironmentResource:
         spec: AgentEnvironmentInline | dict[str, Any] | None = None,
         environment_spec: str | dict[str, Any] | None = None,
         compute_spec: str | dict[str, Any] | None = None,
-        description: str = "",
+        description: str | None = None,
         workspace: str | None = None,
     ) -> dict[str, Any]:
         """Create an AgentEnvironment.
@@ -498,14 +498,16 @@ class _EnvironmentResource:
                 AgentEnvironmentSpec, an inline spec dict, or ``None``.
             compute_spec: A ``"workspace/name"`` ref to a stored AgentComputeSpec,
                 an inline spec dict, or ``None``.
-            description: Optional human-readable description.
+            description: Optional human-readable description. Overrides ``spec``'s
+                description when passed (including ``""`` to clear it); left unset,
+                ``spec``'s value — or the server default — stands.
             workspace: Target workspace.
 
         Returns:
             The created AgentEnvironment as a dict.
         """
-        payload: dict[str, Any] = {"description": "", **_spec_to_dict(spec), "name": name}
-        if description:
+        payload: dict[str, Any] = {**_spec_to_dict(spec), "name": name}
+        if description is not None:
             payload["description"] = description
         if environment_spec is not None:
             payload["environment_spec"] = environment_spec
