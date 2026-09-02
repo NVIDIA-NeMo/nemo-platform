@@ -447,7 +447,7 @@ class _EnvironmentSpecResource:
         Returns:
             The created AgentEnvironmentSpec as a dict.
         """
-        payload: dict[str, Any] = {"name": name, **_spec_to_dict(spec), **spec_kwargs}
+        payload: dict[str, Any] = {**_spec_to_dict(spec), **spec_kwargs, "name": name}
         return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/environment-specs", payload)
 
     def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
@@ -561,7 +561,7 @@ class _ComputeSpecResource:
         Returns:
             The created AgentComputeSpec as a dict.
         """
-        payload: dict[str, Any] = {"name": name, **_spec_to_dict(spec), **spec_kwargs}
+        payload: dict[str, Any] = {**_spec_to_dict(spec), **spec_kwargs, "name": name}
         return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/compute-specs", payload)
 
     def list(self, workspace: str | None = None) -> List[dict[str, Any]]:

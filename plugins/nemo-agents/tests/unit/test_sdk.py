@@ -431,6 +431,26 @@ def test_environment_specs_create_accepts_dict_spec() -> None:
     assert captured["body"] == {"name": "ben", "provider": "local"}
 
 
+def test_environment_specs_create_name_arg_is_authoritative() -> None:
+    """An explicit ``name=`` wins over a ``name`` key smuggled in via ``spec``.
+
+    Regression guard: the payload must apply ``name`` AFTER the spec/kwargs
+    expansion so a dict spec carrying its own ``name`` cannot silently create the
+    resource under a different name than the caller asked for.
+    """
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "wanted"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+    with _install_mock_transport(handler):
+        client.environment_specs.create(name="wanted", spec={"name": "sneaky", "provider": "local"})
+
+    assert captured["body"]["name"] == "wanted"
+
+
 def test_environment_specs_create_kwargs_still_work() -> None:
     """Back-compat: loose ``**spec_kwargs`` are still accepted and override ``spec``."""
     captured: dict[str, Any] = {}
