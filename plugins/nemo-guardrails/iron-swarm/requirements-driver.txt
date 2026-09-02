@@ -1,0 +1,15 @@
+# Driver-interpreter deps for the reference (installed into ./.venv by `make setup`).
+#
+# This is the process that runs run_spike.py / fabric_demo.py and registers the
+# Relay intercepts. Separate from the worker interpreter (requirements-worker.txt
+# -> ./.worker-venv), which the guardrails plugin spawns.
+#
+# These come from PUBLIC PyPI (do NOT route them through pypi.nvidia.com -- that
+# index has a DIFFERENT internal `mcp` package that lacks mcp.server.fastmcp).
+#   nemo-relay -- public PyPI, real wheels.
+#   mcp        -- public MCP SDK; runs the local stdio tool server for the Fabric demo.
+#
+# nemo-fabric is installed SEPARATELY by the Makefile from pypi.nvidia.com
+# (public PyPI has only a code-less placeholder).
+nemo-relay==0.4.0
+mcp
