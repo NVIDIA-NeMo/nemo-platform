@@ -15,8 +15,8 @@ def write_generation_manifest(output_dir: Path, output_path: Path, dataset_name:
     output_dir.mkdir(parents=True, exist_ok=True)
     try:
         stored_output = str(output_path.resolve().relative_to(output_dir.resolve()))
-    except ValueError:
-        stored_output = str(output_path.resolve())
+    except ValueError as exc:
+        raise ValueError(f"Generation output {output_path} is outside the manifest directory {output_dir}") from exc
     payload = {
         "schema_version": GENERATION_MANIFEST_SCHEMA_VERSION,
         "dataset_name": dataset_name,
@@ -48,10 +48,14 @@ def resolve_generation_input(input_path: Path) -> Path:
     if not isinstance(stored_output, str) or not stored_output:
         raise ValueError(f"Generation manifest has no output_path: {input_path}")
 
+    manifest_dir = input_path.parent
     output_path = Path(stored_output)
-    if not output_path.is_absolute():
-        output_path = input_path.parent / output_path
-    output_path = output_path.resolve()
+    if output_path.is_absolute():
+        output_path = output_path.resolve()
+    else:
+        output_path = (manifest_dir / output_path).resolve()
+    if not output_path.is_relative_to(manifest_dir):
+        raise ValueError(f"Generation output path escapes the manifest directory: {stored_output}")
     if not output_path.is_file():
         raise FileNotFoundError(f"Generation output referenced by {input_path} does not exist: {output_path}")
     return output_path

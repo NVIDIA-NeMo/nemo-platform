@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 import sys
 import types
 from pathlib import Path
@@ -8,7 +9,11 @@ from unittest.mock import Mock
 
 import pytest
 from nemo_data_designer_plugin.retrieval.corpus import _download_fileset, materialize_corpus
-from nemo_data_designer_plugin.retrieval.manifest import resolve_generation_input
+from nemo_data_designer_plugin.retrieval.manifest import (
+    GENERATION_MANIFEST_SCHEMA_VERSION,
+    resolve_generation_input,
+    write_generation_manifest,
+)
 
 
 def test_fileset_corpus_must_match_job_workspace(tmp_path: Path) -> None:
@@ -50,6 +55,51 @@ def test_generation_manifest_rejects_non_object_json(tmp_path: Path) -> None:
     manifest.write_text("[]\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Invalid generation manifest"):
+        resolve_generation_input(manifest)
+
+
+def test_generation_manifest_resolves_relative_output(tmp_path: Path) -> None:
+    jsonl = tmp_path / "retrieval_sdg.jsonl"
+    jsonl.write_text("{}\n", encoding="utf-8")
+    write_generation_manifest(tmp_path, jsonl, dataset_name="retrieval_sdg")
+    assert resolve_generation_input(tmp_path / "generation_result.json") == jsonl.resolve()
+
+
+def test_generation_manifest_rejects_relative_escape(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside.jsonl"
+    outside.write_text("{}\n", encoding="utf-8")
+    manifest = tmp_path / "generation_result.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": GENERATION_MANIFEST_SCHEMA_VERSION,
+                "dataset_name": "retrieval_sdg",
+                "output_path": "../outside.jsonl",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="escapes the manifest directory"):
+        resolve_generation_input(manifest)
+
+
+def test_generation_manifest_rejects_absolute_escape(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside.jsonl"
+    outside.write_text("{}\n", encoding="utf-8")
+    manifest = tmp_path / "generation_result.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": GENERATION_MANIFEST_SCHEMA_VERSION,
+                "dataset_name": "retrieval_sdg",
+                "output_path": str(outside),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="escapes the manifest directory"):
         resolve_generation_input(manifest)
 
 
