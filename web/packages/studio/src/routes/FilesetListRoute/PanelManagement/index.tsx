@@ -48,8 +48,11 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
   const showDatasetPanel = !!datasetIdFromUrl;
   const showFilePanel = !!filePathFromUrl;
 
-  // Open flag — lags the URL on open (drives the slide-in), flips synchronously
-  // on close (see close handlers below).
+  // Open flag — lags the URL on open (drives the slide-in) and flips immediately on
+  // close. This is complementary to, not a replacement for, the `flushSync: true` on
+  // the close navigations below: the flag governs this component's own render, while
+  // `flushSync` governs when the router commits the param change that KUI's
+  // `useDialog` reads back. Both are needed.
   const [isDatasetPanelOpen, setIsDatasetPanelOpen] = useState(false);
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
 
@@ -82,7 +85,7 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
   // Dataset panel handlers
   const handleDatasetPanelClose = () => {
     setIsDatasetPanelOpen(false);
-    navigate(generatePath(ROUTES.workspace.filesets, { workspace }));
+    navigate(generatePath(ROUTES.workspace.filesets, { workspace }), { flushSync: true });
   };
 
   const handleFileSelect = (filePath: string) => {
@@ -102,11 +105,13 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
 
   const handleFilePanelClose = () => {
     const folderPathFromFile = decodedFilePath.split('/').slice(0, -1).join('/');
-    navigate(getFilesetDetailsRoute(workspace, datasetFullName, folderPathFromFile));
+    navigate(getFilesetDetailsRoute(workspace, datasetFullName, folderPathFromFile), {
+      flushSync: true,
+    });
   };
 
   const handleFilePanelOutsideClick = () => {
-    navigate(generatePath(ROUTES.workspace.filesets, { workspace }));
+    navigate(generatePath(ROUTES.workspace.filesets, { workspace }), { flushSync: true });
   };
 
   const handleDatasetClick = () => {

@@ -25,7 +25,11 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { WebStorageStateStore } from 'oidc-client-ts';
 import { StrictMode } from 'react';
 import { AuthProvider } from 'react-oidc-context';
-import { createBrowserRouter, RouterProvider } from 'react-router';
+import { createBrowserRouter } from 'react-router';
+// `RouterProvider` must come from `react-router/dom` — only that variant injects
+// `ReactDOM.flushSync`, which the `flushSync: true` navigations in the side-panel
+// routes depend on. The bare `react-router` provider silently ignores the option.
+import { RouterProvider } from 'react-router/dom';
 
 /**
  * Expand OAuth scopes by prepending scope_prefix to custom scopes.

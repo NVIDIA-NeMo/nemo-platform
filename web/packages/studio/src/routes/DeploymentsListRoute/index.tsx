@@ -78,7 +78,12 @@ export const DeploymentsListRoute: FC = () => {
   const { deleteDeploymentAndConfig } = useDeleteDeploymentAndConfig(workspace);
 
   const handleCloseDetailsPanel = useCallback(() => {
-    navigate(getWorkspaceDeploymentsRoute(workspace), { replace: true });
+    // `flushSync` is required, not stylistic. KUI's SidePanel emits `onClose` from
+    // inside its 200ms animate-out timeout; if the resulting param clear is deferred
+    // into a React transition (react-router v8's default), `useDialog` observes
+    // `open === true` against an already-closed <dialog>, re-shows the panel, and
+    // closes it a second time. Covered by the regression test in this directory.
+    navigate(getWorkspaceDeploymentsRoute(workspace), { replace: true, flushSync: true });
   }, [navigate, workspace]);
 
   const handleDeleteDeployment = useCallback(async () => {
@@ -86,7 +91,8 @@ export const DeploymentsListRoute: FC = () => {
     try {
       await deleteDeploymentAndConfig(deploymentToDelete);
       if (detailsPanelOpen && deploymentToDelete.name === deploymentNameFromPath) {
-        navigate(getWorkspaceDeploymentsRoute(workspace), { replace: true });
+        // Same reason as `handleCloseDetailsPanel` — this closes the details panel.
+        navigate(getWorkspaceDeploymentsRoute(workspace), { replace: true, flushSync: true });
       }
       return true;
     } catch {
@@ -179,11 +185,14 @@ export const DeploymentsListRoute: FC = () => {
         onClose={() => {
           setIsCreateDeploymentOpen(false);
           // Drop the deep-link params so the panel doesn't keep reopening on rerenders.
+          // `flushSync` keeps the param clear in the same commit as the local close —
+          // otherwise the `createPrefill` effect above observes stale params and sets
+          // `isCreateDeploymentOpen` back to true.
           if (hasPrefillParams) {
             const next = new URLSearchParams(searchParams);
             next.delete('model');
             next.delete('fileset');
-            setSearchParams(next, { replace: true });
+            setSearchParams(next, { replace: true, flushSync: true });
           }
         }}
       />
