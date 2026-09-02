@@ -142,7 +142,6 @@ async def _upload_trials(
     model: str,
 ) -> dict[str, str]:
     trace_ids: dict[str, str] = {}
-    url = f"/apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces"
 
     for trial in trials:
         if trial.trace is None:
@@ -164,12 +163,7 @@ async def _upload_trials(
         if not payloads:
             raise RuntimeError(f"Trial {trial.id} produced an empty agent execution trace")
         for payload in payloads:
-            await client.post(
-                url,
-                cast_to=object,
-                content=payload,
-                options={"headers": {"Content-Type": "application/x-protobuf"}},
-            )
+            await client.intake.ingest.otlp.v1.traces.create(body=payload, workspace=workspace)
         trace_ids[trial.id] = trace_id
 
     return trace_ids
