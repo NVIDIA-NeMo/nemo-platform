@@ -9,6 +9,8 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, ClassVar, Dict, Generic, List, Optional, Protocol, Set, Type, TypeVar, get_type_hints
 
+from pydantic import BaseModel, Field, PrivateAttr, TypeAdapter, computed_field
+
 from nemo_platform_plugin.client.errors import (
     ConflictError,
     NotFoundError,
@@ -26,7 +28,6 @@ from nemo_platform_plugin.entities.types import (
     ListEntitiesQueryParams,
 )
 from nemo_platform_plugin.filter_ops import FilterOperation
-from pydantic import BaseModel, Field, PrivateAttr, TypeAdapter, computed_field
 
 # Regex pattern for valid workspace names
 ID_PATTERN = r"^[\w\-\+.@:]+$"

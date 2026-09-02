@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from nemo_evaluator.metric_storage import (
     BUNDLE_FILENAME,
@@ -15,42 +13,74 @@ from nemo_evaluator.metric_storage import (
     parse_bundle_ref,
     store_bundle,
 )
-from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 
 
-class _FakeResponse:
-    def __init__(self, data: bytes) -> None:
-        self._data = data
+class _FakeFilesets:
+    def __init__(self, store: dict[tuple[str, str], dict[str, bytes]]) -> None:
+        self._store = store
 
-    async def read(self) -> bytes:
-        return self._data
+    async def create(self, *, workspace: str | None = None, name: str, description: str) -> object:
+        del description
+        self._store.setdefault((workspace or "default", name), {})
+        return object()
+
+    async def delete(self, name: str, *, workspace: str | None = None) -> object:
+        self._store.pop((workspace or "default", name), None)
+        return object()
 
 
-class _FakeAsyncFilesClient:
+class _FakeFiles:
+    filesets: _FakeFilesets
+
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], dict[str, bytes]] = {}
+        self.upload_error: Exception | None = None
+        self.filesets = _FakeFilesets(self._store)
 
-    async def create_fileset(self, *, body, workspace=None, exist_ok=False):
-        self._store.setdefault((workspace, body.name), {})
-        return AsyncMock(data=lambda: object())
+    async def upload_content(
+        self,
+        *,
+        content: bytes,
+        remote_path: str,
+        fileset: str | None = None,
+        workspace: str | None = None,
+    ) -> object:
+        if self.upload_error is not None:
+            raise self.upload_error
+        if fileset is None:
+            raise ValueError("fileset is required")
+        self._store.setdefault((workspace or "default", fileset), {})[remote_path] = bytes(content)
+        return object()
 
-    async def delete_fileset(self, *, name, workspace=None):
-        self._store.pop((workspace, name), None)
-        return AsyncMock(data=lambda: object())
+    async def download_content(
+        self,
+        *,
+        remote_path: str,
+        fileset: str | None = None,
+        workspace: str | None = None,
+    ) -> bytes:
+        if fileset is None:
+            raise ValueError("fileset is required")
+        return self._store[(workspace or "default", fileset)][remote_path]
 
-    async def upload_file(self, *, path, content, workspace, name):
-        self._store.setdefault((workspace, name), {})[path] = bytes(content)
-        return AsyncMock(data=lambda: object())
 
-    async def download_file(self, *, path, workspace, name):
-        return _FakeResponse(self._store[(workspace, name)][path])
+class _FakePlatform:
+    files: _FakeFiles
+
+    def __init__(self, files: _FakeFiles | None = None) -> None:
+        self.files = files or _FakeFiles()
 
 
-def _sample_bundle():
+def _sample_bundle() -> MetricBundle:
     metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
     return bundle_metric(metric, CloudpickleMetricBundlePackager())
+
+
+def _fake_platform(files: _FakeFiles | None = None) -> _FakePlatform:
+    return _FakePlatform(files)
 
 
 def test_parse_bundle_ref_splits_parts() -> None:
@@ -68,12 +98,12 @@ def test_parse_bundle_ref_rejects_malformed(ref: str) -> None:
 
 
 async def test_store_returns_unique_per_metric_ref() -> None:
-    fake_client = _FakeAsyncFilesClient()
+    fake_files = _FakeFiles()
+    platform = _fake_platform(fake_files)
     bundle = _sample_bundle()
 
-    with patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_client):
-        ref1 = await store_bundle(object(), "default", "my-metric", bundle)
-        ref2 = await store_bundle(object(), "default", "my-metric", bundle)
+    ref1 = await store_bundle(platform, "default", "my-metric", bundle)
+    ref2 = await store_bundle(platform, "default", "my-metric", bundle)
 
     assert ref1.startswith("default/metric-bundle.")
     assert ref1.endswith(f"#{BUNDLE_FILENAME}")
@@ -81,90 +111,75 @@ async def test_store_returns_unique_per_metric_ref() -> None:
 
 
 async def test_store_fileset_name_stays_within_limit_for_long_metric_name() -> None:
-    fake_client = _FakeAsyncFilesClient()
+    fake_files = _FakeFiles()
     bundle = _sample_bundle()
     long_name = "m" * 255
 
-    with patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_client):
-        ref = await store_bundle(object(), "default", long_name, bundle)
+    ref = await store_bundle(_fake_platform(fake_files), "default", long_name, bundle)
 
     _, fileset, _ = parse_bundle_ref(ref)
     assert len(fileset) <= 255
 
 
 async def test_store_cleans_up_fileset_on_upload_failure() -> None:
-    fake_client = _FakeAsyncFilesClient()
+    fake_files = _FakeFiles()
     bundle = _sample_bundle()
 
-    async def _boom(*, path, content, workspace, name):
-        raise RuntimeError("network blip during upload")
+    fake_files.upload_error = RuntimeError("network blip during upload")
 
-    fake_client.upload_file = _boom
+    with pytest.raises(MetricBundleStorageError):
+        await store_bundle(_fake_platform(fake_files), "default", "my-metric", bundle)
 
-    with (
-        patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_client),
-        pytest.raises(MetricBundleStorageError),
-    ):
-        await store_bundle(object(), "default", "my-metric", bundle)
-
-    assert [key for key in fake_client._store if key[1].startswith(FILESET_PREFIX)] == []
+    assert [key for key in fake_files._store if key[1].startswith(FILESET_PREFIX)] == []
 
 
 async def test_store_then_load_round_trips_bundle() -> None:
-    fake_client = _FakeAsyncFilesClient()
+    fake_files = _FakeFiles()
+    platform = _fake_platform(fake_files)
     bundle = _sample_bundle()
 
-    with patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_client):
-        ref = await store_bundle(object(), "default", "my-metric", bundle)
-        loaded = await load_bundle(object(), ref, expected_digest=bundle.payload.digest)
+    ref = await store_bundle(platform, "default", "my-metric", bundle)
+    loaded = await load_bundle(platform, ref, expected_digest=bundle.payload.digest)
 
     assert loaded.metric_type == bundle.metric_type
     assert loaded.payload.digest == bundle.payload.digest
 
 
 async def test_load_rejects_digest_mismatch() -> None:
-    fake_client = _FakeAsyncFilesClient()
+    fake_files = _FakeFiles()
+    platform = _fake_platform(fake_files)
     bundle = _sample_bundle()
 
-    with (
-        patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_client),
-        pytest.raises(MetricBundleStorageError, match="digest mismatch"),
-    ):
-        ref = await store_bundle(object(), "default", "my-metric", bundle)
-        await load_bundle(object(), ref, expected_digest="deadbeef")
+    ref = await store_bundle(platform, "default", "my-metric", bundle)
+    with pytest.raises(MetricBundleStorageError, match="digest mismatch"):
+        await load_bundle(platform, ref, expected_digest="deadbeef")
 
 
 async def test_load_rejects_corrupt_bundle() -> None:
-    fake_client = _FakeAsyncFilesClient()
-    fake_client._store[("default", "metric-bundle.deadbeef")] = {"bundle.json": b"not a bundle"}
+    fake_files = _FakeFiles()
+    fake_files._store[("default", "metric-bundle.deadbeef")] = {"bundle.json": b"not a bundle"}
 
-    with (
-        patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_client),
-        pytest.raises(MetricBundleStorageError, match="corrupt or unreadable"),
-    ):
-        await load_bundle(object(), "default/metric-bundle.deadbeef#bundle.json")
+    with pytest.raises(MetricBundleStorageError, match="corrupt or unreadable"):
+        await load_bundle(_fake_platform(fake_files), "default/metric-bundle.deadbeef#bundle.json")
 
 
 async def test_load_wraps_download_failure() -> None:
-    fake_client = _FakeAsyncFilesClient()
+    fake_files = _FakeFiles()
 
-    with (
-        patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_client),
-        pytest.raises(MetricBundleStorageError, match="failed to download metric bundle"),
-    ):
-        await load_bundle(object(), "default/metric-bundle.missing#bundle.json")
+    with pytest.raises(MetricBundleStorageError, match="failed to download metric bundle"):
+        await load_bundle(_fake_platform(fake_files), "default/metric-bundle.missing#bundle.json")
 
 
 async def test_delete_by_ref_removes_only_that_fileset() -> None:
-    fake_client = _FakeAsyncFilesClient()
+    fake_files = _FakeFiles()
+    platform = _fake_platform(fake_files)
     bundle = _sample_bundle()
 
-    with patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_client):
-        ref1 = await store_bundle(object(), "default", "my-metric", bundle)
-        ref2 = await store_bundle(object(), "default", "my-metric", bundle)
-        await delete_bundle_by_ref(object(), ref1)
+    ref1 = await store_bundle(platform, "default", "my-metric", bundle)
+    ref2 = await store_bundle(platform, "default", "my-metric", bundle)
+    await delete_bundle_by_ref(platform, ref1)
 
     _, fileset1, _ = parse_bundle_ref(ref1)
     _, fileset2, _ = parse_bundle_ref(ref2)
-    assert ("default", fileset1) not in fake_client._store
-    assert ("default", fileset2) in fake_client._store
+    assert ("default", fileset1) not in fake_files._store
+    assert ("default", fileset2) in fake_files._store

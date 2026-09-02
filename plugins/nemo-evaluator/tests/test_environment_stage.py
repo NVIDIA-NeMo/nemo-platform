@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from pathlib import Path
-from unittest.mock import Mock
 
+import httpx
 import pytest
 from nemo_evaluator.jobs.environment_stage import EnvironmentStageJob
+from nemo_platform_plugin import NemoClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
+from pytest_mock import MockerFixture
 
 
 def _context(tmp_path: Path) -> JobContext:
@@ -21,25 +23,40 @@ def _context(tmp_path: Path) -> JobContext:
     )
 
 
-def test_stages_environment_at_fixed_persistent_path(tmp_path: Path) -> None:
+def _task_client(mocker: MockerFixture) -> NemoClient:
+    return NemoClient(
+        base_url="http://platform.test",
+        workspace="dev",
+        http_client=mocker.Mock(spec=httpx.Client),
+    )
+
+
+def test_stages_environment_at_fixed_persistent_path(tmp_path: Path, mocker: MockerFixture) -> None:
     ctx = _context(tmp_path)
-    sdk = Mock()
+    task_client = _task_client(mocker)
 
-    def download(**kwargs) -> None:
-        Path(kwargs["local_path"], "nemo-environment.yaml").write_text("format: wheels-v1\n")
+    def download_contents(*, sdk: NemoClient, workspace: str, fileset: str, destination: Path) -> None:
+        assert sdk is task_client
+        assert workspace == "shared"
+        assert fileset == "custom-gym"
+        Path(destination, "nemo-environment.yaml").write_text("format: wheels-v1\n")
 
-    sdk.files.download.side_effect = download
+    download_fileset_contents = mocker.patch(
+        "nemo_evaluator.jobs.environment_stage._download_fileset_contents",
+        side_effect=download_contents,
+    )
 
     result = EnvironmentStageJob().run(
         {"environment": "shared/custom-gym"},
         ctx=ctx,
-        sdk=sdk,
+        sdk=task_client,
     )
 
-    sdk.files.download.assert_called_once_with(
+    download_fileset_contents.assert_called_once_with(
+        sdk=task_client,
         fileset="custom-gym",
         workspace="shared",
-        local_path=str(ctx.storage.persistent / ".environment-staging"),
+        destination=ctx.storage.persistent / ".environment-staging",
     )
     assert (ctx.storage.persistent / "environment" / "nemo-environment.yaml").is_file()
     assert (ctx.storage.persistent / "workspace").is_dir()
@@ -47,14 +64,17 @@ def test_stages_environment_at_fixed_persistent_path(tmp_path: Path) -> None:
     assert result["path"] == str(ctx.storage.persistent / "environment")
 
 
-def test_staged_fileset_preserves_wheels_tree(tmp_path: Path) -> None:
+def test_staged_fileset_preserves_wheels_tree(tmp_path: Path, mocker: MockerFixture) -> None:
     ctx = _context(tmp_path)
-    sdk = Mock()
+    task_client = _task_client(mocker)
     wheel_name = "xmltodict-1.0.4-py3-none-any.whl"
     config_rel = Path("resources_servers") / "structeval" / "configs" / "structeval_nonrenderable.yaml"
 
-    def download(**kwargs) -> None:
-        root = Path(kwargs["local_path"])
+    def download_contents(*, sdk: NemoClient, workspace: str, fileset: str, destination: Path) -> None:
+        assert sdk is task_client
+        assert workspace == "dev"
+        assert fileset == "structeval-wheels"
+        root = destination
         (root / "nemo-environment.yaml").write_text("format: wheels-v1\n")
         config = root / config_rel
         config.parent.mkdir(parents=True)
@@ -63,9 +83,12 @@ def test_staged_fileset_preserves_wheels_tree(tmp_path: Path) -> None:
         wheels.mkdir()
         (wheels / wheel_name).write_bytes(b"wheel")
 
-    sdk.files.download.side_effect = download
+    mocker.patch(
+        "nemo_evaluator.jobs.environment_stage._download_fileset_contents",
+        side_effect=download_contents,
+    )
 
-    EnvironmentStageJob().run({"environment": "dev/structeval-wheels"}, ctx=ctx, sdk=sdk)
+    EnvironmentStageJob().run({"environment": "dev/structeval-wheels"}, ctx=ctx, sdk=task_client)
 
     environment = ctx.storage.persistent / "environment"
     assert (environment / "nemo-environment.yaml").is_file()
@@ -74,24 +97,32 @@ def test_staged_fileset_preserves_wheels_tree(tmp_path: Path) -> None:
     assert not (ctx.storage.persistent / ".environment-staging").exists()
 
 
-def test_failed_download_removes_partial_staging_without_replacing_environment(tmp_path: Path) -> None:
+def test_failed_download_removes_partial_staging_without_replacing_environment(
+    tmp_path: Path, mocker: MockerFixture
+) -> None:
     ctx = _context(tmp_path)
     environment = ctx.storage.persistent / "environment"
     environment.mkdir()
     (environment / "existing.txt").write_text("complete")
-    sdk = Mock()
+    task_client = _task_client(mocker)
 
-    def fail_download(**kwargs) -> None:
-        Path(kwargs["local_path"], "partial.txt").write_text("partial")
+    def fail_download(*, sdk: NemoClient, workspace: str, fileset: str, destination: Path) -> None:
+        assert sdk is task_client
+        assert workspace == "dev"
+        assert fileset == "custom-gym"
+        Path(destination, "partial.txt").write_text("partial")
         raise RuntimeError("download failed")
 
-    sdk.files.download.side_effect = fail_download
+    mocker.patch(
+        "nemo_evaluator.jobs.environment_stage._download_fileset_contents",
+        side_effect=fail_download,
+    )
 
     with pytest.raises(RuntimeError, match="download failed"):
         EnvironmentStageJob().run(
             {"environment": "custom-gym"},
             ctx=ctx,
-            sdk=sdk,
+            sdk=task_client,
         )
 
     assert (environment / "existing.txt").read_text() == "complete"

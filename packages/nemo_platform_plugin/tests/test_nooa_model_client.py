@@ -30,7 +30,7 @@ def _model_entity(**attrs):
     return SimpleNamespace(**defaults)
 
 
-def _mock_models_client(models):
+def _mock_models_client(models, providers=None):
     """Build a mock ``AsyncModelsClient`` returned by ``client_from_platform``.
 
     ``models`` maps ``(workspace, name)`` to the Model Entity ``get_model`` should
@@ -40,17 +40,23 @@ def _mock_models_client(models):
     client = MagicMock()
     client.default_headers = {}
     client.get_model_entity_route_openai_url.return_value = "http://platform/model/example/-/v1"
+    providers = providers or {}
 
     async def _get_model(**kwargs):
         entity = models.get((kwargs.get("workspace"), kwargs.get("name")))
         return SimpleNamespace(data=lambda: entity)
 
+    async def _get_provider(**kwargs):
+        provider = providers.get((kwargs.get("workspace"), kwargs.get("name")))
+        return SimpleNamespace(data=lambda: provider)
+
     client.get_model = AsyncMock(side_effect=_get_model)
+    client.get_provider = AsyncMock(side_effect=_get_provider)
     return client
 
 
-def _patch_models_client(models):
-    client = _mock_models_client(models)
+def _patch_models_client(models, providers=None):
+    client = _mock_models_client(models, providers=providers)
     ctx = patch(
         "nemo_platform_plugin.nooa_model_client.client_from_platform",
         return_value=client,
@@ -215,19 +221,19 @@ async def test_resolve_model_clients_uses_provider_served_name(monkeypatch):
             )
         ]
     )
-    ctx, client = _patch_models_client({("default", "gpt-5-6-sol"): model_entity})
+    ctx, client = _patch_models_client({("default", "gpt-5-6-sol"): model_entity}, {("default", "openai"): provider})
     client.get_model_entity_route_openai_url.return_value = "http://platform/model/gpt-5-6-sol/-/v1"
     factory = MagicMock(return_value=MagicMock())
-    sdk = MagicMock()
-    sdk.inference.providers.retrieve = AsyncMock(return_value=provider)
+    async_sdk = MagicMock()
     with ctx:
         monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
 
         await resolve_model_clients(
-            sdk,
+            async_sdk,
             ConfiguredModelRefs(default="default/gpt-5-6-sol", fast="default/gpt-5-6-sol"),
         )
 
+    client.get_provider.assert_awaited_once_with(name="openai", workspace="default")
     factory.assert_called_once_with(
         "openai/gpt-5.6-sol",
         api_base="http://platform/model/gpt-5-6-sol/-/v1",

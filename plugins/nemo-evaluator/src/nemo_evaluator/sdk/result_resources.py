@@ -16,20 +16,22 @@ a richer operator shape and isn't surfaced here yet.)
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import ClassVar, Generic, TypeVar
-from urllib.parse import quote
 
 from nemo_evaluator.api.schemas import AgentEvalResult, EvaluateResult
-from nemo_evaluator.sdk import http_utils
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.evaluator.client import AsyncEvaluatorClient, EvaluatorClient
 from nemo_platform_plugin.schema import Page, PaginationData
+from pydantic import BaseModel
 
 _ResultT = TypeVar("_ResultT", AgentEvalResult, EvaluateResult)
 
 
-def _query_params(page: int, page_size: int, sort: str | None, filters: dict[str, str | None]) -> dict[str, str | int]:
+def _query_params(
+    page: int, page_size: int, sort: str | None, filters: dict[str, str | None]
+) -> dict[str, str | int | bool | None]:
     """Build the list query string: paging/sort + the route's ``filter[field]=value`` trait filters."""
-    params: dict[str, str | int] = {"page": page, "page_size": page_size}
+    params: dict[str, str | int | bool | None] = {"page": page, "page_size": page_size}
     if sort is not None:
         params["sort"] = sort
     for field, value in filters.items():
@@ -38,18 +40,13 @@ def _query_params(page: int, page_size: int, sort: str | None, filters: dict[str
     return params
 
 
-def _to_page(payload: dict, model: type[_ResultT], sort: str | None) -> Page[_ResultT]:
-    """Rebuild a typed ``Page`` from the route's JSON, deserializing each item as ``model``."""
-    pagination = payload["pagination"]
+def _to_page(
+    items: Sequence[BaseModel], pagination: Mapping[str, object], model: type[_ResultT], sort: str | None
+) -> Page[_ResultT]:
+    """Rebuild a typed ``Page`` from typed-client page items."""
     return Page(
-        data=[model.model_validate(item) for item in payload["data"]],
-        pagination=PaginationData(
-            page=pagination["page"],
-            page_size=pagination["page_size"],
-            current_page_size=pagination["current_page_size"],
-            total_pages=pagination["total_pages"],
-            total_results=pagination["total_results"],
-        ),
+        data=[model.model_validate(item.model_dump(mode="json")) for item in items],
+        pagination=PaginationData.model_validate(pagination),
         sort=sort,
         filter=None,
     )
@@ -61,47 +58,41 @@ class _SyncResultsResource(Generic[_ResultT]):
     _collection: ClassVar[str]
     _model: type[_ResultT]
 
-    def __init__(self, platform: NeMoPlatform) -> None:
-        self._platform = platform
-        self._http_client = platform._client
-
-    def _headers(self) -> dict[str, str]:
-        return http_utils.platform_default_headers(self._platform)
-
-    def _collection_url(self, workspace: str | None) -> str:
-        return http_utils.url(self._platform, f"/v2/workspaces/{{workspace}}/{self._collection}", workspace)
-
-    def _item_url(self, name: str, workspace: str | None) -> str:
-        return http_utils.url(
-            self._platform, f"/v2/workspaces/{{workspace}}/{self._collection}/{quote(name, safe='')}", workspace
-        )
+    def __init__(self, client: EvaluatorClient) -> None:
+        self._client = client
 
     def retrieve(self, name: str, *, workspace: str | None = None) -> _ResultT:
         """Get a result record by name (the producing job's id)."""
-        response = self._http_client.get(
-            self._item_url(name, workspace), headers=self._headers(), timeout=self._platform.timeout
+        response = (
+            self._client.get_agent_eval_result(name=name, workspace=workspace)
+            if self._collection == "agent-eval-results"
+            else self._client.get_eval_result(name=name, workspace=workspace)
         )
-        response.raise_for_status()
-        return self._model.model_validate(response.json())
+        return self._model.model_validate(response.data().model_dump(mode="json"))
 
     def _list(
         self, *, workspace: str | None, page: int, page_size: int, sort: str | None, filters: dict[str, str | None]
     ) -> Page[_ResultT]:
-        response = self._http_client.get(
-            self._collection_url(workspace),
-            params=_query_params(page, page_size, sort, filters),
-            headers=self._headers(),
-            timeout=self._platform.timeout,
+        response = (
+            self._client.list_agent_eval_results(
+                workspace=workspace,
+                query_params=_query_params(page, page_size, sort, filters),
+            )
+            if self._collection == "agent-eval-results"
+            else self._client.list_eval_results(
+                workspace=workspace,
+                query_params=_query_params(page, page_size, sort, filters),
+            )
         )
-        response.raise_for_status()
-        return _to_page(response.json(), self._model, sort)
+        page_result = response.page()
+        return _to_page(page_result.items, page_result.metadata, self._model, sort)
 
     def delete(self, name: str, *, workspace: str | None = None) -> None:
         """Delete a result record by name."""
-        response = self._http_client.delete(
-            self._item_url(name, workspace), headers=self._headers(), timeout=self._platform.timeout
-        )
-        response.raise_for_status()
+        if self._collection == "agent-eval-results":
+            self._client.delete_agent_eval_result(name=name, workspace=workspace).data()
+        else:
+            self._client.delete_eval_result(name=name, workspace=workspace).data()
 
 
 class _AsyncResultsResource(Generic[_ResultT]):
@@ -110,47 +101,42 @@ class _AsyncResultsResource(Generic[_ResultT]):
     _collection: ClassVar[str]
     _model: type[_ResultT]
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
-        self._platform = platform
-        self._http_client = platform._client
-
-    def _headers(self) -> dict[str, str]:
-        return http_utils.platform_default_headers(self._platform)
-
-    def _collection_url(self, workspace: str | None) -> str:
-        return http_utils.url(self._platform, f"/v2/workspaces/{{workspace}}/{self._collection}", workspace)
-
-    def _item_url(self, name: str, workspace: str | None) -> str:
-        return http_utils.url(
-            self._platform, f"/v2/workspaces/{{workspace}}/{self._collection}/{quote(name, safe='')}", workspace
-        )
+    def __init__(self, client: AsyncEvaluatorClient) -> None:
+        self._client = client
 
     async def retrieve(self, name: str, *, workspace: str | None = None) -> _ResultT:
         """Get a result record by name (the producing job's id)."""
-        response = await self._http_client.get(
-            self._item_url(name, workspace), headers=self._headers(), timeout=self._platform.timeout
+        response = (
+            await self._client.get_agent_eval_result(name=name, workspace=workspace)
+            if self._collection == "agent-eval-results"
+            else await self._client.get_eval_result(name=name, workspace=workspace)
         )
-        response.raise_for_status()
-        return self._model.model_validate(response.json())
+        return self._model.model_validate(response.data().model_dump(mode="json"))
 
     async def _list(
         self, *, workspace: str | None, page: int, page_size: int, sort: str | None, filters: dict[str, str | None]
     ) -> Page[_ResultT]:
-        response = await self._http_client.get(
-            self._collection_url(workspace),
-            params=_query_params(page, page_size, sort, filters),
-            headers=self._headers(),
-            timeout=self._platform.timeout,
+        response = (
+            await self._client.list_agent_eval_results(
+                workspace=workspace,
+                query_params=_query_params(page, page_size, sort, filters),
+            )
+            if self._collection == "agent-eval-results"
+            else await self._client.list_eval_results(
+                workspace=workspace,
+                query_params=_query_params(page, page_size, sort, filters),
+            )
         )
-        response.raise_for_status()
-        return _to_page(response.json(), self._model, sort)
+        page_result = response.page()
+        return _to_page(page_result.items, page_result.metadata, self._model, sort)
 
     async def delete(self, name: str, *, workspace: str | None = None) -> None:
         """Delete a result record by name."""
-        response = await self._http_client.delete(
-            self._item_url(name, workspace), headers=self._headers(), timeout=self._platform.timeout
-        )
-        response.raise_for_status()
+        if self._collection == "agent-eval-results":
+            response = await self._client.delete_agent_eval_result(name=name, workspace=workspace)
+        else:
+            response = await self._client.delete_eval_result(name=name, workspace=workspace)
+        response.data()
 
 
 class EvaluatorAgentEvalResultsResource(_SyncResultsResource[AgentEvalResult]):

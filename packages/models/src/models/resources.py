@@ -4,8 +4,10 @@
 """Extended ModelsResource with high-level helper methods."""
 
 import asyncio
+import logging
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TypeVar
 
@@ -18,6 +20,37 @@ from nemo_platform.types.models import ModelEntity
 
 _T = TypeVar("_T")
 _TRANSIENT_GATEWAY_STATUS_CODES = {429, 502, 503, 504}
+_logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedModelReference:
+    """Inference route details for a workspace-qualified model reference."""
+
+    url: str
+    name: str
+    host_url: str | None
+
+
+def parse_workspace_name_ref(ref: str, *, label: str, expected_format: str = "workspace/name") -> tuple[str, str]:
+    """Parse a strict workspace-qualified reference."""
+    workspace, separator, name = ref.partition("/")
+    if separator != "/" or not workspace or not name or "/" in name:
+        raise ValueError(f"{label} must be in format '{expected_format}'")
+    return workspace, name
+
+
+def first_provider_ref(model_providers: list[str] | None) -> tuple[str, str, str] | None:
+    if not model_providers:
+        return None
+
+    provider_ref = model_providers[0]
+    try:
+        provider_workspace, provider_name = parse_workspace_name_ref(provider_ref, label="Provider reference")
+    except ValueError:
+        _logger.warning("Invalid provider reference format", extra={"provider_ref": provider_ref})
+        return None
+    return provider_ref, provider_workspace, provider_name
 
 
 def _seconds_since_creation(entry_timestamp: datetime | str | None, created_at: datetime | None) -> int | None:
@@ -291,6 +324,32 @@ class ModelsResource(BaseModelsResource):
         return (
             f"{base_url}/apis/inference-gateway/v2/workspaces/{model_entity.workspace}/model/{model_entity.name}/-/v1"
         )
+
+    def resolve_model_reference(self, ref: str) -> ResolvedModelReference:
+        """Resolve ``workspace/model`` to inference-gateway route details."""
+        workspace, name = parse_workspace_name_ref(ref, label="Model reference", expected_format="workspace/model_name")
+        model_entity = self.retrieve(name, workspace=workspace)
+        return ResolvedModelReference(
+            url=self.get_model_entity_route_openai_url(model_entity),
+            name=name,
+            host_url=self._resolve_model_provider_host_url(model_entity),
+        )
+
+    def _resolve_model_provider_host_url(self, model_entity: ModelEntity) -> str | None:
+        """Resolve the model entity's first provider host URL, if available."""
+        provider_parts = first_provider_ref(model_entity.model_providers)
+        if provider_parts is None:
+            return None
+        provider_ref, provider_workspace, provider_name = provider_parts
+        try:
+            provider = self._client.inference.providers.retrieve(provider_name, workspace=provider_workspace)
+        except NotFoundError:
+            _logger.warning("Provider not found during host_url resolution", extra={"provider_ref": provider_ref})
+            return None
+        except Exception:
+            _logger.warning("Failed to resolve provider host_url", extra={"provider_ref": provider_ref}, exc_info=True)
+            return None
+        return provider.host_url
 
     def wait_for_status(
         self,
@@ -730,6 +789,32 @@ class AsyncModelsResource(BaseAsyncModelsResource):
         return (
             f"{base_url}/apis/inference-gateway/v2/workspaces/{model_entity.workspace}/model/{model_entity.name}/-/v1"
         )
+
+    async def resolve_model_reference(self, ref: str) -> ResolvedModelReference:
+        """Resolve ``workspace/model`` to inference-gateway route details."""
+        workspace, name = parse_workspace_name_ref(ref, label="Model reference", expected_format="workspace/model_name")
+        model_entity = await self.retrieve(name, workspace=workspace)
+        return ResolvedModelReference(
+            url=self.get_model_entity_route_openai_url(model_entity),
+            name=name,
+            host_url=await self._resolve_model_provider_host_url(model_entity),
+        )
+
+    async def _resolve_model_provider_host_url(self, model_entity: ModelEntity) -> str | None:
+        """Resolve the model entity's first provider host URL, if available."""
+        provider_parts = first_provider_ref(model_entity.model_providers)
+        if provider_parts is None:
+            return None
+        provider_ref, provider_workspace, provider_name = provider_parts
+        try:
+            provider = await self._client.inference.providers.retrieve(provider_name, workspace=provider_workspace)
+        except NotFoundError:
+            _logger.warning("Provider not found during host_url resolution", extra={"provider_ref": provider_ref})
+            return None
+        except Exception:
+            _logger.warning("Failed to resolve provider host_url", extra={"provider_ref": provider_ref}, exc_info=True)
+            return None
+        return provider.host_url
 
     async def wait_for_status(
         self,

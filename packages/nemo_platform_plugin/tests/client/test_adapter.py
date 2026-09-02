@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import httpx
 from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin import client_from_platform
 from nemo_platform_plugin.client.types import RetryPolicy
 from nemo_platform_plugin.jobs import endpoints
 from nemo_platform_plugin.jobs.client import JobsClient

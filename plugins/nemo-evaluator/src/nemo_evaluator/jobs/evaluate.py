@@ -27,7 +27,7 @@ from nemo_evaluator.jobs.metric_resolution import (
 from nemo_evaluator.jobs.publication import publish_row_eval_result
 from nemo_evaluator.jobs.publication_spec import RowPublicationSpec
 from nemo_evaluator.jobs.result_persistence import persist_evaluate_result
-from nemo_evaluator.jobs.utils import run_with_isolated_async_sdk
+from nemo_evaluator.jobs.utils import run_with_isolated_async_client
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk import Evaluator
@@ -43,8 +43,10 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.intake.client import AsyncIntakeClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
@@ -88,8 +90,8 @@ def _resolve_run_dataset(
     dataset: DatasetSpec,
     *,
     ctx: JobContext,
-    sdk: NeMoPlatform | None = None,
-    async_sdk: AsyncNeMoPlatform | None = None,
+    client: NemoClient | None = None,
+    async_client: AsyncNemoClient | None = None,
 ) -> InlineDataset | Path:
     """Resolve an evaluator plugin dataset for local SDK execution."""
     if not isinstance(dataset, FilesetRef):
@@ -97,17 +99,17 @@ def _resolve_run_dataset(
 
     destination = str(ctx.storage.persistent / "dataset")
     # Prefer sync when available; async path isolates httpx so later run_sync calls
-    # (result persistence) can reuse the injected async_sdk.
-    if sdk is not None:
+    # (result persistence) can reuse the injected async client.
+    if client is not None:
         return download_dataset_sync(
-            sdk=sdk,
+            client=client,
             dataset=dataset,
             destination=destination,
         )
-    if async_sdk is not None:
-        return run_with_isolated_async_sdk(
-            async_sdk,
-            lambda sdk: download_dataset(sdk=sdk, dataset=dataset, destination=destination),
+    if async_client is not None:
+        return run_with_isolated_async_client(
+            async_client,
+            lambda client: download_dataset(client=client, dataset=dataset, destination=destination),
         )
     raise ValueError("FilesetRef datasets require an SDK client for local evaluator job execution.")
 
@@ -260,12 +262,7 @@ class EvaluateJob(NemoJob):
         *,
         workspace: str,
         entity_client: object,
-        # Widened from the base signature: `resolve_metrics_to_inline` documents that it takes
-        # either client. Contravariant, so overriding with a wider parameter stays substitutable.
-        # The caller that actually forwarded a sync client was the plugin's local-run path, now
-        # removed, so this could likely narrow to the async client alone — left alone here to keep
-        # this change a pure deletion.
-        async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
+        async_sdk: AsyncNeMoPlatform | None,
         is_local: bool,
     ) -> BaseModel:
         """Resolve submitter-facing model and metric references into the canonical evaluation spec."""
@@ -297,8 +294,8 @@ class EvaluateJob(NemoJob):
         config: dict,
         *,
         ctx: JobContext,
-        sdk: NeMoPlatform | None = None,
-        async_sdk: AsyncNeMoPlatform | None = None,
+        sdk: NemoClient | None = None,
+        async_sdk: AsyncNemoClient | None = None,
     ) -> dict:
         """Run the evaluator job locally and persist its result artifact."""
         spec = EvaluateSpec.model_validate(config)
@@ -312,8 +309,8 @@ class EvaluateJob(NemoJob):
         dataset = _resolve_run_dataset(
             spec.dataset,
             ctx=ctx,
-            sdk=sdk,
-            async_sdk=async_sdk,
+            client=sdk,
+            async_client=async_sdk,
         )
         if isinstance(spec.target, Model):
             if not isinstance(params, RunConfigOnlineModel):
@@ -395,16 +392,17 @@ class EvaluateJob(NemoJob):
         # Publication runs last, after the artifacts and the queryable record are both durable, so a
         # failed publish costs a re-publish rather than a re-run. It is also the only step here that
         # can fail the job (when `required`).
-        intake = spec.publication.intake if spec.publication is not None else None
-        if intake is not None:
+        publication = spec.publication.intake if spec.publication is not None else None
+        if publication is not None:
+            intake = AsyncIntakeClient.from_client(async_sdk) if async_sdk is not None else None
             outcome = publish_row_eval_result(
                 result,
-                spec=intake,
+                spec=publication,
                 target=spec.target,
                 run_id=ctx.job_id,
                 started_at=started_at,
                 workspace=ctx.workspace,
-                async_sdk=async_sdk,
+                intake=intake,
             )
             output["publication"] = outcome.model_dump(exclude_none=True)
 

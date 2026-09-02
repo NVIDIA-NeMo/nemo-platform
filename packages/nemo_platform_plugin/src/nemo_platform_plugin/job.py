@@ -71,9 +71,10 @@ from abc import abstractmethod
 from typing import Any, ClassVar
 
 from nemo_platform import AsyncNeMoPlatform
+from pydantic import BaseModel
+
 from nemo_platform_plugin._base import _NamedPlugin
 from nemo_platform_plugin.job_context import JobContext
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

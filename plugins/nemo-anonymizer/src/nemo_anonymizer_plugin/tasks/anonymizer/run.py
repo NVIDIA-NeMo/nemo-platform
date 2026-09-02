@@ -20,7 +20,7 @@ from nemo_anonymizer_plugin.app.input import prepare_anonymizer_input
 from nemo_anonymizer_plugin.app.task_config import AnonymizerStepConfig
 from nemo_anonymizer_plugin.app.upstream_logging import preserve_root_logging
 from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin import client_from_platform
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.constants import (

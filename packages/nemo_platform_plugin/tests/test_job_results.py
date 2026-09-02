@@ -22,13 +22,19 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin import NemoClient
+from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.job_results import (
     JobResults,
     LocalJobResults,
     PlatformJobResults,
     ResultRef,
 )
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.result_manager import ResultManager
 
 
 @pytest.fixture
@@ -158,32 +164,58 @@ def _platform_record(name: str = "metrics", url: str = "fileset://ws/fs#results/
     return record
 
 
+def _task_sdk() -> tuple[NeMoPlatform, httpx.Client]:
+    http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
+    sdk = NeMoPlatform(base_url="http://platform.test", workspace="ws", http_client=http_client)
+    return sdk, http_client
+
+
 class TestPlatformJobResults:
     def test_platform_job_results_is_a_job_results(self) -> None:
-        sdk = MagicMock()
+        sdk = NeMoPlatform(base_url="http://platform.test", workspace="ws")
         with patch("nemo_platform_plugin.job_results.result_manager_factory") as factory:
             factory.return_value = MagicMock()
             sink = PlatformJobResults(job_name="j", workspace="ws", sdk=sdk)
         assert isinstance(sink, JobResults)
 
+    def test_platform_job_results_adapts_generated_sdk(self) -> None:
+        http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
+        sdk = NeMoPlatform(base_url="http://platform.test", workspace="ws", http_client=http_client)
+
+        with patch("nemo_platform_plugin.job_results.result_manager_factory") as factory:
+            factory.return_value = MagicMock()
+            PlatformJobResults(job_name="j", workspace="ws", sdk=sdk)
+
+        files_client = factory.call_args.kwargs["files_client"]
+        jobs_client = factory.call_args.kwargs["jobs_client"]
+        assert isinstance(files_client, FilesClient)
+        assert isinstance(jobs_client, JobsClient)
+        assert files_client._http is http_client
+        assert jobs_client._http is http_client
+
     def test_save_delegates_to_result_manager(self, tmp_path: Path) -> None:
-        sdk = MagicMock()
+        sdk, http_client = _task_sdk()
         local = tmp_path / "out.json"
         local.write_text("{}")
         manager = MagicMock()
-        manager.create_result.return_value = _platform_record(name="metrics", url="fileset://ws/fs#results/A1/metrics")
+        manager.create_result.return_value = _platform_record(
+            name="metrics",
+            url="fileset://ws/fs#results/A1/metrics",
+        )
         with patch("nemo_platform_plugin.job_results.result_manager_factory", return_value=manager) as factory:
             sink = PlatformJobResults(job_name="j", workspace="ws", sdk=sdk, attempt_id="A1")
             ref = sink.save("metrics", local, ignore_patterns=["cache.db"])
 
-        factory.assert_called_once_with(
-            job_name="j",
-            workspace="ws",
-            attempt_id="A1",
-            files_sdk=sdk,
-            jobs_sdk=sdk,
-            is_async=False,
-        )
+        factory.assert_called_once()
+        call_kwargs = factory.call_args.kwargs
+        assert call_kwargs["job_name"] == "j"
+        assert call_kwargs["workspace"] == "ws"
+        assert call_kwargs["attempt_id"] == "A1"
+        assert call_kwargs["is_async"] is False
+        assert isinstance(call_kwargs["files_client"], FilesClient)
+        assert isinstance(call_kwargs["jobs_client"], JobsClient)
+        assert call_kwargs["files_client"]._http is http_client
+        assert call_kwargs["jobs_client"]._http is http_client
         manager.create_result.assert_called_once_with(
             result_name="metrics",
             artifact_local_path=local,
@@ -192,7 +224,7 @@ class TestPlatformJobResults:
         assert ref == ResultRef(name="metrics", artifact_url="fileset://ws/fs#results/A1/metrics")
 
     def test_save_forwards_directory_path_unchanged(self, tmp_path: Path) -> None:
-        sdk = MagicMock()
+        sdk, _http_client = _task_sdk()
         payload_dir = tmp_path / "payload"
         payload_dir.mkdir()
         manager = MagicMock()
@@ -205,10 +237,50 @@ class TestPlatformJobResults:
         assert call.kwargs["ignore_patterns"] == ["cache.db", "cache/"]
 
     def test_save_propagates_manager_errors(self) -> None:
-        sdk = MagicMock()
+        sdk, _http_client = _task_sdk()
         manager = MagicMock()
         manager.create_result.side_effect = RuntimeError("boom")
         with patch("nemo_platform_plugin.job_results.result_manager_factory", return_value=manager):
             sink = PlatformJobResults(job_name="j", workspace="ws", sdk=sdk)
             with pytest.raises(RuntimeError, match="boom"):
                 sink.save("metrics", Path("/tmp/whatever"))
+
+
+def test_result_manager_fetches_metadata_from_typed_task_client() -> None:
+    """Task result publishing receives ``NemoClient`` handles, not generated SDKs."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/apis/jobs/v2/workspaces/test-ws/jobs/test-job"
+        return httpx.Response(
+            200,
+            json={
+                "id": "job-1",
+                "attempt_id": "att-123",
+                "name": "test-job",
+                "workspace": "test-ws",
+                "source": "unit",
+                "platform_spec": {
+                    "steps": [
+                        {
+                            "name": "step-1",
+                            "executor": {"provider": "cpu", "container": {}},
+                        }
+                    ]
+                },
+                "fileset": "test-fileset",
+                "output_location": "shared-fs",
+                "status": "created",
+            },
+            request=request,
+        )
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    sdk = NemoClient(base_url="http://platform.test", workspace="test-ws", http_client=http_client)
+    manager = ResultManager(
+        job_name="test-job",
+        workspace="test-ws",
+        files_client=FilesClient.from_client(sdk),
+        jobs_client=JobsClient.from_client(sdk),
+    )
+
+    assert manager._fetch_job_metadata() == ("att-123", "test-fileset", "shared-fs")

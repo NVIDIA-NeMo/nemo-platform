@@ -9,8 +9,10 @@ from pathlib import Path
 
 import pytest
 from nemo_evaluator import agent_seeds
-from nemo_evaluator.agent_seeds import FilesetSeed
+from nemo_evaluator.agent_seeds import _EVALUATOR_SERVICE, FilesetSeed
+from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator_sdk.agent_eval.workspace_seeds import WorkspaceSeedError, parse_seed, seed_workspace
+from nemo_platform_plugin.client.client import NemoClient
 from pydantic import ValidationError
 
 
@@ -28,13 +30,20 @@ def test_importing_plugin_registers_fileset_kind() -> None:
     assert isinstance(parse_seed({"kind": "fileset", "ref": "ws/name"}), FilesetSeed)
 
 
+def _task_client(service: str) -> NemoClient:
+    assert service == _EVALUATOR_SERVICE
+    return NemoClient(base_url="http://platform.test", workspace="default")
+
+
 def test_fileset_seed_resolves_single_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_download(sdk: object, ref: object, dest: str) -> Path:
+    def fake_download(sdk: NemoClient, ref: FilesetRef, dest: str) -> Path:
+        assert sdk.workspace == "default"
+        assert ref.root == "ws/name#data.csv"
         target = Path(dest) / "data.csv"
         target.write_bytes(b"col\n1\n")
         return target
 
-    monkeypatch.setattr(agent_seeds, "get_task_sdk", lambda service: object())
+    monkeypatch.setattr(agent_seeds, "get_task_nemo_client", _task_client)
     monkeypatch.setattr(agent_seeds, "download_dataset_sync", fake_download)
 
     seed_workspace(tmp_path, {"seed/data.csv": {"kind": "fileset", "ref": "ws/name#data.csv"}})
@@ -42,13 +51,15 @@ def test_fileset_seed_resolves_single_file(tmp_path: Path, monkeypatch: pytest.M
 
 
 def test_fileset_seed_rejects_multi_file_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_download(sdk: object, ref: object, dest: str) -> Path:
+    def fake_download(sdk: NemoClient, ref: FilesetRef, dest: str) -> Path:
+        assert sdk.workspace == "default"
+        assert ref.root == "ws/name"
         root = Path(dest)
         (root / "a.txt").write_text("a")
         (root / "b.txt").write_text("b")
         return root
 
-    monkeypatch.setattr(agent_seeds, "get_task_sdk", lambda service: object())
+    monkeypatch.setattr(agent_seeds, "get_task_nemo_client", _task_client)
     monkeypatch.setattr(agent_seeds, "download_dataset_sync", fake_download)
 
     with pytest.raises(WorkspaceSeedError, match="resolved to 2 files"):

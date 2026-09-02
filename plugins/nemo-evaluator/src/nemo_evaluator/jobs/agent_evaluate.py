@@ -67,8 +67,8 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTas
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import RunConfigOnline, RunConfigOnlineModel
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin import AsyncNemoClient, NemoClient, client_from_platform
 from nemo_platform_plugin.client.errors import (
     InternalServerError,
     NemoResponseValidationError,
@@ -79,6 +79,7 @@ from nemo_platform_plugin.client.errors import (
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.files.types import FilesetPurpose
+from nemo_platform_plugin.intake.client import AsyncIntakeClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec, SubprocessExecutionProviderSpec
@@ -216,7 +217,7 @@ async def _resolve_gym_environment(
 
 
 #: Identity headers forwarded from the job's platform SDK to online inference so a platform-routed
-#: target authenticates as the job's principal (``get_task_sdk`` emits these). An explicit allowlist
+#: target authenticates as the job's principal (``get_task_nemo_client`` emits these). An explicit allowlist
 #: — not an ``X-NMP-*`` prefix match — so trace/metadata headers the SDK may add later never leak to
 #: a third-party model/agent endpoint. ``X-NMP-Principal-Id`` is the header the PDP authorizes on
 #: (verified against an auth-enabled platform); the rest carry the delegated on-behalf-of identity.
@@ -472,18 +473,18 @@ class AgentEvalJob(NemoJob):
         return None
 
     @staticmethod
-    def _is_platform_routed(url: str, platform: NeMoPlatform | AsyncNeMoPlatform) -> bool:
+    def _is_platform_routed(url: str, client: NemoClient | AsyncNemoClient) -> bool:
         """True when *url* points at the platform itself (e.g. an IGW route under its base URL).
 
         Compared by origin (host + port): the platform serves IGW under its own base URL, so a target
         whose host matches is in-platform. A third-party endpoint the user configured does not match —
         and must not receive the job's on-behalf-of identity (id/email/groups is PII).
         """
-        target, base = urlsplit(url), urlsplit(str(platform.base_url))
+        target, base = urlsplit(url), urlsplit(str(client.base_url))
         return (target.hostname, target.port) == (base.hostname, base.port)
 
     @staticmethod
-    def _build_evaluator(platform: NeMoPlatform | AsyncNeMoPlatform | None, target: Target | None) -> AgentEvaluator:
+    def _build_evaluator(client: NemoClient | AsyncNemoClient | None, target: Target | None) -> AgentEvaluator:
         """Construct the evaluator, forwarding the job's platform identity to online inference.
 
         Online generation against a *platform-routed* Model/Agent target must act as the job's
@@ -496,8 +497,8 @@ class AgentEvalJob(NemoJob):
         External providers authenticate via their own api key and don't need it anyway. Isolated so
         tests can inject a fake inference seam.
 
-        ``platform`` is the SDK handle injected into ``run`` — a real ``NeMoPlatform`` in a submitted
-        job (built by ``get_task_sdk``, threading ``NMP_PRINCIPAL`` as on-behalf-of). It is ``None``
+        ``client`` is the SDK handle injected into ``run`` — a typed platform client in a submitted
+        job (built by ``get_task_nemo_client``, threading ``NMP_PRINCIPAL`` as on-behalf-of). It is ``None``
         only for a platformless local run (e.g. offline ``run_local``), which has no identity to
         forward.
 
@@ -507,10 +508,11 @@ class AgentEvalJob(NemoJob):
         """
         identity_headers: dict[str, str] = {}
         url = AgentEvalJob._endpoint_url(target)
-        if platform is not None and url is not None and AgentEvalJob._is_platform_routed(url, platform):
+        if client is not None and url is not None and AgentEvalJob._is_platform_routed(url, client):
+            headers = client.default_headers
             identity_headers = {
                 key: value
-                for key, value in platform.default_headers.items()
+                for key, value in headers.items()
                 if key in _FORWARDED_IDENTITY_HEADERS and isinstance(value, str)
             }
         return AgentEvaluator(default_headers=identity_headers or None)
@@ -618,8 +620,8 @@ class AgentEvalJob(NemoJob):
         config: dict,
         *,
         ctx: JobContext,
-        sdk: NeMoPlatform | None = None,
-        async_sdk: AsyncNeMoPlatform | None = None,
+        sdk: NemoClient | None = None,
+        async_sdk: AsyncNemoClient | None = None,
     ) -> dict:
         """Run the agent evaluation locally and persist its result bundle as artifacts."""
         spec = AgentEvalSpec.model_validate(config)
@@ -632,7 +634,7 @@ class AgentEvalJob(NemoJob):
             labels=spec.labels,
             fail_fast=spec.fail_fast,
         )
-        # `run` may be injected a sync `sdk` (submitted jobs, via get_task_sdk) and/or an
+        # `run` may be injected a sync `sdk` (submitted jobs, via get_task_nemo_client) and/or an
         # `async_sdk`; forward whichever identity is present, preferring async when both are — the
         # same precedence the SDK-backed dataset resolver uses.
         evaluator = self._build_evaluator(async_sdk or sdk, spec.target)
@@ -661,14 +663,15 @@ class AgentEvalJob(NemoJob):
         # Publication runs last, after the bundle and the queryable record are both durable, so a
         # failed publish costs a re-publish rather than a re-run. It is also the only step here that
         # can fail the job (when `required`), which is why nothing depends on its result.
-        intake = spec.publication.intake if spec.publication is not None else None
-        if intake is not None:
+        publication = spec.publication.intake if spec.publication is not None else None
+        if publication is not None:
+            intake = AsyncIntakeClient.from_client(async_sdk) if async_sdk is not None else None
             outcome = publish_agent_eval_result(
                 result,
-                spec=intake,
+                spec=publication,
                 target=spec.target,
                 workspace=ctx.workspace,
-                async_sdk=async_sdk,
+                intake=intake,
             )
             output["publication"] = outcome.model_dump(exclude_none=True)
 

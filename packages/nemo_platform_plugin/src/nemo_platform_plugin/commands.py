@@ -93,6 +93,8 @@ from typing import Any, Literal, Optional, cast
 
 import httpx
 import typer
+from pydantic import BaseModel, ValidationError
+
 from nemo_platform_plugin._spec_flags import (
     UNSET,
     SpecLeafField,
@@ -119,7 +121,6 @@ from nemo_platform_plugin.jobs._cli_options import (
 )
 from nemo_platform_plugin.run_dependencies import LocalRunError
 from nemo_platform_plugin.scheduler import NemoJobScheduler
-from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 

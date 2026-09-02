@@ -3,9 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import datetime, timezone
-from unittest.mock import patch
 
 import pytest
 from nemo_evaluator.api.schemas import MetricInline
@@ -15,48 +13,64 @@ from nemo_evaluator.metric_storage import parse_bundle_ref
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.entities import ListResponse, PaginationInfo
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
-from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.filter_ops import FilterOperation
 
 # ---- in-memory fakes -------------------------------------------------------
 
 
-class _FakeResponse:
-    def __init__(self, data: bytes) -> None:
-        self._data = data
+class _FakeFilesets:
+    def __init__(self, store: dict[tuple[str, str], dict[str, bytes]]) -> None:
+        self._store = store
 
-    async def read(self) -> bytes:
-        return self._data
+    async def create(self, *, workspace: str | None = None, name: str, description: str) -> object:
+        del description
+        self._store.setdefault((workspace or "default", name), {})
+        return object()
 
-
-class _FakeOperationResponse:
-    def data(self) -> object:
+    async def delete(self, name: str, *, workspace: str | None = None) -> object:
+        self._store.pop((workspace or "default", name), None)
         return object()
 
 
-class _FakeAsyncFilesClient:
+class _FakeFiles:
+    filesets: _FakeFilesets
+
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], dict[str, bytes]] = {}
+        self.filesets = _FakeFilesets(self._store)
 
-    async def create_fileset(
-        self, *, body: CreateFilesetRequest, workspace: str | None = None, exist_ok: bool = False
-    ) -> _FakeOperationResponse:
-        self._store.setdefault((workspace or "default", body.name), {})
-        return _FakeOperationResponse()
+    async def upload_content(
+        self,
+        *,
+        content: bytes,
+        remote_path: str,
+        fileset: str | None = None,
+        workspace: str | None = None,
+    ) -> object:
+        if fileset is None:
+            raise ValueError("fileset is required")
+        self._store.setdefault((workspace or "default", fileset), {})[remote_path] = bytes(content)
+        return object()
 
-    async def delete_fileset(self, *, name: str, workspace: str | None = None) -> _FakeOperationResponse:
-        self._store.pop((workspace or "default", name), None)
-        return _FakeOperationResponse()
+    async def download_content(
+        self,
+        *,
+        remote_path: str,
+        fileset: str | None = None,
+        workspace: str | None = None,
+    ) -> bytes:
+        if fileset is None:
+            raise ValueError("fileset is required")
+        return self._store[(workspace or "default", fileset)][remote_path]
 
-    async def upload_file(self, *, path: str, content: bytes, workspace: str, name: str) -> _FakeOperationResponse:
-        self._store.setdefault((workspace, name), {})[path] = bytes(content)
-        return _FakeOperationResponse()
 
-    async def download_file(self, *, path: str, workspace: str, name: str) -> _FakeResponse:
-        return _FakeResponse(self._store[(workspace, name)][path])
+class _FakePlatform:
+    files: _FakeFiles
+
+    def __init__(self, files: _FakeFiles | None = None) -> None:
+        self.files = files or _FakeFiles()
 
 
 class _FakeEntityClient:
@@ -121,17 +135,13 @@ class _FakeEntityClient:
         )
 
 
-class _FakePlatform(AsyncNeMoPlatform):
-    pass
-
-
-def _fake_platform() -> _FakePlatform:
-    return _FakePlatform.__new__(_FakePlatform)
+def _fake_platform(files: _FakeFiles | None = None) -> _FakePlatform:
+    return _FakePlatform(files)
 
 
 @pytest.fixture
-def fake_files() -> _FakeAsyncFilesClient:
-    return _FakeAsyncFilesClient()
+def fake_files() -> _FakeFiles:
+    return _FakeFiles()
 
 
 @pytest.fixture
@@ -140,10 +150,8 @@ def fake_entity_client() -> _FakeEntityClient:
 
 
 @pytest.fixture
-def service(fake_files: _FakeAsyncFilesClient, fake_entity_client: _FakeEntityClient) -> Iterator[MetricService]:
-    svc = MetricService(fake_entity_client, _fake_platform())
-    with patch("nemo_evaluator.metric_storage.client_from_platform", return_value=fake_files):
-        yield svc
+def service(fake_files: _FakeFiles, fake_entity_client: _FakeEntityClient) -> MetricService:
+    return MetricService(fake_entity_client, _fake_platform(fake_files))
 
 
 def _bundle(metric=None) -> MetricInline:
@@ -224,7 +232,7 @@ async def test_list_returns_workspace_metrics(service: MetricService) -> None:
 
 
 async def test_store_derived_metric_names_by_digest_and_marks_derived(
-    service: MetricService, fake_files: _FakeAsyncFilesClient, fake_entity_client: _FakeEntityClient
+    service: MetricService, fake_files: _FakeFiles, fake_entity_client: _FakeEntityClient
 ) -> None:
     from nemo_evaluator.api.service.metric_service import _MAX_ENTITY_NAME_LENGTH
 
@@ -254,7 +262,7 @@ async def test_store_derived_metric_distinguishes_full_contract(
 
 
 async def test_store_derived_metric_is_content_addressed_dedup(
-    service: MetricService, fake_files: _FakeAsyncFilesClient, fake_entity_client: _FakeEntityClient
+    service: MetricService, fake_files: _FakeFiles, fake_entity_client: _FakeEntityClient
 ) -> None:
     bundle = _bundle()
 

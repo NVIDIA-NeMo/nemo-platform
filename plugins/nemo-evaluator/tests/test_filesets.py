@@ -6,17 +6,26 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from nemo_evaluator.filesets import FilesetRef, download_dataset
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin import AsyncNemoClient
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from pytest_mock import MockerFixture
 
 
+def _fake_platform() -> AsyncNemoClient:
+    return AsyncNemoClient(
+        base_url="http://platform.test",
+        workspace="default",
+        http_client=AsyncMock(spec=httpx.AsyncClient),
+    )
+
+
 class _FakeFilesetFileSystem:
-    def __init__(self, *, client: object) -> None:
+    def __init__(self, *, client: AsyncFilesClient) -> None:
         self._client = client
 
     async def _get_file(self, remote_path: str, local_path: str) -> None:
@@ -31,12 +40,9 @@ async def test_download_dataset_rejects_fragment_path_escape(mocker: MockerFixtu
     """Fileset fragments should not write outside the requested destination."""
     mocker.patch("nemo_evaluator.filesets.FilesetFileSystem", _FakeFilesetFileSystem)
 
-    with (
-        patch("nemo_evaluator.filesets.client_from_platform", return_value=object()),
-        pytest.raises(ValueError, match="Fileset path escapes destination"),
-    ):
+    with pytest.raises(ValueError, match="Fileset path escapes destination"):
         await download_dataset(
-            cast(AsyncNeMoPlatform, object()),
+            _fake_platform(),
             FilesetRef(root="default/helpsteer2#../../outside.jsonl"),
             str(tmp_path),
         )
@@ -47,12 +53,9 @@ async def test_download_dataset_rejects_absolute_root_path(mocker: MockerFixture
     """Fileset roots should not be able to become absolute local paths."""
     mocker.patch("nemo_evaluator.filesets.FilesetFileSystem", _FakeFilesetFileSystem)
 
-    with (
-        patch("nemo_evaluator.filesets.client_from_platform", return_value=object()),
-        pytest.raises(ValueError, match="Fileset path escapes destination"),
-    ):
+    with pytest.raises(ValueError, match="Fileset path escapes destination"):
         await download_dataset(
-            cast(AsyncNeMoPlatform, object()),
+            _fake_platform(),
             FilesetRef(root="/tmp/outside"),
             str(tmp_path),
         )

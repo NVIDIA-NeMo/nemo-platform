@@ -7,13 +7,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Literal, cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import nemo_evaluator.cli as evaluator_cli
 import pytest
+from models import AsyncModelsResource, ResolvedModelReference
 from nemo_evaluator.cli import EvaluatorPluginCLI
 from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.evaluate import (
@@ -27,7 +27,6 @@ from nemo_evaluator.jobs.evaluate import (
     EvaluateSpec,
 )
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle
-from nemo_evaluator.resolvers import PlatformModelResolver, _parse_required_workspace_name
 from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundle,
     MetricBundlePackager,
@@ -57,6 +56,8 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
@@ -222,63 +223,28 @@ register_metric_bundle_kind(
 )
 
 
-class _FakeModels:
-    def __init__(self) -> None:
-        self.retrieved: list[tuple[str, str]] = []
-
-    def retrieve(self, name: str, *, workspace: str) -> SimpleNamespace:
-        self.retrieved.append((workspace, name))
-        return SimpleNamespace(model_providers=["default/provider"])
-
-    def get_model_entity_route_openai_url(self, model_entity: object) -> str:
-        del model_entity
-        return "https://igw.example.test/v1/chat/completions"
+def _generated_async_sdk() -> AsyncNeMoPlatform:
+    return AsyncNeMoPlatform(
+        base_url="http://platform.test",
+        workspace="default",
+        http_client=AsyncMock(spec=httpx.AsyncClient),
+    )
 
 
-class _FakeModelsClient:
-    """Typed ``ModelsClient`` surface the resolver builds via
-    ``client_from_platform``. ``get_model``/``get_provider`` return responses with
-    a ``.data()`` accessor, mirroring ``NemoResponse``."""
-
-    def __init__(self) -> None:
-        self.retrieved: list[tuple[str, str]] = []
-
-    def get_model(self, *, name: str, workspace: str) -> SimpleNamespace:
-        self.retrieved.append((workspace, name))
-        entity = SimpleNamespace(model_providers=["default/provider"])
-        return SimpleNamespace(data=lambda: entity)
-
-    def get_provider(self, *, name: str, workspace: str) -> SimpleNamespace:
-        return SimpleNamespace(
-            data=lambda: SimpleNamespace(name=name, workspace=workspace, host_url="http://nim.example.test:8000")
+def _patch_async_model_reference_resolution(mocker: MockerFixture) -> None:
+    async def resolve_model_reference(self: AsyncModelsResource, ref: str) -> ResolvedModelReference:
+        del self
+        assert ref == "default/judge"
+        return ResolvedModelReference(
+            url="https://igw.example.test/v1/chat/completions",
+            name="judge",
+            host_url="http://nim.example.test:8000",
         )
 
-    def get_model_entity_route_openai_url(self, model_entity: object) -> str:
-        del model_entity
-        return "https://igw.example.test/v1/chat/completions"
-
-
-class _FakeProviders:
-    def retrieve(self, name: str, *, workspace: str) -> SimpleNamespace:
-        return SimpleNamespace(name=name, workspace=workspace, host_url="http://nim.example.test:8000")
-
-
-class _FakeSDK:
-    def __init__(self) -> None:
-        self.models_client = _FakeModelsClient()
-        self.models = _FakeModels()
-        self.inference = SimpleNamespace(providers=_FakeProviders())
-
-
-@pytest.fixture(autouse=True)
-def _patch_resolver_client_from_platform():
-    """Route ``client_from_platform(sdk, ModelsClient)`` in the resolver back to
-    ``sdk.models_client`` so tests drive the typed client directly."""
-    with patch(
-        "nemo_evaluator.resolvers.client_from_platform",
-        side_effect=lambda sdk_or_async, _cls: sdk_or_async.models_client,
-    ):
-        yield
+    mocker.patch(
+        "nemo_evaluator.jobs.metric_resolution.AsyncModelsResource.resolve_model_reference",
+        resolve_model_reference,
+    )
 
 
 def _llm_judge_ref_metric() -> LLMJudgeMetric:
@@ -413,6 +379,18 @@ def test_cli_info_reports_registered_evaluator_job_keys() -> None:
     assert payload["jobs"] == ["evaluator.evaluate", "evaluator.agent-evaluate"]
 
 
+def test_cli_evaluate_still_exposes_run_during_stainless_migration() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+    add_job_commands(app, {"evaluator.evaluate": EvaluateJob}, cli=EvaluatorPluginCLI())
+
+    result = CliRunner().invoke(app, ["evaluate", "--help"])
+
+    assert result.exit_code == 0
+    assert "run" in result.output
+    assert "submit" in result.output
+    assert "explain" in result.output
+
+
 def test_cli_metric_types_reports_sdk_metric_union_types() -> None:
     app = EvaluatorPluginCLI().get_cli()
 
@@ -508,37 +486,6 @@ def test_cli_run_executes_evaluator_job() -> None:
     assert _load_artifact_payload(payload)["aggregate_scores"]["scores"][0]["mean"] == 0.5
 
 
-async def test_platform_model_resolver_resolves_model_ref_through_sdk() -> None:
-    sdk = _FakeSDK()
-    resolver = PlatformModelResolver(sdk)
-
-    model = await resolver.resolve_model(ModelRef(root="default/judge"))
-
-    assert sdk.models_client.retrieved == [("default", "judge")]
-    assert model.name == "judge"
-    assert model.url == "https://igw.example.test/v1/chat/completions"
-    assert model.host_url == "http://nim.example.test:8000"
-
-
-async def test_platform_model_resolver_rejects_missing_model_ref(mocker: MockerFixture) -> None:
-    from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
-
-    sdk = _FakeSDK()
-    mocker.patch.object(
-        sdk.models_client,
-        "get_model",
-        side_effect=PluginNotFoundError(httpx.Response(404, request=httpx.Request("GET", "https://nmp.test/a"))),
-    )
-
-    with pytest.raises(ValueError, match="Model reference 'default/missing' not found"):
-        await PlatformModelResolver(sdk).resolve_model(ModelRef(root="default/missing"))
-
-
-def test_parse_required_workspace_name_rejects_extra_separator() -> None:
-    with pytest.raises(ValueError, match="ModelRef must be in format 'workspace/model_name'"):
-        _parse_required_workspace_name("default/judge/extra", label="ModelRef", expected_format="workspace/model_name")
-
-
 def test_unbundle_metric_dispatches_mixed_bundle_kinds_by_payload_kind() -> None:
     """Metric bundle hydration dispatches per bundle instead of assuming one packager."""
     cloudpickle_bundle = bundle_metric(
@@ -578,6 +525,7 @@ async def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
 
     mocker.patch.object(LLMJudgeMetric, "preflight", mocker.AsyncMock(return_value=None))
     mocker.patch.object(LLMJudgeMetric, "compute_scores", compute_scores)
+    _patch_async_model_reference_resolution(mocker)
 
     ctx = _make_job_context(tmp_path)
     spec = await EvaluateJob.to_spec(
@@ -589,7 +537,7 @@ async def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
         ),
         workspace="default",
         entity_client=object(),
-        async_sdk=cast(Any, _FakeSDK()),
+        async_sdk=_generated_async_sdk(),
         is_local=True,
     )
     run_result = EvaluateJob().run(
@@ -633,7 +581,9 @@ def test_evaluate_spec_rejects_unresolved_bundled_metric_model_refs() -> None:
         )
 
 
-async def test_evaluate_job_to_spec_resolves_bundled_metric_model_refs_before_compile() -> None:
+async def test_evaluate_job_to_spec_resolves_bundled_metric_model_refs_before_compile(mocker: MockerFixture) -> None:
+    _patch_async_model_reference_resolution(mocker)
+
     canonical = await EvaluateJob.to_spec(
         EvaluateInputSpec.model_validate(
             {
@@ -643,7 +593,7 @@ async def test_evaluate_job_to_spec_resolves_bundled_metric_model_refs_before_co
         ),
         workspace="default",
         entity_client=object(),
-        async_sdk=cast(Any, _FakeSDK()),
+        async_sdk=_generated_async_sdk(),
         is_local=False,
     )
     assert isinstance(canonical, EvaluateSpec)
@@ -696,7 +646,7 @@ async def test_evaluate_job_to_spec_preserves_metric_without_model_refs() -> Non
         ),
         workspace="default",
         entity_client=object(),
-        async_sdk=cast(Any, _FakeSDK()),
+        async_sdk=None,
         is_local=False,
     )
 
@@ -1235,13 +1185,15 @@ class TestEvaluateJobRun:
             create=True,
         )
         download_dataset_sync = mocker.patch("nemo_evaluator.jobs.evaluate.download_dataset_sync", create=True)
-        cloned_sdk = mocker.Mock(name="cloned_async_sdk")
-        async_sdk = mocker.Mock(name="async_sdk")
-        async_sdk.copy.return_value = cloned_sdk
+        async_sdk = AsyncNemoClient(
+            base_url="http://platform.test",
+            workspace="default",
+            http_client=AsyncMock(spec=httpx.AsyncClient),
+        )
         http_client = mocker.AsyncMock(name="http_client")
         http_client.__aenter__.return_value = http_client
         http_client.__aexit__.return_value = None
-        mocker.patch("nemo_evaluator.jobs.utils.DefaultAsyncHttpxClient", return_value=http_client)
+        mocker.patch("nemo_evaluator.jobs.utils.httpx.AsyncClient", return_value=http_client)
         ctx = _make_job_context(tmp_path)
         dataset = FilesetRef(root="default/helpsteer2#validation.jsonl")
         config = {**_exact_match_spec(), "dataset": dataset}
@@ -1249,12 +1201,15 @@ class TestEvaluateJobRun:
         run_result = EvaluateJob().run(config, ctx=ctx, async_sdk=async_sdk)
 
         _assert_saved_result_artifact(run_result, ctx, result_payload)
-        async_sdk.copy.assert_called_once_with(http_client=http_client)
-        download_dataset.assert_awaited_once_with(
-            sdk=cloned_sdk,
-            dataset=dataset,
-            destination=str(ctx.storage.persistent / "dataset"),
-        )
+        assert download_dataset.await_count == 1
+        cloned_client = download_dataset.await_args.kwargs["client"]
+        assert isinstance(cloned_client, AsyncNemoClient)
+        assert cloned_client is not async_sdk
+        assert cloned_client.base_url == async_sdk.base_url
+        assert cloned_client.workspace == async_sdk.workspace
+        assert cloned_client._client is http_client
+        assert download_dataset.await_args.kwargs["dataset"] == dataset
+        assert download_dataset.await_args.kwargs["destination"] == str(ctx.storage.persistent / "dataset")
         download_dataset_sync.assert_not_called()
         call_kwargs = evaluator.run_sync.call_args.kwargs
         assert [type(metric) for metric in call_kwargs["metrics"]] == [ExactMatchMetric]
@@ -1288,7 +1243,7 @@ class TestEvaluateJobRun:
         _assert_saved_result_artifact(run_result, ctx, result_payload)
         download_dataset.assert_not_called()
         download_dataset_sync.assert_called_once_with(
-            sdk=sync_sdk,
+            client=sync_sdk,
             dataset=dataset,
             destination=str(ctx.storage.persistent / "dataset"),
         )
@@ -1327,7 +1282,7 @@ class TestEvaluateJobRun:
         _assert_saved_result_artifact(run_result, ctx, result_payload)
         download_dataset.assert_not_called()
         download_dataset_sync.assert_called_once_with(
-            sdk=sync_sdk,
+            client=sync_sdk,
             dataset=dataset,
             destination=str(ctx.storage.persistent / "dataset"),
         )
@@ -1340,28 +1295,39 @@ class TestEvaluateTask:
     """Coverage for the compiled container task entrypoint."""
 
     def test_main_dispatches_evaluate_job_with_task_sdk(self, mocker: MockerFixture) -> None:
-        sdk = object()
-        async_sdk = object()
-        get_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", return_value=sdk)
-        get_async_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_async_task_sdk", return_value=async_sdk)
+        sdk = NeMoPlatform(base_url="http://platform.test", workspace="default")
+        client = NemoClient(
+            base_url="http://platform.test", workspace="default", http_client=MagicMock(spec=httpx.Client)
+        )
+        async_client = AsyncNemoClient(
+            base_url="http://platform.test", workspace="default", http_client=AsyncMock(spec=httpx.AsyncClient)
+        )
+        ctx = MagicMock()
+        get_platform_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", return_value=sdk)
+        build_ctx = mocker.patch("nemo_evaluator.tasks.runner.build_ctx_from_env", return_value=ctx)
+        get_task_client = mocker.patch("nemo_evaluator.tasks.runner.get_task_nemo_client", return_value=client)
+        get_async_task_client = mocker.patch(
+            "nemo_evaluator.tasks.runner.get_async_task_nemo_client", return_value=async_client
+        )
         run_task = mocker.patch("nemo_evaluator.tasks.runner.run_task", return_value=0)
 
         exit_code = evaluate_task_main()
 
         assert exit_code == 0
-        get_task_sdk.assert_called_once_with("evaluator")
-        get_async_task_sdk.assert_called_once_with("evaluator")
-        run_task.assert_called_once_with(EvaluateJob, sdk=sdk, async_sdk=async_sdk)
+        get_platform_sdk.assert_called_once_with("evaluator")
+        build_ctx.assert_called_once_with(sdk)
+        get_task_client.assert_called_once_with("evaluator")
+        get_async_task_client.assert_called_once_with("evaluator")
+        run_task.assert_called_once_with(EvaluateJob, sdk=client, async_sdk=async_client, ctx=ctx)
 
     def test_main_returns_setup_exit_code_when_task_sdk_fails(self, mocker: MockerFixture) -> None:
-        get_task_sdk = mocker.patch(
-            "nemo_evaluator.tasks.runner.get_task_sdk",
-            side_effect=RuntimeError("boom"),
-        )
+        get_platform_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", side_effect=RuntimeError("boom"))
+        get_task_client = mocker.patch("nemo_evaluator.tasks.runner.get_task_nemo_client")
         run_task = mocker.patch("nemo_evaluator.tasks.runner.run_task")
 
         exit_code = evaluate_task_main()
 
         assert exit_code == SDK_INITIALIZATION_EXIT_CODE
-        get_task_sdk.assert_called_once_with("evaluator")
+        get_platform_sdk.assert_called_once_with("evaluator")
+        get_task_client.assert_not_called()
         run_task.assert_not_called()

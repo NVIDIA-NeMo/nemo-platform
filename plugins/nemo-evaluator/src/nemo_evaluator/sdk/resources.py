@@ -6,10 +6,8 @@
 from __future__ import annotations
 
 from typing import Any, overload
-from urllib.parse import quote
 
 from nemo_evaluator.api.schemas import TasksetRef
-from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk._executor import (
     SubmitTargetSpec,
     _AsyncEvaluatorPluginExecutor,
@@ -56,52 +54,40 @@ from nemo_evaluator_sdk.values import (
     ModelRef,
 )
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin import client_from_platform
+from nemo_platform_plugin.evaluator.client import AsyncEvaluatorClient, EvaluatorClient
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
 
 class Evaluator:
     """Sync SDK namespace mounted as ``client.evaluator``."""
 
-    def __init__(self, platform: NeMoPlatform) -> None:
-        """Store the platform client used for evaluator plugin HTTP calls."""
-        self._platform = platform
-        self._http_client = platform._client
-        self._executor = _SyncEvaluatorPluginExecutor(platform=platform)
-        self.metrics = EvaluatorMetricsResource(platform)
-        self.agent_eval_results = EvaluatorAgentEvalResultsResource(platform)
-        self.eval_results = EvaluatorEvalResultsResource(platform)
-        self.tasks = EvaluatorTasksResource(platform)
-        self.tasksets = EvaluatorTasksetsResource(platform)
+    def __init__(self, client: EvaluatorClient) -> None:
+        """Store the typed evaluator client used for evaluator plugin HTTP calls."""
+        self._client = client
+        self._executor = _SyncEvaluatorPluginExecutor(client=self._client, evaluator_client=self._client)
+        self.metrics = EvaluatorMetricsResource(self._client)
+        self.agent_eval_results = EvaluatorAgentEvalResultsResource(self._client)
+        self.eval_results = EvaluatorEvalResultsResource(self._client)
+        self.tasks = EvaluatorTasksResource(self._client)
+        self.tasksets = EvaluatorTasksetsResource(self._client)
+
+    @classmethod
+    def from_sdk(cls, sdk: NeMoPlatform) -> Evaluator:
+        return cls(client_from_platform(sdk, EvaluatorClient))
 
     def plugin_status(self) -> dict[str, object]:
         """Return evaluator plugin health information from the service."""
-        response = self._http_client.get(
-            http_utils.url(self._platform, "/v1/healthz"),
-            headers=http_utils.platform_default_headers(self._platform),
-        )
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise TypeError("Evaluator plugin status response must be a JSON object.")
+        payload = self._client.get_health().data().model_dump(mode="json", exclude_none=True, exclude_unset=True)
         return {str(key): value for key, value in payload.items()}
 
     def get_job_resource(self, job_name: str, workspace: str | None = None) -> EvaluatorJobResource:
         """Get a high-level resource for an existing evaluator plugin job."""
-        response = self._http_client.get(
-            http_utils.url(
-                self._platform,
-                f"/v2/workspaces/{{workspace}}/evaluate/jobs/{quote(job_name, safe='')}",
-                workspace,
-            ),
-            headers=http_utils.platform_default_headers(self._platform),
-        )
-        response.raise_for_status()
+        response = self._client.get_evaluate_job(name=job_name, workspace=workspace)
         return EvaluatorJobResource(
-            job=EvaluatorJob.model_validate(response.json()),
-            http_client=self._http_client,
-            base_url=http_utils.base_url(str(self._platform.base_url)),
-            workspace=http_utils.resolve_workspace(self._platform, workspace),
-            headers=http_utils.platform_default_headers(self._platform),
+            job=EvaluatorJob.model_validate(response.data().model_dump(mode="json")),
+            client=self._client,
+            workspace=self._client.resolve_workspace(workspace),
         )
 
     @overload
@@ -227,46 +213,34 @@ class Evaluator:
 class AsyncEvaluator:
     """Async SDK namespace mounted as ``client.evaluator``."""
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
-        """Store the async platform client used for evaluator plugin HTTP calls."""
-        self._platform = platform
-        self._http_client = platform._client
-        self._executor = _AsyncEvaluatorPluginExecutor(platform=platform)
-        self.metrics = AsyncEvaluatorMetricsResource(platform)
-        self.agent_eval_results = AsyncEvaluatorAgentEvalResultsResource(platform)
-        self.eval_results = AsyncEvaluatorEvalResultsResource(platform)
-        self.tasks = AsyncEvaluatorTasksResource(platform)
-        self.tasksets = AsyncEvaluatorTasksetsResource(platform)
+    def __init__(self, client: AsyncEvaluatorClient) -> None:
+        """Store the typed async evaluator client used for evaluator plugin HTTP calls."""
+        self._client = client
+        self._executor = _AsyncEvaluatorPluginExecutor(client=self._client, evaluator_client=self._client)
+        self.metrics = AsyncEvaluatorMetricsResource(self._client)
+        self.agent_eval_results = AsyncEvaluatorAgentEvalResultsResource(self._client)
+        self.eval_results = AsyncEvaluatorEvalResultsResource(self._client)
+        self.tasks = AsyncEvaluatorTasksResource(self._client)
+        self.tasksets = AsyncEvaluatorTasksetsResource(self._client)
+
+    @classmethod
+    def from_sdk(cls, async_sdk: AsyncNeMoPlatform) -> AsyncEvaluator:
+        return cls(client_from_platform(async_sdk, AsyncEvaluatorClient))
 
     async def plugin_status(self) -> dict[str, object]:
         """Return evaluator plugin health information from the service."""
-        response = await self._http_client.get(
-            http_utils.url(self._platform, "/v1/healthz"),
-            headers=http_utils.platform_default_headers(self._platform),
+        payload = (
+            (await self._client.get_health()).data().model_dump(mode="json", exclude_none=True, exclude_unset=True)
         )
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise TypeError("Evaluator plugin status response must be a JSON object.")
         return {str(key): value for key, value in payload.items()}
 
     async def get_job_resource(self, job_name: str, workspace: str | None = None) -> AsyncEvaluatorJobResource:
         """Get a high-level async resource for an existing evaluator plugin job."""
-        response = await self._http_client.get(
-            http_utils.url(
-                self._platform,
-                f"/v2/workspaces/{{workspace}}/evaluate/jobs/{quote(job_name, safe='')}",
-                workspace,
-            ),
-            headers=http_utils.platform_default_headers(self._platform),
-        )
-        response.raise_for_status()
+        response = await self._client.get_evaluate_job(name=job_name, workspace=workspace)
         return AsyncEvaluatorJobResource(
-            job=EvaluatorJob.model_validate(response.json()),
-            http_client=self._http_client,
-            base_url=http_utils.base_url(str(self._platform.base_url)),
-            workspace=http_utils.resolve_workspace(self._platform, workspace),
-            headers=http_utils.platform_default_headers(self._platform),
+            job=EvaluatorJob.model_validate(response.data().model_dump(mode="json")),
+            client=self._client,
+            workspace=self._client.resolve_workspace(workspace),
         )
 
     @overload
@@ -334,6 +308,6 @@ class AsyncEvaluator:
 
 
 evaluator_sdk_resources = NemoPluginSDKResources(
-    sync_resource=Evaluator,
-    async_resource=AsyncEvaluator,
+    sync_resource=Evaluator.from_sdk,
+    async_resource=AsyncEvaluator.from_sdk,
 )

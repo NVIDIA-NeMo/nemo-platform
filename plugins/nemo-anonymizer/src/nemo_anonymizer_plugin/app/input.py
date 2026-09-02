@@ -14,9 +14,11 @@ from urllib.parse import urlparse
 
 from anonymizer.config.anonymizer_config import AnonymizerInput
 from anyio import to_thread
-from filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
+from filesets import FilesetFileSystem, FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_anonymizer_plugin.app.errors import AnonymizerInvalidConfigError
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin import client_from_platform
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.jobs.file_manager import AsyncFilesetFileManager, FilesetFileManager, TmpDirPath
 from pydantic import BaseModel, Field, ValidationError
 
@@ -147,7 +149,7 @@ async def _download_fileset_input_async(
     manager = AsyncFilesetFileManager(
         workspace=workspace_name,
         fileset_name=fileset_name,
-        sdk=sdk,
+        filesystem=FilesetFileSystem(client=client_from_platform(sdk, AsyncFilesClient)),
         ensure_fileset_exists=False,
     )
     return await _download_fileset_input_async_inner(manager, workspace_name, fileset_name, file_path)
@@ -182,7 +184,7 @@ def _download_fileset_input(
     manager = FilesetFileManager(
         workspace=workspace_name,
         fileset_name=fileset_name,
-        sdk=sdk,
+        filesystem=FilesetFileSystem(client=client_from_platform(sdk, FilesClient)),
         ensure_fileset_exists=False,
     )
     fileset_ref = build_fileset_ref(file_path, workspace=workspace_name, fileset=fileset_name)

@@ -30,9 +30,8 @@ from nemo_evaluator.api.schemas import (
     MetricRef,
 )
 from nemo_evaluator.entities import MetricBundleEntity
-from nemo_evaluator.metric_storage import delete_bundle_by_ref, store_bundle
+from nemo_evaluator.metric_storage import MetricStorageSDK, delete_bundle_by_ref, store_bundle
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle as RuntimeMetricBundle
-from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClientProtocol,
@@ -124,7 +123,7 @@ def _entity_from_bundle(
 class MetricService:
     """Service layer for stored metric CRUD."""
 
-    def __init__(self, entity_client: NemoEntitiesClientProtocol[MetricBundleEntity], sdk: AsyncNeMoPlatform):
+    def __init__(self, entity_client: NemoEntitiesClientProtocol[MetricBundleEntity], sdk: MetricStorageSDK):
         self.entity_client = entity_client
         self.sdk = sdk
 
