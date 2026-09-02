@@ -89,7 +89,8 @@ async def create_analysis_run(
         # remove the only pointer to a job that was in fact created (a create
         # that timed out client-side still lands), which is the untracked-job
         # case this design exists to prevent. A run with no job reads as "never
-        # submitted" and can be resubmitted under the same name.
+        # submitted"; recovering one is a read today, since every create mints a
+        # new name and no resubmit-under-an-existing-name route exists yet.
         logger.warning("Analysis run %r recorded but its job was not created: %s", saved.name, exc)
         raise HTTPException(status_code=exc.status_code, detail=_error_detail(exc)) from exc
     return AnalysisRunResponse(run=saved, job=job)
