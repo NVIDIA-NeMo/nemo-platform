@@ -430,11 +430,12 @@ the uv cache + venv prefetch rather than via wheel images:
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile. It comes in with the `automodel` extra,
   which the GRPO policy worker needs, so it is built from source here.
-  RL uses `.python-version` to pin an exact patch release. CPython 3.13.15 is copied from
-  `python:3.13.15-slim-bookworm` into `/opt/cpython` (uv's catalog has no linux-gnu 3.13.15
-  build; bookworm's OpenSSL 3.0 matches Ubuntu 24.04 on cuda-dl-base — trixie _ssl
-  needs OPENSSL_3.3.0 and does not import). `UV_PYTHON=/opt/cpython/bin/python3.13`
-  overrides `.python-version` so worker venvs cannot silently stay on 3.13.14.
+- **CPython is copied, not uv-managed.** RL uses `.python-version` to pin an exact patch
+  release. CPython 3.13.15 is copied from `python:3.13.15-slim-bookworm` into `/opt/cpython`
+  (uv's catalog has no linux-gnu 3.13.15 build; bookworm's OpenSSL 3.0 matches Ubuntu
+  24.04 on cuda-dl-base, while trixie _ssl needs OPENSSL_3.3.0 and does not import).
+  `UV_PYTHON=/opt/cpython/bin/python3.13` overrides `.python-version` so worker venvs
+  cannot silently stay on 3.13.14.
 
 ## Layering for fast CI rebuilds
 
