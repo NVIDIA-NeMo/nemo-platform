@@ -49,11 +49,14 @@ def build_generation_run_config(
     max_docs_per_bundle: int = 3,
 ) -> GenerationRunConfig:
     """Translate a platform retrieval generate spec into ``GenerationRunConfig``."""
-    from data_designer_retrieval_sdg import (
-        DocumentChunkerSeedSource,
-        GenerationPipelineConfig,
-        GenerationRunConfig,
-    )
+    try:
+        from data_designer_retrieval_sdg import (
+            DocumentChunkerSeedSource,
+            GenerationPipelineConfig,
+            GenerationRunConfig,
+        )
+    except ImportError as exc:
+        raise ImportError("Retrieval generate and preview requires nemo-data-designer-plugin[retrieval-sdg].") from exc
 
     extensions = file_extensions or [".txt", ".md", ".text", ""]
     seed_source = DocumentChunkerSeedSource(
@@ -106,7 +109,10 @@ def build_generation_run_config(
 def execute_generation(
     config: GenerationRunConfig, preview: bool = False
 ) -> GenerationResult | GenerationPreviewResult:
-    from data_designer_retrieval_sdg import preview_generation, run_generation
+    try:
+        from data_designer_retrieval_sdg import preview_generation, run_generation
+    except ImportError as exc:
+        raise ImportError("Retrieval generate and preview requires nemo-data-designer-plugin[retrieval-sdg].") from exc
 
     if preview:
         return preview_generation(config)

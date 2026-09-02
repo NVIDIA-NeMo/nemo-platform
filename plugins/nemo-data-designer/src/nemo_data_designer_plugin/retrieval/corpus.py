@@ -37,7 +37,10 @@ def materialize_corpus(
 
 
 def _download_hf(corpus: str, dest: Path, token: str | None) -> Path:
-    from huggingface_hub import snapshot_download
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise ImportError("hf:// corpus staging requires nemo-data-designer-plugin[retrieval-sdg].") from exc
 
     rest = corpus[len(_HF_PREFIX) :]
     parts = rest.split("/", 2)

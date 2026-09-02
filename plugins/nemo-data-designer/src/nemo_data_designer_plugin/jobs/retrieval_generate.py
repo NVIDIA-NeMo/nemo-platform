@@ -9,7 +9,6 @@ from data_designer_nemo.context import create_data_designer_context
 from nemo_data_designer_plugin.jobs.retrieval_common import retrieval_step, work_dir
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobConfig, RetrievalGenerateStepConfig
 from nemo_data_designer_plugin.retrieval.corpus import materialize_corpus
-from nemo_data_designer_plugin.retrieval.generation import build_generation_run_config, execute_generation
 from nemo_data_designer_plugin.retrieval.providers import build_retrieval_model_configs, resolve_retrieval_providers
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
@@ -80,6 +79,8 @@ class RetrievalGenerateJob(NemoJob):
         )
 
     def run(self, config: dict, ctx: JobContext, sdk: NeMoPlatform) -> dict:
+        from nemo_data_designer_plugin.retrieval.generation import build_generation_run_config, execute_generation
+
         step = RetrievalGenerateStepConfig.model_validate(config)
         job = step.job_config
         output_dir = work_dir(ctx, "stage0_sdg")

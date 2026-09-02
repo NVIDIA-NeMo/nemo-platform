@@ -27,7 +27,10 @@ def execute_conversion(
     split_strategy: Literal["random", "dedupped", "cluster"],
 ) -> ConversionResult:
     """Convert Stage 0 JSONL (or a generation manifest) into train/eval BEIR artifacts."""
-    from data_designer_retrieval_sdg import ConversionRunConfig, run_conversion_with_config
+    try:
+        from data_designer_retrieval_sdg import ConversionRunConfig, run_conversion_with_config
+    except ImportError as exc:
+        raise ImportError("Retrieval prepare requires nemo-data-designer-plugin[retrieval-sdg].") from exc
 
     resolved = resolve_generation_input(input_path)
     config = ConversionRunConfig(

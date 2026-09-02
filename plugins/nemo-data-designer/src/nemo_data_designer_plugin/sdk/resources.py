@@ -309,21 +309,7 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
         """
         config = config_builder.build()
         request = DataDesignerJobConfig(config=config, num_records=num_records)
-        try:
-            resp = self._client().post(
-                self._url("/jobs/create", workspace),
-                headers=self._headers(),
-                json={"spec": request.model_dump(mode="json")},
-            )
-            resp.raise_for_status()
-            job = resp.json()
-            logger.info(f"  |-- job name: {job['name']}")
-            job_client = DataDesignerJobResource(job_name=job["name"], platform=self._platform, workspace=workspace)
-            if wait_until_done:
-                job_client.wait_until_done()
-            return job_client
-        except Exception as e:
-            raise _get_error(e) from e
+        return self._submit_named_job("create", request, workspace=workspace, wait_until_done=wait_until_done)
 
     def get_job_resource(self, job_name: str, workspace: str | None = None) -> DataDesignerJobResource:
         """Get a high-level resource for an existing data generation job.
@@ -535,23 +521,7 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
         """
         config = config_builder.build()
         request = DataDesignerJobConfig(config=config, num_records=num_records)
-        try:
-            resp = await self._client().post(
-                self._url("/jobs/create", workspace),
-                headers=self._headers(),
-                json={"spec": request.model_dump(mode="json")},
-            )
-            resp.raise_for_status()
-            job = resp.json()
-            logger.info(f"  |-- job name: {job['name']}")
-            job_client = AsyncDataDesignerJobResource(
-                job_name=job["name"], platform=self._platform, workspace=workspace
-            )
-            if wait_until_done:
-                await job_client.wait_until_done()
-            return job_client
-        except Exception as e:
-            raise _get_error(e) from e
+        return await self._submit_named_job("create", request, workspace=workspace, wait_until_done=wait_until_done)
 
     async def get_job_resource(self, job_name: str, workspace: str | None = None) -> AsyncDataDesignerJobResource:
         """Get a high-level resource for an existing data generation job.

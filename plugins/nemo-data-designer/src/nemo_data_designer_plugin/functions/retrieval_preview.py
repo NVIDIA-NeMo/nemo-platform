@@ -13,7 +13,6 @@ from data_designer_nemo.context import create_data_designer_context
 from data_designer_nemo.sdk_translation import async_to_sync_sdk
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalPreviewSpec
 from nemo_data_designer_plugin.retrieval.corpus import materialize_corpus
-from nemo_data_designer_plugin.retrieval.generation import build_generation_run_config, execute_generation
 from nemo_data_designer_plugin.retrieval.providers import build_retrieval_model_configs, resolve_retrieval_providers
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.function import NemoFunction
@@ -59,6 +58,11 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
             return
 
         def run_preview() -> BaseModel:
+            from nemo_data_designer_plugin.retrieval.generation import (
+                build_generation_run_config,
+                execute_generation,
+            )
+
             sdk = async_sdk if isinstance(async_sdk, NeMoPlatform) else async_to_sync_sdk(async_sdk)
             with tempfile.TemporaryDirectory() as tmp:
                 tmp_path = Path(tmp)

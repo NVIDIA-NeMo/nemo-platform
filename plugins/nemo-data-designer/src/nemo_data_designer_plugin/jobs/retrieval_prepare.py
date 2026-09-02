@@ -14,7 +14,6 @@ from nemo_data_designer_plugin.jobs.retrieval_common import (
     work_dir,
 )
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalPrepareJobConfig, RetrievalPrepareStepConfig
-from nemo_data_designer_plugin.retrieval.conversion import execute_conversion
 from nemo_data_designer_plugin.retrieval.corpus import materialize_corpus
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
@@ -152,6 +151,8 @@ def _run_convert(job: RetrievalPrepareJobConfig, output_dir: Path, ctx: JobConte
             ctx,
             sdk,
         )
+        from nemo_data_designer_plugin.retrieval.conversion import execute_conversion
+
         input_path = sdg_root if sdg_root.is_file() else _find_generation_input(sdg_root)
         conversion = execute_conversion(
             input_path=input_path,
