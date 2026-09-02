@@ -127,12 +127,12 @@ client = NeMoPlatform(
     base_url="http://nemo.test",
 )
 
-all_jobs = []
+all_models = []
 # Automatically fetches more pages as needed.
-for job in client.jobs.list(workspace="my-workspace"):
-    # Do something with job here
-    all_jobs.append(job)
-print(all_jobs)
+for model in client.models.list(workspace="my-workspace"):
+    # Do something with model here
+    all_models.append(model)
+print(all_models)
 ```
 
 Or, asynchronously:
@@ -146,11 +146,11 @@ client = AsyncNeMoPlatform(
 )
 
 async def main() -> None:
-    all_jobs = []
+    all_models = []
     # Iterate through items across all pages, issuing requests as needed.
-    async for job in client.jobs.list(workspace="my-workspace"):
-        all_jobs.append(job)
-    print(all_jobs)
+    async for model in client.models.list(workspace="my-workspace"):
+        all_models.append(model)
+    print(all_models)
 
 
 asyncio.run(main())
@@ -159,7 +159,7 @@ asyncio.run(main())
 Alternatively, you can use the `.has_next_page()`, `.next_page_info()`, or `.get_next_page()` methods for more granular control working with pages:
 
 ```python
-first_page = await client.jobs.list(workspace="my-workspace")
+first_page = await client.models.list(workspace="my-workspace")
 if first_page.has_next_page():
     print(f"will fetch next page using these details: {first_page.next_page_info()}")
     next_page = await first_page.get_next_page()
@@ -171,9 +171,9 @@ if first_page.has_next_page():
 Or just work directly with the returned data:
 
 ```python
-first_page = await client.jobs.list(workspace="my-workspace")
-for job in first_page.data:
-    print(job.id)
+first_page = await client.models.list(workspace="my-workspace")
+for model in first_page.data:
+    print(model.name)
 
 # Remove `await` for non-async usage.
 ```
