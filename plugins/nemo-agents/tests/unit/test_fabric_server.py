@@ -37,10 +37,20 @@ from starlette.requests import ClientDisconnect
 
 
 class _FakeStreamContext:
-    def __init__(self, stream: Any = None, enter_error: BaseException | None = None) -> None:
+    def __init__(
+        self,
+        stream: Any = None,
+        enter_error: BaseException | None = None,
+        *,
+        exit_checkpoint: bool = False,
+        exit_waiter: asyncio.Event | None = None,
+    ) -> None:
         self.stream = stream
         self.enter_error = enter_error
+        self.exit_checkpoint = exit_checkpoint
+        self.exit_waiter = exit_waiter
         self.exit_calls = 0
+        self.exit_completions = 0
 
     async def __aenter__(self) -> Any:
         if self.enter_error is not None:
@@ -49,6 +59,11 @@ class _FakeStreamContext:
 
     async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.exit_calls += 1
+        if self.exit_checkpoint:
+            await asyncio.sleep(0)
+        if self.exit_waiter is not None:
+            await self.exit_waiter.wait()
+        self.exit_completions += 1
 
 
 class _FakeFabricStream:
@@ -57,20 +72,30 @@ class _FakeFabricStream:
         records: list[dict[str, Any]] | None = None,
         *,
         result: FabricRuntimeResult | None = None,
+        block_after_records: bool = False,
+        close_checkpoint: bool = False,
     ) -> None:
         self._records = records or []
         self._result = result or FabricRuntimeResult(status="succeeded", response="done")
+        self._block_after_records = block_after_records
+        self._close_checkpoint = close_checkpoint
         self.aclose_calls = 0
+        self.aclose_completions = 0
 
     async def records(self) -> Any:
         for record in self._records:
             yield record
+        if self._block_after_records:
+            await asyncio.Event().wait()
 
     async def result(self) -> FabricRuntimeResult:
         return self._result
 
     async def aclose(self) -> None:
         self.aclose_calls += 1
+        if self._close_checkpoint:
+            await asyncio.sleep(0)
+        self.aclose_completions += 1
 
 
 @pytest.fixture()
@@ -680,6 +705,79 @@ async def test_streaming_response_closes_stream_after_client_disconnect() -> Non
 
     assert fabric_stream.aclose_calls == 1
     assert stream_context.exit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_response_completes_cleanup_after_asgi_cancellation() -> None:
+    fabric_stream = _FakeFabricStream(
+        [{"data": {"choices": [{"delta": {"content": "partial"}}]}}],
+        block_after_records=True,
+        close_checkpoint=True,
+    )
+    stream_context = _FakeStreamContext(fabric_stream, exit_checkpoint=True)
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+    body_sent = asyncio.Event()
+
+    async def receive() -> Any:
+        await body_sent.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body" and message.get("body"):
+            body_sent.set()
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.3"}})
+    await asyncio.wait_for(response(scope, receive, cast(Any, send)), timeout=1)
+
+    assert fabric_stream.aclose_calls == 1
+    assert fabric_stream.aclose_completions == 1
+    assert stream_context.exit_calls == 1
+    assert stream_context.exit_completions == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_response_bounds_cleanup_wait_without_cancelling_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cleanup_release = asyncio.Event()
+    fabric_stream = _FakeFabricStream()
+    stream_context = _FakeStreamContext(fabric_stream, exit_waiter=cleanup_release)
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+    monkeypatch.setattr(server, "_FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS", 0.01)
+
+    async def receive() -> Any:
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.4"}})
+    with caplog.at_level("WARNING"):
+        with pytest.raises(ClientDisconnect):
+            await response(scope, receive, cast(Any, send))
+
+    assert stream_context.exit_calls == 1
+    assert stream_context.exit_completions == 0
+    assert "cleanup will continue in the background" in caplog.text
+
+    cleanup_release.set()
+    await iterator.aclose()
+
+    assert stream_context.exit_completions == 1
 
 
 def test_chat_completion_maps_failed_run_result(

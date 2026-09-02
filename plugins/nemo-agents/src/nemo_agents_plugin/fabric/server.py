@@ -55,6 +55,8 @@ from starlette.types import Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
+_FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS = 5.0
+
 
 @dataclass(frozen=True, slots=True)
 class FabricServingSettings:
@@ -168,13 +170,14 @@ class _StreamingChatCompletionIterator:
         self._model = model
         self._events: AsyncGenerator[str, None] | None = None
         self._close_fabric_stream_on_exit = True
+        self._close_task: asyncio.Task[None] | None = None
         self._closed = False
 
     def __aiter__(self) -> AsyncIterator[str]:
         return self
 
     async def __anext__(self) -> str:
-        if self._closed:
+        if self._closed or self._close_task is not None:
             raise StopAsyncIteration
         if self._events is None:
             self._events = self._iter_events()
@@ -190,12 +193,17 @@ class _StreamingChatCompletionIterator:
     async def aclose(self) -> None:
         if self._closed:
             return
-        self._closed = True
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self._cleanup())
+        await asyncio.shield(self._close_task)
+
+    async def _cleanup(self) -> None:
         if self._events is not None:
             await self._events.aclose()
         if self._close_fabric_stream_on_exit:
             await _close_interrupted_stream(self._fabric_stream)
         await self._stream_context.__aexit__(None, None, None)
+        self._closed = True
 
     async def _iter_events(self) -> AsyncGenerator[str, None]:
         try:
@@ -225,7 +233,16 @@ class _FabricStreamingResponse(StreamingResponse):
         try:
             await super().__call__(scope, receive, send)
         finally:
-            await self._iterator.aclose()
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(self._iterator.aclose()),
+                    timeout=_FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Timed out waiting for Fabric stream cleanup after %gs; cleanup will continue in the background.",
+                    _FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS,
+                )
 
 
 async def _close_interrupted_stream(fabric_stream: FabricRuntimeStream) -> None:

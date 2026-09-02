@@ -60,12 +60,14 @@ class _FakeRuntime:
         result: Any | None = None,
         invoke_error: Exception | None = None,
         invoke_delay: float = 0.0,
+        enter_error: Exception | None = None,
         exit_error: Exception | None = None,
         stream: _FakeInvokeStream | None = None,
     ) -> None:
         self.result = result if result is not None else _FakeRunResult()
         self.invoke_error = invoke_error
         self.invoke_delay = invoke_delay
+        self.enter_error = enter_error
         self.exit_error = exit_error
         self.entered = False
         self.exited = False
@@ -76,6 +78,8 @@ class _FakeRuntime:
         self.stream = stream
 
     async def __aenter__(self) -> "_FakeRuntime":
+        if self.enter_error is not None:
+            raise self.enter_error
         self.entered = True
         return self
 
@@ -146,9 +150,11 @@ class _FakeFabric:
         *,
         runtime: _FakeRuntime | None = None,
         start_error: Exception | None = None,
+        start_delay: float = 0.0,
     ) -> None:
         self.runtime = runtime if runtime is not None else _FakeRuntime()
         self.start_error = start_error
+        self.start_delay = start_delay
         self.start_calls: list[dict[str, Any]] = []
 
     async def start_runtime(
@@ -167,6 +173,8 @@ class _FakeFabric:
         if streaming:
             call["streaming"] = True
         self.start_calls.append(call)
+        if self.start_delay:
+            await asyncio.sleep(self.start_delay)
         if self.start_error is not None:
             raise self.start_error
         return self.runtime
@@ -239,6 +247,21 @@ class TestRunFabricAgentOnce:
         assert fake_runtime.exited is True
         assert fake_runtime.exit_calls == 1
 
+    async def test_timeout_includes_runtime_startup(self) -> None:
+        fake_runtime = _FakeRuntime()
+        fake_fabric = _FakeFabric(runtime=fake_runtime, start_delay=1.0)
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+            timeout_seconds=0.01,
+        )
+
+        with pytest.raises(FabricRuntimeTimeoutError, match="timed out after 0.01s"):
+            await run_fabric_agent_once(request, fabric=fake_fabric)
+
+        assert fake_runtime.entered is False
+        assert fake_runtime.exit_calls == 0
+
     async def test_wraps_runtime_timeout_without_configured_deadline(self) -> None:
         timeout_error = TimeoutError("adapter timed out")
         fake_runtime = _FakeRuntime(invoke_error=timeout_error)
@@ -262,6 +285,19 @@ class TestRunFabricAgentOnce:
 
         with pytest.raises(FabricRuntimeStartError, match="Fabric runtime startup failed: native unavailable"):
             await run_fabric_agent_once(request, fabric=fake_fabric)
+
+    async def test_wraps_runtime_context_entry_errors_as_start_errors(self) -> None:
+        fake_runtime = _FakeRuntime(enter_error=fabric_runtime.FabricError("harness unavailable"))
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+
+        with pytest.raises(FabricRuntimeStartError, match="Fabric runtime startup failed: harness unavailable"):
+            await run_fabric_agent_once(request, fabric=_FakeFabric(runtime=fake_runtime))
+
+        assert fake_runtime.entered is False
+        assert fake_runtime.exit_calls == 0
 
     async def test_uses_a_separate_runtime_for_each_invocation(self) -> None:
         first_runtime = _FakeRuntime()
@@ -412,6 +448,33 @@ class TestStreamFabricAgentOnce:
                 pass
 
         assert fake_runtime.exited is True
+        assert fake_runtime.exit_calls == 1
+
+    async def test_wraps_runtime_context_entry_errors_as_start_errors(self) -> None:
+        fake_runtime = _FakeRuntime(enter_error=fabric_runtime.FabricError("harness unavailable"))
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+
+        with pytest.raises(FabricRuntimeStartError, match="Fabric runtime startup failed: harness unavailable"):
+            async with stream_fabric_agent_once(request, fabric=_FakeFabric(runtime=fake_runtime)):
+                pass
+
+        assert fake_runtime.entered is False
+        assert fake_runtime.exit_calls == 0
+
+    async def test_maps_runtime_context_exit_errors_as_cleanup_errors(self) -> None:
+        fake_runtime = _FakeRuntime(exit_error=fabric_runtime.FabricError("stop failed"))
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+
+        with pytest.raises(FabricRuntimeExecutionError, match="Fabric runtime cleanup failed: stop failed"):
+            async with stream_fabric_agent_once(request, fabric=_FakeFabric(runtime=fake_runtime)):
+                pass
+
         assert fake_runtime.exit_calls == 1
 
     async def test_cleans_up_runtime_after_stream_result_error(self) -> None:

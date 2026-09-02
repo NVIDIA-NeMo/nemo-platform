@@ -189,15 +189,26 @@ async def run_fabric_agent_once(
 ) -> FabricRuntimeResult:
     """Start an ephemeral Fabric runtime, invoke it once, and stop it."""
     fabric_client = fabric or Fabric()
-
-    runtime = await _start_one_shot_runtime(request, fabric=fabric_client)
+    deadline = None if request.timeout_seconds is None else asyncio.get_running_loop().time() + request.timeout_seconds
 
     try:
+        runtime = await asyncio.wait_for(
+            _start_one_shot_runtime(request, fabric=fabric_client),
+            timeout=_remaining_timeout(deadline),
+        )
+    except TimeoutError as error:
+        raise FabricRuntimeTimeoutError(
+            _timeout_error_message(request.timeout_seconds),
+        ) from error
+
+    runtime_entered = False
+    try:
         async with runtime:
+            runtime_entered = True
             try:
                 result = await asyncio.wait_for(
                     runtime.invoke(request=_with_platform_invocation_context(request)),
-                    timeout=request.timeout_seconds,
+                    timeout=_remaining_timeout(deadline),
                 )
             except TimeoutError as error:
                 raise FabricRuntimeTimeoutError(
@@ -208,9 +219,15 @@ async def run_fabric_agent_once(
                     f"Fabric runtime invocation failed: {error}",
                 ) from error
     except FabricError as error:
-        raise FabricRuntimeExecutionError(f"Fabric runtime cleanup failed: {error}") from error
+        raise _runtime_context_error(error, entered=runtime_entered) from error
 
     return _normalize_fabric_run_result(result)
+
+
+def _remaining_timeout(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    return max(0.0, deadline - asyncio.get_running_loop().time())
 
 
 @asynccontextmanager
@@ -224,8 +241,10 @@ async def stream_fabric_agent_once(
 
     runtime = await _start_one_shot_runtime(request, fabric=fabric_client, streaming=True)
 
+    runtime_entered = False
     try:
         async with runtime:
+            runtime_entered = True
             yield stream_fabric_runtime(
                 runtime,
                 FabricInvocationRequest(
@@ -236,7 +255,13 @@ async def stream_fabric_agent_once(
                 ),
             )
     except FabricError as error:
-        raise FabricRuntimeExecutionError(f"Fabric runtime cleanup failed: {error}") from error
+        raise _runtime_context_error(error, entered=runtime_entered) from error
+
+
+def _runtime_context_error(error: FabricError, *, entered: bool) -> FabricRuntimeExecutionError:
+    if entered:
+        return FabricRuntimeExecutionError(f"Fabric runtime cleanup failed: {error}")
+    return FabricRuntimeStartError(f"Fabric runtime startup failed: {error}")
 
 
 async def _start_one_shot_runtime(
