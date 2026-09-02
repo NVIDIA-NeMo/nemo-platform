@@ -654,9 +654,9 @@ from nemo_platform import NotFoundError
 
 # Delete remote evaluation jobs. Local SDK results are in-memory
 # objects and do not create platform jobs.
-for job_name in [job_v1.name, job_v2.name]:
+for job in [job_v1, job_v2]:
     try:
-        client.jobs.delete(name=job_name, workspace=WORKSPACE)
+        job.delete()
     except Exception:
         pass
 

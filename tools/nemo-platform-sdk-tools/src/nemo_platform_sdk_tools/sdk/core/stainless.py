@@ -5,7 +5,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Self
+from typing import Any, Iterator, Self
 
 from nemo_platform_sdk_tools.sdk.core.openapi import OpenAPIEndpoint
 from ruamel.yaml import YAML
@@ -61,18 +61,34 @@ class StainlessConfig:
         logger.info(f"Extracted {len(existing_models)} models from Stainless config.")
         return existing_models
 
+    def top_level_resource_names(self) -> set[str]:
+        resources = self._stainless_config.get("resources", {})
+        if not isinstance(resources, dict):
+            return set()
+
+        return {
+            resource_name
+            for resource_name in resources
+            if isinstance(resource_name, str) and resource_name != "$shared"
+        }
+
     def clear_models(self) -> None:
         """
         Clear all models from the Stainless config.
         """
 
-        def _clear_models_recursively(resources: dict[str, object]) -> None:
+        def _clear_models_recursively(resources: dict[str, Any]) -> None:
             if not resources:
                 return
-            for resource_name, resource_config in resources.items():
+            for resource_config in resources.values():
+                if not isinstance(resource_config, dict):
+                    continue
+
                 resource_config.pop("models", None)
 
-                _clear_models_recursively(resource_config.get("subresources", {}))
+                subresources = resource_config.get("subresources", {})
+                if isinstance(subresources, dict):
+                    _clear_models_recursively(subresources)
 
         resources = self._stainless_config.get("resources", {})
         _clear_models_recursively(resources)
@@ -278,6 +294,8 @@ def _extract_models_from_resource_config(config: object, current_path: list[str]
     models = config.get("models", {})
     if isinstance(models, dict):
         for model_name, schema_ref in models.items():
+            if not isinstance(model_name, str):
+                raise ValueError(f"Invalid model name {model_name!r}; expected a string.")
             if isinstance(schema_ref, str):
                 yield StainlessModel(model_name, _clean_schema_name(schema_ref), current_path)
             else:
@@ -289,6 +307,8 @@ def _extract_models_from_resource_config(config: object, current_path: list[str]
     subresources = config.get("subresources", {})
     if isinstance(subresources, dict):
         for sub_name, sub_config in subresources.items():
+            if not isinstance(sub_name, str):
+                raise ValueError(f"Invalid subresource name {sub_name!r}; expected a string.")
             yield from _extract_models_from_resource_config(sub_config, current_path + [sub_name])
 
 
@@ -306,6 +326,8 @@ def _extract_methods_from_resource_config(config: object, current_path: list[str
     methods = config.get("methods", {})
     if isinstance(methods, dict):
         for method_name, method_config in methods.items():
+            if not isinstance(method_name, str):
+                raise ValueError(f"Invalid method name {method_name!r}; expected a string.")
             http_verb, http_endpoint = _extract_endpoint(method_config)
             yield StainlessMethod(method_name, OpenAPIEndpoint(http_verb, http_endpoint), current_path)
 
@@ -313,12 +335,14 @@ def _extract_methods_from_resource_config(config: object, current_path: list[str
     subresources = config.get("subresources", {})
     if isinstance(subresources, dict):
         for sub_name, sub_config in subresources.items():
+            if not isinstance(sub_name, str):
+                raise ValueError(f"Invalid subresource name {sub_name!r}; expected a string.")
             if sub_name != "$shared":
                 # $shared is only for models
                 yield from _extract_methods_from_resource_config(sub_config, current_path + [sub_name])
 
 
-def _extract_endpoint(method_config: str | dict) -> tuple[str, str]:
+def _extract_endpoint(method_config: object) -> tuple[str, str]:
     """
     Extract endpoint path from method configuration.
 
@@ -330,9 +354,18 @@ def _extract_endpoint(method_config: str | dict) -> tuple[str, str]:
       create: post /v1/deployment/configs
     """
     if isinstance(method_config, str):
-        return tuple(method_config.split(" ", 1))
+        return _split_endpoint(method_config)
 
-    elif isinstance(method_config, dict) and "endpoint" in method_config:
-        return tuple(method_config["endpoint"].split(" ", 1))
+    if isinstance(method_config, dict):
+        endpoint = method_config.get("endpoint")
+        if isinstance(endpoint, str):
+            return _split_endpoint(endpoint)
 
     raise ValueError(f"Invalid method configuration: {method_config}")
+
+
+def _split_endpoint(endpoint: str) -> tuple[str, str]:
+    parts = endpoint.split(" ", 1)
+    if len(parts) != 2:
+        raise ValueError(f"Invalid endpoint definition: {endpoint}")
+    return parts[0], parts[1]

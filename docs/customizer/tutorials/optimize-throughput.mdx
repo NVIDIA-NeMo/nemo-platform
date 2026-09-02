@@ -489,7 +489,8 @@ The cell below polls the job status every 10 seconds and renders a live dashboar
 import time
 from typing import cast
 from IPython.display import clear_output
-from nemo_platform.types.shared import PlatformJobStatusResponse
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatusResponse
+from nemo_platform_plugin.jobs.types import PlatformJobStepResponse
 
 # Timeout set to 30 minutes to accommodate typical LoRA training duration for this dataset size.
 # Actual training time will vary based on hardware, model size, and dataset complexity.
@@ -665,7 +666,7 @@ def wait_for_job(
                             print(f"Step error: {step_error}")
                     # Get error_stack from the failed task
                     for task in job_step.tasks or []:
-                        if task.status == "error" and hasattr(task, "error_stack") and task.error_stack:
+                        if task.status == "error" and task.error_stack:
                             print(f"\nError stack trace:\n{task.error_stack}")
                         elif task.status == "error" and task.error_details:
                             task_error = task.error_details.get("message", "")
@@ -754,12 +755,11 @@ else:
 - Sequence packed version should have a higher GPU utilization and higher GPU Memory Allocation.
 
 ```python
-from nemo_platform.types.jobs import PlatformJobStep
 import pandas as pd
 
 STEP_NAME = "training"
 
-def get_elapsed_time(step: PlatformJobStep) -> float:
+def get_elapsed_time(step: PlatformJobStepResponse) -> float:
     """Calculate elapsed time in seconds from step's created_at to updated_at."""
     if step.created_at is None or step.updated_at is None:
         raise ValueError("Training step timestamps are unavailable")

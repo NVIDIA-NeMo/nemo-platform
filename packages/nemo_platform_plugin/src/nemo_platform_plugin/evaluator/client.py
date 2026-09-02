@@ -46,6 +46,7 @@ class _EvaluatorMethods:
     submit_evaluate_job = method(endpoints.submit_evaluate_job)
     get_evaluate_job = method(endpoints.get_evaluate_job)
     get_evaluate_job_status = method(endpoints.get_evaluate_job_status)
+    delete_evaluate_job = method(endpoints.delete_evaluate_job)
     download_evaluate_job_aggregate_scores = method(endpoints.download_evaluate_job_aggregate_scores)
     download_evaluate_job_row_scores = method(endpoints.download_evaluate_job_row_scores)
     download_evaluate_job_artifacts = method(endpoints.download_evaluate_job_artifacts)
@@ -54,6 +55,7 @@ class _EvaluatorMethods:
     submit_agent_eval_job = method(endpoints.submit_agent_eval_job)
     get_agent_eval_job = method(endpoints.get_agent_eval_job)
     get_agent_eval_job_status = method(endpoints.get_agent_eval_job_status)
+    delete_agent_eval_job = method(endpoints.delete_agent_eval_job)
 
     get_metric = method(endpoints.get_metric)
     list_metrics = method(endpoints.list_metrics)

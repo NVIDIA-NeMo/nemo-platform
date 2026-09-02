@@ -57,7 +57,6 @@ if TYPE_CHECKING:
     from .resources import (
         iam,
         auth,
-        jobs,
         files,
         intake,
         models,
@@ -74,7 +73,6 @@ if TYPE_CHECKING:
     )
     from .resources.iam.iam import IamResource, AsyncIamResource
     from .resources.auth.auth import AuthResource, AsyncAuthResource
-    from .resources.jobs.jobs import JobsResource, AsyncJobsResource
     from .filesets.resources import FilesResource, AsyncFilesResource
     from .resources.intake.intake import IntakeResource, AsyncIntakeResource
     from .models import ModelsResource, AsyncModelsResource
@@ -306,12 +304,6 @@ class NeMoPlatform(SyncAPIClient):
         from .resources.inference import InferenceResource
 
         return InferenceResource(self)
-
-    @cached_property
-    def jobs(self) -> JobsResource:
-        from .resources.jobs import JobsResource
-
-        return JobsResource(self)
 
     @cached_property
     def models(self) -> ModelsResource:
@@ -716,12 +708,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         return AsyncInferenceResource(self)
 
     @cached_property
-    def jobs(self) -> AsyncJobsResource:
-        from .resources.jobs import AsyncJobsResource
-
-        return AsyncJobsResource(self)
-
-    @cached_property
     def models(self) -> AsyncModelsResource:
         from .models import AsyncModelsResource
 
@@ -962,12 +948,6 @@ class NeMoPlatformWithRawResponse:
         return InferenceResourceWithRawResponse(self._client.inference)
 
     @cached_property
-    def jobs(self) -> jobs.JobsResourceWithRawResponse:
-        from .resources.jobs import JobsResourceWithRawResponse
-
-        return JobsResourceWithRawResponse(self._client.jobs)
-
-    @cached_property
     def models(self) -> models.ModelsResourceWithRawResponse:
         from .resources.models import ModelsResourceWithRawResponse
 
@@ -1063,12 +1043,6 @@ class AsyncNeMoPlatformWithRawResponse:
         from .resources.inference import AsyncInferenceResourceWithRawResponse
 
         return AsyncInferenceResourceWithRawResponse(self._client.inference)
-
-    @cached_property
-    def jobs(self) -> jobs.AsyncJobsResourceWithRawResponse:
-        from .resources.jobs import AsyncJobsResourceWithRawResponse
-
-        return AsyncJobsResourceWithRawResponse(self._client.jobs)
 
     @cached_property
     def models(self) -> models.AsyncModelsResourceWithRawResponse:
@@ -1168,12 +1142,6 @@ class NeMoPlatformWithStreamedResponse:
         return InferenceResourceWithStreamingResponse(self._client.inference)
 
     @cached_property
-    def jobs(self) -> jobs.JobsResourceWithStreamingResponse:
-        from .resources.jobs import JobsResourceWithStreamingResponse
-
-        return JobsResourceWithStreamingResponse(self._client.jobs)
-
-    @cached_property
     def models(self) -> models.ModelsResourceWithStreamingResponse:
         from .resources.models import ModelsResourceWithStreamingResponse
 
@@ -1269,12 +1237,6 @@ class AsyncNeMoPlatformWithStreamedResponse:
         from .resources.inference import AsyncInferenceResourceWithStreamingResponse
 
         return AsyncInferenceResourceWithStreamingResponse(self._client.inference)
-
-    @cached_property
-    def jobs(self) -> jobs.AsyncJobsResourceWithStreamingResponse:
-        from .resources.jobs import AsyncJobsResourceWithStreamingResponse
-
-        return AsyncJobsResourceWithStreamingResponse(self._client.jobs)
 
     @cached_property
     def models(self) -> models.AsyncModelsResourceWithStreamingResponse:

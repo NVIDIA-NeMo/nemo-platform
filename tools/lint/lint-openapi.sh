@@ -30,3 +30,5 @@ if [[ -n "${new_plugin_specs}" ]]; then
     echo "${new_plugin_specs}" >&2
     exit 1
 fi
+
+uv run --frozen python script/lint_openapi_unused_components.py "${spec_files[@]}"

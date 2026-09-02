@@ -199,8 +199,8 @@ result = nat_job.get_result()
 Delete the jobs and secrets created by these examples:
 
 ```python
-client.jobs.delete(generic_job.name, workspace="default")
-client.jobs.delete(nat_job.name, workspace="default")
+generic_job.delete()
+nat_job.delete()
 client.secrets.delete("my-agent-api-key", workspace="default")
 client.secrets.delete("my-nat-api-key", workspace="default")
 ```

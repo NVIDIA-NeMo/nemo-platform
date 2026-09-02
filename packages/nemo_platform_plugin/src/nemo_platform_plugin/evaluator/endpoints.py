@@ -95,6 +95,11 @@ def get_evaluate_job(*, workspace: str | None = None, name: str) -> EvaluateJob:
 def get_evaluate_job_status(*, workspace: str | None = None, name: str) -> PlatformJobStatusResponse: ...
 
 
+@delete(f"{_EVAL_JOBS}/{{name}}")
+@abstractmethod
+def delete_evaluate_job(*, workspace: str | None = None, name: str) -> None: ...
+
+
 @get(f"{_EVAL_JOBS}/{{name}}/results/aggregate-scores/download")
 @abstractmethod
 def download_evaluate_job_aggregate_scores(*, workspace: str | None = None, name: str) -> BinaryContent: ...
@@ -135,6 +140,11 @@ def get_agent_eval_job(*, workspace: str | None = None, name: str) -> AgentEvalJ
 @get(f"{_AGENT_EVAL_JOBS}/{{name}}/status")
 @abstractmethod
 def get_agent_eval_job_status(*, workspace: str | None = None, name: str) -> PlatformJobStatusResponse: ...
+
+
+@delete(f"{_AGENT_EVAL_JOBS}/{{name}}")
+@abstractmethod
+def delete_agent_eval_job(*, workspace: str | None = None, name: str) -> None: ...
 
 
 # ---------------------------------------------------------------------------

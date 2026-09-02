@@ -90,6 +90,7 @@ def test_customization_composes_automodel_when_contributor_present() -> None:
     ):
         customization = Customization.from_client(client)
 
+    assert isinstance(customization.automodel, AutomodelCustomization)
     assert customization.automodel.jobs is not None
 
 

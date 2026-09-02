@@ -261,6 +261,10 @@ class AgentEvaluatorJobResource:
         """Fetch the current job status from the evaluator plugin API."""
         return self._client.get_agent_eval_job_status(workspace=self._workspace, name=self.name).data()
 
+    def delete(self) -> None:
+        """Delete this agent-evaluation job."""
+        return self._client.delete_agent_eval_job(workspace=self._workspace, name=self.name).data()
+
     def check_if_complete(self, *, raise_if_not_complete: bool = False) -> bool:
         """Return whether the job has completed.
 
@@ -324,6 +328,10 @@ class EvaluatorJobResource:
     def get_job_status(self) -> PlatformJobStatusResponse:
         """Fetch the current evaluator job status from the evaluator plugin API."""
         return self._client.get_evaluate_job_status(workspace=self._workspace, name=self.name).data()
+
+    def delete(self) -> None:
+        """Delete this evaluator job."""
+        return self._client.delete_evaluate_job(workspace=self._workspace, name=self.name).data()
 
     def check_if_complete(self, *, raise_if_not_complete: bool = False) -> bool:
         """Return whether the evaluator job has completed.
@@ -422,6 +430,11 @@ class AsyncEvaluatorJobResource:
     async def get_job_status(self) -> PlatformJobStatusResponse:
         """Fetch the current evaluator job status from the evaluator plugin API."""
         response = await self._client.get_evaluate_job_status(workspace=self._workspace, name=self.name)
+        return response.data()
+
+    async def delete(self) -> None:
+        """Delete this evaluator job."""
+        response = await self._client.delete_evaluate_job(workspace=self._workspace, name=self.name)
         return response.data()
 
     async def check_if_complete(self, *, raise_if_not_complete: bool = False) -> bool:

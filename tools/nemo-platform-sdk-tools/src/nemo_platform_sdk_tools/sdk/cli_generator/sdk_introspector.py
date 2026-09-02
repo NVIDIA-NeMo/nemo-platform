@@ -30,7 +30,7 @@ class SDKParameter:
     """Represents a parameter from an SDK method."""
 
     name: str
-    type_annotation: Type
+    type_annotation: Any
     default: Any
     is_required: bool
     is_positional: bool

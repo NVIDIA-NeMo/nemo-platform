@@ -93,6 +93,7 @@ def test_evaluate_job_and_download_endpoint_shapes() -> None:
         query_params={"page": 2, "page_size": 25, "sort": "-created_at", "filter": '{"status":"completed"}'},
     )
     status = endpoints.get_evaluate_job_status(workspace="team-a", name="job-1")
+    deleted = endpoints.delete_evaluate_job(workspace="team-a", name="job-1")
     aggregate = endpoints.download_evaluate_job_aggregate_scores(workspace="team-a", name="job-1")
     row_scores = endpoints.download_evaluate_job_row_scores(workspace="team-a", name="job-1")
     artifacts = endpoints.download_evaluate_job_artifacts(workspace="team-a", name="job-1")
@@ -105,6 +106,9 @@ def test_evaluate_job_and_download_endpoint_shapes() -> None:
     _assert_paginated_model(jobs.response_type, EvaluateJob)
     assert status.path_template.endswith("/evaluate/jobs/{name}/status")
     assert status.response_type is PlatformJobStatusResponse
+    assert deleted.method == "DELETE"
+    assert deleted.path_template.endswith("/evaluate/jobs/{name}")
+    assert deleted.response_type is None
     assert aggregate.response_type is BinaryContent
     assert row_scores.response_type is BinaryContent
     assert artifacts.response_type is BinaryContent
@@ -117,6 +121,7 @@ def test_agent_eval_job_endpoint_shapes() -> None:
         query_params={"page": 2, "page_size": 25, "sort": "-created_at", "filter": '{"status":"completed"}'},
     )
     status = endpoints.get_agent_eval_job_status(workspace="team-a", name="job-1")
+    deleted = endpoints.delete_agent_eval_job(workspace="team-a", name="job-1")
 
     assert job.method == "GET"
     assert job.path_template == "/apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs/{name}"
@@ -126,6 +131,9 @@ def test_agent_eval_job_endpoint_shapes() -> None:
     _assert_paginated_model(jobs.response_type, AgentEvalJob)
     assert status.path_template.endswith("/agent-evaluate/jobs/{name}/status")
     assert status.response_type is PlatformJobStatusResponse
+    assert deleted.method == "DELETE"
+    assert deleted.path_template.endswith("/agent-evaluate/jobs/{name}")
+    assert deleted.response_type is None
 
 
 def test_metric_endpoint_shapes() -> None:
