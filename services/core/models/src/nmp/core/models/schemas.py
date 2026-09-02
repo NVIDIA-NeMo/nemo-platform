@@ -4,7 +4,7 @@
 from abc import ABC
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Self, Union
 
 from jinja2 import Environment
 from jinja2 import nodes as jinja_nodes
@@ -166,21 +166,14 @@ class ModelSpec(BaseModel):
         deprecated=True,
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _sync_head_type_and_embedding_alias(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        data = dict(data)
-        head_type = data.get("head_type")
-        alias = bool(data.get("is_embedding_model", False))
-        if head_type in ("causal_lm", "embedding", "cross_encoder"):
-            data["is_embedding_model"] = head_type == "embedding"
-            return data
-        if alias:
-            data["head_type"] = "embedding"
-            data["is_embedding_model"] = True
-        return data
+    @model_validator(mode="after")
+    def _sync_head_type_and_embedding_alias(self) -> Self:
+        if self.head_type in ("causal_lm", "embedding", "cross_encoder"):
+            self.is_embedding_model = self.head_type == "embedding"
+            return self
+        if self.is_embedding_model:
+            self.head_type = "embedding"
+        return self
 
     # Basic model information
     checkpoint_model_name: str = Field(description="Checkpoint Model identifier or model path")

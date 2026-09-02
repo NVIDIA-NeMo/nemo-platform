@@ -48,3 +48,19 @@ def test_plugin_model_spec_cross_encoder_wins_over_stale_embedding_alias() -> No
     spec = PluginModelSpec(**_MINIMAL, head_type="cross_encoder", is_embedding_model=True)
     assert spec.head_type == "cross_encoder"
     assert spec.is_embedding_model is False
+
+
+def test_false_like_alias_strings_stay_unknown() -> None:
+    for spec_cls in (ModelSpec, PluginModelSpec):
+        for alias in ("false", "0", "off"):
+            spec = spec_cls.model_validate({**_MINIMAL, "is_embedding_model": alias})
+            assert spec.head_type == "unknown"
+            assert spec.is_embedding_model is False
+
+
+def test_true_like_alias_strings_normalize_to_embedding() -> None:
+    for spec_cls in (ModelSpec, PluginModelSpec):
+        for alias in ("true", "1", "on"):
+            spec = spec_cls.model_validate({**_MINIMAL, "is_embedding_model": alias})
+            assert spec.head_type == "embedding"
+            assert spec.is_embedding_model is True
