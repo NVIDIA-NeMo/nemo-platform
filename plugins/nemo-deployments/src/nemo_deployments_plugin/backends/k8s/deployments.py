@@ -41,6 +41,7 @@ from nemo_deployments_plugin.backends.k8s.status import (
     status_from_deployment,
 )
 from nemo_deployments_plugin.backends.k8s.workload_identity import (
+    deployment_pod_uid_delegation_pods,
     reconcile_pod_uid_delegations,
     revoke_workload_delegations,
     workload_identity_activation_error,
@@ -435,7 +436,12 @@ async def create_deployment(
             deployment_name=name,
             namespace=namespace,
             k8s_config=k8s_config,
-            pods=pods,
+            pods=deployment_pod_uid_delegation_pods(
+                config=config,
+                k8s_config=k8s_config,
+                resource_name=resource_name,
+                pods=pods,
+            ),
         )
         pod = newest_pod(pods)
         return status_from_deployment(
@@ -515,7 +521,12 @@ async def read_deployment_status(
                 deployment_name=name,
                 namespace=namespace,
                 k8s_config=k8s_config,
-                pods=pods,
+                pods=deployment_pod_uid_delegation_pods(
+                    config=config,
+                    k8s_config=k8s_config,
+                    resource_name=resource_name,
+                    pods=pods,
+                ),
             )
         pod = newest_pod(pods)
         return status_from_deployment(

@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import socket
 import tarfile
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -47,8 +48,14 @@ from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, WorkloadIdentitySpec
 from nemo_deployments_plugin.types import RestartPolicy
 from nemo_platform_plugin.auth import AuthContext
-from nemo_platform_plugin.auth.workload_identity import WORKLOAD_IDENTITY_TOKEN_FILE_PATH, WORKLOAD_IDENTITY_VOLUME_PATH
+from nemo_platform_plugin.auth.workload_delegations import WorkloadDelegationEntity
+from nemo_platform_plugin.auth.workload_identity import (
+    WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+    WORKLOAD_IDENTITY_VOLUME_PATH,
+    build_docker_opaque_workload_delegation,
+)
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
 
@@ -82,6 +89,20 @@ def _workload_store() -> MagicMock:
     store.list_by_workload = AsyncMock(return_value=[])
     store.update = AsyncMock()
     return store
+
+
+def _docker_workload_delegation(*, expires_in_seconds: int) -> WorkloadDelegationEntity:
+    delegation, _ = build_docker_opaque_workload_delegation(
+        workload_workspace="default",
+        workload_audience="nemo-platform",
+        workload_kind="agent_deployment",
+        workload_id="logical-srv",
+        workload_generation=CONTAINER_ROLE_SERVER,
+        auth_context=_workload_auth_context(),
+        ttl_seconds_active=900,
+    )
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)
+    return delegation.model_copy(update={"expires_at": expires_at})
 
 
 def test_init_raises_missing_dependency_when_docker_daemon_unavailable(mock_sdk: MagicMock) -> None:
@@ -230,7 +251,29 @@ async def test_create_deployment_injects_workload_identity_volume_and_delegation
     assert delegation.workload_generation == CONTAINER_ROLE_SERVER
     assert delegation.workload_subject == delegation.name
     assert delegation.opaque_subject_token_hash
+    assert delegation.auth_context == _workload_auth_context()
     assert workload_store.register.await_args.kwargs["require_opaque_subject_token_hash"] is True
+
+
+@pytest.mark.asyncio
+async def test_workload_identity_volume_label_mismatch_recreates_volume(
+    docker_backend: DockerDeploymentBackend,
+    mock_docker_client: MagicMock,
+) -> None:
+    existing = MagicMock()
+    existing.attrs = {"Labels": {MANAGED_BY_KEY: MANAGED_BY_LABEL, DEPLOYMENT_NAME_LABEL: "other"}}
+    mock_docker_client.volumes.get.return_value = existing
+    labels = {
+        MANAGED_BY_KEY: MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
+    }
+
+    await docker_backend._ensure_workload_identity_volume(volume_name="wi-volume", labels=labels)
+
+    existing.remove.assert_called_once_with(force=True)
+    mock_docker_client.volumes.create.assert_called_once_with(name="wi-volume", labels=labels)
 
 
 @pytest.mark.asyncio
@@ -269,6 +312,61 @@ async def test_delete_deployment_revokes_workload_identity_delegations_and_volum
         workload_id="logical-srv",
     )
     volume.remove.assert_called_once_with(force=True)
+
+
+@pytest.mark.asyncio
+async def test_delete_deployment_revokes_default_workload_identity_when_config_missing(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    workload_store = _workload_store()
+    docker_backend._workload_delegations = workload_store
+    mock_entities.get.side_effect = NemoEntityNotFoundError("missing")
+    mock_docker_client.containers.list.return_value = []
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.volumes.list.return_value = []
+
+    update = await docker_backend.delete_deployment("default", "srv")
+
+    assert update.status == "SUCCEEDED"
+    workload_store.revoke_by_workload.assert_awaited_once_with(
+        workload_workspace="default",
+        workload_kind="deployment",
+        workload_id="srv",
+    )
+
+
+@pytest.mark.asyncio
+async def test_refresh_workload_identity_delegation_skips_distant_expiry(
+    docker_backend: DockerDeploymentBackend,
+) -> None:
+    config = _workload_identity_config()
+    workload_store = _workload_store()
+    workload_store.list_by_workload.return_value = [_docker_workload_delegation(expires_in_seconds=1000)]
+    docker_backend._workload_delegations = workload_store
+
+    await docker_backend._refresh_workload_delegations_for_config(workspace="default", name="srv", config=config)
+
+    workload_store.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_refresh_workload_identity_delegation_extends_near_expiry(
+    docker_backend: DockerDeploymentBackend,
+) -> None:
+    config = _workload_identity_config()
+    delegation = _docker_workload_delegation(expires_in_seconds=60)
+    original_expires_at = delegation.expires_at
+    workload_store = _workload_store()
+    workload_store.list_by_workload.return_value = [delegation]
+    docker_backend._workload_delegations = workload_store
+
+    await docker_backend._refresh_workload_delegations_for_config(workspace="default", name="srv", config=config)
+
+    workload_store.update.assert_awaited_once()
+    updated = workload_store.update.await_args.args[0]
+    assert updated.expires_at > original_expires_at
 
 
 @pytest.mark.asyncio

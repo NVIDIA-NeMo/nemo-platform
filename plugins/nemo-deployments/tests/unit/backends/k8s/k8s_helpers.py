@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from nemo_deployments_plugin.backends.labels import (
@@ -95,11 +96,25 @@ def with_workload_identity(
     )
 
 
-def live_pod(pod_uid: str, *, phase: str = "Running", name: str = "task-pod-1") -> MagicMock:
+def live_pod(
+    pod_uid: str,
+    *,
+    phase: str = "Running",
+    name: str = "task-pod-1",
+    owner_kind: str | None = None,
+    owner_name: str | None = None,
+    service_account_name: str = "default",
+) -> MagicMock:
     pod = mock_pod(phase=phase)
     pod.metadata.name = name
     pod.metadata.uid = pod_uid
     pod.metadata.deletion_timestamp = None
+    pod.metadata.owner_references = (
+        [SimpleNamespace(kind=owner_kind, name=owner_name, controller=True)]
+        if owner_kind is not None and owner_name is not None
+        else []
+    )
+    pod.spec.service_account_name = service_account_name
     return pod
 
 
@@ -195,6 +210,7 @@ def mock_job(
     name: str = "task",
     restart_policy: RestartPolicy = "Never",
     config_name: str = "config1",
+    backoff_limit: int = 6,
     active: int = 0,
     complete: bool = False,
     failed: bool = False,
@@ -205,6 +221,7 @@ def mock_job(
         name,
         restart_policy=restart_policy,
         config_name=config_name,
+        backoff_limit=backoff_limit,
     )
     job = MagicMock()
     job.metadata.labels = labels

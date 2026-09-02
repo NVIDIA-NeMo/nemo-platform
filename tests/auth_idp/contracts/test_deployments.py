@@ -129,6 +129,10 @@ def _wait_for_deployment_deleted(auth_idp_runtime, *, workspace: str, deployment
             return
         time.sleep(DEPLOYMENTS_WAIT_SLEEP_SECONDS)
 
+    raise AssertionError(
+        f"Deployment was not deleted within {DEPLOYMENTS_DELETE_TIMEOUT_SECONDS} seconds: {deployment_name}"
+    )
+
 
 def test_provider_workload_deployment_runs_with_managed_obo(
     auth_idp_case,

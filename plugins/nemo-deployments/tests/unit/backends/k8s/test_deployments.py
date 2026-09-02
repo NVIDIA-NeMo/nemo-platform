@@ -91,6 +91,10 @@ def test_build_in_cluster_endpoints_uses_tcp_scheme_for_udp() -> None:
     assert endpoints[0].url == f"tcp://{resource_name}.nemo-deployments.svc.cluster.local:9090"
 
 
+def _deployment_replicaset_name() -> str:
+    return f"{k8s_deployment_resource_name('default', 'task')}-abc123"
+
+
 @pytest.mark.asyncio
 async def test_create_deployment_emits_deployment_and_service(
     k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
@@ -150,7 +154,12 @@ async def test_create_deployment_registers_live_pod_uid_workload_delegation(
     workload_store.list_by_workload = AsyncMock(return_value=[])
     workload_store.register = AsyncMock()
     workload_store.revoke = AsyncMock()
-    pod = live_pod("pod-uid-1")
+    pod = live_pod(
+        "pod-uid-1",
+        owner_kind="ReplicaSet",
+        owner_name=_deployment_replicaset_name(),
+        service_account_name="dep-sa",
+    )
     mock_k8s_clients.apps_v1.create_namespaced_deployment.return_value = mock_deployment()
     mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
     mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(items=[pod])
@@ -193,6 +202,46 @@ async def test_create_deployment_registers_live_pod_uid_workload_delegation(
 
 
 @pytest.mark.asyncio
+async def test_create_deployment_ignores_spoofed_pod_uid_workload_delegation(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    config = with_workload_identity(sample_always_config())
+    workload_store = MagicMock()
+    workload_store.list_by_workload = AsyncMock(return_value=[])
+    workload_store.register = AsyncMock()
+    workload_store.revoke = AsyncMock()
+    pod = live_pod(
+        "pod-uid-1",
+        owner_kind="ReplicaSet",
+        owner_name="foreign-replicaset",
+        service_account_name="dep-sa",
+    )
+    mock_k8s_clients.apps_v1.create_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(items=[pod])
+
+    with patch(
+        "nemo_deployments_plugin.backends.workload_identity.is_workload_identity_token_exchange_enabled",
+        return_value=True,
+    ):
+        update = await deployment_ops.create_deployment(
+            deployment_ops_clients,
+            default_namespace="default",
+            workspace="default",
+            name="task",
+            config_name="config1",
+            labels={},
+            backend_config={"k8s": {"namespace": "dep-ns"}},
+            config=config,
+            auth_context=workload_auth_context(),
+            workload_delegation_store=workload_store,
+        )
+
+    assert update.status != "FAILED"
+    workload_store.register.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_read_deployment_status_revokes_stale_pod_uid_workload_delegation(
     deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
 ) -> None:
@@ -215,7 +264,16 @@ async def test_read_deployment_status_revokes_stale_pod_uid_workload_delegation(
     workload_store.register = AsyncMock()
     workload_store.revoke = AsyncMock()
     mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
-    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(items=[live_pod("new-pod")])
+    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(
+        items=[
+            live_pod(
+                "new-pod",
+                owner_kind="ReplicaSet",
+                owner_name=_deployment_replicaset_name(),
+                service_account_name="dep-sa",
+            )
+        ]
+    )
 
     with patch(
         "nemo_deployments_plugin.backends.workload_identity.is_workload_identity_token_exchange_enabled",
@@ -239,6 +297,50 @@ async def test_read_deployment_status_revokes_stale_pod_uid_workload_delegation(
     assert update.status != "FAILED"
     workload_store.register.assert_awaited_once()
     workload_store.revoke.assert_awaited_once_with(stale.name)
+
+
+@pytest.mark.asyncio
+async def test_read_deployment_status_ignores_wrong_service_account_pod_uid_workload_delegation(
+    deployment_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    config = with_workload_identity(sample_always_config())
+    workload_store = MagicMock()
+    workload_store.list_by_workload = AsyncMock(return_value=[])
+    workload_store.register = AsyncMock()
+    workload_store.revoke = AsyncMock()
+    mock_k8s_clients.apps_v1.read_namespaced_deployment.return_value = mock_deployment()
+    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(
+        items=[
+            live_pod(
+                "pod-uid-1",
+                owner_kind="ReplicaSet",
+                owner_name=_deployment_replicaset_name(),
+                service_account_name="other-sa",
+            )
+        ]
+    )
+
+    with patch(
+        "nemo_deployments_plugin.backends.workload_identity.is_workload_identity_token_exchange_enabled",
+        return_value=True,
+    ):
+        update = await deployment_ops.read_deployment_status(
+            deployment_ops_clients,
+            default_namespace="default",
+            workspace="default",
+            name="task",
+            backend_config={"k8s": {"namespace": "dep-ns"}},
+            config_name="config1",
+            restart_policy="Always",
+            backoff_limit=6,
+            containers=tuple(config.containers),
+            config=config,
+            auth_context=workload_auth_context(),
+            workload_delegation_store=workload_store,
+        )
+
+    assert update.status != "FAILED"
+    workload_store.register.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from backends.k8s.k8s_helpers import sample_always_config, sample_config
+from backends.k8s.k8s_helpers import sample_always_config, sample_config, with_workload_identity
 from kubernetes.client import ApiClient
 from nemo_deployments_plugin.backends.k8s.compiler import (
     DeploymentConfigError,
@@ -182,6 +182,24 @@ def test_compile_applies_k8s_deployment_config() -> None:
     assert affinity.node_affinity is not None
     security_context = compiled.pod_spec_kwargs["security_context"]
     assert security_context.run_as_user == 1000
+
+
+def test_compile_workload_identity_prefers_workload_service_account() -> None:
+    config = with_workload_identity(sample_always_config(), service_account_name="workload-sa")
+    k8s_config = K8sDeploymentConfig.model_validate({"serviceAccount": "pod-sa"})
+
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=k8s_config,
+        pod_restart_policy="Always",
+    )
+
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    assert pod_spec["service_account_name"] == "workload-sa"
+    assert any(volume["name"] == WORKLOAD_IDENTITY_VOLUME_NAME for volume in pod_spec["volumes"])
 
 
 def test_compile_workload_emits_image_pull_secrets() -> None:

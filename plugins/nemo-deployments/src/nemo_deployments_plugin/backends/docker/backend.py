@@ -11,6 +11,7 @@ import logging
 import os
 import tarfile
 import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from nemo_deployments_plugin.backends.base import (
@@ -69,6 +70,7 @@ from nemo_deployments_plugin.backends.labels import (
     managed_by_filter,
 )
 from nemo_deployments_plugin.backends.workload_identity import (
+    DEFAULT_WORKLOAD_KIND,
     workload_id,
     workload_identity_activation_error,
     workload_identity_requested,
@@ -583,7 +585,9 @@ class DockerDeploymentBackend(DeploymentBackend):
                     reload()
                 existing_labels = (getattr(volume, "attrs", None) or {}).get("Labels") or getattr(volume, "labels", {})
                 if not all(existing_labels.get(key) == value for key, value in labels.items()):
-                    raise RuntimeError(f"Docker volume {volume_name} exists with different labels")
+                    logger.info("Recreating workload identity volume %s with updated labels", volume_name)
+                    volume.remove(force=True)
+                    self._client.volumes.create(name=volume_name, labels=labels)
             except self._docker_errors.NotFound:
                 self._client.volumes.create(name=volume_name, labels=labels)
 
@@ -653,7 +657,23 @@ class DockerDeploymentBackend(DeploymentBackend):
         name: str,
         config: DeploymentConfig | None,
     ) -> None:
-        if config is None or not workload_identity_requested(config):
+        if config is None:
+            try:
+                await self._workload_delegations.revoke_by_workload(
+                    workload_workspace=workspace,
+                    workload_kind=DEFAULT_WORKLOAD_KIND,
+                    workload_id=name,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to revoke Docker workload delegations for %s/%s without deployment config",
+                    workspace,
+                    name,
+                    exc_info=True,
+                )
+            return
+
+        if not workload_identity_requested(config):
             return
         await self._workload_delegations.revoke_by_workload(
             workload_workspace=workspace,
@@ -671,6 +691,8 @@ class DockerDeploymentBackend(DeploymentBackend):
         if config is None or config.workload_identity is None or not workload_identity_requested(config):
             return
         try:
+            now = datetime.now(UTC)
+            refresh_threshold_seconds = config.workload_identity.token_expiration_seconds / 2
             delegations = await self._workload_delegations.list_by_workload(
                 workload_workspace=workspace,
                 workload_kind=workload_kind(config),
@@ -679,8 +701,12 @@ class DockerDeploymentBackend(DeploymentBackend):
             for delegation in delegations:
                 if delegation.revoked_at is not None or not delegation.opaque_subject_token_hash:
                     continue
+                remaining_seconds = (delegation.expires_at - now).total_seconds()
+                if remaining_seconds > refresh_threshold_seconds:
+                    continue
                 delegation.expires_at = workload_delegation_expires_at(
-                    ttl_seconds_active=config.workload_identity.token_expiration_seconds
+                    ttl_seconds_active=config.workload_identity.token_expiration_seconds,
+                    now=now,
                 )
                 await self._workload_delegations.update(delegation)
         except Exception:

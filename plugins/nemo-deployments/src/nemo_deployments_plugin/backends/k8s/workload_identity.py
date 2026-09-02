@@ -111,6 +111,40 @@ async def reconcile_pod_uid_delegations(
             await store.revoke(entity.name)
 
 
+def deployment_pod_uid_delegation_pods(
+    *,
+    config: DeploymentConfig,
+    k8s_config: K8sDeploymentConfig | None,
+    resource_name: str,
+    pods: list[Any],
+) -> list[Any]:
+    """Return Pods eligible for Deployment-owned Pod UID delegation."""
+    return _pod_uid_delegation_pods(
+        config=config,
+        k8s_config=k8s_config,
+        controller_kind="ReplicaSet",
+        controller_name_prefix=f"{resource_name}-",
+        pods=pods,
+    )
+
+
+def job_pod_uid_delegation_pods(
+    *,
+    config: DeploymentConfig,
+    k8s_config: K8sDeploymentConfig | None,
+    job_name: str,
+    pods: list[Any],
+) -> list[Any]:
+    """Return Pods eligible for Job-owned Pod UID delegation."""
+    return _pod_uid_delegation_pods(
+        config=config,
+        k8s_config=k8s_config,
+        controller_kind="Job",
+        controller_name=job_name,
+        pods=pods,
+    )
+
+
 async def revoke_workload_delegations(
     store: WorkloadDelegationStore | None,
     *,
@@ -126,6 +160,61 @@ async def revoke_workload_delegations(
         workload_kind=workload_kind(config),
         workload_id=workload_id(config, deployment_name),
     )
+
+
+def _pod_uid_delegation_pods(
+    *,
+    config: DeploymentConfig,
+    k8s_config: K8sDeploymentConfig | None,
+    controller_kind: str,
+    pods: list[Any],
+    controller_name: str | None = None,
+    controller_name_prefix: str | None = None,
+) -> list[Any]:
+    expected_service_account = service_account_name(config=config, k8s_config=k8s_config)
+    return [
+        pod
+        for pod in pods
+        if _pod_has_controller_owner(
+            pod,
+            controller_kind=controller_kind,
+            controller_name=controller_name,
+            controller_name_prefix=controller_name_prefix,
+        )
+        and _pod_service_account_name(pod) == expected_service_account
+    ]
+
+
+def _pod_has_controller_owner(
+    pod: Any,
+    *,
+    controller_kind: str,
+    controller_name: str | None,
+    controller_name_prefix: str | None,
+) -> bool:
+    metadata = getattr(pod, "metadata", None)
+    owner_references = getattr(metadata, "owner_references", None) if metadata is not None else None
+    for owner_reference in owner_references or []:
+        if getattr(owner_reference, "controller", False) is not True:
+            continue
+        if getattr(owner_reference, "kind", None) != controller_kind:
+            continue
+        owner_name = getattr(owner_reference, "name", None)
+        if not isinstance(owner_name, str):
+            continue
+        if controller_name is not None and owner_name == controller_name:
+            return True
+        if controller_name_prefix is not None and owner_name.startswith(controller_name_prefix):
+            return True
+    return False
+
+
+def _pod_service_account_name(pod: Any) -> str:
+    spec = getattr(pod, "spec", None)
+    if spec is None:
+        return DEFAULT_SERVICE_ACCOUNT
+    name = getattr(spec, "service_account_name", None) or getattr(spec, "service_account", None)
+    return name if isinstance(name, str) and name else DEFAULT_SERVICE_ACCOUNT
 
 
 def _pod_uid(pod: Any) -> str | None:

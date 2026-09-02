@@ -32,6 +32,7 @@ from nemo_deployments_plugin.backends.k8s.status import (
     status_from_job,
 )
 from nemo_deployments_plugin.backends.k8s.workload_identity import (
+    job_pod_uid_delegation_pods,
     reconcile_pod_uid_delegations,
     revoke_workload_delegations,
     workload_identity_activation_error,
@@ -337,7 +338,12 @@ async def create_job(
             deployment_name=name,
             namespace=namespace,
             k8s_config=k8s_config,
-            pods=pods,
+            pods=job_pod_uid_delegation_pods(
+                config=config,
+                k8s_config=k8s_config,
+                job_name=job_name,
+                pods=pods,
+            ),
         )
         if update.status in ("SUCCEEDED", "FAILED"):
             exit_code = await read_pod_exit_code(clients, namespace=namespace, job_name=job_name)
@@ -408,7 +414,12 @@ async def read_job_status(
                 deployment_name=name,
                 namespace=namespace,
                 k8s_config=k8s_config,
-                pods=pods,
+                pods=job_pod_uid_delegation_pods(
+                    config=config,
+                    k8s_config=k8s_config,
+                    job_name=job_name,
+                    pods=pods,
+                ),
             )
         if update.status in ("SUCCEEDED", "FAILED"):
             exit_code = await read_pod_exit_code(clients, namespace=namespace, job_name=job_name)

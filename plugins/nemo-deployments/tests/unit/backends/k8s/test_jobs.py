@@ -21,7 +21,11 @@ from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.k8s import jobs as job_ops
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
 from nemo_deployments_plugin.backends.k8s.jobs import job_backoff_limit, trim_log_text, validate_config_for_job
-from nemo_deployments_plugin.backends.labels import MANAGED_BY_KEY, k8s_deployment_secret_name
+from nemo_deployments_plugin.backends.labels import (
+    MANAGED_BY_KEY,
+    k8s_deployment_resource_name,
+    k8s_deployment_secret_name,
+)
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import DeploymentConfig, EnvVar, SecretRef
 from nemo_deployments_plugin.types import RestartPolicy
@@ -133,7 +137,16 @@ async def test_create_job_registers_live_pod_uid_workload_delegation(
     workload_store.register = AsyncMock()
     workload_store.revoke = AsyncMock()
     mock_k8s_clients.batch_v1.create_namespaced_job.return_value = mock_job(active=1)
-    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(items=[live_pod("job-pod-uid")])
+    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(
+        items=[
+            live_pod(
+                "job-pod-uid",
+                owner_kind="Job",
+                owner_name=k8s_deployment_resource_name("default", "task"),
+                service_account_name="dep-sa",
+            )
+        ]
+    )
 
     with patch(
         "nemo_deployments_plugin.backends.workload_identity.is_workload_identity_token_exchange_enabled",
@@ -166,6 +179,49 @@ async def test_create_job_registers_live_pod_uid_workload_delegation(
     assert delegation.workload_subject == "system:serviceaccount:dep-ns:dep-sa"
     assert delegation.bound_reference_value == "job-pod-uid"
     assert delegation.auth_context == auth_context
+
+
+@pytest.mark.asyncio
+async def test_read_job_status_ignores_spoofed_pod_uid_workload_delegation(
+    job_ops_clients: MagicMock, mock_k8s_clients: MagicMock
+) -> None:
+    config = with_workload_identity(sample_config(restart_policy="Never"))
+    workload_store = MagicMock()
+    workload_store.list_by_workload = AsyncMock(return_value=[])
+    workload_store.register = AsyncMock()
+    workload_store.revoke = AsyncMock()
+    mock_k8s_clients.batch_v1.read_namespaced_job.return_value = mock_job(active=1, backoff_limit=0)
+    mock_k8s_clients.core_v1.list_namespaced_pod.return_value = MagicMock(
+        items=[
+            live_pod(
+                "job-pod-uid",
+                owner_kind="Job",
+                owner_name="foreign-job",
+                service_account_name="dep-sa",
+            )
+        ]
+    )
+
+    with patch(
+        "nemo_deployments_plugin.backends.workload_identity.is_workload_identity_token_exchange_enabled",
+        return_value=True,
+    ):
+        update = await job_ops.read_job_status(
+            job_ops_clients,
+            default_namespace="default",
+            workspace="default",
+            name="task",
+            backend_config={"k8s": {"namespace": "dep-ns"}},
+            config_name="config1",
+            restart_policy="Never",
+            backoff_limit=0,
+            config=config,
+            auth_context=workload_auth_context(),
+            workload_delegation_store=workload_store,
+        )
+
+    assert update.status == "STARTING"
+    workload_store.register.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -19,6 +19,7 @@ from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.auth_proxy import build_auth_proxy_container
 from nemo_deployments_plugin.backends.k8s.client import k8s_client_module
 from nemo_deployments_plugin.backends.k8s.status import resource_labels_match
+from nemo_deployments_plugin.backends.k8s.workload_identity import service_account_name as workload_service_account_name
 from nemo_deployments_plugin.backends.labels import (
     k8s_deployment_configmap_name,
     k8s_deployment_secret_name,
@@ -315,6 +316,18 @@ def build_workload_identity_volume(config: DeploymentConfig) -> Any:
     )
 
 
+def pod_service_account_name(
+    *,
+    config: DeploymentConfig,
+    k8s_config: K8sDeploymentConfig | None,
+) -> str | None:
+    if workload_identity_enabled(config):
+        return workload_service_account_name(config=config, k8s_config=k8s_config)
+    if k8s_config is not None and k8s_config.service_account:
+        return k8s_config.service_account
+    return None
+
+
 def _workload_identity_mount() -> VolumeMount:
     return VolumeMount(
         name=WORKLOAD_IDENTITY_VOLUME_NAME,
@@ -565,8 +578,9 @@ def compile_workload(
         security_context = build_pod_security_context(k8s_config.security_context)
         if security_context is not None:
             pod_spec_kwargs["security_context"] = security_context
-        if k8s_config.service_account:
-            pod_spec_kwargs["service_account_name"] = k8s_config.service_account
+    effective_service_account_name = pod_service_account_name(config=config, k8s_config=k8s_config)
+    if effective_service_account_name:
+        pod_spec_kwargs["service_account_name"] = effective_service_account_name
 
     return CompiledWorkload(
         pod_spec_kwargs=pod_spec_kwargs,

@@ -72,16 +72,20 @@ class TestRunTask:
         monkeypatch.delenv("NEMO_JOB_STEP_CONFIG", raising=False)
         monkeypatch.setattr(platform_main.runpy, "run_module", fake_run_module)
 
-        result = run_task(
-            "nmp.fake.tasks.verify_config",
-            [],
-            '{"workspace":"auth-idp-ws-test"}',
-        )
+        try:
+            result = run_task(
+                "nmp.fake.tasks.verify_config",
+                [],
+                '{"workspace":"auth-idp-ws-test"}',
+            )
 
-        assert result == 0
-        assert captured_config == {"workspace": "auth-idp-ws-test"}
-        assert os.environ[TASK_CONFIG_ENVVAR] == '{"workspace":"auth-idp-ws-test"}'
-        assert os.environ["NEMO_JOB_STEP_CONFIG"] == '{"workspace":"auth-idp-ws-test"}'
+            assert result == 0
+            assert captured_config == {"workspace": "auth-idp-ws-test"}
+            assert os.environ[TASK_CONFIG_ENVVAR] == '{"workspace":"auth-idp-ws-test"}'
+            assert os.environ["NEMO_JOB_STEP_CONFIG"] == '{"workspace":"auth-idp-ws-test"}'
+        finally:
+            os.environ.pop(TASK_CONFIG_ENVVAR, None)
+            os.environ.pop("NEMO_JOB_STEP_CONFIG", None)
 
 
 class TestStartupFailureExitCode:
