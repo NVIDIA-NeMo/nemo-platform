@@ -107,6 +107,11 @@ def apply_sandbox_runtime_defaults(global_config: dict[str, Any]) -> dict[str, A
     cfg.setdefault("global_aiohttp_connector_limit", 65_536)
     cfg.setdefault("uv_cache_dir", gym_uv_cache_dir())
     cfg.setdefault("uv_venv_dir", gym_uv_venv_dir())
+    # Makes Gym pass `--python <venv>/bin/python` rather than inferring a target: the training
+    # image sets an absolute UV_PYTHON, which outranks the venv Gym just activated and sends the
+    # install into a read-only interpreter tree. The only symptom is every Gym server dying with
+    # "Process `policy_model` finished unexpectedly!".
+    cfg.setdefault("uv_pip_set_python", True)
     return cfg
 
 
