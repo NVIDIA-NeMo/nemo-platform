@@ -44,7 +44,7 @@ async def test_retrieval_preview_uses_preview_generation(tmp_path) -> None:
             return_value=dd_ctx,
         ),
         patch(
-            "nemo_data_designer_plugin.functions.retrieval_preview.execute_generation",
+            "nemo_data_designer_plugin.retrieval.generation.execute_generation",
             return_value=preview_result,
         ) as execute,
         patch(

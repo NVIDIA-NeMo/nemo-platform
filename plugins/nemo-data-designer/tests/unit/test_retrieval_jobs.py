@@ -169,10 +169,10 @@ def test_retrieval_generate_run_writes_artifacts(tmp_path: Path) -> None:
     with (
         patch("nemo_data_designer_plugin.jobs.retrieval_generate.materialize_corpus", return_value=corpus),
         patch(
-            "nemo_data_designer_plugin.jobs.retrieval_generate.execute_generation",
+            "nemo_data_designer_plugin.retrieval.generation.execute_generation",
             return_value=result,
         ) as run_generation,
-        patch("nemo_data_designer_plugin.jobs.retrieval_generate.build_generation_run_config") as build_cfg,
+        patch("nemo_data_designer_plugin.retrieval.generation.build_generation_run_config") as build_cfg,
     ):
         build_cfg.return_value = SimpleNamespace()
         output = RetrievalGenerateJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=Mock())
@@ -289,7 +289,7 @@ def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
         return conversion
 
     with patch(
-        "nemo_data_designer_plugin.jobs.retrieval_prepare.execute_conversion",
+        "nemo_data_designer_plugin.retrieval.conversion.execute_conversion",
         side_effect=_fake_convert,
     ):
         output = RetrievalPrepareJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=Mock())
