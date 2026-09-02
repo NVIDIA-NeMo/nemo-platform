@@ -344,7 +344,7 @@ async def test_a_failed_submission_leaves_the_run_record_in_place() -> None:
         await create_analysis_run("default", _request(), _sdk(jobs), _entities(entities))
 
     assert excinfo.value.status_code == 422
-    assert excinfo.value.detail == "bad model ref"
+    assert excinfo.value.detail == {"error": "bad model ref", "run": entities.created[0].name}
     assert len(entities.created) == 1
 
 
@@ -376,7 +376,7 @@ async def test_a_failed_submission_falls_back_to_the_raw_error_body() -> None:
         await create_analysis_run("default", _request(), _sdk(jobs), _entities(entities))
 
     assert excinfo.value.status_code == 500
-    assert excinfo.value.detail == {"message": "upstream exploded"}
+    assert excinfo.value.detail == {"error": {"message": "upstream exploded"}, "run": entities.created[0].name}
 
 
 # ---------------------------------------------------------------------------
