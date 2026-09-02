@@ -21,6 +21,7 @@ from nemo_agents_plugin.fabric import server
 from nemo_agents_plugin.fabric.runtime import (
     FabricRuntimeExecutionError,
     FabricRuntimeResult,
+    FabricRuntimeStartError,
     FabricRuntimeStream,
     FabricRuntimeTimeoutError,
 )
@@ -32,6 +33,7 @@ from nemo_agents_plugin.fabric.session_manager import (
     FabricSessionStopError,
 )
 from nemo_agents_plugin.fabric.session_registry import FabricSessionNotFoundError, FabricSessionRegistry
+from starlette.requests import ClientDisconnect
 
 
 class _FakeStreamContext:
@@ -382,6 +384,7 @@ def test_chat_completion_with_session_id_reuses_session(
 @pytest.mark.parametrize(
     ("error", "status_code"),
     [
+        (FabricRuntimeStartError("startup failed"), 503),
         (FabricRuntimeTimeoutError("timed out"), 504),
         (FabricRuntimeExecutionError("invoke failed"), 502),
     ],
@@ -408,6 +411,33 @@ def test_chat_completion_maps_runtime_errors(
     assert response.status_code == status_code
     assert SESSION_ID_HEADER not in response.headers
     assert response.json() == {"detail": str(error)}
+
+
+def test_session_chat_completion_runtime_error_returns_session_header(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_fabric_serving_app(_write_agent_config(tmp_path))
+
+    async def resolve_session(session_id: str) -> Any:
+        return SimpleNamespace(session_id=session_id, runtime=object())
+
+    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
+        raise FabricRuntimeTimeoutError("timed out")
+
+    with TestClient(app) as client:
+        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
+        response = client.post(
+            "/v1/chat/completions",
+            headers={SESSION_ID_HEADER: "session-1"},
+            json={"messages": [{"role": "user", "content": "hello"}]},
+        )
+
+    assert response.status_code == 504
+    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert response.json() == {"detail": "timed out"}
 
 
 @pytest.mark.parametrize(
@@ -442,15 +472,24 @@ def test_chat_completion_maps_session_resolution_errors(
     assert response.json() == {"detail": str(error)}
 
 
+@pytest.mark.parametrize(
+    ("error", "status_code"),
+    [
+        (FabricRuntimeStartError("startup failed"), 503),
+        (FabricRuntimeExecutionError("stream failed"), 502),
+    ],
+)
 def test_streaming_chat_completion_without_session_maps_stream_start_errors(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
     monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    status_code: int,
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
 
     def stream_once(request: Any) -> _FakeStreamContext:
-        return _FakeStreamContext(enter_error=FabricRuntimeExecutionError("stream failed"))
+        return _FakeStreamContext(enter_error=error)
 
     with TestClient(app) as client:
         monkeypatch.setattr(app.state.session_manager, "stream_once", stream_once)
@@ -459,9 +498,9 @@ def test_streaming_chat_completion_without_session_maps_stream_start_errors(
             json={"messages": [{"role": "user", "content": "hello"}], "stream": True},
         )
 
-    assert response.status_code == 502
+    assert response.status_code == status_code
     assert SESSION_ID_HEADER not in response.headers
-    assert response.json() == {"detail": "stream failed"}
+    assert response.json() == {"detail": str(error)}
 
 
 def test_streaming_chat_completion_without_session_uses_one_shot_stream(
@@ -610,6 +649,33 @@ async def test_streaming_chat_completion_closes_stream_before_first_event() -> N
     assert stream_context.exit_calls == 1
 
 
+@pytest.mark.asyncio
+async def test_streaming_response_closes_stream_after_client_disconnect() -> None:
+    fabric_stream = _FakeFabricStream([{"data": {"choices": [{"delta": {"content": "partial"}}]}}])
+    stream_context = _FakeStreamContext(fabric_stream)
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+
+    async def receive() -> Any:
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.4"}})
+    with pytest.raises(ClientDisconnect):
+        await response(scope, receive, cast(Any, send))
+
+    assert fabric_stream.aclose_calls == 1
+    assert stream_context.exit_calls == 1
+
+
 def test_chat_completion_maps_failed_run_result(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
@@ -667,6 +733,23 @@ def test_chat_completion_request_serializes_full_transcript() -> None:
 
     assert invocation_request.input == ("system: Be concise.\n\nassistant: How can I help?\n\nuser: Say hello.")
     assert invocation_request.caller_context == {"session_id": "session-1"}
+
+
+def test_stateless_chat_completion_request_serializes_full_transcript_without_session_context() -> None:
+    request = ChatCompletionRequest.model_validate(
+        {
+            "messages": [
+                {"role": "system", "content": "Be concise."},
+                {"role": "assistant", "content": "How can I help?"},
+                {"role": "user", "content": "Say hello."},
+            ]
+        }
+    )
+
+    invocation_request = server._to_fabric_invocation_request(request, session_id=None)
+
+    assert invocation_request.input == ("system: Be concise.\n\nassistant: How can I help?\n\nuser: Say hello.")
+    assert invocation_request.caller_context == {}
 
 
 def test_close_session_stops_registered_runtime(

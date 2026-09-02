@@ -15,6 +15,7 @@ from nemo_agents_plugin.fabric.runtime import (
     FabricInvocationRequest,
     FabricOneShotRequest,
     FabricRuntimeExecutionError,
+    FabricRuntimeStartError,
     FabricRuntimeTimeoutError,
     invoke_fabric_runtime,
     run_fabric_agent_once,
@@ -59,12 +60,15 @@ class _FakeRuntime:
         result: Any | None = None,
         invoke_error: Exception | None = None,
         invoke_delay: float = 0.0,
+        exit_error: Exception | None = None,
     ) -> None:
         self.result = result if result is not None else _FakeRunResult()
         self.invoke_error = invoke_error
         self.invoke_delay = invoke_delay
+        self.exit_error = exit_error
         self.entered = False
         self.exited = False
+        self.exit_calls = 0
         self.runtime_id = "runtime-1"
         self.invoke_requests: list[Any] = []
         self.invoke_stream_requests: list[Any] = []
@@ -81,6 +85,9 @@ class _FakeRuntime:
         traceback: object,
     ) -> None:
         self.exited = True
+        self.exit_calls += 1
+        if self.exit_error is not None:
+            raise self.exit_error
 
     async def invoke(self, *, request: Any) -> Any:
         self.invoke_requests.append(request)
@@ -190,6 +197,7 @@ class TestRunFabricAgentOnce:
         ]
         assert fake_runtime.entered is True
         assert fake_runtime.exited is True
+        assert fake_runtime.exit_calls == 1
         fabric_request = fake_runtime.invoke_requests[0]
         assert fabric_request.input == {"prompt": "hi"}
         assert fabric_request.request_id == "platform-request-1"
@@ -213,6 +221,7 @@ class TestRunFabricAgentOnce:
             await run_fabric_agent_once(request, fabric=fake_fabric)
 
         assert fake_runtime.exited is True
+        assert fake_runtime.exit_calls == 1
 
     async def test_wraps_runtime_timeout_without_configured_deadline(self) -> None:
         timeout_error = TimeoutError("adapter timed out")
@@ -228,15 +237,43 @@ class TestRunFabricAgentOnce:
 
         assert exc_info.value.__cause__ is timeout_error
 
-    async def test_wraps_fabric_lifecycle_errors(self) -> None:
+    async def test_wraps_runtime_start_errors(self) -> None:
         fake_fabric = _FakeFabric(start_error=fabric_runtime.FabricError("native unavailable"))
         request = FabricOneShotRequest(
             fabric_config=cast(FabricConfig, object()),
             base_dir=Path("/tmp/agent"),
         )
 
-        with pytest.raises(FabricRuntimeExecutionError, match="Fabric runtime invocation failed: native unavailable"):
+        with pytest.raises(FabricRuntimeStartError, match="Fabric runtime startup failed: native unavailable"):
             await run_fabric_agent_once(request, fabric=fake_fabric)
+
+    async def test_cleans_up_once_after_cancellation(self) -> None:
+        fake_runtime = _FakeRuntime(invoke_delay=60)
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+        invocation = asyncio.create_task(run_fabric_agent_once(request, fabric=_FakeFabric(runtime=fake_runtime)))
+        while not fake_runtime.invoke_requests:
+            await asyncio.sleep(0)
+
+        invocation.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await invocation
+
+        assert fake_runtime.exit_calls == 1
+
+    async def test_maps_cleanup_errors_after_successful_invocation(self) -> None:
+        fake_runtime = _FakeRuntime(exit_error=fabric_runtime.FabricError("stop failed"))
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+
+        with pytest.raises(FabricRuntimeExecutionError, match="Fabric runtime cleanup failed: stop failed"):
+            await run_fabric_agent_once(request, fabric=_FakeFabric(runtime=fake_runtime))
+
+        assert fake_runtime.exit_calls == 1
 
     async def test_failed_run_result_is_returned_as_normalized_result(self) -> None:
         failed_result = _FakeRunResult(
@@ -302,6 +339,7 @@ class TestStreamFabricAgentOnce:
             result = await stream.result()
 
         assert fake_runtime.exited is True
+        assert fake_runtime.exit_calls == 1
         assert fake_fabric.start_calls == [
             {
                 "base_dir": Path("/tmp/agent"),
@@ -328,6 +366,28 @@ class TestStreamFabricAgentOnce:
                 pass
 
         assert fake_runtime.exited is True
+        assert fake_runtime.exit_calls == 1
+
+    async def test_cleans_up_once_after_cancellation(self) -> None:
+        fake_runtime = _FakeRuntime()
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+        stream_started = asyncio.Event()
+
+        async def consume() -> None:
+            async with stream_fabric_agent_once(request, fabric=_FakeFabric(runtime=fake_runtime)):
+                stream_started.set()
+                await asyncio.Event().wait()
+
+        invocation = asyncio.create_task(consume())
+        await stream_started.wait()
+        invocation.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await invocation
+
+        assert fake_runtime.exit_calls == 1
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,7 @@ from nemo_agents_plugin.fabric.runtime import (
     FabricInvocationRequest,
     FabricOneShotRequest,
     FabricRuntimeResult,
+    FabricRuntimeStartError,
     FabricRuntimeStream,
     invoke_fabric_runtime,
     run_fabric_agent_once,
@@ -42,7 +43,7 @@ DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS = 30 * 60
 DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS = 5 * 60
 
 
-class FabricSessionStartError(RuntimeError):
+class FabricSessionStartError(FabricRuntimeStartError):
     """Raised when a Fabric runtime cannot be started for a Platform session."""
 
 
@@ -85,7 +86,10 @@ class FabricSessionManager:
 
     async def open_session(self, *, session_id: str | None = None) -> FabricRuntimeSession:
         """Materialize a Fabric config, start its runtime, and register the session."""
-        fabric_config = await self._materialize_fabric_config(streaming=True)
+        try:
+            fabric_config = await self._materialize_fabric_config(streaming=True)
+        except FabricRuntimeStartError as error:
+            raise FabricSessionStartError(str(error)) from error
         fabric = self._fabric or Fabric()
         try:
             runtime = await fabric.start_runtime(
@@ -252,7 +256,7 @@ class FabricSessionManager:
         try:
             fabric_config = translate_agent_config(self._agent_config)
         except FabricTranslationError as error:
-            raise FabricSessionStartError(f"Fabric config translation failed: {error}") from error
+            raise FabricRuntimeStartError(f"Fabric config translation failed: {error}") from error
 
         await asyncio.to_thread(ensure_local_workspace_dir, self._agent_config, self._base_dir)
         return _prepare_serving_fabric_config(fabric_config) if streaming else fabric_config

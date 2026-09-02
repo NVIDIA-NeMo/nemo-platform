@@ -26,6 +26,7 @@ from nemo_agents_plugin.fabric.runtime import (
     FabricInvocationRequest,
     FabricRuntimeExecutionError,
     FabricRuntimeResult,
+    FabricRuntimeStartError,
     FabricRuntimeStream,
     FabricRuntimeTimeoutError,
 )
@@ -50,6 +51,7 @@ from nemo_agents_plugin.fabric.streaming import (
     openai_chat_completion_error_sse,
 )
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
+from starlette.types import Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +142,7 @@ def _iter_streaming_chat_completion(
     *,
     completion_id: str,
     model: str,
-) -> AsyncIterator[str]:
+) -> _StreamingChatCompletionIterator:
     return _StreamingChatCompletionIterator(
         stream_context,
         fabric_stream,
@@ -210,6 +212,20 @@ class _StreamingChatCompletionIterator:
         except Exception as error:
             logger.exception("Fabric streaming chat completion failed.")
             yield openai_chat_completion_error_sse(error)
+
+
+class _FabricStreamingResponse(StreamingResponse):
+    """Close the Fabric stream when response delivery ends or disconnects."""
+
+    def __init__(self, iterator: _StreamingChatCompletionIterator, **kwargs: Any) -> None:
+        super().__init__(iterator, **kwargs)
+        self._iterator = iterator
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await self._iterator.aclose()
 
 
 async def _close_interrupted_stream(fabric_stream: FabricRuntimeStream) -> None:
@@ -328,7 +344,7 @@ def create_fabric_serving_app(
             stream_context = stream(invocation_request)
             try:
                 fabric_stream = await stream_context.__aenter__()
-            except FabricSessionStartError as error:
+            except FabricRuntimeStartError as error:
                 raise HTTPException(status_code=503, detail=str(error), headers=response_headers) from error
             except FabricSessionNotFoundError as error:
                 raise HTTPException(
@@ -342,20 +358,21 @@ def create_fabric_serving_app(
                     detail=str(error),
                     headers=response_headers,
                 ) from error
-            return StreamingResponse(
-                _iter_streaming_chat_completion(
-                    stream_context,
-                    fabric_stream,
-                    completion_id=f"chatcmpl-{uuid.uuid4().hex}",
-                    model=_request_model_name(request),
-                ),
+            iterator = _iter_streaming_chat_completion(
+                stream_context,
+                fabric_stream,
+                completion_id=f"chatcmpl-{uuid.uuid4().hex}",
+                model=_request_model_name(request),
+            )
+            return _FabricStreamingResponse(
+                iterator,
                 media_type="text/event-stream",
                 headers=response_headers,
             )
 
         try:
             result = await invoke(invocation_request)
-        except FabricSessionStartError as error:
+        except FabricRuntimeStartError as error:
             raise HTTPException(status_code=503, detail=str(error), headers=response_headers) from error
         except FabricSessionNotFoundError as error:
             raise HTTPException(

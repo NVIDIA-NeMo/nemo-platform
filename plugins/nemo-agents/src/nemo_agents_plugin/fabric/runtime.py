@@ -132,6 +132,10 @@ class FabricRuntimeExecutionError(RuntimeError):
     """Raised when Fabric cannot return a normalized runtime result."""
 
 
+class FabricRuntimeStartError(FabricRuntimeExecutionError):
+    """Raised when Fabric cannot start a runtime."""
+
+
 class FabricRuntimeTimeoutError(FabricRuntimeExecutionError):
     """Raised when a Fabric runtime invocation times out."""
 
@@ -186,19 +190,25 @@ async def run_fabric_agent_once(
     """Start an ephemeral Fabric runtime, invoke it once, and stop it."""
     fabric_client = fabric or Fabric()
 
+    runtime = await _start_one_shot_runtime(request, fabric=fabric_client)
+
     try:
-        result = await asyncio.wait_for(
-            _invoke_fabric_agent_once(request, fabric=fabric_client),
-            timeout=request.timeout_seconds,
-        )
-    except TimeoutError as error:
-        raise FabricRuntimeTimeoutError(
-            _timeout_error_message(request.timeout_seconds),
-        ) from error
+        async with runtime:
+            try:
+                result = await asyncio.wait_for(
+                    runtime.invoke(request=_with_platform_invocation_context(request)),
+                    timeout=request.timeout_seconds,
+                )
+            except TimeoutError as error:
+                raise FabricRuntimeTimeoutError(
+                    _timeout_error_message(request.timeout_seconds),
+                ) from error
+            except FabricError as error:
+                raise FabricRuntimeExecutionError(
+                    f"Fabric runtime invocation failed: {error}",
+                ) from error
     except FabricError as error:
-        raise FabricRuntimeExecutionError(
-            f"Fabric runtime invocation failed: {error}",
-        ) from error
+        raise FabricRuntimeExecutionError(f"Fabric runtime cleanup failed: {error}") from error
 
     return _normalize_fabric_run_result(result)
 
@@ -212,13 +222,10 @@ async def stream_fabric_agent_once(
     """Start an ephemeral Fabric runtime and keep it alive for one stream."""
     fabric_client = fabric or Fabric()
 
+    runtime = await _start_one_shot_runtime(request, fabric=fabric_client, streaming=True)
+
     try:
-        async with await fabric_client.start_runtime(
-            request.fabric_config,
-            base_dir=request.base_dir,
-            overrides=request.overrides,
-            streaming=True,
-        ) as runtime:
+        async with runtime:
             yield stream_fabric_runtime(
                 runtime,
                 FabricInvocationRequest(
@@ -229,22 +236,24 @@ async def stream_fabric_agent_once(
                 ),
             )
     except FabricError as error:
-        raise FabricRuntimeExecutionError(
-            f"Fabric runtime streaming failed: {error}",
-        ) from error
+        raise FabricRuntimeExecutionError(f"Fabric runtime cleanup failed: {error}") from error
 
 
-async def _invoke_fabric_agent_once(
+async def _start_one_shot_runtime(
     request: FabricOneShotRequest,
     *,
     fabric: Any,
-) -> RunResult:
-    async with await fabric.start_runtime(
-        request.fabric_config,
-        base_dir=request.base_dir,
-        overrides=request.overrides,
-    ) as runtime:
-        return await runtime.invoke(request=_with_platform_invocation_context(request))
+    streaming: bool = False,
+) -> Runtime:
+    try:
+        return await fabric.start_runtime(
+            request.fabric_config,
+            base_dir=request.base_dir,
+            overrides=request.overrides,
+            streaming=streaming,
+        )
+    except FabricError as error:
+        raise FabricRuntimeStartError(f"Fabric runtime startup failed: {error}") from error
 
 
 def _with_platform_invocation_context(request: FabricInvocationRequest | FabricOneShotRequest) -> RunRequest:
