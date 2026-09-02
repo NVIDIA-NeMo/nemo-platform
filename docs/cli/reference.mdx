@@ -5823,6 +5823,11 @@ nemo agents [OPTIONS] [COMMAND] [ARGS]...
 * `environments`: Manage agent environments.
 * `compute-specs`: Manage agent compute specs.
 
+*Deployed agent interaction (requires running cluster):*
+
+* `chat`: Chat interactively with a new or existing deployed-agent...
+* `sessions`: Discover and manage persisted deployed-agent sessions.
+
 *Jobs:*
 
 * `analyze`: Analyze a batch of eval-suite results (clusters,...
@@ -6517,6 +6522,122 @@ nemo agents compute-specs delete [OPTIONS] NAME
 **Arguments:**
 
 * `<NAME>`: Compute-spec name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--yes, -y`: Skip confirmation prompt.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents chat
+
+Chat interactively with a new or existing deployed-agent session.
+
+**Usage:**
+
+```shell
+nemo agents chat [OPTIONS]
+```
+
+**Options:**
+
+* `--input, -i`: Optional first message to send before prompting for the next turn.
+* `--agent-deployment, -d`: Deployment to start a new persisted session against.
+* `--session, -s`: Name of an existing persisted session to resume.
+* `--session-name`: Name for a new session; valid only with --agent-deployment.
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--timeout, -t <FLOAT RANGE>`: Request timeout in seconds for each streamed agent turn. [default: 300] [env: NEMO_AGENTS_INVOKE_TIMEOUT=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents sessions
+
+Discover and manage persisted deployed-agent sessions.
+
+**Usage:**
+
+```shell
+nemo agents sessions [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List persisted sessions, newest first.
+* `get`: Get a persisted session by name.
+* `close`: Close a session and release its deployed runtime.
+
+##### nemo agents sessions list
+
+List persisted sessions, newest first.
+
+**Usage:**
+
+```shell
+nemo agents sessions list [OPTIONS]
+```
+
+**Options:**
+
+* `--agent-deployment, -d`: Limit results to sessions bound to this deployment.
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--format, --output-format, -o, -f <CHOICE>`: Output format for the list of sessions. [possible values: table, json, yaml, csv, markdown, raw]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+
+##### nemo agents sessions get
+
+Get a persisted session by name.
+
+**Usage:**
+
+```shell
+nemo agents sessions get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Session name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents sessions close
+
+Close a session and release its deployed runtime.
+
+**Usage:**
+
+```shell
+nemo agents sessions close [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Session name.
 
 **Options:**
 

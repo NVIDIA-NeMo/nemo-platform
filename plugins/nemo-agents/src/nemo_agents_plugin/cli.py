@@ -52,6 +52,7 @@ from pkgutil import resolve_name
 from typing import Any, ClassVar, Literal, Optional, cast
 from urllib.parse import urlencode
 
+import click
 import httpx
 import typer
 import yaml
@@ -97,8 +98,8 @@ from nemo_platform_plugin.cli_errors import print_http_request_error, print_http
 from nemo_platform_plugin.cli_progress import request_progress
 from nemo_platform_plugin.discovery import AGENT_CLI_GROUP, discover_entry_points
 from nemo_platform_plugin.job import NemoJob
-from typer.main import get_command as _typer_get_command
 from pydantic import ValidationError
+from typer.main import get_command as _typer_get_command
 
 logger = logging.getLogger(__name__)
 
