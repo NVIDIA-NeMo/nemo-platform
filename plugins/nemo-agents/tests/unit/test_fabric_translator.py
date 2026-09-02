@@ -249,8 +249,10 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config, harness_name="codex")
 
-        assert fabric_config.environment.env["CUSTOM"] == "from-spec"
-        assert fabric_config.environment.env["NMP_WORKSPACE"] == "runtime-ws"
+        environment = fabric_config.environment
+        assert environment is not None
+        assert environment.env["CUSTOM"] == "from-spec"
+        assert environment.env["NMP_WORKSPACE"] == "runtime-ws"
 
     def test_environment_mirror_fields_forwarded(self) -> None:
         payload = copy.deepcopy(_example_yaml_config())
@@ -266,10 +268,12 @@ class TestTranslateAgentConfig:
 
         fabric_config = translate_agent_config(config, harness_name="codex")
 
-        assert fabric_config.environment.control_location == "in_env_control"
-        assert fabric_config.environment.ownership == "fabric_owned"
-        assert fabric_config.environment.connection == {"url": "http://sandbox"}
-        assert fabric_config.environment.metadata == {"team": "platform"}
+        environment = fabric_config.environment
+        assert environment is not None
+        assert environment.control_location == "in_env_control"
+        assert environment.ownership == "fabric_owned"
+        assert environment.connection == {"url": "http://sandbox"}
+        assert environment.metadata == {"team": "platform"}
 
     def test_runtime_constraints_forwarded(self) -> None:
         payload = copy.deepcopy(_example_yaml_config())
@@ -370,6 +374,42 @@ class TestTranslateAgentConfig:
                 ],
             },
         }
+
+    def test_relay_telemetry_prefers_platform_registered_agent_name(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["telemetry"]["enabled"] = True
+        payload["telemetry"]["agent_name"] = "example-agent-hzwy9s"
+        payload["telemetry"]["opentelemetry"] = {
+            "enabled": True,
+            "endpoints": [{"type": "full", "endpoint": "http://otel-collector:4317"}],
+        }
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        relay = fabric_config.relay
+        assert relay is not None
+        observability = relay.observability
+        assert observability is not None
+        assert observability.model_dump(exclude_none=True)["atif"]["agent_name"] == "example-agent-hzwy9s"
+        opentelemetry = observability.opentelemetry
+        assert opentelemetry is not None
+        assert opentelemetry.endpoints[0].service_name == "example-agent-hzwy9s"
+
+    def test_relay_telemetry_keeps_explicit_atif_agent_name(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["telemetry"]["enabled"] = True
+        payload["telemetry"]["agent_name"] = "example-agent-hzwy9s"
+        payload["telemetry"]["atif"]["agent_name"] = "author-chosen-name"
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        relay = fabric_config.relay
+        assert relay is not None
+        observability = relay.observability
+        assert observability is not None
+        assert observability.model_dump(exclude_none=True)["atif"]["agent_name"] == "author-chosen-name"
 
     def test_relay_atof_endpoint_sinks_translate_to_stream_sinks(self) -> None:
         payload = copy.deepcopy(_example_yaml_config())
