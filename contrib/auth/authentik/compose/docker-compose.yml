@@ -17,6 +17,7 @@ x-authentik-env: &authentik-env
 services:
   nemo:
     image: ${IMAGE_REGISTRY:-my-registry}/nmp-api:${BAKE_TAG:-local}
+    command: ["--host", "0.0.0.0", "--service-group", "core", "--controller-group", "core"]
     # The local Docker jobs backend controls sibling workload containers through
     # the mounted host socket, which Docker Desktop exposes as root-owned.
     user: "0:0"

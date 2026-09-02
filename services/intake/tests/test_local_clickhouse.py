@@ -26,12 +26,13 @@ from nmp.intake.local_clickhouse import (
     DockerUnavailableError,
     LocalClickHouseProvisioningError,
     ProvisioningMode,
-    _ensure_clickhouse_data_directory_access,
+    _check_clickhouse_data_directory_access,
     _ensure_data_directory_identity,
     _expected_labels,
     _managed_container_name,
     _reconcile_local_clickhouse,
     _wait_until_ready,
+    check_local_clickhouse_data_directory,
     main,
     remove_local_clickhouse,
     stop_local_clickhouse,
@@ -180,24 +181,17 @@ def test_default_unconfigured_url_is_locally_managed(monkeypatch: pytest.MonkeyP
     assert should_provision_local_clickhouse(ClickHouseConfig()) is True
 
 
-def test_clickhouse_data_directory_is_repaired_as_root_and_verified_as_clickhouse() -> None:
+def test_clickhouse_data_directory_is_verified_without_changing_permissions() -> None:
     container = FakeContainer(name="clickhouse", image="clickhouse/clickhouse-server")
 
-    _ensure_clickhouse_data_directory_access(container)
+    _check_clickhouse_data_directory_access(container)
 
     assert container.exec_calls == [
         (
             [
                 "sh",
                 "-c",
-                "mkdir -p /var/lib/clickhouse/tmp && chown -R clickhouse:clickhouse /var/lib/clickhouse",
-            ],
-            "root",
-        ),
-        (
-            [
-                "sh",
-                "-c",
+                "mkdir -p /var/lib/clickhouse/tmp && "
                 'probe=$(mktemp /var/lib/clickhouse/tmp/.nmp-write-probe.XXXXXX) && rm -f "$probe"',
             ],
             "clickhouse",
@@ -209,13 +203,36 @@ def test_clickhouse_data_directory_reports_nonwritable_directory() -> None:
     container = FakeContainer(
         name="clickhouse",
         image="clickhouse/clickhouse-server",
-        exec_results=[FakeExecResult(), FakeExecResult(exit_code=1, output=b"Permission denied")],
+        exec_results=[FakeExecResult(exit_code=1, output=b"Permission denied")],
     )
 
     with pytest.raises(
         LocalClickHouseProvisioningError, match="not writable by the clickhouse user: Permission denied"
     ):
-        _ensure_clickhouse_data_directory_access(container)
+        _check_clickhouse_data_directory_access(container)
+
+
+def test_local_clickhouse_readiness_checks_managed_data_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    data_dir = (tmp_path / "intake-clickhouse").resolve()
+    data_instance_id = _ensure_data_directory_identity(data_dir, manage_permissions=True)
+    name = _managed_container_name(data_dir)
+    container = FakeContainer(
+        name=name,
+        image=f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
+        labels=_expected_labels(data_dir, data_instance_id),
+        data_dir=data_dir,
+    )
+    client = FakeDockerClient({name: container})
+    monkeypatch.setattr("nmp.intake.local_clickhouse.docker.from_env", lambda **_kwargs: client)
+
+    asyncio.run(check_local_clickhouse_data_directory(data_dir=data_dir))
+
+    assert len(container.exec_calls) == 1
+    assert container.exec_calls[0][1] == "clickhouse"
+    assert client.closed is True
 
 
 def test_explicit_default_url_is_externally_managed(monkeypatch: pytest.MonkeyPatch) -> None:
