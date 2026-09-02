@@ -781,6 +781,11 @@ http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/react-agent/-/v1/
 
 You can call it directly with any OpenAI-compatible client using the same path.
 
+Requests without ``X-Nemo-Session-Id`` use a one-shot Fabric runtime that is
+stopped when the response or response stream completes. To retain runtime
+context across turns, send a stable session ID in that header; the registered
+runtime then follows the Platform session lifecycle.
+
 The agent is still running — continue to the [Evaluation](#evaluation) section
 below, or see [Cleanup](#cleanup-optional) to tear everything down.
 

@@ -61,6 +61,7 @@ class _FakeRuntime:
         invoke_error: Exception | None = None,
         invoke_delay: float = 0.0,
         exit_error: Exception | None = None,
+        stream: _FakeInvokeStream | None = None,
     ) -> None:
         self.result = result if result is not None else _FakeRunResult()
         self.invoke_error = invoke_error
@@ -72,7 +73,7 @@ class _FakeRuntime:
         self.runtime_id = "runtime-1"
         self.invoke_requests: list[Any] = []
         self.invoke_stream_requests: list[Any] = []
-        self.stream: _FakeInvokeStream | None = None
+        self.stream = stream
 
     async def __aenter__(self) -> "_FakeRuntime":
         self.entered = True
@@ -101,7 +102,7 @@ class _FakeRuntime:
         self.invoke_stream_requests.append(request)
         if self.invoke_error is not None:
             raise self.invoke_error
-        self.stream = _FakeInvokeStream(result=self.result)
+        self.stream = self.stream or _FakeInvokeStream(result=self.result)
         return self.stream
 
 
@@ -169,6 +170,21 @@ class _FakeFabric:
         if self.start_error is not None:
             raise self.start_error
         return self.runtime
+
+
+class _SequenceFabric:
+    def __init__(self, runtimes: list[_FakeRuntime]) -> None:
+        self._runtimes = iter(runtimes)
+
+    async def start_runtime(
+        self,
+        fabric_config: Any,
+        *,
+        base_dir: Path | str,
+        overrides: dict[str, Any] | None = None,
+        streaming: bool = False,
+    ) -> _FakeRuntime:
+        return next(self._runtimes)
 
 
 @pytest.mark.asyncio
@@ -247,6 +263,35 @@ class TestRunFabricAgentOnce:
         with pytest.raises(FabricRuntimeStartError, match="Fabric runtime startup failed: native unavailable"):
             await run_fabric_agent_once(request, fabric=fake_fabric)
 
+    async def test_uses_a_separate_runtime_for_each_invocation(self) -> None:
+        first_runtime = _FakeRuntime()
+        second_runtime = _FakeRuntime()
+        fabric = _SequenceFabric([first_runtime, second_runtime])
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+
+        await run_fabric_agent_once(request, fabric=fabric)
+        await run_fabric_agent_once(request, fabric=fabric)
+
+        assert len(first_runtime.invoke_requests) == 1
+        assert len(second_runtime.invoke_requests) == 1
+        assert first_runtime.exit_calls == 1
+        assert second_runtime.exit_calls == 1
+
+    async def test_cleans_up_once_after_invocation_error(self) -> None:
+        fake_runtime = _FakeRuntime(invoke_error=fabric_runtime.FabricError("invoke failed"))
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+
+        with pytest.raises(FabricRuntimeExecutionError, match="Fabric runtime invocation failed: invoke failed"):
+            await run_fabric_agent_once(request, fabric=_FakeFabric(runtime=fake_runtime))
+
+        assert fake_runtime.exit_calls == 1
+
     async def test_cleans_up_once_after_cancellation(self) -> None:
         fake_runtime = _FakeRuntime(invoke_delay=60)
         request = FabricOneShotRequest(
@@ -291,6 +336,7 @@ class TestRunFabricAgentOnce:
 
         assert result.status == "failed"
         assert result.error == {"stage": "invoke", "message": "adapter failed"}
+        assert fake_fabric.runtime.exit_calls == 1
 
     async def test_normalizes_fabric_mapping_fields_to_plain_values(self) -> None:
         fake_result = _FakeRunResult(
@@ -366,6 +412,39 @@ class TestStreamFabricAgentOnce:
                 pass
 
         assert fake_runtime.exited is True
+        assert fake_runtime.exit_calls == 1
+
+    async def test_cleans_up_runtime_after_stream_result_error(self) -> None:
+        stream = _FakeInvokeStream(result_error=fabric_runtime.FabricError("result failed"))
+        fake_runtime = _FakeRuntime(stream=stream)
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+        )
+
+        with pytest.raises(FabricRuntimeExecutionError, match="Fabric runtime streaming failed: result failed"):
+            async with stream_fabric_agent_once(request, fabric=_FakeFabric(runtime=fake_runtime)) as runtime_stream:
+                await runtime_stream.result()
+
+        assert fake_runtime.exit_calls == 1
+
+    async def test_cleans_up_runtime_after_stream_result_timeout(self) -> None:
+        class _SlowInvokeStream(_FakeInvokeStream):
+            async def result(self) -> Any:
+                await asyncio.sleep(1.0)
+                return await super().result()
+
+        fake_runtime = _FakeRuntime(stream=_SlowInvokeStream())
+        request = FabricOneShotRequest(
+            fabric_config=cast(FabricConfig, object()),
+            base_dir=Path("/tmp/agent"),
+            timeout_seconds=0.01,
+        )
+
+        with pytest.raises(FabricRuntimeTimeoutError, match="timed out after 0.01s"):
+            async with stream_fabric_agent_once(request, fabric=_FakeFabric(runtime=fake_runtime)) as runtime_stream:
+                await runtime_stream.result()
+
         assert fake_runtime.exit_calls == 1
 
     async def test_cleans_up_once_after_cancellation(self) -> None:

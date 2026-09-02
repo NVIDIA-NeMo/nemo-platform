@@ -330,9 +330,15 @@ def test_chat_completion_without_session_id_invokes_once_without_creating_sessio
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
         )
+        repeated_response = client.post(
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "again"}]},
+        )
 
     assert response.status_code == 200
+    assert repeated_response.status_code == 200
     assert SESSION_ID_HEADER not in response.headers
+    assert SESSION_ID_HEADER not in repeated_response.headers
     assert response.json() == {
         "id": "invocation-1",
         "object": "chat.completion",
@@ -346,9 +352,9 @@ def test_chat_completion_without_session_id_invokes_once_without_creating_sessio
         ],
         "usage": {"total_tokens": 3},
     }
-    invocation_request = invocation_calls[0]
-    assert invocation_request.input == "hello"
-    assert invocation_request.caller_context == {}
+    assert [request.input for request in invocation_calls] == ["hello", "again"]
+    assert all(request.caller_context == {} for request in invocation_calls)
+    assert asyncio.run(app.state.session_registry.count()) == 0
 
 
 def test_chat_completion_with_session_id_reuses_session(
