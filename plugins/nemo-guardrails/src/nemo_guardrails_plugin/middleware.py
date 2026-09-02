@@ -699,7 +699,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         # guardrails have no business there and warming would be wasted.
         return [
             call
-            for call in virtual_model.request_middleware + virtual_model.response_middleware
+            for call in [*virtual_model.request_middleware, *virtual_model.response_middleware]
             if call.name == PLUGIN_NAME
         ]
 
