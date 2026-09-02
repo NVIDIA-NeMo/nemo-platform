@@ -234,7 +234,7 @@ def test_parse_manifest_bytes_without_filesystem_access() -> None:
 def test_listing_rejects_prompt_jsonl() -> None:
     manifest = parse_environment_manifest(_complete_manifest("native-v1", "resources_servers/test/configs/test.yaml"))
 
-    with pytest.raises(EnvironmentPackageError, match="prompt JSONL"):
+    with pytest.raises(EnvironmentPackageError, match="JSONL files must not live in an environment package"):
         validate_environment_manifest_against_listing(
             manifest,
             ["resources_servers/test/configs/test.yaml", "training.jsonl"],

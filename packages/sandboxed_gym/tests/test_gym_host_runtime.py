@@ -365,7 +365,7 @@ def test_malformed_manifest_fails_before_gym_startup(tmp_path):
         runtime._load_runtime_environment_package(str(tmp_path), required=True)
 
 
-def test_wheels_v1_installs_every_wheel_with_no_index_access(tmp_path, monkeypatch):
+def test_wheels_v1_installs_every_wheel_with_no_index_access(tmp_path, monkeypatch, isolated_gym_host_process_state):
     # Model the fixed bundle layout: manifest at the root and wheels in the sibling `wheels/`.
     _write_manifest(tmp_path, format="wheels-v1")
     wheels_dir = tmp_path / WHEELS_V1_SUBDIR
@@ -378,7 +378,6 @@ def test_wheels_v1_installs_every_wheel_with_no_index_access(tmp_path, monkeypat
     calls = []
     monkeypatch.setattr(runtime.subprocess, "run", lambda *a, **k: calls.append((a, k)))
     monkeypatch.setenv("PYTHONPATH", "/image/packages")
-    monkeypatch.setattr(runtime.sys, "path", runtime.sys.path.copy())
 
     package = runtime._load_runtime_environment_package(str(tmp_path), required=True)
     runtime._install_wheels_v1_dependencies(package, str(work_dir))

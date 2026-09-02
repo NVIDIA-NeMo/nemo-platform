@@ -16,7 +16,6 @@ import sys
 import zipfile
 from pathlib import Path
 
-import pytest
 from sandboxed_gym.environment_package import WHEELS_V1_SUBDIR
 from sandboxed_gym.runtime import gym_host_runtime as runtime
 
@@ -53,7 +52,7 @@ def _write_wheels_v1_bundle(environment_dir: Path) -> None:
         archive.writestr(f"{_PACKAGE_NAME}-1.0.dist-info/RECORD", "")
 
 
-def test_real_wheel_is_importable_by_host_and_child(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_real_wheel_is_importable_by_host_and_child(tmp_path: Path, isolated_gym_host_process_state: None) -> None:
     # Recreate the two directories mounted into a real Gym host. `environment_dir` stands in for
     # read-only `/job/environment`, where the manifest and wheels are staged. `work_dir` stands in
     # for writable `/job/work`, where uv installs them. `tmp_path` keeps both isolated to this test.
@@ -63,10 +62,6 @@ def test_real_wheel_is_importable_by_host_and_child(tmp_path: Path, monkeypatch:
     work_dir.mkdir()
     # Populate the simulated environment mount with nemo-environment.yaml and one test wheel.
     _write_wheels_v1_bundle(environment_dir)
-
-    # Isolate the process-global import path mutations made by the runtime helper.
-    monkeypatch.setattr(runtime.sys, "path", runtime.sys.path.copy())
-    monkeypatch.delenv("PYTHONPATH", raising=False)
 
     # Do not mock subprocess.run here: this is the layer that proves the generated command works
     # with the real uv executable and produces an importable target directory.
