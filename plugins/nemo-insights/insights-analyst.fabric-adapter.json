@@ -29,7 +29,7 @@
     "properties": {
       "agent": {"type": "string", "minLength": 1},
       "target_agent": {"type": "string", "minLength": 1},
-      "agent_spec": {"type": "string"},
+      "ethos": {"type": "string", "minLength": 1},
       "workspace": {"type": "string", "minLength": 1},
       "base_url": {"type": "string", "minLength": 1},
       "since": {"type": "string", "format": "date-time"},

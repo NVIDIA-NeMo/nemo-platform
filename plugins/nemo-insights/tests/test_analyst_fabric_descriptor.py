@@ -125,6 +125,17 @@ def test_optional_read_settings_are_carried_when_set() -> None:
     assert settings["enable_observability"] is False
 
 
+def test_fabric_plans_a_config_carrying_an_ethos(tmp_path: Path) -> None:
+    """Planning is where a setting the descriptor omits actually blows up."""
+    if not _installed_descriptor().exists():
+        pytest.skip("Adapter descriptor is not installed; Fabric cannot resolve it.")
+
+    config = _analyst_config(ethos="# Ethos\n\nBe careful.")
+    assert config.harnesses["insights"].settings["ethos"] == "# Ethos\n\nBe careful."
+
+    assert fabric.Fabric().plan(translate_agent_config(config), base_dir=tmp_path) is not None
+
+
 def test_fabric_plans_the_built_config(tmp_path: Path) -> None:
     """Fabric validates the adapter descriptor while planning; this is the real check."""
     if not _installed_descriptor().exists():
