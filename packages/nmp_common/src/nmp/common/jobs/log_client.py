@@ -46,6 +46,7 @@ class JobLogsClient:
         page_size: int = 100,
         page_cursor: str | None = None,
         artifact_base_path: str | None = None,
+        tail: int | None = None,
     ) -> PlatformJobLogPage:
         """Query job logs via Files service OTLP endpoint.
 
@@ -56,6 +57,7 @@ class JobLogsClient:
             page_size: Number of results per page
             page_cursor: Encoded cursor for pagination
             artifact_base_path: Folder inside the fileset the logs were nested under
+            tail: Number of newest log lines to return
 
         Returns:
             PlatformJobLogPage with data, total count, and pagination cursors
@@ -63,8 +65,9 @@ class JobLogsClient:
         try:
             body = OtlpLogQueryRequest(
                 filters=filters or {},
-                limit=page_size,
+                limit=None if tail is not None else page_size,
                 page_cursor=page_cursor,
+                tail=tail,
                 artifact_base_path=artifact_base_path,
             )
             resp = await self._files_client.query_otlp_logs(

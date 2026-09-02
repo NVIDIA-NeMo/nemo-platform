@@ -10,11 +10,15 @@ from typing import get_args, get_origin
 
 from nemo_platform_plugin.client.types import BinaryContent, CursorPagination, Paginated, PreparedRequest
 from nemo_platform_plugin.jobs import endpoints
+from nemo_platform_plugin.jobs.providers import ContainerSpec, CPUExecutionProvider
 from nemo_platform_plugin.jobs.schemas import (
+    FileStorageType,
     PlatformJobLog,
     PlatformJobResultCreateRequest,
+    PlatformJobStatus,
     PlatformJobStatusResponse,
 )
+from nemo_platform_plugin.jobs.spec import PlatformJobSpec, PlatformJobStepSpec
 from nemo_platform_plugin.jobs.types import (
     CreatePlatformJobRequest,
     JobStatusDetailsUpdate,
@@ -31,7 +35,14 @@ def _create_request() -> CreatePlatformJobRequest:
     return CreatePlatformJobRequest(
         spec={},
         source="test",
-        platform_spec={"steps": [{"name": "step-one", "executor": {"provider": "cpu", "container": {"image": "img"}}}]},
+        platform_spec=PlatformJobSpec(
+            steps=[
+                PlatformJobStepSpec(
+                    name="step-one",
+                    executor=CPUExecutionProvider(container=ContainerSpec(image="img")),
+                )
+            ]
+        ),
     )
 
 
@@ -142,6 +153,7 @@ def test_update_job_status_details() -> None:
     assert prepared.path_template.endswith("/jobs/{name}/status-details")
     assert prepared.response_type is None
     # RootModel serialises to the bare JSON object
+    assert isinstance(prepared.content, bytes)
     assert json.loads(prepared.content) == {"note": "x"}
 
 
@@ -152,11 +164,11 @@ def test_update_job_status_details() -> None:
 
 def test_list_job_logs() -> None:
     prepared = endpoints.list_job_logs(
-        workspace="default", name="j-1", query_params={"limit": 50, "page_cursor": "abc"}
+        workspace="default", name="j-1", query_params={"limit": 50, "page_cursor": "abc", "tail": 500}
     )
     assert prepared.method == "GET"
     assert prepared.path_template.endswith("/jobs/{name}/logs")
-    assert prepared.query_params == {"limit": 50, "page_cursor": "abc"}
+    assert prepared.query_params == {"limit": 50, "page_cursor": "abc", "tail": 500}
     assert get_origin(prepared.response_type) is Paginated
     assert get_args(prepared.response_type) == (PlatformJobLog, CursorPagination)
 
@@ -167,7 +179,7 @@ def test_list_job_logs() -> None:
 
 
 def test_create_job_result() -> None:
-    body = PlatformJobResultCreateRequest(artifact_url="s3://x", artifact_storage_type="fileset")
+    body = PlatformJobResultCreateRequest(artifact_url="s3://x", artifact_storage_type=FileStorageType.FILESET)
     prepared = endpoints.create_job_result(workspace="default", job="j-1", name="out", body=body)
     assert prepared.method == "POST"
     assert prepared.path_params == {"workspace": "default", "job": "j-1", "name": "out"}
@@ -220,7 +232,7 @@ def test_get_job_step() -> None:
 
 
 def test_update_job_step_status() -> None:
-    body = PlatformJobStatusUpdateRequest(status="active")
+    body = PlatformJobStatusUpdateRequest(status=PlatformJobStatus.ACTIVE)
     prepared = endpoints.update_job_step_status(workspace="default", job="j-1", name="step-one", body=body)
     assert prepared.method == "PATCH"
     assert prepared.path_template.endswith("/steps/{name}/status")
@@ -240,7 +252,7 @@ def test_list_job_step_tasks() -> None:
 
 
 def test_update_job_step_task() -> None:
-    body = PlatformJobTaskUpdate(status="completed")
+    body = PlatformJobTaskUpdate(status=PlatformJobStatus.COMPLETED)
     prepared = endpoints.update_job_step_task(workspace="default", job="j-1", step="step-one", name="task-1", body=body)
     assert prepared.method == "PUT"
     assert prepared.path_params == {"workspace": "default", "job": "j-1", "step": "step-one", "name": "task-1"}
@@ -262,14 +274,16 @@ def test_get_job_step_task() -> None:
 def test_create_job_body_roundtrip() -> None:
     body = _create_request()
     prepared = endpoints.create_job(workspace="default", body=body)
+    assert isinstance(prepared.content, bytes)
     content = json.loads(prepared.content)
     assert content["source"] == "test"
     assert content["platform_spec"]["steps"][0]["name"] == "step-one"
 
 
 def test_step_status_update_excludes_unset() -> None:
-    body = PlatformJobStatusUpdateRequest(status="active")
+    body = PlatformJobStatusUpdateRequest(status=PlatformJobStatus.ACTIVE)
     prepared = endpoints.update_job_step_status(workspace="default", job="j-1", name="s", body=body)
+    assert isinstance(prepared.content, bytes)
     content = json.loads(prepared.content)
     assert content["status"] == "active"
 
@@ -277,4 +291,4 @@ def test_step_status_update_excludes_unset() -> None:
 def test_step_with_context_response_type() -> None:
     prepared = endpoints.list_steps(workspace="default", name="j-1")
     # Paginated marker parametrised with the step-with-context model.
-    assert prepared.response_type.__args__[0] is PlatformJobStepWithContext  # type: ignore[attr-defined]
+    assert get_args(prepared.response_type)[0] is PlatformJobStepWithContext

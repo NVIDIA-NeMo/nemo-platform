@@ -352,7 +352,20 @@ def _sort_schemas(spec: Dict) -> Dict:
     return spec
 
 
+def _apply_schema_default_extensions(spec: Dict) -> Dict:
+    """Promote opt-in schema default metadata into the emitted OpenAPI schema."""
+
+    def _visitor(key: str, value: Any, parent: Dict):
+        if key == "x-schema-default":
+            parent.setdefault("default", value)
+            del parent[key]
+
+    _walk_spec(spec, _visitor)
+    return spec
+
+
 def tweak_spec(spec: Dict) -> Dict:
+    spec = _apply_schema_default_extensions(spec)
     _walk_spec(spec, _anyof_null_visitor)
     spec = _normalize_refs_and_schema_keys(spec)
     spec = _split_input_output_schemas(spec)

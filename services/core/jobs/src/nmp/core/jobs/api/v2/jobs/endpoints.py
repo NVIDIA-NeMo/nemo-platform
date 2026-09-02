@@ -72,6 +72,8 @@ router = APIRouter()
 
 platform_config = get_platform_config()
 _JOB_STATUS_VALUES = ", ".join(job_status.value for job_status in PlatformJobStatus)
+MAX_LOG_QUERY_LINES = 10_000
+DEFAULT_LOG_QUERY_LIMIT = 100
 
 
 def _format_validation_location(loc: Any, *, prefix: str | None = None) -> str:
@@ -530,14 +532,34 @@ async def page_job_logs(
     workspace: str,
     dispatcher: JobDispatcher = Depends(dep_dispatcher),
     logs_client: JobLogsClient = Depends(dep_job_logs_client),
-    limit: int = Query(default=100, description="Maximum number of logs to return", gt=0),
-    page_cursor: str = Query(default=None, description="Page cursor"),
+    limit: int | None = Query(
+        default=None,
+        description="Maximum number of logs to return",
+        gt=0,
+        le=MAX_LOG_QUERY_LINES,
+        json_schema_extra={"x-schema-default": DEFAULT_LOG_QUERY_LIMIT},
+    ),
+    page_cursor: str | None = Query(default=None, description="Page cursor"),
+    tail: int | None = Query(
+        default=None, description="Number of newest log lines to return", gt=0, le=MAX_LOG_QUERY_LINES
+    ),
     attempt_id: Optional[int] = Query(default=None, description="Filter logs by job attempt ID"),
     step_id: Optional[str] = Query(default=None, description="Filter logs by step name"),
     task_id: Optional[str] = Query(default=None, description="Filter logs by task ID"),
 ) -> PlatformJobLogPage:
     """Get paginated logs for a platform job."""
     with scoped_app_ctx(JobContext(id=name)):
+        if tail is not None and limit is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="tail cannot be combined with limit; tail controls the returned log window size.",
+            )
+        if tail is not None and page_cursor is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="tail cannot be combined with page_cursor; pass the returned prev_page as page_cursor without tail.",
+            )
+
         job = await dispatcher.get_job(name, workspace)
         if not job:
             raise HTTPException(
@@ -548,7 +570,7 @@ async def page_job_logs(
         try:
             filters = {
                 "job": name,
-                "job_attempt": attempt_id if attempt_id is not None else job.attempt_id,
+                "job_attempt": str(attempt_id if attempt_id is not None else job.attempt_id),
             }
             if step_id:
                 filters["job_step"] = step_id
@@ -558,13 +580,14 @@ async def page_job_logs(
                 job.fileset,
                 workspace=workspace,
                 filters=filters,
-                page_size=limit,
+                page_size=limit or DEFAULT_LOG_QUERY_LIMIT,
                 page_cursor=page_cursor,
+                tail=tail,
                 artifact_base_path=job_artifact_base_path(name, job.output_location),
             )
         except InvalidPageCursorError as e:
             logger.error(f"Invalid page cursor: {str(e)}")
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid page cursor")
+            raise HTTPException(status_code=422, detail=str(e))
         except Exception as e:
             logger.error(f"Unexpected error when querying logs: {str(e)}")
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to query job logs")

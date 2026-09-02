@@ -3,16 +3,22 @@
 
 """Tests for JobLogsClient SDK wrapper and PageCursor."""
 
+import json
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import base58
 import httpx
 import pytest
 from nemo_platform_plugin.client.errors import NotFoundError
 from nmp.common.jobs.log_client import JobLogsClient
 from nmp.common.jobs.schemas import (
+    LogPageCursorV1,
     PageCursor,
     PaginationDirection,
+    PlatformJobLog,
     PlatformJobLogPage,
+    decode_log_page_cursor,
 )
 
 # =============================================================================
@@ -44,6 +50,46 @@ def test_decode_invalid_cursor():
     """Test decoding an invalid cursor raises ValueError."""
     with pytest.raises(ValueError, match="Invalid page cursor"):
         PageCursor.decode("invalid_cursor_string")
+
+
+def test_decode_log_page_cursor_accepts_existing_page_cursor():
+    """Log cursor decoding preserves the legacy page-number cursor format."""
+    cursor = PageCursor(start_id=2, direction=PaginationDirection.FORWARD).encode()
+
+    decoded = decode_log_page_cursor(cursor)
+
+    assert isinstance(decoded, PageCursor)
+    assert decoded.start_id == 2
+    assert decoded.direction == PaginationDirection.FORWARD
+
+
+def test_log_page_cursor_v1_round_trip():
+    """V1 cursor encoding stays compact while validating typed fields."""
+    cursor = LogPageCursorV1(
+        boundary_timestamp=datetime(2026, 9, 2, 12, 0, 1),
+        boundary_row_hash="a" * 32,
+        query_scope_hash="b" * 32,
+        emitted_boundary_rows=2,
+    )
+
+    decoded = decode_log_page_cursor(cursor.encode())
+
+    assert decoded == cursor
+
+
+def test_decode_log_page_cursor_rejects_invalid_v1_hash_length():
+    """V1 cursors reject malformed compact hash fields."""
+    bad_payload = {
+        "v": 1,
+        "t": "2026-09-02T12:00:01",
+        "r": "short",
+        "q": "b" * 32,
+        "e": 0,
+    }
+    encoded = base58.b58encode(json.dumps(bad_payload).encode()).decode()
+
+    with pytest.raises(ValueError, match="Invalid page cursor"):
+        decode_log_page_cursor(encoded)
 
 
 # =============================================================================
@@ -78,13 +124,13 @@ async def test_query_logs_success(log_client):
 
     page = PlatformJobLogPage(
         data=[
-            {
-                "timestamp": "2024-01-01T12:00:00",
-                "job": "job-123",
-                "job_step": "step1",
-                "job_task": "task1",
-                "message": "Test log message",
-            }
+            PlatformJobLog(
+                timestamp=datetime(2024, 1, 1, 12, 0, 0),
+                job="job-123",
+                job_step="step1",
+                job_task="task1",
+                message="Test log message",
+            )
         ],
         total=1,
         next_page=None,
@@ -127,6 +173,27 @@ async def test_query_logs_with_pagination_cursor(log_client):
 
     call_kwargs = mock_files.query_otlp_logs.call_args.kwargs
     assert call_kwargs["body"].page_cursor == cursor
+
+
+async def test_query_logs_with_tail(log_client):
+    """Test query_logs passes tail without also setting limit."""
+    client, mock_files = log_client
+
+    mock_files.query_otlp_logs.return_value = _make_response_mock(
+        PlatformJobLogPage(data=[], total=0, next_page=None, prev_page=None)
+    )
+
+    await client.query_logs(
+        fileset="logs",
+        workspace="test-workspace",
+        filters={"job": "job-123"},
+        tail=500,
+    )
+
+    call_kwargs = mock_files.query_otlp_logs.call_args.kwargs
+    body = call_kwargs["body"]
+    assert body.tail == 500
+    assert body.limit is None
 
 
 async def test_query_logs_404_returns_empty_page(log_client):

@@ -451,6 +451,7 @@ class TestJobs:
             limit=1,
             page_cursor="page_cursor",
             step_id="step_id",
+            tail=1,
             task_id="task_id",
         )
         assert_matches_type(SyncLogsPagination[PlatformJobLog], job, path=["response"])
@@ -1153,6 +1154,7 @@ class TestAsyncJobs:
             limit=1,
             page_cursor="page_cursor",
             step_id="step_id",
+            tail=1,
             task_id="task_id",
         )
         assert_matches_type(AsyncLogsPagination[PlatformJobLog], job, path=["response"])

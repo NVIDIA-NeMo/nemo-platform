@@ -378,6 +378,61 @@ def test_query_empty_fileset(
     assert result["prev_page"] is None
 
 
+def test_query_logs_accepts_tail(
+    client: httpx.Client,
+    fileset: FilesetOutput,
+):
+    """The Files log query endpoint accepts tail without limit."""
+    workspace = fileset.workspace
+    fileset_name = fileset.name
+
+    response = client.post(
+        f"/apis/files/v2/workspaces/{workspace}/filesets/{fileset_name}/otlp/v1/logs/query",
+        json={"filters": {"job": "tail-test-job"}, "tail": 3},
+    )
+
+    assert response.status_code == 200
+
+
+def test_query_logs_rejects_tail_with_limit(
+    client: httpx.Client,
+    fileset: FilesetOutput,
+):
+    """Tail controls window size and cannot be combined with limit."""
+    workspace = fileset.workspace
+    fileset_name = fileset.name
+
+    response = client.post(
+        f"/apis/files/v2/workspaces/{workspace}/filesets/{fileset_name}/otlp/v1/logs/query",
+        json={"filters": {"job": "tail-test-job"}, "tail": 3, "limit": 3},
+    )
+
+    assert response.status_code == 400
+    assert (
+        response.json()["detail"] == "tail cannot be combined with limit; tail controls the returned log window size."
+    )
+
+
+def test_query_logs_rejects_tail_with_page_cursor(
+    client: httpx.Client,
+    fileset: FilesetOutput,
+):
+    """Tail starts at the end, so previous-page cursors must be requested without tail."""
+    workspace = fileset.workspace
+    fileset_name = fileset.name
+
+    response = client.post(
+        f"/apis/files/v2/workspaces/{workspace}/filesets/{fileset_name}/otlp/v1/logs/query",
+        json={"filters": {"job": "tail-test-job"}, "tail": 3, "page_cursor": "abc"},
+    )
+
+    assert response.status_code == 400
+    assert (
+        response.json()["detail"]
+        == "tail cannot be combined with page_cursor; pass the returned prev_page as page_cursor without tail."
+    )
+
+
 def test_upload_logs_missing_attributes_partial_success(
     client: httpx.Client,
     fileset: FilesetOutput,

@@ -1419,11 +1419,12 @@ Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema=`{"c
 
 Delete Fileset.
 
-Permanently deletes a fileset from the platform.
+Permanently deletes an unreferenced fileset from the platform.
 
-Returns metadata about the
-deleted fileset. For local storage backends, this also deletes the underlying
-files.
+Referencing model
+or adapter entities must be relinked or deleted first. Returns metadata about
+the deleted fileset. For local storage backends, this also deletes the
+underlying files.
 
 **Usage:**
 
@@ -1667,6 +1668,7 @@ nemo files otlp logs query [OPTIONS] NAME
 * `--filters`: Key-value filters to apply to the query
 * `--limit <INTEGER>`: Maximum number of results to return
 * `--page-cursor`: Cursor for pagination
+* `--tail <INTEGER>`: Number of newest log lines to return
 
 **Help:**
 
@@ -3926,6 +3928,7 @@ nemo jobs [OPTIONS] COMMAND [ARGS]...
 * `get`: Get a platform job by name.
 * `update-status-details`: Update the status details of a platform job.
 * `watch`: Watch a platform job until it reaches a terminal status.
+* `tail`: Print the newest lines from a platform job log.
 * `results`: Manage results
 * `steps`: Manage steps
 * `tasks`: Manage tasks
@@ -4056,6 +4059,7 @@ nemo jobs get-logs [OPTIONS] NAME
 * `--limit <INTEGER>`: Maximum number of logs to return
 * `--page-cursor`: Page cursor
 * `--step-id`: Filter logs by step name
+* `--tail <INTEGER>`: Number of newest log lines to return
 * `--task-id`: Filter logs by task ID
 * `--all-pages`: Fetch all pages
 
@@ -4310,6 +4314,32 @@ nemo jobs watch [OPTIONS] NAME
 * `--timeout <INTEGER RANGE>`: Maximum watch time in seconds
 * `--poll-interval <INTEGER RANGE>`: Seconds between status checks [default: 3]
 * `--history, --no-history`: Include logs already present before watching
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo jobs tail
+
+Print the newest lines from a platform job log.
+
+**Usage:**
+
+```shell
+nemo jobs tail [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the platform job whose logs to tail
+
+**Options:**
+
+* `-n, --lines <INTEGER RANGE>`: Number of lines to show [default: 100]
+* `--workspace`: Workspace containing the job
+* `--attempt-id <INTEGER>`: Filter logs to an attempt ID
+* `--step-id`: Filter logs to a step ID
+* `--task-id`: Filter logs to a task ID
 
 **Help:**
 
