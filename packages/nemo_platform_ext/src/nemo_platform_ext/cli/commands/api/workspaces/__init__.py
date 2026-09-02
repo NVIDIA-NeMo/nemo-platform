@@ -185,7 +185,7 @@ def list_workspaces(
     page: Annotated[int | None, typer.Option("--page", help="Page number")] = None,
     page_size: Annotated[int | None, typer.Option("--page-size", help="Items per page")] = None,
     sort: Annotated[
-        Literal["name", "-name", "created_at", "-created_at", "updated_at", "-updated_at"] | None,
+        Literal["created_at", "-created_at", "updated_at", "-updated_at", "name", "-name"] | None,
         typer.Option("--sort", help="Sort field"),
     ] = None,
     output_format: ListOutputFormatOption = None,
@@ -195,6 +195,9 @@ def list_workspaces(
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
     """List all workspaces with pagination.
+
+    Workspaces marked for deletion (non-null deletion_stage) are omitted so the list
+    matches GET/DELETE, which treat those workspaces as not found.
 
     When authentication is enabled, only workspaces the principal has access to are
     returned. Service principals and platform admins have access to all workspaces.
