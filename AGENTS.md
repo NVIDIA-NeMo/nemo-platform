@@ -274,7 +274,7 @@ Check for an existing instance before starting (`lsof -iTCP:8080 -sTCP:LISTEN` o
 
 ```bash
 tmux -f /exec-daemon/tmux.portal.conf new-session -d -s nemo-platform -c /workspace -- \
-  'export NMP_BASE_URL=http://localhost:8080 && uv run nemo services run --service-group all --port 8080'
+  'export NMP_BASE_URL=http://localhost:8080 && uv run nemo services run --service-group all --controller-group all --port 8080'
 ```
 
 Wait for readiness: `curl -sf http://localhost:8080/health/ready` → `{"status":"ready"}`.

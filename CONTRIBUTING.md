@@ -308,7 +308,7 @@ nemo services run --services jobs --controllers jobs
 # Run a predefined service group
 nemo services run --service-group core  # Infrastructure only
 nemo services run --service-group api   # Application services
-nemo services run --service-group all   # Everything
+nemo services run --service-group all --controller-group all  # All services and controllers
 ```
 
 The platform binds to `127.0.0.1:8080` by default. You can customize the host and port:
