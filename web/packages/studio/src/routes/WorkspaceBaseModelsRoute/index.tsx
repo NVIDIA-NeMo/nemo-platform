@@ -15,7 +15,6 @@ import {
   useBaseModels,
   type ModelEntityFilterInput,
 } from '@nemo/common/src/api/entity-store/useBaseModels';
-import { usePromptTunableBaseModelIds } from '@nemo/common/src/api/entity-store/usePromptTunableBaseModelIds';
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import * as DataView from '@nemo/common/src/components/DataView/internal';
@@ -60,11 +59,8 @@ const TAB_SEARCH_PARAM = 'tab';
 
 const CUSTOMIZABLE_FILTER_ID = 'customizable';
 const FINE_TUNABLE_KEY = 'fine_tunable';
-const PROMPT_TUNABLE_KEY = 'prompt_tunable';
 
-type CustomizableFilterState = Partial<
-  Record<typeof FINE_TUNABLE_KEY | typeof PROMPT_TUNABLE_KEY, true>
->;
+type CustomizableFilterState = Partial<Record<typeof FINE_TUNABLE_KEY, true>>;
 
 /**
  * Column definitions used solely for filter metadata. The columns are never rendered as a table;
@@ -86,10 +82,7 @@ const makeFilterColumns: ComponentProps<typeof DataView.Root<ModelEntity>>['make
             filter: {
               type: 'multi-select',
               label: 'Customizable',
-              options: [
-                { value: FINE_TUNABLE_KEY, label: 'Fine-tunable' },
-                { value: PROMPT_TUNABLE_KEY, label: 'Prompt tunable' },
-              ],
+              options: [{ value: FINE_TUNABLE_KEY, label: 'Fine-tunable' }],
             },
           },
         }),
@@ -178,29 +171,17 @@ export const WorkspaceBaseModelsRoute: FC = () => {
     sort,
   });
 
-  const { promptTunableIds } = usePromptTunableBaseModelIds({ workspace });
-
   const visibleModels = useMemo(() => {
-    const wantFineTunable = !!customizableFilter?.[FINE_TUNABLE_KEY];
-    const wantPromptTunable = !!customizableFilter?.[PROMPT_TUNABLE_KEY];
-    if (!wantFineTunable && !wantPromptTunable) return models;
-    return models.filter((model) => {
-      const isFineTuneable = Boolean(model.fileset);
-      const isChatAvailable = getModelEntityChatStatus(model) === 'enabled';
-      const canPromptTune = promptTunableIds.has(model.id);
-      if (wantFineTunable && isFineTuneable) return true;
-      if (wantPromptTunable && canPromptTune && isChatAvailable) return true;
-      return false;
-    });
-  }, [models, customizableFilter, promptTunableIds]);
+    if (!customizableFilter?.[FINE_TUNABLE_KEY]) return models;
+    return models.filter((model) => Boolean(model.fileset));
+  }, [models, customizableFilter]);
 
   const liveCustomizableFilter = CUSTOMIZER_ENABLED
     ? (dataViewState.columnFiltering.state.find((f) => f.id === CUSTOMIZABLE_FILTER_ID)?.value as
         | CustomizableFilterState
         | undefined)
     : undefined;
-  const customizableChecked =
-    !!liveCustomizableFilter?.[FINE_TUNABLE_KEY] || !!liveCustomizableFilter?.[PROMPT_TUNABLE_KEY];
+  const customizableChecked = !!liveCustomizableFilter?.[FINE_TUNABLE_KEY];
 
   const handleCustomizableToggle = (checked: boolean) => {
     dataViewState.columnFiltering.set((prev) => {
@@ -210,7 +191,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
         ...others,
         {
           id: CUSTOMIZABLE_FILTER_ID,
-          value: { [FINE_TUNABLE_KEY]: true, [PROMPT_TUNABLE_KEY]: true },
+          value: { [FINE_TUNABLE_KEY]: true },
         },
       ];
     });
@@ -332,8 +313,8 @@ export const WorkspaceBaseModelsRoute: FC = () => {
                   slotContent={
                     <div className={tooltipClassName}>
                       <Text>
-                        Show only models that can be fine-tuned or prompt-tuned. Inference-only
-                        models (e.g. from custom providers) are hidden.
+                        Show only models that can be fine-tuned. Inference-only models (e.g.
+                        from custom providers) are hidden.
                       </Text>
                     </div>
                   }
@@ -410,7 +391,6 @@ export const WorkspaceBaseModelsRoute: FC = () => {
                   <BaseModelCard
                     model={model}
                     isChatAvailable={getModelEntityChatStatus(model) === 'enabled'}
-                    canPromptTune={promptTunableIds.has(model.id)}
                     showCustomizationBadges={CUSTOMIZER_ENABLED}
                     onClick={() => handleOpenPanel(model)}
                   />

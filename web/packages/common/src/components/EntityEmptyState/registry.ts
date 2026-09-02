@@ -126,7 +126,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
   customModels: {
     icon: BrainCircuit,
     heading: 'No custom models yet',
-    subheading: 'Customize a model with fine-tuning or prompt tuning to meet your specific needs.',
+    subheading: 'Customize a model with fine-tuning to meet your specific needs.',
     createAction: { label: 'Customize Model' },
     cliCommand: 'nemo customization automodel submit <job-spec>.json --workspace <workspace>',
     skillPrompt: 'Help me create my first custom model with the nemo-customizer skill',

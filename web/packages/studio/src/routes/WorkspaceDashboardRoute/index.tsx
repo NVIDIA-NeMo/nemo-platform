@@ -4,7 +4,6 @@
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { GradientBackground } from '@nemo/common/src/components/GradientBackground';
 import ModelEvaluationIcon from '@nemo/common/src/svgs/model_evaluation.svg?react';
-import ModelPromptTuningIcon from '@nemo/common/src/svgs/model_prompt_tuning.svg?react';
 import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg?react';
 import { Grid, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import {
@@ -14,7 +13,6 @@ import {
   SAFE_SYNTHESIZER_ENABLED,
 } from '@studio/constants/environment';
 import {
-  LINK_DOCS_MODELS,
   LINK_DOCS_SAFE_SYNTHESIZER,
   LINK_DOCS_STUDIO_EVALUATION,
 } from '@studio/constants/links';
@@ -65,18 +63,6 @@ export const WorkspaceDashboardRoute: FC = () => {
                   actionHref={getModelCompareRoute(workspace)}
                 />
               )}
-              {/* Prompt Tune a Model */}
-              {CUSTOMIZER_ENABLED && (
-                <DashboardCard
-                  icon={<ModelPromptTuningIcon className="w-8 h-8" />}
-                  title="Prompt Tune a Model"
-                  description="Optimize model responses using prompt-based techniques without fine-tuning."
-                  docsUrl={LINK_DOCS_MODELS}
-                  actionLabel="Prompt Tune"
-                  actionHref={generatePath(ROUTES.workspace.promptTuningForm, { workspace })}
-                />
-              )}
-
               {/* Evaluate a Model or Dataset */}
               {EVALUATOR_ENABLED && (
                 <DashboardCard
