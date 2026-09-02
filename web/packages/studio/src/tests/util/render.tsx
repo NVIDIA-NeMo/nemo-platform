@@ -8,10 +8,8 @@ import { TestProviders, TestProvidersOptions } from '@studio/tests/util/TestProv
 import { queries, render, within } from '@testing-library/react';
 import { Suspense } from 'react';
 import { createMemoryRouter, MemoryRouter, type RouteObject } from 'react-router';
-// DOM variant injects `ReactDOM.flushSync`, so tests exercising panel-close
-// navigations actually run the flushed path. Note this only applies to the
-// `createMemoryRouter` branch below — the declarative `MemoryRouter` fallback
-// ignores `flushSync` entirely, so such tests must pass the `routes` option.
+// Only the `createMemoryRouter` branch below honors `flushSync`; the declarative
+// `MemoryRouter` fallback ignores it, so tests that depend on it need `routes`.
 import { RouterProvider } from 'react-router/dom';
 
 /**

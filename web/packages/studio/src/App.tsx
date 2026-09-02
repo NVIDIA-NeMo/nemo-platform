@@ -26,9 +26,6 @@ import { WebStorageStateStore } from 'oidc-client-ts';
 import { StrictMode } from 'react';
 import { AuthProvider } from 'react-oidc-context';
 import { createBrowserRouter } from 'react-router';
-// `RouterProvider` must come from `react-router/dom` — only that variant injects
-// `ReactDOM.flushSync`, which the `flushSync: true` navigations in the side-panel
-// routes depend on. The bare `react-router` provider silently ignores the option.
 import { RouterProvider } from 'react-router/dom';
 
 /**

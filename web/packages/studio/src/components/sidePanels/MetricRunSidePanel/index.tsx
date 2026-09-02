@@ -308,9 +308,6 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
       const job = await createEvaluateJob({ workspace, data: request });
       toast.success('Metric evaluation job created');
       onOpenChange(false);
-      // Paired with the `onOpenChange(false)` above: flush so the route change lands in
-      // the same commit as the close rather than being deferred into a transition,
-      // which would let KUI's `useDialog` re-show the panel mid-close.
       navigate(getEvaluationResultDetailsRoute(workspace, job.name), { flushSync: true });
     } catch (error) {
       const message = getErrorMessage(error as Error, 'Failed to create metric evaluation job');
