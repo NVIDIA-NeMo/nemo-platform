@@ -69,6 +69,7 @@ def main() -> int:
         DEFAULT_JOB_STORAGE_PATH,
         PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
     )
+    from nmp.customization_common.service.path_utils import remap_job_storage_path
     from nmp.unsloth.app.jobs.training.schemas import TrainingStepConfig
     from nmp.unsloth.tasks.training.backends.unsloth_sft import train_sft
 
@@ -113,14 +114,19 @@ def main() -> int:
         f"Container: UNSLOTH_COMPILE_LOCATION={os.environ['UNSLOTH_COMPILE_LOCATION']} HF_HOME={os.environ['HF_HOME']}"
     )
 
+    def _storage_path(value: str | None) -> str | None:
+        if value is None:
+            return None
+        return str(remap_job_storage_path(persistent_root, value))
+
     try:
         result = train_sft(
             spec,
             ctx,
-            model_path=config.model_path,
-            dataset_path=config.dataset_path,
-            validation_path=config.validation_path,
-            output_path=config.output_path,
+            model_path=_storage_path(config.model_path),
+            dataset_path=_storage_path(config.dataset_path),
+            validation_path=_storage_path(config.validation_path),
+            output_path=_storage_path(config.output_path),
         )
     except Exception:
         logger.exception("Unsloth training step failed")

@@ -28,6 +28,7 @@ from nmp.customization_common.schemas.file_io import (
     PathTraversalError,
     ProgressReportError,
 )
+from nmp.customization_common.service.path_utils import remap_job_storage_path
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +167,10 @@ def validate_safe_path(base_path: Path, user_path: str) -> Path:
         PathTraversalError: If the resolved path would escape base_path.
     """
     resolved_base = base_path.resolve()
-    resolved_path = (base_path / user_path).resolve()
+    candidate_path = remap_job_storage_path(base_path, user_path)
+    if not candidate_path.is_absolute():
+        candidate_path = base_path / candidate_path
+    resolved_path = candidate_path.resolve()
 
     if not resolved_path.is_relative_to(resolved_base):
         raise PathTraversalError(

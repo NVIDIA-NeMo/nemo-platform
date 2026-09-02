@@ -25,6 +25,7 @@ from nmp.customization_common.service.context import (
     DEFAULT_TASK,
     NMPJobContext,
 )
+from nmp.customization_common.service.path_utils import LEGACY_PERSISTENT_JOB_STORAGE_PATH_ENVVARS
 
 
 class TestNMPJobContextFromEnv:
@@ -38,6 +39,7 @@ class TestNMPJobContextFromEnv:
             NMP_JOBS_URL_ENVVAR,
             NMP_FILES_URL_ENVVAR,
             PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+            *LEGACY_PERSISTENT_JOB_STORAGE_PATH_ENVVARS,
             NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
         ):
             monkeypatch.delenv(var, raising=False)
@@ -71,3 +73,22 @@ class TestNMPJobContextFromEnv:
         assert ctx.job_id == "job-123"
         assert ctx.normalized_task == "task-train-model"
         assert ctx.jobs_url == "http://jobs.example.com"
+        assert ctx.files_url == "http://files.example.com"
+        assert ctx.storage_path == Path("/custom/storage")
+        assert ctx.config_path == Path("/custom/config.json")
+
+    def test_current_storage_env_wins_over_legacy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PERSISTENT_JOB_STORAGE_PATH_ENVVAR, "/var/run/scratch/job")
+        monkeypatch.setenv(LEGACY_PERSISTENT_JOB_STORAGE_PATH_ENVVARS[0], "/run/scratch/job")
+
+        ctx = NMPJobContext.from_env()
+
+        assert ctx.storage_path == Path("/var/run/scratch/job")
+
+    def test_uses_legacy_storage_env_when_current_env_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(PERSISTENT_JOB_STORAGE_PATH_ENVVAR, raising=False)
+        monkeypatch.setenv(LEGACY_PERSISTENT_JOB_STORAGE_PATH_ENVVARS[0], "/run/scratch/job")
+
+        ctx = NMPJobContext.from_env()
+
+        assert ctx.storage_path == Path("/run/scratch/job")

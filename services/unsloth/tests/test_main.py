@@ -92,6 +92,56 @@ class TestEntrypointCachePaths:
         assert (ephemeral / "unsloth_compiled_cache").is_dir()
         assert (ephemeral / "hf").is_dir()
 
+    def test_remaps_legacy_storage_paths_to_runtime_mount(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from nmp.common.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
+        from nmp.unsloth.tasks.training.backends import unsloth_sft
+
+        config = _step_config().model_copy(
+            update={
+                "model_path": "/run/scratch/job/model",
+                "dataset_path": "/run/scratch/job/dataset",
+                "validation_path": "/run/scratch/job/validation_dataset",
+                "output_path": "/run/scratch/job/output_model",
+            },
+        )
+        config_file = tmp_path / "step.json"
+        config_file.write_text(json.dumps(config.model_dump(mode="json")))
+
+        storage = tmp_path / "job"
+        monkeypatch.setenv("NEMO_JOB_STEP_CONFIG_FILE_PATH", str(config_file))
+        monkeypatch.setenv(PERSISTENT_JOB_STORAGE_PATH_ENVVAR, str(storage))
+        monkeypatch.delenv("UNSLOTH_COMPILE_LOCATION", raising=False)
+        monkeypatch.delenv("HF_HOME", raising=False)
+
+        captured: dict[str, str | None] = {}
+
+        def _stub_train_sft(*_args: object, **kwargs: object) -> dict[str, object]:
+            captured.update(
+                {
+                    "model_path": kwargs["model_path"],
+                    "dataset_path": kwargs["dataset_path"],
+                    "validation_path": kwargs["validation_path"],
+                    "output_path": kwargs["output_path"],
+                },
+            )
+            return {}
+
+        monkeypatch.setattr(unsloth_sft, "train_sft", _stub_train_sft)
+
+        rc = main()
+
+        assert rc == 0
+        assert captured == {
+            "model_path": str(storage / "model"),
+            "dataset_path": str(storage / "dataset"),
+            "validation_path": str(storage / "validation_dataset"),
+            "output_path": str(storage / "output_model"),
+        }
+
 
 class TestEntrypointWithoutStepConfig:
     def test_returns_2_when_step_config_env_missing(
