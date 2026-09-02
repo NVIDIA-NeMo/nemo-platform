@@ -6,7 +6,6 @@ import { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 export const PURPOSE_LABELS: Record<FilesetPurpose, string> = {
   [FilesetPurpose.generic]: 'Generic',
   [FilesetPurpose.dataset]: 'Dataset',
-  [FilesetPurpose.environment]: 'Environment',
   [FilesetPurpose.model]: 'Model',
   [FilesetPurpose.environment]: 'Environment',
 };

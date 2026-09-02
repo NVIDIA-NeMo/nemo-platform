@@ -30,8 +30,7 @@ export const PURPOSE_OPTIONS: {
   {
     value: FilesetPurpose.environment,
     label: 'Environment',
-    description:
-      'For executable environment packages consumed by sandboxed workloads.',
+    description: 'For executable environment packages consumed by sandboxed workloads.',
   },
 ];
 
