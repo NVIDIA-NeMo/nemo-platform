@@ -314,6 +314,40 @@ def build_nat_agent_image(
             ignore_file.unlink(missing_ok=True)
 
 
+def _source_checkout_dist_dir() -> Path | None:
+    """Locate ``dist`` in the checkout this package is running from, if it is one."""
+    import importlib.util
+
+    spec = importlib.util.find_spec("nemo_agents_plugin")
+    locations = spec.submodule_search_locations if spec else None
+    if not locations:
+        return None
+    for parent in Path(next(iter(locations))).resolve().parents:
+        if (parent / "pyproject.toml").is_file() and (parent / "plugins").is_dir():
+            dist = parent / "dist"
+            return dist if dist.is_dir() else None
+    return None
+
+
+def resolve_latest_wheel() -> Path:
+    """Return the most recently built wheel in the source checkout's ``dist``."""
+    from nemo_agents_plugin.container.template import WHEEL_ENV, WHEEL_LATEST
+
+    dist = _source_checkout_dist_dir()
+    if dist is None:
+        raise ValueError(
+            f"{WHEEL_ENV}={WHEEL_LATEST} needs a source checkout with a 'dist' directory, "
+            "which this install is not. Point it at a wheel path instead."
+        )
+    wheels = sorted(dist.glob("nemo_platform-*.whl"), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not wheels:
+        raise ValueError(
+            f"{WHEEL_ENV}={WHEEL_LATEST} found no nemo-platform wheels in {dist}. Build one with "
+            "`uv build --package nemo-platform --wheel --out-dir dist`."
+        )
+    return wheels[0]
+
+
 def build_fabric_agent_image(
     agent_config: Path,
     pyproject: Path | None = None,
@@ -375,13 +409,24 @@ def build_fabric_agent_image(
     resolved_uv = resolve_value("uv_version", uv_version)
 
     from nemo_agents_plugin.container.metadata import NEMO_PLATFORM_AGENT_FRAMEWORK, extract_agent_metadata
-    from nemo_agents_plugin.container.template import WHEEL_ENV
+    from nemo_agents_plugin.container.template import WHEEL_ENV, WHEEL_LATEST
 
     # The env var is the only caller-facing way in, so it reaches the platform
     # job as well as the CLI.
     if wheel is None:
         from_env = os.environ.get(WHEEL_ENV, "").strip()
-        wheel = Path(from_env) if from_env else None
+        if from_env and dockerfile is not None:
+            # Decided before resolving, so LATEST does not have to find a wheel
+            # this build was never going to install.
+            emit_progress(
+                on_progress, f"warning: ignoring {WHEEL_ENV}={from_env}; --dockerfile decides what is installed"
+            )
+        # A real path wins over the sentinel, so a file named LATEST is still usable.
+        elif from_env and not Path(from_env).exists() and from_env.upper() == WHEEL_LATEST:
+            wheel = resolve_latest_wheel()
+            emit_progress(on_progress, f"{WHEEL_ENV}={WHEEL_LATEST} resolved to {wheel.name}")
+        elif from_env:
+            wheel = Path(from_env)
     if wheel is not None and dockerfile is not None:
         # A supplied Dockerfile installs whatever it wants and never sees the
         # staged wheel, so the wheel must not speak for the version either.
@@ -396,6 +441,12 @@ def build_fabric_agent_image(
     # A wheel is what the image actually installs, so it — not the build host —
     # decides the version the image advertises and hashes into its id.
     contract_version = wheel_contract_version(wheel) if wheel is not None else get_contract_version()
+    if wheel is not None and contract_version != get_contract_version():
+        # Not fatal: the wheel is installed instead of the pin, so the pin never resolves.
+        emit_progress(
+            on_progress,
+            f"warning: {wheel.name} builds {contract_version}, but this host runs {get_contract_version()}",
+        )
 
     build_env_for_id = {
         "agent_framework": NEMO_PLATFORM_AGENT_FRAMEWORK,
