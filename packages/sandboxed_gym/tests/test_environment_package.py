@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from sandboxed_gym.environment_package import (
+    ComponentNamespaces,
     EnvironmentFormat,
     EnvironmentMetadata,
     EnvironmentPackageError,
@@ -13,15 +14,18 @@ from sandboxed_gym.environment_package import (
     WheelsV1Manifest,
     WheelsV1Package,
     duplicate_wheel_distributions,
+    inspect_environment_components,
+    inspect_environment_namespaces,
     load_environment_manifest,
     load_environment_package,
     parse_environment_manifest,
-    require_supported_runtime_format,
     validate_environment_manifest_against_listing,
+    validate_environment_namespaces,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 WHEELS_V1_ENVIRONMENT = FIXTURES_DIR / "wheels_v1_environment"
+NATIVE_V1_CUSTOM_ENVIRONMENT = FIXTURES_DIR / "native_v1_custom_environment"
 
 
 def _write_manifest(root: Path, text: str) -> None:
@@ -56,19 +60,26 @@ def test_loads_complete_wheels_v1_fixture() -> None:
     assert package.wheel_files == (
         (WHEELS_V1_ENVIRONMENT / "wheels/example_dependency-1.0-py3-none-any.whl").resolve(),
     )
-    require_supported_runtime_format(package)
 
 
-def test_native_v1_is_validated_then_rejected_as_unsupported(tmp_path: Path) -> None:
-    config_path = "resources_servers/custom/configs/custom.yaml"
-    _write_config(tmp_path, config_path)
-    _write_manifest(tmp_path, _complete_manifest("native-v1", config_path))
-
-    package = load_environment_package(tmp_path)
+def test_loads_native_v1_fixture() -> None:
+    package = load_environment_package(NATIVE_V1_CUSTOM_ENVIRONMENT)
 
     assert isinstance(package, NativeV1Package)
-    with pytest.raises(EnvironmentPackageError, match="native-v1 environment packages are not supported"):
-        require_supported_runtime_format(package)
+    assert package.manifest == NativeV1Manifest(
+        format=EnvironmentFormat.NATIVE_V1,
+        config_paths=("resources_servers/native_v1_custom_greeting/configs/native_v1_custom_greeting.yaml",),
+        metadata=EnvironmentMetadata(name="native-v1-custom-greeting"),
+    )
+    assert package.config_paths == (
+        (
+            NATIVE_V1_CUSTOM_ENVIRONMENT
+            / "resources_servers/native_v1_custom_greeting/configs/native_v1_custom_greeting.yaml"
+        ).resolve(),
+    )
+    components = inspect_environment_components(package)
+    assert components.agents == frozenset()
+    assert components.resources_servers == frozenset({"native_v1_custom_greeting"})
 
 
 def test_native_validation_does_not_import_customer_code(tmp_path: Path) -> None:
@@ -159,7 +170,7 @@ def test_rejects_native_config_symlink_escape(tmp_path: Path) -> None:
     config.symlink_to(outside)
     _write_manifest(tmp_path, _complete_manifest("native-v1", config_path))
 
-    with pytest.raises(EnvironmentPackageError, match="config symlinks are not allowed"):
+    with pytest.raises(EnvironmentPackageError, match="Config symlinks are not allowed"):
         load_environment_package(tmp_path)
 
 
@@ -171,7 +182,7 @@ def test_rejects_native_config_symlink_within_root(tmp_path: Path) -> None:
     (tmp_path / alias_path).symlink_to(target)
     _write_manifest(tmp_path, _complete_manifest("native-v1", alias_path))
 
-    with pytest.raises(EnvironmentPackageError, match="config symlinks are not allowed"):
+    with pytest.raises(EnvironmentPackageError, match="Config symlinks are not allowed"):
         load_environment_package(tmp_path)
 
 
@@ -184,7 +195,7 @@ def test_rejects_wheelhouse_symlink_escape(tmp_path: Path) -> None:
     _write_config(tmp_path, config_path)
     _write_manifest(tmp_path, _complete_manifest("wheels-v1", config_path))
 
-    with pytest.raises(EnvironmentPackageError, match="wheelhouse symlinks are not allowed"):
+    with pytest.raises(EnvironmentPackageError, match="Wheelhouse symlinks are not allowed"):
         load_environment_package(tmp_path)
 
 
@@ -198,7 +209,7 @@ def test_rejects_wheel_file_symlink(tmp_path: Path) -> None:
     outside.write_bytes(b"fixture")
     (wheels / "dependency-1.0-py3-none-any.whl").symlink_to(outside)
 
-    with pytest.raises(EnvironmentPackageError, match="wheel symlinks are not allowed"):
+    with pytest.raises(EnvironmentPackageError, match="Wheel symlinks are not allowed"):
         load_environment_package(tmp_path)
 
 
@@ -246,7 +257,7 @@ def test_listing_rejects_prompt_jsonl() -> None:
     [
         ([], "non-empty wheels/ directory"),
         (["wheels/nested/dependency-1.0-py3-none-any.whl"], "must be flat"),
-        (["wheels/requirements.txt"], "non-wheel files"),
+        (["wheels/requirements.txt"], "Non-wheel files"),
     ],
 )
 def test_listing_rejects_invalid_wheelhouse_entries(wheel_entries: list[str], error: str) -> None:
@@ -284,3 +295,76 @@ def test_listing_rejects_customer_model_configuration() -> None:
                 "wheels/dependency-1.0-py3-none-any.whl",
             ],
         )
+
+
+def test_inspects_top_level_agent_and_resources_server_instance_names(tmp_path: Path) -> None:
+    config_path = "responses_api_agents/custom/configs/custom.yaml"
+    config = tmp_path / config_path
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        "custom_agent_instance:\n"
+        "  responses_api_agents:\n"
+        "    custom_implementation: {entrypoint: app.py}\n"
+        "custom_resources_instance:\n"
+        "  resources_servers:\n"
+        "    custom_resources: {entrypoint: app.py}\n",
+        encoding="utf-8",
+    )
+    _write_manifest(tmp_path, _complete_manifest("native-v1", config_path))
+
+    components = inspect_environment_components(load_environment_package(tmp_path))
+
+    assert components.agents == frozenset({"custom_agent_instance"})
+    assert components.resources_servers == frozenset({"custom_resources_instance"})
+
+
+def test_rejects_duplicate_component_instances_across_configs(tmp_path: Path) -> None:
+    config_paths = (
+        "responses_api_agents/first/configs/first.yaml",
+        "responses_api_agents/second/configs/second.yaml",
+    )
+    for config_path in config_paths:
+        config = tmp_path / config_path
+        config.parent.mkdir(parents=True)
+        config.write_text(
+            "duplicate_instance:\n  responses_api_agents:\n    implementation: {entrypoint: app.py}\n",
+            encoding="utf-8",
+        )
+    _write_manifest(
+        tmp_path,
+        "format: native-v1\n"
+        "config_paths:\n"
+        f"  - {config_paths[0]}\n"
+        f"  - {config_paths[1]}\n"
+        "metadata:\n"
+        "  name: duplicate-components\n",
+    )
+
+    with pytest.raises(EnvironmentPackageError, match="Duplicate responses_api_agents instance"):
+        inspect_environment_components(load_environment_package(tmp_path))
+
+
+def test_package_namespace_inventory_includes_source_directory_names(tmp_path: Path) -> None:
+    config_path = "responses_api_agents/directory_name/configs/variant.yaml"
+    config = tmp_path / config_path
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        "declared_instance:\n  responses_api_agents:\n    implementation: {entrypoint: app.py}\n",
+        encoding="utf-8",
+    )
+    _write_manifest(tmp_path, _complete_manifest("native-v1", config_path))
+    package = load_environment_package(tmp_path)
+
+    namespaces = inspect_environment_namespaces(package)
+
+    assert namespaces.agents == frozenset({"directory_name", "declared_instance"})
+
+
+def test_rejects_cross_type_namespace_collisions() -> None:
+    package_namespaces = ComponentNamespaces(
+        agents=frozenset({"shared_name"}),
+        resources_servers=frozenset({"shared_name"}),
+    )
+
+    with pytest.raises(EnvironmentPackageError, match="both agents and resources servers"):
+        validate_environment_namespaces(package_namespaces)

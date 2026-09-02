@@ -515,7 +515,7 @@ def test_input_spec_accepts_stored_metric_reference() -> None:
         ],
         target=_runner_target("openai/gpt-5.4"),
     )
-    assert not isinstance(spec.tasks, TasksetRef)
+    assert isinstance(spec.tasks, list)
     assert isinstance(spec.tasks[0].metrics[0], MetricRef)
 
 
@@ -908,7 +908,7 @@ async def test_resolve_gym_environment_qualifies_and_validates_purpose(mocker: M
     )
 
 
-async def test_resolve_gym_environment_rejects_native_v1(mocker: MockerFixture) -> None:
+async def test_resolve_gym_environment_accepts_native_v1(mocker: MockerFixture) -> None:
     response = mocker.Mock()
     response.data.return_value = SimpleNamespace(purpose=FilesetPurpose.ENVIRONMENT)
     listing = mocker.Mock()
@@ -934,12 +934,14 @@ async def test_resolve_gym_environment_rejects_native_v1(mocker: MockerFixture) 
     files.download_file = mocker.AsyncMock(return_value=manifest)
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=files)
 
-    with pytest.raises(ValueError, match="native-v1 environment packages are not supported"):
-        await _resolve_gym_environment(
-            _gym_environment_target(),
-            workspace="dev",
-            async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
-        )
+    resolved = await _resolve_gym_environment(
+        _gym_environment_target(),
+        workspace="dev",
+        async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+    )
+
+    assert isinstance(resolved, GymRunnerTarget)
+    assert resolved.environment == FilesetRef(root="dev/custom-gym")
 
 
 async def test_resolve_gym_environment_rejects_wrong_purpose(mocker: MockerFixture) -> None:
@@ -999,7 +1001,7 @@ async def test_resolve_gym_environment_rejects_manifest_listing_mismatch(mocker:
     files.download_file = mocker.AsyncMock(return_value=manifest)
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=files)
 
-    with pytest.raises(ValueError, match="config_paths reference files that are not in the package"):
+    with pytest.raises(ValueError, match="field references files that are not in the package"):
         await _resolve_gym_environment(
             _gym_environment_target(),
             workspace="dev",

@@ -118,11 +118,41 @@ def test_an_explicit_override_wins_over_the_derived_binding() -> None:
     assert agent == {"extra": 1}, "the caller's value replaces the derived one at the same key"
 
 
-def test_fileset_environment_keeps_required_agent_config_in_config_paths() -> None:
-    config = gym_global_config(target(environment=FilesetRef(root="default/custom-gym")))
+def test_custom_environment_carries_component_selection_for_host_composition() -> None:
+    config = gym_global_config(
+        target(
+            environment=FilesetRef(root="default/custom-gym"),
+            agent_ref_name="custom_agent",
+        )
+    )
 
     assert config["config_paths"][0] == "responses_api_agents/simple_agent/configs/simple_agent.yaml"
-    assert "_nmp_environment_component_selection" not in config
+    assert config["_nmp_environment_component_selection"] == {
+        "agent_instance": "custom_agent",
+        "agent_config": "responses_api_agents/simple_agent/configs/simple_agent.yaml",
+        "resources_server_instance": "mcqa",
+        "resources_server_config": "resources_servers/mcqa/configs/mcqa.yaml",
+        "model_config": "responses_api_models/inference_provider/configs/inference_provider.yaml",
+    }
+    assert config["custom_agent"]["responses_api_agents"]["simple_agent"]["resources_server"]["name"] == "mcqa"
+
+
+def test_custom_environment_omits_agent_config_when_the_package_supplies_the_agent() -> None:
+    config = gym_global_config(
+        target(
+            environment=FilesetRef(root="default/custom-gym"),
+            agent_config=None,
+            agent_ref_name="custom_agent",
+        )
+    )
+
+    assert "responses_api_agents/simple_agent/configs/simple_agent.yaml" not in config["config_paths"]
+    assert config["_nmp_environment_component_selection"]["agent_config"] is None
+
+
+def test_agent_config_is_required_without_an_environment_package() -> None:
+    with pytest.raises(ValueError, match="agent_config field is required"):
+        target(agent_config=None)
 
 
 def test_environment_fileset_rejects_file_fragments() -> None:

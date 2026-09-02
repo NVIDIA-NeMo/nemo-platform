@@ -24,8 +24,10 @@ from sandboxed_gym.environment_package import (
     EnvironmentPackage,
     EnvironmentPackageError,
     WheelsV1Package,
+    inspect_environment_components,
+    inspect_environment_namespaces,
     load_environment_package,
-    require_supported_runtime_format,
+    validate_environment_namespaces,
 )
 
 GYM_GLOBAL_CONFIG_ENV_KEY = "NMP_GYM_GLOBAL_CONFIG"
@@ -40,6 +42,9 @@ UV_VENV_DIR_KEY = "uv_venv_dir"
 WHEELS_V1_INSTALL_SUBDIR = "wheels-v1-site-packages"
 # uv setting that points Gym's per-server dependency resolver at the staged wheelhouse.
 UV_FIND_LINKS_ENV_KEY = "UV_FIND_LINKS"
+NEMO_GYM_EXTRA_ROOTS_ENV_KEY = "NEMO_GYM_EXTRA_ROOTS"
+#: Temporary Evaluator metadata. The host pops it before Gym parses the config.
+ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY = "_nmp_environment_component_selection"
 # Mirrors DEFAULT_GYM_PORT_RANGE_{LOW,HIGH} in nemo_rl.distributed.virtual_cluster.
 DEFAULT_GYM_PORT_RANGE_LOW = 5000
 DEFAULT_GYM_PORT_RANGE_HIGH = 5999
@@ -159,7 +164,7 @@ def _load_runtime_environment_package(
     """Load a mounted package while preserving manifest-free bundled environments."""
     if not environment_path:
         if required:
-            raise RuntimeError("a Gym environment package is required, but NMP_ENVIRONMENT_PATH is empty")
+            raise RuntimeError("A Gym environment package is required, but NMP_ENVIRONMENT_PATH is empty")
         return None
 
     manifest_path = os.path.join(environment_path, ENVIRONMENT_MANIFEST_FILENAME)
@@ -170,9 +175,8 @@ def _load_runtime_environment_package(
 
     try:
         package = load_environment_package(environment_path)
-        require_supported_runtime_format(package)
     except EnvironmentPackageError as exc:
-        raise RuntimeError(f"invalid Gym environment package at {environment_path}: {exc}") from exc
+        raise RuntimeError(f"Invalid Gym environment package at {environment_path}: {exc}") from exc
     return package
 
 
@@ -233,6 +237,66 @@ def _install_wheels_v1_dependencies(package: EnvironmentPackage | None, work_pat
         sys.path.insert(0, wheels_install_dir)
 
 
+def _prepend_environment_search_root(environment_root: str) -> None:
+    """Put customer source first without discarding operator-provided Gym roots."""
+    existing = [root for root in os.environ.get(NEMO_GYM_EXTRA_ROOTS_ENV_KEY, "").split(os.pathsep) if root]
+    roots = [environment_root, *existing]
+    deduplicated = list(dict.fromkeys(roots))
+    os.environ[NEMO_GYM_EXTRA_ROOTS_ENV_KEY] = os.pathsep.join(deduplicated)
+
+
+def _configure_environment_package(
+    global_config: dict[str, Any],
+    package: EnvironmentPackage | None,
+) -> None:
+    """Compose package configs with target fallbacks before Gym imports."""
+    selection = global_config.pop(ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY, None)
+    if package is None:
+        if selection is not None:
+            raise RuntimeError("Gym component selection was supplied without an environment package")
+        return
+    if not isinstance(selection, dict):
+        raise RuntimeError("A mounted environment package requires Gym component selection metadata")
+
+    required_string_fields = (
+        "agent_instance",
+        "resources_server_instance",
+        "resources_server_config",
+        "model_config",
+    )
+    for field in required_string_fields:
+        if not isinstance(selection.get(field), str) or not selection[field]:
+            raise RuntimeError(f"Gym component selection requires a non-empty {field!r}")
+    agent_config = selection.get("agent_config")
+    if agent_config is not None and (not isinstance(agent_config, str) or not agent_config):
+        raise RuntimeError("Gym component selection agent_config must be a non-empty string or null")
+
+    try:
+        components = inspect_environment_components(package)
+        package_namespaces = inspect_environment_namespaces(package, components=components)
+        validate_environment_namespaces(package_namespaces)
+    except EnvironmentPackageError as exc:
+        raise RuntimeError(f"Invalid Gym environment components: {exc}") from exc
+
+    _prepend_environment_search_root(str(package.root))
+    config_paths = [str(path) for path in package.config_paths]
+    agent_instance = str(selection["agent_instance"])
+    if agent_instance not in components.agents:
+        if agent_config is None:
+            raise RuntimeError(
+                f"Environment package does not declare selected agent instance {agent_instance!r}, "
+                "and no built-in agent_config fallback was supplied"
+            )
+        config_paths.append(agent_config)
+
+    config_paths.append(str(selection["model_config"]))
+    resources_server_instance = str(selection["resources_server_instance"])
+    if resources_server_instance not in components.resources_servers:
+        config_paths.append(str(selection["resources_server_config"]))
+
+    global_config["config_paths"] = list(dict.fromkeys(config_paths))
+
+
 def bootstrap_gym_host() -> tuple[Any, Any, Any]:
     """Start Gym servers and return (RunHelper, head_server_config, RolloutCollectionHelper)."""
     global_config = _load_global_config_dict()
@@ -241,11 +305,14 @@ def bootstrap_gym_host() -> tuple[Any, Any, Any]:
         os.environ.get("NMP_ENVIRONMENT_PATH", ""),
         required=_environment_package_required(),
     )
+    _configure_environment_package(global_config, environment_package)
     _install_wheels_v1_dependencies(
         environment_package,
         os.environ.get("NMP_WORK_PATH", "/job/work"),
     )
 
+    # Customer discovery must be configured before importing Gym, which augments its search path
+    # and initializes registries from NEMO_GYM_EXTRA_ROOTS.
     from nemo_gym.cli.env import RunHelper
     from nemo_gym.global_config import GlobalConfigDictParserConfig
     from nemo_gym.server_utils import BaseServerConfig

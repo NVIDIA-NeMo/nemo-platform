@@ -25,7 +25,6 @@ CUSTOM_AGENT_SUBDIR = "responses_api_agents"
 CUSTOM_RESOURCES_SERVER_SUBDIR = "resources_servers"
 #: Operator-owned Gym model configs. A customer FileSet that ships this tree is rejected.
 OPERATOR_MODEL_SUBDIR = "responses_api_models"
-NATIVE_V1_UNSUPPORTED_MESSAGE = "native-v1 environment packages are not supported; use a wheels-v1 package"
 
 
 class EnvironmentPackageError(ValueError):
@@ -54,14 +53,14 @@ class EnvironmentMetadata(BaseModel):
 def _validate_relative_config_path(value: str) -> str:
     """Reject absolute, escaped, or traversing config paths before any filesystem access."""
     if not value or value != value.strip():
-        raise ValueError("config paths must be non-empty and cannot have surrounding whitespace")
+        raise ValueError("Config paths must be non-empty and cannot have surrounding whitespace")
     if "\\" in value:
-        raise ValueError("config paths must use POSIX '/' separators")
+        raise ValueError("Config paths must use POSIX '/' separators")
     path = PurePosixPath(value)
     if path.is_absolute():
-        raise ValueError("config paths must be relative to the environment root")
+        raise ValueError("Config paths must be relative to the environment root")
     if path == PurePosixPath(".") or ".." in path.parts:
-        raise ValueError("config paths cannot contain '.' or '..' traversal")
+        raise ValueError("Config paths cannot contain '.' or '..' traversal")
     return value
 
 
@@ -79,7 +78,7 @@ class _ManifestBase(BaseModel):
         """Normalize relative config paths and reject duplicates."""
         validated = tuple(_validate_relative_config_path(value) for value in values)
         if len(set(validated)) != len(validated):
-            raise ValueError("config_paths cannot contain duplicates")
+            raise ValueError("The `config_paths` field cannot contain duplicates")
         return validated
 
 
@@ -95,7 +94,7 @@ class NativeV1Manifest(_ManifestBase):
         allowed = (f"{CUSTOM_AGENT_SUBDIR}/", f"{CUSTOM_RESOURCES_SERVER_SUBDIR}/")
         for value in values:
             if not value.startswith(allowed):
-                raise ValueError(f"native-v1 config_paths must be under {allowed}: {value!r}")
+                raise ValueError(f"Native-v1 config_paths must be under {allowed}: {value!r}")
         return values
 
 
@@ -111,7 +110,7 @@ _ENVIRONMENT_MANIFEST_ADAPTER = TypeAdapter(EnvironmentManifest)
 
 @dataclass(frozen=True)
 class NativeV1Package:
-    """Validated native source package. Parsed and layout-checked, then rejected at execution."""
+    """Validated native source package ready for Gym discovery."""
 
     root: Path
     manifest: NativeV1Manifest
@@ -155,7 +154,7 @@ def load_environment_manifest(environment_root: str | Path) -> EnvironmentManife
     root = _validated_root(environment_root)
     manifest_path = root / ENVIRONMENT_MANIFEST_FILENAME
     if not manifest_path.is_file():
-        raise EnvironmentPackageError(f"environment manifest does not exist or is not a file: {manifest_path}")
+        raise EnvironmentPackageError(f"Environment manifest does not exist or is not a file: {manifest_path}")
     return parse_environment_manifest(manifest_path.read_bytes())
 
 
@@ -167,7 +166,7 @@ def validate_environment_manifest_against_listing(
     entries = {path.removeprefix("./") for path in paths}
 
     # Model YAML is operator-owned (image + VirtualModel). A customer copy would silently
-    # shadow it once FileSet composition lands, so refuse it at submit.
+    # shadow it through Gym extra-root discovery, so refuse it at submit.
     customer_model_files = sorted(path for path in entries if path.startswith(f"{OPERATOR_MODEL_SUBDIR}/"))
     if customer_model_files:
         raise EnvironmentPackageError(
@@ -200,17 +199,19 @@ def validate_environment_manifest_against_listing(
     nested_entries = [path for path in wheel_entries if "/" in path.removeprefix(f"{WHEELS_V1_SUBDIR}/")]
     if nested_entries:
         raise EnvironmentPackageError(
-            f"{WHEELS_V1_SUBDIR}/ must be flat; nested entries are not supported: {', '.join(nested_entries)}"
+            f"The {WHEELS_V1_SUBDIR}/ directory must be flat; nested entries are not supported: "
+            f"{', '.join(nested_entries)}"
         )
 
     if not wheel_entries:
         raise EnvironmentPackageError(
-            f"{WHEELS_V1_FORMAT} installs environment dependencies from a non-empty {WHEELS_V1_SUBDIR}/ directory"
+            f"A {WHEELS_V1_FORMAT} package installs environment dependencies from a non-empty "
+            f"{WHEELS_V1_SUBDIR}/ directory"
         )
 
     non_wheels = [path for path in wheel_entries if not path.endswith(".whl")]
     if non_wheels:
-        raise EnvironmentPackageError(f"non-wheel files in {WHEELS_V1_SUBDIR}/: {', '.join(non_wheels)}")
+        raise EnvironmentPackageError(f"Non-wheel files in {WHEELS_V1_SUBDIR}/: {', '.join(non_wheels)}")
 
 
 def duplicate_wheel_distributions(wheelhouse_path: Path) -> dict[str, list[str]]:
@@ -225,6 +226,112 @@ def duplicate_wheel_distributions(wheelhouse_path: Path) -> dict[str, list[str]]
     return {name: found for name, found in versions.items() if len(found) > 1}
 
 
+@dataclass(frozen=True)
+class EnvironmentComponents:
+    """Customer component instance names declared by manifest config files."""
+
+    agents: frozenset[str]
+    resources_servers: frozenset[str]
+
+
+@dataclass(frozen=True)
+class ComponentNamespaces:
+    """Names that can participate in Gym component lookup or config merging."""
+
+    agents: frozenset[str]
+    resources_servers: frozenset[str]
+
+
+def inspect_environment_components(package: EnvironmentPackage) -> EnvironmentComponents:
+    """Read config YAML structurally and return its declared server instance names."""
+    agents: set[str] = set()
+    resources_servers: set[str] = set()
+    for config_path in package.config_paths:
+        config_agents, config_resources_servers = _read_component_instances(
+            config_path,
+            reject_customer_models=True,
+        )
+        for name in config_agents:
+            _add_unique_component(agents, name, CUSTOM_AGENT_SUBDIR, config_path)
+        for name in config_resources_servers:
+            _add_unique_component(resources_servers, name, CUSTOM_RESOURCES_SERVER_SUBDIR, config_path)
+
+    return EnvironmentComponents(
+        agents=frozenset(agents),
+        resources_servers=frozenset(resources_servers),
+    )
+
+
+def inspect_environment_namespaces(
+    package: EnvironmentPackage,
+    *,
+    components: EnvironmentComponents | None = None,
+) -> ComponentNamespaces:
+    """Combine package directory names with config-declared instance names."""
+    declared = components or inspect_environment_components(package)
+    return ComponentNamespaces(
+        agents=frozenset({*declared.agents, *_component_directory_names(package.root, CUSTOM_AGENT_SUBDIR)}),
+        resources_servers=frozenset(
+            {
+                *declared.resources_servers,
+                *_component_directory_names(package.root, CUSTOM_RESOURCES_SERVER_SUBDIR),
+            }
+        ),
+    )
+
+
+def validate_environment_namespaces(package_namespaces: ComponentNamespaces) -> None:
+    """Reject names used as both agent and resources-server package components."""
+    cross_type = sorted(package_namespaces.agents & package_namespaces.resources_servers)
+    if cross_type:
+        raise EnvironmentPackageError(
+            f"Component names cannot be used as both agents and resources servers: {', '.join(cross_type)}"
+        )
+
+
+def _component_directory_names(root: Path, component_type: str) -> set[str]:
+    component_root = root / component_type
+    if not component_root.is_dir():
+        return set()
+    return {child.name for child in component_root.iterdir() if child.is_dir()}
+
+
+def _read_component_instances(
+    config_path: Path,
+    *,
+    reject_customer_models: bool,
+) -> tuple[set[str], set[str]]:
+    import yaml
+
+    try:
+        raw_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise EnvironmentPackageError(f"Environment config is not valid YAML: {config_path}") from exc
+    if not isinstance(raw_config, dict):
+        raise EnvironmentPackageError(f"Environment config must be a mapping: {config_path}")
+
+    agents: set[str] = set()
+    resources_servers: set[str] = set()
+    for raw_instance_name, raw_instance in raw_config.items():
+        if not isinstance(raw_instance_name, str) or not isinstance(raw_instance, dict):
+            continue
+        if reject_customer_models and OPERATOR_MODEL_SUBDIR in raw_instance:
+            raise EnvironmentPackageError(f"Customer-provided {OPERATOR_MODEL_SUBDIR} are not supported: {config_path}")
+        if CUSTOM_AGENT_SUBDIR in raw_instance:
+            agents.add(raw_instance_name)
+        if CUSTOM_RESOURCES_SERVER_SUBDIR in raw_instance:
+            resources_servers.add(raw_instance_name)
+    return agents, resources_servers
+
+
+def _add_unique_component(components: set[str], name: str, component_type: str, config_path: Path) -> None:
+    if name in components:
+        raise EnvironmentPackageError(
+            f"Duplicate {component_type} instance {name!r} declared by environment config: {config_path}"
+        )
+    components.add(name)
+
+
 def validate_environment_package_layout(
     environment_root: str | Path,
     manifest: EnvironmentManifest,
@@ -234,17 +341,17 @@ def validate_environment_package_layout(
     for relative_path in manifest.config_paths:
         unresolved = root / relative_path
         if unresolved.is_symlink():
-            raise EnvironmentPackageError(f"config symlinks are not allowed: {relative_path}")
+            raise EnvironmentPackageError(f"Config symlinks are not allowed: {relative_path}")
         _resolve_contained_file(root, relative_path)
 
     if isinstance(manifest, WheelsV1Manifest):
         unresolved_wheelhouse = root / WHEELS_V1_SUBDIR
         if unresolved_wheelhouse.is_symlink():
-            raise EnvironmentPackageError(f"wheelhouse symlinks are not allowed: {WHEELS_V1_SUBDIR}")
+            raise EnvironmentPackageError(f"Wheelhouse symlinks are not allowed: {WHEELS_V1_SUBDIR}")
         wheelhouse = _resolve_contained_directory(root, WHEELS_V1_SUBDIR)
         for wheel in wheelhouse.glob("*.whl"):
             if wheel.is_symlink():
-                raise EnvironmentPackageError(f"wheel symlinks are not allowed: {wheel.relative_to(root).as_posix()}")
+                raise EnvironmentPackageError(f"Wheel symlinks are not allowed: {wheel.relative_to(root).as_posix()}")
             _require_contained(root, wheel.resolve(), wheel.relative_to(root).as_posix())
 
     validate_environment_manifest_against_listing(
@@ -257,7 +364,7 @@ def validate_environment_package_layout(
         if duplicates:
             details = ", ".join(f"{name} ({', '.join(versions)})" for name, versions in sorted(duplicates.items()))
             raise EnvironmentPackageError(
-                f"wheels/ vendors multiple versions of the same distribution: {details}; "
+                f"The {WHEELS_V1_SUBDIR}/ directory vendors multiple versions of the same distribution: {details}; "
                 "regenerate the package with one resolved version per distribution"
             )
 
@@ -282,17 +389,11 @@ def load_environment_package(environment_root: str | Path) -> EnvironmentPackage
     )
 
 
-def require_supported_runtime_format(package: EnvironmentPackage) -> None:
-    """Reject formats that are valid packages but not executable on this branch."""
-    if isinstance(package, NativeV1Package):
-        raise EnvironmentPackageError(NATIVE_V1_UNSUPPORTED_MESSAGE)
-
-
 def _validated_root(environment_root: str | Path) -> Path:
     """Resolve the package root and refuse a missing or non-directory path."""
     root = Path(environment_root)
     if not root.is_dir():
-        raise EnvironmentPackageError(f"environment root does not exist or is not a directory: {root}")
+        raise EnvironmentPackageError(f"Environment root does not exist or is not a directory: {root}")
     return root.resolve()
 
 
@@ -301,7 +402,7 @@ def _resolve_contained_file(root: Path, relative_path: str) -> Path:
     candidate = (root / relative_path).resolve()
     _require_contained(root, candidate, relative_path)
     if not candidate.is_file():
-        raise EnvironmentPackageError(f"environment path does not exist or is not a file: {relative_path}")
+        raise EnvironmentPackageError(f"Environment path does not exist or is not a file: {relative_path}")
     return candidate
 
 
@@ -310,11 +411,11 @@ def _resolve_contained_directory(root: Path, relative_path: str) -> Path:
     candidate = (root / relative_path).resolve()
     _require_contained(root, candidate, relative_path)
     if not candidate.is_dir():
-        raise EnvironmentPackageError(f"environment path does not exist or is not a directory: {relative_path}")
+        raise EnvironmentPackageError(f"Environment path does not exist or is not a directory: {relative_path}")
     return candidate
 
 
 def _require_contained(root: Path, candidate: Path, relative_path: str) -> None:
     """Raise if ``candidate`` resolved outside the environment root."""
     if not candidate.is_relative_to(root):
-        raise EnvironmentPackageError(f"environment path escapes its root: {relative_path}")
+        raise EnvironmentPackageError(f"Environment path escapes its root: {relative_path}")

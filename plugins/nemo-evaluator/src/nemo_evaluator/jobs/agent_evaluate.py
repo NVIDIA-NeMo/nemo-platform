@@ -44,7 +44,6 @@ from nemo_evaluator.jobs.gym_environment_package import (
     ENVIRONMENT_MANIFEST_FILENAME,
     GymEnvironmentPackageError,
     parse_environment_manifest,
-    require_supported_environment_format,
     validate_environment_manifest_against_listing,
 )
 from nemo_evaluator.jobs.gym_sandbox import (
@@ -136,7 +135,7 @@ async def _resolve_gym_environment(
             workspace_fallback=workspace,
         )
     except FilesetPathError as exc:
-        raise ValueError(f"invalid Gym environment FileSet reference: {target.environment.root!r}") from exc
+        raise ValueError(f"Invalid Gym environment FileSet reference: {target.environment.root!r}") from exc
     if file_path:
         raise ValueError("Gym environment FileSet references must not include a file fragment")
 
@@ -152,7 +151,7 @@ async def _resolve_gym_environment(
         raise ValueError(f"Gym environment FileSet {environment_workspace}/{environment_name} does not exist") from exc
     except PermissionDeniedError as exc:
         raise PermissionError(
-            f"access denied to Gym environment FileSet {environment_workspace}/{environment_name}"
+            f"Access denied to Gym environment FileSet {environment_workspace}/{environment_name}"
         ) from exc
 
     # ``purpose=environment`` is what keeps this FileSet off the dataset and model catalogs.
@@ -171,7 +170,7 @@ async def _resolve_gym_environment(
         ).data()
     except PermissionDeniedError as exc:
         raise PermissionError(
-            f"access denied to Gym environment FileSet {environment_workspace}/{environment_name}"
+            f"Access denied to Gym environment FileSet {environment_workspace}/{environment_name}"
         ) from exc
     except NotFoundError as exc:
         raise ValueError(f"Gym environment FileSet {environment_workspace}/{environment_name} does not exist") from exc
@@ -192,7 +191,7 @@ async def _resolve_gym_environment(
         raw_manifest = await manifest_response.read()
     except PermissionDeniedError as exc:
         raise PermissionError(
-            f"access denied to Gym environment FileSet {environment_workspace}/{environment_name}"
+            f"Access denied to Gym environment FileSet {environment_workspace}/{environment_name}"
         ) from exc
     except NotFoundError as exc:
         raise ValueError(
@@ -201,10 +200,8 @@ async def _resolve_gym_environment(
         ) from exc
 
     try:
-        # Listing-only checks: no customer code is imported, and native-v1 is refused here
-        # until it's supported.
+        # Listing-only checks: no customer code is imported.
         manifest = parse_environment_manifest(raw_manifest)
-        require_supported_environment_format(manifest)
         validate_environment_manifest_against_listing(manifest, paths)
     except GymEnvironmentPackageError as exc:
         raise ValueError(
@@ -527,6 +524,11 @@ class AgentEvalJob(NemoJob):
                 raise SandboxUnavailableError(
                     "Gym environment FileSets require sandboxed execution. Enable `sandboxed_gym_default`, "
                     "or omit `target.environment` so colocated GymAgentTaskRunner cannot ignore the staged package."
+                )
+            if target.agent_config is None:
+                raise ValueError(
+                    "The agent_config field is required for colocated Gym execution; package-supplied agents "
+                    "are supported only by the sandboxed Gym host"
                 )
             gym_runtime = GymAgentTaskRunner(
                 config=GymRuntimeConfig(

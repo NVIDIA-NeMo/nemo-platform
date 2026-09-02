@@ -34,6 +34,8 @@ from pydantic import BaseModel, ConfigDict, Field
 #: Env-var names that look like a credential. Used to refuse a sandboxed run that would hand one to
 #: user-supplied environment code through `env_vars`; `env_secrets` is the supported route.
 _CREDENTIAL_PATTERN = re.compile(r"(API_?KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_?KEY)", re.IGNORECASE)
+#: Removed by the Gym host before handing the config to NeMo Gym.
+ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY = "_nmp_environment_component_selection"
 
 
 class SandboxUnavailableError(RuntimeError):
@@ -63,17 +65,17 @@ def gym_global_config(target: GymRunnerTarget) -> dict[str, Any]:
     command line accepts. Here the config *is* a dict, so the nested form is passed through as-is --
     fewer conversions, and no quoting grammar to get wrong.
     """
-    config: dict[str, Any] = {
-        "config_paths": [
-            target.agent_config,
-            _asset_config_path("responses_api_models", target.model_type),
-            _asset_config_path("resources_servers", target.resources_server),
-        ],
-    }
+    model_config = _asset_config_path("responses_api_models", target.model_type)
+    resources_server_config = _asset_config_path("resources_servers", target.resources_server)
+    config_paths = [model_config, resources_server_config]
+    if target.agent_config is not None:
+        config_paths.insert(0, target.agent_config)
+    config: dict[str, Any] = {"config_paths": config_paths}
 
     if target.bind_resources_server:
         # The CLI's `+{agent}.responses_api_agents.{agent}.resources_server.name={server}`, as data.
-        config[target.agent] = {
+        agent_instance = (target.agent_ref_name or target.agent) if target.environment is not None else target.agent
+        config[agent_instance] = {
             "responses_api_agents": {
                 target.agent: {"resources_server": {"name": target.resources_server}},
             }
@@ -85,6 +87,15 @@ def gym_global_config(target: GymRunnerTarget) -> dict[str, Any]:
             config[key] = {**config[key], **value}
         else:
             config[key] = value
+
+    if target.environment is not None:
+        config[ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY] = {
+            "agent_instance": target.agent_ref_name or target.agent,
+            "agent_config": target.agent_config,
+            "resources_server_instance": target.resources_server,
+            "resources_server_config": resources_server_config,
+            "model_config": model_config,
+        }
     return config
 
 

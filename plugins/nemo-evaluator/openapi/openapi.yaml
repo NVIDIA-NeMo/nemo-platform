@@ -3758,16 +3758,19 @@ components:
         environment:
           allOf:
           - $ref: '#/components/schemas/FilesetRef'
-          description: Environment FileSet containing a wheels-v1 Gym package. The
-            complete FileSet is staged read-only; file fragments are not supported.
+          description: Environment FileSet containing a native-v1 or wheels-v1 Gym
+            package. The complete FileSet is staged read-only; file fragments are
+            not supported.
         agent:
           type: string
           title: Agent
           description: Agent name to collect rollouts with, e.g. 'simple_agent'.
         agent_config:
-          type: string
           title: Agent Config
-          description: Repo-relative agent config passed to `gym env start` (--config).
+          description: Repo-relative built-in agent config. Required without an environment
+            FileSet; with a FileSet it is used only when the package does not declare
+            the selected agent instance.
+          type: string
         resources_server:
           type: string
           title: Resources Server
@@ -3862,7 +3865,6 @@ components:
       type: object
       required:
       - agent
-      - agent_config
       - resources_server
       title: GymRunnerTarget
       description: "Generate trials by driving a NeMo Gym environment through the\

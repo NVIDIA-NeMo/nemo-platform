@@ -1,14 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Submit-time Gym environment FileSet contract (wheels-v1 only)."""
+"""Submit-time Gym environment FileSet contract."""
 
 import pytest
 from nemo_evaluator.jobs.gym_environment_package import (
-    NATIVE_V1_UNSUPPORTED_MESSAGE,
     GymEnvironmentPackageError,
     parse_environment_manifest,
-    require_supported_environment_format,
     validate_environment_manifest_against_listing,
 )
 
@@ -37,16 +35,18 @@ WHEELS_LISTING = [
 
 def test_wheels_v1_manifest_is_accepted_against_a_valid_listing() -> None:
     manifest = parse_environment_manifest(WHEELS_MANIFEST)
-    require_supported_environment_format(manifest)
     validate_environment_manifest_against_listing(manifest, WHEELS_LISTING)
 
 
-def test_native_v1_is_parseable_and_rejected_as_unsupported() -> None:
+def test_native_v1_manifest_is_accepted_against_a_valid_listing() -> None:
     manifest = parse_environment_manifest(NATIVE_MANIFEST)
-
-    with pytest.raises(GymEnvironmentPackageError, match="native-v1 environment packages are not supported"):
-        require_supported_environment_format(manifest)
-    assert str(GymEnvironmentPackageError(NATIVE_V1_UNSUPPORTED_MESSAGE)) == NATIVE_V1_UNSUPPORTED_MESSAGE
+    validate_environment_manifest_against_listing(
+        manifest,
+        [
+            "nemo-environment.yaml",
+            "resources_servers/custom/configs/custom.yaml",
+        ],
+    )
 
 
 @pytest.mark.parametrize(
@@ -73,7 +73,7 @@ def test_invalid_manifests_are_rejected(raw_manifest: str) -> None:
                 "resources_servers/custom/configs/custom.yaml",
                 "wheels/requirements.txt",
             ],
-            "non-wheel files",
+            "Non-wheel files",
         ),
         (
             [
@@ -84,7 +84,7 @@ def test_invalid_manifests_are_rejected(raw_manifest: str) -> None:
             ],
             "model configuration is operator-owned",
         ),
-        (["nemo-environment.yaml"], "config_paths reference files that are not in the package"),
+        (["nemo-environment.yaml"], "field references files that are not in the package"),
         (
             [
                 "nemo-environment.yaml",
@@ -92,7 +92,7 @@ def test_invalid_manifests_are_rejected(raw_manifest: str) -> None:
                 "training.jsonl",
                 "wheels/custom_dependency-1.0-py3-none-any.whl",
             ],
-            "prompt JSONL",
+            "Prompt JSONL",
         ),
     ],
 )
