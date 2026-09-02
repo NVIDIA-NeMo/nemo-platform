@@ -59,10 +59,8 @@ describe('TraceSpanTree', () => {
     );
 
     const traceLabel = screen.getByText(LONG_TRACE_NAME, { selector: 'span.truncate' });
-    const tooltip = screen.getByRole('tooltip', { name: LONG_TRACE_NAME });
-    expect(tooltip).toHaveAttribute('data-state', 'closed');
-
     await user.hover(traceLabel);
+    const tooltip = await screen.findByRole('tooltip', { name: LONG_TRACE_NAME });
     expect(tooltip).toHaveAttribute('data-state', 'open');
   });
 });

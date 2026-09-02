@@ -35,6 +35,7 @@ describe('TraceDetailLayout', () => {
     expect(sidebar).toHaveStyle({ width: '500px' });
     expect(resizeHandle).toHaveAttribute('aria-valuenow', '500');
 
+    resizeHandle.focus();
     await user.keyboard('{Home}');
     expect(sidebar).toHaveStyle({ width: '288px' });
 

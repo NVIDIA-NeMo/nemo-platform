@@ -21,7 +21,7 @@ import {
   type SpanTreeNode,
 } from '@studio/util/intakeTelemetry';
 import { MessagesSquare, TriangleAlert, Workflow } from 'lucide-react';
-import { type FC, type ReactNode } from 'react';
+import { type FC, type ReactNode, useState } from 'react';
 
 interface TraceSpanTreeProps {
   /** Session traces and their summary span trajectories. */
@@ -71,12 +71,25 @@ interface SpanTreeLabelProps {
   errored?: boolean;
 }
 
+const SpanTreeName: FC<{ name: string }> = ({ name }) => {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  return (
+    <Tooltip
+      side="right"
+      align="start"
+      className="max-w-[32rem] break-words"
+      slotContent={tooltipOpen ? name : null}
+      onOpenChange={setTooltipOpen}
+    >
+      <span className="flex-1 min-w-0 truncate">{name}</span>
+    </Tooltip>
+  );
+};
+
 /** Shared label layout: name (truncates) + optional error badge + duration. */
 const SpanTreeLabel: FC<SpanTreeLabelProps> = ({ name, durationMs, errored }) => (
   <span className="flex flex-1 items-center gap-2 min-w-0">
-    <Tooltip side="right" align="start" className="max-w-[32rem] break-words" slotContent={name}>
-      <span className="flex-1 min-w-0 truncate">{name}</span>
-    </Tooltip>
+    <SpanTreeName name={name} />
     {errored && (
       <TriangleAlert
         role="img"
