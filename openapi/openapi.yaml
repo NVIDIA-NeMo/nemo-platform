@@ -12168,9 +12168,11 @@ components:
         column_layout:
           allOf:
           - $ref: '#/components/schemas/ColumnLayout'
-          description: Saved column order and column visibility for the experiment's
-            evaluations table. Omit to preserve the existing layout on update; on
-            create, defaults to an empty layout.
+          description: "Saved column order and column visibility for the experiment's\
+            \ evaluations table. Omit to leave the saved layout unchanged; on create\
+            \ that means no layout is saved. An empty order and hidden pair is itself\
+            \ a saved layout \u2014 one that shows every column \u2014 and is distinct\
+            \ from having none."
         is_favorite:
           type: boolean
           title: Is Favorite
@@ -12223,8 +12225,9 @@ components:
         column_layout:
           allOf:
           - $ref: '#/components/schemas/ColumnLayout'
-          description: Saved column order and hidden columns for the experiment's
-            evaluations table. Null when none has been saved.
+          description: Saved column order and column visibility for the experiment's
+            evaluations table. Null when no layout has been saved, which is distinct
+            from a saved layout that hides nothing.
         is_favorite:
           type: boolean
           title: Is Favorite
@@ -12330,9 +12333,11 @@ components:
         column_layout:
           allOf:
           - $ref: '#/components/schemas/ColumnLayout'
-          description: Saved column order and column visibility for the experiment's
-            evaluations table. Omit to preserve the existing layout on update; on
-            create, defaults to an empty layout.
+          description: "Saved column order and column visibility for the experiment's\
+            \ evaluations table. Omit to leave the saved layout unchanged; on create\
+            \ that means no layout is saved. An empty order and hidden pair is itself\
+            \ a saved layout \u2014 one that shows every column \u2014 and is distinct\
+            \ from having none."
         is_favorite:
           type: boolean
           title: Is Favorite

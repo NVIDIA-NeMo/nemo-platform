@@ -61,7 +61,9 @@ class ExperimentRequest(BaseModel):
         default=None,
         description=(
             "Saved column order and column visibility for the experiment's evaluations table. Omit to "
-            "preserve the existing layout on update; on create, defaults to an empty layout."
+            "leave the saved layout unchanged; on create that means no layout is saved. An empty order "
+            "and hidden pair is itself a saved layout — one that shows every column — and is distinct "
+            "from having none."
         ),
     )
     is_favorite: bool = Field(
@@ -195,8 +197,8 @@ class ExperimentResponse(BaseModel):
     column_layout: ColumnLayout | None = Field(
         default=None,
         description=(
-            "Saved column order and hidden columns for the experiment's evaluations table. Null when "
-            "none has been saved."
+            "Saved column order and column visibility for the experiment's evaluations table. Null when "
+            "no layout has been saved, which is distinct from a saved layout that hides nothing."
         ),
     )
     is_favorite: bool = Field(default=False, description="Whether this Experiment is marked as a favorite.")

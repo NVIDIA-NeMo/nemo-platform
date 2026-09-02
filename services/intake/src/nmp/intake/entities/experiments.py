@@ -139,7 +139,7 @@ class ExperimentGroup(EntityBase):
     column_layout: ColumnLayout | None = Field(
         default=None,
         description=(
-            "Saved column order and hidden columns for this group's evaluations table. Null when no "
+            "Saved column order and column visibility for this group's evaluations table. Null when no "
             "layout has been saved, which is distinct from a saved layout that hides nothing: the "
             "client applies its own default hidden columns only in the null case."
         ),
