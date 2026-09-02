@@ -46,10 +46,12 @@ The `Dockerfile` here installs the workspace scoped to the plugin instead
 that a scaled-evals-only API never imports. That is what makes a from-scratch
 build about a minute instead of tens of minutes.
 
-Two packages are installed that the plugin does not depend on:
+Three packages are installed that the plugin does not depend on:
 
 - `nmp-platform-runner` serves the plugin. It is not in the plugin's dependency
   closure because the runner loads plugins, not the reverse.
+- `nemo-platform-ext` implements the `nemo` CLI imported by the SDK wrapper.
+  Release wheels vendor it, but a source-checkout image must install it.
 - `nmp-entities` is needed only because the runner's startup banner imports
   `nmp.core.entities.config` unconditionally without declaring the dependency.
   A full `uv sync` hides that; a scoped install does not.
@@ -62,7 +64,7 @@ Four services are gone because the plugin now does the work itself:
 |---|---|
 | `schema-migrate` | the plugin migrates on startup |
 | `rustfs-init` (`mc mb`) | the plugin creates its bucket on startup |
-| Postgres TLS + `compose-certs` | the DSN only sets `sslmode` when a root cert is configured, so plain local Postgres needs no cert step |
+| Postgres TLS + `compose-certs` | Compose explicitly sets `DATABASE_SSL_MODE=disable` for its loopback-only plaintext Postgres |
 | `harbor-runner`, `gym-runner` | evaluation runtimes are out of Phase 1 scope |
 
 One deliberate substitution: **BuildKit runs privileged here, not rootless.**
@@ -127,6 +129,7 @@ that same `.env`; the notable knobs:
 | Variable | Default | Notes |
 |---|---|---|
 | `API_PORT` | `8080` | |
+| `DATABASE_SSL_MODE` | `disable` | Compose-only default for the local plaintext Postgres service |
 | `CREDENTIALS_ENCRYPTION_KEY` | *(required)* | see above; a real deployment sources this from a secret |
 | `HARBOR_EXTRA_INDEX_URL` | *(required to build)* | index serving `sandbox-k8s`; unused once the image exists |
 | `IMAGE_BUILD_PLATFORM` | *(empty)* | empty builds for the host arch. The setting's own default is `linux/amd64`, which sends every build through QEMU on an arm64 laptop; set it when the image must run on amd64 nodes |

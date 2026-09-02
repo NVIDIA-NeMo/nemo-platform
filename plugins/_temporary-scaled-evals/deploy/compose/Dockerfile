@@ -100,6 +100,10 @@ COPY . /app
 # in the plugin's dependency closure, since the runner loads plugins rather than
 # the other way round. It costs 3 extra packages.
 #
+# nemo-platform-ext owns the implementation imported by the `nemo` SDK wrapper.
+# The SDK aliases it at runtime but does not declare it as a dependency because
+# release wheels vendor the package instead. Source-checkout images need it.
+#
 # nmp-entities is not needed by this plugin at all: the runner's startup banner
 # imports `nmp.core.entities.config` unconditionally to print the database it is
 # using, but does not declare nmp-entities as a dependency. A full `uv sync`
@@ -108,6 +112,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev \
         --package nemo-scaled-evals-plugin \
         --package nmp-platform-runner \
+        --package nemo-platform-ext \
         --package nmp-entities
 
 ENV PATH="/app/.venv/bin:$PATH"

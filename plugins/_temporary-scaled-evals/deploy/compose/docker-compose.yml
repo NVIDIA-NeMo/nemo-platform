@@ -29,6 +29,7 @@ x-scaled-evals-env: &scaled-evals-env
   # the platform's DATABASE_* variables, so the two never share a database even
   # though they share a process.
   SCALED_EVALS_DATABASE_URL: postgresql://${POSTGRES_USER:-scaled_evals}:${POSTGRES_PASSWORD:-scaled_evals}@postgres:5432/${POSTGRES_DB:-scaled_evals}
+  DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-disable}
 
   # Required, with no fallback on purpose. A committed default would mean any
   # stack that forgets to override it encrypts BYOK credentials under a key
