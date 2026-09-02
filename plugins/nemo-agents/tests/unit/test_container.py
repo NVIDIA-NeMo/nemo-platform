@@ -2834,6 +2834,47 @@ class TestFabricWheelInstall:
         assert seen["present"], "LATEST must stage the most recently built wheel"
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_latest_ignores_wheels_from_other_packages(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container import builder
+        from nemo_agents_plugin.container.template import WHEEL_ENV, WHEEL_LATEST
+
+        dist = tmp_path / "dist"
+        dist.mkdir()
+        ours = dist / "nemo_platform-0.4.0-py3-none-any.whl"
+        theirs = dist / "nemo_evaluator-9.9.9-py3-none-any.whl"
+        ours.write_bytes(b"ours")
+        theirs.write_bytes(b"theirs")
+        os.utime(ours, (1, 1))
+        os.utime(theirs, (2, 2))
+        monkeypatch.setattr(builder, "_source_checkout_dist_dir", lambda: dist)
+        monkeypatch.setenv(WHEEL_ENV, WHEEL_LATEST)
+        context = fabric_agent_config.parent
+        seen: dict[str, bool] = {}
+        mock_build.side_effect = lambda **kwargs: seen.setdefault("present", (context / ours.name).exists())
+
+        builder.build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+        assert seen["present"], "a newer wheel from another package must not win the sort"
+        assert not (context / theirs.name).exists()
+
+    def test_latest_with_only_other_packages_wheels_names_the_build_command(
+        self, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container import builder
+        from nemo_agents_plugin.container.template import WHEEL_ENV, WHEEL_LATEST
+
+        dist = tmp_path / "dist"
+        dist.mkdir()
+        (dist / "nemo_evaluator-9.9.9-py3-none-any.whl").write_bytes(b"theirs")
+        monkeypatch.setattr(builder, "_source_checkout_dist_dir", lambda: dist)
+        monkeypatch.setenv(WHEEL_ENV, WHEEL_LATEST)
+
+        with pytest.raises(ValueError, match="no nemo-platform wheels"):
+            builder.build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_an_existing_path_named_latest_is_not_treated_as_the_sentinel(
         self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
