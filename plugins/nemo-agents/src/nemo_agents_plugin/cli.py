@@ -2183,25 +2183,22 @@ def _platform_session_chat(
         )
         return
 
-    if session is not None:
-        deployment, resolved_session, session_id = _resolve_existing_session(
-            base_url=base_url,
-            workspace=workspace,
-            session_name=session,
-        )
-        typer.echo("Resuming runtime context; prior messages are not redisplayed.")
-        _run_resolved_session_chat(
-            base_url=base_url,
-            workspace=workspace,
-            deployment=deployment,
-            session=resolved_session,
-            session_id=session_id,
-            input=input,
-            timeout=timeout,
-        )
-        return
-    typer.echo("Error: Provide exactly one of --agent-deployment or --session.", err=True)
-    raise typer.Exit(code=2)
+    assert session is not None
+    deployment, resolved_session, session_id = _resolve_existing_session(
+        base_url=base_url,
+        workspace=workspace,
+        session_name=session,
+    )
+    typer.echo("Resuming runtime context; prior messages are not redisplayed.")
+    _run_resolved_session_chat(
+        base_url=base_url,
+        workspace=workspace,
+        deployment=deployment,
+        session=resolved_session,
+        session_id=session_id,
+        input=input,
+        timeout=timeout,
+    )
 
 
 def _run_resolved_session_chat(
