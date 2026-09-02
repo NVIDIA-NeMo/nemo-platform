@@ -60,7 +60,7 @@ class ExperimentRequest(BaseModel):
     column_layout: ColumnLayout | None = Field(
         default=None,
         description=(
-            "Saved column order and hidden columns for the experiment's evaluations table. Omit to preserve "
+            "Saved column order and column visiblity for the experiment's evaluations table. "
             "the existing layout on update; on create, defaults to an empty layout."
         ),
     )
