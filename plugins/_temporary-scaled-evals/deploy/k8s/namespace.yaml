@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v1
+kind: Namespace
+metadata:
+  # Not `scaled-evals-*`: that prefix is taken by the live deployment, its
+  # staging release, and CI's per-MR preview namespaces. This one must not be
+  # mistakable for any of them.
+  name: nemo-platform-scaled-evals
+  labels:
+    # Same posture the existing scaled-evals namespaces enforce. Nothing here
+    # needs privileged; the compose stack's privileged BuildKit is absent
+    # because GKE builds through Cloud Build.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

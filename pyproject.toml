@@ -80,6 +80,12 @@ experimentalist = [
   "nemo-eval-author-plugin ; python_full_version < '3.14'",
 ]
 typecheck = ["transformers>=5.5.0,<5.9.0"]
+# The scaled-evals plugin stays out of `enabled-plugins` so a platform install does not
+# pick it up. CI still has to see it, so the lint and pytest entry points ask for this
+# group by name; without it neither the plugin nor psycopg is importable there.
+scaled-evals = [
+  "nemo-scaled-evals-plugin",
+]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
@@ -417,6 +423,7 @@ nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
 
 nemo-evaluator-plugin = { workspace = true }
+nemo-scaled-evals-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
 nemo-auditor-plugin = { workspace = true }
 nemo-safe-synthesizer-plugin = { workspace = true }
@@ -479,6 +486,7 @@ members = [
   "packages/models",
   "plugins/nemo-guardrails",
   "plugins/nemo-evaluator",
+  "plugins/_temporary-scaled-evals",
   "plugins/nemo-auditor",
   "plugins/nemo-safe-synthesizer",
   "plugins/nemo-switchyard",
@@ -698,6 +706,11 @@ exclude = [
   # Standalone agents-under-test: each resolves from its own lockfile inside the
   # benchmark's task containers, so its imports are absent from the workspace env.
   "plugins/nemo-experimentalist/examples/",
+
+  # Source injected into the evaluation harness image at build time, where it
+  # replaces modules of the sandbox library it imports. Nothing imports it from
+  # the control plane, so that library is absent from the workspace env.
+  "plugins/_temporary-scaled-evals/harbor-patches/",
 
   "docs/",
 
