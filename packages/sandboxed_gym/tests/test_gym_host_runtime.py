@@ -5,10 +5,12 @@ import json
 import socket
 import threading
 from http.server import HTTPServer
+from types import ModuleType
 from unittest.mock import MagicMock
 from urllib.parse import urlsplit
 
 import pytest
+from sandboxed_gym.environment_package import WHEELS_V1_SUBDIR
 from sandboxed_gym.runtime import gym_host_runtime as runtime
 
 
@@ -297,3 +299,226 @@ def test_identity_survives_the_http_boundary(ready_server):
 def test_a_non_mapping_result_is_left_alone(result):
     # The helper's result shape is Gym's to define; this must not assume it is always a dict.
     assert runtime._with_row_identity(result, {"_ng_task_index": 1}) is result
+
+
+# --------------------------------------------------------------------------------------------
+# wheels-v1 dependency install
+# --------------------------------------------------------------------------------------------
+
+
+def _write_manifest(env_dir, **fields):
+    import yaml
+
+    fields.setdefault("config_paths", ["resources_servers/test/configs/test.yaml"])
+    fields.setdefault("metadata", {"name": "test-environment"})
+    for relative_path in fields["config_paths"]:
+        config = env_dir / relative_path
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text("test: {}\n", encoding="utf-8")
+    manifest_path = env_dir / runtime.ENVIRONMENT_MANIFEST_FILENAME
+    manifest_path.write_text(yaml.safe_dump(fields), encoding="utf-8")
+
+
+def test_no_manifest_is_a_no_op(tmp_path, monkeypatch):
+    # Image-provided environments have no manifest and must retain the existing startup behavior.
+    assert runtime._load_runtime_environment_package(str(tmp_path), required=False) is None
+
+
+def test_no_environment_path_is_a_no_op(monkeypatch):
+    # Curated Gym configurations can run without mounting a custom environment.
+    assert runtime._load_runtime_environment_package("", required=False) is None
+
+
+def test_explicit_environment_requires_a_manifest(tmp_path):
+    with pytest.raises(RuntimeError, match="missing required manifest"):
+        runtime._load_runtime_environment_package(str(tmp_path), required=True)
+
+
+def test_native_v1_is_rejected_as_unsupported(tmp_path, monkeypatch):
+    _write_manifest(tmp_path, format="native-v1")
+
+    with pytest.raises(RuntimeError, match="native-v1 environment packages are not supported"):
+        runtime._load_runtime_environment_package(str(tmp_path), required=True)
+
+
+def test_wheels_v1_with_no_wheels_directory_raises(tmp_path):
+    # Declaring wheels-v1 without its required wheelhouse indicates an incomplete bundle.
+    _write_manifest(tmp_path, format="wheels-v1")
+
+    with pytest.raises(RuntimeError, match="invalid Gym environment package"):
+        runtime._load_runtime_environment_package(str(tmp_path), required=True)
+
+
+def test_wheels_v1_with_an_empty_wheels_directory_raises(tmp_path):
+    # An empty wheelhouse is invalid for the same reason as a missing one.
+    _write_manifest(tmp_path, format="wheels-v1")
+    (tmp_path / WHEELS_V1_SUBDIR).mkdir()
+
+    with pytest.raises(RuntimeError, match="non-empty wheels/ directory"):
+        runtime._load_runtime_environment_package(str(tmp_path), required=True)
+
+
+def test_malformed_manifest_fails_before_gym_startup(tmp_path):
+    (tmp_path / runtime.ENVIRONMENT_MANIFEST_FILENAME).write_text("format: [native-v1\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="nemo-environment.yaml is not valid YAML"):
+        runtime._load_runtime_environment_package(str(tmp_path), required=True)
+
+
+def test_wheels_v1_installs_every_wheel_with_no_index_access(tmp_path, monkeypatch):
+    # Model the fixed bundle layout: manifest at the root and wheels in the sibling `wheels/`.
+    _write_manifest(tmp_path, format="wheels-v1")
+    wheels_dir = tmp_path / WHEELS_V1_SUBDIR
+    work_dir = tmp_path / "work"
+    wheels_dir.mkdir()
+    (wheels_dir / "a_dep-1.0-py3-none-any.whl").write_bytes(b"")
+    (wheels_dir / "b_dep-2.0-py3-none-any.whl").write_bytes(b"")
+
+    # Capture the uv command without trying to install these intentionally empty wheel fixtures.
+    calls = []
+    monkeypatch.setattr(runtime.subprocess, "run", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setenv("PYTHONPATH", "/image/packages")
+    monkeypatch.setattr(runtime.sys, "path", runtime.sys.path.copy())
+
+    package = runtime._load_runtime_environment_package(str(tmp_path), required=True)
+    runtime._install_wheels_v1_dependencies(package, str(work_dir))
+
+    assert len(calls) == 1
+    (args,), kwargs = calls[0]
+    install_dir = work_dir / runtime.WHEELS_V1_INSTALL_SUBDIR
+    assert args[:10] == [
+        "uv",
+        "pip",
+        "install",
+        "--target",
+        str(install_dir),
+        "--no-index",
+        "--only-binary",
+        ":all:",
+        "--find-links",
+        str(wheels_dir),
+    ]
+    # Every .whl is installed explicitly.
+    assert args[10:] == [
+        str(wheels_dir / "a_dep-1.0-py3-none-any.whl"),
+        str(wheels_dir / "b_dep-2.0-py3-none-any.whl"),
+    ]
+    assert kwargs == {"check": True}
+    assert install_dir.is_dir()
+    assert runtime.os.environ[runtime.UV_FIND_LINKS_ENV_KEY] == str(wheels_dir)
+    # Child processes and the already-running host both prefer staged packages over image packages.
+    assert runtime.os.environ["PYTHONPATH"] == f"{install_dir}{runtime.os.pathsep}/image/packages"
+    assert runtime.sys.path[0] == str(install_dir)
+
+
+def test_bootstrap_preserves_caller_config_paths_with_a_wheels_package(monkeypatch):
+    events = []
+    captured: dict[str, object] = {}
+
+    class FakeRunHelper:
+        def start(self, config):
+            captured["config"] = config
+            events.append("gym-started")
+
+    class FakeBaseServerConfig:
+        def __init__(self, *, host, port):
+            self.host = host
+            self.port = port
+
+    fake_modules = {
+        "nemo_gym": ModuleType("nemo_gym"),
+        "nemo_gym.cli": ModuleType("nemo_gym.cli"),
+        "nemo_gym.cli.env": ModuleType("nemo_gym.cli.env"),
+        "nemo_gym.global_config": ModuleType("nemo_gym.global_config"),
+        "nemo_gym.server_utils": ModuleType("nemo_gym.server_utils"),
+        "omegaconf": ModuleType("omegaconf"),
+    }
+    setattr(fake_modules["nemo_gym.cli.env"], "RunHelper", FakeRunHelper)
+    setattr(fake_modules["nemo_gym.global_config"], "GlobalConfigDictParserConfig", lambda **kwargs: kwargs)
+    setattr(fake_modules["nemo_gym.server_utils"], "BaseServerConfig", FakeBaseServerConfig)
+    setattr(fake_modules["omegaconf"], "DictConfig", lambda value: value)
+    for name, module in fake_modules.items():
+        monkeypatch.setitem(runtime.sys.modules, name, module)
+
+    caller_paths = ["responses_api_agents/simple_agent/configs/simple_agent.yaml"]
+    monkeypatch.setattr(runtime, "_load_global_config_dict", lambda: {"config_paths": list(caller_paths)})
+    monkeypatch.setattr(runtime, "_apply_uv_dirs", lambda config: None)
+    monkeypatch.setattr(runtime, "_allocate_head_server_port", lambda config: 5000)
+    monkeypatch.setattr(runtime, "_create_rollout_helper", lambda: "rollout-helper")
+    package = object()
+    monkeypatch.setattr(
+        runtime,
+        "_load_runtime_environment_package",
+        lambda environment_path, required: events.append("environment-validated") or package,
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_install_wheels_v1_dependencies",
+        lambda loaded_package, work_path: events.append("wheels-installed") if loaded_package is package else None,
+    )
+    monkeypatch.setenv("NMP_ENVIRONMENT_PATH", "/job/environment")
+    monkeypatch.setenv(runtime.ENVIRONMENT_PACKAGE_REQUIRED_ENV_KEY, "true")
+    monkeypatch.setenv("NMP_WORK_PATH", "/job/work")
+
+    runtime.bootstrap_gym_host()
+
+    assert events == ["environment-validated", "wheels-installed", "gym-started"]
+    assert captured["config"]["initial_global_config_dict"]["config_paths"] == caller_paths
+
+
+def test_bootstrap_installs_wheels_before_starting_gym(monkeypatch):
+    # Record bootstrap milestones so the assertion verifies ordering rather than only invocation.
+    events = []
+
+    class FakeRunHelper:
+        def start(self, config):
+            events.append("gym-started")
+
+    class FakeBaseServerConfig:
+        def __init__(self, *, host, port):
+            self.host = host
+            self.port = port
+
+    # NeMo-Gym is supplied by the runtime image rather than this test environment, so provide only
+    # the small API surface bootstrap imports.
+    fake_modules = {
+        "nemo_gym": ModuleType("nemo_gym"),
+        "nemo_gym.cli": ModuleType("nemo_gym.cli"),
+        "nemo_gym.cli.env": ModuleType("nemo_gym.cli.env"),
+        "nemo_gym.global_config": ModuleType("nemo_gym.global_config"),
+        "nemo_gym.server_utils": ModuleType("nemo_gym.server_utils"),
+        "omegaconf": ModuleType("omegaconf"),
+    }
+    setattr(fake_modules["nemo_gym.cli.env"], "RunHelper", FakeRunHelper)
+    setattr(fake_modules["nemo_gym.global_config"], "GlobalConfigDictParserConfig", lambda **kwargs: kwargs)
+    setattr(fake_modules["nemo_gym.server_utils"], "BaseServerConfig", FakeBaseServerConfig)
+    setattr(fake_modules["omegaconf"], "DictConfig", lambda value: value)
+    for name, module in fake_modules.items():
+        monkeypatch.setitem(runtime.sys.modules, name, module)
+
+    monkeypatch.setattr(runtime, "_load_global_config_dict", lambda: {})
+    monkeypatch.setattr(runtime, "_apply_uv_dirs", lambda config: None)
+    monkeypatch.setattr(runtime, "_allocate_head_server_port", lambda config: 5000)
+    monkeypatch.setattr(runtime, "_create_rollout_helper", lambda: "rollout-helper")
+    package = object()
+    monkeypatch.setattr(
+        runtime,
+        "_load_runtime_environment_package",
+        lambda environment_path, required: events.append("environment-validated") or package,
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_install_wheels_v1_dependencies",
+        lambda loaded_package, work_path: events.append("wheels-installed") if loaded_package is package else None,
+    )
+    monkeypatch.setenv("NMP_ENVIRONMENT_PATH", "/job/environment")
+    monkeypatch.setenv(runtime.ENVIRONMENT_PACKAGE_REQUIRED_ENV_KEY, "true")
+    monkeypatch.setenv("NMP_WORK_PATH", "/job/work")
+
+    _, head_server_config, rollout_helper = runtime.bootstrap_gym_host()
+
+    # Dependencies must be ready before RunHelper starts any Gym servers.
+    assert events == ["environment-validated", "wheels-installed", "gym-started"]
+    assert head_server_config.host == "127.0.0.1"
+    assert head_server_config.port == 5000
+    assert rollout_helper == "rollout-helper"

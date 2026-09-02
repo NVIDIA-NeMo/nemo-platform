@@ -25,6 +25,8 @@ from urllib.parse import urlsplit
 
 import nemo_evaluator.agent_seeds  # noqa: F401 - registers the platform 'fileset' workspace-seed handler
 from nemo_evaluator.api.schemas import MetricInline
+from nemo_evaluator.config import EvaluatorConfig
+from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.agent_compiler import compile_agent_eval_job
 from nemo_evaluator.jobs.agent_spec import (
     AgentEvalInputSpec,
@@ -37,7 +39,20 @@ from nemo_evaluator.jobs.agent_spec import (
     ModelTarget,
     Target,
 )
-from nemo_evaluator.jobs.gym_sandbox import SessionBackedGymRunner, sandbox_plan_from_environment
+from nemo_evaluator.jobs.gym_environment_package import (
+    ENVIRONMENT_MANIFEST_FILENAME,
+    GymEnvironmentPackageError,
+    parse_environment_manifest,
+    require_supported_environment_format,
+    validate_environment_manifest_against_listing,
+)
+from nemo_evaluator.jobs.gym_sandbox import (
+    SandboxUnavailableError,
+    SessionBackedGymRunner,
+    require_fileset_environment_sandboxed,
+    require_fileset_sandbox_storage_identity,
+    sandbox_plan_from_environment,
+)
 from nemo_evaluator.jobs.metric_resolution import resolve_metrics_to_inline, to_runtime_bundle
 from nemo_evaluator.jobs.publication import publish_agent_eval_result
 from nemo_evaluator.jobs.result_persistence import persist_agent_eval_result
@@ -53,15 +68,25 @@ from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import RunConfigOnline, RunConfigOnlineModel
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
+from nemo_platform_plugin.client.errors import (
+    InternalServerError,
+    NemoResponseValidationError,
+    NemoTransportError,
+    NotFoundError,
+    PermissionDeniedError,
+)
 from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.files.client import AsyncFilesClient
+from nemo_platform_plugin.files.types import FilesetPurpose
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec, SubprocessExecutionProviderSpec
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
 from nemo_platform_plugin.jobs.execution_profiles import SubprocessJobExecutionProfile
+from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -90,6 +115,103 @@ def _harbor_dependency_unavailable(profile: str) -> PlatformJobDependencyUnavail
         f"Unable to resolve execution profile '{profile}': the Jobs service is temporarily unavailable. "
         "Retry the submission."
     )
+
+
+async def _resolve_gym_environment(
+    target: Target | None,
+    *,
+    workspace: str,
+    async_sdk: AsyncNeMoPlatform | None,
+) -> Target | None:
+    """Validate and qualify a Gym environment FileSet through the Files service."""
+    if not isinstance(target, GymRunnerTarget) or target.environment is None:
+        return target
+    if async_sdk is None:
+        raise ValueError("Gym environment FileSet references require a platform connection")
+
+    # Qualify ``workspace/name`` now so later steps do not re-parse a relative or fragmented ref.
+    try:
+        environment_workspace, environment_name, file_path = parse_fileset_ref(
+            target.environment.root,
+            workspace_fallback=workspace,
+        )
+    except FilesetPathError as exc:
+        raise ValueError(f"invalid Gym environment FileSet reference: {target.environment.root!r}") from exc
+    if file_path:
+        raise ValueError("Gym environment FileSet references must not include a file fragment")
+
+    files = client_from_platform(async_sdk, AsyncFilesClient)
+    try:
+        environment = (
+            await files.get_fileset(
+                workspace=environment_workspace,
+                name=environment_name,
+            )
+        ).data()
+    except NotFoundError as exc:
+        raise ValueError(f"Gym environment FileSet {environment_workspace}/{environment_name} does not exist") from exc
+    except PermissionDeniedError as exc:
+        raise PermissionError(
+            f"access denied to Gym environment FileSet {environment_workspace}/{environment_name}"
+        ) from exc
+
+    # ``purpose=environment`` is what keeps this FileSet off the dataset and model catalogs.
+    if environment.purpose != FilesetPurpose.ENVIRONMENT:
+        raise ValueError(
+            f"Gym environment FileSet {environment_workspace}/{environment_name} has purpose "
+            f"{environment.purpose.value!r}; expected {FilesetPurpose.ENVIRONMENT.value!r}"
+        )
+
+    try:
+        listing = (
+            await files.list_files(
+                workspace=environment_workspace,
+                name=environment_name,
+            )
+        ).data()
+    except PermissionDeniedError as exc:
+        raise PermissionError(
+            f"access denied to Gym environment FileSet {environment_workspace}/{environment_name}"
+        ) from exc
+    except NotFoundError as exc:
+        raise ValueError(f"Gym environment FileSet {environment_workspace}/{environment_name} does not exist") from exc
+
+    paths = {item.path for item in listing.data}
+    if ENVIRONMENT_MANIFEST_FILENAME not in paths:
+        raise ValueError(
+            f"Gym environment FileSet {environment_workspace}/{environment_name} has no "
+            f"{ENVIRONMENT_MANIFEST_FILENAME} at its root"
+        )
+
+    try:
+        manifest_response = await files.download_file(
+            workspace=environment_workspace,
+            name=environment_name,
+            path=ENVIRONMENT_MANIFEST_FILENAME,
+        )
+        raw_manifest = await manifest_response.read()
+    except PermissionDeniedError as exc:
+        raise PermissionError(
+            f"access denied to Gym environment FileSet {environment_workspace}/{environment_name}"
+        ) from exc
+    except NotFoundError as exc:
+        raise ValueError(
+            f"Gym environment FileSet {environment_workspace}/{environment_name} has no "
+            f"{ENVIRONMENT_MANIFEST_FILENAME} at its root"
+        ) from exc
+
+    try:
+        # Listing-only checks: no customer code is imported, and native-v1 is refused here
+        # until it's supported.
+        manifest = parse_environment_manifest(raw_manifest)
+        require_supported_environment_format(manifest)
+        validate_environment_manifest_against_listing(manifest, paths)
+    except GymEnvironmentPackageError as exc:
+        raise ValueError(
+            f"Gym environment FileSet {environment_workspace}/{environment_name} is not a valid package: {exc}"
+        ) from exc
+
+    return target.model_copy(update={"environment": FilesetRef(root=f"{environment_workspace}/{environment_name}")})
 
 
 #: Identity headers forwarded from the job's platform SDK to online inference so a platform-routed
@@ -191,9 +313,14 @@ class AgentEvalJob(NemoJob):
                     metadata=task.metadata,
                 )
             )
+        resolved_target = await _resolve_gym_environment(
+            submit_spec.target,
+            workspace=workspace,
+            async_sdk=async_sdk,
+        )
         return AgentEvalSpec(
             tasks=resolved_tasks,
-            target=submit_spec.target,
+            target=resolved_target,
             trials=submit_spec.trials,
             max_concurrent_tasks=submit_spec.max_concurrent_tasks,
             fail_fast=submit_spec.fail_fast,
@@ -214,8 +341,24 @@ class AgentEvalJob(NemoJob):
         options: dict | None = None,
     ) -> PlatformJobSpec:
         """Compile the canonical spec into a plugin-native agent-evaluation job."""
-        del workspace, entity_client, job_name, options
+        del entity_client, job_name, options
         canonical_spec = spec if isinstance(spec, AgentEvalSpec) else AgentEvalSpec.model_validate(spec.model_dump())
+        if isinstance(canonical_spec.target, GymRunnerTarget) and canonical_spec.target.environment is not None:
+            evaluator_config = EvaluatorConfig()
+            try:
+                require_fileset_environment_sandboxed(canonical_spec.target, evaluator_config)
+                execution_profile = await cls._execution_profile_for_storage(
+                    async_sdk=async_sdk,
+                    profile=profile or "default",
+                )
+                require_fileset_sandbox_storage_identity(
+                    canonical_spec.target,
+                    evaluator_config,
+                    execution_profile=execution_profile,
+                )
+            except SandboxUnavailableError as exc:
+                raise PlatformJobCompilationError(str(exc)) from exc
+        del workspace
         platform_spec = compile_agent_eval_job(canonical_spec, profile=profile)
         if isinstance(canonical_spec.target, HarborRunnerTarget):
             step = next(iter(platform_spec["steps"]))
@@ -225,6 +368,21 @@ class AgentEvalJob(NemoJob):
                 async_sdk=async_sdk,
             )
         return platform_spec
+
+    @staticmethod
+    async def _execution_profile_for_storage(
+        *,
+        async_sdk: AsyncNeMoPlatform | None,
+        profile: str,
+    ) -> BaseExecutionProfile | None:
+        """Look up the selected execution profile so FileSet staging can share its PVC."""
+        if async_sdk is None:
+            return None
+        try:
+            profiles = (await client_from_platform(async_sdk, AsyncJobsClient).get_execution_profiles()).data()
+        except (NemoTransportError, NemoResponseValidationError, InternalServerError):
+            return None
+        return next((item for item in profiles if item.profile == profile), None)
 
     @staticmethod
     async def _resolve_harbor_subprocess_executor(
@@ -353,9 +511,22 @@ class AgentEvalJob(NemoJob):
             plan = sandbox_plan_from_environment()
             if plan is not None:
                 return (
-                    SessionBackedGymRunner(target=target, plan=plan, job_id=ctx.job_id),
+                    SessionBackedGymRunner(
+                        target=target,
+                        plan=plan,
+                        job_id=ctx.job_id,
+                        workspace=ctx.workspace,
+                        persistent_storage_path=ctx.storage.persistent,
+                    ),
                     None,
                     None,
+                )
+            if target.environment is not None:
+                # Colocated GymAgentTaskRunner ignores a staged FileSet. A missing plan here means
+                # the compiler did not sandbox the run, so refuse rather than evaluate the image.
+                raise SandboxUnavailableError(
+                    "Gym environment FileSets require sandboxed execution. Enable `sandboxed_gym_default`, "
+                    "or omit `target.environment` so colocated GymAgentTaskRunner cannot ignore the staged package."
                 )
             gym_runtime = GymAgentTaskRunner(
                 config=GymRuntimeConfig(
