@@ -98,7 +98,14 @@ export const useAgentDetails = ({
       page_size: RECENT_EVAL_LIMIT,
       sort: '-created_at',
     },
-    { query: { enabled: !!agentName && !!workspace } }
+    {
+      query: {
+        enabled: !!agentName && !!workspace,
+        // The jobs query stops polling once nothing is live, which is when a run's results are
+        // still on their way to Intake, so this one has to keep looking on its own.
+        refetchInterval: JOB_POLLING_INTERVAL_LONG,
+      },
+    }
   );
 
   const { data: agentJobsData } = useQuery({
