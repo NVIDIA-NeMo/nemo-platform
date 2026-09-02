@@ -379,6 +379,26 @@ def test_chat_interactive_with_prompt_sends_initial_message_then_prompts(runner:
     assert captured_messages == [{"role": "user", "content": "hi"}]
 
 
+@pytest.mark.parametrize("exception", [KeyboardInterrupt, EOFError])
+def test_chat_interactive_interrupt_during_initial_response_exits_gracefully(
+    runner: CliRunner, exception: type[BaseException]
+) -> None:
+    response = _mock_streaming_response("unused")
+    response.iter_bytes.side_effect = exception
+    mock_client = _mock_client_with_openai_response(response)
+
+    with (
+        patch("nemo_platform_ext.cli.core.context.CLIContext.get_client", return_value=mock_client),
+        patch("nemo_platform_ext.cli.commands.use_cases.chat._is_interactive_chat_session", return_value=True),
+        patch("nemo_platform_ext.cli.chat_tui.Prompt.ask") as mock_prompt,
+    ):
+        result = runner.invoke(app, ["chat", "my-model", "hi", "--interactive"])
+
+    assert result.exit_code == 0
+    assert "Chat session ended" in result.stdout
+    mock_prompt.assert_not_called()
+
+
 def test_chat_interactive_preserves_model_history_across_shared_tui_turns(runner: CliRunner) -> None:
     """The shared TUI must leave model transcript management with the model-chat command."""
     responses = [_mock_streaming_response("hello"), _mock_streaming_response("follow-up answer")]
@@ -409,6 +429,31 @@ def test_chat_interactive_preserves_model_history_across_shared_tui_turns(runner
             {"role": "assistant", "content": "hello"},
             {"role": "user", "content": "What did I just say?"},
         ],
+    ]
+
+
+def test_chat_interactive_discards_user_turn_after_empty_response(runner: CliRunner) -> None:
+    responses = [_mock_streaming_response(), _mock_streaming_response("answer")]
+    mock_client = _mock_client_with_openai_response(responses[0])
+    captured_messages: list[list[dict[str, str]]] = []
+
+    def capture_post(**kwargs):
+        captured_messages.append(deepcopy(kwargs["body"]["messages"]))
+        return responses[len(captured_messages) - 1]
+
+    mock_client.inference.gateway.openai.with_streaming_response.post.side_effect = capture_post
+
+    with (
+        patch("nemo_platform_ext.cli.core.context.CLIContext.get_client", return_value=mock_client),
+        patch("nemo_platform_ext.cli.commands.use_cases.chat._is_interactive_chat_session", return_value=True),
+        patch("nemo_platform_ext.cli.chat_tui.Prompt.ask", side_effect=["second turn", KeyboardInterrupt]),
+    ):
+        result = runner.invoke(app, ["chat", "my-model", "empty turn", "--interactive"])
+
+    assert result.exit_code == 0
+    assert captured_messages == [
+        [{"role": "user", "content": "empty turn"}],
+        [{"role": "user", "content": "second turn"}],
     ]
 
 

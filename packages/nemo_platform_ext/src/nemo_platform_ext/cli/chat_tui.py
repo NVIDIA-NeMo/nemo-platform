@@ -134,15 +134,15 @@ def run_chat_tui(
         last_thinking_content = ""
         thinking_displayed = False
 
-        if initial_message:
-            result = _process_user_message(initial_message, send_turn)
-            if result:
-                assistant_message, last_thinking_content = result
-                if record_assistant_message is not None:
-                    record_assistant_message(assistant_message)
+        try:
+            if initial_message:
+                result = _process_user_message(initial_message, send_turn)
+                if result:
+                    assistant_message, last_thinking_content = result
+                    if record_assistant_message is not None:
+                        record_assistant_message(assistant_message)
 
-        while True:
-            try:
+            while True:
                 console.print()
                 user_input = Prompt.ask("[bold cyan]You[/bold cyan]", console=console).strip()
 
@@ -168,8 +168,8 @@ def run_chat_tui(
                     if record_assistant_message is not None:
                         record_assistant_message(assistant_message)
 
-            except (KeyboardInterrupt, EOFError):
-                _exit_gracefully()
+        except (KeyboardInterrupt, EOFError):
+            _exit_gracefully()
 
     finally:
         root_logger.setLevel(initial_level)

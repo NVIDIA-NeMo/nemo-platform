@@ -349,8 +349,11 @@ def _run_chat_session(
     history: list[ChatMessage] = []
     if system_message:
         history.append({"role": "system", "content": system_message})
+    current_user_input = ""
 
     def send_turn(user_input: str) -> StreamingResponse:
+        nonlocal current_user_input
+        current_user_input = user_input
         return _create_one_shot_response(
             user_input,
             history,
@@ -361,7 +364,12 @@ def _run_chat_session(
         )
 
     def record_assistant_message(assistant_message: str) -> None:
-        history.append({"role": "assistant", "content": assistant_message})
+        history.extend(
+            [
+                {"role": "user", "content": current_user_input},
+                {"role": "assistant", "content": assistant_message},
+            ]
+        )
 
     run_chat_tui(
         send_turn=send_turn,
@@ -383,10 +391,9 @@ def _create_one_shot_response(
     max_tokens: int | None,
 ) -> StreamingResponse:
     """Build and send one chat request."""
-    history.append({"role": "user", "content": user_input})
     body = build_kwargs(
         model=model_for_body,
-        messages=history,
+        messages=[*history, {"role": "user", "content": user_input}],
         stream=True,
         temperature=temperature,
         max_tokens=max_tokens,
