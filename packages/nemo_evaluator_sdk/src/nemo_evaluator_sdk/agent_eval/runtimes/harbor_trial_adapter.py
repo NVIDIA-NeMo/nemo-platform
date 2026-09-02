@@ -37,6 +37,11 @@ from nemo_evaluator_sdk.values.evidence import (
     Trajectory,
     read_atif,
 )
+from nemo_evaluator_sdk.values.otlp import (
+    export_request_from_resource_spans,
+    final_output_text,
+    resource_spans_from_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +84,6 @@ def _trial_from_harbor_result(
     data: Mapping[str, Any],
     *,
     reward_key: str,
-    trace_format: Literal["otlp", "atif"] = EVIDENCE_FORMAT_ATIF,
 ) -> AgentEvalTrial:
     """Normalize one completed Harbor attempt into an SDK trial.
 
@@ -87,8 +91,6 @@ def _trial_from_harbor_result(
         trial_dir: Directory containing the Harbor attempt result and evidence files.
         data: Parsed contents of the attempt's ``result.json`` file.
         reward_key: Verifier reward name to expose as the trial's primary reward.
-        trace_format: Trace format whose first discovered artifact should be exposed
-            under the standard ``trace`` evidence key.
 
     Returns:
         The normalized trial, including its identity, reward, error, measurements,
@@ -111,7 +113,7 @@ def _trial_from_harbor_result(
     # as 0 and counted in the summary; FAILED would exclude it from scoring.
     status = AgentEvalTrialStatus.COMPLETED if error is None and reward is not None else AgentEvalTrialStatus.PARTIAL
 
-    extension_descriptors, selected_trace = _harbor_extension_evidence(trial_dir, trace_format=trace_format)
+    extension_descriptors, selected_trace = _harbor_extension_evidence(trial_dir)
     descriptors = standard_evidence_descriptors(
         logs_dir=(trial_dir / "agent").resolve(),
         final_state_dir=(trial_dir / "artifacts").resolve(),
@@ -126,7 +128,7 @@ def _trial_from_harbor_result(
         task_id=task_id,
         status=status,
         output=AgentOutput(
-            output_text=_final_agent_message(_agent_trajectory(trial_dir, selected_trace)),
+            output_text=_trial_output_text(descriptors),
             metadata={"harbor_trial_dir": str(trial_dir)},
         ),
         evidence=CandidateEvidence(descriptors=descriptors),
@@ -135,13 +137,33 @@ def _trial_from_harbor_result(
     )
 
 
-def _agent_trajectory(trial_dir: Path, selected_trace: EvidenceDescriptor | None) -> Trajectory | None:
-    """The trial's ATIF trajectory, from the selected trace or Harbor's built-in dump."""
-    if selected_trace is not None and selected_trace.format == EVIDENCE_FORMAT_ATIF:
-        return read_atif(Path(selected_trace.ref))
-    # Only agents with SUPPORTS_ATIF write this file, so its absence is normal: oracle and nop
-    # never produce one.
-    return read_atif(trial_dir / "agent" / "trajectory.json")
+def _trial_output_text(descriptors: Mapping[str, EvidenceDescriptor]) -> str | None:
+    """The agent's answer for the trial, from its OTLP trace when that carries one.
+
+    ATIF remains the fallback because an agent may emit no OTLP trace, and OTLP spans
+    that carry no output attribute yield nothing to read. Both being absent is normal:
+    oracle and nop produce neither.
+    """
+    otlp_trace = descriptors.get(f"{EVIDENCE_TRACE}:{EVIDENCE_FORMAT_OTLP}")
+    if otlp_trace is not None and otlp_trace.ref is not None:
+        answer = _otlp_final_message(Path(otlp_trace.ref))
+        if answer:
+            return answer
+
+    atif_trace = descriptors.get(f"{EVIDENCE_TRACE}:{EVIDENCE_FORMAT_ATIF}")
+    if atif_trace is None or atif_trace.ref is None:
+        return None
+    return _final_agent_message(read_atif(Path(atif_trace.ref)))
+
+
+def _otlp_final_message(path: Path) -> str | None:
+    """The answer recorded on an OTLP trace file, or ``None`` when it cannot be read."""
+    try:
+        resource_spans = resource_spans_from_text(path.read_text(encoding="utf-8"))
+        return final_output_text(export_request_from_resource_spans(resource_spans))
+    except (OSError, ValueError) as error:
+        logger.warning("Ignoring unreadable OTLP trace %s: %s", path, error)
+        return None
 
 
 def _final_agent_message(trajectory: Trajectory | None) -> str | None:
@@ -250,23 +272,22 @@ def _display_artifact_path(relative_path: Path) -> Path:
 
 def _harbor_extension_evidence(
     trial_dir: Path,
-    *,
-    trace_format: Literal["otlp", "atif"],
 ) -> tuple[dict[str, EvidenceDescriptor], EvidenceDescriptor | None]:
-    """Describe every Harbor trial file and select the standard trace.
+    """Describe every Harbor trial file and pick the standard trace.
 
     Every discovered file remains available through an extension evidence key.
-    The first trace matching ``trace_format`` is additionally returned for the
-    standard ``trace`` key. Harbor's built-in ATIF dump ``agent/trajectory.json``
-    is used as a fallback when no path-declared ATIF file is present.
+    The first trace of each encoding is additionally registered under ``trace:atif``
+    and ``trace:otlp``, so a metric can read either view of a trial that emits both.
+    OTLP is returned for the standard ``trace`` key when present, otherwise ATIF.
+    Harbor's built-in ATIF dump ``agent/trajectory.json`` is used as a fallback when
+    no path-declared ATIF file is present.
 
     Args:
         trial_dir: Harbor attempt directory to inspect recursively.
-        trace_format: Trace encoding to expose through the standard ``trace`` key.
 
     Returns:
-        A pair containing all discovered extension descriptors and the selected
-        standard trace descriptor, or ``None`` when no matching trace exists.
+        A pair containing all discovered extension descriptors and the standard trace
+        descriptor, or ``None`` when the trial has no trace at all.
     """
     descriptors: dict[str, EvidenceDescriptor] = {
         "trial_dir": EvidenceDescriptor(
@@ -407,24 +428,16 @@ def _harbor_extension_evidence(
             descriptor=descriptor,
         )
 
-    selected = collected_traces[trace_format]
-    if selected is None and trace_format == EVIDENCE_FORMAT_ATIF:
-        selected = legacy_atif
-    other_format = EVIDENCE_FORMAT_OTLP if trace_format == EVIDENCE_FORMAT_ATIF else EVIDENCE_FORMAT_ATIF
-    other = collected_traces[other_format]
-    if other is None and other_format == EVIDENCE_FORMAT_ATIF:
-        other = legacy_atif
-    if selected is None and other is not None:
-        logger.warning(
-            "Trial %s: configured trace_format='%s' matched no trace artifact, but %s artifacts are present. "
-            "This trial will have no trace — set trace_format='%s' if the agent under test emits %s.",
-            trial_dir.name,
-            trace_format,
-            other_format,
-            other_format,
-            other_format.upper(),
-        )
-    return descriptors, selected
+    atif_trace = collected_traces[EVIDENCE_FORMAT_ATIF]
+    if atif_trace is None:
+        atif_trace = legacy_atif
+    otlp_trace = collected_traces[EVIDENCE_FORMAT_OTLP]
+    for evidence_format, descriptor in ((EVIDENCE_FORMAT_ATIF, atif_trace), (EVIDENCE_FORMAT_OTLP, otlp_trace)):
+        if descriptor is not None:
+            descriptors[f"{EVIDENCE_TRACE}:{evidence_format}"] = descriptor
+
+    # OTLP carries span timing and concurrency that ATIF's turn shape cannot represent.
+    return descriptors, otlp_trace if otlp_trace is not None else atif_trace
 
 
 def _rewards_mapping(data: Mapping[str, Any]) -> dict[str, float]:

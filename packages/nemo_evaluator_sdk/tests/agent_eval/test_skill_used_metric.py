@@ -90,12 +90,49 @@ async def test_present_not_used_when_trajectory_ignores_the_skill() -> None:
 
 
 @pytest.mark.asyncio
-async def test_present_and_used_when_otlp_payload_reads_the_skill() -> None:
+async def test_present_and_used_when_only_an_otlp_trace_reads_the_skill() -> None:
     sample = {
         "skills": [_PROV],
         "evidence": _otlp_evidence(f'{{"path": "{_LOCATION}/SKILL.md"}}'),
     }
     assert await _score(sample) == {"skill_present": True, "skill_used": True}
+
+
+@pytest.mark.asyncio
+async def test_atif_answers_even_when_an_otlp_view_would_disagree() -> None:
+    # The score must not turn on which encoding a runner made primary, so ATIF wins
+    # whenever the trial carries both.
+    atif = EvidenceDescriptor(kind="trace", format="atif", data=_atif(tool_path="README.md"))
+    otlp = EvidenceDescriptor(
+        kind="trace",
+        format="otlp",
+        data={
+            "resourceSpans": [
+                {
+                    "scopeSpans": [
+                        {
+                            "spans": [
+                                {
+                                    "attributes": [
+                                        {
+                                            "key": "output.value",
+                                            "value": {"stringValue": f"{_LOCATION}/SKILL.md"},
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+    )
+    sample = {
+        "skills": [_PROV],
+        "evidence": CandidateEvidence(descriptors={EVIDENCE_TRACE: atif, "trace:atif": atif, "trace:otlp": otlp}),
+    }
+
+    assert await _score(sample) == {"skill_present": True, "skill_used": False}
 
 
 @pytest.mark.asyncio
@@ -152,3 +189,43 @@ async def test_multi_skill_present_none_used() -> None:
 @pytest.mark.asyncio
 async def test_empty_skills_list_scores_not_present() -> None:
     assert await _score({"skills": []}) == {"skill_present": False, "skill_used": False}
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_unrelated_span_field_does_not_hide_the_skill() -> None:
+    # A false negative here corrupts a skill A/B result, so the search reads the strings a
+    # trace does carry rather than requiring every unrelated field to parse.
+    sample = {
+        "skills": [_PROV],
+        "evidence": CandidateEvidence(
+            descriptors={
+                EVIDENCE_TRACE: EvidenceDescriptor(
+                    kind="trace",
+                    format="otlp",
+                    data={
+                        "resourceSpans": [
+                            {
+                                "scopeSpans": [
+                                    {
+                                        "spans": [
+                                            {
+                                                "startTimeUnixNano": "not-a-number",
+                                                "attributes": [
+                                                    {
+                                                        "key": "output.value",
+                                                        "value": {"stringValue": f"{_LOCATION}/SKILL.md"},
+                                                    }
+                                                ],
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                )
+            }
+        ),
+    }
+
+    assert await _score(sample) == {"skill_present": True, "skill_used": True}
