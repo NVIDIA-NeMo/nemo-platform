@@ -24,6 +24,7 @@ from typing import Any, ClassVar, Literal, cast
 from urllib.parse import urlsplit
 
 import nemo_evaluator.agent_seeds  # noqa: F401 - registers the platform 'fileset' workspace-seed handler
+from filesets import FilesetPathError, parse_fileset_ref
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.config import EvaluatorConfig
 from nemo_evaluator.filesets import FilesetRef
@@ -68,7 +69,6 @@ from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import RunConfigOnline, RunConfigOnlineModel
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import (
     InternalServerError,

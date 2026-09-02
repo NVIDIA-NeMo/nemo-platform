@@ -12,7 +12,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import httpx
-import nemo_evaluator.jobs.agent_evaluate as agent_evaluate_module
 import pytest
 from nemo_evaluator.api.schemas import MetadataItem, MetricInline, TaskInputs, TasksetRef
 from nemo_evaluator.config import EvaluatorConfig

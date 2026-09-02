@@ -18,6 +18,7 @@ from typing import Any, Literal, Self, TypeAlias
 # payload kind so MetricBundle payloads round-trip through validation.
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
+from filesets import FilesetPathError, parse_fileset_ref
 from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList, TasksetRef
 from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle, unresolved_model_refs
@@ -28,7 +29,6 @@ from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
 from nemo_evaluator_sdk.values.agents import AgentBase
-from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 

@@ -8,9 +8,9 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from filesets import FilesetPathError, parse_fileset_ref
 from nemo_evaluator.filesets import FilesetRef
 from nemo_platform import NeMoPlatform
-from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from pydantic import BaseModel, ConfigDict
