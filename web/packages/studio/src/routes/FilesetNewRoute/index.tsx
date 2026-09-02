@@ -182,7 +182,14 @@ export const FilesetNewRoute: FC = () => {
   });
 
   const handleClose = useCallback(() => {
-    navigate(getWorkspaceFilesetsRoute(workspace));
+    // `flushSync` is required, not stylistic. The panel below is mounted with a literal
+    // `open`, so the prop never goes false — this navigation unmounting the route is the
+    // only thing that closes it. KUI's SidePanel emits `onOpenChange` from inside its
+    // 200ms animate-out timeout; if the route change is deferred into a React transition
+    // (react-router v8's default), `useDialog` observes `open === true` against an
+    // already-closed <dialog> and re-shows it, flashing the panel back up until the
+    // transition lands. Covered by the regression test in this directory.
+    navigate(getWorkspaceFilesetsRoute(workspace), { flushSync: true });
   }, [navigate, workspace]);
 
   const handleSecretCreated = useCallback(
