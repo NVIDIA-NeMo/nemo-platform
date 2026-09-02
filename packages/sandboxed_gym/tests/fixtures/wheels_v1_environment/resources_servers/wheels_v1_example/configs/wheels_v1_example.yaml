@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+wheels_v1_example:
+  resources_servers:
+    wheels_v1_example:
+      entrypoint: app.py
+      domain: test
+      verified: false
+      description: Structural wheels-v1 fixture for environment-package validation
+      value: Validate that wheels-v1 carries environment configuration

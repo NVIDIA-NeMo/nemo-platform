@@ -10,21 +10,32 @@ cannot ride into user-supplied environment code.
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 import pytest
 from nemo_evaluator.config import EvaluatorConfig
+from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.agent_spec import GymRunnerTarget
 from nemo_evaluator.jobs.gym_sandbox import (
     SandboxPlan,
     SandboxUnavailableError,
     credential_shaped_env_vars,
     gym_global_config,
+    require_fileset_environment_sandboxed,
+    require_fileset_sandbox_storage_identity,
     resolve_sandbox_plan,
     serve_config,
 )
+from nemo_platform_plugin.jobs.execution_profiles import (
+    KubernetesJobExecutionProfile,
+    KubernetesJobExecutionProfileConfig,
+    KubernetesJobStorageConfig,
+)
 
 
-def target(**overrides) -> GymRunnerTarget:
-    fields = {
+def target(**overrides: Any) -> GymRunnerTarget:
+    fields: dict[str, Any] = {
         "agent": "simple_agent",
         "agent_config": "responses_api_agents/simple_agent/configs/simple_agent.yaml",
         "resources_server": "mcqa",
@@ -33,8 +44,8 @@ def target(**overrides) -> GymRunnerTarget:
     return GymRunnerTarget(**fields)
 
 
-def capable_config(**overrides) -> EvaluatorConfig:
-    fields = {
+def capable_config(**overrides: Any) -> EvaluatorConfig:
+    fields: dict[str, Any] = {
         "sandboxed_gym_default": True,
         "sandbox_cluster_capable": True,
         "sandbox_runtime_image": "registry.example.com/nmp-gym-runtime:1.0",
@@ -107,6 +118,18 @@ def test_an_explicit_override_wins_over_the_derived_binding() -> None:
     assert agent == {"extra": 1}, "the caller's value replaces the derived one at the same key"
 
 
+def test_fileset_environment_keeps_required_agent_config_in_config_paths() -> None:
+    config = gym_global_config(target(environment=FilesetRef(root="default/custom-gym")))
+
+    assert config["config_paths"][0] == "responses_api_agents/simple_agent/configs/simple_agent.yaml"
+    assert "_nmp_environment_component_selection" not in config
+
+
+def test_environment_fileset_rejects_file_fragments() -> None:
+    with pytest.raises(ValueError, match="file fragment"):
+        target(environment=FilesetRef(root="default/custom-gym#resources_servers/custom/app.py"))
+
+
 def test_serve_config_takes_cluster_facts_from_the_deployment_not_the_job() -> None:
     payload = serve_config(target(), capable_plan(), job_id="job-7")
 
@@ -126,6 +149,38 @@ def test_sandboxing_is_off_by_default() -> None:
     # An existing deployment has no OpenSandbox to provision against, so the default must not
     # change what it does today.
     assert resolve_sandbox_plan(EvaluatorConfig(), target()) is None
+
+
+def test_fileset_environment_is_rejected_when_sandboxing_is_off() -> None:
+    with pytest.raises(SandboxUnavailableError, match="require sandboxed execution"):
+        require_fileset_environment_sandboxed(
+            target(environment=FilesetRef(root="default/custom-gym")),
+            EvaluatorConfig(),
+        )
+
+
+def test_fileset_environment_is_rejected_when_opensandbox_pvc_differs_from_job_storage() -> None:
+    profile = KubernetesJobExecutionProfile(
+        config=KubernetesJobExecutionProfileConfig(storage=KubernetesJobStorageConfig(pvc_name="jobs-pvc"))
+    )
+
+    with pytest.raises(SandboxUnavailableError, match="sandbox_job_storage_pvc_claim"):
+        require_fileset_sandbox_storage_identity(
+            target(environment=FilesetRef(root="default/custom-gym")),
+            capable_config(),
+            execution_profile=profile,
+        )
+
+
+def test_fileset_environment_skips_pvc_identity_for_docker_hosts() -> None:
+    profile = KubernetesJobExecutionProfile(
+        config=KubernetesJobExecutionProfileConfig(storage=KubernetesJobStorageConfig(pvc_name="jobs-pvc"))
+    )
+    require_fileset_sandbox_storage_identity(
+        target(environment=FilesetRef(root="default/custom-gym")),
+        capable_config(sandbox_host_provider="docker"),
+        execution_profile=profile,
+    )
 
 
 def test_an_incapable_cluster_refuses_rather_than_running_colocated() -> None:
@@ -246,12 +301,22 @@ def test_egress_is_not_something_a_job_can_widen() -> None:
 # --------------------------------------------------------------------------------------------
 
 
-def built_host_spec(plan: SandboxPlan, gym_target: GymRunnerTarget | None = None):
+def built_host_spec(
+    plan: SandboxPlan,
+    gym_target: GymRunnerTarget | None = None,
+    *,
+    persistent_storage_path: Path | None = None,
+):
     from sandboxed_gym import SandboxedGymServeConfig
     from sandboxed_gym.config import BrokerEndpoint
     from sandboxed_gym.orchestrator import build_gym_host_spec
 
-    payload = serve_config(gym_target or target(), plan, job_id="job-9")
+    payload = serve_config(
+        gym_target or target(),
+        plan,
+        job_id="job-9",
+        persistent_storage_path=persistent_storage_path,
+    )
     broker = BrokerEndpoint(url="http://10.0.0.5:51234", host="10.0.0.5", port=51234, token="tok")
     return build_gym_host_spec(SandboxedGymServeConfig.model_validate(payload), broker)
 
@@ -276,7 +341,79 @@ def test_the_environment_and_workspace_mounts_are_not_the_same_directory() -> No
 
     assert spec.environment_mount.read_only is True
     assert spec.workspace_mount.read_only is False
-    assert spec.environment_mount.sub_path != spec.workspace_mount.sub_path
+    assert spec.environment_mount.sub_path == "environment"
+    assert spec.workspace_mount.sub_path == "workspace/job-9"
+
+
+def test_custom_environment_uses_the_read_only_host_mount() -> None:
+    spec = built_host_spec(
+        capable_plan(),
+        target(environment=FilesetRef(root="default/custom-gym")),
+    )
+
+    assert spec.bootstrap_env["NMP_ENVIRONMENT_PATH"] == "/job/environment"
+
+
+def test_fileset_backed_docker_mounts_the_subprocess_persistent_storage(tmp_path: Path) -> None:
+    persistent = tmp_path / "default" / "job-9" / "1" / "job-storage"
+    persistent.mkdir(parents=True)
+    plan = capable_plan(
+        sandbox_host_provider="docker",
+        sandbox_host_provider_options={"root_dir": "/ignored", "network": "nmp-test"},
+    )
+
+    payload = serve_config(
+        target(environment=FilesetRef(root="default/custom-gym")),
+        plan,
+        job_id="job-9",
+        persistent_storage_path=persistent,
+    )
+
+    sandbox = payload["sandbox"]
+    assert sandbox["host_provider_options"] == {
+        "root_dir": str(persistent.parent),
+        "network": "nmp-test",
+    }
+    assert (
+        Path(sandbox["host_provider_options"]["root_dir"])
+        / sandbox["environment_pvc_claim"]
+        / sandbox["environment_sub_path"]
+        == persistent / "environment"
+    )
+    assert (
+        Path(sandbox["host_provider_options"]["root_dir"])
+        / sandbox["workspace_pvc_claim"]
+        / sandbox["workspace_sub_path"]
+        == persistent / "workspace"
+    )
+
+
+def test_fileset_backed_docker_requires_the_trusted_persistent_storage_path() -> None:
+    plan = capable_plan(sandbox_host_provider="docker")
+
+    with pytest.raises(SandboxUnavailableError, match="persistent storage path"):
+        serve_config(
+            target(environment=FilesetRef(root="default/custom-gym")),
+            plan,
+            job_id="job-9",
+        )
+
+
+def test_opensandbox_keeps_pvc_subpaths_when_the_local_storage_path_is_available(tmp_path: Path) -> None:
+    persistent = tmp_path / "job-storage"
+
+    payload = serve_config(
+        target(environment=FilesetRef(root="default/custom-gym")),
+        capable_plan(),
+        job_id="job-9",
+        workspace="dev",
+        persistent_storage_path=persistent,
+    )
+
+    sandbox = payload["sandbox"]
+    assert sandbox["environment_pvc_claim"] == "job-storage"
+    assert sandbox["environment_sub_path"] == "jobs/dev/job-9/environment"
+    assert sandbox["workspace_sub_path"] == "jobs/dev/job-9/workspace"
 
 
 def test_resource_requests_reach_the_host_when_configured() -> None:

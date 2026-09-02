@@ -24,6 +24,11 @@ dependencies = [
 server = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
+  "sandboxed-gym[runtime]",
+]
+# Dependencies imported by gym_host_runtime.py inside the sandbox image. NeMo-Gym itself is
+# supplied by that image for the compatibility reasons documented below.
+runtime = [
   "pyyaml>=6.0.2",
 ]
 # The OpenSandbox episode backend. Optional because the broker also runs on the in-memory backend,

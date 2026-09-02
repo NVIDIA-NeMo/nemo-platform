@@ -16,6 +16,7 @@ from collections.abc import Iterator
 
 from nemo_evaluator.config import config
 from nemo_evaluator.jobs.agent_spec import AgentEvalSpec, AgentTarget, GymRunnerTarget, ModelTarget
+from nemo_evaluator.jobs.environment_stage import EnvironmentStageSpec
 from nemo_evaluator.jobs.gym_sandbox import GYM_SANDBOX_PLAN_ENVVAR, resolve_sandbox_plan
 from nemo_evaluator.jobs.secret_env import build_task_environment
 from nemo_platform_plugin.jobs.api_factory import (
@@ -36,11 +37,21 @@ GYM_AGENT_EVAL_IMAGE = "nmp-gym-tasks"
 AGENT_EVAL_ENTRYPOINT = ["python", "-m"]
 GYM_AGENT_EVAL_ENTRYPOINT = ["/app/.venv/bin/python", "-m"]
 AGENT_EVAL_COMMAND = ["nemo_evaluator.tasks.agent_evaluate"]
+ENVIRONMENT_STAGE_STEP_NAME = "stage-environment"
+ENVIRONMENT_STAGE_COMMAND = ["nemo_evaluator.tasks.stage_environment"]
 
 
 def compile_agent_eval_job(spec: AgentEvalSpec, *, profile: str | None = None) -> PlatformJobSpec:
     """Compile a canonical agent-evaluation spec into a plugin-native platform job."""
-    return PlatformJobSpec(steps=[_agent_eval_step(spec, profile)])
+    steps = []
+    # FileSet environments are downloaded onto job storage; that step must finish before the
+    # Gym host mounts the same tree read-only.
+    if isinstance(spec.target, GymRunnerTarget) and spec.target.environment is not None:
+        steps.append(_environment_stage_step(spec.target, profile))
+
+    steps.append(_agent_eval_step(spec, profile))
+
+    return PlatformJobSpec(steps=steps)
 
 
 def _secret_refs(spec: AgentEvalSpec) -> Iterator[tuple[str, str]]:
@@ -66,6 +77,7 @@ def _secret_refs(spec: AgentEvalSpec) -> Iterator[tuple[str, str]]:
 
 
 def _agent_eval_step(spec: AgentEvalSpec, profile: str | None) -> PlatformJobStep:
+    """Build the evaluation step, including the sandbox plan when Gym runs sandboxed."""
     is_gym_target = isinstance(spec.target, GymRunnerTarget)
     image = (
         config.gym_tasks_image
@@ -104,3 +116,24 @@ def _environment(spec: AgentEvalSpec) -> list[EnvironmentVariable]:
         return environment
     environment.append(EnvironmentVariable(name=GYM_SANDBOX_PLAN_ENVVAR, value=plan.model_dump_json()))
     return environment
+
+
+def _environment_stage_step(target: GymRunnerTarget, profile: str | None) -> PlatformJobStep:
+    """Download a custom Gym environment into the job PVC before evaluation."""
+    assert target.environment is not None
+    image = config.gym_tasks_image or get_qualified_image(GYM_AGENT_EVAL_IMAGE)
+    stage_spec = EnvironmentStageSpec(environment=target.environment)
+    return PlatformJobStep(
+        name=ENVIRONMENT_STAGE_STEP_NAME,
+        executor=CPUExecutionProviderSpec(
+            profile=profile or "default",
+            provider="cpu",
+            container=ContainerSpec(
+                image=image,
+                entrypoint=GYM_AGENT_EVAL_ENTRYPOINT,
+                command=ENVIRONMENT_STAGE_COMMAND,
+            ),
+        ),
+        config=stage_spec.model_dump(mode="json"),
+        environment=build_task_environment(()),
+    )

@@ -3755,6 +3755,11 @@ components:
           const: gym
           title: Kind
           default: gym
+        environment:
+          allOf:
+          - $ref: '#/components/schemas/FilesetRef'
+          description: Environment FileSet containing a wheels-v1 Gym package. The
+            complete FileSet is staged read-only; file fragments are not supported.
         agent:
           type: string
           title: Agent

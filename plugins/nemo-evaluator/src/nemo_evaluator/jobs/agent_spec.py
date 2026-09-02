@@ -18,7 +18,9 @@ from typing import Any, Literal, Self, TypeAlias
 # payload kind so MetricBundle payloads round-trip through validation.
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
+from filesets import FilesetPathError, parse_fileset_ref
 from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList, TasksetRef
+from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle, unresolved_model_refs
 from nemo_evaluator.jobs.publication_spec import PublicationSpec
 from nemo_evaluator.metric_refs import MetricRefOrInline
@@ -27,7 +29,7 @@ from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
 from nemo_evaluator_sdk.values.agents import AgentBase
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ModelTarget(BaseModel):
@@ -144,6 +146,11 @@ class GymRunnerTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["gym"] = "gym"
+    environment: FilesetRef | None = Field(
+        default=None,
+        description="Environment FileSet containing a wheels-v1 Gym package. "
+        "The complete FileSet is staged read-only; file fragments are not supported.",
+    )
     agent: str = Field(description="Agent name to collect rollouts with, e.g. 'simple_agent'.")
     agent_config: str = Field(
         description="Repo-relative agent config passed to `gym env start` (--config).",
@@ -207,6 +214,19 @@ class GymRunnerTarget(BaseModel):
         description="Grace period for the Gym subprocess group to exit on SIGTERM before escalating to SIGKILL.",
     )
     reward_key: str = Field(default="reward", description="Key read from each rollout record.")
+
+    @field_validator("environment")
+    @classmethod
+    def _require_whole_environment_fileset(cls, value: FilesetRef | None) -> FilesetRef | None:
+        if value is None:
+            return None
+        try:
+            _, _, file_path = parse_fileset_ref(value.root, workspace_fallback="_validation")
+        except FilesetPathError as exc:
+            raise ValueError(f"invalid environment FileSet reference: {value.root!r}") from exc
+        if file_path:
+            raise ValueError("environment FileSet references must not include a file fragment")
+        return value
 
 
 #: The agent-runner slot of the target union — the spec-side mirror of ``AgentTaskRunner``, resolved

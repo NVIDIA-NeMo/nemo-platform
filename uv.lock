@@ -11114,6 +11114,9 @@ dev = [
 opensandbox = [
     { name = "opensandbox", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
+runtime = [
+    { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
 server = [
     { name = "fastapi", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -11128,12 +11131,13 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
-    { name = "pyyaml", marker = "extra == 'server'", specifier = ">=6.0.2" },
+    { name = "pyyaml", marker = "extra == 'runtime'", specifier = ">=6.0.2" },
     { name = "ray", marker = "extra == 'ray'", specifier = ">=2.40.0" },
+    { name = "sandboxed-gym", extras = ["runtime"], marker = "extra == 'server'", editable = "packages/sandboxed_gym" },
     { name = "sandboxed-gym", extras = ["server", "opensandbox"], marker = "extra == 'dev'", editable = "packages/sandboxed_gym" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.30.0" },
 ]
-provides-extras = ["server", "opensandbox", "ray", "dev"]
+provides-extras = ["server", "runtime", "opensandbox", "ray", "dev"]
 
 [[package]]
 name = "scantree"

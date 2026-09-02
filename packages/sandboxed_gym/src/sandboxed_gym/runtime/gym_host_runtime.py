@@ -6,8 +6,8 @@
 Started inside the OpenSandbox job image via ``RunHelper`` + ``RolloutCollectionHelper``.
 Reads ``NMP_GYM_GLOBAL_CONFIG`` from bootstrap env (same JSON as colocated Gym, minus Ray GCS).
 
-Imports only the standard library and ``nemo_gym`` at runtime: the module source is
-injected verbatim into the sandbox image, where ``nemo_rl`` may not be importable.
+Imports only the standard library, PyYAML, and ``nemo_gym`` at runtime: the module source
+is injected verbatim into the sandbox image, where ``nemo_rl`` may not be importable.
 """
 
 import asyncio
@@ -15,12 +15,31 @@ import json
 import os
 import socket
 import subprocess
+import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
+from sandboxed_gym.environment_package import (
+    ENVIRONMENT_MANIFEST_FILENAME,
+    EnvironmentPackage,
+    EnvironmentPackageError,
+    WheelsV1Package,
+    load_environment_package,
+    require_supported_runtime_format,
+)
+
 GYM_GLOBAL_CONFIG_ENV_KEY = "NMP_GYM_GLOBAL_CONFIG"
+#: Set by the orchestrator when the caller supplied an explicit ``environment_path`` (a FileSet).
+#: ``NMP_ENVIRONMENT_PATH`` is also the host's environment *mount*, so it is ``/job/environment``
+#: for image-bundled Gym too; this flag is how a missing ``nemo-environment.yaml`` becomes a
+#: FileSet error instead of a silent fallback to the image-shipped environment.
+ENVIRONMENT_PACKAGE_REQUIRED_ENV_KEY = "NMP_ENVIRONMENT_PACKAGE_REQUIRED"
 UV_CACHE_DIR_KEY = "uv_cache_dir"
 UV_VENV_DIR_KEY = "uv_venv_dir"
+# Writable /job/work subdirectory where wheels are installed for the running Gym host.
+WHEELS_V1_INSTALL_SUBDIR = "wheels-v1-site-packages"
+# uv setting that points Gym's per-server dependency resolver at the staged wheelhouse.
+UV_FIND_LINKS_ENV_KEY = "UV_FIND_LINKS"
 # Mirrors DEFAULT_GYM_PORT_RANGE_{LOW,HIGH} in nemo_rl.distributed.virtual_cluster.
 DEFAULT_GYM_PORT_RANGE_LOW = 5000
 DEFAULT_GYM_PORT_RANGE_HIGH = 5999
@@ -121,15 +140,117 @@ def _apply_uv_dirs(global_config: dict[str, Any]) -> None:
         global_config.setdefault(UV_VENV_DIR_KEY, venv_dir)
 
 
+def _environment_package_required() -> bool:
+    """Whether the mounted environment path must be a valid FileSet package.
+
+    The host always mounts something at ``NMP_ENVIRONMENT_PATH`` (typically ``/job/environment``).
+    Image-bundled Gym has no ``nemo-environment.yaml`` there. FileSet-backed runs do, and must
+    fail closed if it is missing rather than starting against the image. The orchestrator sets
+    this only when serve config carried an explicit ``environment_path``.
+    """
+    return os.environ.get(ENVIRONMENT_PACKAGE_REQUIRED_ENV_KEY, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _load_runtime_environment_package(
+    environment_path: str,
+    *,
+    required: bool,
+) -> EnvironmentPackage | None:
+    """Load a mounted package while preserving manifest-free bundled environments."""
+    if not environment_path:
+        if required:
+            raise RuntimeError("a Gym environment package is required, but NMP_ENVIRONMENT_PATH is empty")
+        return None
+
+    manifest_path = os.path.join(environment_path, ENVIRONMENT_MANIFEST_FILENAME)
+    if not os.path.isfile(manifest_path):
+        if required:
+            raise RuntimeError(f"Gym environment package is missing required manifest: {manifest_path}")
+        return None
+
+    try:
+        package = load_environment_package(environment_path)
+        require_supported_runtime_format(package)
+    except EnvironmentPackageError as exc:
+        raise RuntimeError(f"invalid Gym environment package at {environment_path}: {exc}") from exc
+    return package
+
+
+def _install_wheels_v1_dependencies(package: EnvironmentPackage | None, work_path: str) -> None:
+    """Install a wheels-v1 environment's vendored dependencies, with no package-index access.
+
+    Other package formats are a no-op. When the validated package is ``wheels-v1``, every wheel
+    under its wheelhouse is installed into the writable work mount, so nothing is fetched from a
+    package index during this installation.
+
+    The wheels are installed into the writable work directory instead of an existing virtualenv.
+    ``PYTHONPATH`` exposes them to Gym's child processes, while ``sys.path`` exposes them to the
+    already-running host process.
+    """
+    if not isinstance(package, WheelsV1Package):
+        return
+
+    wheels_dir = str(package.wheelhouse_path)
+
+    wheels_install_dir = os.path.join(work_path, WHEELS_V1_INSTALL_SUBDIR)
+    os.makedirs(wheels_install_dir, exist_ok=True)
+
+    # --target keeps mutable packages under the writable work mount. --only-binary closes the
+    # source-distribution path opened by --find-links, including for transitive dependencies.
+    subprocess.run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "--target",
+            wheels_install_dir,
+            "--no-index",
+            "--only-binary",
+            ":all:",
+            "--find-links",
+            wheels_dir,
+        ]
+        + [str(wheel) for wheel in package.wheel_files],
+        check=True,
+    )
+
+    # Gym creates a private venv for each agent and resource server from that component's
+    # requirements.txt. Prefer the staged component wheels while retaining package-index fallback
+    # for image-owned Gym and its core dependencies.
+    os.environ[UV_FIND_LINKS_ENV_KEY] = wheels_dir
+
+    # Gym starts agent and resource servers as child Python processes. Prepend the wheel target so
+    # those processes can import the environment's vendored dependencies.
+    existing_pythonpath = os.environ.get("PYTHONPATH")
+    os.environ["PYTHONPATH"] = (
+        os.pathsep.join((wheels_install_dir, existing_pythonpath)) if existing_pythonpath else wheels_install_dir
+    )
+
+    # Updating PYTHONPATH does not change the current interpreter's `sys.path`. Prepend the wheel
+    # target so the host can import wheel-only packages, with the staged environment taking
+    # precedence over packages baked into the runtime image.
+    if wheels_install_dir not in sys.path:
+        sys.path.insert(0, wheels_install_dir)
+
+
 def bootstrap_gym_host() -> tuple[Any, Any, Any]:
     """Start Gym servers and return (RunHelper, head_server_config, RolloutCollectionHelper)."""
+    global_config = _load_global_config_dict()
+    _apply_uv_dirs(global_config)
+    environment_package = _load_runtime_environment_package(
+        os.environ.get("NMP_ENVIRONMENT_PATH", ""),
+        required=_environment_package_required(),
+    )
+    _install_wheels_v1_dependencies(
+        environment_package,
+        os.environ.get("NMP_WORK_PATH", "/job/work"),
+    )
+
     from nemo_gym.cli.env import RunHelper
     from nemo_gym.global_config import GlobalConfigDictParserConfig
     from nemo_gym.server_utils import BaseServerConfig
     from omegaconf import DictConfig
 
-    global_config = _load_global_config_dict()
-    _apply_uv_dirs(global_config)
     head_port = _allocate_head_server_port(global_config)
 
     run_helper = RunHelper()

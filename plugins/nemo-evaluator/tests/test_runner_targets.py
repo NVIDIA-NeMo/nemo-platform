@@ -17,7 +17,9 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRu
 #:   runner has already had them delivered as ordinary variables and has no reference to restate.
 #: * ``agent_ref_name`` routes rollouts on the sandboxed host path only; the CLI runner resolves its
 #:   agent from Gym config instead, so there is nothing on the runtime config to compare against.
-WIRE_ONLY_TARGET_FIELDS = {"kind", "env_secrets", "agent_ref_name"}
+#: * ``environment`` identifies a FileSet staged by the platform before the job runs; a live runner
+#:   has no FileSet staging reference to restate.
+WIRE_ONLY_TARGET_FIELDS = {"kind", "env_secrets", "agent_ref_name", "environment"}
 
 
 def _configured() -> GymRuntimeConfig:
