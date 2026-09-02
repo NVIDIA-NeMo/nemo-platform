@@ -173,7 +173,11 @@ def test_schedule_passes_the_agent_wheel_through(mock_nmp_client, tmp_path, mock
     backend = _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config)
     step = _step_with_command(
         test_step_pending,
-        ["/bin/sh", "-c", 'test "$NEMO_AGENTS_WHEEL" = "/dist/nemo_platform.whl"'],
+        [
+            "/bin/sh",
+            "-c",
+            'test "$NEMO_AGENTS_WHEEL" = "/dist/nemo_platform.whl" && test -z "${SECRET_TOKEN+x}"',
+        ],
     )
 
     with (

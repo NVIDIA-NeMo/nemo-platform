@@ -415,12 +415,18 @@ def build_fabric_agent_image(
     # job as well as the CLI.
     if wheel is None:
         from_env = os.environ.get(WHEEL_ENV, "").strip()
+        if from_env and dockerfile is not None:
+            # Decided before resolving, so LATEST does not have to find a wheel
+            # this build was never going to install.
+            emit_progress(
+                on_progress, f"warning: ignoring {WHEEL_ENV}={from_env}; --dockerfile decides what is installed"
+            )
         # A real path wins over the sentinel, so a file named LATEST is still usable.
-        if from_env and not Path(from_env).exists() and from_env.upper() == WHEEL_LATEST:
+        elif from_env and not Path(from_env).exists() and from_env.upper() == WHEEL_LATEST:
             wheel = resolve_latest_wheel()
             emit_progress(on_progress, f"{WHEEL_ENV}={WHEEL_LATEST} resolved to {wheel.name}")
-        else:
-            wheel = Path(from_env) if from_env else None
+        elif from_env:
+            wheel = Path(from_env)
     if wheel is not None and dockerfile is not None:
         # A supplied Dockerfile installs whatever it wants and never sees the
         # staged wheel, so the wheel must not speak for the version either.

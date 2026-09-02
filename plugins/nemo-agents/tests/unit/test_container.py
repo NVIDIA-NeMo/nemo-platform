@@ -2871,8 +2871,11 @@ class TestFabricWheelInstall:
         monkeypatch.setattr(builder, "_source_checkout_dist_dir", lambda: dist)
         monkeypatch.setenv(WHEEL_ENV, WHEEL_LATEST)
 
-        with pytest.raises(ValueError, match="no nemo-platform wheels"):
+        with pytest.raises(ValueError) as raised:
             builder.build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+        assert "no nemo-platform wheels" in str(raised.value)
+        assert "uv build --package nemo-platform" in str(raised.value)
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_an_existing_path_named_latest_is_not_treated_as_the_sentinel(
@@ -2913,6 +2916,32 @@ class TestFabricWheelInstall:
 
         with pytest.raises(ValueError, match="uv build --package nemo-platform"):
             builder.build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_a_supplied_dockerfile_does_not_resolve_latest(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container import builder
+        from nemo_agents_plugin.container.template import WHEEL_ENV, WHEEL_LATEST
+
+        def explode() -> Path:
+            raise AssertionError("LATEST must not be resolved for a --dockerfile build")
+
+        monkeypatch.setattr(builder, "resolve_latest_wheel", explode)
+        monkeypatch.setenv(WHEEL_ENV, WHEEL_LATEST)
+        dockerfile = tmp_path / "Dockerfile"
+        dockerfile.write_text("FROM scratch\n")
+        notices: list[str] = []
+
+        builder.build_fabric_agent_image(
+            fabric_agent_config,
+            dockerfile=dockerfile,
+            skip_validation=True,
+            agent_author="x",
+            on_progress=notices.append,
+        )
+
+        assert any(WHEEL_ENV in line and "ignoring" in line for line in notices)
 
     @pytest.mark.parametrize(
         ("filename", "create", "match"),
