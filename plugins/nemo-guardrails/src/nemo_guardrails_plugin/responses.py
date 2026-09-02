@@ -163,13 +163,11 @@ def extract_response_content(generation_response: GenerationResponse) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _index_of_last_user_message(messages: list[dict[str, Any]]) -> int | None:
-    """Return the index of the last ``role=user`` message, if any."""
-    last_user_index: int | None = None
-    for index, message in enumerate(messages):
-        if isinstance(message, dict) and message.get("role") == "user":
-            last_user_index = index
-    return last_user_index
+def _index_of_current_user_message(messages: list[dict[str, Any]]) -> int | None:
+    """Return the final message index when the current turn is a user message."""
+    if messages and isinstance(messages[-1], dict) and messages[-1].get("role") == "user":
+        return len(messages) - 1
+    return None
 
 
 def apply_input_rail_modifications(
@@ -184,7 +182,7 @@ def apply_input_rail_modifications(
     Returns the same list object when there is nothing to change; otherwise, returns a
     shallow copy that replaces only the last user message dict.
     """
-    last_user_index = _index_of_last_user_message(messages)
+    last_user_index = _index_of_current_user_message(messages)
     if last_user_index is None:
         return messages
 

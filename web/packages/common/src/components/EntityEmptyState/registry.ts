@@ -11,6 +11,7 @@ import {
   HatGlasses,
   Lightbulb,
   ListChecks,
+  ListTree,
   LockKeyhole,
   Radar,
   Rocket,
@@ -273,9 +274,14 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     subheading: 'This insight has no linked traces yet.',
   },
   telemetryTraces: {
-    icon: Anchor,
+    icon: ListTree,
     heading: 'No traces yet',
     subheading: 'Trace summaries will appear here after spans are ingested.',
+    cliCommand:
+      'nemo intake ingest otlp v1 traces create --input-file <otlp-traces>.json --workspace <workspace>',
+    // The skill id is what makes an agent load it; rewording it to prose matches nothing.
+    skillPrompt:
+      'Help me import traces into the "<workspace>" workspace with the nemo-intake skill.',
   },
   telemetrySpans: {
     icon: Anchor,

@@ -48,7 +48,7 @@ from nemo_platform_plugin.jobs.exceptions import (
     PlatformJobDependencyUnavailableError,
 )
 from nemo_platform_plugin.jobs.execution_profiles import SubprocessJobExecutionProfile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,8 @@ PACKAGE_RESULT_NAME = "package_result"
 IMAGE_REPOSITORY_PATTERN = r"^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*$"
 IMAGE_TAG_PATTERN = r"^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$"
 VERSION_PATTERN = r"^[0-9]+(\.[0-9]+){0,2}$"
+#: The repository grammar with an optional ``:tag``, so the trailing ``$`` is dropped first.
+IMAGE_REFERENCE_PATTERN = IMAGE_REPOSITORY_PATTERN[:-1] + r"(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?$"
 
 #: Docker tags are daemon-global but the auth boundary is the workspace, so every
 #: image is nested under ``{TAG_NAMESPACE}/{workspace}/``.
@@ -129,6 +131,34 @@ class PackageAgentInput(BaseModel):
     agent_version: str | None = Field(default=None, description="OCI image version label override.")
     agent_author: str | None = Field(default=None, description="OCI image authors label override.")
     skip_validation: bool = Field(default=False, description="Bypass Fabric package validation before building.")
+    registry: str | None = Field(
+        default=None,
+        pattern=IMAGE_REPOSITORY_PATTERN,
+        description=(
+            "Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host executing "
+            "the push must already be authenticated to it — the local machine for `run`, the "
+            "platform's job-execution host for `submit`/the REST API. Credentials are never "
+            "accepted over this API."
+        ),
+    )
+    push_tag: str | None = Field(
+        default=None,
+        pattern=IMAGE_REFERENCE_PATTERN,
+        description=(
+            "Fully-qualified remote tag. Defaults to '<registry>/<image>', where <image> is the "
+            "namespaced local reference 'nemo-agents/{workspace}/{tag}'. Requires 'registry'. Must "
+            "start with '<registry>/nemo-agents/{workspace}/' — Docker tags are daemon-global while "
+            "the auth boundary here is the workspace, so an unscoped push_tag would let this "
+            "workspace overwrite another workspace's image, or redirect the push to a registry "
+            "other than the one declared."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _push_tag_needs_a_registry(self) -> PackageAgentInput:
+        if self.push_tag and not self.registry:
+            raise ValueError("'push_tag' requires 'registry'.")
+        return self
 
 
 class PackageAgentSpec(PackageAgentInput):
@@ -136,6 +166,26 @@ class PackageAgentSpec(PackageAgentInput):
 
     workspace: str = Field(default="", description="Workspace owning the agent and its spec fileset.")
     agent_config: dict[str, Any] = Field(default_factory=dict, description="Resolved agent config.")
+
+    @model_validator(mode="after")
+    def _push_tag_stays_in_the_workspace_namespace(self) -> PackageAgentSpec:
+        # 'workspace' isn't known on PackageAgentInput (it comes from the URL / --workspace,
+        # not the request body), so this check can only run here, once to_spec()/run_local()
+        # has stamped it onto the spec.
+        if self.push_tag and self.registry and self.workspace:
+            # Anchored on 'registry' too, not just the 'nemo-agents/{workspace}/' segment —
+            # otherwise push_tag could silently redirect to a registry other than the one
+            # the caller declared (and is presumably authenticated to).
+            expected_prefix = f"{self.registry.rstrip('/')}/{TAG_NAMESPACE}/{self.workspace}/"
+            remote_name = self.push_tag.removeprefix(expected_prefix)
+            if not self.push_tag.startswith(expected_prefix) or not remote_name or "/" in remote_name:
+                raise ValueError(
+                    f"'push_tag' must be nested under '{expected_prefix}' (e.g. "
+                    f"'{expected_prefix}<name>'). Docker tags are daemon-global while the "
+                    "auth boundary here is the workspace; an unscoped push_tag would let this "
+                    "workspace overwrite another workspace's image on the shared host."
+                )
+        return self
 
 
 class PackageAgentJob(NemoJob):
@@ -292,8 +342,9 @@ class PackageAgentJob(NemoJob):
         ctx: JobContext | None = None,
         async_sdk: AsyncNeMoPlatform | None = None,
     ) -> dict:
-        """Stage the agent's spec fileset into a temp build context and build the image."""
-        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+        """Stage the agent's spec fileset into a temp build context, build, and optionally push."""
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image, resolve_image_id
+        from nemo_agents_plugin.container.publisher import docker_push
 
         cfg = PackageAgentSpec.model_validate(config)
         with tempfile.TemporaryDirectory(prefix="nemo-agent-package-") as tmp:
@@ -320,8 +371,22 @@ class PackageAgentJob(NemoJob):
                 skip_validation=cfg.skip_validation,
                 on_progress=logger.info,
             )
+            # Resolved immediately after the build call, not from `run()`-external
+            # code between here and the push below: a concurrent job rebuilding
+            # the same (daemon-global) tag name can't rebind what we publish.
+            image_id = resolve_image_id(image) if cfg.registry else None
 
-        payload = {"image": image, "agent": cfg.agent}
+        published = ""
+        if cfg.registry:
+            published = docker_push(
+                local_tag=image,
+                registry=cfg.registry,
+                push_tag=cfg.push_tag,
+                source_ref=image_id,
+                on_progress=logger.info,
+            )
+
+        payload = {"image": image, "agent": cfg.agent, "published": published}
         ref = self._save_package_result(ctx, payload)
         if ref is None:
             return payload

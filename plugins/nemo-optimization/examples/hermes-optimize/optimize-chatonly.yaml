@@ -20,14 +20,14 @@ models:
   default:
     provider: nvidia
     # inference-api.nvidia.com model ids are often prefixed (e.g. nvidia/meta/...).
-    model: nvidia/meta/llama-3.1-8b-instruct
+    model: nvidia/nvidia/nemotron-3-nano-30b-a3b
     base_url: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_API_KEY
     temperature: 0.0
     top_p: 1.0
   judge:
     provider: nvidia
-    model: nvidia/meta/llama-3.1-8b-instruct
+    model: nvidia/nvidia/nemotron-3-nano-30b-a3b
     base_url: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_API_KEY
     temperature: 0.0

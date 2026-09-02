@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 title: "Targets and Runners"
-description: "Reference for what an agent-eval run can point at — a Model, a deployed Agent over HTTP, or an AgentTaskRunner (a callable, Harbor, or your own) — with each target's key fields and when to use it."
+description: "Reference for what an agent-eval run can point at — a Model, a deployed Agent over HTTP, or an AgentTaskRunner (a callable, Harbor, Gym, or your own) — with each target's key fields and when to use it."
 ---
 
 `AgentEvaluator().run(target=...)` accepts one of three kinds of target. Whatever you pick, it produces
@@ -19,6 +19,9 @@ description: "Reference for what an agent-eval run can point at — a Model, a d
 | `NemoAgentToolkitAgent` | a NeMo Agent Toolkit endpoint | a running NAT workflow | [Evaluate a Deployed Agent](/documentation/evaluate-models/agent-eval/evaluate-deployed-agent) |
 | `CallableAgentTaskRunner` | an in-process async function | none | [Quickstart](/documentation/evaluate-models/agent-eval/quickstart) |
 | `HarborAgentTaskRunner` | a Harbor task suite | `harbor` + Docker | [Harbor Task Suite](/documentation/evaluate-models/agent-eval/harbor-runner) |
+| `GymAgentTaskRunner` | a NeMo Gym environment + agent | the `gym` CLI on `PATH` | [NeMo Gym Environment](/documentation/evaluate-models/agent-eval/gym-runner) |
+| `FabricAgentRuntime` | a NeMo Fabric harness (Codex, Claude, Hermes, deepagents) | the `fabric` extra | [NeMo Fabric Harness](/documentation/evaluate-models/agent-eval/fabric-runner) |
+| `FabricContainerRuntime` | the same harnesses, run inside a sandbox | the `fabric` extra + a sandbox provider | [NeMo Fabric Harness](/documentation/evaluate-models/agent-eval/fabric-runner) |
 | *your* `AgentTaskRunner` | anything that turns tasks into trials | up to you | *(this page)* |
 
 The union is `AgentEvalTarget = Model | Agent | AgentTaskRunner`, where `Agent = GenericAgent |
@@ -36,11 +39,13 @@ bare model do before you wrap it in an agent?). The evaluator prompts it with ea
 | `name` | yes | model identifier, stamped on trials |
 | `format` | no | **deprecated and ignored** — structured output support is probed from the endpoint during preflight |
 | `api_key_secret` | no | credential reference — `workspace/secret_name` or `secret_name` |
+| `default_headers` | no | non-auth headers applied to every request; authentication goes through `api_key_secret` |
+| `host_url` | no | direct NIM endpoint (`http://host:port`), populated when the target resolves from a `ModelRef` |
 
 ```python
 from nemo_evaluator_sdk.values import Model
 
-target = Model(url="https://integrate.api.nvidia.com/v1/chat/completions", name="meta/llama-3.1-8b-instruct",
+target = Model(url="https://integrate.api.nvidia.com/v1/chat/completions", name="nvidia/nemotron-3-nano-30b-a3b",
                api_key_secret="NVIDIA_API_KEY")
 ```
 
@@ -85,23 +90,27 @@ workflow's URL.
 | `nat` | no | `NatAgentConfig` — endpoint / query-param / response-path / aggregation overrides; defaults target `/generate/full` and `concat` token-delta frames into the full response |
 | `api_key_secret` | no | credential reference (env var locally, platform secret for a job); its value is sent as a bearer token |
 
-## `AgentTaskRunner` (callable, Harbor, or your own)
+## `AgentTaskRunner` (callable, Harbor, Gym, or your own)
 
-The most general target: anything implementing the one-method protocol.
+The most general target: anything implementing the two-method protocol. Both members are
+required — a runner missing either is rejected with `NotImplementedError: unsupported
+agent-eval target type`.
 
 ```python
 from collections.abc import Sequence
 
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
 
 class AgentTaskRunner:
     async def run_tasks(
         self, tasks: Sequence[AgentEvalTask], config: AgentEvalRunConfig | None = None
     ) -> Sequence[AgentEvalTrial]: ...
+
+    def runner_info(self) -> RunnerInfo: ...
 ```
 
-The SDK ships two runners you'll usually reach for first:
+The SDK ships three runners you'll usually reach for first:
 
 - **`CallableAgentTaskRunner`** wraps an `async def agent(task) -> str | AgentOutput | TrialDraft`. The
   smallest possible target — no Docker, no HTTP. See the
@@ -109,12 +118,70 @@ The SDK ships two runners you'll usually reach for first:
   a trajectory or other evidence (see [Score by Component](/documentation/evaluate-models/agent-eval/score-by-component)).
 - **`HarborAgentTaskRunner`** runs a [Harbor](https://www.harborframework.com) task suite in Docker and
   scores its verifier reward. See [Harbor Task Suite](/documentation/evaluate-models/agent-eval/harbor-runner).
+- **`GymAgentTaskRunner`** runs a [NeMo Gym](https://github.com/NVIDIA-NeMo/Gym) environment and agent,
+  and scores each rollout's reward. See [NeMo Gym Environment](/documentation/evaluate-models/agent-eval/gym-runner).
+
+### `GymAgentTaskRunner`
+
+Runs an existing [NeMo Gym](https://github.com/NVIDIA-NeMo/Gym) environment against your tasks and
+adapts its rollouts into trials, scoring each rollout's reward. `GymRuntimeConfig` requires `agent`,
+`agent_config`, and `resources_server`; `discover_gym_tasks` builds the tasks from a Gym jsonl
+dataset.
+
+Gym is **not** a dependency of this SDK — it imports Ray at module load, which nemo-platform excludes
+by constraint. Install it into its own environment and put its `bin` on `PATH`.
+
+It can also be submitted as a platform job from the live runner object, via
+`client.evaluator.submit(tasks=..., target=runner)`, rather than described again as a spec.
+
+Full setup, configuration reference, and caveats:
+[Evaluate a NeMo Gym Environment](/documentation/evaluate-models/agent-eval/gym-runner).
+
+### NeMo Fabric runtimes
+
+[NeMo Fabric](https://github.com/nvidia/nemo-fabric) drives an agent *harness* rather than a single
+agent. Which harness runs is chosen entirely by `config["harness"]["adapter_id"]`, so one runtime
+covers several agent frontends:
+
+| `adapter_id` | Harness |
+|---|---|
+| `nvidia.fabric.codex` | Codex CLI (`transport="cli"`) |
+| `nvidia.fabric.claude` | Claude |
+| `nvidia.fabric.hermes` | Hermes SDK (`transport="library"`) |
+| `nvidia.fabric.langchain.deepagents` | LangChain deepagents — **not** installed by this SDK's `fabric` extra (see below) |
+
+Two runtimes share that config:
+
+- **`FabricAgentRuntime`** runs the harness directly, capturing an ATIF trajectory.
+- **`FabricContainerRuntime`** runs the same configuration inside a sandbox, and additionally
+  accepts `skills` and `secrets`.
+
+Both need the `fabric` extra, which pulls the Codex, Claude, and Hermes adapters:
+
+```bash
+uv sync --frozen --package nemo-evaluator-sdk --extra fabric --inexact
+```
+
+The deepagents adapter is deliberately excluded from that extra — it does not support the Relay
+observability configuration Fabric streaming generates — so `nvidia.fabric.langchain.deepagents`
+needs its harness installed separately.
+
+Full setup, the agent-config shape, and the trajectory evidence:
+[Evaluate with a NeMo Fabric Harness](/documentation/evaluate-models/agent-eval/fabric-runner).
+
+### Writing your own
 
 Write your own when your agent doesn't fit those — a bespoke harness, a queue, a replay of stored runs.
-Return one `AgentEvalTrial` per task; the evaluator scores them exactly like any other target:
+Return one `AgentEvalTrial` per task and identify the runner with `runner_info`; the evaluator scores
+the trials exactly like any other target:
 
 ```python
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import (
+    AgentEvalTrial,
+    AgentEvalTrialStatus,
+    AgentOutput,
+    RunnerInfo,
+)
 
 class EchoRunner:
     async def run_tasks(self, tasks, config=None):
@@ -127,7 +194,15 @@ class EchoRunner:
             )
             for task in tasks
         ]
+
+    def runner_info(self) -> RunnerInfo:
+        return RunnerInfo(name="echo")
 ```
+
+`runner_info` is what records the producer of a run: the result carries it on
+`AgentEvalResult.metadata.target`, so a stored run can be understood after the fact. Return a stable
+short `name` (`"gym"`, `"harbor"`) rather than a class name, and keep secrets out of `config` — it is
+persisted with the run bundle.
 
 ## Choosing a target
 
@@ -136,6 +211,7 @@ class EchoRunner:
   (a NAT workflow).
 - You want a model baseline, no agent → **`Model`**.
 - You have Harbor task datasets → **`HarborAgentTaskRunner`**.
+- You have a NeMo Gym environment → **`GymAgentTaskRunner`**.
 - None of the above fits → implement **`AgentTaskRunner`**.
 
 ## Related

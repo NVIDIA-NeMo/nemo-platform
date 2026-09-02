@@ -7,7 +7,7 @@ The anonymizer reads a **single CSV or Parquet file**. Configure it via the `dat
 
 ```yaml
 data:
-  source: <local-path | http(s)-url | fileset-ref>
+  source: <http(s)-url | fileset-ref>
   text_column: text                # optional; defaults to "text"
   id_column: id                    # optional, stable record identifier
   data_summary: "Short free-text records; English."   # optional, helps LLMs
@@ -15,13 +15,12 @@ data:
 
 ## Source kinds
 
-| Kind     | Example                                          | Supported by                                                                              |
-|----------|--------------------------------------------------|-------------------------------------------------------------------------------------------|
-| Local    | `/tmp/input.csv` or `./data/input.parquet` | **Local execution only** (`preview run`, `run run`). |
-| HTTP(S)  | `https://example.com/input.csv`            | Local (`preview run`, `run run`) and plugin-service / Jobs execution (`preview submit`, `run submit`). |
-| Fileset  | `<workspace>/<fileset>#<path>`                   | Local (`preview run`, `run run`) and plugin-service / Jobs execution (`preview submit`, `run submit`). |
+| Kind     | Example                        | Supported by                       |
+|----------|--------------------------------|------------------------------------|
+| HTTP(S)  | `https://example.com/input.csv` | SDK preview, `nemo anonymizer preview`, and `nemo anonymizer run`. |
+| Fileset  | `<workspace>/<fileset>#<path>` | SDK preview, `nemo anonymizer preview`, and `nemo anonymizer run`. |
 
-Plugin-service / Jobs execution runs outside the caller's filesystem — use HTTP(S) URLs or fileset refs for those surfaces.
+Preview and run execution happen in the plugin service or Jobs worker, outside the caller's filesystem. Use HTTP(S) URLs or fileset refs.
 
 ## Fileset references
 
@@ -45,15 +44,7 @@ For upload commands, use the platform files CLI docs or `nemo-files` skill. Then
 
 Run jobs save a working artifacts directory; the anonymized dataset is one file inside that directory.
 
-### Where artifacts land for `run run`
-
-`nemo anonymizer run run` prints `{"exit_code": 0}` on success. The local job results manager logs the artifact directory to **stderr** in the form:
-
-```text
-Saved result 'artifacts' to file:///.../persistent/results/artifacts
-```
-
-Layout under that `artifacts/` directory:
+The job stores an `artifacts/` result with this layout:
 
 | File                  | Description                                                                |
 |-----------------------|----------------------------------------------------------------------------|
@@ -62,28 +53,11 @@ Layout under that `artifacts/` directory:
 | `metadata.json`       | Run metadata (includes the original text column name).                     |
 | `failed_records.json` | Per-record failures with reasons. Only written when at least one record failed. |
 
-### Loading the local artifacts
-
-Read the parquet files directly from the artifacts directory:
-
-```python
-import json
-from pathlib import Path
-import pandas as pd
-
-artifacts_dir = Path("/path/to/persistent/results/artifacts")
-metadata = json.loads((artifacts_dir / "metadata.json").read_text())
-dataset = pd.read_parquet(artifacts_dir / "dataset.parquet", dtype_backend="pyarrow")
-trace   = pd.read_parquet(artifacts_dir / "trace.parquet",   dtype_backend="pyarrow")
-failed_path = artifacts_dir / "failed_records.json"
-failed_records = json.loads(failed_path.read_text()) if failed_path.exists() else []
-```
-
 The trace dataset (and `dataset.parquet` for `annotate` / `substitute` strategies) contains pyarrow-backed `struct<entities: list<...>>` columns. If you need plain Python `dict`/`list` values for JSON output, read via `pyarrow.parquet.read_table(...).to_pylist()` instead of `pd.read_parquet`.
 
-### Remote CLI retrieval
+### CLI Retrieval
 
-For `run submit`, use the standard Jobs CLI after `nemo anonymizer run submit` prints the job name:
+Use the standard Jobs CLI after `nemo anonymizer run` prints the job name:
 
 ```bash
 nemo jobs get-status <job-name> --workspace <ws>

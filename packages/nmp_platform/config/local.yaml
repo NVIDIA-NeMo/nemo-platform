@@ -75,7 +75,9 @@ jobs:
         ttl_seconds_after_finished: 300
     # Auditor jobs always run as Docker containers (auditor-tasks image). Using a
     # dedicated profile "auditor" avoids the cpu→subprocess translation that the
-    # subprocess/default entry above enables for profile "default".
+    # subprocess/default entry above enables for profile "default". The `auditor:`
+    # plugin config block below points AuditJob at this profile instead of the
+    # (locally subprocess-diverted) default.
     - provider: cpu
       profile: auditor
       backend: docker
@@ -123,6 +125,18 @@ evaluator:
   recreate_existing_system_entities: True
 
 safe_synthesizer: {}
+
+# Retrieval jobs mix CPU and GPU container steps; cpu/default is subprocess locally, so
+# point them at the Docker-backed gpu profile (cpu/gpu and gpu/gpu). Not needed on Kubernetes/CI.
+data_designer:
+  job_executor_profile: gpu
+
+# Audit jobs need real Docker containers (auditor-tasks image with garak). cpu/default is
+# diverted to the subprocess backend above for local dev, so point auditor jobs at the
+# dedicated cpu/auditor Docker profile registered under jobs.executors instead. Not needed
+# on Kubernetes/CI, where cpu/default already resolves to a real container backend.
+auditor:
+  job_executor_profile: auditor
 
 deployments:
   executors:

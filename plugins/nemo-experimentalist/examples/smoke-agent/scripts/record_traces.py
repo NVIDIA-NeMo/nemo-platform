@@ -27,10 +27,12 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_nat
 )
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 AGENT_NAME = "smoke-agent"
 AGENT_VERSION = "1.0.0"
-INGEST_PATH = "/apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces"
 POLL_ATTEMPTS = 30
 POLL_DELAY_SECONDS = 2.0
 
@@ -43,7 +45,6 @@ async def _upload_trials(
     group: str,
 ) -> dict[str, str]:
     """Upload each trial's trace; return {task_id: trace_id}."""
-    url = INGEST_PATH.format(workspace=workspace)
     trace_ids: dict[str, str] = {}
 
     for trial in trials:
@@ -65,12 +66,7 @@ async def _upload_trials(
         if not payloads:
             raise RuntimeError(f"Trial {trial.id} produced an empty trace")
         for payload in payloads:
-            await client.post(
-                url,
-                cast_to=object,
-                content=payload,
-                options={"headers": {"Content-Type": "application/x-protobuf"}},
-            )
+            await client.intake.ingest.otlp.v1.traces.create(body=payload, workspace=workspace)
         # Every recording run uses one attempt per task.  Keep the task id here
         # so the caller can put precisely the failing task traces in an Insight.
         trace_ids[trial.task_id] = trace_id
@@ -109,11 +105,12 @@ async def run(args: argparse.Namespace) -> dict[str, str]:
 
     client = make_client(args.base_url)
     try:
-        await client.workspaces.create(
-            name=args.workspace,
-            description="smoke-agent traces for Insights",
-            exist_ok=True,
-        )
+        (
+            await client_from_platform(client, AsyncWorkspacesClient).create_workspace(
+                exist_ok=True,
+                body=CreateWorkspaceRequest(name=args.workspace, description="smoke-agent traces for Insights"),
+            )
+        ).data()
         options = HarborEvaluatorConfig(
             job_name=f"smoke-{args.group}-{args.split}-record",
             jobs_dir=Path("results"),

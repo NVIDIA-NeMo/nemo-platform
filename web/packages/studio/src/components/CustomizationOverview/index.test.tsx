@@ -114,6 +114,10 @@ describe('CustomizationOverview — GRPO', () => {
 
     expect(screen.getByText('Truncation Rate')).toBeInTheDocument();
     expect(screen.getByText('4.1%')).toBeInTheDocument();
+
+    // The median of the six reported steps, so the one slow step in the run cannot set the pace.
+    expect(screen.getByText('Median Step Time')).toBeInTheDocument();
+    expect(screen.getByText('34.2s')).toBeInTheDocument();
   });
 
   it('drops the loss tiles and the loss chart', async () => {
@@ -130,6 +134,13 @@ describe('CustomizationOverview — GRPO', () => {
     expect(screen.queryByText('Final Validation Loss')).not.toBeInTheDocument();
     // Loss-derived, so it says nothing about a GRPO run.
     expect(screen.queryByText('Train/Val Gap')).not.toBeInTheDocument();
+
+    // Step count isn't duplicated here — it's already in the page header, and the chart's own x
+    // axis is the step count — but epoch and duration/phase have no other home on the page.
+    expect(screen.queryByText('Steps Completed')).not.toBeInTheDocument();
+    expect(screen.getByText('Epochs Completed')).toBeInTheDocument();
+    expect(screen.getByText('Duration')).toBeInTheDocument();
+    expect(screen.queryByText('Phase')).not.toBeInTheDocument();
   });
 
   it('keeps the training health diagnostics collapsed until asked for', async () => {
@@ -140,18 +151,29 @@ describe('CustomizationOverview — GRPO', () => {
 
     await userEvent.click(screen.getByText('Training health'));
 
-    expect(await screen.findByText('train_gen_kl_error')).toBeInTheDocument();
+    // Once as the tile label, once as the chart's own raw-key header.
+    const genKlKeys = await screen.findAllByText('train_gen_kl_error');
+    expect(genKlKeys).toHaveLength(2);
+    // The header copy is styled as secondary, distinguishing it from the bold chart title.
+    expect(genKlKeys[1]).toHaveClass('text-secondary');
     expect(screen.getByText('5.4e-4')).toBeInTheDocument();
-    expect(screen.getByText('train_approx_entropy')).toBeInTheDocument();
+    expect(screen.getAllByText('train_approx_entropy')).toHaveLength(2);
     expect(screen.getByText('falling')).toBeInTheDocument();
 
     // A ratio centred on 1 rendered as its deviation — 1.004 is 0.4% off-policy, not 100%.
     expect(screen.getByText('train_token_mult_prob_error')).toBeInTheDocument();
     expect(screen.getByText('0.4%')).toBeInTheDocument();
 
+    // The sequence-level twin of that drift, read against 1 rather than as a deviation from it.
+    expect(screen.getByText('train_sampling_importance_ratio')).toBeInTheDocument();
+    expect(screen.getByText('1.002')).toBeInTheDocument();
+
     expect(screen.getByText('Generation KL')).toBeInTheDocument();
     expect(screen.getByText('Policy entropy')).toBeInTheDocument();
-    expect(screen.getByText('Generated tokens per rollout')).toBeInTheDocument();
+    expect(screen.getByText('Mean generated tokens per response')).toBeInTheDocument();
+    // The chart has no tile of its own, so this raw key appears exactly once.
+    expect(screen.getByText('train_gen_tokens_per_sample/mean')).toBeInTheDocument();
+    expect(screen.getByText('Training step time')).toBeInTheDocument();
     expect(screen.queryByText('No data to compare')).not.toBeInTheDocument();
 
     // Drift keeps its tile but gets no chart, and `kl_penalty` — a flat zero under the default

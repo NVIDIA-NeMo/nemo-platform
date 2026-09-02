@@ -34,6 +34,7 @@ from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_TRACE,
     CandidateEvidence,
     EvidenceDescriptor,
+    Trajectory,
     read_atif,
 )
 
@@ -124,11 +125,37 @@ def _trial_from_harbor_result(
         id=trial_id,
         task_id=task_id,
         status=status,
-        output=AgentOutput(metadata={"harbor_trial_dir": str(trial_dir)}),
+        output=AgentOutput(
+            output_text=_final_agent_message(_agent_trajectory(trial_dir, selected_trace)),
+            metadata={"harbor_trial_dir": str(trial_dir)},
+        ),
         evidence=CandidateEvidence(descriptors=descriptors),
         error=error,
         metadata=metadata,
     )
+
+
+def _agent_trajectory(trial_dir: Path, selected_trace: EvidenceDescriptor | None) -> Trajectory | None:
+    """The trial's ATIF trajectory, from the selected trace or Harbor's built-in dump."""
+    if selected_trace is not None and selected_trace.format == EVIDENCE_FORMAT_ATIF:
+        return read_atif(Path(selected_trace.ref))
+    # Only agents with SUPPORTS_ATIF write this file, so its absence is normal: oracle and nop
+    # never produce one.
+    return read_atif(trial_dir / "agent" / "trajectory.json")
+
+
+def _final_agent_message(trajectory: Trajectory | None) -> str | None:
+    """The agent's last message, which is its user-visible answer for the trial.
+
+    Only the *last* agent step can be the answer. An earlier one is intermediate reasoning, so an
+    agent that ends on an empty message has produced no answer rather than the previous one.
+    """
+    if trajectory is None:
+        return None
+    for step in reversed(trajectory.steps):
+        if step.source == "agent":
+            return step.message or None
+    return None
 
 
 def _add_extension_descriptor(

@@ -15,17 +15,15 @@ import logging
 import secrets
 from collections.abc import Awaitable
 from typing import cast
-from urllib.parse import quote
 
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from nemo_agents_plugin.api.v2._perms import SessionPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.api.v2.session_access import get_owned_session, session_not_found
 from nemo_agents_plugin.authz import scope
-from nemo_agents_plugin.deployment_routing import get_deployment_endpoint
 from nemo_agents_plugin.entities import AgentDeployment, AgentSession, SessionStatus
 from nemo_agents_plugin.schema import CreateSessionRequest, SessionFilter, SessionPage
+from nemo_agents_plugin.session_lifecycle import cleanup_fabric_runtime as _cleanup_fabric_runtime
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.dependencies import get_effective_principal_id
@@ -38,8 +36,6 @@ from starlette.requests import Request
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-_FABRIC_CLEANUP_TIMEOUT_SECONDS = 5.0
 
 _raw_session_filter_dep = make_filter_obj_dep(SessionFilter)
 
@@ -110,7 +106,8 @@ async def list_sessions(
 ) -> SessionPage:
     """List the current principal's sessions, optionally filtered by deployment ID."""
     filter_dict = dict(filter) if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
-    filter_dict["created_by"] = effective_principal_id
+    if effective_principal_id:
+        filter_dict["created_by"] = effective_principal_id
     try:
         result = await entity_client.list(
             AgentSession,
@@ -163,6 +160,7 @@ async def get_session(
 async def close_session(
     workspace: str,
     name: str,
+    background_tasks: BackgroundTasks,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
     effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> AgentSession:
@@ -174,40 +172,47 @@ async def close_session(
         effective_principal_id=effective_principal_id,
     )
 
-    if session.status is SessionStatus.CLOSED:
-        await _cleanup_fabric_runtime(entity_client, session)
-        return session
+    session_to_update = session
+    for attempt in range(2):
+        if session_to_update.status is SessionStatus.CLOSED:
+            background_tasks.add_task(_cleanup_fabric_runtime, entity_client, session_to_update)
+            return session_to_update
 
-    session.status = SessionStatus.CLOSED
-    try:
-        updated_session = await entity_client.update(session)
-    except NemoEntityNotFoundError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session '{name}' not found in workspace '{workspace}'.",
-        ) from exc
-    except NemoEntityConflictError as exc:
-        latest_session = await get_owned_session(
-            entity_client,
-            workspace=workspace,
-            name=name,
-            effective_principal_id=effective_principal_id,
-        )
+        if not session_to_update.status.can_transition_to(SessionStatus.CLOSED):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Session '{name}' cannot transition from '{session_to_update.status}' to 'closed'.",
+            )
 
-        if latest_session.status is SessionStatus.CLOSED:
-            await _cleanup_fabric_runtime(entity_client, latest_session)
-            return latest_session
+        session_to_update.status = SessionStatus.CLOSED
+        try:
+            updated_session = await entity_client.update(session_to_update)
+        except NemoEntityNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session '{name}' not found in workspace '{workspace}'.",
+            ) from exc
+        except NemoEntityConflictError as exc:
+            if attempt == 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Session '{name}' is being modified concurrently.",
+                ) from exc
+            session_to_update = await get_owned_session(
+                entity_client,
+                workspace=workspace,
+                name=name,
+                effective_principal_id=effective_principal_id,
+            )
+            continue
+        except Exception as exc:
+            logger.exception("Failed to close session '%s'", name)
+            raise HTTPException(status_code=500, detail="Failed to close session.") from exc
 
-        raise HTTPException(
-            status_code=409,
-            detail=f"Session '{name}' is being modified concurrently.",
-        ) from exc
-    except Exception as exc:
-        logger.exception("Failed to close session '%s'", name)
-        raise HTTPException(status_code=500, detail="Failed to close session.") from exc
+        background_tasks.add_task(_cleanup_fabric_runtime, entity_client, updated_session)
+        return updated_session
 
-    await _cleanup_fabric_runtime(entity_client, updated_session)
-    return updated_session
+    raise RuntimeError("Session close retry loop exited unexpectedly.")  # pragma: no cover
 
 
 @router.delete("/sessions/{name}", status_code=204, tags=["Agent Sessions"])
@@ -219,6 +224,7 @@ async def close_session(
 async def delete_session(
     workspace: str,
     name: str,
+    background_tasks: BackgroundTasks,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
     effective_principal_id: str = Depends(get_effective_principal_id),
 ) -> None:
@@ -248,7 +254,7 @@ async def delete_session(
         logger.exception("Failed to delete session '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to delete session.") from exc
 
-    await _cleanup_fabric_runtime(entity_client, session)
+    background_tasks.add_task(_cleanup_fabric_runtime, entity_client, session)
 
 
 async def _get_deployment_for_session(
@@ -279,66 +285,4 @@ def _deployment_not_found(workspace: str, deployment_id: str) -> HTTPException:
     return HTTPException(
         status_code=404,
         detail=f"Deployment ID '{deployment_id}' not found in workspace '{workspace}'.",
-    )
-
-
-async def _cleanup_fabric_runtime(
-    entity_client: NemoEntitiesClient,
-    session: AgentSession,
-) -> None:
-    """Best-effort removal of a session's process-local Fabric runtime."""
-    try:
-        deployment = await entity_client.find_one(
-            AgentDeployment,
-            workspace=session.workspace,
-            filter_obj={"id": session.deployment_id},
-        )
-    except Exception:
-        logger.warning(
-            "Could not resolve deployment ID '%s' while cleaning up session ID '%s'.",
-            session.deployment_id,
-            session.id,
-            exc_info=True,
-        )
-        return
-
-    if deployment.id != session.deployment_id or deployment.workspace != session.workspace:
-        logger.warning(
-            "Resolved deployment did not match session ID '%s'; skipping Fabric runtime cleanup.",
-            session.id,
-        )
-        return
-
-    endpoint = get_deployment_endpoint(deployment)
-    if endpoint is None:
-        logger.warning(
-            "Deployment ID '%s' has no endpoint; skipping cleanup for session ID '%s'.",
-            deployment.id,
-            session.id,
-        )
-        return
-
-    cleanup_url = f"{endpoint.rstrip('/')}/v1/sessions/{quote(session.id, safe='')}"
-    try:
-        async with httpx.AsyncClient(
-            timeout=_FABRIC_CLEANUP_TIMEOUT_SECONDS,
-            follow_redirects=False,
-        ) as client:
-            response = await client.delete(cleanup_url)
-    except Exception:
-        logger.warning(
-            "Fabric runtime cleanup request failed for session ID '%s'.",
-            session.id,
-            exc_info=True,
-        )
-        return
-
-    # A missing runtime is already clean: the session may never have been invoked or may
-    # have expired from the deployment's process-local registry.
-    if response.status_code == 404 or 200 <= response.status_code < 300:
-        return
-    logger.warning(
-        "Fabric runtime cleanup returned HTTP %s for session ID '%s'.",
-        response.status_code,
-        session.id,
     )

@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Iterable
 from typing_extensions import Required, TypedDict
 
+from .platform_job_secret_param import PlatformJobSecretParam
 from .platform_job_step_spec_param import PlatformJobStepSpecParam
 
 __all__ = ["PlatformJobSpecParam"]
@@ -30,3 +31,6 @@ class PlatformJobSpecParam(TypedDict, total=False):
 
     steps: Required[Iterable[PlatformJobStepSpecParam]]
     """List of steps to be executed in the job"""
+
+    secrets: Iterable[PlatformJobSecretParam]
+    """Secrets referenced by the job"""

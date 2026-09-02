@@ -9,7 +9,7 @@ Plugin notes:
 
 - When specifying `config`, choose either `config.replace` or `config.rewrite`, not both.
 - Hand-written YAML specs must include a `kind` discriminator inside `replace`.
-- Plugin-service / Jobs execution requires `model_configs`; local `preview run` / `run run` can omit it and use Anonymizer library defaults.
+- Preview/run execution requires `model_configs` so provider calls route through NeMo Platform Inference Gateway.
 
 Minimal YAML shape:
 

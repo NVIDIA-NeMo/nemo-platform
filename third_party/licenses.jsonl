@@ -52,6 +52,7 @@
 {"name": "data-designer", "license": "APACHE-2.0", "compatible": true}
 {"name": "data-designer-config", "license": "APACHE-2.0", "compatible": true}
 {"name": "data-designer-engine", "license": "APACHE-2.0", "compatible": true}
+{"name": "data-designer-retrieval-sdg", "license": "APACHE-2.0", "compatible": true}
 {"name": "databricks-sdk", "license": "APACHE-2.0", "compatible": true}
 {"name": "dataclasses-json", "license": "MIT", "compatible": true}
 {"name": "datasets", "license": "APACHE-2.0", "compatible": true}

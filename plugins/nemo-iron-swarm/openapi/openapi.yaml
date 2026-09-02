@@ -2683,6 +2683,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/SynthBenignSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -2929,6 +2936,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/WarGameSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true

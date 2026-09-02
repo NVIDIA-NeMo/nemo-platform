@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -19,6 +20,7 @@ from nemo_agents_plugin.entities import (
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     Agent,
     AgentEnvironmentInline,
+    AgentInline,
     ComputeSpecInline,
 )
 from nemo_agents_plugin.environment_resolution import (
@@ -32,6 +34,12 @@ from nemo_agents_plugin.fabric.invocation import (
     invoke_agent_config_request_once,
 )
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeTimeoutError
+from nemo_agents_plugin.jobs.execute_extensions import (
+    NOOP_EXECUTE_AGENT_EXTENSION_KIND,
+    ExecuteAgentAfterInvokeContext,
+    run_execute_agent_after_invoke_extension,
+    validate_execute_agent_extension_config,
+)
 from nemo_agents_plugin.tasks.execute.workdir import (
     AgentWorkdir,
     materialize_agent_workdir,
@@ -69,7 +77,7 @@ from nemo_platform_plugin.jobs.constants import (
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, parse_entity_ref
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -128,10 +136,24 @@ _RESERVED_ENV_VAR_NAMES = frozenset(
 )
 
 
+class ExecuteAgentExtensionConfig(BaseModel):
+    kind: str = Field(description="Trusted extension kind registered by an installed NeMo plugin.")
+    config: dict[str, Any] = Field(default_factory=dict, description="Extension-owned configuration.")
+
+
+def _make_noop_extension_config() -> ExecuteAgentExtensionConfig:
+    return ExecuteAgentExtensionConfig(kind=NOOP_EXECUTE_AGENT_EXTENSION_KIND)
+
+
 class ExecuteAgentJobConfig(BaseModel):
     model_config = {"json_schema_mode_override": "validation"}
 
-    agent: str = Field(pattern=ENTITY_REF_PATTERN, description="Agent entity name or workspace/name ref.")
+    agent: str | AgentInline = Field(
+        description=(
+            "Agent to execute: an Agent entity name or workspace/name ref, or an inline "
+            "agent definition for a config composed at request time."
+        ),
+    )
     input: str = Field(description="Prompt to pass to the agent.")
     environment: str | AgentEnvironmentInline | None = Field(
         default=None,
@@ -151,6 +173,32 @@ class ExecuteAgentJobConfig(BaseModel):
         gt=0,
         description="Maximum time to wait for Fabric to return an execution result.",
     )
+    extension: ExecuteAgentExtensionConfig | None = Field(
+        default=None,
+        description="Optional trusted plugin extension to run during the execute-agent lifecycle.",
+    )
+
+    @field_validator("agent")
+    @classmethod
+    def _validate_agent(cls, value: str | AgentInline) -> str | AgentInline:
+        """Apply this job's own requirements to whichever arm the caller used.
+
+        ``AgentInline`` is deliberately as permissive as the ``Agent`` entity it
+        backs, so the narrowing lives here rather than on the shared model: an
+        entity can legitimately hold a NAT workflow config, but this job cannot
+        run one.
+        """
+        if isinstance(value, str):
+            # The ref pattern moved off the field so the union's other arm can
+            # carry a config; keep enforcing it for the string arm.
+            if not re.fullmatch(ENTITY_REF_PATTERN, value):
+                raise ValueError(f"Agent ref {value!r} must be an entity name or a 'workspace/name' ref.")
+            return value
+
+        _validate_agent_config_format(value.config_format)
+        if not value.config:
+            raise ValueError("Inline agent definitions require a non-empty config.")
+        return value
 
 
 class ResolvedAgentConfig(BaseModel):
@@ -172,6 +220,7 @@ class ExecuteAgentStepConfig(BaseModel):
     # the job is not kept in sync with the underlying environment entities.
     compute: ComputeSpecInline | None = None
     secrets: dict[str, str] = Field(default_factory=dict)
+    extension: ExecuteAgentExtensionConfig = Field(default_factory=_make_noop_extension_config)
 
 
 class ExecuteAgentJob(NemoJob):
@@ -206,19 +255,15 @@ class ExecuteAgentJob(NemoJob):
         """
         del is_local
         request = cast(ExecuteAgentJobConfig, input_spec)
-        agent_ref = parse_entity_ref(request.agent, default_workspace=workspace)
         typed_entity_client = cast(Any, entity_client)
-        try:
-            agent = await typed_entity_client.get(Agent, name=agent_ref.name, workspace=agent_ref.workspace)
-        except NemoEntityNotFoundError as exc:
-            raise ValueError(f"Agent '{request.agent}' not found.") from exc
+        source = await _resolve_agent_source(request.agent, workspace=workspace, entity_client=typed_entity_client)
 
-        _validate_agent_config_format(agent.config_format)
+        _validate_agent_config_format(source.config_format)
         resolved_agent_config = resolve_agent_config_for_deployment(
-            agent.config_format,
-            agent.config,
-            workspace=agent.workspace,
-            agent_name=agent.name,
+            source.config_format,
+            source.config,
+            workspace=source.workspace,
+            agent_name=source.name,
         )
 
         # Resolve and merge the referenced AgentEnvironment. The EnvironmentSpec is
@@ -247,17 +292,21 @@ class ExecuteAgentJob(NemoJob):
             sdk = cast(AsyncNeMoPlatform, async_sdk)
             workdir = await validate_agent_workdir(request.workdir, sdk.files, default_workspace=workspace)
 
+        extension = request.extension or _make_noop_extension_config()
+        validate_execute_agent_extension_config(extension.kind, extension.config)
+
         return ExecuteAgentStepConfig(
             request=request,
             agent=ResolvedAgentConfig(
-                name=agent.name,
-                workspace=agent.workspace,
+                name=source.name,
+                workspace=source.workspace,
                 config=merged.config,
-                config_format=agent.config_format,
+                config_format=source.config_format,
             ),
             workdir=workdir,
             compute=resolved_env.compute_spec,
             secrets=merged.secrets,
+            extension=extension,
         )
 
     @classmethod
@@ -364,8 +413,22 @@ class ExecuteAgentJob(NemoJob):
         output_workdir_ref = ctx.results.save(OUTPUT_WORKDIR_RESULT_NAME, fabric_dirs.workspace)
         output_artifacts_ref = ctx.results.save(OUTPUT_ARTIFACTS_RESULT_NAME, fabric_dirs.artifacts)
         status = "completed" if result.status in SUCCESSFUL_FABRIC_STATUSES else "failed"
+        if status == "completed":
+            try:
+                run_execute_agent_after_invoke_extension(
+                    step_config.extension.kind,
+                    ExecuteAgentAfterInvokeContext(
+                        ctx=ctx,
+                        config=step_config.extension.config,
+                        agent_name=step_config.agent.name,
+                        fabric_result=result,
+                    ),
+                )
+            except Exception:
+                logger.exception("Execute-agent extension failed.")
+                raise
 
-        return {
+        output = {
             "status": status,
             "agent": f"{step_config.agent.workspace}/{step_config.agent.name}",
             "fabric_status": result.status,
@@ -377,6 +440,7 @@ class ExecuteAgentJob(NemoJob):
             "output_artifacts": output_artifacts_ref.model_dump(),
             "fabric_run_result": fabric_run_result_ref.model_dump(),
         }
+        return output
 
     def _save_fabric_error_results(
         self,
@@ -407,6 +471,61 @@ class ExecuteAgentJob(NemoJob):
             _save_json_result(ctx, FABRIC_ERROR_RESULT_NAME, ctx.storage.ephemeral / FABRIC_ERROR_FILENAME, payload)
         except Exception:
             logger.warning("Failed to save Fabric error result.", exc_info=True)
+
+
+class _AgentSource(BaseModel):
+    """The agent definition to execute, however the request supplied it."""
+
+    name: str
+    workspace: str
+    config: dict[str, Any]
+    config_format: str
+
+
+async def _resolve_agent_source(
+    agent: str | AgentInline,
+    *,
+    workspace: str,
+    entity_client: Any,
+) -> _AgentSource:
+    """Resolve the request's agent arm into one shape the rest of ``to_spec`` uses.
+
+    An inline config is not persisted anywhere: it is validated here so a bad
+    definition fails on the create request, then snapshotted onto the step config
+    exactly as an entity-backed config is. Its name comes from the config itself
+    and it is attributed to the job's workspace.
+
+    NOTE: an inline config is currently gated only by the job's own
+    ``agents.execute.create`` permission, whereas reaching the same outcome
+    through an entity additionally requires ``agents.agents.create``. Closing
+    that gap needs a body-conditional permission, which the shared jobs route
+    factory has no hook for today.
+    """
+    if isinstance(agent, AgentInline):
+        # Format and non-emptiness are already enforced by
+        # ``ExecuteAgentJobConfig._validate_agent``; this is the spec check.
+        try:
+            inline_config = AgentConfig.model_validate(agent.config)
+        except Exception as exc:
+            raise ValueError(f"Inline agent config is invalid: {exc}") from exc
+        return _AgentSource(
+            name=inline_config.name,
+            workspace=workspace,
+            config=agent.config,
+            config_format=agent.config_format,
+        )
+
+    agent_ref = parse_entity_ref(agent, default_workspace=workspace)
+    try:
+        entity = await entity_client.get(Agent, name=agent_ref.name, workspace=agent_ref.workspace)
+    except NemoEntityNotFoundError as exc:
+        raise ValueError(f"Agent '{agent}' not found.") from exc
+    return _AgentSource(
+        name=entity.name,
+        workspace=entity.workspace,
+        config=entity.config,
+        config_format=entity.config_format,
+    )
 
 
 def _has_workdir_inputs(workdir: AgentWorkdir) -> bool:
@@ -457,19 +576,19 @@ def _compute_to_resources(compute: ComputeSpecInline | None) -> ResourcesSpec | 
     _reject_unsupported_resource_keys(resources.limits, "limits")
     _reject_unsupported_resource_keys(resources.requests, "requests")
 
-    spec: ResourcesSpec = {}
+    spec: dict[str, Any] = {}
     limits = _cpu_memory_spec(resources.limits)
-    if limits:
+    if limits is not None:
         spec["limits"] = limits
     requests = _cpu_memory_spec(resources.requests)
-    if requests:
+    if requests is not None:
         spec["requests"] = requests
 
     num_gpus = _gpu_count(resources.limits, resources.requests)
     if num_gpus is not None:
         spec["num_gpus"] = num_gpus
 
-    return spec or None
+    return ResourcesSpec(**spec) if spec else None
 
 
 def _reject_unsupported_resource_keys(resource_map: dict[str, str], where: str) -> None:
@@ -481,15 +600,15 @@ def _reject_unsupported_resource_keys(resource_map: dict[str, str], where: str) 
         )
 
 
-def _cpu_memory_spec(resource_map: dict[str, str]) -> ResourcesLimitsSpec:
-    # ``ResourcesLimitsSpec`` and ``ResourcesRequestsSpec`` are the same TypedDict
-    # (``ComputeResourceSpecParam``); one builder covers both sides.
-    spec: ResourcesLimitsSpec = {}
+def _cpu_memory_spec(resource_map: dict[str, str]) -> ResourcesLimitsSpec | None:
+    # ``ResourcesLimitsSpec`` and ``ResourcesRequestsSpec`` are the same
+    # plugin-owned compute resource spec; one builder covers both sides.
+    spec: dict[str, str] = {}
     if "cpu" in resource_map:
         spec["cpu"] = resource_map["cpu"]
     if "memory" in resource_map:
         spec["memory"] = resource_map["memory"]
-    return spec
+    return ResourcesLimitsSpec(**spec) if spec else None
 
 
 def _gpu_count(limits: dict[str, str], requests: dict[str, str]) -> int | None:

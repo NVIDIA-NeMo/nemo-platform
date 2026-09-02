@@ -8,7 +8,7 @@ import { server } from '@studio/mocks/node';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { useLocation, useSearchParams } from 'react-router';
+import { useLocation } from 'react-router';
 
 vi.mock('use-debounce', () => ({
   useDebounce: (value: unknown) => [value, { cancel: () => {}, flush: () => {} }],
@@ -44,25 +44,9 @@ const sampleVm = {
   parent: '',
 };
 
-const PanelUrlProbe = () => {
+const LocationProbe = () => {
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const clearPanelParams = () => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete('virtualModel');
-    nextParams.delete('tab');
-    setSearchParams(nextParams);
-  };
-
-  return (
-    <>
-      <output data-testid="panel-location">{location.search}</output>
-      <button type="button" onClick={clearPanelParams}>
-        Clear panel URL
-      </button>
-    </>
-  );
+  return <output data-testid="location">{location.pathname}</output>;
 };
 
 const renderDataViewAt = (entry: string) =>
@@ -74,9 +58,19 @@ const renderDataViewAt = (entry: string) =>
         element: (
           <>
             <VirtualModelsDataView workspace="default" />
-            <PanelUrlProbe />
+            <LocationProbe />
           </>
         ),
+      },
+      // Detail pages are exercised in VirtualModelDetailRoute's own suite; here they only need to
+      // exist so navigation away from the list resolves to a route.
+      {
+        path: '/workspaces/:workspace/virtual-models/:virtualModelName/details',
+        element: <LocationProbe />,
+      },
+      {
+        path: '/workspaces/:workspace/virtual-models/:virtualModelName/chat',
+        element: <LocationProbe />,
       },
     ],
   });
@@ -156,7 +150,7 @@ describe('VirtualModelsDataView', () => {
     await waitFor(() => expect(deleted).toBe(true));
   });
 
-  it('opens chat for a virtual model through the row action', async () => {
+  it('navigates to the chat page through the row action', async () => {
     const user = userEvent.setup();
     server.use(http.get(VMS_URL, () => HttpResponse.json(page([sampleVm]))));
     renderDataView();
@@ -166,40 +160,24 @@ describe('VirtualModelsDataView', () => {
     await user.click(screen.getByRole('button', { name: 'Row Actions' }));
     await user.click(await screen.findByText('Chat'));
 
-    expect(screen.getByTestId('panel-location')).toHaveTextContent('?virtualModel=my-vm&tab=chat');
-    expect(screen.getByRole('radio', { name: 'Chat' })).toBeChecked();
-    expect(screen.getByRole('textbox', { name: 'Task prompt' })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Message my-vm')).toBeInTheDocument();
-  });
-
-  it('opens a linked virtual model directly on its chat tab', async () => {
-    const user = userEvent.setup();
-    server.use(http.get(VMS_URL, () => HttpResponse.json(page([sampleVm]))));
-    renderDataViewAt('/workspaces/default/virtual-models?virtualModel=my-vm&tab=chat');
-
-    expect(await screen.findByRole('radio', { name: 'Chat' })).toBeChecked();
-    expect(screen.getByPlaceholderText('Message my-vm')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('radio', { name: 'Details' }));
-
-    expect(screen.getByTestId('panel-location')).toHaveTextContent(
-      '?virtualModel=my-vm&tab=details'
-    );
-    expect(screen.getByRole('radio', { name: 'Details' })).toBeChecked();
-  });
-
-  it('closes the panel when its URL state is removed', async () => {
-    const user = userEvent.setup();
-    server.use(http.get(VMS_URL, () => HttpResponse.json(page([sampleVm]))));
-    renderDataViewAt('/workspaces/default/virtual-models?virtualModel=my-vm&tab=chat');
-
-    expect(await screen.findByRole('radio', { name: 'Chat' })).toBeChecked();
-
-    await user.click(screen.getByRole('button', { name: 'Clear panel URL' }));
-
-    expect(screen.getByTestId('panel-location')).toBeEmptyDOMElement();
     await waitFor(() =>
-      expect(screen.queryByRole('radio', { name: 'Chat' })).not.toBeInTheDocument()
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/workspaces/default/virtual-models/my-vm/chat'
+      )
+    );
+  });
+
+  it('navigates to the details page when a row is clicked', async () => {
+    const user = userEvent.setup();
+    server.use(http.get(VMS_URL, () => HttpResponse.json(page([sampleVm]))));
+    renderDataView();
+
+    await user.click(await screen.findByText('my-vm'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/workspaces/default/virtual-models/my-vm/details'
+      )
     );
   });
 });

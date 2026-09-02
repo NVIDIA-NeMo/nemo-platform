@@ -24,6 +24,7 @@ def test_provider_workload_job_runs_via_workload_profile(
 ):
     require_capability(auth_idp_case, "workspace_rbac")
     require_capability(auth_idp_case, "workload_job")
+    require_capability(auth_idp_case, "managed_workload_job_obo")
 
     e2e_setup_sdk = auth_idp_runtime.e2e_setup_sdk()
     for principal in auth_idp_runtime.workload_role_principals():
@@ -31,11 +32,12 @@ def test_provider_workload_job_runs_via_workload_profile(
             e2e_setup_sdk,
             workspace=auth_idp_workspace,
             principal=principal,
-            roles=["Viewer", "JobRunner"],
+            roles=["Viewer", "Editor", "JobRunner"],
         )
 
+    job_submitter_sdk = auth_idp_runtime.workload_provider_sdk()
     job = (
-        client_from_platform(e2e_setup_sdk, JobsClient)
+        client_from_platform(job_submitter_sdk, JobsClient)
         .create_job(
             workspace=auth_idp_workspace,
             body=CreatePlatformJobRequest(
@@ -50,11 +52,20 @@ def test_provider_workload_job_runs_via_workload_profile(
                                 "profile": "workload",
                                 "container": {
                                     "image": nmp_api_image(),
-                                    "entrypoint": ["nemo-platform"],
+                                    "entrypoint": ["sh", "-c"],
                                     "command": [
-                                        "run",
-                                        "task",
-                                        "--task",
+                                        'if [ -n "${NMP_PRINCIPAL:-}" ]; then '
+                                        "echo 'Unexpected NMP_PRINCIPAL in managed workload'; exit 42; "
+                                        "fi; "
+                                        'if [ -z "${NMP_WORKLOAD_IDENTITY_TOKEN_FILE:-}" ]; then '
+                                        "echo 'Missing NMP_WORKLOAD_IDENTITY_TOKEN_FILE in managed workload'; exit 43; "
+                                        "fi; "
+                                        'if [ ! -f "${NMP_WORKLOAD_IDENTITY_TOKEN_FILE}" ]; then '
+                                        "echo 'Workload identity token file is missing'; exit 44; "
+                                        "fi; "
+                                        "echo 'Workload auth env: NMP_PRINCIPAL=absent "
+                                        "NMP_WORKLOAD_IDENTITY_TOKEN_FILE=present'; "
+                                        "exec nemo-platform run task --task "
                                         "nmp.hello_world.tasks.workload_workspace_get",
                                     ],
                                 },
@@ -79,4 +90,8 @@ def test_provider_workload_job_runs_via_workload_profile(
     assert all(log.job_step == "workload-workspace-get" for log in step_logs.data)
     assert all(log.job_task for log in step_logs.data)
     assert all(log.message.strip() for log in step_logs.data)
+    assert any(
+        "Workload auth env: NMP_PRINCIPAL=absent NMP_WORKLOAD_IDENTITY_TOKEN_FILE=present" in log.message
+        for log in step_logs.data
+    )
     assert any(f"Successfully retrieved workspace: {auth_idp_workspace}" in log.message for log in step_logs.data)

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="452" viewBox="0 0 680 452" role="img">
+<title>Two job-host provider paths behind one seam</title>
+<desc>The Gym task runner selects a host provider by name. The docker provider runs a local container and is validated end to end; the opensandbox provider creates a Kubernetes pod with PVC mounts, egress policy and kata-qemu, and has never been executed.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .th { font-size: 14px; font-weight: 500; } .ts { font-size: 12px; font-weight: 400; }
+    .arr { stroke: #888780; stroke-width: 0.5; fill: none; }
+    .lab { fill: #5F5E5A; }
+    .gray-box { fill: #F1EFE8; stroke: #5F5E5A; stroke-width: 0.5; }
+    .gray-t { fill: #444441; } .gray-s { fill: #5F5E5A; }
+    .teal-box { fill: #E1F5EE; stroke: #0F6E56; stroke-width: 0.5; }
+    .teal-t { fill: #085041; } .teal-s { fill: #0F6E56; }
+    .un { fill: none; stroke: #B4B2A9; stroke-width: 0.5; stroke-dasharray: 3 3; }
+    .un-t { fill: #5F5E5A; } .un-s { fill: #888780; }
+  </style>
+</defs>
+<rect x="0" y="0" width="680" height="452" fill="#FFFFFF"/>
+
+<rect class="gray-box" x="200" y="56" width="280" height="52" rx="4"/>
+<text class="th gray-t" x="340" y="78" text-anchor="middle">Gym task runner</text>
+<text class="ts gray-s" x="340" y="96" text-anchor="middle">starts and tears down the session</text>
+
+<rect class="gray-box" x="200" y="140" width="280" height="52" rx="4"/>
+<text class="th gray-t" x="340" y="162" text-anchor="middle">get_host_provider(name)</text>
+<text class="ts gray-s" x="340" y="180" text-anchor="middle">one seam, two implementations</text>
+
+<rect class="teal-box" x="48" y="236" width="272" height="52" rx="4"/>
+<text class="th teal-t" x="184" y="258" text-anchor="middle">docker</text>
+<text class="ts teal-s" x="184" y="276" text-anchor="middle">DockerGymHostProvider</text>
+
+<rect class="un" x="360" y="236" width="272" height="52" rx="4"/>
+<text class="th un-t" x="496" y="258" text-anchor="middle">opensandbox</text>
+<text class="ts un-s" x="496" y="276" text-anchor="middle">OpenSandboxGymHostProvider</text>
+
+<rect class="teal-box" x="48" y="316" width="272" height="52" rx="4"/>
+<text class="th teal-t" x="184" y="338" text-anchor="middle">Local container</text>
+<text class="ts teal-s" x="184" y="356" text-anchor="middle">bind mounts · egress recorded only</text>
+
+<rect class="un" x="360" y="316" width="272" height="52" rx="4"/>
+<text class="th un-t" x="496" y="338" text-anchor="middle">Kubernetes pod</text>
+<text class="ts un-s" x="496" y="356" text-anchor="middle">PVC · egress enforced · kata-qemu</text>
+
+<line class="arr" x1="340" y1="108" x2="340" y2="140" marker-end="url(#arrow)"/>
+<path class="arr" d="M340 192 V214 H184 V236" marker-end="url(#arrow)"/>
+<path class="arr" d="M340 192 V214 H496 V236" marker-end="url(#arrow)"/>
+<line class="arr" x1="184" y1="288" x2="184" y2="316" marker-end="url(#arrow)"/>
+<line class="arr" x1="496" y1="288" x2="496" y2="316" marker-end="url(#arrow)"/>
+
+<text class="ts lab" x="184" y="400" text-anchor="middle">validated live — real NeMo-Gym, real trial</text>
+<text class="ts lab" x="496" y="400" text-anchor="middle">never executed — needs a cluster</text>
+<text class="ts lab" x="184" y="418" text-anchor="middle">proves the code path, not isolation</text>
+<text class="ts lab" x="496" y="418" text-anchor="middle">this is where isolation actually lives</text>
+</svg>

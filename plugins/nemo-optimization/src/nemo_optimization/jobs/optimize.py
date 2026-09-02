@@ -364,7 +364,7 @@ def _publish_results(
     The backends write everything under ``ctx.storage.persistent / "results"``
     and register it via ``ctx.results.save``, which on the platform lands in the
     job's own fileset under ``results/<attempt_id>/``.  That is addressable only
-    through ``sdk.jobs.results``, so a remote client that wants to read the
+    through the typed Jobs results client, so a remote client that wants to read the
     optimized config back — or hand it to a follow-up job — needs a stable
     location it names up front.  Publishing the whole ``results`` tree keeps
     this backend-agnostic: no ``RESULT_NAME`` coupling, and the ``ga`` backend

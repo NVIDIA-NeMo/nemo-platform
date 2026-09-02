@@ -81,6 +81,9 @@ from nemo_platform_plugin.entities.base import (
     PaginationInfo as PaginationInfo,
 )
 from nemo_platform_plugin.entities.base import (
+    SyncEntityClient as SyncEntityClient,
+)
+from nemo_platform_plugin.entities.base import (
     _convert_filter_obj_to_filter_str as _convert_filter_obj_to_filter_str,
 )
 from nemo_platform_plugin.entities.base import (

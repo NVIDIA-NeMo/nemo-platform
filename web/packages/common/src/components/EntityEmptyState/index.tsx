@@ -23,6 +23,8 @@ export type EntityEmptyStateVariant = 'first-use' | 'no-results';
 export interface EntityEmptyStateBaseProps {
   entity: EntityKey;
   className?: string;
+  /** Resolves `<workspace>` in the CLI command and skill prompt. Omitted leaves the placeholder. */
+  workspace?: string;
 }
 
 export type EntityEmptyStateProps = EntityEmptyStateBaseProps &
@@ -44,6 +46,11 @@ export type EntityEmptyStateProps = EntityEmptyStateBaseProps &
       }
   );
 
+const WORKSPACE_PLACEHOLDER = '<workspace>';
+
+const resolveWorkspace = (text: string | undefined, workspace: string | undefined) =>
+  text && workspace ? text.replaceAll(WORKSPACE_PLACEHOLDER, workspace) : text;
+
 /**
  * The single canonical empty state for Studio lists, tables, and panels. Copy,
  * iconography, CLI command, and skill prompt come from the entity registry; the
@@ -56,6 +63,7 @@ export const EntityEmptyState: FC<EntityEmptyStateProps> = ({
   onCreate,
   onClearFilters,
   className,
+  workspace,
 }) => {
   const descriptor = ENTITY_EMPTY_STATES[entity];
   const navigate = useNavigate();
@@ -78,7 +86,9 @@ export const EntityEmptyState: FC<EntityEmptyStateProps> = ({
     );
   }
 
-  const { icon: Icon, heading, subheading, createAction, cliCommand, skillPrompt } = descriptor;
+  const { icon: Icon, heading, subheading, createAction } = descriptor;
+  const cliCommand = resolveWorkspace(descriptor.cliCommand, workspace);
+  const skillPrompt = resolveWorkspace(descriptor.skillPrompt, workspace);
   const handleCreate =
     onCreate ?? (createAction?.to ? () => navigate(createAction.to as string) : undefined);
 
@@ -161,7 +171,11 @@ const SelfServiceHelp: FC<{ cliCommand?: string; skillPrompt?: string }> = ({
   const language: CodeSnippetLanguage = showCli ? 'bash' : 'markdown';
 
   return (
-    <div className="mt-density-lg" data-testid="entity-empty-state-help">
+    // Unwrapped, the snippet scrolls a long value out of sight instead of showing it.
+    <div
+      className="mt-density-lg [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]"
+      data-testid="entity-empty-state-help"
+    >
       <CodeSnippet
         value={value}
         language={language}

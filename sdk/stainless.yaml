@@ -532,7 +532,6 @@ resources:
       docker_job_network_config: DockerJobNetworkConfig
       docker_job_storage_config: DockerJobStorageConfig
       docker_volume_mount: DockerVolumeMount
-      docker_workload_identity_config: DockerWorkloadIdentityConfig
       e2e_job_execution_profile: E2EJobExecutionProfile
       gpu_execution_provider: GPUExecutionProvider
       image_pull_secret: ImagePullSecret
@@ -548,10 +547,12 @@ resources:
       kubernetes_secret_volume: KubernetesSecretVolume
       kubernetes_volume: KubernetesVolume
       kubernetes_volume_mount: KubernetesVolumeMount
+      kubernetes_workload_identity_config: KubernetesWorkloadIdentityConfig
       platform_job_environment_variable: PlatformJobEnvironmentVariable
       platform_job_list_sort_field: PlatformJobListSortField
       platform_job_response: PlatformJobResponse
       platform_job_responses_page: PlatformJobResponsesPage
+      platform_job_secret: PlatformJobSecret
       platform_job_secret_environment_variable_ref: PlatformJobSecretEnvironmentVariableRef
       platform_job_sort_field: PlatformJobSortField
       platform_job_spec: PlatformJobSpec

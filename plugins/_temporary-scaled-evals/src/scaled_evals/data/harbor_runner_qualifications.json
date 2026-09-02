@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "default_version": "0.13.2",
+  "aliases": {"default": "0.13.2", "stable": "0.13.2"},
+  "validation": {
+    "performed_at": "2026-07-07T20:50:00Z",
+    "platform": "linux/amd64",
+    "python_version": "3.12.13",
+    "checks": ["exact-package-install", "adapter-imports", "harbor-run-help"],
+    "e2e_status": "pending"
+  },
+  "sandbox_k8s": {
+    "version": "0.1.13",
+    "git_tag": "0.1.13",
+    "git_commit_sha": "6fd37c17ac45e80f14bbe060901083f2569ed7a9",
+    "wheel_filename": "sandbox_k8s-0.1.13-py3-none-any.whl",
+    "wheel_sha256": "f6d89d7e331221fac61679b0ede90de5d04225e972ca15bbcad905847045491a"
+  },
+  "adapter": {
+    "version": "scaled-evals-overlay-v29",
+    "bundle_sha256": "29a40f2f4ee9106e6900498dd0be87a9da7f0db0d80b65af33d2a5407c07d666",
+    "files": [
+      "compose/harbor-runner/patches/patch_claude_code_initial_turns.py",
+      "compose/harbor-runner/patches/patch_codex_custom_provider.py",
+      "compose/harbor-runner/patches/patch_codex_model_path.py",
+      "compose/harbor-runner/patches/patch_hermes_extra_env.py",
+      "compose/harbor-runner/patches/patch_langgraph_inference_headers.py",
+      "compose/harbor-runner/patches/patch_langgraph_writable_venv.py",
+      "compose/harbor-runner/patches/patch_opencode_extra_env.py",
+      "compose/harbor-runner/patches/patch_openclaw_upload.py",
+      "compose/harbor-runner/patches/patch_openhands_inference_headers.py",
+      "compose/harbor-runner/patches/patch_pi_extra_env.py",
+      "compose/harbor-runner/patches/patch_sandbox_k8s_root.py",
+      "compose/harbor-runner/patches/patch_terminus2_tmux_env.py",
+      "compose/harbor-runner/patches/matrix_command_agent.py",
+      "compose/harbor-runner/patches/preinstalled_claude_code.py",
+      "compose/harbor-runner/patches/preinstalled_codex.py",
+      "compose/harbor-runner/patches/preinstalled_hermes.py",
+      "compose/harbor-runner/patches/preinstalled_openhands.py",
+      "compose/harbor-runner/patches/preinstalled_openclaw.py",
+      "compose/harbor-runner/patches/preinstalled_opencode.py",
+      "compose/harbor-runner/patches/preinstalled_pi.py",
+      "compose/harbor-runner/patches/preinstalled_utils.py",
+      "compose/harbor-runner/patches/sandbox_k8s_harbor.py"
+    ]
+  },
+  "releases": {
+    "0.6.3": {
+      "selectable": true,
+      "qualification": "supported",
+      "git_tag": "v0.6.3",
+      "git_tag_object_sha": "ae3ef103438c945e1d9549b9afcd802d36688868",
+      "git_commit_sha": "f59c6b2a59943c6d475947bd4e24394ef1c52652",
+      "wheel_filename": "harbor-0.6.3-py3-none-any.whl",
+      "wheel_sha256": "56c7072b9281d6588ef0db607ec794182caecdd0be8adb034903b9d67248be40",
+      "released_at": "2026-04-30T16:29:38.949165Z"
+    },
+    "0.6.4": {
+      "selectable": true,
+      "qualification": "supported",
+      "git_tag": "v0.6.4",
+      "git_tag_object_sha": "75b77c76c902e716ae75d8ca02fd99338f2868d4",
+      "git_commit_sha": "331dcba30efcc3fa8282a21de562a3834d6e6244",
+      "wheel_filename": "harbor-0.6.4-py3-none-any.whl",
+      "wheel_sha256": "d6c268175ef499fffbe7f70f855b4423198b2125550e5a151386bb283469e6e9",
+      "released_at": "2026-05-01T18:33:22.623206Z"
+    },
+    "0.6.6": {
+      "selectable": false,
+      "qualification": "package-compatible",
+      "git_tag": "v0.6.6",
+      "git_tag_object_sha": "66abc362f460f8f10162083c8e6effcc34e978ef",
+      "git_commit_sha": "ccf3df5ef50141b004322d4008b84b64797b76b9",
+      "wheel_filename": "harbor-0.6.6-py3-none-any.whl",
+      "wheel_sha256": "30477bf698d6853d6c4bb76d85aec85e1e95190ad3a6e4bf4730435926007652",
+      "released_at": "2026-05-07T19:23:40.757742Z"
+    },
+    "0.7.1": {
+      "selectable": false,
+      "qualification": "package-compatible",
+      "git_tag": "v0.7.1",
+      "git_tag_object_sha": "d9c657fa2f22467d8051695414b095c7fc8bb4fa",
+      "git_commit_sha": "03dbe09ce73e8c515132679abaa9e50b8728170f",
+      "wheel_filename": "harbor-0.7.1-py3-none-any.whl",
+      "wheel_sha256": "62d358ea28ccc052c3bd2c9bcf4c86f6610a2c2b2e9933cd20afadbe0bae36fb",
+      "released_at": "2026-05-18T22:37:09.604629Z"
+    },
+    "0.8.0": {
+      "selectable": false,
+      "qualification": "package-compatible",
+      "git_tag": "v0.8.0",
+      "git_tag_object_sha": "fafa4193299e5b25d8abb4c765bd9f8d56239cb4",
+      "git_commit_sha": "22b83271db78ef4bcbeb2402cdd154979cf87912",
+      "wheel_filename": "harbor-0.8.0-py3-none-any.whl",
+      "wheel_sha256": "1ccbc327c0bbd204d828b995dc47307c92df2c1e58d625f5ac1b90808553b9fd",
+      "released_at": "2026-05-22T05:18:11.212477Z"
+    },
+    "0.9.0": {
+      "selectable": false,
+      "qualification": "package-compatible",
+      "git_tag": "v0.9.0",
+      "git_tag_object_sha": "710fb145f8b6d910c6430673afe67319d4b06de5",
+      "git_commit_sha": "1b1dbc43729edff705071a797bb0f98a90cf62f5",
+      "wheel_filename": "harbor-0.9.0-py3-none-any.whl",
+      "wheel_sha256": "8247e58c900b424d2a7e94265d0fba6930afe03f44f3eb6dfb0f538d2cf65d49",
+      "released_at": "2026-05-28T21:12:25.772327Z"
+    },
+    "0.13.2": {
+      "selectable": true,
+      "qualification": "supported",
+      "patches": ["claude-code-initial-turns", "terminus2-tmux-env-fallback"],
+      "git_tag": "v0.13.2",
+      "git_tag_object_sha": "8146f0bdc96fdace618fee74989708f395aff3f0",
+      "git_commit_sha": "96eaf6b2316b8a5a64ef78defe4df5ce0c51216a",
+      "wheel_filename": "harbor-0.13.2-py3-none-any.whl",
+      "wheel_sha256": "7a60207965755268fb0a4748a553ce92ed91ce7b32805e7f0c8fea1ed61567b6",
+      "released_at": "2026-06-11T00:15:36.980824Z"
+    },
+    "0.14.0": {
+      "selectable": false,
+      "qualification": "package-compatible",
+      "git_tag": "v0.14.0",
+      "git_tag_object_sha": "ec5ff0fc6771c0616a43e89f4337a65ba7633a6b",
+      "git_commit_sha": "e841b9c84aada01697f661ab3e02402d471fa4d4",
+      "wheel_filename": "harbor-0.14.0-py3-none-any.whl",
+      "wheel_sha256": "171971a008386ce633ef9f53fb4170e7d7807dba15349e930366581dd4c511e2",
+      "released_at": "2026-06-17T16:43:25.062581Z"
+    },
+    "0.15.0": {
+      "selectable": false,
+      "qualification": "package-compatible",
+      "git_tag": "v0.15.0",
+      "git_tag_object_sha": "30aa02920b563def4cf14ad706c77f0aa87b0184",
+      "git_commit_sha": "50ece5b178624af6059baeeff2b150900fd3599b",
+      "wheel_filename": "harbor-0.15.0-py3-none-any.whl",
+      "wheel_sha256": "a6f7f703d9b008920f07751ae27f6c049afe908bee8199aa6bcc911f6c2aab1b",
+      "released_at": "2026-06-19T22:48:19.009526Z"
+    },
+    "0.16.1": {
+      "selectable": false,
+      "qualification": "package-compatible",
+      "git_tag": "v0.16.1",
+      "git_tag_object_sha": "87eb0b6bc544707aaffdb2b25909c1f083db8656",
+      "git_commit_sha": "137c27874df6163309c6c0cb218a56a7b0e00e79",
+      "wheel_filename": "harbor-0.16.1-py3-none-any.whl",
+      "wheel_sha256": "26264bb011baf25f44d5264ee74e1a0882eb936f9883f8618bce1573878c3f66",
+      "released_at": "2026-06-28T05:13:15.704411Z"
+    },
+    "0.17.1": {
+      "selectable": false,
+      "qualification": "package-compatible",
+      "git_tag": "v0.17.1",
+      "git_tag_object_sha": "3ce4ff9ab1adf078aecdf57f87158fed1669638f",
+      "git_commit_sha": "1afcacf22df82e6b3f36152fcd11bfef4ec96c4f",
+      "wheel_filename": "harbor-0.17.1-py3-none-any.whl",
+      "wheel_sha256": "70ec59ecb4af254bf74f1825e34fc8e06e13e4b3a50baca316907cea4344e155",
+      "released_at": "2026-07-03T23:08:55.504965Z"
+    },
+    "0.18.0": {
+      "selectable": false,
+      "qualification": "package-compatible",
+      "git_tag": "v0.18.0",
+      "git_tag_object_sha": "0a01ad600e218de22a5587bd525ed07cb34bd056",
+      "git_commit_sha": "527d50deb63a5d279e8c20593c18a2cbc7f61f9e",
+      "wheel_filename": "harbor-0.18.0-py3-none-any.whl",
+      "wheel_sha256": "e436f04fca35bb3705be603b8c123d0472418d10120cfd7e5ba8dc902e56bc32",
+      "released_at": "2026-07-07T20:29:45.064139Z"
+    }
+  }
+}

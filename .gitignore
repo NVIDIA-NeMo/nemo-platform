@@ -171,3 +171,8 @@ iron-swarm.yaml
 docs/superpowers/
 # Per-worker fatal-signal tracebacks (PYTEST_CRASH_DUMP_DIR)
 crash-dumps/
+
+# Names a specific cloud project (bucket, service accounts, registry paths), so
+# it stays local. plugins/_temporary-scaled-evals/deploy/k8s/local.env.example is the
+# committed template.
+plugins/_temporary-scaled-evals/deploy/k8s/local.env

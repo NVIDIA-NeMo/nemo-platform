@@ -104,6 +104,10 @@ class Cluster(BaseModel):
 
     name: str = Field(..., min_length=1, description="Unique cluster name")
     base_url: HttpUrl = Field(..., description="Base URL for the cluster")
+    certificate_authority: str | None = Field(
+        default=None,
+        description="Path to a PEM certificate authority bundle for TLS verification",
+    )
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional cluster metadata")
 
     @field_validator("name")
@@ -168,6 +172,8 @@ class ConfigParams(TypedDict, total=False):
     current_context: str
 
     base_url: str
+
+    certificate_authority: str | None
 
     # OAuth fields (for OAuthUser)
     access_token: str | None
@@ -260,6 +266,8 @@ class ConfigFile(BaseModel):
             self.clusters.append(cluster)
         elif "base_url" in params:
             cluster.base_url = HttpUrl(params["base_url"])
+        if "certificate_authority" in params:
+            cluster.certificate_authority = params["certificate_authority"]
 
         # Find existing or create user
         user: User = next((u for u in self.users if u.name == user_name), None)  # type: ignore[assignment]
