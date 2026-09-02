@@ -69,7 +69,7 @@ RUN --mount=type=bind,source=docker/scripts/remove-listed-apt-packages.sh,target
     apt-get install -y --no-install-recommends \
         jq curl git rsync wget less vim ccache gnupg \
         build-essential ca-certificates \
-        libibverbs-dev && \
+        libibverbs-dev libsqlite3-0 && \
     apt-get install -y --only-upgrade openssl libssl3t64 && \
     bash /tmp/remove-listed-apt-packages.sh /tmp/apt-package-removals.txt && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -441,25 +441,49 @@ if [ -d "${GYM_CACHE}" ]; then
     echo "in-tree Gym cache is ${GYM_CACHE_MB} MB (metadata only) - ok"
 fi
 
-# Some actor/env venvs may contain logging integrations depending on the selected
-# NeMo-RL extras. Upgrade those in place, then drop now-unreferenced old cache
-# archives so scanners do not report stale artifacts under /opt/uv_cache.
-for py in /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
+# CVE remediation for packages baked into one or more prefetched venvs.
+# Keep this after prefetch: uv exact-syncs each extra from RL's lock, so earlier upgrades would be
+# reintroduced by the worker venv materialization step.
+for py in /opt/nemo_rl_venv/bin/python /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
     [ -x "${py}" ] || continue
     if "${py}" -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("mlflow") else 1)'; then
         uv pip install --python "${py}" --upgrade-package mlflow-skinny --upgrade-package sqlparse \
             "mlflow-skinny>=3.15.0,<3.16.0" "sqlparse>=0.6.0,<0.7"
+    elif "${py}" -c 'import importlib.metadata as m; m.version("sqlparse")' >/dev/null 2>&1; then
+        uv pip install --python "${py}" --no-deps --upgrade-package sqlparse "sqlparse>=0.6.0,<0.7"
+    fi
+    if "${py}" -c 'import importlib.metadata as m; m.version("hydra-core")' >/dev/null 2>&1; then
+        uv pip install --python "${py}" --no-deps --upgrade-package hydra-core "hydra-core>=1.3.4,<1.4"
     fi
     if "${py}" -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("wandb") else 1)'; then
         uv pip install --python "${py}" --upgrade-package wandb "wandb>=0.29.0"
     fi
+    uv pip uninstall --python "${py}" mooncake-transfer-engine-cuda13 || true
 done
-for dist_info_glob in mlflow-*.dist-info mlflow_skinny-*.dist-info sqlparse-*.dist-info wandb-*.dist-info; do
-    for d in "${UV_CACHE_DIR}"/archive-v0/*/; do
-        ls "${d}"${dist_info_glob} >/dev/null 2>&1 || continue
-        find /opt/nemo_rl_venv /opt/ray_venvs /opt/gym_venvs -lname "*$(basename "${d}")*" -print -quit 2>/dev/null | grep -q . && continue
+
+# Mooncake is an optional vLLM KV-transfer connector. The latest CUDA 13 wheel still embeds a
+# vulnerable Go-built libetcd wrapper, so remove the optional package until upstream ships a fixed
+# binary. Standard DPO/GRPO generation paths do not use the MooncakeConnector.
+find /opt/nemo_rl_venv /opt/ray_venvs /opt/gym_venvs -type d \
+    \( -path '*/site-packages/mooncake' \
+       -o -path '*/site-packages/mooncake_transfer_engine_cuda13-*.dist-info' \
+       -o -path '*/site-packages/mooncake_transfer_engine_cuda13.libs' \) \
+    -prune -exec rm -rf {} + || true
+for d in "${UV_CACHE_DIR}"/archive-v0/*/; do
+    if ! compgen -G "${d}wandb-*.dist-info" >/dev/null \
+        && ! compgen -G "${d}mlflow-*.dist-info" >/dev/null \
+        && ! compgen -G "${d}mlflow_skinny-*.dist-info" >/dev/null \
+        && ! compgen -G "${d}hydra_core-*.dist-info" >/dev/null \
+        && ! compgen -G "${d}sqlparse-*.dist-info" >/dev/null \
+        && ! compgen -G "${d}mooncake_transfer_engine_cuda13-*.dist-info" >/dev/null; then
+        continue
+    fi
+    if compgen -G "${d}mooncake_transfer_engine_cuda13-*.dist-info" >/dev/null; then
         rm -rf "${d}"
-    done
+        continue
+    fi
+    find /opt/nemo_rl_venv /opt/ray_venvs /opt/gym_venvs -lname "*$(basename "${d}")*" -print -quit 2>/dev/null | grep -q . && continue
+    rm -rf "${d}"
 done
 EOF
 
