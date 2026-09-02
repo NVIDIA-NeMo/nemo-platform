@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -2806,6 +2807,71 @@ class TestFabricWheelInstall:
 
         assert seen["present"], "the env-supplied wheel must be staged for the build"
         assert not (context / wheel.name).exists()
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_latest_resolves_the_newest_wheel_in_dist(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container import builder
+        from nemo_agents_plugin.container.template import WHEEL_ENV, WHEEL_LATEST
+
+        dist = tmp_path / "dist"
+        dist.mkdir()
+        older = dist / "nemo_platform-0.4.0.post1-py3-none-any.whl"
+        newer = dist / "nemo_platform-0.4.0.post2-py3-none-any.whl"
+        older.write_bytes(b"old")
+        newer.write_bytes(b"new")
+        os.utime(older, (1, 1))
+        os.utime(newer, (2, 2))
+        monkeypatch.setattr(builder, "_source_checkout_dist_dir", lambda: dist)
+        monkeypatch.setenv(WHEEL_ENV, WHEEL_LATEST)
+        context = fabric_agent_config.parent
+        seen: dict[str, bool] = {}
+        mock_build.side_effect = lambda **kwargs: seen.setdefault("present", (context / newer.name).exists())
+
+        builder.build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+        assert seen["present"], "LATEST must stage the most recently built wheel"
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_an_existing_path_named_latest_is_not_treated_as_the_sentinel(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container import builder
+        from nemo_agents_plugin.container.template import WHEEL_ENV, WHEEL_LATEST
+
+        literal = tmp_path / WHEEL_LATEST
+        literal.write_bytes(b"wheel")
+        monkeypatch.setenv(WHEEL_ENV, str(literal))
+
+        with pytest.raises(ValueError, match="not a wheel"):
+            builder.build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+    def test_latest_without_a_source_checkout_says_so(
+        self, fabric_agent_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container import builder
+        from nemo_agents_plugin.container.template import WHEEL_ENV, WHEEL_LATEST
+
+        monkeypatch.setattr(builder, "_source_checkout_dist_dir", lambda: None)
+        monkeypatch.setenv(WHEEL_ENV, WHEEL_LATEST)
+
+        with pytest.raises(ValueError, match="needs a source checkout"):
+            builder.build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+    def test_latest_with_an_empty_dist_names_the_build_command(
+        self, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container import builder
+        from nemo_agents_plugin.container.template import WHEEL_ENV, WHEEL_LATEST
+
+        dist = tmp_path / "dist"
+        dist.mkdir()
+        monkeypatch.setattr(builder, "_source_checkout_dist_dir", lambda: dist)
+        monkeypatch.setenv(WHEEL_ENV, WHEEL_LATEST)
+
+        with pytest.raises(ValueError, match="uv build --package nemo-platform"):
+            builder.build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
 
     @pytest.mark.parametrize(
         ("filename", "create", "match"),
