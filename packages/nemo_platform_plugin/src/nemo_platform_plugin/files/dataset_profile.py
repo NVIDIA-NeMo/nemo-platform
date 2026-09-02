@@ -5,23 +5,25 @@
 
 A ``DatasetProfile`` is machine-owned metadata the profiler computes once, at the Files layer, so
 every consumer reads one typed description of a dataset instead of downloading and re-inspecting it.
+It has two stored layers:
 
-The profile has two stored layers:
-
-* **structure** — predominantly facts: file layout, splits, the derived row schema (``features``),
-  and per-column ``stats``. The one detected attribute living here is the ``FeatureSchema.semantic_role``
-  marker stacked on the feature node it describes.
-* **classification** — an objective description of what the data *is*: ``dataset_type``, the
+* **structure** -- predominantly facts: file layout, splits, the derived row schema (``features``)
+  and per-column ``stats``. The one detected attribute here is ``FeatureSchema.semantic_role``.
+* **classification** -- what the data *is*: the ``candidates`` a partition's roles satisfy, the
   ``format`` / ``prompt_form`` axes, and ``verifiability``.
 
-Vocabularies (``dataset_type``, ``semantic_role``, ``modality``, ...) are open ``str`` values with
+Vocabularies (``candidates`` entries, ``semantic_role``, ``modality``, ...) are open ``str`` values
 documented canonical sets, not closed enums: only known values are emitted, but consumers must
 tolerate unknown ones so the vocabulary can grow without a breaking change. Pydantic's default
 ``extra="ignore"`` gives the same forward-compatibility for unknown *fields*.
 
-This module is pydantic-only — no platform dependencies — so the profiler can import it as a
-standalone contract and ``DatasetMetadataContent`` can later carry it as a typed field.
-"""
+It lives in a shared package rather than with the profiler because the Files service stores and
+serves a profile as its own entity, so a deployment that installs no profiler still needs the type
+to deserialize its own rows. The module is pydantic-only, so the profiler imports it standalone and
+Files will import it as the type it persists -- that second half is why it lives here, not something
+that has happened yet: today the profiler and these tests are its only importers, which is the same
+reason ``PROFILE_SCHEMA_VERSION`` is still 1.0. A profile is a separate entity from fileset
+metadata, so writing one cannot clobber an unrelated metadata edit."""
 
 from __future__ import annotations
 
@@ -30,7 +32,9 @@ from datetime import datetime
 from pydantic import BaseModel, Field, model_validator
 
 # Semver of THIS contract. Gates consumer compatibility: new detectors or vocabulary values are a
-# minor bump; a change to the fields below is a major bump.
+# minor bump; a change to the fields below is a major bump. Still 1.0 because nothing consumes it
+# yet — the fields have moved a great deal, but pre-release churn is not a break for anyone, and the
+# first number that means something is the one shipped alongside the first consumer.
 PROFILE_SCHEMA_VERSION = "1.0"
 
 
@@ -46,7 +50,12 @@ class Evidence(BaseModel):
     """
 
     kind: str = Field(
-        description="column_name | column_dtype | content_probe | split_name | file_name | card_metadata",
+        description=(
+            "column_name | column_dtype | content_probe | split_name | file_name | card_metadata | "
+            "user_hint | error — `user_hint` for a caller-supplied column role the data could not "
+            "support, and `error` for when a detector could not run at all, so an absent finding is "
+            "distinguishable from a finding of absence."
+        ),
     )
     detail: str = Field(
         description="Self-describing evidence, e.g. \"answer matches '#### <number>' in 100% of 1024 sampled rows\".",
@@ -77,7 +86,20 @@ class PartitionClassification(BaseModel):
     """
 
     modality: str = Field(default="text", description="text | image_text | audio_text | ...")
-    dataset_type: str = Field(description="Dataset-type vocabulary (prompt_completion, preference_pair, ...).")
+    candidates: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Every dataset type the assigned roles satisfy (prompt_completion, preference_pair, ...), most "
+            "specific first. `candidates[0]` is the best single answer and the tail is structures the same "
+            "columns also satisfy: prompt + completion + score + label is genuinely both `scored_response` and "
+            "`unpaired_preference`, and a consumer that cares picks by its own rule rather than by ours. EMPTY "
+            "means the roles matched no known structure, which is also what a partition that could not be "
+            "classified at all reports; the two are not distinguishable from this model alone, because an "
+            "`error` evidence entry is also how a partition that classified fine reports a degradation along "
+            "the way -- a column cap, a column whose measurement failed, a probe that could not run. "
+            "A SUMMARY either way: the `semantic_role` markers are what a consumer should match on."
+        ),
+    )
     format: str | None = Field(default=None, description="standard | conversational | mixed")
     prompt_form: str | None = Field(default=None, description="explicit | implicit | n/a")
     verifiability: Verifiability | None = Field(
@@ -92,12 +114,33 @@ class PartitionClassification(BaseModel):
         ),
     )
 
+    @property
+    def primary(self) -> str | None:
+        """The highest-priority dataset type, or None when the roles matched no known structure.
+
+        Derived rather than stored, and deliberately not serialized. A stored copy of this was the
+        earlier shape and it could disagree with the list it summarised -- which it did, on the one
+        path that built a classification without running the classifier. Nothing computed from
+        `candidates` can contradict `candidates`.
+        """
+        return self.candidates[0] if self.candidates else None
+
 
 # ---- structure: facts + the stacked semantic_role detection (computed) -------------------------
 
 
 class Quantiles(BaseModel):
-    """A per-row distribution summary. p99 = long-tail sequence-length signal; max = hard cap."""
+    """A per-row distribution summary. p99 = long-tail sequence-length signal; max = hard cap.
+
+    The shape is the point, not the precision. Mean and max cannot tell "uniformly medium-length"
+    apart from "mostly short with a long tail", and those call for opposite sequence budgets.
+
+    **p50 / p95 / p99 are estimates, within a couple of percent**, read off counters bucketed by
+    magnitude rather than off the lengths themselves. Every row is counted, so the *rank* is exact;
+    only the value is rounded.
+
+    **`max` is exact**, always, and is the only number here safe to treat as a hard bound.
+    """
 
     p50: int
     p95: int
@@ -119,11 +162,13 @@ class MessageStats(BaseModel):
     roles_seen: list[str] = Field(
         default_factory=list,
         description=(
-            'The distinct role strings actually present in the sampled rows, verbatim — e.g. ["system", '
-            '"user", "assistant", "tool"], but equally ShareGPT\'s ["human", "gpt"] or a house convention. '
-            "A measurement of row content, not a vocabulary the profiler picks from, so it is deliberately "
-            "not an enum: an unexpected role is the finding worth reporting, and normalizing or dropping it "
-            "would hide exactly what a consumer needs to see before choosing a chat template."
+            'The distinct role strings present in the sampled rows -- e.g. ["system", "user", "assistant", '
+            '"tool"], but equally ["human", "gpt"]. A measurement of row content, not a closed vocabulary: an '
+            "unexpected role is the finding worth reporting, and normalizing it away would hide what a consumer "
+            "needs before choosing a chat template. This is row content in the stored profile, under no role gate, "
+            "so it is bounded twice: a column showing more distinct roles than fit here is not a chat column, and "
+            "each string is truncated to a fixed length -- a role is a short token by nature, so anything long "
+            "enough to be truncated is itself the finding. Do not match on these exactly; a value may be a prefix."
         ),
     )
     ends_with_assistant_rate: float = Field(
@@ -143,32 +188,22 @@ class NumericStats(BaseModel):
     mean: float
 
 
-class TextQuality(BaseModel):
-    """Cheap, single-pass corruption signals for a text column. Flags training-wrecking data, not
-    toxicity / PII.
-    """
-
-    whitespace_ratio: float = Field(ge=0.0, le=1.0, description="Padding / bad scraping.")
-    non_ascii_ratio: float = Field(ge=0.0, le=1.0, description="Encoding / non-Latin signal.")
-    repetition_score: float = Field(ge=0.0, le=1.0, description="Degenerate repeated-substring loops.")
-
-
 class FeatureSchema(BaseModel):
-    """One node of the row schema, derived de novo from the data (there is no external JSON-Schema
-    store to reference). Carries the measured layout (name, dtype, children) plus at most one
-    detected ``semantic_role`` marker stacked on the same node.
+    """One node of the row schema, derived from the data rather than referenced from a schema store.
+    Carries the measured layout (name, dtype, children) plus at most one detected ``semantic_role``.
 
-    Recursive and fully expanded: a ``struct`` node has child ``fields``; a ``list`` / ``messages``
-    node has an element ``items`` — for ``messages`` the per-message ``{role, content}`` struct is
-    spelled out, so a vision message whose content is a list of typed parts shows up structurally.
-    The column-level chat summary lives in ``MessageStats`` on the stats side. This tree is the
-    clean, bridgeable schema artifact (e.g. to a JSON Schema or a UI columns view).
+    Recursive and fully expanded: a ``struct`` node has child ``fields``, and a ``list`` /
+    ``messages`` node has an element ``items``. For ``messages`` the per-message ``{role, content}``
+    struct is spelled out, so a vision message whose content is a list of typed parts shows up
+    structurally. The column-level chat summary lives in ``MessageStats``. This tree is the
+    bridgeable schema artifact -- to a JSON Schema, or a UI columns view.
     """
 
     name: str = Field(default="", description='Column / struct-field name; "" for a list element.')
     dtype: str = Field(
         description=(
-            "string | bool | int8..int64 / uint8..uint64 | float16/32/64 | struct | list | messages | "
+            "string | bool | int8..int64 / uint8..uint64 | float16/32/64 | date | time | timestamp | "
+            "duration | binary | decimal | struct | list | messages | "
             "image | audio | video | json | ... — fixed-width numeric widths as the source file reports them."
         ),
     )
@@ -181,11 +216,12 @@ class FeatureSchema(BaseModel):
             "message struct's `role` key."
         ),
     )
-    fixed_length: int | None = Field(
+    semantic_role_source: str | None = Field(
         default=None,
         description=(
-            "dtype == list: constant observed element count (e.g. an embedding vector's 768), None when "
-            "variable. Multi-dimensional shapes compose via nesting."
+            "Where `semantic_role` came from: detected | declared. A declared role was asserted by the caller and "
+            "still had to pass the dtype gate; a detected one came from the column name. Stored so a consumer can "
+            "weigh the two differently."
         ),
     )
     fields: list[FeatureSchema] | None = Field(default=None, description="dtype == struct: named child fields.")
@@ -196,9 +232,9 @@ class FeatureSchema(BaseModel):
         """A node is either a named-field container or has a single element schema, never both.
 
         Deliberately the only structural check here: it holds for *any* dtype, so it costs no
-        forward compatibility. Tying `fields` / `items` / `fixed_length` to specific dtype values
-        would instead reject a profile written by a newer profiler that added a container dtype,
-        which is exactly what the open vocabulary exists to prevent.
+        forward compatibility. Tying `fields` / `items` to specific dtype values would instead
+        reject a profile written by a newer profiler that added a container dtype, which is exactly
+        what the open vocabulary exists to prevent.
         """
         if self.fields is not None and self.items is not None:
             raise ValueError(f"feature {self.name!r}: `fields` and `items` are mutually exclusive")
@@ -206,79 +242,90 @@ class FeatureSchema(BaseModel):
 
 
 class CategoricalStats(BaseModel):
-    """Cardinality signals for string / int columns.
+    """The vocabulary of a column that has one.
 
-    ``distinct_count`` is always safe to store; the values themselves ARE row data, so they appear
-    only when proven to be a small enumeration by an exhaustive scan — the same
-    assert-only-what-was-proven rule applied everywhere the profiler would otherwise leak row content.
+    Present only when the column really is a bounded controlled vocabulary. Absent otherwise, and the
+    absence *is* the claim: this column is not a vocabulary.
+
+    Not a general cardinality count -- counting distinct values exactly means *retaining* them, and
+    for a column of prompts the distinct set is the column. The number has two consumers: a ``<= 2``
+    test confirming a binary label, and the ``<= 32`` gate on ``values``.
     """
 
     distinct_count: int = Field(
         description=(
-            "Distinct values among scanned rows: ~=rows_scanned -> id-like; a small bounded set "
-            "corroborates score / category roles."
+            "How many distinct values the vocabulary holds. Present only for a column that stayed a bounded "
+            "vocabulary throughout -- absence means the column is not one, not that counting was skipped. Exact "
+            "over the rows that were read; where the partition's `rows_complete` is false, a shard was missed or "
+            "a read was cut short, and this is a LOWER BOUND for the partition."
         ),
     )
     values: list[str] | None = Field(
         default=None,
-        description="The proven enumeration; only when the scan was exhaustive and distinct_count <= 32.",
+        description=(
+            "The observed values, present only when this column's `semantic_role` makes it a controlled "
+            "vocabulary and the count is small enough to quote. Absent whenever any file in the partition was read "
+            "only part-way -- by a row budget or by a failure mid-read -- since a prefix cannot prove an enumeration "
+            "and quoting one would store a sample of row content as though it were the whole vocabulary. A partition "
+            "that lost a shard before it yielded a row still quotes: that file contributed nothing to measure, so "
+            "the values gathered from the rest are entire, and `rows_complete` reports the loss. This is the one "
+            "place *column* content reaches the stored profile under a role gate rather than a size gate, since "
+            "cardinality inverts on small data, where every column looks like an enumeration. It is not the only "
+            "place row content reaches the profile: see `MessageStats.roles_seen`."
+        ),
     )
 
 
 class ColumnStats(BaseModel):
     """Measurements for one top-level column (keyed by name in ``PartitionProfile.stats``).
 
-    The kind-specific block is populated by dtype; deep measurements fold into it (e.g.
-    ``MessageStats.content_chars``) so stats stay flat — no path addressing to drift against the
-    schema tree. Never row values — profiles stay safe to display / export without leaking data —
-    with one gated exception: ``categorical.values``, a proven small enumeration.
+    The kind-specific block is populated by dtype, and deep measurements fold into it (e.g.
+    ``MessageStats.content_chars``) so stats stay flat -- no path addressing to drift against the
+    schema tree. Almost never row values: the two exceptions are ``categorical.values``, gated on
+    role, and ``messages.roles_seen``, gated on nothing but bounded in count and in length.
     """
 
     null_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     text: TextStats | None = Field(default=None, description="dtype == string")
     numeric: NumericStats | None = Field(default=None, description="dtype in {int*, uint*, float*}")
     messages: MessageStats | None = Field(default=None, description="dtype == messages (list of {role, content})")
-    categorical: CategoricalStats | None = Field(default=None, description="low observed cardinality only")
-    quality: TextQuality | None = Field(default=None, description="dtype == string: corruption signals")
+    categorical: CategoricalStats | None = Field(
+        default=None,
+        description="Present only when the column is a bounded controlled vocabulary; absence means it is not one.",
+    )
 
 
-class FileRecord(BaseModel):
-    """One physical file, measured.
+class FileError(BaseModel):
+    """A file the profiler could not fully use, and why.
 
-    Stores the exact digest inputs (so a profile self-describes its ``content_digest`` and per-file
-    staleness is computable) plus what the reader learned cheaply.
+    Only failures are enumerated. Healthy files are counted (``SplitProfile.num_files``), because a
+    per-file record for each scaled the profile with shard count while telling a reader nothing: at
+    512 shards those records were 95% of the payload.
     """
 
     path: str = Field(description="Relative path within the fileset.")
-    size_bytes: int
-    checksum: str | None = Field(
-        default=None,
+    error: str = Field(
         description=(
-            'As the Files service reports it (e.g. "sha256:..."). None falls back to a (path, size) digest, '
-            "which cannot detect a same-size in-place edit."
+            "Why this file was not fully read: unreadable, corrupt, partially parsed, or in a format "
+            "with no reader. A file that was read cleanly never appears here, so the absence of a path "
+            "is itself the claim that it was fine."
         ),
-    )
-    num_rows: int | None = Field(
-        default=None,
-        description="Exact only (parquet footer / exhaustive scan), else None.",
     )
 
 
 class SplitProfile(BaseModel):
     """A split within a partition.
 
-    Resolution precedence (declared structure beats detection):
+    Resolved from file paths (train/test/validation markers, sharded layouts). Markers are matched
+    against canonical names and common aliases (val/valid/dev -> validation); the normalized concept
+    lands in ``canonical`` and the split keeps its on-disk ``name``. Failing any marker, a single
+    "default" split holds all files.
 
-    1. HF card front-matter when the fileset ships a README — ``configs[].data_files`` maps splits to
-       file globs explicitly;
-    2. best-effort detection from file paths (train/test/validation markers, sharded layouts like
-       ``data/train-00000-of-00003.parquet``); path markers are matched against canonical names and
-       common aliases (val/valid/dev -> validation), the normalized concept lands in ``canonical``, and
-       the split keeps its on-disk ``name``;
-    3. otherwise leave it alone: a single "default" split holding all files.
+    A dataset card's ``configs[].data_files`` would take precedence over that, mapping splits to
+    globs explicitly rather than by inference -- but card parsing is not implemented, so path
+    detection is the only source today, and ``card_metadata`` is a kind no evidence yet carries.
 
-    A split encoded as a *data column* (a value inside each row rather than a file grouping) is not
-    resolved here; such files profile as a single split.
+    A split encoded as a *data column* rather than a file grouping is not resolved here.
     """
 
     name: str = Field(description="The on-disk name: train | test | train_prefs | ...")
@@ -289,34 +336,72 @@ class SplitProfile(BaseModel):
             "train, with the variant's intent kept in `name`."
         ),
     )
-    files: list[FileRecord] = Field(
+    data_files: str | None = Field(
+        default=None,
         description=(
-            "Every file resolved into this split, measured. Partitioning is exhaustive and disjoint: each "
-            "file of the partition lands in exactly one split, so concatenating `files` across splits "
-            "reconstructs the partition's file list with no gaps or repeats."
+            "A glob selecting exactly this split's files, relative to the fileset root: "
+            '"helpsteer2/train*.parquet". One pattern per split whatever the shard count, so a consumer can read '
+            "one split without listing the fileset and re-deriving which shards belong where. Named for HF card "
+            "front-matter's `configs[].data_files`.\n\n"
+            "`*` spans any run of characters except `/` -- the reading shared by shell globs, Python's glob, "
+            "fsspec and HF. `**` is never emitted, because its meaning is not shared.\n\n"
+            "None when no single pattern selects these files and nothing else. Never approximate: a pattern is "
+            "emitted only after being matched against every file in the fileset and found to select this split "
+            "exactly, since a near miss would silently pull in a README or a neighbouring split's shards."
+        ),
+    )
+    num_files: int = Field(
+        default=0,
+        description=(
+            "How many files resolved into this split. Partitioning is exhaustive over the partition's data files, "
+            "so these sum to the partition's total."
+        ),
+    )
+    size_bytes: int = Field(
+        default=0,
+        description=(
+            "On-disk bytes of this split's files, summed. Answers whether the data fits wherever the reader means "
+            "to put it, which a row count cannot: a row ranges from an integer score to a reasoning trace. Never "
+            "None, since it comes from the file listing rather than from reading. Bytes as stored -- compressed, "
+            "and several times this once decoded."
         ),
     )
     num_examples: int | None = Field(
         default=None,
         description=(
-            "Rows in this split, counting every file in `files` whether or not it was scanned. Exact when "
-            "read from parquet footers or an exhaustive scan, otherwise extrapolated from the rows sampled — "
-            "check `SamplingInfo.exhaustive` before treating it as a fact. None when nothing usable was found."
+            "Rows in this split, counting every one of its files whether or not that file was read to the end. "
+            "None when any file's count is unknown, which is the honest answer: the sum of the rest would look "
+            "like a fact and read low."
         ),
     )
 
 
 class PartitionProfile(BaseModel):
-    """A file-group sharing one row schema, one top-level directory, and one split-name variant
-    (roughly an HF config); named after the directory / variant, else "default".
+    """A file-group sharing one row schema and one source directory (roughly an HF config).
 
     File membership and row counts live on ``splits`` — every file lands in exactly one split, so
     partition-level files / num_examples would be derivable duplication.
     """
 
-    name: str = "default"
-    file_format: str = Field(description="jsonl | parquet | csv | arrow")
-    splits: list[SplitProfile] = Field(description="card-declared > path-detected > single 'default' split.")
+    name: str = Field(
+        default="",
+        description=(
+            "Identifies this partition, and unique within a profile. The path prefix its files share within the "
+            'fileset: a top-level directory, or "" when they sit at the fileset root. Empty is a safe sentinel '
+            "because no directory can be named it. Once card front-matter is parsed, a declared config name "
+            'populates this instead. For display, read it as `name or "default"` rather than storing that '
+            "default, which would throw away the only thing identifying the partition."
+        ),
+    )
+    file_formats: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The distinct formats this partition's files are in, sorted -- normally one. Observed rather than "
+            "chosen: a directory holding two formats has a stray file, not a second dataset, and splitting the "
+            "partition to keep a single value true made partition names unstable."
+        ),
+    )
+    splits: list[SplitProfile] = Field(description="Path-detected, else a single 'default' split.")
     features: list[FeatureSchema] = Field(
         description="The row schema: measured layout plus detected role markers, derived de novo (nested).",
     )
@@ -325,6 +410,15 @@ class PartitionProfile(BaseModel):
         description=(
             "Top-level column name -> measurements; sparse (a column with nothing worth measuring is "
             "omitted); keys are a subset of the top-level `features` names."
+        ),
+    )
+    rows_complete: bool = Field(
+        description=(
+            "True => every row of every file in THIS partition was read. Only then can a consumer assert enum / "
+            "required in a bridged JSON Schema, or read a verifiability coverage of 1.0 as literal.\n\n"
+            "It says whether anything was missed on the way in, not whether a given number is exact -- that is a "
+            "property of the number, and each one says so. Scoped to the partition, because a corrupt shard in "
+            "one says nothing about the measurements in another."
         ),
     )
     classification: PartitionClassification
@@ -342,59 +436,89 @@ class PartitionProfile(BaseModel):
 # ---- envelope ----------------------------------------------------------------------------------
 
 
-class SamplingInfo(BaseModel):
-    """How much of the data the profile is based on.
+class Coverage(BaseModel):
+    """How much of the data the profile is based on, stated as numbers rather than as a verdict.
 
-    Consumers read ``exhaustive`` to decide whether stats are proven facts or estimates (e.g. only an
-    exhaustive profile can assert enum / required in a bridged JSON Schema, or that verifiability
-    coverage is truly 1.0).
+    It carries no ``exhaustive`` flag. That bit answered two questions at once -- whether a given
+    measurement is a fact or an estimate, which each measurement now states for itself, and whether
+    all the data was seen, which needs numerators and denominators. It also folded together causes
+    that call for different people to act: a short read is the caller's choice, a corrupt shard is
+    the data owner's problem, a missing reader is ours.
+
+    The dataset-wide question is one expression away, and still says which half failed::
+
+        all(p.rows_complete for p in profile.partitions) and not profile.file_errors
     """
 
-    exhaustive: bool = Field(description="True => every row of every file was parsed.")
-    strategy: str = Field(
-        description=(
-            "full | stratified_probes | random. Kept explicit alongside `exhaustive` because, with an open "
-            "strategy vocabulary, consumers can't derive exhaustiveness from the strategy name alone."
-        ),
-    )
     rows_scanned: int = Field(description="Total rows actually parsed across all files.")
-    rows_total: int | None = Field(
+    rows_present: int | None = Field(
         default=None,
         description=(
-            "How many rows the whole fileset holds, scanned or not — the denominator `rows_scanned` is a "
-            "fraction of, so a consumer can judge how representative the stats are. Populated only when the "
-            "count is exact and cheap (summed parquet footers, or an exhaustive scan); None means unknown, "
-            "never zero and never an estimate."
+            "How many rows the fileset holds, scanned or not -- the denominator `rows_scanned` is a fraction of. "
+            "None once any file's count is unknown, since a total that omits it would read low as though it were "
+            "a fact."
         ),
     )
-    files_scanned: int = Field(
+    files_read: int = Field(
         description=(
-            "How many files were opened and read from (a count, not a list — the files themselves are "
-            "`SplitProfile.files`). Every file should be probed, since head-sampling a subset hides columns "
-            "that appear only in later shards; expect this to equal the fileset's file count, and be lower "
-            "only when scale forces file-level sampling."
+            "Files the profiler opened and did not fail on. This counts a file it opened and took no rows "
+            "from, which a zero `row_budget` makes every file. A count, not a list: the paths worth naming "
+            "are the ones that failed, and those are on `file_errors`."
+        )
+    )
+    files_present: int = Field(
+        description=(
+            "Data files the fileset holds, whether or not this run could read them -- the denominator "
+            "`files_read` is a fraction of. Counts files in formats with no reader too, since those are data the "
+            "profile does not describe. Non-data files (a README, a LICENSE) are counted nowhere."
         ),
     )
-    per_file_row_cap: int | None = Field(default=None, description="Cap that bounded per-file reads, if any.")
-    seed: int | None = Field(default=None, description="RNG seed used for row selection, for reproducibility.")
+    bytes_present: int = Field(
+        default=0,
+        description=(
+            "On-disk bytes of every data file the fileset holds, whether or not this run could read it -- the "
+            "size of the dataset as it sits, independent of how much was profiled. Equal to the sum over "
+            "`SplitProfile.size_bytes` when nothing failed, and load-bearing when something did: a file in a "
+            "format with no reader never reaches a partition."
+        ),
+    )
 
 
 class DatasetProfile(BaseModel):
-    """The machine-owned dataset profile — the root of the stored contract."""
+    """The machine-owned dataset profile -- the root of the stored contract.
+
+    It carries no staleness marker, and no per-file manifest to reconstruct one from. A stored digest
+    would freeze "which files count as inputs" into the data at write time, and that judgment moves:
+    once card front-matter drives split declaration, ``README.md`` becomes an input, and changing the
+    rule would invalidate every stored profile at once.
+
+    So a profile says when it was made and nothing about whether it still holds. When something does
+    consume freshness, the cheap primitive is a fileset version token from the storage backend.
+    """
 
     profile_schema_version: str = Field(
         default=PROFILE_SCHEMA_VERSION,
         description='Semver of THIS contract (e.g. "1.0") — gates consumer compatibility.',
     )
-    content_digest: str = Field(description="Digest over the stored FileRecords; staleness = mismatch.")
     created_at: datetime
     profiler_info: dict = Field(
         default_factory=dict,
         description="Free-form profiler metadata (name, version, git sha, timings).",
     )
-    sampling: SamplingInfo = Field(description="How much data the profile is based on.")
+    coverage: Coverage = Field(description="How much data the profile is based on.")
     partitions: list[PartitionProfile] = Field(
         description="Single partition in the common homogeneous case; there is no fileset-level rollup.",
+    )
+    file_errors: list[FileError] = Field(
+        default_factory=list,
+        description=(
+            "Every file the profiler could not fully use, from anywhere in the fileset, sorted by path. Files "
+            "that read cleanly are counted rather than listed, so this is a findings list and not a manifest. A "
+            "non-empty list does NOT by itself make `rows_present` unknown: a file that failed part-way through "
+            "the data keeps the exact count its footer already declared. What unknows the total is a file whose "
+            "count could not be established at all -- one with no registered reader, or a line-delimited file "
+            "whose read fell short of its end."
+        ),
     )
 
 
