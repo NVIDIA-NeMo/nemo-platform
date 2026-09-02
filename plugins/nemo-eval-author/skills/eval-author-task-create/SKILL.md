@@ -5,11 +5,11 @@
 name: eval-author-task-create
 description: >-
   Create one Harbor task from one actionable uncovered tool in an Eval Author
-  audit coverage report, prove the task with Harbor's Oracle, run it repeatedly
-  with the repository's real agent when authorized, and accept it only when
-  measured ATIF closes the selected gap every time. Use when the user asks to
-  fill an eval gap, turn audit uncovered_items into a Harbor task, or add missing
-  tool coverage. Writes drafts and measurements only under `.eval-author/`.
+  audit coverage report. Use when the user asks to fill an eval gap, turn audit
+  uncovered_items into a Harbor task draft, or add missing tool coverage. Hand
+  the generated draft to `eval-author-task-close` for Oracle proof, real-agent
+  runs, measured ATIF, and closure classification. Writes drafts and proposals
+  only under `.eval-author/`.
 triggers:
   - create a Harbor task from an audit gap
   - fill an uncovered eval tool
@@ -19,12 +19,13 @@ triggers:
 not-for:
   - eval-author (use for the shared standard and routing)
   - eval-author-audit (use to create the denominator and coverage report)
+  - eval-author-task-close (use to prove or reject an existing generated task draft)
   - eval-author-discover (use to prove an existing suite is runnable)
   - nemo-evaluator (use to run an existing benchmark without authoring tasks)
 compatibility: >-
-  Python 3.11 or later and a Harbor CLI compatible with `harbor task init`.
-  Docker is required for Oracle and Docker-backed real-agent runs. Real-agent
-  runs may require provider credentials and explicit user approval.
+  Python 3.11 or later for the copied helper scripts and a Harbor CLI compatible
+  with `harbor task init`. Closing the generated draft requires
+  `eval-author-task-close`, Harbor, and often Docker plus provider credentials.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -34,14 +35,12 @@ allowed-tools: [Bash, Read, Write, Grep, Glob]
 # Eval Author: create task
 
 Read `eval-author` for the shared evidence standard and boundaries. Read
-`eval-author-audit` for measurement and aggregation. This sub-flow owns only:
+`eval-author-audit` for the coverage report that provides actionable gaps. This
+sub-flow owns only:
 
 ```text
 actionable uncovered tool
   → Harbor-native draft
-  → Oracle reward 1
-  → repeated real-agent ATIF
-  → target tool covered in every report
 ```
 
 Work on one tool gap at a time. Keep every generated artifact under
@@ -55,7 +54,7 @@ Work on one tool gap at a time. Keep every generated artifact under
 |---|---|
 | `select` | Lists only tool items with `reason: not_covered_by_any_input_report` and emits a deterministic `task_slug` plus artifact paths |
 | `scaffold` | Calls Harbor's own `harbor task init`, requires matching draft/proposal names for that slug, and installs the supplied instruction |
-| `verify` | Exits 0 only when the selected tool was uncovered before and covered in two distinct repeated after-reports with distinct ATIF `subject.run_id` values |
+| `verify` | Deterministic primitive used by task-close-style workflows; exits 0 only when the selected tool was uncovered before and covered in two distinct repeated after-reports with distinct ATIF `subject.run_id` values |
 
 The script prints one JSON object. Exit code 0 is success; do not replace its
 verdict with model judgment.
@@ -119,58 +118,14 @@ Then complete Harbor's generated files:
 Do not leave generated placeholders, `pass`, unconditional reward 1, or empty
 keywords.
 
-## Step 4: prove task correctness with Oracle
+## Step 4: hand off to task-close
 
-Run Harbor's Oracle before spending model credentials:
+After the draft exists and the generated files are filled in, use
+`eval-author-task-close` to repair it, prove it with Oracle, run the real agent
+when authorized, measure new ATIF, and classify closure.
 
-```bash
-harbor run -p .eval-author/task-drafts/<task-slug> -a oracle
-```
-
-Continue only when Harbor reports no exception and reward 1.0. Fix the task,
-solution, or verifier when Oracle fails; do not weaken the verifier merely to
-make it pass.
-
-## Step 5: run the real agent twice
-
-Running a model spends credentials. Do it only when the user asked for the run
-or approved it. Use the repository's proven agent configuration, point it at the
-draft, and set `n_attempts: 2`. Keep the resulting job under `.eval-author/`.
-
-Require both trials to:
-
-1. finish without an exception,
-2. receive the intended verifier reward, and
-3. contain `agent/trajectory.json` accepted as ATIF by the audit `measure.py`.
-
-`SUPPORTS_ATIF = true` is not evidence that the emitted JSON matches Harbor's
-current schema. A `measure.py` parse failure is an agent-adapter defect, not a
-coverage result.
-
-## Step 6: measure and aggregate each trial
-
-Run `eval-author-audit`'s `measure.py` and `report.py` separately for each
-trial. Keep repeat outputs separate so one successful run cannot hide another:
-
-```bash
-uv run --with-requirements <audit_skill_dir>/requirements.txt \
-  <audit_skill_dir>/scripts/audit_spec/measure.py \
-  --audit .eval-author/audit.md \
-  --trial-dir <job-dir>/<trial-1> \
-  --task-id <task-slug> \
-  --run-id repeat-1 \
-  --out-dir .eval-author/task-measurements/<task-slug>/repeat-1
-
-uv run --with-requirements <audit_skill_dir>/requirements.txt \
-  <audit_skill_dir>/scripts/audit_spec/report.py \
-  --audit .eval-author/audit.md \
-  --coverage-dir .eval-author/task-measurements/<task-slug>/repeat-1 \
-  --out .eval-author/task-measurements/<task-slug>/repeat-1-report.json
-```
-
-Repeat for trial 2.
-
-## Step 7: accept only deterministic closure
+The legacy `verify` command remains available as a deterministic coverage-only
+primitive:
 
 ```bash
 uv run <skill_dir>/scripts/task_pipeline.py verify \
@@ -179,7 +134,3 @@ uv run <skill_dir>/scripts/task_pipeline.py verify \
   --after .eval-author/task-measurements/<task-slug>/repeat-2-report.json \
   --target <tool-name>
 ```
-
-Accept the draft only when `accepted` is `true`. Report Oracle reward, both
-real-agent rewards, both trial paths, and the verify JSON. If either repeat
-misses the tool, revise the task and rerun both attempts.

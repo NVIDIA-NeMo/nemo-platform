@@ -21,16 +21,17 @@ triggers:
 not-for:
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
   - eval-author-audit (use to generate, validate, measure, or aggregate audit.md coverage)
-  - eval-author-task-create (use to create and prove one Harbor task from an actionable audit gap)
+  - eval-author-task-create (use to create one Harbor task draft from an actionable audit gap)
+  - eval-author-task-close (use to prove or reject a generated Harbor task draft)
   - eval-author-inspect-trace (use after this skill selects the trace sub-flow)
   - nemo-intake (use to instrument agents, ingest telemetry, or query Intake outside Eval Author)
   - nemo-experimentalist (use to run insight-driven optimization end to end, which drives the Eval Author agent itself)
   - nemo-evaluator (use to run an existing benchmark rather than work on a repository's own suite)
 compatibility: >-
-  The router is read-only. Discovery, audit, and task creation use the local
-  checkout. Task execution requires Harbor and may require Docker and provider
-  credentials. Trace inspection requires the nemo CLI, an explicit workspace,
-  and read access to configured Intake.
+  The router is read-only. Discovery, audit, task creation, and task closure use
+  the local checkout. Task execution requires Harbor and may require Docker and
+  provider credentials. Trace inspection requires the nemo CLI, an explicit
+  workspace, and read access to configured Intake.
 maturity: alpha
 license: Apache-2.0
 user-invocable: true
@@ -55,7 +56,7 @@ The authority depends on the sub-flow:
   doesn't prove that Harbor accepts it.
 - For audit-spec validation, the bundled schema and validator judge the finite
   `audit.md` coverage denominator.
-- For task creation, Harbor's Oracle judges task solvability and verifier
+- For task closure, Harbor's Oracle judges task solvability and verifier
   correctness; measured ATIF proves whether repeated runs close the selected gap.
 - For trace inspection, Intake establishes what happened. Local source code can
   explain behavior, but it can't replace recorded trace evidence.
@@ -87,14 +88,16 @@ and the boundaries; the sub-flow carries the steps.
 |---|---|
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
 | `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, write per-method coverage/details files for one ATIF trace, then aggregate coverage reports |
-| `eval-author-task-create` | Create one Harbor-native task from one actionable uncovered tool, prove it with Oracle, and accept it only when repeated measured runs close the gap |
+| `eval-author-task-create` | Create one Harbor-native task draft from one actionable uncovered tool |
+| `eval-author-task-close` | Repair one generated task draft, prove it with Oracle, run the real agent when authorized, and report whether measured repeats close the gap |
 | `eval-author-inspect-trace` | Understand one Intake trace without presuming that the trace contains a failure. Not user-invocable; this skill selects it |
 
 `eval-author-audit` works one level above tasks: it generates and validates the
 coverage denominator, measures traces against it, and aggregates deterministic
 coverage reports. `eval-author-task-create` consumes only actionable tool gaps
 from that report and uses Harbor's native task scaffolder rather than guessing a
-task layout.
+task layout. `eval-author-task-close` handles the separate execution and
+evidence loop for generated task drafts.
 
 ## Boundaries
 
@@ -106,13 +109,14 @@ user, not to you.
   only files you add belong under `.eval-author/`, which is theirs to commit or
   ignore.
   `eval-author-discover` scripts write nothing; `eval-author-audit` writes only
-  requested audit artifacts; `eval-author-task-create` writes only drafts,
-  proposals, job outputs, and measurements there.
+  requested audit artifacts; `eval-author-task-create` writes only drafts and
+  proposals; `eval-author-task-close` writes only draft repairs, job outputs,
+  measurements, and closure reports there.
 - **A missing tool is a finding, not a task.** When the provider is not installed,
   say so and stop short of proving anything. Report what you found regardless, and
   do not install the provider into the user's environment.
 - **Do not run without approval.** Discovery proves an existing suite can run and
-  hands over the command. Task creation may run Oracle locally, then starts
+  hands over the command. Task closure may run Oracle locally, then starts
   real-agent jobs only when the user explicitly asked for or approved that spend.
 - **Trusted repositories only.** Validating a config can execute repository code,
   because an agent named by import path gets imported. If the repository is not
