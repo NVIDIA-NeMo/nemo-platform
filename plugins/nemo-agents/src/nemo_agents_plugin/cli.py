@@ -88,7 +88,7 @@ from nemo_agents_plugin.session_lifecycle import session_expiration_is_due
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform import NeMoPlatform
-from nemo_platform_ext.cli.chat_tui import StreamingResponse, run_chat_tui
+from nemo_platform_ext.cli.chat_tui import ExitAction, StreamingResponse, run_chat_tui
 from nemo_platform_ext.cli.core.api import is_tty
 from nemo_platform_ext.cli.core.formatters import Column, format_output
 from nemo_platform_ext.cli.core.help_formatter import NmpGroup
@@ -1003,7 +1003,8 @@ def _register_platform_commands(app: typer.Typer) -> None:
                 base_url,
                 f"/apis/agents/v2/workspaces/{workspace}/deployments/{agent_deployment}",
             )
-            path += f"?{urlencode({'filter[deployment_id]': deployment['id']})}"
+            deployment_id = _require_deployment_id(deployment, agent_deployment)
+            path += f"?{urlencode({'filter[deployment_id]': deployment_id})}"
 
         resp = _api_request("GET", base_url, path)
         _print_list_response(
@@ -2250,7 +2251,7 @@ def _run_resolved_session_chat(
                 send_turn=send_turn,
                 display_info=display_info,
                 initial_message=input,
-                exit_action="detach",
+                exit_action=ExitAction.DETACH,
             )
     except httpx.TimeoutException as exc:
         typer.echo(
@@ -2271,6 +2272,18 @@ def _run_resolved_session_chat(
 # ---------------------------------------------------------------------------
 
 
+def _require_deployment_id(response: Any, deployment_name: str) -> str:
+    """Return a valid deployment ID or exit with the standard response error."""
+    try:
+        deployment_id = response["id"]
+        if not isinstance(deployment_id, str) or not deployment_id:
+            raise ValueError
+        return deployment_id
+    except (KeyError, TypeError, ValueError):
+        typer.echo(f"Error: Deployment '{deployment_name}' returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+
+
 def _create_session_for_deployment(
     *,
     base_url: str,
@@ -2284,10 +2297,8 @@ def _create_session_for_deployment(
         base_url,
         f"/apis/agents/v2/workspaces/{workspace}/deployments/{deployment_name}",
     )
+    deployment_id = _require_deployment_id(deployment_response, deployment_name)
     try:
-        deployment_id = deployment_response["id"]
-        if not isinstance(deployment_id, str) or not deployment_id:
-            raise ValueError
         deployment = AgentDeployment.model_validate(deployment_response)
     except (KeyError, TypeError, ValueError):
         typer.echo(f"Error: Deployment '{deployment_name}' returned an invalid response.", err=True)

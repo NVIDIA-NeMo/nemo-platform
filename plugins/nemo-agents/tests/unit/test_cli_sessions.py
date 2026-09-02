@@ -120,6 +120,20 @@ def test_sessions_list_filters_by_deployment_name(app) -> None:
     ]
 
 
+@pytest.mark.parametrize("deployment", [None, {}, {"id": None}, {"id": ""}, {"id": 123}])
+def test_sessions_list_rejects_invalid_deployment_response(app, deployment: Any) -> None:
+    with patch("nemo_agents_plugin.cli._api_request", return_value=deployment) as api_request:
+        result = runner.invoke(app, ["sessions", "list", "--agent-deployment", "fabric-deployment"])
+
+    assert result.exit_code == 1
+    assert "Deployment 'fabric-deployment' returned an invalid response" in result.stderr
+    api_request.assert_called_once_with(
+        "GET",
+        "http://localhost:8080",
+        "/apis/agents/v2/workspaces/default/deployments/fabric-deployment",
+    )
+
+
 def test_sessions_list_rejects_empty_deployment_filter(app) -> None:
     with patch("nemo_agents_plugin.cli._api_request") as api_request:
         result = runner.invoke(app, ["sessions", "list", "--agent-deployment", ""])

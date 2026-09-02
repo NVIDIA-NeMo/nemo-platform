@@ -22,7 +22,7 @@ from nemo_agents_plugin.entities import (
     SessionStatus,
 )
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
-from nemo_platform_ext.cli.chat_tui import collect_stream_response
+from nemo_platform_ext.cli.chat_tui import ExitAction, collect_stream_response
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -474,7 +474,7 @@ def test_resolved_session_chat_streams_each_current_turn_with_session_and_auth_h
             "Expires": expires_at.isoformat(),
         }
         assert kwargs["initial_message"] == "first turn"
-        assert kwargs["exit_action"] == "detach"
+        assert kwargs["exit_action"] is ExitAction.DETACH
         for user_input in (kwargs["initial_message"], "second turn"):
             response_text, usage = collect_stream_response(kwargs["send_turn"](user_input))
             assert response_text == f"reply:{user_input}"
