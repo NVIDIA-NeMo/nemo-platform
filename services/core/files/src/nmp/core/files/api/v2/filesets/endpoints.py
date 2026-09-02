@@ -49,7 +49,12 @@ from nmp.core.files.api.v2.filesets.schemas import (
     FilesetFilter,
     FilesetOutput,
     FilesetPage,
+    FilesetProfileResponse,
     ListFilesetFilesResponse,
+    ProfileFilesetRequest,
+    PutFilesetProfileRequest,
+    PutFilesetProfileResponse,
+    SubmitProfileJobResponse,
     UpdateFilesetRequest,
     fileset_file_output_from_info,
     fileset_output_from_entity,
@@ -63,13 +68,22 @@ from nmp.core.files.app.external_hosts import (
     ExternalHostNotAllowedError,
 )
 from nmp.core.files.app.file_lock import FileLockManager
+from nmp.core.files.app.profile_job import (
+    find_running_profile_job,
+    is_cancelled_job,
+    is_failed_job,
+    job_status,
+    scan_profile_jobs,
+    submit_profile_job,
+)
+from nmp.core.files.app.profile_store import delete_profile, get_profile, put_profile
 from nmp.core.files.app.streaming import (
     MultipartChunkProcessor,
     OctetStreamChunkProcessor,
     streaming_file_upload,
 )
 from nmp.core.files.config import FilesConfig
-from nmp.core.files.entities import Fileset
+from nmp.core.files.entities import Fileset, FilesetPurpose
 from nmp.core.files.exceptions import (
     InactivityTimeoutError,
     InvalidPathError,
@@ -81,6 +95,7 @@ from nmp.core.files.exceptions import (
 )
 from starlette.status import (
     HTTP_200_OK,
+    HTTP_202_ACCEPTED,
     HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
@@ -348,6 +363,145 @@ async def retrieve_fileset(
     return fileset_output_from_entity(retrieved)
 
 
+@router.post(
+    "/v2/workspaces/{workspace}/filesets/{name}/profile",
+    summary="Profile Fileset",
+    status_code=HTTP_202_ACCEPTED,
+)
+async def profile_fileset(
+    workspace: str,
+    name: str,
+    request: ProfileFilesetRequest | None = None,
+    entity_store: EntityClient = Depends(get_entity_client),
+    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+) -> SubmitProfileJobResponse:
+    """
+    Profile a fileset's dataset contents.
+
+    Submits a background job that runs the dataset profiler over the fileset,
+    stores the resulting profile (read it via ``GET .../filesets/{name}/profile``),
+    and publishes it as a job result artifact. If a profiling job for this fileset
+    is already on its way, that job is returned instead of submitting a duplicate.
+    """
+    logger.info(f"POST /filesets/{name}/profile - workspace={workspace}")
+    fileset = await get_fileset(workspace, name, entity_store)
+    if fileset.purpose != FilesetPurpose.DATASET:
+        raise HTTPException(
+            HTTP_400_BAD_REQUEST,
+            f"Fileset '{name}' has purpose '{fileset.purpose}'; only 'dataset' filesets can be profiled.",
+        )
+
+    # Dedupe: reuse an already-running profiling job rather than spawning a duplicate. Best-effort
+    # only — two concurrent POSTs can both observe "nothing running" and both submit. A duplicate is
+    # wasteful, not incorrect: profiling is deterministic over the same content, so the writes
+    # converge. True single-flight would need a lock or a deterministic (non-unique) job name.
+    existing = await find_running_profile_job(sdk, workspace=workspace, fileset_name=name)
+    if existing is not None:
+        return SubmitProfileJobResponse(
+            job_name=existing.name,
+            job_id=existing.id,
+            status=job_status(existing),
+            workspace=workspace,
+            fileset=name,
+            reused=True,
+        )
+
+    job = await submit_profile_job(
+        sdk,
+        workspace=workspace,
+        fileset_name=name,
+        row_budget=request.row_budget if request else None,
+    )
+    return SubmitProfileJobResponse(
+        job_name=job.name,
+        job_id=job.id,
+        status=job_status(job),
+        workspace=workspace,
+        fileset=name,
+    )
+
+
+@router.get(
+    "/v2/workspaces/{workspace}/filesets/{name}/profile",
+    summary="Get Fileset Profile",
+    status_code=HTTP_200_OK,
+)
+async def get_fileset_profile(
+    workspace: str,
+    name: str,
+    entity_store: EntityClient = Depends(get_entity_client),
+    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    auth_client: AuthClient = Depends(get_auth_client),
+) -> FilesetProfileResponse:
+    """
+    Get the stored profile for a fileset, with the current profiling state.
+
+    ``state`` is ``ready`` (a profile is available), ``running`` (a job is in flight), ``paused``
+    (a job exists but is suspended and will produce nothing until resumed), ``cancelled`` (the last
+    job was stopped deliberately and no profile exists), ``failed`` (the last job errored and no
+    profile exists), or ``absent`` (never profiled). A stored profile short-circuits without
+    querying the Jobs service, so a re-profile running over an existing profile still reads
+    ``ready`` (with the current profile) and GET stays resilient to a Jobs-service outage.
+
+    There is no ``stale``. A profile carries no content digest to compare a fresh listing against —
+    see ``DatasetProfile`` for why it deliberately holds no staleness marker — so a stored profile
+    describes the fileset as of its ``created_at``, and whether that is still good enough is the
+    caller's call.
+    """
+    logger.info(f"GET /filesets/{name}/profile - workspace={workspace}")
+    fileset = await get_fileset(workspace, name, entity_store)
+    profile = await get_profile(entity_store, fileset)
+
+    # A stored profile is ready to consume; return it without querying Jobs (see docstring).
+    if profile is not None:
+        return FilesetProfileResponse(state="ready", profile=profile)
+
+    jobs = await scan_profile_jobs(sdk, workspace=workspace, fileset_name=name)
+    if jobs.running is not None:
+        return FilesetProfileResponse(state="running", job_name=jobs.running.name)
+    if jobs.paused is not None:
+        return FilesetProfileResponse(state="paused", job_name=jobs.paused.name)
+    if jobs.latest_terminal is not None:
+        if is_cancelled_job(jobs.latest_terminal):
+            return FilesetProfileResponse(state="cancelled", job_name=jobs.latest_terminal.name)
+        if is_failed_job(jobs.latest_terminal):
+            return FilesetProfileResponse(state="failed", job_name=jobs.latest_terminal.name)
+    return FilesetProfileResponse(state="absent")
+
+
+@router.put(
+    "/v2/workspaces/{workspace}/filesets/{name}/profile",
+    summary="Put Fileset Profile",
+    status_code=HTTP_200_OK,
+    # Hidden from the public schema (and therefore from the SDK and CLI) on purpose: this is how
+    # the profiler task returns its result, not something a user calls. Keeping it out also keeps
+    # DatasetProfile out of every generated request-body type. Authorization does not depend on
+    # this — it comes from the static-authz path map, where `filesets.profile.write` is granted to
+    # no workspace role, so only service principals reach it.
+    include_in_schema=False,
+)
+async def put_fileset_profile(
+    workspace: str,
+    name: str,
+    request: PutFilesetProfileRequest,
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> PutFilesetProfileResponse:
+    """
+    Store the computed dataset profile for a fileset (internal; profiler task only).
+
+    Replaces any previous profile: profiling is re-runnable by design, so a second run over changed
+    data must land rather than conflict.
+    """
+    logger.info(f"PUT /filesets/{name}/profile - workspace={workspace}")
+    fileset = await get_fileset(workspace, name, entity_store)
+    await put_profile(entity_store, fileset, request.profile)
+    return PutFilesetProfileResponse(
+        workspace=workspace,
+        fileset=name,
+        created_at=request.profile.created_at,
+    )
+
+
 @router.delete(
     "/v2/workspaces/{workspace}/filesets/{name}",
     summary="Delete Fileset",
@@ -397,6 +551,11 @@ async def delete_fileset(
             f"nothing to delete on the source, proceeding with entity deletion: {exc}"
         )
 
+    # The entity store does not cascade (jobs delete their own children the same way), so drop the
+    # profile explicitly. It goes before the fileset: if this fails, the fileset survives and the
+    # caller can retry the delete, whereas failing *after* would leave an orphan row keyed on an ID
+    # that no longer exists — unreachable, and with nothing left to hang a retry off.
+    await delete_profile(entity_store, fileset)
     await entity_store.delete(Fileset, fileset.name, workspace=workspace)
 
     # Return the fileset data that was captured before deletion
@@ -438,6 +597,8 @@ async def update_fileset_metadata(
         if new_service_source:
             request.custom_fields["service_source"] = new_service_source
 
+    # No profile handling here: the dataset profile is its own entity, so a metadata PATCH cannot
+    # reach it — neither to forge one nor to null out the stored one.
     diff = request.model_dump(include=request.model_fields_set)
     fileset = fileset.model_copy(update=diff)
     await entity_store.update(fileset)

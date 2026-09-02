@@ -11,22 +11,89 @@ This module adds server-specific concerns: converter functions that map domain
 entities to response DTOs, the FilesetFilter schema, and the FilesetPage alias.
 """
 
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
+from nemo_platform_plugin.files.dataset_profile import AnyFilesetProfile
 from nemo_platform_plugin.files.types import CacheStatus
 from nemo_platform_plugin.files.types import CreateFilesetRequest as CreateFilesetRequest
 from nemo_platform_plugin.files.types import FilesetFileOutput as FilesetFileOutput
 from nemo_platform_plugin.files.types import FilesetOutput as FilesetOutput
 from nemo_platform_plugin.files.types import ListFilesetFilesResponse as ListFilesetFilesResponse
+from nemo_platform_plugin.files.types import PutFilesetProfileRequest as PutFilesetProfileRequest
+from nemo_platform_plugin.files.types import PutFilesetProfileResponse as PutFilesetProfileResponse
 from nemo_platform_plugin.files.types import UpdateFilesetRequest as UpdateFilesetRequest
 from nmp.common.api.common import Page
 from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter, map_entity_field
 from nmp.core.files.app.backends import FileInfo
 from nmp.core.files.app.backends.base import StorageConfigType
 from nmp.core.files.entities import Fileset, FilesetPurpose
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 FilesetPage = Page[FilesetOutput]
+
+
+class SubmitProfileJobResponse(BaseModel):
+    """Response for a submitted fileset-profiling job."""
+
+    job_name: str = Field(description="Name of the submitted profiling job.")
+    job_id: str = Field(description="ID of the submitted profiling job.")
+    status: Optional[str] = Field(default=None, description="Status of the job at submission time.")
+    workspace: str = Field(description="Workspace of the profiled fileset.")
+    fileset: str = Field(description="Name of the profiled fileset.")
+    reused: bool = Field(
+        default=False,
+        description="True if an already-running profiling job was returned instead of submitting a new one.",
+    )
+
+
+class ProfileFilesetRequest(BaseModel):
+    """Options for a profiling run. Every field is optional; an empty body profiles with defaults."""
+
+    row_budget: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Rows the profiler may read per *partition*, divided across that partition's files "
+            "rather than applied to each one. Omit (or pass 0) to read every row, which is the "
+            "default: the profiler folds, so memory is flat in rows and an exhaustive read buys "
+            "exact row counts, proven value enumerations, and `rows_complete`. Set a budget when "
+            "the fileset is large enough that the transfer is the cost worth bounding — files are "
+            "read over the network, so an uncapped run pulls every row group over the wire. "
+            "Named to match the profiler's own `row_budget`, which is the value this becomes."
+        ),
+    )
+
+
+class FilesetProfileResponse(BaseModel):
+    """The stored profile plus the status of profiling for this fileset."""
+
+    state: Literal["ready", "running", "paused", "cancelled", "failed", "absent"] = Field(
+        description=(
+            "ready (a profile exists) | "
+            "running (a job is in flight) | "
+            "paused (a job exists but is suspended and will produce nothing until resumed) | "
+            "cancelled (the last job was stopped deliberately and no profile exists; just re-run) | "
+            "failed (the last job errored and no profile exists; worth investigating) | "
+            "absent (never profiled). `cancelled` is kept apart from `failed` because nothing is "
+            "broken and the remedy differs; callers that do not care can treat the two alike. "
+            "There is no `stale`: a profile carries no content digest to check a fresh listing "
+            "against, so a profile that exists always reads `ready` and describes the fileset "
+            "as of its `created_at`."
+        )
+    )
+    job_name: Optional[str] = Field(
+        default=None,
+        description=(
+            "Name of the profiling job behind the state: the in-flight job when running or paused, "
+            "and the job that ended when cancelled or failed."
+        ),
+    )
+    profile: Optional[AnyFilesetProfile] = Field(
+        default=None,
+        description=(
+            "The stored profile, present when ready. It describes the fileset as of its `created_at`, not as of now."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +102,11 @@ FilesetPage = Page[FilesetOutput]
 
 
 def fileset_output_from_entity(entity: Fileset) -> FilesetOutput:
-    """Convert a Fileset domain entity to a FilesetOutput response DTO."""
+    """Convert a Fileset domain entity to a FilesetOutput response DTO.
+
+    Nothing is stripped here: the dataset profile is a separate entity, so it is never loaded into
+    a fileset in the first place and these payloads stay bounded by construction.
+    """
     return FilesetOutput(
         id=entity.id,
         name=entity.name,
@@ -43,6 +114,8 @@ def fileset_output_from_entity(entity: Fileset) -> FilesetOutput:
         description=entity.description or "",
         purpose=entity.purpose,
         storage=entity.storage,
+        # ``entity.metadata`` may be a raw dict (e.g. after ``model_copy(update=...)`` in the PATCH
+        # handler); constructing the DTO here validates it into a ``FilesetMetadata`` first.
         metadata=entity.metadata,
         custom_fields=entity.custom_fields,
         project=entity.project or "",

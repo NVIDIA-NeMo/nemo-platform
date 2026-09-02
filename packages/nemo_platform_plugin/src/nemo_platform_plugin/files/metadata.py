@@ -38,6 +38,10 @@ class DatasetMetadataContent(BaseModel):
             "Each value may be inline JSON Schema or a schema_defs key."
         ),
     )
+    # The machine-computed dataset profile deliberately does *not* live here. It is server-managed
+    # and derived, so putting it in a client-writable metadata field would let any caller with
+    # ``filesets.update`` forge one, and would make a wholesale metadata PATCH destroy it. It is its
+    # own entity behind ``GET .../filesets/{name}/profile`` instead.
 
     @model_validator(mode="after")
     def validate_schema_refs(self) -> "DatasetMetadataContent":

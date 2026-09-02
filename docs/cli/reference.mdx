@@ -1356,7 +1356,9 @@ nemo files filesets [OPTIONS] COMMAND [ARGS]...
 
 * `create`: Create a new fileset.
 * `delete`: Delete Fileset.
+* `get-profile`: Get the stored profile for a fileset, with the current...
 * `list`: List Filesets endpoint with filtering and pagination.
+* `profile`: Profile a fileset's dataset contents.
 * `get`: Get Fileset by Workspace and Name.
 * `update`: Update Fileset Metadata.
 
@@ -1443,6 +1445,45 @@ nemo files filesets delete [OPTIONS] NAME
 
 * `--help, -h`: Show this message and exit.
 
+##### nemo files filesets get-profile
+
+Get the stored profile for a fileset, with the current profiling state.
+
+`state` is `ready` (a profile is available), `running` (a job is in flight),
+`paused` (a job exists but is suspended and will produce nothing until resumed),
+`cancelled` (the last job was stopped deliberately and no profile exists),
+`failed` (the last job errored and no profile exists), or `absent` (never
+profiled). A stored profile short-circuits without querying the Jobs service, so
+a re-profile running over an existing profile still reads `ready` (with the
+current profile) and GET stays resilient to a Jobs-service outage.
+
+There is no `stale`. A profile carries no content digest to compare a fresh
+listing against — see `DatasetProfile` for why it deliberately holds no
+staleness marker — so a stored profile describes the fileset as of its
+`created_at`, and whether that is still good enough is the caller's call.
+
+**Usage:**
+
+```shell
+nemo files filesets get-profile [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
 ##### nemo files filesets list
 
 List Filesets endpoint with filtering and pagination.
@@ -1487,6 +1528,38 @@ Filter filesets by name, description, purpose, storage_type, created_at, and upd
 * `--no-truncate`: Don't truncate long values in table/markdown/csv output.
 * `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
 * `--stream`: Emit newline-delimited JSON, one record per line. Requires JSON or raw output.
+
+##### nemo files filesets profile
+
+Profile a fileset's dataset contents.
+
+Submits a background job that runs the dataset profiler over the fileset, stores
+the resulting profile (read it via `GET .../filesets/{name}/profile`), and
+publishes it as a job result artifact. If a profiling job for this fileset is
+already on its way, that job is returned instead of submitting a duplicate.
+
+**Usage:**
+
+```shell
+nemo files filesets profile [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--row-budget <INTEGER>`: Rows the profiler may read per _partition_, divided across that partition's files rather than applied to each one. Omit (or pass 0) to read every row, which is the default: the profiler folds, so memory is flat in rows and an exhaustive read buys exact row counts, proven value enumerations, and `rows_complete`. Set a budget when the fileset is large enough that the transfer is the cost worth bounding — files are read over the network, so an uncapped run pulls every row group over the wire. Named to match the profiler's own `row_budget`, which is the value this becomes.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
 
 ##### nemo files filesets get
 

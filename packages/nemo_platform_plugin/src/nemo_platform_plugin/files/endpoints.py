@@ -22,6 +22,8 @@ from nemo_platform_plugin.files.types import (
     ListFilesQueryParams,
     OtlpExportLogsResponse,
     OtlpLogQueryRequest,
+    PutFilesetProfileRequest,
+    PutFilesetProfileResponse,
     UpdateFilesetRequest,
 )
 from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage
@@ -63,6 +65,13 @@ def update_fileset(*, workspace: str | None = None, name: str, body: UpdateFiles
 @delete("/apis/files/v2/workspaces/{workspace}/filesets/{name}")
 @abstractmethod
 def delete_fileset(*, workspace: str | None = None, name: str) -> FilesetOutput: ...
+
+
+@put("/apis/files/v2/workspaces/{workspace}/filesets/{name}/profile")
+@abstractmethod
+def put_fileset_profile(
+    *, workspace: str | None = None, name: str, body: PutFilesetProfileRequest
+) -> PutFilesetProfileResponse: ...
 
 
 # ---------------------------------------------------------------------------

@@ -247,6 +247,7 @@ cpu-tasks = [
   { include-group = "nmp-task-runtime" },
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
+  "nemo-datasets-plugin",
   "nemo-optimization-plugin",
   "nmp-hello-world",
 ]

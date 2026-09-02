@@ -6,6 +6,7 @@ name = "nemo-datasets-plugin"
 description = "Dataset profiler for NeMo Platform filesets."
 requires-python = ">=3.11,<3.15"
 dependencies = [
+    "nemo-platform",
     "nemo-platform-plugin",
     "nemo-platform-sdk",
     "pyarrow>=19.0.1",
@@ -14,6 +15,7 @@ dependencies = [
 version = "0.1.0"
 
 [tool.uv.sources]
+nemo-platform = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-platform-sdk = { workspace = true }
 
