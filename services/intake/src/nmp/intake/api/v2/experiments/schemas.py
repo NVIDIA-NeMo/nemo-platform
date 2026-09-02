@@ -60,8 +60,8 @@ class ExperimentRequest(BaseModel):
     column_layout: ColumnLayout | None = Field(
         default=None,
         description=(
-            "Saved column order and column visiblity for the experiment's evaluations table. "
-            "the existing layout on update; on create, defaults to an empty layout."
+            "Saved column order and column visibility for the experiment's evaluations table. Omit to "
+            "preserve the existing layout on update; on create, defaults to an empty layout."
         ),
     )
     is_favorite: bool = Field(

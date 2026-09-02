@@ -9255,6 +9255,8 @@ interface StudioDataViewToolbarProps<DataType = unknown> {
     table: Table<DataType>;
   }) => ReactNode;
   searchBarProps?: ComponentProps<typeof SearchBar>;
+  /** Rendered before the search bar, at the toolbar's leading edge. */
+  slotStart?: ReactNode;
   /**
    * Additional content rendered inside the toolbar row, after the filter toggle button.
    * Use this to inject view-specific controls such as a sort dropdown.
@@ -9268,7 +9270,7 @@ interface StudioDataViewToolbarProps<DataType = unknown> {
  * Exported so it can be used in non-table views (e.g. card grids) that wrap their content
  * in a headless `DataView.Root` for filter state management.
  */
-export declare function StudioDataViewToolbar<DataType = unknown>({ searchField, showFilters, onToggleFilters, renderBulkActions, searchBarProps, slotEnd }: StudioDataViewToolbarProps<DataType>): import("react/jsx-runtime").JSX.Element | null;
+export declare function StudioDataViewToolbar<DataType = unknown>({ searchField, showFilters, onToggleFilters, renderBulkActions, searchBarProps, slotStart, slotEnd }: StudioDataViewToolbarProps<DataType>): import("react/jsx-runtime").JSX.Element | null;
 //#endregion
 //#region src/components/DataView/StudioDataView.d.ts
 export declare const ROW_SELECTION_COLUMN_SIZE = 50;
@@ -9316,6 +9318,7 @@ interface Props$4<DataType> {
    * Rendered at the trailing end of the toolbar row (after the search bar and filter toggle).
    * Useful for controls like a sort dropdown that belong visually in the toolbar.
    */
+  toolbarSlotStart?: ReactNode;
   toolbarSlotEnd?: ReactNode;
   /**
    * Ref attached to the scrollable container that wraps custom `children`.
@@ -9329,7 +9332,7 @@ interface Props$4<DataType> {
     DataViewSearchBar?: ComponentProps<typeof SearchBar>;
   };
 }
-export declare const StudioDataView: <DataType>({ attributes, children, makeColumns, dataViewState, onRowClick, maxTwoLines, renderBulkActions, scrollContainerRef, searchField, toolbarSlotEnd }: Props$4<DataType>) => import("react/jsx-runtime").JSX.Element;
+export declare const StudioDataView: <DataType>({ attributes, children, makeColumns, dataViewState, onRowClick, maxTwoLines, renderBulkActions, scrollContainerRef, searchField, toolbarSlotStart, toolbarSlotEnd }: Props$4<DataType>) => import("react/jsx-runtime").JSX.Element;
 //#endregion
 //#region src/components/LogViewer/index.d.ts
 interface LogViewerProps {
