@@ -23,6 +23,9 @@ logger = getLogger(__name__)
 
 # Path the model weights are mounted at inside the container (populated by the puller).
 MODEL_STORE_PATH = "/model-store"
+# Automodel embedding outputs keep NIM's ONNX artifact at the root and the
+# equivalent Hugging Face checkpoint in this engine-specific alternate.
+VLLM_HF_ALTERNATE_PATH = f"{MODEL_STORE_PATH}/alternates/hf"
 # Directory the LoRA adapter sidecar writes into and vLLM's filesystem resolver watches.
 VLLM_LORA_CACHE_DIR = "/scratch/loras"
 # vLLM's OpenAI-compatible server port (matches the NIM container port mapping).
@@ -42,6 +45,20 @@ def _served_model_name(view: DeploymentConfigView) -> str | None:
     if view.model_namespace:
         return f"{view.model_namespace}/{view.model_name}"
     return view.model_name
+
+
+def _model_path(model_entity: Optional[ModelEntity]) -> str:
+    """Select the Hugging Face alternate for customized embedding outputs."""
+    if model_entity is None:
+        return MODEL_STORE_PATH
+    spec = getattr(model_entity, "spec", None)
+    if (
+        getattr(spec, "is_embedding_model", False)
+        and getattr(model_entity, "base_model", None)
+        and getattr(model_entity, "finetuning_type", None)
+    ):
+        return VLLM_HF_ALTERNATE_PATH
+    return MODEL_STORE_PATH
 
 
 def _user_set_args(additional_args: list[str] | None) -> set[str]:
@@ -122,7 +139,7 @@ def compile_vllm_args(
     not auto-injected by the compiler.
     """
     user_flags = _user_set_args(view.additional_args)
-    args: list[str] = [MODEL_STORE_PATH]
+    args: list[str] = [_model_path(model_entity)]
 
     served_name = _served_model_name(view)
     if served_name and "--served-model-name" not in user_flags:

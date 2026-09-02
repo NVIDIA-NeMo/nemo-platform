@@ -370,6 +370,12 @@ async def test_platform_job_config_compiler_sft_lora(mock_sdk, monkeypatch):
     ]
     download_entrypoint = _executor_container(steps[0]).entrypoint
     assert download_entrypoint == ["/opt/venv/bin/python"]
+    for cpu_step in (steps[0], steps[2], steps[3]):
+        executor = cpu_step.executor if hasattr(cpu_step, "executor") else cpu_step["executor"]
+        profile = getattr(executor, "profile", None)
+        if profile is None and isinstance(executor, dict):
+            profile = executor.get("profile")
+        assert profile == "gpu"
 
     def _step_image(step: Any) -> str:
         return _executor_container(step).image
