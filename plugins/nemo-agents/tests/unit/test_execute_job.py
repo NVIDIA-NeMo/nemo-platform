@@ -230,12 +230,32 @@ async def test_to_spec_validates_and_canonicalizes_base_workdir() -> None:
 
 
 @pytest.mark.asyncio
+async def test_to_spec_rejects_a_bad_extension_config_at_create_time() -> None:
+    """The noop extension takes no config, so this is a create-time 422, not a mid-job failure."""
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _agent()
+
+    with pytest.raises(ValueError, match="noop"):
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(
+                agent="calc",
+                input="hello",
+                extension=ExecuteAgentExtensionConfig(kind="noop", config={"agent": "research-agent"}),
+            ),
+            workspace="default",
+            entity_client=entity_client,
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+
+@pytest.mark.asyncio
 async def test_to_spec_resolves_trusted_extension() -> None:
     entity_client = AsyncMock()
     entity_client.get.return_value = _agent()
 
     with patch(
-        "nemo_agents_plugin.jobs.execute.resolve_execute_agent_extension",
+        "nemo_agents_plugin.jobs.execute.validate_execute_agent_extension_config",
     ) as resolve:
         spec = await ExecuteAgentJob.to_spec(
             ExecuteAgentJobConfig(
@@ -255,7 +275,7 @@ async def test_to_spec_resolves_trusted_extension() -> None:
         config={"raw": True},
     )
     assert step_config.request.extension == step_config.extension
-    resolve.assert_called_once_with("example.extension")
+    resolve.assert_called_once_with("example.extension", {"raw": True})
 
 
 @pytest.mark.asyncio

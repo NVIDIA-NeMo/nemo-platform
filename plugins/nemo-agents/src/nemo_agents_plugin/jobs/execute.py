@@ -37,8 +37,8 @@ from nemo_agents_plugin.fabric.runtime import FabricRuntimeTimeoutError
 from nemo_agents_plugin.jobs.execute_extensions import (
     NOOP_EXECUTE_AGENT_EXTENSION_KIND,
     ExecuteAgentAfterInvokeContext,
-    resolve_execute_agent_extension,
     run_execute_agent_after_invoke_extension,
+    validate_execute_agent_extension_config,
 )
 from nemo_agents_plugin.tasks.execute.workdir import (
     AgentWorkdir,
@@ -293,7 +293,7 @@ class ExecuteAgentJob(NemoJob):
             workdir = await validate_agent_workdir(request.workdir, sdk.files, default_workspace=workspace)
 
         extension = request.extension or _make_noop_extension_config()
-        resolve_execute_agent_extension(extension.kind)
+        validate_execute_agent_extension_config(extension.kind, extension.config)
 
         return ExecuteAgentStepConfig(
             request=request,

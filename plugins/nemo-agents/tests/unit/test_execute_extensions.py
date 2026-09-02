@@ -14,6 +14,7 @@ from nemo_agents_plugin.jobs.execute_extensions import (
     NOOP_EXECUTE_AGENT_EXTENSION_KIND,
     NoopExecuteAgentExtension,
     resolve_execute_agent_extension,
+    validate_execute_agent_extension_config,
 )
 
 _NOOP_TARGET = "nemo_agents_plugin.jobs.execute_extensions:NoopExecuteAgentExtension"
@@ -79,3 +80,46 @@ def test_the_installed_insights_extension_resolves() -> None:
     resolved = resolve_execute_agent_extension("insights.analysis")
 
     assert resolved.__name__ == "InsightsAnalysisExtension"
+
+
+def test_a_valid_extension_config_is_accepted() -> None:
+    validate_execute_agent_extension_config("insights.analysis", {"agent": "demo-agent", "workspace": "default"})
+
+
+def test_an_unknown_extension_config_key_is_rejected() -> None:
+    """``extra="forbid"`` catches a renamed or typo'd key on the create request."""
+    with pytest.raises(ValueError) as excinfo:
+        validate_execute_agent_extension_config("insights.analysis", {"agent": "demo", "workspac": "default"})
+
+    message = str(excinfo.value)
+    assert "insights.analysis" in message, "the caller supplied a kind, so the error should name it"
+    assert "workspac" in message
+
+
+def test_a_wrongly_typed_extension_config_value_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        validate_execute_agent_extension_config("insights.analysis", {"local_only": "yes-please"})
+
+
+def test_the_noop_extension_accepts_an_empty_config() -> None:
+    validate_execute_agent_extension_config(NOOP_EXECUTE_AGENT_EXTENSION_KIND, {})
+
+
+def test_the_noop_extension_rejects_a_non_empty_config() -> None:
+    """Handing config to an extension that ignores it is a mistake worth surfacing."""
+    with pytest.raises(ValueError):
+        validate_execute_agent_extension_config(NOOP_EXECUTE_AGENT_EXTENSION_KIND, {"agent": "demo-agent"})
+
+
+def test_an_extension_declaring_no_config_model_is_left_unvalidated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lenient by design: an out-of-tree extension predating the contract still creates."""
+    _install(monkeypatch, _entry_point("legacy.extension", _OTHER_TARGET))
+
+    validate_execute_agent_extension_config("legacy.extension", {"anything": "goes"})
+
+
+def test_validating_an_unregistered_kind_is_still_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install(monkeypatch)
+
+    with pytest.raises(ValueError, match="Unknown agents.execute extension"):
+        validate_execute_agent_extension_config("nope.extension", {})

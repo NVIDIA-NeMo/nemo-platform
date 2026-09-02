@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from nemo_agents_plugin.jobs.execute_extensions import ExecuteAgentAfterInvokeContext
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
@@ -32,8 +32,14 @@ class InsightsAnalysisExtensionConfig(BaseModel):
 class InsightsAnalysisExtension:
     """Persist the storage-agnostic Analyst change-set returned by Fabric."""
 
+    # ``after_invoke`` parses through this same attribute, so a config the
+    # create request accepted is one this extension can actually run. Annotated
+    # narrowly rather than as ``type[BaseModel]`` so the parsed config keeps its
+    # concrete type at the use sites below.
+    config_model: ClassVar[type[InsightsAnalysisExtensionConfig]] = InsightsAnalysisExtensionConfig
+
     def after_invoke(self, context: ExecuteAgentAfterInvokeContext) -> None:
-        config = InsightsAnalysisExtensionConfig.model_validate(context.config)
+        config = self.config_model.model_validate(context.config)
         result = _analyst_result_from_fabric_output(context.fabric_result.output)
         agent = config.agent or context.agent_name
         workspace = config.workspace or context.ctx.workspace
