@@ -43,10 +43,10 @@ bare model do before you wrap it in an agent?). The evaluator prompts it with ea
 | `host_url` | no | direct NIM endpoint (`http://host:port`), populated when the target resolves from a `ModelRef` |
 
 ```python
-from nemo_evaluator_sdk.values import Model
+from nemo_evaluator_sdk.values import Model, SecretRef
 
-target = Model(url="https://integrate.api.nvidia.com/v1/chat/completions", name="nvidia/nemotron-3-nano-30b-a3b",
-               api_key_secret="NVIDIA_API_KEY")
+target = Model(url="https://integrate.api.nvidia.com/v1/chat/completions", name="nvidia/nemotron-3.5-lightning-30b-a3b",
+               api_key_secret=SecretRef(root="NVIDIA_API_KEY"))
 ```
 
 For a local `run()`, `api_key_secret` names an **environment variable** in your process; for a submitted
@@ -105,9 +105,11 @@ from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
 class AgentTaskRunner:
     async def run_tasks(
         self, tasks: Sequence[AgentEvalTask], config: AgentEvalRunConfig | None = None
-    ) -> Sequence[AgentEvalTrial]: ...
+    ) -> Sequence[AgentEvalTrial]:
+        raise NotImplementedError
 
-    def runner_info(self) -> RunnerInfo: ...
+    def runner_info(self) -> RunnerInfo:
+        raise NotImplementedError
 ```
 
 The SDK ships three runners you'll usually reach for first:

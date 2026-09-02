@@ -293,7 +293,25 @@ curl --fail-with-body -X POST \
 ```
 
 To **move or re-scope** an existing Evaluation's membership, `PATCH` its `experiment_ids`, which must
-stay non-empty:
+stay non-empty. First create the second Experiment and capture its ID:
+
+```bash
+curl --fail-with-body -X POST \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "name": "reranker-cross-project-benchmark",
+        "description": "Compare reranker candidates across projects."
+      }'
+
+export OTHER_EXPERIMENT_ID=$(curl --fail-with-body --silent \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-cross-project-benchmark" \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+```
+
+Then add both Experiment IDs to the Evaluation:
 
 ```bash
 curl --fail-with-body -X PATCH \
@@ -374,6 +392,18 @@ Keep the current baseline, or any reference run, at the top of the Experiment fo
 
 ```bash
 curl --fail-with-body -X POST \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "name": "reranker-main-baseline",
+        "experiment_ids": ["'"$EXPERIMENT_ID"'"],
+        "dataset_name": "support-bench",
+        "dataset_version": "v3",
+        "metadata": { "reranker": "main-baseline" }
+      }'
+
+curl --fail-with-body -X POST \
   -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-main-baseline/pin"
 
@@ -426,6 +456,9 @@ soft-deleted. A shared Evaluation remains active, and the deleted Experiment is 
 curl --fail-with-body -X DELETE \
   -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-bge-large"
+curl --fail-with-body -X DELETE \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-cross-project-benchmark"
 curl --fail-with-body -X DELETE \
   -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-prompt-iteration"

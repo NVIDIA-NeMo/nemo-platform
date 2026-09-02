@@ -54,24 +54,26 @@ A custom metric implements the `Metric` protocol from `nemo_evaluator_sdk`. The 
 - `output_spec()`: declares every row-level output the metric can emit
 - `compute_scores(...)`: scores one dataset row and one candidate output
 
-`compute_scores(...)` receives a `MetricInput` object:
+`compute_scores(...)` receives a `MetricInput` object as `input`:
 
-- `metric_input.row.data` contains the original dataset row, including any canonical fields produced by field mapping.
-- `metric_input.candidate.output_text` contains the candidate output. For offline evaluations, the Evaluator SDK can populate this from a mapped dataset column. For online evaluations, it contains the generated model output.
+- `input.row.data` contains the original dataset row, including any canonical fields produced by field mapping.
+- `input.candidate.output_text` contains the candidate output. For offline evaluations, the Evaluator SDK can populate this from a mapped dataset column. For online evaluations, it contains the generated model output.
 
 The method returns a `MetricResult` whose `outputs` match the names declared by `output_spec()`. Output names must be stable because they become aggregate score names in the final result.
 
 Start with the smallest possible shape:
 
 ```python
-from nemo_evaluator_sdk import Metric, MetricInput, MetricResult
+from nemo_evaluator_sdk import Metric, MetricInput, MetricOutputSpec, MetricResult
 
 class ArithmeticExpressionCorrectnessMetric(Metric):
     type = "arithmetic-expression-correctness"
 
-    def output_spec(self): ...
+    def output_spec(self) -> list[MetricOutputSpec]:
+        raise NotImplementedError
 
-    async def compute_scores(self, metric_input: MetricInput) -> MetricResult: ...
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        raise NotImplementedError
 ```
 
 You will fill in `output_spec()` first, then the scoring logic.
@@ -166,7 +168,7 @@ This helper rejects function calls, names, attributes, comprehensions, imports, 
 
 Now combine the protocol methods and the safe evaluator.
 
-The scoring method uses `metric_input.candidate.output_text`, where the evaluator stores the candidate output. The metric does not need to look for dataset-specific prediction columns or implement a row-level fallback. For offline rows, use field mapping to normalize your prediction column into the evaluator's canonical `output` field before the metric runs. If the evaluator does not provide a candidate output, the metric treats the row as a failure.
+The scoring method uses `input.candidate.output_text`, where the evaluator stores the candidate output. The metric does not need to look for dataset-specific prediction columns or implement a row-level fallback. For offline rows, use field mapping to normalize your prediction column into the evaluator's canonical `output` field before the metric runs. If the evaluator does not provide a candidate output, the metric treats the row as a failure.
 
 ```python
 import math
@@ -188,8 +190,8 @@ class ArithmeticExpressionCorrectnessMetric(Metric):
             MetricOutputSpec.boolean("correct_value"),
         ]
 
-    async def compute_scores(self, metric_input: MetricInput) -> MetricResult:
-        expression = metric_input.candidate.output_text
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        expression = input.candidate.output_text
         if not expression:
             return MetricResult(
                 outputs=[
@@ -208,8 +210,8 @@ class ArithmeticExpressionCorrectnessMetric(Metric):
                 ]
             )
 
-        expected = float(metric_input.row.data["expected"])
-        tolerance = float(metric_input.row.data.get("tolerance", 1e-6))
+        expected = float(input.row.data["expected"])
+        tolerance = float(input.row.data.get("tolerance", 1e-6))
         correct_value = math.isclose(actual, expected, rel_tol=tolerance, abs_tol=tolerance)
 
         return MetricResult(
@@ -261,7 +263,7 @@ dataset = [
 metric = ArithmeticExpressionCorrectnessMetric()
 evaluator = Evaluator()
 result = evaluator.run_sync(
-    metrics=metric,
+    metrics=[metric],
     dataset=dataset,
     config=RunConfig(parallelism=1),
     field_mapping=FieldMapping(output="model_expression"),
@@ -270,7 +272,7 @@ result = evaluator.run_sync(
 result.print_summary()
 ```
 
-With this mapping in place, every row still preserves its original `model_expression` field in `metric_input.row.data`, and the metric receives the normalized candidate output through `metric_input.candidate.output_text`.
+With this mapping in place, every row still preserves its original `model_expression` field in `input.row.data`, and the metric receives the normalized candidate output through `input.candidate.output_text`.
 
 ## 6. Prepare Platform Resources
 

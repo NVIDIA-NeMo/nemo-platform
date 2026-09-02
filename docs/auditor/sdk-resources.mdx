@@ -132,10 +132,11 @@ The work happens entirely on the host running the SDK call — there is no remot
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `status` | `str` | `"completed"` when garak exits with `0`, otherwise `"failed"`. |
-| `returncode` | `int` | The garak subprocess exit code. |
-| `stdout_tail` | `str` | Last ~4 KB of garak's stdout, useful for diagnostics. |
-| `stderr_tail` | `str` | Last ~4 KB of garak's stderr. |
+| `status` | `str` | `"completed"` when every probe succeeds, `"partial"` when at least one probe succeeds and at least one fails, or `"failed"` when no probe completes. |
+| `probes_total` | `int` | Number of probes selected for the run. Present for `completed` and `partial` results. |
+| `probes_complete` | `int` | Number of probes that completed successfully. Present for `completed` and `partial` results. |
+| `probes_failed` | `int` | Number of probes that exhausted their retries. Present for `completed` and `partial` results. |
+| `error` | `str` | Failure reason. Present only when `status` is `"failed"`. |
 | `results` | `dict[str, dict]` | One entry per produced report artifact. Each value is a `ResultRef` (`{"name": str, "artifact_url": str}`). For local runs, `artifact_url` is a `file://` URL under the scheduler's temporary results directory. |
 
 The `results` dict can contain up to three keys, each present only if the corresponding file was produced:
@@ -158,10 +159,10 @@ from nemo_auditor.entities import (
 config = auditor.configs.create(
     workspace="default",
     name="quick-scan",
-    description="Lite garak scan, 3 generations per probe.",
+    description="Bounded scan using one probe and one generation.",
     system=AuditSystemData(lite=True, parallel_attempts=4),
-    run=AuditRunData(generations=3),
-    plugins=AuditPluginsData(probe_spec="latentinjection", detector_spec="auto"),
+    run=AuditRunData(generations=1),
+    plugins=AuditPluginsData(probe_spec="goodside.Tag", detector_spec="auto"),
     reporting=AuditReportData(report_prefix="quick-scan"),
 )
 
@@ -183,7 +184,7 @@ target = auditor.targets.create(
 # Run locally — name strings resolve via the entity store.
 result = auditor.run(config="quick-scan", target="nemotron-3-nano-30b", workspace="default")
 
-print(result["status"], result["returncode"])
+print(result["status"], result["probes_complete"], result["probes_failed"])
 for name, ref in result["results"].items():
     print(f"  {name}: {ref['artifact_url']}")
 ```

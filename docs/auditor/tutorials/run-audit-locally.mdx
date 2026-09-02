@@ -63,7 +63,7 @@ If `plugin_status()` raises a connection error, the platform is not running or `
 
 ## 2. Create an Audit Configuration
 
-Build a configuration that runs a small slice of garak's latent-injection probes with three generations per probe:
+Build a bounded configuration that runs one lightweight garak probe with one generation:
 
 ```python
 from nemo_auditor.entities import (
@@ -76,10 +76,10 @@ from nemo_auditor.entities import (
 config = auditor.configs.create(
     workspace="default",
     name="quick-scan",
-    description="Lite latentinjection scan, 3 generations per probe.",
+    description="Bounded scan using one probe and one generation.",
     system=AuditSystemData(lite=True, parallel_attempts=4),
-    run=AuditRunData(generations=3),
-    plugins=AuditPluginsData(probe_spec="latentinjection", detector_spec="auto"),
+    run=AuditRunData(generations=1),
+    plugins=AuditPluginsData(probe_spec="goodside.Tag", detector_spec="auto"),
     reporting=AuditReportData(report_prefix="quick-scan"),
 )
 print(config.model_dump_json(indent=2))
@@ -139,8 +139,8 @@ result = auditor.run(
     workspace="default",
 )
 
-print(result["status"], result["returncode"])
-# completed 0
+print(result["status"], result["probes_complete"], result["probes_failed"])
+# completed 1 0
 
 for name, ref in result["results"].items():
     print(f"{name}: {ref['artifact_url']}")
@@ -217,8 +217,8 @@ Report artifacts are left in place under the scheduler's temporary directory; th
 **`RuntimeError: Failed to resolve inference gateway provider '<workspace>/<provider>'`**
 : The `nmp_uri_spec` block in your target's options references an Inference Gateway provider that doesn't exist. List your providers with `client.inference.providers.list(workspace="default")` and update the target to reference an existing one.
 
-**`returncode != 0` with empty `results`**
-: garak started but failed early, usually because the target endpoint is unreachable. Inspect `result["stderr_tail"]` for the error message, and verify the model is reachable through the provider you configured.
+**`status == "failed"` with empty `results`**
+: The audit could not complete any probe. Inspect `result.get("error")` for the failure reason, and verify the model is reachable through the provider you configured.
 
 **Where do the report files live?**
 : The scheduler writes garak output under `<temp-dir>/garak/<reporting.report_dir>/<reporting.report_prefix>.*`, then copies the produced files into the local results directory referenced by each `artifact_url`. For a local run this is a temporary directory under the system's `$TMPDIR`.
