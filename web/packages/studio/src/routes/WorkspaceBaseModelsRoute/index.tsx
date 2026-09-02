@@ -313,8 +313,8 @@ export const WorkspaceBaseModelsRoute: FC = () => {
                   slotContent={
                     <div className={tooltipClassName}>
                       <Text>
-                        Show only models that can be fine-tuned. Inference-only models (e.g.
-                        from custom providers) are hidden.
+                        Show only models that can be fine-tuned. Inference-only models (e.g. from
+                        custom providers) are hidden.
                       </Text>
                     </div>
                   }

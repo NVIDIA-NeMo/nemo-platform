@@ -34,8 +34,7 @@ export const GPULoraFields = ({
           attributes={{ Flex: { justify: 'start' } }}
           formFieldProps={{
             slotLabel: 'LoRA Enabled',
-            slotInfo:
-              'Enable when serving LoRA adapters on this base image.',
+            slotInfo: 'Enable when serving LoRA adapters on this base image.',
           }}
         />
       </Flex>

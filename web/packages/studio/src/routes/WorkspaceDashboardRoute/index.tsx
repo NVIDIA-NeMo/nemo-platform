@@ -12,10 +12,7 @@ import {
   MODEL_COMPARE_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
 } from '@studio/constants/environment';
-import {
-  LINK_DOCS_SAFE_SYNTHESIZER,
-  LINK_DOCS_STUDIO_EVALUATION,
-} from '@studio/constants/links';
+import { LINK_DOCS_SAFE_SYNTHESIZER, LINK_DOCS_STUDIO_EVALUATION } from '@studio/constants/links';
 import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
