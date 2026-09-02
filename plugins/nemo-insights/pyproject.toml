@@ -9,6 +9,8 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
   "fastapi>=0.115",
   "httpx",
+  "nemo-fabric-adapter-contract>=0.2.0,<0.3.0",
+  "nemo-fabric-adapters-common>=0.2.0,<0.3.0",
   "nemo-platform",
   "nemo-platform-plugin",
   "nooa>=0.0.9",
@@ -35,6 +37,9 @@ insights-analysis = "nemo_insights_plugin.controller:InsightsAnalysisController"
 [project.entry-points."nemo.jobs"]
 "insights.analyze-job" = "nemo_insights_plugin.jobs.analyze:AnalyzeJob"
 
+[project.entry-points."nemo.agents.execute_extensions"]
+"insights.analysis" = "nemo_insights_plugin.execute_extensions:InsightsAnalysisExtension"
+
 [project.entry-points."nemo.sdk"]
 insights = "nemo_insights_plugin.sdk:insights_sdk_resources"
 
@@ -47,6 +52,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nemo_insights_plugin"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"insights-analyst.fabric-adapter.json" = "share/nemo-fabric/adapters/insights-analyst/insights-analyst.fabric-adapter.json"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

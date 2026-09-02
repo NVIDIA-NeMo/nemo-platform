@@ -20,8 +20,8 @@ from nemo_anonymizer_plugin.sdk.errors import AnonymizerJobError
 from nemo_anonymizer_plugin.sdk.job_results import AnonymizerJobResults
 from nemo_anonymizer_plugin.sdk.logging import with_logging
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types import PlatformJobStatus
 from nemo_platform_plugin.jobs.archive import safe_extract_tar
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 
 logger = logging.getLogger(__name__)
 

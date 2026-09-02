@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -98,13 +99,15 @@ def _make_spec(data_source: str = DEFAULT_DATA_SOURCE, model_provider: str | Non
     )
 
 
-async def _compile(spec, mock_sdk):
+async def _compile(spec, mock_sdk, *, profile: str | None = None, options: dict | None = None):
     return await GenerateJob.compile(
         workspace=DEFAULT_WORKSPACE,
         spec=spec,
         entity_client=MagicMock(),
         job_name=None,
         async_sdk=mock_sdk,
+        profile=profile,
+        options=options,
     )
 
 
@@ -168,6 +171,22 @@ async def test_job_config_compiler_uses_safe_synthesizer_tasks_image(mock_sdk, m
         "-m",
         "nemo_safe_synthesizer_plugin.tasks.safe_synthesizer",
     ]
+
+
+@pytest.mark.asyncio
+async def test_job_config_compiler_uses_submitted_profile(mock_sdk, monkeypatch):
+    monkeypatch.setattr(generate.plugin_config, "job_executor_profile", "configured-default")
+
+    result = await _compile(_make_spec(), mock_sdk, profile="research")
+
+    step = next(iter(result["steps"]))
+    assert step["executor"]["profile"] == "research"
+
+
+@pytest.mark.asyncio
+async def test_job_config_compiler_rejects_submit_options(mock_sdk):
+    with pytest.raises(PlatformJobCompilationError, match="does not support submit options"):
+        await _compile(_make_spec(), mock_sdk, options={"slurm": {"nodes": 4}})
 
 
 @pytest.mark.asyncio
@@ -289,15 +308,55 @@ async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk, mock
             await _compile(spec, mock_sdk)
 
 
-def test_plugin_job_config_rejects_conflicting_pretrained_model_sources():
-    with pytest.raises(ValueError, match="Use either 'pretrained_model_job' or 'config.training.pretrained_model'"):
-        PluginJobConfig.model_validate(
+def test_plugin_job_config_prefers_pretrained_model_job_over_conflicting_source(caplog):
+    with caplog.at_level(logging.WARNING):
+        result = PluginJobConfig.model_validate(
+            {
+                "data_source": DEFAULT_DATA_SOURCE,
+                "pretrained_model_job": "prior-safe-synth-job",
+                "config": {"training": {"pretrained_model": "some-other-model"}},
+            }
+        )
+
+    assert result.pretrained_model_job == "prior-safe-synth-job"
+    assert result.config.training.pretrained_model == "HuggingFaceTB/SmolLM3-3B"
+    assert any(
+        "pretrained_model_job" in record.message and "pretrained_model" in record.message for record in caplog.records
+    )
+
+
+def test_plugin_job_config_pretrained_model_job_matches_default_no_warning(caplog):
+    with caplog.at_level(logging.WARNING):
+        result = PluginJobConfig.model_validate(
             {
                 "data_source": DEFAULT_DATA_SOURCE,
                 "pretrained_model_job": "prior-safe-synth-job",
                 "config": {"training": {"pretrained_model": "HuggingFaceTB/SmolLM3-3B"}},
             }
         )
+
+    assert result.pretrained_model_job == "prior-safe-synth-job"
+    assert result.config.training.pretrained_model == "HuggingFaceTB/SmolLM3-3B"
+    assert not any(
+        "pretrained_model_job" in record.message and "pretrained_model" in record.message for record in caplog.records
+    )
+
+
+def test_plugin_job_config_pretrained_model_job_alone_no_warning(caplog):
+    with caplog.at_level(logging.WARNING):
+        result = PluginJobConfig.model_validate(
+            {
+                "data_source": DEFAULT_DATA_SOURCE,
+                "pretrained_model_job": "prior-safe-synth-job",
+                "config": {},
+            }
+        )
+
+    assert result.pretrained_model_job == "prior-safe-synth-job"
+    assert result.config.training.pretrained_model == "HuggingFaceTB/SmolLM3-3B"
+    assert not any(
+        "pretrained_model_job" in record.message and "pretrained_model" in record.message for record in caplog.records
+    )
 
 
 @pytest.mark.asyncio

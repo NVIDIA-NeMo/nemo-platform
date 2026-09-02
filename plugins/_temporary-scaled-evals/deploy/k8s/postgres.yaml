@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Stand-in for the platform database. The plugin creates and migrates its own
+# `scaled_evals` schema on startup, so nothing seeds this.
+#
+# This was an emptyDir, on the theory that startup migrations made a pod restart
+# survivable. They do not: migrations run when the *API* starts, so when the
+# cluster autoscaler deleted this pod for a node scale-down, the database came
+# back empty and nothing ever rebuilt the schema. The API served 503s, every
+# route 500'd on PoolTimeout, and the dispatch worker crash-looped on a missing
+# `evaluation_runtime_resources`. Scale-down is routine here, so the disk has to
+# outlive the node.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+  # GKE's default balanced-PD class, matching the standalone chart.
+  storageClassName: standard-rwo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: postgres
+    spec:
+      # As root, the entrypoint chowns PGDATA — which needs CAP_CHOWN, and we
+      # drop every capability. Start as the image's own postgres user instead
+      # and let fsGroup make the volume group-writable, so no chown happens.
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:16
+          env:
+            - name: POSTGRES_DB
+              value: scaled_evals
+            - name: POSTGRES_USER
+              value: scaled_evals
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: scaled-evals-postgres
+                  key: password
+            # The image refuses to initdb into a non-empty directory, and a
+            # mount root is never empty (lost+found), so keep data in a subdir.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+              name: postgres
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "scaled_evals", "-d", "scaled_evals"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app.kubernetes.io/component: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

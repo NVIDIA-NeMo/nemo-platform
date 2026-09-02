@@ -128,7 +128,7 @@ export const AgentDetailRoute: FC = () => {
   const modelNames = getAgentModelNames(agent?.config);
   const canDeploy = !!agent?.config;
 
-  const canRunEvaluation = !!agentName && canDeploy && healthyDeployments.length > 0;
+  const canRunEvaluation = !!agentName && canDeploy;
 
   const status = healthyDeployments.length > 0 ? 'running' : agentDeployments[0]?.status;
   const statusPillLabel =
@@ -231,7 +231,12 @@ export const AgentDetailRoute: FC = () => {
           )}
 
           <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="evaluations">
-            <EvaluationsTab workspace={workspace} evals={agentEvals} jobs={agentJobs} />
+            <EvaluationsTab
+              workspace={workspace}
+              agentName={agentName}
+              evals={agentEvals}
+              jobs={agentJobs}
+            />
           </TabsContent>
 
           <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="deployments">

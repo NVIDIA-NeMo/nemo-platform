@@ -69,82 +69,10 @@ Example::
 from __future__ import annotations
 
 from abc import ABC
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
-from typing import Any, AsyncIterator, Iterator, Protocol, Self, TypeAlias, Union, runtime_checkable
-
-import anthropic.types as anthropic_types
-import anthropic.types.message_create_params as anthropic_params
-import openai.types.chat as openai_chat_types
-import openai.types.chat.completion_create_params as openai_chat_params
-import openai.types.responses.response_create_params as openai_responses_params
-from nemo_platform_plugin.entity import NemoEntity
-from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator, LogicalOperation
-from pydantic import BaseModel, Field, ModelWrapValidatorHandler, TypeAdapter, model_validator
-
-TypedResponse: TypeAlias = Union[openai_chat_types.ChatCompletion, anthropic_types.Message]
-OpenAIResponseChunk: TypeAlias = openai_chat_types.ChatCompletionChunk
-AnthropicResponseChunk: TypeAlias = anthropic_types.RawMessageStreamEvent
-TypedResponseChunk: TypeAlias = Union[OpenAIResponseChunk, AnthropicResponseChunk]
-TypedResponseResult: TypeAlias = Union[TypedResponse, AsyncIterator[TypedResponseChunk]]
-
-TypedRequest: TypeAlias = Union[
-    openai_chat_params.CompletionCreateParamsBase,
-    anthropic_params.MessageCreateParamsBase,
-    openai_responses_params.ResponseCreateParamsBase,
-]
-"""Union of the SDK TypedDict param types for each inbound API format.
-
-All three are TypedDicts — plain dicts at runtime. This alias exists for
-static type checking. Plugins that need path-based dispatch should use
-``request.path``, not ``isinstance``, since isinstance on TypedDict types
-just checks ``isinstance(x, dict)``.
-"""
-
-# ---------------------------------------------------------------------------
-# VirtualModel entity and MiddlewareCall schema
-# ---------------------------------------------------------------------------
-
-
-GUARDRAIL_CONFIG_TYPE = "guardrail_config"
-"""``MiddlewareCall.config_type`` discriminator for a stored NeMo Guardrails config.
-
-Mirrors ``GuardrailConfig.__entity_type__`` in the Guardrails service and
-``GUARDRAILS_PLUGIN_CONFIG_TYPE`` in the guardrails middleware plugin.  Declared here so
-:class:`VirtualModel` can derive :attr:`VirtualModel.guardrail_config_ids` without importing
-either of them.
-"""
-
-
-class MiddlewareCall(BaseModel):
-    """One entry in a VirtualModel middleware pipeline.
-
-    Declares which plugin to invoke and how to resolve its configuration.
-    Exactly one of ``config`` (inline dict) or ``config_id`` (entity reference)
-    should be provided. ``config_type`` is always required regardless of which
-    is used — it is the discriminator that tells IGW (and the plugin) which
-    config schema applies.
-
-    Attributes:
-        name: The entry-point key of the plugin to invoke
-            (e.g. ``"nemo-switchyard"``). Must match the plugin's
-            ``nemo.inference_middleware`` entry-point key.
-        config_type: Always required. Maps to the ``entity_type`` of the plugin's
-            config ``NemoEntity`` subclass (e.g. ``"routellm_config"``). Used by
-            IGW to call :meth:`~NemoInferenceMiddleware.validate_middleware_config`
-            with the right discriminator, and by the plugin to dispatch to the
-            correct schema when it supports multiple config types.
-        config: Inline config dict. Mutually exclusive with ``config_id``.
-        config_id: ``"workspace/name"`` reference to a stored config entity.
-            Mutually exclusive with ``config``. IGW resolves this by calling
-            :meth:`~NemoInferenceMiddleware.get_middleware_config` on the plugin.
-    """
-
-    name: str
-    config_type: str
-    config: dict[str, Any] | None = None
-    config_id: str | None = None
+from typing import Any, AsyncIterator, Protocol, TypeAlias, Union, runtime_checkable
 
 
 class BackendFormat(str, Enum):
@@ -152,230 +80,6 @@ class BackendFormat(str, Enum):
 
     OPENAI_CHAT = "OPENAI_CHAT"
     ANTHROPIC_MESSAGES = "ANTHROPIC_MESSAGES"
-
-
-class VirtualModelInferenceConfig(BaseModel):
-    """Inference configuration for one model entity referenced by a VirtualModel."""
-
-    model: str
-    """Model entity reference in ``"workspace/name"`` format."""
-
-    backend_format: BackendFormat | None = Field(
-        default=None,
-        description="Optional backend format override for this VirtualModel entry.",
-        json_schema_extra={"nullable": True},
-    )
-
-
-_AUTOPROVISIONED_DESC = (
-    "Marks this VirtualModel as controller-managed. The Models controller will delete it once no "
-    "ModelProvider serves the matching entity. Setting this manually opts the VirtualModel into "
-    "that cleanup behavior."
-)
-
-
-class VirtualModel(NemoEntity, entity_type="virtual_model"):
-    """Logical inference route.
-
-    Maps a user-facing model name to an optional default model entity and
-    defines ordered middleware pipelines for the request, response, and
-    post-response phases.
-
-    When a caller sets ``model: "workspace/my-virtual-model"`` in an inference
-    request, IGW resolves the ``VirtualModel`` instead of a ``ModelEntity``
-    directly. If ``default_model_entity`` is set, IGW writes it into
-    ``request["model"]`` before the request middleware pipeline runs. Middleware
-    may mutate ``request["model"]`` freely. After the pipeline completes, IGW
-    reads ``request["model"]``, resolves it to a ``ModelProvider`` via the
-    ``ModelCache``, and proxies.
-
-    The ``ModelProviderReconciler`` auto-creates a passthrough ``VirtualModel``
-    for each discovered model (same workspace and name as the ``ModelEntity``,
-    empty middleware lists, ``default_model_entity`` pointing to that entity).
-    All existing inference requests continue to work without changes.
-    """
-
-    default_model_entity: str | None = None
-    """``"workspace/model-entity-name"`` written into ``request["model"]`` before
-    the request middleware pipeline runs. If ``None``, no value is written — a
-    request middleware plugin must handle the backend call itself and return an
-    :class:`InferenceResponse` or ``AsyncIterator``."""
-
-    autoprovisioned: bool = Field(
-        default=False,
-        description=_AUTOPROVISIONED_DESC,
-    )
-    """Whether this VirtualModel was automatically created by the
-    ModelProviderReconciler for a discovered model entity."""
-
-    models: list[VirtualModelInferenceConfig] = Field(default_factory=list)
-    """Model entity references used by this VirtualModel. A per-entry
-    ``backend_format`` overrides the referenced ModelEntity value for requests
-    resolved through this VirtualModel."""
-
-    request_middleware: list[MiddlewareCall] = []
-    """Ordered list of middleware plugins applied before proxying."""
-
-    response_middleware: list[MiddlewareCall] = []
-    """Ordered list of middleware plugins applied after the backend response is
-    received, before returning it to the caller."""
-
-    post_response_middleware: list[MiddlewareCall] = []
-    """Ordered list of middleware plugins invoked after the response has been
-    returned to the caller. Intended for fire-and-forget work (e.g. logging,
-    analytics) that must not block or modify the response."""
-
-    override_proxy: str | None = None
-    """Optional. Names a plugin-provided proxy implementation IGW should use
-    instead of its default ``aiohttp`` proxy. Format: ``"plugin-name.proxy-name"``.
-    If unset, IGW performs the proxy itself."""
-
-    guardrail_config_ids: list[str] = Field(
-        default_factory=list,
-        description=(
-            "System-managed. Guardrail configs applied by this VirtualModel's middleware, as "
-            '"workspace/name" references. Derived from the middleware pipelines on every write and '
-            "ignored if supplied on a create or update body. Filter on it with filter[guardrail_config]."
-        ),
-    )
-    """System-managed. Distinct ``"workspace/name"`` guardrail config references reached by
-    this VirtualModel's middleware pipelines, in first-seen order.
-
-    Derived from the three ``*_middleware`` pipelines and never accepted on a create or update
-    body.  It exists so callers can answer "which VirtualModels use this guardrail config?"
-    with one ``$contains`` predicate against the entity store: the pipelines themselves are
-    arrays of *objects*, and ``$contains`` matches the serialized array as raw text (see
-    ``SQLAlchemyFilterRepository.contains``), so it cannot match a nested field precisely.
-    Flattening the references to an array of scalars is what makes that predicate exact.
-    """
-
-    def middleware_calls(self) -> Iterator[MiddlewareCall]:
-        """Every middleware call across the request, response, and post-response pipelines."""
-        yield from self.request_middleware or []
-        yield from self.response_middleware or []
-        yield from self.post_response_middleware or []
-
-    def references_guardrail_config(self, config_id: str) -> bool:
-        """Whether any middleware call resolves the stored guardrail config ``config_id``.
-
-        Matches on the ``config_type`` discriminator as well as the reference, so a
-        same-named config belonging to another plugin is never mistaken for a guardrail one.
-        """
-        return any(
-            call.config_type == GUARDRAIL_CONFIG_TYPE and call.config_id == config_id
-            for call in self.middleware_calls()
-        )
-
-    def refresh_guardrail_config_ids(self) -> Self:
-        """Recompute :attr:`guardrail_config_ids` from the middleware pipelines, in place."""
-        # dict keys rather than a set: de-duplicates while preserving pipeline order, so the
-        # stored value is stable across writes and diffs cleanly.
-        seen: dict[str, None] = {}
-        for call in self.middleware_calls():
-            if call.config_type == GUARDRAIL_CONFIG_TYPE and call.config_id:
-                seen[call.config_id] = None
-        self.guardrail_config_ids = list(seen)
-        return self
-
-    @model_validator(mode="after")
-    def _sync_guardrail_config_ids(self) -> Self:
-        """Keep the denormalized reference list in step with the pipelines it is derived from.
-
-        Runs on construction and on every entity-store read, so a stored value can never drift
-        from the middleware that produced it.  ``model_copy(update=...)`` is the one path that
-        skips validation — the PATCH handler calls :meth:`refresh_guardrail_config_ids` itself.
-        """
-        return self.refresh_guardrail_config_ids()
-
-    @model_validator(mode="wrap")
-    @classmethod
-    def _hydrate_wire_metadata(
-        cls,
-        value: object,
-        handler: ModelWrapValidatorHandler[Self],
-    ) -> Self:
-        """Retain entity metadata when validating a VirtualModel API response."""
-        model = handler(value)
-        if not isinstance(value, dict):
-            return model
-
-        wire_data = TypeAdapter(dict[str, object]).validate_python(value)
-        optional_string = TypeAdapter(str | None)
-        optional_datetime = TypeAdapter(datetime | None)
-        if "id" in wire_data:
-            model._id = optional_string.validate_python(wire_data["id"])
-        if "created_at" in wire_data:
-            model._created_at = optional_datetime.validate_python(wire_data["created_at"])
-        if "updated_at" in wire_data:
-            model._updated_at = optional_datetime.validate_python(wire_data["updated_at"])
-        if "created_by" in wire_data:
-            model._created_by = optional_string.validate_python(wire_data["created_by"])
-        if "updated_by" in wire_data:
-            model._updated_by = optional_string.validate_python(wire_data["updated_by"])
-        if "parent" in wire_data:
-            model._parent = optional_string.validate_python(wire_data["parent"])
-        return model
-
-
-GUARDRAIL_CONFIG_IDS_FIELD = "data.guardrail_config_ids"
-"""Entity-store path of :attr:`VirtualModel.guardrail_config_ids`."""
-
-_LEGACY_MIDDLEWARE_FIELDS = (
-    "data.request_middleware",
-    "data.response_middleware",
-    "data.post_response_middleware",
-)
-"""Pipelines that ``guardrail_config_ids`` is derived from, scanned directly for rows written
-before that field existed."""
-
-
-def guardrail_config_membership_filter(config_id: str) -> LogicalOperation:
-    """Entity-store predicate for "this VirtualModel applies guardrail config ``config_id``".
-
-    ``config_id`` is a fully qualified ``"workspace/name"`` reference, so this is safe to run
-    across workspaces — a VirtualModel may apply a guardrail config from another workspace.
-
-    VirtualModels written since :attr:`VirtualModel.guardrail_config_ids` was introduced carry the
-    flattened reference list, which ``$contains`` matches exactly.  Rows that predate it have no
-    such key, so they are matched by scanning the middleware pipelines they *do* have.  The OR
-    keeps un-migrated rows queryable with no migration, mirroring how Intake spans both of its
-    evaluation-membership representations (``_group_membership_filter``).
-
-    Those legacy arms are gated on the denormalized field being absent, so they apply only to rows
-    that have not been rewritten since — every other row is matched exactly.  Where they do apply
-    they are a *superset*: ``$contains`` matches an array of objects as raw serialized text (see
-    the entity store's ``SQLAlchemyFilterRepository.contains``), so a middleware call holding this
-    same string in another field also matches, and the ``config_type`` discriminator is invisible
-    to it.  There are no false negatives, so this is safe to narrow with — callers that must be
-    exact should re-check each returned entity with
-    :meth:`VirtualModel.references_guardrail_config`.
-
-    Those legacy arms are meaningful only against the SQL-backed entity store, whose ``$contains``
-    matches serialized text.  ``InMemoryFilterRepository`` implements ``$contains`` as native list
-    membership, so an array of objects never matches there; only the first arm carries over.
-    """
-    return LogicalOperation(
-        operator=FilterOperator.OR,
-        operations=[
-            ComparisonOperation(operator=FilterOperator.CONTAINS, field=GUARDRAIL_CONFIG_IDS_FIELD, value=config_id),
-            LogicalOperation(
-                operator=FilterOperator.AND,
-                operations=[
-                    # `$eq null` matches an absent key as well as an explicit null, which is exactly
-                    # the set of rows written before guardrail_config_ids existed. Gating the fuzzy
-                    # arms on it keeps them off every row that carries the exact list.
-                    ComparisonOperation(operator=FilterOperator.EQ, field=GUARDRAIL_CONFIG_IDS_FIELD, value=None),
-                    LogicalOperation(
-                        operator=FilterOperator.OR,
-                        operations=[
-                            ComparisonOperation(operator=FilterOperator.CONTAINS, field=field, value=config_id)
-                            for field in _LEGACY_MIDDLEWARE_FIELDS
-                        ],
-                    ),
-                ],
-            ),
-        ],
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +92,37 @@ ResponseResult = Union[dict[str, Any], AsyncIterator[dict[str, Any]]]
 - ``dict[str, Any]`` — Non-streaming response parsed from the backend.
 - ``AsyncIterator[dict[str, Any]]`` — Streaming response (sequence of chunk dicts).
 """
+
+TypedRequest: TypeAlias = Mapping[str, Any]
+"""Fast-path structural request body type for :attr:`InferenceRequest.typed_body`.
+
+SDK request parameter types are TypedDicts, so they are dict-like at runtime.
+Code that needs the exact SDK TypedDict union can import
+``TypedRequest`` from ``nemo_platform_plugin.inference_middleware_types``.
+"""
+
+
+@runtime_checkable
+class TypedResponse(Protocol):
+    """Fast-path structural response model for :attr:`InferenceResponse.typed_body`.
+
+    The concrete SDK response models live in
+    ``nemo_platform_plugin.inference_middleware_types``. The base middleware
+    interface only needs the shared serialized-model surface.
+    """
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class TypedResponseChunk(Protocol):
+    """Fast-path structural streaming chunk model for typed response streams."""
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]: ...
+
+
+TypedResponseResult: TypeAlias = Union[TypedResponse, AsyncIterator[TypedResponseChunk]]
+"""Structural typed response body or typed streaming chunk iterator."""
 
 
 @dataclass
@@ -704,6 +439,81 @@ RequestResult = Union[InferenceRequest, ImmediateResponse]
 # ---------------------------------------------------------------------------
 # Platform entity Protocols
 # ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class MiddlewareCall(Protocol):
+    """Structural middleware pipeline entry passed through VirtualModel hooks."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def config_type(self) -> str: ...
+
+    @property
+    def config(self) -> dict[str, Any] | None: ...
+
+    @property
+    def config_id(self) -> str | None: ...
+
+
+@runtime_checkable
+class VirtualModelInferenceConfig(Protocol):
+    """Structural model entry referenced by a VirtualModel hook payload."""
+
+    @property
+    def model(self) -> str: ...
+
+    @property
+    def backend_format(self) -> BackendFormat | None: ...
+
+
+@runtime_checkable
+class VirtualModel(Protocol):
+    """Structural VirtualModel type passed to middleware lifecycle hooks.
+
+    Middleware plugins should import this type from
+    ``nemo_platform_plugin.inference_middleware``. The concrete Pydantic entity
+    model used by IGW's API layer lives outside this fast import path.
+    """
+
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def workspace(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def default_model_entity(self) -> str | None: ...
+
+    @property
+    def autoprovisioned(self) -> bool: ...
+
+    @property
+    def models(self) -> Sequence[VirtualModelInferenceConfig]: ...
+
+    @property
+    def request_middleware(self) -> Sequence[MiddlewareCall]: ...
+
+    @property
+    def response_middleware(self) -> Sequence[MiddlewareCall]: ...
+
+    @property
+    def post_response_middleware(self) -> Sequence[MiddlewareCall]: ...
+
+    @property
+    def override_proxy(self) -> str | None: ...
+
+    @property
+    def guardrail_config_ids(self) -> Sequence[str]: ...
+
+    def middleware_calls(self) -> Iterator[MiddlewareCall]: ...
+
+    def references_guardrail_config(self, config_id: str) -> bool: ...
 
 
 @runtime_checkable

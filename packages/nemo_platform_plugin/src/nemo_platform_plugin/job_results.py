@@ -19,7 +19,7 @@ Concrete impls living in this codebase:
 The API is deliberately narrow: a single ``save(name, local_path, *,
 ignore_patterns=None) -> ResultRef``. Read paths (``get`` / ``list``)
 are not on the Protocol — task code that needs to enumerate results
-goes through the platform SDK directly (e.g. ``sdk.jobs.results.list``).
+goes through the typed Jobs client.
 """
 
 from __future__ import annotations
@@ -157,7 +157,7 @@ class PlatformJobResults(JobResults):
         sdk: :class:`NeMoPlatform` handle used for both file uploads and
             the jobs-results registration.
         attempt_id: Optional override for the job attempt id; when
-            omitted, looked up lazily via ``sdk.jobs.retrieve(...)``.
+            omitted, looked up lazily via the typed Jobs client.
     """
 
     def __init__(

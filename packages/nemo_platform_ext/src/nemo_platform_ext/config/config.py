@@ -90,6 +90,10 @@ class Config(BaseModel):
     current_context: str | None = Field(default=None, description="Override current context (env: NMP_CURRENT_CONTEXT)")
 
     base_url: str | None = Field(default=None, description="Base URL for the API (env: NMP_BASE_URL)")
+    certificate_authority: str | None = Field(
+        default=None,
+        description="Path to a PEM certificate authority bundle for TLS verification",
+    )
     access_token: SecretStr | None = Field(
         default=None,
         description="Access token for authentication (env: NMP_ACCESS_TOKEN)",
@@ -425,6 +429,63 @@ class Config(BaseModel):
         # Save to disk
         self.save()
 
+    @classmethod
+    def delete_context(
+        cls,
+        context_name: str,
+        config_path: Path | None = None,
+        *,
+        prune_orphans: bool = False,
+    ) -> ConfigDeleteContextResult[Self]:
+        """Delete a context definition from the config file.
+
+        This follows kubectl's convention: deleting a context only removes the
+        context reference. Referenced cluster and user records are left intact
+        unless ``prune_orphans`` is explicitly requested.
+        """
+        path = config_path or cls.get_default_config_path()
+        config = cls.load(config_path=path)
+        config_file = config._config_file
+
+        context_index = next(
+            (index for index, context in enumerate(config_file.contexts) if context.name == context_name),
+            None,
+        )
+        if context_index is None:
+            available = (
+                ", ".join(context.name for context in config_file.contexts) if config_file.contexts else "(none)"
+            )
+            raise ValueError(f"Context '{context_name}' not found. Available contexts: {available}")
+
+        del config_file.contexts[context_index]
+
+        current_context_cleared = config_file.current_context == context_name
+        if current_context_cleared:
+            config_file.current_context = None
+
+        pruned_clusters: list[str] = []
+        pruned_users: list[str] = []
+        if prune_orphans:
+            referenced_clusters = {context.cluster for context in config_file.contexts}
+            referenced_users = {context.user for context in config_file.contexts}
+
+            pruned_clusters = [
+                cluster.name for cluster in config_file.clusters if cluster.name not in referenced_clusters
+            ]
+            pruned_users = [user.name for user in config_file.users if user.name not in referenced_users]
+
+            config_file.clusters = [cluster for cluster in config_file.clusters if cluster.name in referenced_clusters]
+            config_file.users = [user for user in config_file.users if user.name in referenced_users]
+
+        config.save()
+        return ConfigDeleteContextResult(
+            config=config,
+            context_name=context_name,
+            current_context_cleared=current_context_cleared,
+            pruned_clusters=pruned_clusters,
+            pruned_users=pruned_users,
+        )
+
     def reload(self) -> None:
         """Reload configuration from file (preserving runtime parameters)."""
         if self._config_path:
@@ -439,6 +500,7 @@ class Config(BaseModel):
             self.current_context = new_config.current_context
 
             self.base_url = new_config.base_url
+            self.certificate_authority = new_config.certificate_authority
             self.access_token = new_config.access_token
 
             self.workspace = new_config.workspace
@@ -492,6 +554,7 @@ class Config(BaseModel):
 
         if cluster is None:
             raise ValueError(f"Cluster '{context.cluster}' referenced by context '{context_name}' not found")
+        cluster = cluster.model_copy(deep=True)
 
         # Resolve the user reference (string) into AuthConfig
         user = None
@@ -509,6 +572,8 @@ class Config(BaseModel):
         # Apply runtime overrides
         if self.base_url is not None:
             cluster.base_url = HttpUrl(self.base_url)
+        if self.certificate_authority is not None:
+            cluster.certificate_authority = self.certificate_authority
         if self.access_token is not None:
             user = OAuthUser(
                 name=user.name,
@@ -570,6 +635,8 @@ class Config(BaseModel):
 
         # Build params from runtime overrides
         params: ConfigParams = {"base_url": base_url}
+        if self.certificate_authority is not None:
+            params["certificate_authority"] = self.certificate_authority
         if self.access_token:
             params["access_token"] = self.access_token.get_secret_value()
         if self.workspace:
@@ -618,6 +685,17 @@ class ConfigWriteResult(Generic[_T]):
     config: _T
     context_name: str
     created: bool
+
+
+@dataclass(frozen=True)
+class ConfigDeleteContextResult(Generic[_T]):
+    """Result metadata for a context deletion."""
+
+    config: _T
+    context_name: str
+    current_context_cleared: bool
+    pruned_clusters: list[str]
+    pruned_users: list[str]
 
 
 def get_context(

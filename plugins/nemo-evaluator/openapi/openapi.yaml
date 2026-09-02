@@ -2540,6 +2540,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/AgentEvalInputSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -3185,6 +3192,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/EvaluateInputSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true
@@ -3741,6 +3755,11 @@ components:
           const: gym
           title: Kind
           default: gym
+        environment:
+          allOf:
+          - $ref: '#/components/schemas/FilesetRef'
+          description: Environment FileSet containing a wheels-v1 Gym package. The
+            complete FileSet is staged read-only; file fragments are not supported.
         agent:
           type: string
           title: Agent
@@ -3786,6 +3805,24 @@ components:
             \ defaults to a container-only path \u2014 and a job spec has no ambient\
             \ environment to inherit from, so whatever the environment needs has to\
             \ travel in the spec."
+        agent_ref_name:
+          title: Agent Ref Name
+          description: Gym agent instance rollouts are routed to when running against
+            a sandboxed host, stamped as each row's `agent_ref`. Defaults to `agent`.
+            Set it when the environment's config defines the agent under a different
+            name -- `mcqa` registers `mcqa_simple_agent`, and routing to `simple_agent`
+            there does not answer.
+          type: string
+        env_secrets:
+          additionalProperties:
+            $ref: '#/components/schemas/SecretRef'
+          type: object
+          title: Env Secrets
+          description: 'Environment variables sourced from the secrets service, as
+            {ENV_NAME: secret-ref}. The reference travels in the spec; the service
+            resolves it into the job''s environment at compile time, so no credential
+            is stored on the spec or written to a run bundle. Use this rather than
+            `env_vars` for anything secret -- a Gym model API key belongs here.'
         num_repeats:
           type: integer
           minimum: 1.0

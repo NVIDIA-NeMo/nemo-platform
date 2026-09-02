@@ -4,14 +4,18 @@
 """Docker-specific job validation (e.g. GPU availability for Docker backends)."""
 
 import logging
+from collections.abc import Mapping
+from typing import Any
 
-from nemo_platform.types.jobs import PlatformJobSpecParam
 from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.config import Configuration, NemoPlatformConfig, Runtime
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.jobs.spec import PlatformJobSpec
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
+
+PlatformJobSpecLike = PlatformJobSpec | Mapping[str, Any]
 
 
 def get_platform_config() -> NemoPlatformConfig:
@@ -24,15 +28,11 @@ _GPU_UNAVAILABLE_MSG = (
 )
 
 
-def spec_has_gpu_step(job: PlatformJobSpecParam) -> bool:
+def spec_has_gpu_step(job: PlatformJobSpecLike) -> bool:
     """Return True if the job spec has at least one step requiring a GPU."""
-    steps = job.get("steps") or ()
-    for step in steps:
-        executor = step.get("executor")
-        if executor is None:
-            continue
-        provider = executor.get("provider")
-        if provider in ("gpu", "gpu_distributed"):
+    platform_job = PlatformJobSpec.model_validate(job)
+    for step in platform_job.steps:
+        if step.executor.provider in ("gpu", "gpu_distributed"):
             return True
     return False
 
@@ -51,7 +51,7 @@ def _docker_gpu_validation_applies(runtime: Runtime) -> bool:
     return False
 
 
-def validate_gpu_available_for_docker(job: PlatformJobSpecParam) -> None:
+def validate_gpu_available_for_docker(job: PlatformJobSpecLike) -> None:
     """Fail fast when job requires GPU but platform Docker has no GPUs configured.
 
     platform_config.docker.get_reserved_gpu_ids() returns:

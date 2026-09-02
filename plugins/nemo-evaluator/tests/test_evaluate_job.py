@@ -57,11 +57,11 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
+from nemo_platform_plugin.jobs.spec import PlatformJobSpec
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pydantic import BaseModel, ConfigDict
 from pytest_mock import MockerFixture

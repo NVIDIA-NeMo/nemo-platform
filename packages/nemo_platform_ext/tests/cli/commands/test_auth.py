@@ -48,19 +48,25 @@ def _mock_oidc_config() -> SimpleNamespace:
     )
 
 
-def _discover_auth_enabled(url: str, timeout: float = 10.0) -> SimpleNamespace:
+def _discover_auth_enabled(
+    url: str, timeout: float = 10.0, *, certificate_authority: str | None = None
+) -> SimpleNamespace:
     return SimpleNamespace(auth_enabled=True)
 
 
-def _discover_auth_disabled(url: str, timeout: float = 10.0) -> SimpleNamespace:
+def _discover_auth_disabled(
+    url: str, timeout: float = 10.0, *, certificate_authority: str | None = None
+) -> SimpleNamespace:
     return SimpleNamespace(auth_enabled=False)
 
 
-def _discover_oidc_config(url: str, timeout: float = 10.0) -> SimpleNamespace:
+def _discover_oidc_config(
+    url: str, timeout: float = 10.0, *, certificate_authority: str | None = None
+) -> SimpleNamespace:
     return _mock_oidc_config()
 
 
-def _discover_no_oidc(url: str, timeout: float = 10.0) -> SimpleNamespace:
+def _discover_no_oidc(url: str, timeout: float = 10.0, *, certificate_authority: str | None = None) -> SimpleNamespace:
     return SimpleNamespace(
         auth_enabled=True,
         issuer=None,
@@ -300,7 +306,9 @@ def test_auth_refresh_updates_selected_context_only(oauth_config_file: Path, mon
         def force_refresh(self) -> None:
             return None
 
-    def discover_refresh_config(url: str, timeout: float = 10.0) -> SimpleNamespace:
+    def discover_refresh_config(
+        url: str, timeout: float = 10.0, *, certificate_authority: str | None = None
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             client_id="test-client-id",
             token_endpoint="https://idp.example.com/token",
@@ -940,6 +948,52 @@ def test_auth_login_warns_when_env_access_token_will_override_saved_credentials(
     assert foo_user["refresh_token"] == "foo-refresh-token"
 
 
+def test_auth_login_uses_context_certificate_authority(
+    oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with open(oauth_config_file) as f:
+        config_data = yaml.safe_load(f)
+    foo_cluster = next(cluster for cluster in config_data["clusters"] if cluster["name"] == "foo")
+    foo_cluster["certificate_authority"] = "/tmp/foo-ca.pem"
+    with open(oauth_config_file, "w") as f:
+        yaml.safe_dump(config_data, f)
+
+    discover_calls: list[tuple[str, str | None]] = []
+    password_grant_calls: list[dict] = []
+
+    def discover_config(
+        url: str, timeout: float = 10.0, *, certificate_authority: str | None = None
+    ) -> SimpleNamespace:
+        discover_calls.append((url, certificate_authority))
+        return _mock_oidc_config()
+
+    def password_grant(**kwargs) -> SimpleNamespace:
+        password_grant_calls.append(kwargs)
+        return SimpleNamespace(token_for_nmp="foo-access-token", refresh_token="foo-refresh-token")
+
+    monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", discover_config)
+    monkeypatch.setattr("nemo_platform_ext.auth.device_flow.authenticate_with_password_grant", password_grant)
+    monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.decode_jwt_claims", _decode_jwt_noop)
+
+    result = runner.invoke(
+        app,
+        [
+            "--context",
+            "foo",
+            "auth",
+            "login",
+            "--username",
+            "user",
+            "--password",
+            "secret",
+        ],
+    )
+
+    assert_exit_code(result, 0)
+    assert discover_calls == [("https://foo.example.com", "/tmp/foo-ca.pem")]
+    assert password_grant_calls[0]["certificate_authority"] == "/tmp/foo-ca.pem"
+
+
 def test_auth_login_with_base_url_creates_selected_context(oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch):
     def password_grant(**kwargs) -> SimpleNamespace:
         return SimpleNamespace(token_for_nmp="dev-access-token", refresh_token="dev-refresh-token")
@@ -1029,7 +1083,9 @@ def test_auth_login_unsigned_options_require_unsigned_token() -> None:
 def test_auth_login_unsigned_token_fails_when_oidc_enabled(
     oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def discover_full_oidc(url: str, timeout: float = 10.0) -> SimpleNamespace:
+    def discover_full_oidc(
+        url: str, timeout: float = 10.0, *, certificate_authority: str | None = None
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             auth_enabled=True,
             issuer="https://idp.example.com",
@@ -1060,7 +1116,9 @@ def test_auth_login_unsigned_token_fails_when_oidc_enabled(
 def test_auth_login_unsigned_token_allows_partial_oidc_config(
     oauth_config_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def discover_partial_oidc(url: str, timeout: float = 10.0) -> SimpleNamespace:
+    def discover_partial_oidc(
+        url: str, timeout: float = 10.0, *, certificate_authority: str | None = None
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             auth_enabled=True,
             issuer="https://idp.example.com",
@@ -1138,7 +1196,7 @@ class IsAuthDisabledCase:
     ids=lambda c: c.id,
 )
 def test_is_auth_disabled(monkeypatch: pytest.MonkeyPatch, case: IsAuthDisabledCase) -> None:
-    def mock_discover(url: str, timeout: float = 10.0) -> SimpleNamespace:
+    def mock_discover(url: str, timeout: float = 10.0, *, certificate_authority: str | None = None) -> SimpleNamespace:
         return SimpleNamespace(auth_enabled=case.auth_enabled)
 
     monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", mock_discover)
@@ -1152,7 +1210,9 @@ def test_is_auth_disabled_raises_when_discovery_fails(monkeypatch: pytest.Monkey
     from nemo_platform_ext.auth.helpers import AuthError
     from nemo_platform_ext.cli.commands.auth import is_auth_disabled
 
-    def raise_connect_error(url: str, timeout: float = 10.0) -> SimpleNamespace:
+    def raise_connect_error(
+        url: str, timeout: float = 10.0, *, certificate_authority: str | None = None
+    ) -> SimpleNamespace:
         raise httpx.ConnectError("Connection refused")
 
     monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", raise_connect_error)
@@ -1190,7 +1250,9 @@ def test_auth_status_when_cluster_unreachable_shows_local_state(
 ) -> None:
     import httpx
 
-    def raise_connect_error(url: str, timeout: float = 10.0) -> SimpleNamespace:
+    def raise_connect_error(
+        url: str, timeout: float = 10.0, *, certificate_authority: str | None = None
+    ) -> SimpleNamespace:
         raise httpx.ConnectError("Connection refused")
 
     monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", raise_connect_error)
@@ -1232,7 +1294,9 @@ def test_auth_logout_when_cluster_unreachable_clears_local_credentials(
 ) -> None:
     import httpx
 
-    def raise_connect_error(url: str, timeout: float = 10.0) -> SimpleNamespace:
+    def raise_connect_error(
+        url: str, timeout: float = 10.0, *, certificate_authority: str | None = None
+    ) -> SimpleNamespace:
         raise httpx.ConnectError("Connection refused")
 
     monkeypatch.setattr("nemo_platform_ext.cli.commands.auth.discover_nmp_config", raise_connect_error)

@@ -5823,6 +5823,11 @@ nemo agents [OPTIONS] [COMMAND] [ARGS]...
 * `environments`: Manage agent environments.
 * `compute-specs`: Manage agent compute specs.
 
+*Deployed agent interaction (requires running cluster):*
+
+* `chat`: Chat interactively with a new or existing deployed-agent...
+* `sessions`: Discover and manage persisted deployed-agent sessions.
+
 *Jobs:*
 
 * `analyze`: Analyze a batch of eval-suite results (clusters,...
@@ -6528,6 +6533,122 @@ nemo agents compute-specs delete [OPTIONS] NAME
 
 * `--help, -h`: Show this message and exit.
 
+#### nemo agents chat
+
+Chat interactively with a new or existing deployed-agent session.
+
+**Usage:**
+
+```shell
+nemo agents chat [OPTIONS]
+```
+
+**Options:**
+
+* `--input, -i`: Optional first message to send before prompting for the next turn.
+* `--agent-deployment, -d`: Deployment to start a new persisted session against.
+* `--session, -s`: Name of an existing persisted session to resume.
+* `--session-name`: Name for a new session; valid only with --agent-deployment.
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--timeout, -t <FLOAT RANGE>`: Request timeout in seconds for each streamed agent turn. [default: 300] [env: NEMO_AGENTS_INVOKE_TIMEOUT=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agents sessions
+
+Discover and manage persisted deployed-agent sessions.
+
+**Usage:**
+
+```shell
+nemo agents sessions [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List persisted sessions, newest first.
+* `get`: Get a persisted session by name.
+* `close`: Close a session and release its deployed runtime.
+
+##### nemo agents sessions list
+
+List persisted sessions, newest first.
+
+**Usage:**
+
+```shell
+nemo agents sessions list [OPTIONS]
+```
+
+**Options:**
+
+* `--agent-deployment, -d`: Limit results to sessions bound to this deployment.
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--format, --output-format, -o, -f <CHOICE>`: Output format for the list of sessions. [possible values: table, json, yaml, csv, markdown, raw]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+
+##### nemo agents sessions get
+
+Get a persisted session by name.
+
+**Usage:**
+
+```shell
+nemo agents sessions get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Session name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo agents sessions close
+
+Close a session and release its deployed runtime.
+
+**Usage:**
+
+```shell
+nemo agents sessions close [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Session name.
+
+**Options:**
+
+* `--workspace, -w`: [default: default]
+* `--base-url`: Platform base URL. Resolution order: (1) this --base-url flag or NEMO_BASE_URL; (2) shared CLI config (`nemo config set --base-url`) or NMP_BASE_URL; (3) http://localhost:8080 (default). [env: NEMO_BASE_URL=]
+* `--yes, -y`: Skip confirmation prompt.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
 #### nemo agents analyze
 
 Analyze a batch of eval-suite results (clusters, regressions, hypotheses).
@@ -6573,6 +6694,11 @@ nemo agents analyze run [OPTIONS]
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
 
+Job Spec flags are generated from the AnalyzeBatchConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `format`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
 ##### nemo agents analyze submit
 
 Submit to a cluster.
@@ -6606,6 +6732,11 @@ nemo agents analyze submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the AnalyzeBatchConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `format`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo agents analyze explain
 
@@ -6673,6 +6804,9 @@ nemo agents evaluate run [OPTIONS]
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
 
+Job Spec flags are generated from the EvaluateAgentSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+​
+
 ##### nemo agents evaluate submit
 
 Submit to a cluster.
@@ -6707,6 +6841,11 @@ nemo agents evaluate submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the EvaluateAgentSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `workspace`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo agents evaluate explain
 
@@ -6777,6 +6916,11 @@ nemo agents evaluate-suite run [OPTIONS]
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
 
+Job Spec flags are generated from the EvaluateSuiteSubmitConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `runner`, `prefer`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
 ##### nemo agents evaluate-suite submit
 
 Submit to a cluster.
@@ -6815,6 +6959,11 @@ nemo agents evaluate-suite submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the EvaluateSuiteSubmitConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `runner`, `prefer`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo agents evaluate-suite explain
 
@@ -6871,15 +7020,22 @@ nemo agents execute run [OPTIONS]
 
 **Job Spec:**
 
-* `--agent`: Agent entity name or workspace/name ref.
+* `--agent`: Agent to execute: an Agent entity name or workspace/name ref, or an inline agent definition for a config composed at request time. This flag accepts the string form only; use --spec or --spec-file for the other union form(s).
 * `--input`: Prompt to pass to the agent.
+* `--environment`: AgentEnvironment to run under: a "workspace/name" ref to a stored AgentEnvironment, an inline environment, or None. Its EnvironmentSpec is merged into the agent config and its ComputeSpec/secret refs are snapshotted onto the job step at creation time. This flag accepts the string form only; use --spec or --spec-file for the other union form(s).
 * `--workdir.base-workdir`: Optional Files reference for the initial working directory.
 * `--timeout-seconds <FLOAT>`: Maximum time to wait for Fabric to return an execution result.
+* `--extension.kind`: Trusted extension kind registered by an installed NeMo plugin.
 
 **Spec Source:**
 
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+Job Spec flags are generated from the ExecuteAgentJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `agent (other union forms)`, `environment (other union forms)`, `workdir.artifact_mounts`, `extension.config`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo agents execute submit
 
@@ -6897,10 +7053,12 @@ nemo agents execute submit [OPTIONS]
 
 **Job Spec:**
 
-* `--agent`: Agent entity name or workspace/name ref.
+* `--agent`: Agent to execute: an Agent entity name or workspace/name ref, or an inline agent definition for a config composed at request time. This flag accepts the string form only; use --spec or --spec-file for the other union form(s).
 * `--input`: Prompt to pass to the agent.
+* `--environment`: AgentEnvironment to run under: a "workspace/name" ref to a stored AgentEnvironment, an inline environment, or None. Its EnvironmentSpec is merged into the agent config and its ComputeSpec/secret refs are snapshotted onto the job step at creation time. This flag accepts the string form only; use --spec or --spec-file for the other union form(s).
 * `--workdir.base-workdir`: Optional Files reference for the initial working directory.
 * `--timeout-seconds <FLOAT>`: Maximum time to wait for Fabric to return an execution result.
+* `--extension.kind`: Trusted extension kind registered by an installed NeMo plugin.
 
 **Spec Source:**
 
@@ -6915,6 +7073,11 @@ nemo agents execute submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the ExecuteAgentJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `agent (other union forms)`, `environment (other union forms)`, `workdir.artifact_mounts`, `extension.config`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo agents execute explain
 
@@ -6983,6 +7146,9 @@ nemo agents optimize run [OPTIONS]
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
 
+Job Spec flags are generated from the OptimizeSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+​
+
 ##### nemo agents optimize submit
 
 Submit to a cluster.
@@ -7017,6 +7183,11 @@ nemo agents optimize submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the OptimizeSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `workspace`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo agents optimize explain
 
@@ -7117,6 +7288,11 @@ nemo agents optimize-skills run [OPTIONS]
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
 
+Job Spec flags are generated from the OptimizeSkillsConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `trace_parser`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
 ##### nemo agents optimize-skills submit
 
 Submit to a cluster.
@@ -7160,6 +7336,11 @@ nemo agents optimize-skills submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the OptimizeSkillsConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `trace_parser`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo agents optimize-skills explain
 
@@ -7227,11 +7408,16 @@ nemo agents package-agent run [OPTIONS]
 * `--agent-version`: OCI image version label override.
 * `--agent-author`: OCI image authors label override.
 * `--skip-validation`: Bypass Fabric package validation before building.
+* `--registry`: Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host executing the push must already be authenticated to it — the local machine for `run`, the platform's job-execution host for `submit`/the REST API. Credentials are never accepted over this API.
+* `--push-tag`: Fully-qualified remote tag. Defaults to '\<registry>/\<image>', where \<image> is the namespaced local reference 'nemo-agents/\{workspace}/\{tag}'. Requires 'registry'. Must start with '\<registry>/nemo-agents/\{workspace}/' — Docker tags are daemon-global while the auth boundary here is the workspace, so an unscoped push_tag would let this workspace overwrite another workspace's image, or redirect the push to a registry other than the one declared.
 
 **Spec Source:**
 
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+Job Spec flags are generated from the PackageAgentInput Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+​
 
 ##### nemo agents package-agent submit
 
@@ -7260,6 +7446,8 @@ nemo agents package-agent submit [OPTIONS]
 * `--agent-version`: OCI image version label override.
 * `--agent-author`: OCI image authors label override.
 * `--skip-validation`: Bypass Fabric package validation before building.
+* `--registry`: Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host executing the push must already be authenticated to it — the local machine for `run`, the platform's job-execution host for `submit`/the REST API. Credentials are never accepted over this API.
+* `--push-tag`: Fully-qualified remote tag. Defaults to '\<registry>/\<image>', where \<image> is the namespaced local reference 'nemo-agents/\{workspace}/\{tag}'. Requires 'registry'. Must start with '\<registry>/nemo-agents/\{workspace}/' — Docker tags are daemon-global while the auth boundary here is the workspace, so an unscoped push_tag would let this workspace overwrite another workspace's image, or redirect the push to a registry other than the one declared.
 
 **Spec Source:**
 
@@ -7274,6 +7462,9 @@ nemo agents package-agent submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the PackageAgentInput Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+​
 
 ##### nemo agents package-agent explain
 
@@ -7503,6 +7694,8 @@ nemo agents analyst [OPTIONS] COMMAND [ARGS]...
 
 **Help:**
 
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
 * `--help, -h`: Show this message and exit.
 
 **Commands:**
@@ -7571,6 +7764,8 @@ nemo agents experimentalist [OPTIONS] COMMAND [ARGS]...
 
 **Help:**
 
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
 * `--help, -h`: Show this message and exit.
 
 **Commands:**
@@ -7674,7 +7869,18 @@ nemo data-designer [OPTIONS] COMMAND [ARGS]...
 * `create`
 * `preview`
 * `personas`: Manage Nemotron Personas datasets
+* `retrieval`: Build specs for Nemotron retrieval SDG commands.
 * `agent`: Agent-only interface for dynamic Data Designer introspection
+
+*Functions:*
+
+* `retrieval-preview`: Submit retrieval-preview over HTTP.
+
+*Jobs:*
+
+* `retrieval-generate`: Submit to a cluster.
+* `retrieval-prepare`: Submit to a cluster.
+* `retrieval-run`: Submit to a cluster.
 
 #### nemo data-designer validate
 
@@ -7790,6 +7996,92 @@ nemo data-designer personas make-fileset [OPTIONS]
 
 * `--help, -h`: Show this message and exit.
 
+#### nemo data-designer retrieval
+
+Build specs for Nemotron retrieval SDG commands. These helpers print the auto-generated retrieval-generate, retrieval-prepare, or retrieval-preview command to submit.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `generate`: Build a spec for the auto-generated...
+* `prepare`: Build a spec for the auto-generated ``retrieval-prepare``...
+* `preview`: Build a spec for the auto-generated ``retrieval-preview``...
+
+##### nemo data-designer retrieval generate
+
+Build a spec for the auto-generated ``retrieval-generate`` job command.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval generate [OPTIONS]
+```
+
+**Options:**
+
+* `--corpus`: Corpus fileset ref or hf:// URI.
+* `--provider`: Inference Gateway provider (workspace/name).
+* `--chat-model`: Chat model for artifact extraction, Q&A, and judging.
+* `--embed-model`: Embedding model.
+* `--workspace, -w`: [default: default]
+* `--print-spec`: Print JSON spec instead of a submission command.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo data-designer retrieval prepare
+
+Build a spec for the auto-generated ``retrieval-prepare`` job command.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval prepare [OPTIONS]
+```
+
+**Options:**
+
+* `--sdg-input`: Stage 0 fileset, generation_result.json, or hf:// URI.
+* `--train-input-file`
+* `--mine, --no-mine`: Run GPU hard-negative mining after conversion. Conversion-only is the default.
+* `--workspace, -w`: [default: default]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo data-designer retrieval preview
+
+Build a spec for the auto-generated ``retrieval-preview`` function command.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval preview [OPTIONS]
+```
+
+**Options:**
+
+* `--corpus`: Corpus fileset ref or hf:// URI.
+* `--provider`: Inference Gateway provider (workspace/name).
+* `--chat-model`: Chat model for artifact extraction, Q&A, and judging.
+* `--embed-model`: Embedding model.
+* `--workspace, -w`: [default: default]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
 #### nemo data-designer agent
 
 Agent-only interface for dynamic Data Designer introspection
@@ -7884,6 +8176,274 @@ nemo data-designer agent types [OPTIONS]
 **Help:**
 
 * `--help, -h`: Show this message and exit.
+
+#### nemo data-designer retrieval-preview
+
+Submit retrieval-preview over HTTP.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval-preview [OPTIONS]
+```
+
+**Function Spec:**
+
+* `--generate.corpus`: Fileset ref (workspace/fileset[#subdir]) or hf:// URI.
+* `--generate.provider`: Default Inference Gateway provider (name or workspace/name).
+* `--generate.chat-provider`: Optional provider override for artifact extraction, Q&A generation, and quality judging.
+* `--generate.embed-provider`: Optional provider override for embedding calls.
+* `--generate.corpus-id`: Override `generate.corpus_id` in the spec.
+* `--generate.dataset-name`: Override `generate.dataset_name` in the spec.
+* `--generate.min-text-length <INTEGER>`: Override `generate.min_text_length` in the spec.
+* `--generate.sentences-per-chunk <INTEGER>`: Override `generate.sentences_per_chunk` in the spec.
+* `--generate.num-sections <INTEGER>`: Override `generate.num_sections` in the spec.
+* `--generate.num-files <INTEGER>`: Override `generate.num_files` in the spec.
+* `--generate.max-artifacts-per-type <INTEGER>`: Override `generate.max_artifacts_per_type` in the spec.
+* `--generate.num-pairs <INTEGER>`: Override `generate.num_pairs` in the spec.
+* `--generate.min-hops <INTEGER>`: Override `generate.min_hops` in the spec.
+* `--generate.max-hops <INTEGER>`: Override `generate.max_hops` in the spec.
+* `--generate.min-complexity <INTEGER>`: Override `generate.min_complexity` in the spec.
+* `--generate.similarity-threshold <FLOAT>`: Override `generate.similarity_threshold` in the spec.
+* `--generate.buffer-size <INTEGER>`: Override `generate.buffer_size` in the spec.
+* `--generate.num-records <INTEGER>`: Override `generate.num_records` in the spec.
+* `--generate.artifact-extraction-model`: Chat model for artifact extraction.
+* `--generate.qa-generation-model`: Chat model for question/answer generation.
+* `--generate.quality-judge-model`: Chat model for quality judging.
+* `--generate.embed-model`: Embedding model for retrieval SDG.
+* `--generate.hf-token-secret`: Override `generate.hf_token_secret` in the spec.
+* `--num-records <INTEGER>`: Override `num_records` in the spec.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace path segment used in the submit URL. [default: default]
+* `--request-id`: Set the X-Request-ID header (echoed back in ctx.request_id).
+
+Function Spec flags are generated from the RetrievalPreviewSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `generate.file_extensions`, `generate.query_counts`, `generate.reasoning_counts`, `generate.resume`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
+#### nemo data-designer retrieval-generate
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval-generate [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--corpus`: Fileset ref (workspace/fileset[#subdir]) or hf:// URI.
+* `--provider`: Default Inference Gateway provider (name or workspace/name).
+* `--chat-provider`: Optional provider override for artifact extraction, Q&A generation, and quality judging.
+* `--embed-provider`: Optional provider override for embedding calls.
+* `--corpus-id`: Override `corpus_id` in the spec.
+* `--dataset-name`: Override `dataset_name` in the spec.
+* `--min-text-length <INTEGER>`: Override `min_text_length` in the spec.
+* `--sentences-per-chunk <INTEGER>`: Override `sentences_per_chunk` in the spec.
+* `--num-sections <INTEGER>`: Override `num_sections` in the spec.
+* `--num-files <INTEGER>`: Override `num_files` in the spec.
+* `--max-artifacts-per-type <INTEGER>`: Override `max_artifacts_per_type` in the spec.
+* `--num-pairs <INTEGER>`: Override `num_pairs` in the spec.
+* `--min-hops <INTEGER>`: Override `min_hops` in the spec.
+* `--max-hops <INTEGER>`: Override `max_hops` in the spec.
+* `--min-complexity <INTEGER>`: Override `min_complexity` in the spec.
+* `--similarity-threshold <FLOAT>`: Override `similarity_threshold` in the spec.
+* `--buffer-size <INTEGER>`: Override `buffer_size` in the spec.
+* `--num-records <INTEGER>`: Override `num_records` in the spec.
+* `--artifact-extraction-model`: Chat model for artifact extraction.
+* `--qa-generation-model`: Chat model for question/answer generation.
+* `--quality-judge-model`: Chat model for quality judging.
+* `--embed-model`: Embedding model for retrieval SDG.
+* `--hf-token-secret`: Override `hf_token_secret` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the RetrievalGenerateJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `file_extensions`, `query_counts`, `reasoning_counts`, `resume`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
+#### nemo data-designer retrieval-prepare
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval-prepare [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--sdg-input`: Fileset or hf:// URI to Stage 0 output or generation_result.json.
+* `--train-input-file`: Fileset containing a pre-converted wrapped train.json; skips conversion.
+* `--corpus-id`: Override `corpus_id` in the spec.
+* `--quality-threshold <FLOAT>`: Override `quality_threshold` in the spec.
+* `--train-ratio <FLOAT>`: Override `train_ratio` in the spec.
+* `--val-ratio <FLOAT>`: Override `val_ratio` in the spec.
+* `--seed <INTEGER>`: Override `seed` in the spec.
+* `--max-pos-docs <INTEGER>`: Override `max_pos_docs` in the spec.
+* `--use-group-id-in-eval`: Override `use_group_id_in_eval` in the spec.
+* `--enable-mining`: When true, run GPU hard-negative mining after conversion. Conversion-only is the default.
+* `--model`: Platform model entity whose fileset contains the mining encoder and tokenizer.
+* `--hard-negatives-to-mine <INTEGER>`: Override `hard_negatives_to_mine` in the spec.
+* `--hard-neg-margin <FLOAT>`: Override `hard_neg_margin` in the spec.
+* `--mining-batch-size <INTEGER>`: Override `mining_batch_size` in the spec.
+* `--query-prefix`: Override `query_prefix` in the spec.
+* `--passage-prefix`: Override `passage_prefix` in the spec.
+* `--query-max-length <INTEGER>`: Override `query_max_length` in the spec.
+* `--passage-max-length <INTEGER>`: Override `passage_max_length` in the spec.
+* `--add-bos-token`: Override `add_bos_token` in the spec.
+* `--add-eos-token`: Override `add_eos_token` in the spec.
+* `--dist-backend`: Override `dist_backend` in the spec.
+* `--dist-timeout-minutes <INTEGER>`: Override `dist_timeout_minutes` in the spec.
+* `--mining.query-embedding-batch-size <INTEGER>`: Override `mining.query_embedding_batch_size` in the spec.
+* `--mining.document-embedding-batch-size <INTEGER>`: Override `mining.document_embedding_batch_size` in the spec.
+* `--mining.corpus-chunk-size <INTEGER>`: Override `mining.corpus_chunk_size` in the spec.
+* `--mining.load-embeddings-from-cache`: Override `mining.load_embeddings_from_cache` in the spec.
+* `--mining.use-negatives-from-file`: Override `mining.use_negatives_from_file` in the spec.
+* `--hf-token-secret`: Override `hf_token_secret` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the RetrievalPrepareJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `split_strategy`, `attn_implementation`, `mining.hard_neg_margin_type`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
+#### nemo data-designer retrieval-run
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo data-designer retrieval-run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--generate.corpus`: Fileset ref (workspace/fileset[#subdir]) or hf:// URI.
+* `--generate.provider`: Default Inference Gateway provider (name or workspace/name).
+* `--generate.chat-provider`: Optional provider override for artifact extraction, Q&A generation, and quality judging.
+* `--generate.embed-provider`: Optional provider override for embedding calls.
+* `--generate.corpus-id`: Override `generate.corpus_id` in the spec.
+* `--generate.dataset-name`: Override `generate.dataset_name` in the spec.
+* `--generate.min-text-length <INTEGER>`: Override `generate.min_text_length` in the spec.
+* `--generate.sentences-per-chunk <INTEGER>`: Override `generate.sentences_per_chunk` in the spec.
+* `--generate.num-sections <INTEGER>`: Override `generate.num_sections` in the spec.
+* `--generate.num-files <INTEGER>`: Override `generate.num_files` in the spec.
+* `--generate.max-artifacts-per-type <INTEGER>`: Override `generate.max_artifacts_per_type` in the spec.
+* `--generate.num-pairs <INTEGER>`: Override `generate.num_pairs` in the spec.
+* `--generate.min-hops <INTEGER>`: Override `generate.min_hops` in the spec.
+* `--generate.max-hops <INTEGER>`: Override `generate.max_hops` in the spec.
+* `--generate.min-complexity <INTEGER>`: Override `generate.min_complexity` in the spec.
+* `--generate.similarity-threshold <FLOAT>`: Override `generate.similarity_threshold` in the spec.
+* `--generate.buffer-size <INTEGER>`: Override `generate.buffer_size` in the spec.
+* `--generate.num-records <INTEGER>`: Override `generate.num_records` in the spec.
+* `--generate.artifact-extraction-model`: Chat model for artifact extraction.
+* `--generate.qa-generation-model`: Chat model for question/answer generation.
+* `--generate.quality-judge-model`: Chat model for quality judging.
+* `--generate.embed-model`: Embedding model for retrieval SDG.
+* `--generate.hf-token-secret`: Override `generate.hf_token_secret` in the spec.
+* `--prepare.sdg-input`: Fileset or hf:// URI to Stage 0 output or generation_result.json.
+* `--prepare.train-input-file`: Fileset containing a pre-converted wrapped train.json; skips conversion.
+* `--prepare.corpus-id`: Override `prepare.corpus_id` in the spec.
+* `--prepare.quality-threshold <FLOAT>`: Override `prepare.quality_threshold` in the spec.
+* `--prepare.train-ratio <FLOAT>`: Override `prepare.train_ratio` in the spec.
+* `--prepare.val-ratio <FLOAT>`: Override `prepare.val_ratio` in the spec.
+* `--prepare.seed <INTEGER>`: Override `prepare.seed` in the spec.
+* `--prepare.max-pos-docs <INTEGER>`: Override `prepare.max_pos_docs` in the spec.
+* `--prepare.use-group-id-in-eval`: Override `prepare.use_group_id_in_eval` in the spec.
+* `--prepare.enable-mining`: When true, run GPU hard-negative mining after conversion. Conversion-only is the default.
+* `--prepare.model`: Platform model entity whose fileset contains the mining encoder and tokenizer.
+* `--prepare.hard-negatives-to-mine <INTEGER>`: Override `prepare.hard_negatives_to_mine` in the spec.
+* `--prepare.hard-neg-margin <FLOAT>`: Override `prepare.hard_neg_margin` in the spec.
+* `--prepare.mining-batch-size <INTEGER>`: Override `prepare.mining_batch_size` in the spec.
+* `--prepare.query-prefix`: Override `prepare.query_prefix` in the spec.
+* `--prepare.passage-prefix`: Override `prepare.passage_prefix` in the spec.
+* `--prepare.query-max-length <INTEGER>`: Override `prepare.query_max_length` in the spec.
+* `--prepare.passage-max-length <INTEGER>`: Override `prepare.passage_max_length` in the spec.
+* `--prepare.add-bos-token`: Override `prepare.add_bos_token` in the spec.
+* `--prepare.add-eos-token`: Override `prepare.add_eos_token` in the spec.
+* `--prepare.dist-backend`: Override `prepare.dist_backend` in the spec.
+* `--prepare.dist-timeout-minutes <INTEGER>`: Override `prepare.dist_timeout_minutes` in the spec.
+* `--prepare.mining.query-embedding-batch-size <INTEGER>`: Override `prepare.mining.query_embedding_batch_size` in the spec.
+* `--prepare.mining.document-embedding-batch-size <INTEGER>`: Override `prepare.mining.document_embedding_batch_size` in the spec.
+* `--prepare.mining.corpus-chunk-size <INTEGER>`: Override `prepare.mining.corpus_chunk_size` in the spec.
+* `--prepare.mining.load-embeddings-from-cache`: Override `prepare.mining.load_embeddings_from_cache` in the spec.
+* `--prepare.mining.use-negatives-from-file`: Override `prepare.mining.use_negatives_from_file` in the spec.
+* `--prepare.hf-token-secret`: Override `prepare.hf_token_secret` in the spec.
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the RetrievalRunJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `generate.file_extensions`, `generate.query_counts`, `generate.reasoning_counts`, `generate.resume`, `prepare.split_strategy`, `prepare.attn_implementation`, `prepare.mining.hard_neg_margin_type`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ### nemo guardrail
 
@@ -8508,6 +9068,11 @@ nemo auditor audit run [OPTIONS]
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
 
+Job Spec flags are generated from the AuditInputSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `config`, `target`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
 ##### nemo auditor audit submit
 
 Submit to a cluster.
@@ -8540,6 +9105,11 @@ nemo auditor audit submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the AuditInputSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `config`, `target`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo auditor audit explain
 
@@ -8652,6 +9222,8 @@ nemo anonymizer preview [OPTIONS]
 * `--request-id`: Set the X-Request-ID header (echoed back in ctx.request_id).
 
 Function Spec flags are generated from the PreviewRequest Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `config.detect.entity_labels`, `config.replace`, `model_configs`, `selected_models.detection`, `selected_models.replace`, `selected_models.rewrite`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
 ​
 
 #### nemo anonymizer run
@@ -8698,6 +9270,11 @@ nemo anonymizer run [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the AnonymizerRequest Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `config.detect.entity_labels`, `config.replace`, `model_configs`, `selected_models.detection`, `selected_models.replace`, `selected_models.rewrite`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ### nemo evaluator
 
@@ -8805,6 +9382,11 @@ nemo evaluator agent-evaluate run [OPTIONS]
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
 
+Job Spec flags are generated from the AgentEvalInputSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `target`, `trials`, `labels`, `tasks`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
 ##### nemo evaluator agent-evaluate submit
 
 Submit to a cluster.
@@ -8841,6 +9423,11 @@ nemo evaluator agent-evaluate submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the AgentEvalInputSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `target`, `trials`, `labels`, `tasks`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo evaluator agent-evaluate explain
 
@@ -8897,6 +9484,7 @@ nemo evaluator evaluate run [OPTIONS]
 
 **Job Spec:**
 
+* `--prompt-template`: Optional prompt template for online target generation. This flag accepts the string form only; use --spec or --spec-file for the other union form(s).
 * `--publication.intake.evaluation-id`: Name of the existing Evaluation to publish under. Must already exist; the job does not create it.
 * `--publication.intake.agent-name`: Agent name recorded on each published trajectory. Derived from the target when it names one; required otherwise.
 * `--publication.intake.agent-version`: Agent version recorded on each published trajectory. Neither a Model nor an Agent carries a version, so this defaults to 'unknown' unless the submitter supplies one.
@@ -8907,6 +9495,11 @@ nemo evaluator evaluate run [OPTIONS]
 
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+Job Spec flags are generated from the EvaluateInputSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `dataset`, `params`, `target`, `prompt_template (other union forms)`, `field_mapping.input`, `field_mapping.output`, `field_mapping.context`, `field_mapping.reference`, `field_mapping.trajectory`, `field_mapping.messages`, `field_mapping.tool_calls`, `field_mapping.tools`, `field_mapping.custom`, `metrics`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo evaluator evaluate submit
 
@@ -8924,6 +9517,7 @@ nemo evaluator evaluate submit [OPTIONS]
 
 **Job Spec:**
 
+* `--prompt-template`: Optional prompt template for online target generation. This flag accepts the string form only; use --spec or --spec-file for the other union form(s).
 * `--publication.intake.evaluation-id`: Name of the existing Evaluation to publish under. Must already exist; the job does not create it.
 * `--publication.intake.agent-name`: Agent name recorded on each published trajectory. Derived from the target when it names one; required otherwise.
 * `--publication.intake.agent-version`: Agent version recorded on each published trajectory. Neither a Model nor an Agent carries a version, so this defaults to 'unknown' unless the submitter supplies one.
@@ -8943,6 +9537,11 @@ nemo evaluator evaluate submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the EvaluateInputSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `dataset`, `params`, `target`, `prompt_template (other union forms)`, `field_mapping.input`, `field_mapping.output`, `field_mapping.context`, `field_mapping.reference`, `field_mapping.trajectory`, `field_mapping.messages`, `field_mapping.tool_calls`, `field_mapping.tools`, `field_mapping.custom`, `metrics`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo evaluator evaluate explain
 
@@ -9324,6 +9923,11 @@ nemo customization automodel.jobs run [OPTIONS]
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
 
+Job Spec flags are generated from the AutomodelJobInput Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `training.training_type`, `training.finetuning_type`, `training.lora.target_modules`, `training.lora.exclude_modules`, `training.precision`, `training.attn_implementation`, `training.teacher_precision`, `schedule.progress_reporting.time_series_metrics`, `optimizer.optimizer`, `optimizer.lr_decay_style`, `integrations.wandb.tags`, `integrations.mlflow.tags`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
 ##### nemo customization automodel.jobs submit
 
 Submit to a cluster.
@@ -9406,6 +10010,11 @@ nemo customization automodel.jobs submit [OPTIONS]
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
 
+Job Spec flags are generated from the AutomodelJobInput Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `training.training_type`, `training.finetuning_type`, `training.lora.target_modules`, `training.lora.exclude_modules`, `training.precision`, `training.attn_implementation`, `training.teacher_precision`, `schedule.progress_reporting.time_series_metrics`, `optimizer.optimizer`, `optimizer.lr_decay_style`, `integrations.wandb.tags`, `integrations.mlflow.tags`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
 ##### nemo customization automodel.jobs explain
 
 Show input/output schemas.
@@ -9482,6 +10091,11 @@ nemo customization rl.jobs run [OPTIONS]
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
 
+Job Spec flags are generated from the RlJobInput Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `training`, `integrations.wandb.tags`, `integrations.mlflow.tags`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
 ##### nemo customization rl.jobs submit
 
 Submit to a cluster.
@@ -9527,6 +10141,11 @@ nemo customization rl.jobs submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the RlJobInput Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `training`, `integrations.wandb.tags`, `integrations.mlflow.tags`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo customization rl.jobs explain
 
@@ -9600,6 +10219,8 @@ nemo customization unsloth.jobs run [OPTIONS]
 * `--training.lora.use-rslora`: Override `training.lora.use_rslora` in the spec.
 * `--training.lora.random-state <INTEGER>`: Override `training.lora.random_state` in the spec.
 * `--training.lora.use-dora`: DoRA (weight-decomposed LoRA). Improves quality at low ranks; adds training overhead.
+* `--training.lora.layers-to-transform <INTEGER>`: Restrict LoRA to specific layer index(es). None applies to all layers. This flag accepts the integer form only; use --spec or --spec-file for the other union form(s).
+* `--training.lora.init-lora-weights`: LoRA weight init scheme. True = PEFT default; 'pissa'/'olora'/'loftq' for advanced inits. This flag accepts the boolean form only; use --spec or --spec-file for the other union form(s).
 * `--schedule.epochs <INTEGER>`: Override `schedule.epochs` in the spec.
 * `--schedule.max-steps <INTEGER>`: Override `schedule.max_steps` in the spec.
 * `--schedule.warmup-steps <INTEGER>`: Override `schedule.warmup_steps` in the spec.
@@ -9632,11 +10253,17 @@ nemo customization unsloth.jobs run [OPTIONS]
 * `--integrations.mlflow.tracking-uri`: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000'). Can also be set via MLFLOW_TRACKING_URI environment variable.
 * `--output.name`: Override `output.name` in the spec.
 * `--output.description`: Override `output.description` in the spec.
+* `--deployment-config`: Deployment configuration for auto-deploying the model after training. Pass a string to reference an existing ModelDeploymentConfig by name ('my-config' or 'workspace/my-config'). An object provides inline NIM deployment parameters. Omit to skip deployment. This flag accepts the string form only; use --spec or --spec-file for the other union form(s).
 
 **Spec Source:**
 
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+Job Spec flags are generated from the UnslothJobInput Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `model.dtype`, `model.device_map`, `model.rope_scaling`, `training.training_type`, `training.finetuning_type`, `training.lora.target_modules`, `training.lora.bias`, `training.lora.loftq_config`, `training.lora.modules_to_save`, `training.lora.layers_to_transform (other union forms)`, `training.lora.layer_replication`, `training.lora.init_lora_weights (other union forms)`, `training.use_gradient_checkpointing`, `schedule.lr_scheduler_type`, `schedule.progress_reporting.time_series_metrics`, `schedule.lr_scheduler_kwargs`, `optimizer.optim`, `hardware.precision`, `integrations.wandb.tags`, `integrations.mlflow.tags`, `output.save_method`, `deployment_config (other union forms)`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo customization unsloth.jobs submit
 
@@ -9671,6 +10298,8 @@ nemo customization unsloth.jobs submit [OPTIONS]
 * `--training.lora.use-rslora`: Override `training.lora.use_rslora` in the spec.
 * `--training.lora.random-state <INTEGER>`: Override `training.lora.random_state` in the spec.
 * `--training.lora.use-dora`: DoRA (weight-decomposed LoRA). Improves quality at low ranks; adds training overhead.
+* `--training.lora.layers-to-transform <INTEGER>`: Restrict LoRA to specific layer index(es). None applies to all layers. This flag accepts the integer form only; use --spec or --spec-file for the other union form(s).
+* `--training.lora.init-lora-weights`: LoRA weight init scheme. True = PEFT default; 'pissa'/'olora'/'loftq' for advanced inits. This flag accepts the boolean form only; use --spec or --spec-file for the other union form(s).
 * `--schedule.epochs <INTEGER>`: Override `schedule.epochs` in the spec.
 * `--schedule.max-steps <INTEGER>`: Override `schedule.max_steps` in the spec.
 * `--schedule.warmup-steps <INTEGER>`: Override `schedule.warmup_steps` in the spec.
@@ -9703,6 +10332,7 @@ nemo customization unsloth.jobs submit [OPTIONS]
 * `--integrations.mlflow.tracking-uri`: MLflow tracking server URI (e.g., 'http://mlflow.mycompany.com:5000'). Can also be set via MLFLOW_TRACKING_URI environment variable.
 * `--output.name`: Override `output.name` in the spec.
 * `--output.description`: Override `output.description` in the spec.
+* `--deployment-config`: Deployment configuration for auto-deploying the model after training. Pass a string to reference an existing ModelDeploymentConfig by name ('my-config' or 'workspace/my-config'). An object provides inline NIM deployment parameters. Omit to skip deployment. This flag accepts the string form only; use --spec or --spec-file for the other union form(s).
 
 **Spec Source:**
 
@@ -9717,6 +10347,11 @@ nemo customization unsloth.jobs submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the UnslothJobInput Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `model.dtype`, `model.device_map`, `model.rope_scaling`, `training.training_type`, `training.finetuning_type`, `training.lora.target_modules`, `training.lora.bias`, `training.lora.loftq_config`, `training.lora.modules_to_save`, `training.lora.layers_to_transform (other union forms)`, `training.lora.layer_replication`, `training.lora.init_lora_weights (other union forms)`, `training.use_gradient_checkpointing`, `schedule.lr_scheduler_type`, `schedule.progress_reporting.time_series_metrics`, `schedule.lr_scheduler_kwargs`, `optimizer.optim`, `hardware.precision`, `integrations.wandb.tags`, `integrations.mlflow.tags`, `output.save_method`, `deployment_config (other union forms)`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo customization unsloth.jobs explain
 
@@ -9890,6 +10525,11 @@ nemo insights analyze-job run [OPTIONS]
 * `--spec`: Spec as a JSON string. [default: \{}]
 * `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
 
+Job Spec flags are generated from the AnalyzeSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `since`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
 ##### nemo insights analyze-job submit
 
 Submit to a cluster.
@@ -9926,6 +10566,11 @@ nemo insights analyze-job submit [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the AnalyzeSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `base_url`, `since`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ##### nemo insights analyze-job explain
 
@@ -9987,6 +10632,7 @@ nemo safe-synthesizer generate [OPTIONS]
 * `--data-source`: The data source for the job.
 * `--config.data.group-training-examples-by`: Column to group training examples by. This is useful when you want the model to learn inter-record correlations for a given grouping of records.
 * `--config.data.order-training-examples-by`: Column to order training examples by. This is useful when you want the model to learn sequential relationships for a given ordering of records. If you provide this parameter, you must also provide ``group_training_examples_by``.
+* `--config.data.max-sequences-per-example <INTEGER>`: If specified, adds at most this number of sequences per example. Supports 'auto', which resolves to 1 when differential privacy is enabled, None for time-series mode (each example fills the context window), and 10 otherwise. If set to None, fills up the context window. Required for DP to limit contribution of each example. This flag accepts the integer form only; use --spec or --spec-file for the other union form(s).
 * `--config.data.holdout <FLOAT>`: Amount of records to hold out for evaluation. If this is a float between 0 and 1, that ratio of records is held out. If an integer greater than 1, that number of records is held out. If the value is equal to zero, no holdout will be performed. Must be >= 0.
 * `--config.data.max-holdout <INTEGER>`: Maximum number of records to hold out. Overrides any behavior set by ``holdout``. Must be >= 0.
 * `--config.data.random-state <INTEGER>`: Random state for holdout split to ensure reproducibility.
@@ -9998,13 +10644,16 @@ nemo safe-synthesizer generate [OPTIONS]
 * `--config.evaluation.enabled`: Enable or disable evaluation.
 * `--config.evaluation.quasi-identifier-count <INTEGER>`: Number of quasi-identifiers to sample for privacy attacks.
 * `--config.evaluation.pii-replay-enabled`: Enable PII Replay detection.
+* `--config.training.num-input-records-to-sample <INTEGER>`: Number of records the model will see during training. This parameter is a proxy for training time. For example, if its value is the same size as the input dataset, this is like training for a single epoch. If its value is larger, this is like training for multiple (possibly fractional) epochs. If its value is smaller, this is like training for a fraction of an epoch. Supports 'auto' where a reasonable value is chosen based on other config params and data. This flag accepts the integer form only; use --spec or --spec-file for the other union form(s).
 * `--config.training.batch-size <INTEGER>`: The batch size per device for training. Must be >= 1.
 * `--config.training.gradient-accumulation-steps <INTEGER>`: Number of update steps to accumulate the gradients for, before performing a backward/update pass. This technique increases the effective batch size that will fit into GPU memory. Must be >= 1.
 * `--config.training.weight-decay <FLOAT>`: The weight decay to apply to all layers except all bias and LayerNorm weights in the AdamW optimizer. Must be in (0, 1).
 * `--config.training.warmup-ratio <FLOAT>`: Ratio of total training steps used for a linear warmup from 0 to the learning rate. Must be > 0.
 * `--config.training.lr-scheduler`: The scheduler type to use. See the HuggingFace documentation of ``SchedulerType`` for all possible values.
+* `--config.training.learning-rate <FLOAT>`: The initial learning rate for `AdamW` optimizer. Must be in (0, 1). Setting to 'auto' uses a model-specific default if one exists. This flag accepts the number form only; use --spec or --spec-file for the other union form(s).
 * `--config.training.lora-r <INTEGER>`: The rank of the LoRA update matrices. Lower rank results in smaller update matrices with fewer trainable parameters. Must be > 0.
 * `--config.training.lora-alpha-over-r <FLOAT>`: The ratio of the LoRA scaling factor (alpha) to the LoRA rank. Empirically, this parameter works well when set to 0.5, 1, or 2. Must be in [0.5, 3].
+* `--config.training.rope-scaling-factor <INTEGER>`: Scale the base LLM's context length by this factor using RoPE scaling. Must be >= 1 or 'auto'. This flag accepts the integer form only; use --spec or --spec-file for the other union form(s).
 * `--config.training.validation-ratio <FLOAT>`: The fraction of the training data used for validation. Must be in [0, 1]. If set to 0, no validation will be performed. If set larger than 0, validation loss will be computed and reported throughout training.
 * `--config.training.validation-steps <INTEGER>`: The number of steps between validation checks for the HF Trainer arguments. Must be > 0.
 * `--config.training.pretrained-model`: Pretrained model to use for fine-tuning. Defaults to SmolLM3. May be a Hugging Face model ID (loaded from the Hugging Face Hub or cache) or a local path. See security note in docs before using untrusted sources.
@@ -10029,6 +10678,7 @@ nemo safe-synthesizer generate [OPTIONS]
 * `--config.generation.attention-backend`: The attention backend for the vLLM engine. Common values: 'FLASHINFER', 'FLASH_ATTN', 'TRITON_ATTN', 'FLEX_ATTENTION'. If ``None`` or 'auto', vLLM will auto-select the best available backend.
 * `--config.privacy.dp-enabled`: Enable differentially-private training with DP-SGD.
 * `--config.privacy.epsilon <FLOAT>`: Target privacy budget -- lower values provide stronger privacy. Must be > 0.
+* `--config.privacy.delta <FLOAT>`: Probability of accidentally leaking information. Should be much smaller than 1/n where n is the number of training records. Setting to 'auto' uses delta of 1/n^1.2. Must be in [0, 1) or 'auto'. This flag accepts the number form only; use --spec or --spec-file for the other union form(s).
 * `--config.privacy.per-sample-max-grad-norm <FLOAT>`: Maximum L2 norm for per-sample gradient clipping. Must be > 0.
 * `--config.time-series.is-timeseries`: Whether to treat the dataset as time series. When enabled, either ``timestamp_column`` or ``timestamp_interval_seconds`` is required. For grouped time series, ``group_training_examples_by`` needs to be set.
 * `--config.time-series.timestamp-column`: Name of the column containing timestamps used to order records when ``is_timeseries`` is ``True``. Required only when ``is_timeseries`` is ``True`` and ``timestamp_interval_seconds`` is not provided.
@@ -10065,6 +10715,11 @@ nemo safe-synthesizer generate [OPTIONS]
 * `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
 * `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
 * `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the SafeSynthesizerJobConfig Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `config.data.max_sequences_per_example (other union forms)`, `config.evaluation.pii_replay_entities`, `config.evaluation.pii_replay_columns`, `config.training.num_input_records_to_sample (other union forms)`, `config.training.learning_rate (other union forms)`, `config.training.lora_target_modules`, `config.training.rope_scaling_factor (other union forms)`, `config.training.quantization_bits`, `config.generation.structured_generation.backend`, `config.generation.structured_generation.schema_method`, `config.privacy.delta (other union forms)`, `config.time_series.start_timestamp`, `config.time_series.stop_timestamp`, `config.replace_pii.globals.locales`, `config.replace_pii.globals.classify.entities`, `config.replace_pii.globals.ner.ner_entities`, `config.replace_pii.globals.lock_columns`, `config.replace_pii.steps`, `config.preflight.disabled_checks`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
 
 ### nemo experiments
 
@@ -10624,7 +11279,6 @@ nemo intake ingest [OPTIONS] COMMAND [ARGS]...
 
 * `atif`: Manage atif
 * `chat-completions`: Manage chat_completions
-* `otlp`: Otlp operations
 * `spans`: Manage spans
 
 ##### nemo intake ingest atif
@@ -10746,96 +11400,6 @@ nemo intake ingest chat-completions create [OPTIONS]
 * `--provider`
 * `--session-id`: Groups related chat-completions calls without forcing them into the same trace.
 * `--trace-id`: Opt into joining an existing trace built via OTel or ATIF. This is not a grouping mechanism for chat-completions calls; use session_id to group related calls.
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
-
-**Input Options:**
-
-* `--input-file`: Path to JSON file (use '-' for stdin)
-* `--input-data`: Input data for the request (JSON or YAML)
-
-**Output Options:**
-
-* `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
-
-##### nemo intake ingest otlp
-
-Otlp operations
-
-**Usage:**
-
-```shell
-nemo intake ingest otlp [OPTIONS] COMMAND [ARGS]...
-```
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
-
-**Commands:**
-
-* `v1`: V1 operations
-
-###### nemo intake ingest otlp v1
-
-V1 operations
-
-**Usage:**
-
-```shell
-nemo intake ingest otlp v1 [OPTIONS] COMMAND [ARGS]...
-```
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
-
-**Commands:**
-
-* `traces`: Manage traces
-
-**nemo intake ingest otlp v1 traces**
-
-Manage traces
-
-**Usage:**
-
-```shell
-nemo intake ingest otlp v1 traces [OPTIONS] COMMAND [ARGS]...
-```
-
-**Help:**
-
-* `--help, -h`: Show this message and exit.
-
-**Commands:**
-
-* `create`: Ingest Otlp Traces
-
-**nemo intake ingest otlp v1 traces create**
-
-Ingest Otlp Traces
-
-**Examples:**
-
-```shell
-nemo intake ingest otlp v1 traces create --input-file config.json
-nemo intake ingest otlp v1 traces create --input-data '{"field": "value"}'
-echo '{"json": "data"}' | nemo intake ingest otlp v1 traces create --input-file -
-nemo intake ingest otlp v1 traces create --<option> "value"
-```
-
-**Usage:**
-
-```shell
-nemo intake ingest otlp v1 traces create [OPTIONS]
-```
-
-**Options:**
-
-* `--workspace`
 
 **Help:**
 

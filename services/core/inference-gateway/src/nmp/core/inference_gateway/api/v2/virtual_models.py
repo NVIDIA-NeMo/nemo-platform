@@ -28,10 +28,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nemo_platform_plugin.inference_middleware import (
-    GUARDRAIL_CONFIG_IDS_FIELD,
     InferenceMiddlewareError,
-    MiddlewareCall,
     MiddlewareConfigNotFoundError,
+)
+from nemo_platform_plugin.inference_middleware_models import (
+    GUARDRAIL_CONFIG_IDS_FIELD,
+    MiddlewareCall,
     VirtualModel,
     guardrail_config_membership_filter,
 )

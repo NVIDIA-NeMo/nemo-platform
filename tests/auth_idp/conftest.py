@@ -28,6 +28,16 @@ from tests.auth_idp.runtime_factory import iter_auth_idp_cases, parametrize_case
 pytest_plugins = ("e2e.conftest",)
 
 
+def _auth_idp_case_for_item(item: pytest.Item) -> AuthIdpCase | None:
+    callspec = getattr(item, "callspec", None)
+    if callspec is None:
+        return None
+    case = callspec.params.get("auth_idp_case")
+    if isinstance(case, AuthIdpCase):
+        return case
+    return None
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("auth-idp")
     group.addoption(
@@ -75,6 +85,11 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         runtime_markers = list(item.iter_markers("auth_idp_runtime"))
         if runtime_markers:
             item.add_marker(pytest.mark.xdist_group("idp-live"))
+        case = _auth_idp_case_for_item(item)
+        if case is not None and case.backend == "kubernetes" and item.get_closest_marker("timeout") is None:
+            from tests.auth_idp.runtime_kubernetes import PYTEST_TIMEOUT_SECONDS
+
+            item.add_marker(pytest.mark.timeout(PYTEST_TIMEOUT_SECONDS))
         if not runtime_markers:
             selected.append(item)
             continue

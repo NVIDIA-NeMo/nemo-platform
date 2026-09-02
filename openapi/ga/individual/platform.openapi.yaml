@@ -675,6 +675,11 @@ paths:
       description: 'List all workspaces with pagination.
 
 
+        Workspaces marked for deletion (non-null deletion_stage) are omitted so the
+
+        list matches GET/DELETE, which treat those workspaces as not found.
+
+
         When authentication is enabled, only workspaces the principal has access to
 
         are returned. Service principals and platform admins have access to all workspaces.
@@ -4650,13 +4655,6 @@ paths:
         schema:
           type: string
           title: Workspace
-      - name: content-type
-        in: header
-        required: false
-        schema:
-          type: string
-          default: application/octet-stream
-          title: Content-Type
       - name: content-length
         in: header
         required: false
@@ -4676,6 +4674,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      requestBody:
+        content:
+          application/x-protobuf:
+            schema:
+              type: string
+              format: binary
+              description: Serialized OTLP ExportTraceServiceRequest protobuf
+        required: true
   /apis/intake/v2/workspaces/{workspace}/ingest/spans:
     post:
       tags:
@@ -16686,6 +16692,25 @@ components:
       - artifact_url
       - artifact_storage_type
       title: PlatformJobResultResponse
+    PlatformJobSecret:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: The name of the secret
+        value:
+          title: Value
+          description: The secret value submitted with the job
+          type: string
+        ref_id:
+          title: Ref Id
+          description: Reference id for the stored secret value
+          type: string
+      type: object
+      required:
+      - name
+      title: PlatformJobSecret
+      description: Inline secret material submitted with a job spec.
     PlatformJobSecretEnvironmentVariableRef:
       properties:
         name:
@@ -16714,6 +16739,12 @@ components:
           type: array
           title: Steps
           description: List of steps to be executed in the job
+        secrets:
+          title: Secrets
+          description: Secrets referenced by the job
+          items:
+            $ref: '#/components/schemas/PlatformJobSecret'
+          type: array
       type: object
       required:
       - steps

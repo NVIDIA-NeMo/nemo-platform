@@ -18,14 +18,15 @@ from __future__ import annotations
 import re
 from typing import Annotated, Literal, Self, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from nemo_platform_plugin.jobs._mapping_access import JobSpecModel
+from pydantic import Field, field_validator, model_validator
 
 # SHM: megabyte/gigabyte scale only — Mi, Gi (binary) or M, G (decimal SI).
 # Ki / Ti / Pi / Ei and other suffixes are not accepted for /dev/shm.
 _SHM_QUANTITY_RE = re.compile(r"^([+-]?(?:\d+|\d*\.\d+)(?:[eE][+-]?\d+)?)(Mi|Gi|M|G)$")
 
 
-class ContainerSpec(BaseModel):
+class ContainerSpec(JobSpecModel):
     """
     Specification for a container configuration.
 
@@ -42,14 +43,14 @@ class ContainerSpec(BaseModel):
     """The command to execute as a list of strings (e.g., ['python', 'script.py']). This overrides a container's default commands (e.g. CMD in Docker) if provided."""
 
 
-class ComputeResourceSpec(BaseModel):
+class ComputeResourceSpec(JobSpecModel):
     """Resource specification."""
 
     cpu: str | None = Field(default=None, description="CPU specification (e.g., '250m', '1', '2.5').")
     memory: str | None = Field(default=None, description="Memory specification (e.g., '128Mi', '1Gi', '512M').")
 
 
-class ComputeResources(BaseModel):
+class ComputeResources(JobSpecModel):
     """Resource requirements matching k8s ResourceRequirements format."""
 
     requests: ComputeResourceSpec = Field(
@@ -85,7 +86,7 @@ class ComputeResources(BaseModel):
         return s
 
 
-class TaskSpec(BaseModel):
+class TaskSpec(JobSpecModel):
     """
     Specification for a task to be executed.
 
@@ -99,7 +100,7 @@ class TaskSpec(BaseModel):
     """Arguments to pass to the command. Can be a list of strings or a single string."""
 
 
-class CPUExecutionProvider(BaseModel):
+class CPUExecutionProvider(JobSpecModel):
     """
     CPU-based execution provider.
 
@@ -121,7 +122,7 @@ class CPUExecutionProvider(BaseModel):
     )
 
 
-class GPUExecutionProvider(BaseModel):
+class GPUExecutionProvider(JobSpecModel):
     """
     GPU-based execution provider.
 
@@ -143,7 +144,7 @@ class GPUExecutionProvider(BaseModel):
     )
 
 
-class DistributedGPUExecutionProvider(BaseModel):
+class DistributedGPUExecutionProvider(JobSpecModel):
     """
     GPU-based execution provider.
 
@@ -165,7 +166,7 @@ class DistributedGPUExecutionProvider(BaseModel):
     )
 
 
-class SubprocessExecutionProvider(BaseModel):
+class SubprocessExecutionProvider(JobSpecModel):
     """Host subprocess execution provider."""
 
     provider: Literal["subprocess"] = "subprocess"

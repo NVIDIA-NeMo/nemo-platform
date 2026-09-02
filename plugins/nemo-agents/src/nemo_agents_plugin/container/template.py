@@ -97,6 +97,11 @@ _ENV_MAP: dict[str, str] = {
     "uv_version": "NEMO_AGENTS_UV_VERSION",
 }
 
+#: Local nemo-platform wheel to install instead of resolving the pinned contract
+#: version. Set by an operator rather than a caller: it names a path on the build
+#: host, and packaging runs there for the CLI and the platform job alike.
+WHEEL_ENV = "NEMO_AGENTS_WHEEL"
+
 PINNED_NEMO_RELAY_CLI_VERSION = "0.7.3"
 PINNED_NEMO_RELAY_INSTALLER_COMMIT = "40c5990361afc26ae8b901ff1f49c2b03ddd9ede"
 PINNED_NEMO_RELAY_INSTALLER_SHA256 = "ba2585a32e568643819992fa66b750004328351fce422b979d8c11cfc8bbfadb"
@@ -246,7 +251,7 @@ COPY ./ /workspace
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
     uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
     . /workspace/.venv/bin/activate && \\
-    uv pip install --prerelease=allow "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" \\
+    uv pip install --no-sources --prerelease=allow {% if wheel_filename %}"/workspace/{{ wheel_filename }}[nemo-agents-plugin]"{% else %}"nemo-platform[nemo-agents-plugin]=={{ contract_version }}"{% endif %} \\
       "nemo-relay=={{ pinned_nemo_relay_cli_version }}" . && \\
     chmod -R a+rX /opt/uv /workspace/.venv
 {% else %}
@@ -254,7 +259,7 @@ RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \\
     uv venv --python ${PYTHON_VERSION} /workspace/.venv && \\
     . /workspace/.venv/bin/activate && \\
-    uv pip install --prerelease=allow "nemo-platform[nemo-agents-plugin]=={{ contract_version }}" \\
+    uv pip install --no-sources --prerelease=allow {% if wheel_filename %}"/workspace/{{ wheel_filename }}[nemo-agents-plugin]"{% else %}"nemo-platform[nemo-agents-plugin]=={{ contract_version }}"{% endif %} \\
       "nemo-relay=={{ pinned_nemo_relay_cli_version }}" && \\
     chmod -R a+rX /opt/uv /workspace/.venv
 {% endif %}
@@ -360,6 +365,10 @@ class NatRenderParams(SharedRenderParams):
 @dataclass
 class FabricRenderParams(SharedRenderParams):
     """Resolved parameters specific to Fabric Dockerfile rendering."""
+
+    #: Wheel to install instead of the pinned requirement, relative to the build
+    #: context. Empty means resolve ``contract_version`` from an index.
+    wheel_filename: str = ""
 
 
 # -- Public API -------------------------------------------------------------
@@ -628,8 +637,14 @@ def render_fabric_dockerfile(
     agent_author: str | None = None,
     template_path: str | None = None,
     metadata: dict[str, str] | None = None,
+    wheel_filename: str = "",
+    contract_version: str | None = None,
 ) -> str:
-    """Render a Dockerfile string for a Fabric-backed agent."""
+    """Render a Dockerfile string for a Fabric-backed agent.
+
+    *wheel_filename* names a wheel already copied into the build context; when
+    set the image installs it instead of resolving ``contract_version``.
+    """
     shared = resolve_shared_render_params(
         agent_config,
         pyproject,
@@ -643,11 +658,20 @@ def render_fabric_dockerfile(
         agent_author=agent_author,
         metadata=metadata,
     )
+    # With a wheel, the version the image installs comes from the wheel, not the
+    # build host, so labels and the agent id describe what is actually inside.
+    if contract_version:
+        shared.contract_version = contract_version
+
+    # A wheel is installed from the build context, so the version never has to
+    # be resolvable from an index.
     require_installable_contract_version(
         shared.contract_version,
-        pins_contract_version=template_path is None,
+        pins_contract_version=template_path is None and not wheel_filename,
     )
-    params = FabricRenderParams(**{f.name: getattr(shared, f.name) for f in fields(shared)})
+    params = FabricRenderParams(
+        **{f.name: getattr(shared, f.name) for f in fields(shared)}, wheel_filename=wheel_filename
+    )
 
     if template_path:
         try:
@@ -701,8 +725,10 @@ def require_installable_contract_version(contract_version: str, *, pins_contract
     raise ValueError(
         f"The installed nemo-platform version '{contract_version}' {' and '.join(reasons)}, so no "
         "package index serves it. Fabric packaging pins this exact version inside the image, so the "
-        "build would fail while resolving it. Install a released nemo-platform to package an agent, "
-        "or set NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION=1 if your index serves this version."
+        "build would fail while resolving it. Point NEMO_AGENTS_WHEEL at a locally built wheel "
+        "(`uv build --package nemo-platform --wheel --out-dir dist`) to package from a source "
+        "checkout, install a released nemo-platform, or set "
+        "NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION=1 if your index serves this version."
     )
 
 

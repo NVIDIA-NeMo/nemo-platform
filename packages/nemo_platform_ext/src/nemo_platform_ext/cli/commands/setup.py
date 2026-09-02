@@ -49,7 +49,7 @@ from nemo_platform_ext.cli.core.errors import handle_errors
 from nemo_platform_ext.cli.docker_preflight import DOCKER_PREFLIGHT_MESSAGE, require_docker_for_default_local
 from nemo_platform_ext.cli.telemetry import emit
 from nemo_platform_ext.cli.telemetry.events import OnboardingStepEvent, TaskStatusEnum
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_ext.client.tls import HttpxTLSConfig, httpx_tls_config_from_env
 from nemo_platform_ext.config.config import Config
 from nemo_platform_ext.config.models import DEFAULT_BASE_URL, ConfigFile, ConfigParams, LocalServicesConfig, NoAuthUser
 from nemo_platform_ext.local.install import services_extra_install_command
@@ -317,17 +317,22 @@ def _bootstrap_config_if_missing(base_url: str, workspace: str) -> None:
 _PLATFORM_REACHABILITY_PATHS = ("/status", "/cluster-info")
 
 
-def _check_platform_reachable(base_url: str, timeout: float = 5.0) -> bool:
+def _check_platform_reachable(
+    base_url: str,
+    timeout: float = 5.0,
+    *,
+    certificate_authority: str | None = None,
+) -> bool:
     """Return True if a platform health endpoint responds.
 
     Local ``nemo services run`` publishes ``/status``. Hosted deployments may
     only expose ``/cluster-info`` on ingress, so try both.
     """
-    verify = client_verify_from_env()
+    tls_config = httpx_tls_config_from_env(certificate_authority)
     root = base_url.rstrip("/")
     for path in _PLATFORM_REACHABILITY_PATHS:
         try:
-            resp = httpx.get(f"{root}{path}", timeout=timeout, verify=verify)
+            resp = httpx.get(f"{root}{path}", timeout=timeout, **tls_config)
             if resp.status_code == 200:
                 return True
         except Exception:
@@ -339,6 +344,8 @@ def _check_platform_reachable_with_retries(
     base_url: str,
     retries: int = _POST_START_REACHABLE_RETRIES,
     delay: float = _POST_START_REACHABLE_DELAY,
+    *,
+    certificate_authority: str | None = None,
 ) -> bool:
     """Check platform reachability with retries.
 
@@ -347,14 +354,14 @@ def _check_platform_reachable_with_retries(
     A single-shot check can hit this window and falsely report failure.
     """
     for attempt in range(retries):
-        if _check_platform_reachable(base_url):
+        if _check_platform_reachable(base_url, certificate_authority=certificate_authority):
             return True
         if attempt < retries - 1:
             _pause(delay)
     return False
 
 
-def _prompt_remote_base_url(*, default_url: str = "") -> str:
+def _prompt_remote_base_url(*, default_url: str = "", certificate_authority: str | None = None) -> str:
     """Prompt until the user provides a reachable remote Platform URL."""
     while True:
         base_url = prompt_text(
@@ -368,7 +375,7 @@ def _prompt_remote_base_url(*, default_url: str = "") -> str:
             continue
 
         base_url = base_url.rstrip("/")
-        if _check_platform_reachable_with_retries(base_url):
+        if _check_platform_reachable_with_retries(base_url, certificate_authority=certificate_authority):
             return base_url
 
         console.print(f"{CROSS} Unable to connect to NeMo Platform at {base_url}.")
@@ -466,16 +473,21 @@ def _platform_request_headers(cli_context: CLIContext) -> dict[str, str] | None:
     return {key: value for key, value in headers.items() if isinstance(key, str) and isinstance(value, str)}
 
 
-def _hosted_platform_without_status(base_url: str, *, timeout: float, verify: str | bool) -> bool:
+def _hosted_platform_without_status(base_url: str, *, timeout: float, tls_config: HttpxTLSConfig) -> bool:
     """Return True when ``/cluster-info`` confirms a hosted platform that omits ``/status``."""
     try:
-        resp = httpx.get(f"{base_url.rstrip('/')}/cluster-info", timeout=timeout, verify=verify)
+        resp = httpx.get(f"{base_url.rstrip('/')}/cluster-info", timeout=timeout, **tls_config)
     except Exception:
         return False
     return resp.status_code == 200
 
 
-def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool, str]:
+def _check_controller_health(
+    base_url: str,
+    timeout: float = 5.0,
+    *,
+    certificate_authority: str | None = None,
+) -> tuple[bool, str]:
     """Query ``/status`` and assess controller health.
 
     Returns ``(True, "")`` when controllers are populated and all healthy.
@@ -485,13 +497,13 @@ def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool,
     If ``controllers.status`` is empty on the first call (startup timing race),
     waits ``_CONTROLLER_HEALTH_RETRY_DELAY`` seconds and retries once.
     """
-    verify = client_verify_from_env()
+    tls_config = httpx_tls_config_from_env(certificate_authority)
     root = base_url.rstrip("/")
     for attempt in range(2):
         try:
-            resp = httpx.get(f"{root}/status", timeout=timeout, verify=verify)
+            resp = httpx.get(f"{root}/status", timeout=timeout, **tls_config)
             if resp.status_code == 404:
-                if _hosted_platform_without_status(root, timeout=timeout, verify=verify):
+                if _hosted_platform_without_status(root, timeout=timeout, tls_config=tls_config):
                     return True, "Hosted deployment does not publish /status."
                 return False, "Unexpected status 404 from /status endpoint."
             if resp.status_code != 200:
@@ -521,13 +533,13 @@ def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool,
     return False, "No controllers reported status. Controller threads may have crashed before registering."
 
 
-def _verify_platform_health(base_url: str) -> bool:
+def _verify_platform_health(base_url: str, *, certificate_authority: str | None = None) -> bool:
     """Final health gate before declaring setup complete.
 
     Returns True if the platform is healthy (caller prints the success banner).
     Returns False after printing red or yellow diagnostics to the console.
     """
-    ok, detail = _check_controller_health(base_url)
+    ok, detail = _check_controller_health(base_url, certificate_authority=certificate_authority)
     if ok:
         if detail:
             if "does not publish /status" in detail.lower():
@@ -991,6 +1003,8 @@ def _wait_for_platform(
     poll_interval: float = _SERVICE_STARTUP_POLL_INTERVAL,
     log_path: Path | None = None,
     proc: subprocess.Popen | None = None,
+    *,
+    certificate_authority: str | None = None,
 ) -> bool:
     """Poll until the platform health endpoint responds. Returns True on success.
 
@@ -1011,7 +1025,7 @@ def _wait_for_platform(
             svc = _last_startup_service(log_path)
             hint = f" — loaded {svc}" if svc else ""
             status.update(f"[bold cyan]Waiting for platform... ({elapsed}s){hint}")
-            if _check_platform_reachable(base_url, timeout=1.0):
+            if _check_platform_reachable(base_url, timeout=1.0, certificate_authority=certificate_authority):
                 return True
             _pause(poll_interval)
     return False
@@ -1114,6 +1128,8 @@ def _maybe_start_services(
     auto: bool,
     start_services: bool | None,
     timeout: int = _SERVICE_STARTUP_TIMEOUT_SECONDS,
+    *,
+    certificate_authority: str | None = None,
 ) -> Literal["ready", "connect_remote", "start_local"]:
     """Start services if requested, restarting if already running.
 
@@ -1131,7 +1147,7 @@ def _maybe_start_services(
             param_hint="--start-services",
         )
 
-    already_running = _check_platform_reachable(base_url)
+    already_running = _check_platform_reachable(base_url, certificate_authority=certificate_authority)
 
     if already_running and start_services is not True:
         if _is_local_base_url(base_url) or auto:
@@ -1189,7 +1205,11 @@ def _maybe_start_services(
         console.print("  Restarting platform services...")
         _kill_existing_services(base_url)
         deadline = time.time() + _KILL_WAIT_TIMEOUT
-        while time.time() < deadline and _check_platform_reachable(base_url, timeout=1.0):
+        while time.time() < deadline and _check_platform_reachable(
+            base_url,
+            timeout=1.0,
+            certificate_authority=certificate_authority,
+        ):
             _pause(1)
     else:
         console.print("  Starting platform services...")
@@ -1198,7 +1218,13 @@ def _maybe_start_services(
 
     log = log_path_for(compute_scope(port=_resolve_services_port(base_url)))
 
-    if not _wait_for_platform(base_url, timeout=timeout, log_path=log, proc=proc):
+    if not _wait_for_platform(
+        base_url,
+        timeout=timeout,
+        log_path=log,
+        proc=proc,
+        certificate_authority=certificate_authority,
+    ):
         exit_code = proc.poll()
         startup_conflict = _detect_startup_port_conflict(base_url, log) if exit_code is not None else None
         if startup_conflict is not None:
@@ -1581,26 +1607,42 @@ def _agent_config_path() -> Traversable | None:
     return None
 
 
-def _agent_exists(base_url: str, workspace: str, headers: dict[str, str] | None = None) -> bool:
+def _agent_exists(
+    base_url: str,
+    workspace: str,
+    headers: dict[str, str] | None = None,
+    *,
+    certificate_authority: str | None = None,
+) -> bool:
     """Return True if the demo agent already exists on the platform."""
+    tls_config = httpx_tls_config_from_env(certificate_authority)
     try:
         resp = httpx.get(
             f"{base_url.rstrip('/')}/apis/agents/v2/workspaces/{workspace}/agents/{_DEMO_AGENT_NAME}",
             headers=headers,
             timeout=10.0,
+            **tls_config,
         )
         return resp.status_code == 200
     except Exception:
         return False
 
 
-def _agents_api_ready(base_url: str, workspace: str, headers: dict[str, str] | None = None) -> bool:
+def _agents_api_ready(
+    base_url: str,
+    workspace: str,
+    headers: dict[str, str] | None = None,
+    *,
+    certificate_authority: str | None = None,
+) -> bool:
     """Return True if the agents API is responding."""
+    tls_config = httpx_tls_config_from_env(certificate_authority)
     try:
         resp = httpx.get(
             f"{base_url.rstrip('/')}/apis/agents/v2/workspaces/{workspace}/agents",
             headers=headers,
             timeout=3.0,
+            **tls_config,
         )
         return resp.status_code == 200
     except Exception:
@@ -1613,6 +1655,8 @@ def _deploy_demo_agent(
     config_path: Traversable,
     default_model: str,
     headers: dict[str, str] | None = None,
+    *,
+    certificate_authority: str | None = None,
 ) -> bool:
     """Deploy the demo agent and emit one ``agent_deployed`` event.
 
@@ -1620,7 +1664,14 @@ def _deploy_demo_agent(
     deployment reaches running, ERROR when it fails, times out, or raises.
     """
     try:
-        deployed = _deploy_demo_agent_impl(base_url, workspace, config_path, default_model, headers=headers)
+        deployed = _deploy_demo_agent_impl(
+            base_url,
+            workspace,
+            config_path,
+            default_model,
+            headers=headers,
+            certificate_authority=certificate_authority,
+        )
     except Exception:
         emit.emit_event(
             OnboardingStepEvent(step="agent_deployed", task_status=TaskStatusEnum.ERROR, agent_deployed=False)
@@ -1637,14 +1688,17 @@ def _deploy_demo_agent_impl(
     config_path: Traversable,
     default_model: str,
     headers: dict[str, str] | None = None,
+    *,
+    certificate_authority: str | None = None,
 ) -> bool:
     """Create and deploy the demo calculator agent. Returns True on success."""
     # Optional plugin: import here so ``nemo setup`` works without nemo-agents installed.
     from nemo_agents_plugin.utils import expand_env_vars
 
     api_base = base_url.rstrip("/")
+    tls_config = httpx_tls_config_from_env(certificate_authority)
 
-    if not _agent_exists(base_url, workspace, headers=headers):
+    if not _agent_exists(base_url, workspace, headers=headers, certificate_authority=certificate_authority):
         config_dict = _yaml.safe_load(config_path.read_text(encoding="utf-8"))
         config_dict = expand_env_vars(config_dict, vars_dict={"NEMO_DEFAULT_MODEL": default_model})
         payload = {"name": _DEMO_AGENT_NAME, "description": "Demo calculator agent", "config": config_dict}
@@ -1653,6 +1707,7 @@ def _deploy_demo_agent_impl(
             headers=headers,
             json=payload,
             timeout=30.0,
+            **tls_config,
         )
         resp.raise_for_status()
         console.print(f"  {CHECK} Created agent '{_DEMO_AGENT_NAME}'")
@@ -1664,6 +1719,7 @@ def _deploy_demo_agent_impl(
         headers=headers,
         json={"agent": _DEMO_AGENT_NAME},
         timeout=30.0,
+        **tls_config,
     )
     if resp.status_code == 409:
         console.print(f"  {CHECK} Agent '{_DEMO_AGENT_NAME}' already deployed")
@@ -1687,6 +1743,7 @@ def _deploy_demo_agent_impl(
                     f"{api_base}/apis/agents/v2/workspaces/{workspace}/deployments/{deployment_name}",
                     headers=headers,
                     timeout=3.0,
+                    **tls_config,
                 )
                 if dep_resp.status_code == 200:
                     dep_status = dep_resp.json().get("status", "")
@@ -1710,6 +1767,8 @@ def _maybe_deploy_agent(
     deploy_agent: bool | None,
     default_model: str | None = None,
     headers: dict[str, str] | None = None,
+    *,
+    certificate_authority: str | None = None,
 ) -> bool:
     """Optionally deploy the demo calculator agent.
 
@@ -1764,7 +1823,12 @@ def _maybe_deploy_agent(
         while time.monotonic() < deadline:
             elapsed = int(time.monotonic() - start)
             spinner.update(f"[bold cyan]Waiting for agents API... ({elapsed}s)")
-            if _agents_api_ready(base_url, workspace, headers=headers):
+            if _agents_api_ready(
+                base_url,
+                workspace,
+                headers=headers,
+                certificate_authority=certificate_authority,
+            ):
                 api_ready = True
                 break
             _pause(_AGENT_API_READINESS_POLL_INTERVAL)
@@ -1780,6 +1844,7 @@ def _maybe_deploy_agent(
             config_path,
             default_model=default_model,
             headers=headers,
+            certificate_authority=certificate_authority,
         )
     except Exception as exc:
         console.print(f"  {WARN} Agent deployment failed: {exc}")
@@ -2219,30 +2284,43 @@ def setup_command(
     effective_timeout = _SERVICE_STARTUP_TIMEOUT_SECONDS if ready_timeout is None else ready_timeout
     if effective_timeout <= 0:
         raise typer.BadParameter("--ready-timeout must be greater than 0", param_hint="--ready-timeout")
+    certificate_authority = cli_context.get_sdk_context().cluster.certificate_authority
     try:
         configured_base_url = base_url
-        service_result = _maybe_start_services(base_url, auto, start_services, timeout=effective_timeout)
+        service_result = _maybe_start_services(
+            base_url,
+            auto,
+            start_services,
+            timeout=effective_timeout,
+            certificate_authority=certificate_authority,
+        )
         if service_result == "start_local":
             _configure_local_connection(cli_context, workspace)
             base_url = DEFAULT_BASE_URL
+            certificate_authority = cli_context.get_sdk_context().cluster.certificate_authority
             service_result = _maybe_start_services(
                 base_url,
                 auto,
                 start_services=True,
                 timeout=effective_timeout,
+                certificate_authority=certificate_authority,
             )
         if service_result == "connect_remote":
-            base_url = _prompt_remote_base_url(default_url=configured_base_url)
+            base_url = _prompt_remote_base_url(
+                default_url=configured_base_url,
+                certificate_authority=certificate_authority,
+            )
             _bootstrap_config_if_missing(base_url, workspace)
             cli_context.reset_sdk_context()
             workspace = _resolve_setup_workspace(ctx, cli_context, workspace)
             _configure_remote_connection(cli_context, base_url, workspace)
             _ensure_platform_auth(cli_context)
+            certificate_authority = cli_context.get_sdk_context().cluster.certificate_authority
     except UserCancelled:
         console.print(f"\n{WARN} Setup cancelled.")
         raise typer.Exit(0) from None
 
-    if not _check_platform_reachable_with_retries(base_url):
+    if not _check_platform_reachable_with_retries(base_url, certificate_authority=certificate_authority):
         console.print(f"\n{CROSS} Cannot reach platform at {base_url}")
         raise typer.Exit(1)
 
@@ -2254,6 +2332,7 @@ def setup_command(
     # 'default-cluster' does not exist" when _save_model_pair runs.
     _bootstrap_config_if_missing(base_url, workspace)
     cli_context.reset_sdk_context()
+    certificate_authority = cli_context.get_sdk_context().cluster.certificate_authority
 
     client = cli_context.get_client()
     workspaces = client_from_platform(client, WorkspacesClient)
@@ -2287,6 +2366,7 @@ def setup_command(
                 skills_agents=skills_agents_list,
                 skills_scope=skills_scope,
                 skills_from=skills_from_list,
+                certificate_authority=certificate_authority,
             )
         else:
             _run_interactive_mode(
@@ -2299,6 +2379,7 @@ def setup_command(
                 skills_agents=skills_agents_list,
                 skills_scope=skills_scope,
                 skills_from=skills_from_list,
+                certificate_authority=certificate_authority,
             )
     except typer.Exit as exc:
         # A clean user-cancel raises typer.Exit(0); that is a normal end of the
@@ -2325,6 +2406,7 @@ def _run_auto_mode(
     skills_agents: list[str] | None = None,
     skills_scope: Scope | None = None,
     skills_from: list[str] | None = None,
+    certificate_authority: str | None = None,
 ) -> None:
     """Non-interactive provider registration from environment variables."""
     console.print("[bold]Auto-detecting provider from environment...[/bold]\n")
@@ -2391,9 +2473,10 @@ def _run_auto_mode(
         deploy_agent=deploy_agent,
         default_model=default_model,
         headers=_platform_request_headers(cli_context),
+        certificate_authority=certificate_authority,
     )
 
-    if not _verify_platform_health(base_url):
+    if not _verify_platform_health(base_url, certificate_authority=certificate_authority):
         raise typer.Exit(1)
 
     if default_model:
@@ -2414,6 +2497,7 @@ def _run_interactive_mode(
     skills_agents: list[str] | None = None,
     skills_scope: Scope | None = None,
     skills_from: list[str] | None = None,
+    certificate_authority: str | None = None,
 ) -> None:
     """Walk the user through provider selection, credential entry, and model choice."""
     try:
@@ -2488,6 +2572,7 @@ def _run_interactive_mode(
             deploy_agent=deploy_agent,
             default_model=default_model,
             headers=_platform_request_headers(cli_context),
+            certificate_authority=certificate_authority,
         )
 
         _print_onboarding(
@@ -2496,6 +2581,7 @@ def _run_interactive_mode(
             default_model,
             fast_model=model_pair.fast if model_pair else None,
             demo_deployed=demo_deployed,
+            certificate_authority=certificate_authority,
         )
 
     except UserCancelled:
@@ -2565,9 +2651,10 @@ def _print_onboarding(
     *,
     fast_model: str | None = None,
     demo_deployed: bool = False,
+    certificate_authority: str | None = None,
 ) -> None:
     """Print setup summary, then present goal-oriented onboarding paths."""
-    if not _verify_platform_health(base_url):
+    if not _verify_platform_health(base_url, certificate_authority=certificate_authority):
         raise typer.Exit(1)
 
     console.print(f"\n{CHECK} [green bold]Setup complete![/green bold]")

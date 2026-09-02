@@ -14,6 +14,7 @@ from nemo_platform_plugin.jobs import spec as _spec
 BackendRef = _spec.BackendRef
 BaseExecutionProfile = _spec.BaseExecutionProfile
 PlatformJobEnvironmentVariable = _spec.PlatformJobEnvironmentVariable
+PlatformJobSecret = _spec.PlatformJobSecret
 PlatformJobSecretEnvironmentVariableRef = _spec.PlatformJobSecretEnvironmentVariableRef
 PlatformJobSpec = _spec.PlatformJobSpec
 PlatformJobStepSpec = _spec.PlatformJobStepSpec

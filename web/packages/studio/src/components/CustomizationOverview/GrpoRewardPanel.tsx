@@ -19,10 +19,7 @@ const VALIDATION_COLOR = 'var(--text-color-accent-yellow)';
 const EMPTY: RewardChartData = {
   steps: [],
   training: [],
-  trainingLower: [],
-  trainingUpper: [],
   validation: [],
-  hasSpread: false,
 };
 
 const NO_BAND: (number | null)[] = [];
@@ -37,8 +34,8 @@ export const GrpoRewardPanel: FC<Props> = ({ reward = EMPTY, metrics, progress }
       id: 'training',
       label: 'Training reward',
       data: reward.training,
-      lower: reward.trainingLower,
-      upper: reward.trainingUpper,
+      lower: NO_BAND,
+      upper: NO_BAND,
       color: TRAINING_COLOR,
     },
     {
@@ -59,7 +56,7 @@ export const GrpoRewardPanel: FC<Props> = ({ reward = EMPTY, metrics, progress }
   return (
     <Stack gap="density-xl">
       {metrics.length > 0 && (
-        <Grid cols={{ base: 1, md: 2, lg: 3 }} gap="density-xl">
+        <Grid cols={{ base: 1, md: 2, lg: 4 }} gap="density-xl">
           {metrics.map((tile) => (
             // `StatTile` caps itself at `max-w-sm`; without tailwind-merge only `!` beats it.
             <StatTile key={tile.label} {...tile} className="max-w-none!" />
@@ -74,9 +71,6 @@ export const GrpoRewardPanel: FC<Props> = ({ reward = EMPTY, metrics, progress }
               <Text kind="label/bold/lg">Reward</Text>
               <Text kind="body/regular/sm" className="text-secondary">
                 Mean reward per step across all sampled rollouts, with validation passes overlaid.
-                {reward.hasSpread
-                  ? ' The band spans one standard deviation either side of the mean.'
-                  : ''}
               </Text>
             </Stack>
             {progress.length > 0 && (

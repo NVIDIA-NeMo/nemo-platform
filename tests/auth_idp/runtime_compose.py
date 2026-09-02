@@ -7,7 +7,7 @@ from typing import Callable
 
 import httpx
 from nemo_platform import NeMoPlatform
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_ext.client.tls import httpx_tls_config_from_env
 
 from tests.auth_idp.common import jwt_claims
 from tests.auth_idp.runtime_contract import AuthIdpCase, TokenSet
@@ -89,7 +89,7 @@ class ComposeAuthIdpRuntime:
                 "scope": workload_grant.get("scope", "openid email groups"),
             },
             timeout=TOKEN_EXCHANGE_TIMEOUT_SECONDS,
-            verify=client_verify_from_env(),
+            **httpx_tls_config_from_env(),
         )
         response.raise_for_status()
         token_response = response.json()

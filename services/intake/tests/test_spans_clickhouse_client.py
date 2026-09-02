@@ -4,10 +4,18 @@
 """ClickHouse span client tests."""
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
-from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
+from fastapi import FastAPI, HTTPException, Request
+from nmp.intake.readiness import CLICKHOUSE_UNAVAILABLE_MESSAGE
+from nmp.intake.spans.clickhouse_client import (
+    ClickHouseSettings,
+    ClickHouseSpanClient,
+    get_clickhouse_client,
+)
 
 
 class CountingClickHouseSpanClient(ClickHouseSpanClient):
@@ -36,3 +44,28 @@ async def test_get_raw_client_initializes_once_under_concurrency():
 
     assert client.created == 1
     assert len({id(raw_client) for raw_client in raw_clients}) == 1
+
+
+@pytest.mark.asyncio
+async def test_clickhouse_dependency_returns_actionable_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = CountingClickHouseSpanClient()
+    monkeypatch.setattr(client, "bootstrap_schema", AsyncMock(side_effect=PermissionError("read-only volume")))
+    app = FastAPI()
+    app.state.intake_service = SimpleNamespace(clickhouse_client=client)
+    request = Request(
+        {
+            "type": "http",
+            "app": app,
+            "headers": [],
+            "method": "GET",
+            "path": "/",
+            "query_string": b"",
+        }
+    )
+
+    dependency = get_clickhouse_client(request)
+    with pytest.raises(HTTPException) as error:
+        await anext(dependency)
+
+    assert error.value.status_code == 503
+    assert error.value.detail == CLICKHOUSE_UNAVAILABLE_MESSAGE

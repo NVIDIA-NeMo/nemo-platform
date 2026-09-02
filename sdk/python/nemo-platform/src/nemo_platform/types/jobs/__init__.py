@@ -31,6 +31,7 @@ from .platform_job_task import PlatformJobTask as PlatformJobTask
 from .result_list_params import ResultListParams as ResultListParams
 from .docker_volume_mount import DockerVolumeMount as DockerVolumeMount
 from .job_get_logs_params import JobGetLogsParams as JobGetLogsParams
+from .platform_job_secret import PlatformJobSecret as PlatformJobSecret
 from .container_spec_param import ContainerSpecParam as ContainerSpecParam
 from .result_create_params import ResultCreateParams as ResultCreateParams
 from .step_lifecycle_param import StepLifecycleParam as StepLifecycleParam
@@ -48,6 +49,7 @@ from .kubernetes_secret_volume import KubernetesSecretVolume as KubernetesSecret
 from .docker_job_network_config import DockerJobNetworkConfig as DockerJobNetworkConfig
 from .docker_job_storage_config import DockerJobStorageConfig as DockerJobStorageConfig
 from .e2e_job_execution_profile import E2EJobExecutionProfile as E2EJobExecutionProfile
+from .platform_job_secret_param import PlatformJobSecretParam as PlatformJobSecretParam
 from .step_update_status_params import StepUpdateStatusParams as StepUpdateStatusParams
 from .kubernetes_object_metadata import KubernetesObjectMetadata as KubernetesObjectMetadata
 from .compute_resource_spec_param import ComputeResourceSpecParam as ComputeResourceSpecParam

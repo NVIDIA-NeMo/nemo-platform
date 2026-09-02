@@ -80,6 +80,12 @@ experimentalist = [
   "nemo-eval-author-plugin ; python_full_version < '3.14'",
 ]
 typecheck = ["transformers>=5.5.0,<5.9.0"]
+# The scaled-evals plugin stays out of `enabled-plugins` so a platform install does not
+# pick it up. CI still has to see it, so the lint and pytest entry points ask for this
+# group by name; without it neither the plugin nor psycopg is importable there.
+scaled-evals = [
+  "nemo-scaled-evals-plugin",
+]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
@@ -139,7 +145,7 @@ dev = [
   "python-dotenv>=1.2.2",
   # Service packages for local development (not in root deps to allow --only-group in containers)
   "nemo-anonymizer-plugin",
-  "nemo-data-designer-plugin",
+  "nemo-data-designer-plugin[retrieval-sdg]",
   "nmp-guardrails",
   "nemo-safe-synthesizer-plugin",
   "nmp-hello-world",
@@ -151,6 +157,7 @@ dev = [
   "nmp-platform",
   "nmp-secrets",
   "blockbuster>=1.5.26",
+  "ipywidgets>=8.1.9",
 ]
 
 # =============================================================================
@@ -184,7 +191,7 @@ nmp-services-runtime = ["nemo-platform[services]"]
 # First-party plugins installed by default for local syncs and core service images.
 enabled-plugins = [
   "nemo-anonymizer-plugin",
-  "nemo-data-designer-plugin",
+  "nemo-data-designer-plugin[retrieval-sdg]",
   "nemo-evaluator-plugin",
   "nemo-insights-plugin",
   "nemo-experimentalist-plugin ; python_full_version < '3.14'",
@@ -231,7 +238,7 @@ functional-services = [
   "nemo-deployments-plugin[openshell]",
   "nmp-studio",
   "nmp-guardrails",
-  "nemo-data-designer-plugin",
+  "nemo-data-designer-plugin[retrieval-sdg]",
   "nemo-anonymizer-plugin",
   "nmp-intake",
   "nmp-hello-world",
@@ -244,7 +251,7 @@ cpu-tasks = [
   { include-group = "nmp-base" },
   { include-group = "nmp-task-runtime" },
   "nemo-anonymizer-plugin",
-  "nemo-data-designer-plugin",
+  "nemo-data-designer-plugin[retrieval-sdg]",
   "nemo-optimization-plugin",
   "nmp-hello-world",
 ]
@@ -370,13 +377,20 @@ override-dependencies = [
 
 ]
 
+[[tool.uv.index]]
+name = "data-designer-plugins"
+url = "https://nvidia-nemo.github.io/DataDesignerPlugins/simple/"
+explicit = true
+
 [tool.uv.sources]
+data-designer-retrieval-sdg = { index = "data-designer-plugins" }
 nmp-auth = { workspace = true }
 nemo-anonymizer-plugin = { workspace = true }
 nemo-iron-swarm-plugin = { workspace = true }
 nemo-data-designer-plugin = { workspace = true }
 data-designer-nemo = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
+sandboxed-gym = { workspace = true }
 nmp-guardrails = { workspace = true }
 nmp-intake = { workspace = true }
 nmp-jobs = { workspace = true }
@@ -409,6 +423,7 @@ nemo-eval-author-plugin = { workspace = true }
 nemo-experimentalist-plugin = { workspace = true }
 
 nemo-evaluator-plugin = { workspace = true }
+nemo-scaled-evals-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
 nemo-auditor-plugin = { workspace = true }
 nemo-safe-synthesizer-plugin = { workspace = true }
@@ -443,6 +458,7 @@ members = [
   "packages/nemo_nb",
   "packages/data_designer_nemo",
   "packages/nmp_platform",
+  "packages/sandboxed_gym",
   "services/hello-world",
   "services/studio",
   "services/guardrails",
@@ -470,6 +486,7 @@ members = [
   "packages/models",
   "plugins/nemo-guardrails",
   "plugins/nemo-evaluator",
+  "plugins/_temporary-scaled-evals",
   "plugins/nemo-auditor",
   "plugins/nemo-safe-synthesizer",
   "plugins/nemo-switchyard",
@@ -485,7 +502,6 @@ members = [
   "plugins/nemo-agents/examples/email-phishing-analyzer",
   "plugins/nemo-agents/examples/email-security-analyst",
   "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent",
-  "plugins/nemo-agents/examples/nemo-agent-config/email-security-triage",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
   "plugins/nemo-optimization",
@@ -615,6 +631,8 @@ extra-paths = [
   "plugins/nemo-insights/src",
   # Source path for Experimentalist; its tests also import the benchmark runner.
   "plugins/nemo-experimentalist/src",
+  # Source path for sandboxed-gym; its tests import the package under test.
+  "packages/sandboxed_gym/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
   # on sys.path in tests/conftest.py.
   "tests/agentic-use",
@@ -634,6 +652,22 @@ exclude = [
   "./script/",
 
   "packages/nmp_common/",
+
+  # Runtime-only imports absent from a workspace checkout by design. `gym_host_runtime` drives
+  # NeMo-Gym from inside the Gym image; the other three use the OpenSandbox SDK, an optional
+  # extra. Everything these modules need at *import* time is vendored (`sandboxed_gym.wire`,
+  # `sandboxed_gym.sandbox_types`). Same rationale as the GPU training drivers below.
+  #
+  # The episode driver and backend DO type-check cleanly against the real SDK -- verified with
+  # `sandboxed-gym[opensandbox]` installed. They are excluded only because CI installs workspace
+  # members without their extras, so `ty` would report `opensandbox` as unresolved. Drop these two
+  # lines once the lint job installs that extra.
+  "packages/sandboxed_gym/src/sandboxed_gym/backends/_opensandbox_driver.py",
+  "packages/sandboxed_gym/src/sandboxed_gym/backends/opensandbox.py",
+  "packages/sandboxed_gym/src/sandboxed_gym/host/opensandbox.py",
+  "packages/sandboxed_gym/src/sandboxed_gym/ray/",
+  "packages/sandboxed_gym/src/sandboxed_gym/runtime/gym_host_runtime.py",
+
   "packages/nemo_platform_ext/",
   "packages/nemo_nb/",
 
@@ -644,6 +678,7 @@ exclude = [
   # GPU-container training drivers import torch/peft/nemo_automodel/unsloth/nemo_rl at runtime only.
   "services/automodel/src/nmp/automodel/tasks/training/backends/",
   "services/automodel/src/nmp/automodel/tasks/training/utils.py",
+  "services/automodel/src/nmp/automodel/tasks/retrieval_mine/mine_hard_negatives.py",
   "services/unsloth/src/nmp/unsloth/tasks/training/backends/",
   "services/rl/src/nmp/rl/tasks/training/backends/",
   "services/rl/src/nmp/rl/tasks/training/utils.py",
@@ -671,6 +706,11 @@ exclude = [
   # Standalone agents-under-test: each resolves from its own lockfile inside the
   # benchmark's task containers, so its imports are absent from the workspace env.
   "plugins/nemo-experimentalist/examples/",
+
+  # Source injected into the evaluation harness image at build time, where it
+  # replaces modules of the sandbox library it imports. Nothing imports it from
+  # the control plane, so that library is absent from the workspace env.
+  "plugins/_temporary-scaled-evals/harbor-patches/",
 
   "docs/",
 
