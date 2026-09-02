@@ -362,9 +362,17 @@ async def platform_job_config_compiler(
     workspace: str,
     job_spec: CustomizationJobOutput,
     sdk: AsyncNeMoPlatform,
+    *,
+    job_name: str | None = None,
+    profile: str | None = None,
 ) -> PlatformJobSpec:
     """Compile canonical job spec into a four-step PlatformJobSpec."""
+    del job_name  # reserved for future scheduling decisions
     transformed_spec = job_spec
+    if profile is not None and transformed_spec.training.execution_profile is None:
+        transformed_spec = transformed_spec.model_copy(
+            update={"training": transformed_spec.training.model_copy(update={"execution_profile": profile})},
+        )
     logger.info("Compiling Automodel job to PlatformJobSpec: %s", transformed_spec.model_dump_json(indent=2))
 
     try:
@@ -375,6 +383,7 @@ async def platform_job_config_compiler(
     # output is a required field in CustomizationJobOutput
     cpu_resources = _get_cpu_resources()
     base_env = _get_base_environment()
+    task_profile = transformed_spec.training.execution_profile or config.default_training_execution_profile
 
     # Fetch the primary model entity
     me = await fetch_model_entity(transformed_spec.model, workspace, sdk)
@@ -432,6 +441,7 @@ async def platform_job_config_compiler(
             name="model-and-dataset-download",
             executor=CPUExecutionProviderSpec(
                 provider="cpu",
+                profile=task_profile,
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
@@ -454,6 +464,7 @@ async def platform_job_config_compiler(
             name="model-upload",
             executor=CPUExecutionProviderSpec(
                 provider="cpu",
+                profile=task_profile,
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
@@ -469,6 +480,7 @@ async def platform_job_config_compiler(
             name="model-entity-creation",
             executor=CPUExecutionProviderSpec(
                 provider="cpu",
+                profile=task_profile,
                 container=ContainerSpec(
                     image=get_tasks_image(),
                     entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,

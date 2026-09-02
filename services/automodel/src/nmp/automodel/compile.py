@@ -22,14 +22,12 @@ async def platform_job_config_compiler(
     """Compile Automodel job spec (plugin or legacy shape) to PlatformJobSpec."""
     if not isinstance(job_spec, CustomizationJobOutput):
         job_spec = automodel_spec_to_compiler_output(job_spec)
-    if profile and job_spec.training.execution_profile is None:
-        job_spec = job_spec.model_copy(
-            update={"training": job_spec.training.model_copy(update={"execution_profile": profile})},
-        )
     return await _compile_canonical(
         workspace,
         job_spec,
         sdk,
+        job_name=job_name,
+        profile=profile,
     )
 
 
