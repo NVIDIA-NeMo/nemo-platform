@@ -39,6 +39,7 @@ from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.client.types import RetryPolicy
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
@@ -1260,7 +1261,7 @@ def job_route_factory(
                 job_name=job,
                 workspace=workspace,
                 artifact_url=result_info.artifact_url,
-                files_sdk=sdk,
+                files_client=client_from_platform(sdk, AsyncFilesClient),
             )
             background_tasks.add_task(lambda: tmp_dir_path.cleanup_tmp_dir())
             return result_serializer.serialize(tmp_dir_path.path)

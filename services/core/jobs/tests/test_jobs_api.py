@@ -1088,9 +1088,16 @@ async def test_job_result_download(
         )
     ).data()
 
-    with patch("nmp.common.jobs.result_manager.result_manager_factory", return_value=mock_result_manager):
+    with patch(
+        "nmp.common.jobs.result_manager.async_result_manager_factory", return_value=mock_result_manager
+    ) as factory:
         download = await jobs.download_job_result(name=result.name, workspace=DEFAULT_WORKSPACE, job=sdk_job_resp.name)
         download_bytes = await download.read()
+
+    call_kwargs = factory.call_args.kwargs
+    assert call_kwargs["job_name"] == sdk_job_resp.name
+    assert "workspace" not in call_kwargs
+    assert call_kwargs["sdk"].workspace == DEFAULT_WORKSPACE
 
     # make sure we deleted the temp files on the server
     assert not tmp_dir.exists()
@@ -1103,7 +1110,7 @@ async def test_job_result_download(
     mock_result_manager._tmp_dir = tmp_dir
     mock_result_manager._path = tmp_dir
 
-    with patch("nmp.common.jobs.result_manager.result_manager_factory", return_value=mock_result_manager):
+    with patch("nmp.common.jobs.result_manager.async_result_manager_factory", return_value=mock_result_manager):
         download = await jobs.download_job_result(name=result.name, workspace=DEFAULT_WORKSPACE, job=sdk_job_resp.name)
         tar_content = await download.read()
 
