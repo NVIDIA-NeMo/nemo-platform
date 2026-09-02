@@ -7,7 +7,7 @@
 #   export NMP_BASE_URL=http://127.0.0.1:8080
 #   uv run nemo services run --host 127.0.0.1 --port 8080
 #
-# Use default service set (omit --services) or --service-group all. Then:
+# Use default service set (omit --services) or --service-group all --controller-group all. Then:
 #   nemo auth login --unsigned-token
 #   uv run nemo-platform run task --task nmp.platform_seed
 
