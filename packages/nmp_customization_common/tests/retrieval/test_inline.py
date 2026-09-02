@@ -136,6 +136,37 @@ def test_inline_jsonl_treats_null_document_lists_as_empty(tmp_path: Path) -> Non
     assert lines == [{"query": "keep null neg", "pos_doc": "alpha", "neg_doc": []}]
 
 
+def test_inline_jsonl_skips_null_and_empty_document_text(tmp_path: Path) -> None:
+    wrapped = tmp_path / "train.json"
+    wrapped.write_text(
+        json.dumps(
+            {
+                "corpus": {},
+                "data": [
+                    {
+                        "question": "fallback to contents",
+                        "pos_doc": [{"text": None, "contents": "from contents"}],
+                        "neg_doc": ["gamma"],
+                    },
+                    {
+                        "question": "parquet none is unresolved",
+                        "pos_doc": [{"id": "empty"}],
+                        "neg_doc": [],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    parquet = tmp_path / "corpus" / "train.parquet"
+    parquet.parent.mkdir()
+    pd.DataFrame({"id": ["empty", "ok"], "text": [None, "neg text"]}).to_parquet(parquet)
+    out = tmp_path / "training.jsonl"
+    wrapped_to_inline_jsonl(wrapped, out, parquet)
+    lines = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+    assert lines == [{"query": "fallback to contents", "pos_doc": "from contents", "neg_doc": ["gamma"]}]
+
+
 def test_unroll_skips_null_pos_doc_and_missing_question_id() -> None:
     unrolled = unroll_training_data(
         [

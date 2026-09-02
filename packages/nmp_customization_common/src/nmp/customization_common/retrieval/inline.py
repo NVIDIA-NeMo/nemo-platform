@@ -32,12 +32,13 @@ class _CorpusResolver:
 
     def _resolve(self, doc: Any) -> str | None:
         if isinstance(doc, str):
-            return doc
+            return _usable_text(doc)
         if not isinstance(doc, dict):
             return None
         for key in ("text", "contents"):
-            if key in doc:
-                return str(doc[key])
+            text = _usable_text(doc.get(key)) if key in doc else None
+            if text is not None:
+                return text
         doc_id = doc.get("id")
         if doc_id is None:
             return None
@@ -103,5 +104,15 @@ def _load_corpus(train_json: Path, corpus_parquet: Path | None) -> dict[str, str
         return {}
     corpus_by_id: dict[str, str] = {}
     for doc_id, text in zip(frame[id_column], frame[text_column], strict=True):
-        corpus_by_id[str(doc_id)] = str(text)
+        usable = _usable_text(text)
+        if usable is None:
+            continue
+        corpus_by_id[str(doc_id)] = usable
     return corpus_by_id
+
+
+def _usable_text(value: Any) -> str | None:
+    """Return document text only when it is a non-empty string."""
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
