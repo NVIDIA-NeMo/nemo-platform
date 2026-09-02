@@ -339,10 +339,10 @@ def resolve_latest_wheel() -> Path:
             f"{WHEEL_ENV}={WHEEL_LATEST} needs a source checkout with a 'dist' directory, "
             "which this install is not. Point it at a wheel path instead."
         )
-    wheels = sorted(dist.glob("*.whl"), key=lambda path: path.stat().st_mtime, reverse=True)
+    wheels = sorted(dist.glob("nemo_platform-*.whl"), key=lambda path: path.stat().st_mtime, reverse=True)
     if not wheels:
         raise ValueError(
-            f"{WHEEL_ENV}={WHEEL_LATEST} found no wheels in {dist}. Build one with "
+            f"{WHEEL_ENV}={WHEEL_LATEST} found no nemo-platform wheels in {dist}. Build one with "
             "`uv build --package nemo-platform --wheel --out-dir dist`."
         )
     return wheels[0]
