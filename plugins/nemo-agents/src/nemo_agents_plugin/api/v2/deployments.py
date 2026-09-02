@@ -108,6 +108,18 @@ async def create_deployment(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # The runner fails the deployment for this; the answer is already available here.
+    if is_container_deployment_mode(body.deployment_mode) and not (
+        body.image or AgentsConfig.get().deployments.default_image
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"deployment_mode '{body.deployment_mode}' requires a container image. "
+                "Set 'image' on the request, or configure 'deployments.default_image'."
+            ),
+        )
+
     # 3. Resolve deployment-time config. NAT workflows need legacy injection;
     # Platform-owned agent configs stay strict and are translated by the runner.
     resolved_config = _resolve_deployment_config(agent, workspace=workspace)
