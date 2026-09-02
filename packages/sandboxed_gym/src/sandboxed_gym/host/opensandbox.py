@@ -172,6 +172,14 @@ class OpenSandboxGymHostProvider:
             await provider.close(resource_handle)
             raise
         self._resource_handles[resource_handle.sandbox_id] = resource_handle
+        # The resolved URLs cannot be reconstructed from outside, and every downstream
+        # connectivity failure presents only as a timeout against them.
+        LOGGER.info(
+            "gym host %s ready to probe: health=%s rollouts=%s",
+            resource_handle.sandbox_id,
+            routes.health_url,
+            routes.rollout_url,
+        )
         return GymHostHandle(
             host_id=resource_handle.sandbox_id,
             health_url=routes.health_url,
@@ -193,9 +201,11 @@ class OpenSandboxGymHostProvider:
             except Exception as exc:
                 last_error = exc
             await asyncio.sleep(_HEALTH_POLL_S)
+        # Names the URL: a scheme or port mismatch is otherwise indistinguishable from a slow
+        # sandbox, and both present here as a plain timeout.
         raise TimeoutError(
-            f"job host {handle.host_id} did not become ready within {timeout_s:g}s"
-            + (f": {last_error}" if last_error is not None else "")
+            f"job host {handle.host_id} did not become ready within {timeout_s:g}s "
+            f"polling {handle.health_url}" + (f": {last_error}" if last_error is not None else "")
         )
 
     def _get_json(self, url: str, headers: Mapping[str, str]) -> dict[str, Any]:
