@@ -316,6 +316,18 @@ def rebind_intake_ingest_workspace(config: dict[str, Any], workspace: str) -> di
     return config
 
 
+def inject_fabric_trace_agent_name(
+    config: dict[str, Any],
+    agent_name: str,
+) -> dict[str, Any]:
+    """Stamp the Platform-registered *agent_name* onto a Fabric agent spec's telemetry."""
+    telemetry = config.get("telemetry")
+    if not agent_name or not isinstance(telemetry, dict):
+        return config
+    telemetry.setdefault("agent_name", agent_name)
+    return config
+
+
 def inject_nemo_trace_fields(
     config: dict[str, Any],
     workspace: str,
