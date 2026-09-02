@@ -9,11 +9,16 @@ import {
   useAgentsGetAgent,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
-import { useListEvaluations } from '@nemo/sdk/generated/platform/api';
+import { getEvaluation, useListEvaluations } from '@nemo/sdk/generated/platform/api';
 import type { EvaluationResponse } from '@nemo/sdk/generated/platform/schema';
 import { fetchEvaluatorJobs } from '@studio/api/evaluation/evaluator-jobs';
 import { fetchExperimentsByIds } from '@studio/api/evaluation/experiments';
-import { type EvalJobRow, targetNameForEvalJob, toEvalJobRow } from '@studio/api/evaluation/utils';
+import {
+  type EvalJobRow,
+  publishedEvaluationName,
+  targetNameForEvalJob,
+  toEvalJobRow,
+} from '@studio/api/evaluation/utils';
 import { RECENT_EVAL_LIMIT } from '@studio/routes/agents/AgentDetailRoute/constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
@@ -123,6 +128,39 @@ export const useAgentDetails = ({
     },
   });
 
+  // Evaluations a job says it publishes to that the agent-filtered query cannot see: Intake
+  // denormalizes `agent_name` from ingested spans, so a run's evaluation stays invisible to that
+  // filter even though the record and its experiment exist from the moment it is submitted.
+  const pendingEvaluationNames = useMemo(() => {
+    const known = new Set((agentEvalsResponse?.data ?? []).map((evaluation) => evaluation.name));
+    const names = new Set<string>();
+    for (const job of agentJobsData ?? []) {
+      if (targetNameForEvalJob(job) !== agentName) continue;
+      const name = publishedEvaluationName(job);
+      if (name && !known.has(name)) names.add(name);
+    }
+    return [...names].sort();
+  }, [agentEvalsResponse, agentJobsData, agentName]);
+
+  const { data: pendingEvals } = useQuery({
+    queryKey: ['agent-pending-evaluations', workspace, pendingEvaluationNames] as const,
+    queryFn: async ({ signal }) => {
+      // Settled, not all: a job names its evaluation at submit, so the record can 404 in the gap
+      // before Intake creates it, and one missing row must not blank the others.
+      const settled = await Promise.allSettled(
+        pendingEvaluationNames.map((name) => getEvaluation(workspace, name, signal))
+      );
+      return settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+    },
+    enabled: !!workspace && pendingEvaluationNames.length > 0,
+    refetchInterval: JOB_POLLING_INTERVAL_LONG,
+  });
+
+  const evalResponses: EvaluationResponse[] = useMemo(
+    () => [...(agentEvalsResponse?.data ?? []), ...(pendingEvals ?? [])],
+    [agentEvalsResponse, pendingEvals]
+  );
+
   const deleteDeploymentMutation = useAgentsDeleteDeployment({
     mutation: {
       onSuccess: () => {
@@ -143,11 +181,11 @@ export const useAgentDetails = ({
 
   const experimentIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const evaluation of agentEvalsResponse?.data ?? []) {
+    for (const evaluation of evalResponses) {
       for (const id of evaluation.experiment_ids) ids.add(id);
     }
     return [...ids].sort();
-  }, [agentEvalsResponse]);
+  }, [evalResponses]);
 
   const { data: experimentsById } = useQuery({
     queryKey: ['experiments-by-id', workspace, experimentIds] as const,
@@ -157,7 +195,7 @@ export const useAgentDetails = ({
 
   const agentEvals: AgentEvaluationRow[] = useMemo(() => {
     if (!agentName) return [];
-    return (agentEvalsResponse?.data ?? []).map((evaluation) => ({
+    return evalResponses.map((evaluation) => ({
       ...evaluation,
       experiments: evaluation.experiment_ids.map((id) => {
         const experiment = experimentsById?.get(id);
@@ -170,7 +208,7 @@ export const useAgentDetails = ({
         };
       }),
     }));
-  }, [agentEvalsResponse, experimentsById, agentName]);
+  }, [evalResponses, experimentsById, agentName]);
 
   const agentJobs: EvalJobRow[] = useMemo(() => {
     if (!agentName) return [];

@@ -182,8 +182,8 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
           header: 'Test Cases',
           size: 100,
           cell: ({ row }) => {
-            const { evaluation } = row.original;
-            return <Text>{evaluation ? (evaluation.test_case_count ?? 0) : '—'}</Text>;
+            const count = row.original.evaluation?.test_case_count;
+            return <Text>{count ? count : '—'}</Text>;
           },
         }),
         accessor((row) => row.evaluation?.aggregate_scores, {
