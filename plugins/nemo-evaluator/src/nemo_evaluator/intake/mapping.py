@@ -36,9 +36,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, cast
 
+from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
-from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_TRACE
+from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_FORMAT_OTLP, EVIDENCE_TRACE
+from nemo_evaluator_sdk.values.otlp import (
+    fill_missing_start_times,
+    root_span_id,
+    set_root_span_attributes,
+    set_root_span_error,
+    set_span_attributes,
+)
 from nemo_platform.types.intake.evaluation_context_param import EvaluationContextParam
 from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
 from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
@@ -58,6 +66,21 @@ ATIF_SCHEMA_VERSION: Literal["ATIF-v1.7"] = "ATIF-v1.7"
 #: Default ``agent.version`` when the run target carries none. Neither Model nor
 #: Agent has a version field today, and ATIF requires one (design doc §3.9 #6).
 DEFAULT_AGENT_VERSION = "unknown"
+
+# Span attribute keys Intake reads identity back from; see its span attribute catalog. The
+# session id has two accepted keys and this is the one that wins.
+_SESSION_ID_ATTRIBUTE = "gen_ai.conversation.id"
+_EVALUATION_NAME_ATTRIBUTE = "nemo.evaluation.name"
+_TEST_CASE_NAME_ATTRIBUTE = "nemo.test_case.name"
+
+# Trial-level totals, which Intake reads as numbers. ATIF carried these as ``final_metrics``;
+# under OTLP they go on the root span, which is the span that stands for the whole trial.
+_MEASUREMENT_ATTRIBUTES = {
+    "prompt_tokens": "gen_ai.usage.input_tokens",
+    "completion_tokens": "gen_ai.usage.output_tokens",
+    "cache_read_tokens": "gen_ai.usage.cached_tokens",
+    "cost_usd": "gen_ai.usage.cost",
+}
 
 
 def session_id_for(run_id: str, trial_id: str) -> str:
@@ -117,6 +140,77 @@ async def atif_steps_from_trial(trial: AgentEvalTrial, *, started_at: datetime) 
         dumped.setdefault("timestamp", started_at.isoformat())
         payload.append(cast(AtifStepParam, dumped))
     return payload
+
+
+async def otlp_ingest_for_trial(
+    trial: AgentEvalTrial,
+    *,
+    session_id: str,
+    evaluation_name: str,
+    measurements: TrialMeasurements,
+    started_at: datetime,
+) -> tuple[bytes, str] | None:
+    """Return the trial's OTLP payload stamped with evaluation identity, and its root span id.
+
+    ``None`` when the trial has no readable OTLP trace, or when its spans have no single root
+    carrying a usable id: a trial-level score needs one span standing for the whole run.
+
+    ``started_at`` fills in any span that recorded no start time of its own, because Intake
+    otherwise stores it against the ingest clock and start time is part of the key its spans
+    table replaces on — so a re-publish would insert rather than replace.
+
+    Identity is written onto spans rather than resource attributes because Intake merges the
+    layers as ``{**resource, **span}``. An agent that records its own ``gen_ai.conversation.id``
+    would otherwise win, and the session id is what Intake's ``ReplacingMergeTree`` is keyed on,
+    so a re-publish would insert duplicates instead of replacing.
+    """
+    evidence = trial.evidence
+    if evidence is None:
+        return None
+    try:
+        handle = await evidence.trace(EVIDENCE_TRACE, format=EVIDENCE_FORMAT_OTLP)
+    except KeyError:
+        return None
+    try:
+        request = await handle.export_request()
+    except (OSError, ValueError) as error:
+        logger.warning("Ignoring unreadable OTLP trace for trial %s: %s", trial.id, error)
+        return None
+
+    span_id = root_span_id(request)
+    if span_id is None:
+        logger.warning(
+            "Ignoring OTLP trace for trial %s: it has no single root span with a usable id to score.", trial.id
+        )
+        return None
+
+    set_span_attributes(
+        request,
+        {
+            _SESSION_ID_ATTRIBUTE: session_id,
+            _EVALUATION_NAME_ATTRIBUTE: evaluation_name,
+            _TEST_CASE_NAME_ATTRIBUTE: trial.task_id,
+        },
+    )
+    set_root_span_attributes(request, _trial_totals(trial, measurements))
+    if trial.error is not None:
+        set_root_span_error(request, message=trial.error.message)
+    fill_missing_start_times(request, start_time_unix_nano=int(started_at.timestamp() * 1_000_000_000))
+    return request.SerializeToString(), span_id
+
+
+def _trial_totals(trial: AgentEvalTrial, measurements: TrialMeasurements) -> dict[str, str | int | float]:
+    """The trial-level totals and error that ATIF conveyed outside the step list."""
+    totals: dict[str, str | int | float] = {}
+    for field, attribute in _MEASUREMENT_ATTRIBUTES.items():
+        value = getattr(measurements, field)
+        if value is not None:
+            totals[attribute] = value
+    if trial.error is not None:
+        totals["exception.type"] = trial.error.type
+        if trial.error.message is not None:
+            totals["exception.message"] = trial.error.message
+    return totals
 
 
 def trial_to_atif_ingest(

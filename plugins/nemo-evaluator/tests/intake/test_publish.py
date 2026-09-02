@@ -19,7 +19,7 @@ from nemo_evaluator.intake.publish import PublishError, _token_final_metrics, pu
 from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, TrialError
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 from nemo_platform import AsyncNeMoPlatform, UnprocessableEntityError
@@ -36,6 +36,16 @@ class _FakeAtif:
         if self._fail:
             raise RuntimeError("atif ingest 400")
         self._calls.append(kwargs)
+
+
+class _FakeOtlpTraces:
+    def __init__(self, calls: list[dict[str, Any]], *, errors: list[str] | None = None) -> None:
+        self._calls = calls
+        self._errors = errors or []
+
+    async def create(self, **kwargs: Any) -> object:
+        self._calls.append(kwargs)
+        return SimpleNamespace(errors=list(self._errors))
 
 
 class _FakeEvaluatorResults:
@@ -76,12 +86,17 @@ class _FakeClient:
         atif_fail: bool = False,
         fail_eval_session: str | None = None,
         atif: Any | None = None,
+        otlp_errors: list[str] | None = None,
     ) -> None:
         self.workspace = workspace
         self.atif_calls: list[dict[str, Any]] = []
+        self.otlp_calls: list[dict[str, Any]] = []
         self.eval_calls: list[dict[str, Any]] = []
         self.intake = SimpleNamespace(
-            ingest=SimpleNamespace(atif=atif or _FakeAtif(self.atif_calls, fail=atif_fail)),
+            ingest=SimpleNamespace(
+                atif=atif or _FakeAtif(self.atif_calls, fail=atif_fail),
+                otlp=SimpleNamespace(v1=SimpleNamespace(traces=_FakeOtlpTraces(self.otlp_calls, errors=otlp_errors))),
+            ),
             evaluator_results=_FakeEvaluatorResults(self.eval_calls, fail_session=fail_eval_session),
             traces=_FakeTraces(root_span_id=root_span_id),
         )
@@ -362,3 +377,210 @@ async def test_a_rejected_trajectory_falls_back_instead_of_failing_the_trial(tmp
     # The rich attempt is refused, the single-step retry lands, and the trial still publishes.
     assert [len(call["steps"]) for call in calls] == [2, 1]
     assert report.trial_count == 1
+
+
+# --- OTLP publish path ------------------------------------------------------
+
+_OTLP_TRACE_ID = "0123456789abcdef0123456789abcdef"
+_OTLP_SPAN_ID = "0102030405060708"
+
+
+def _otlp_trial(trial_id: str = "t-1", *, span_id: str = _OTLP_SPAN_ID, extra_spans: list[dict] | None = None):
+    from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+
+    spans = [{"traceId": _OTLP_TRACE_ID, "spanId": span_id, "name": "agent run"}, *(extra_spans or [])]
+    trace = EvidenceDescriptor(
+        kind="trace", format="otlp", data={"resourceSpans": [{"scopeSpans": [{"spans": spans}]}]}
+    )
+    trial = _trial(trial_id)
+    return trial.model_copy(update={"evidence": CandidateEvidence(descriptors={"trace": trace})})
+
+
+async def test_a_trial_with_an_otlp_trace_publishes_otlp_and_skips_atif() -> None:
+    client = _client()
+
+    report = await publish_to_intake(
+        _result([_otlp_trial()], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
+        platform=client,
+        experiment_id="exp-1",
+        agent_name="a",
+    )
+
+    assert len(client.otlp_calls) == 1
+    assert client.atif_calls == [], "the OTLP trace is the trial's trajectory; ATIF must not also be sent"
+    assert client.otlp_calls[0]["workspace"] == "default"
+    assert isinstance(client.otlp_calls[0]["body"], bytes)
+    # The root span id comes off the payload, not from an Intake round trip.
+    assert report.published_trials[0].span_id == _OTLP_SPAN_ID
+
+
+async def test_the_published_otlp_payload_carries_the_stamped_identity() -> None:
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+
+    client = _client()
+
+    await publish_to_intake(
+        _result([_otlp_trial()], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
+        platform=client,
+        experiment_id="exp-1",
+        agent_name="a",
+    )
+
+    sent = ExportTraceServiceRequest()
+    sent.ParseFromString(client.otlp_calls[0]["body"])
+    span = sent.resource_spans[0].scope_spans[0].spans[0]
+    attributes = {attribute.key: attribute.value.string_value for attribute in span.attributes}
+    assert attributes["gen_ai.conversation.id"] == "run-1:t-1"
+    assert attributes["nemo.evaluation.name"] == "exp-1"
+    assert attributes["nemo.test_case.name"] == "task-1"
+    # The producer's ids survive the hex/base64 round trip, or scores attach to nothing.
+    assert span.span_id.hex() == _OTLP_SPAN_ID
+    assert span.trace_id.hex() == _OTLP_TRACE_ID
+
+
+async def test_a_trial_without_an_otlp_trace_still_publishes_atif() -> None:
+    client = _client()
+
+    await publish_to_intake(
+        _result([_trial("t-1")], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
+        platform=client,
+        experiment_id="exp-1",
+        agent_name="a",
+    )
+
+    assert client.otlp_calls == []
+    assert len(client.atif_calls) == 1
+
+
+async def test_an_otlp_trace_with_no_single_root_falls_back_to_atif() -> None:
+    # Nothing stands for the whole run, so there is no span to attach a trial score to.
+    second_root = {"traceId": _OTLP_TRACE_ID, "spanId": "aabbccddeeff0011", "name": "other root"}
+    client = _client()
+
+    await publish_to_intake(
+        _result(
+            [_otlp_trial(extra_spans=[second_root])],
+            [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])],
+        ),
+        platform=client,
+        experiment_id="exp-1",
+        agent_name="a",
+    )
+
+    assert client.otlp_calls == []
+    assert len(client.atif_calls) == 1
+
+
+async def test_trial_totals_land_on_the_root_span_only() -> None:
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+
+    child = {"traceId": _OTLP_TRACE_ID, "spanId": "aabbccddeeff0011", "parentSpanId": _OTLP_SPAN_ID, "name": "child"}
+    trial = _otlp_trial(extra_spans=[child]).model_copy(
+        update={
+            "metadata": {"prompt_tokens": 120, "completion_tokens": 45, "cache_read_tokens": 30, "cost_usd": 0.134},
+            "error": TrialError(type="Timeout", message="agent exceeded its budget"),
+        }
+    )
+    client = _client()
+
+    await publish_to_intake(
+        _result([trial], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
+        platform=client,
+        experiment_id="exp-1",
+        agent_name="a",
+    )
+
+    sent = ExportTraceServiceRequest()
+    sent.ParseFromString(client.otlp_calls[0]["body"])
+    spans = {span.name: span for span in sent.resource_spans[0].scope_spans[0].spans}
+    root = {attribute.key: attribute.value for attribute in spans["agent run"].attributes}
+    assert root["gen_ai.usage.input_tokens"].int_value == 120
+    assert root["gen_ai.usage.output_tokens"].int_value == 45
+    assert root["gen_ai.usage.cached_tokens"].int_value == 30
+    assert root["gen_ai.usage.cost"].double_value == pytest.approx(0.134)
+    assert root["exception.type"].string_value == "Timeout"
+    assert root["exception.message"].string_value == "agent exceeded its budget"
+
+    # A rollup that sums across the trace would double-count these if every span carried them.
+    child_keys = {attribute.key for attribute in spans["child"].attributes}
+    assert not child_keys & {"gen_ai.usage.input_tokens", "gen_ai.usage.cost", "exception.type"}
+    # Identity, by contrast, is on every span so any of them resolves back to the trial.
+    assert "gen_ai.conversation.id" in child_keys
+
+
+async def test_a_root_span_with_no_usable_id_falls_back_to_atif() -> None:
+    # Intake drops a span whose id is absent or all zero, so scoring against that id would
+    # point at a span it never stored.
+    client = _client()
+
+    await publish_to_intake(
+        _result(
+            [_otlp_trial(span_id="0000000000000000")],
+            [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])],
+        ),
+        platform=client,
+        experiment_id="exp-1",
+        agent_name="a",
+    )
+
+    assert client.otlp_calls == []
+    assert len(client.atif_calls) == 1
+
+
+async def test_a_span_without_a_start_time_is_given_the_runs() -> None:
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+
+    # Intake stores a span with no start time against its own ingest clock, and start time is
+    # part of the key it replaces on, so a re-publish would insert instead of replacing.
+    client = _client()
+
+    await publish_to_intake(
+        _result([_otlp_trial()], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
+        platform=client,
+        experiment_id="exp-1",
+        agent_name="a",
+    )
+
+    sent = ExportTraceServiceRequest()
+    sent.ParseFromString(client.otlp_calls[0]["body"])
+    assert sent.resource_spans[0].scope_spans[0].spans[0].start_time_unix_nano == int(
+        STARTED_AT.timestamp() * 1_000_000_000
+    )
+
+
+async def test_a_failed_trial_marks_its_root_span_failed() -> None:
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+    from opentelemetry.proto.trace.v1.trace_pb2 import Status
+
+    # Status is a span field, not an attribute; recorded only as text the trace reads as a success.
+    trial = _otlp_trial().model_copy(update={"error": TrialError(type="Timeout", message="over budget")})
+    client = _client()
+
+    await publish_to_intake(
+        _result([trial], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
+        platform=client,
+        experiment_id="exp-1",
+        agent_name="a",
+    )
+
+    sent = ExportTraceServiceRequest()
+    sent.ParseFromString(client.otlp_calls[0]["body"])
+    status = sent.resource_spans[0].scope_spans[0].spans[0].status
+    assert status.code == Status.STATUS_CODE_ERROR
+    assert status.message == "over budget"
+
+
+async def test_a_partly_rejected_otlp_batch_fails_the_trial_instead_of_scoring_it() -> None:
+    # Ingest answers 200 with a per-span error list, so a dropped span is invisible unless the
+    # body is read -- including when the dropped span is the one the scores reference.
+    client = _client(otlp_errors=["span 0102030405060708: parent_span_id must not be all zero"])
+
+    with pytest.raises(PublishError, match="Intake rejected 1 span"):
+        await publish_to_intake(
+            _result([_otlp_trial()], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
+            platform=client,
+            experiment_id="exp-1",
+            agent_name="a",
+        )
+
+    assert client.eval_calls == [], "scores must not attach to a trace Intake only partly stored"

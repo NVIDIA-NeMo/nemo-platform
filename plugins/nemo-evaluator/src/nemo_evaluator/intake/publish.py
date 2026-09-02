@@ -209,6 +209,28 @@ async def publish_to_intake(
                 body["workspace"] = resolved_workspace
                 return body
 
+            session_id = mapping.session_id_for(result.run_id, trial.id)
+            otlp = await mapping.otlp_ingest_for_trial(
+                trial,
+                session_id=session_id,
+                evaluation_name=experiment_id,
+                measurements=measurements,
+                started_at=started_at,
+            )
+            if otlp is not None:
+                payload, span_id = otlp
+                response = await platform.intake.ingest.otlp.v1.traces.create(
+                    body=payload, workspace=resolved_workspace
+                )
+                # OTLP ingest answers 200 with a per-span error list, so a partly-stored trace is
+                # invisible unless the body is read — including the case where the span the scores
+                # are about to reference is the one that was dropped.
+                if response.errors:
+                    raise PublishError(
+                        f"Intake rejected {len(response.errors)} span(s) of trial {trial.id!r}: {response.errors}"
+                    )
+                return await _publish_scores(trial, session_id=session_id, span_id=span_id)
+
             recorded_steps = await mapping.atif_steps_from_trial(trial, started_at=started_at)
             try:
                 await platform.intake.ingest.atif.create(**build_body(recorded_steps))
@@ -227,24 +249,27 @@ async def publish_to_intake(
                 )
                 await platform.intake.ingest.atif.create(**build_body(None))
 
-            session_id = mapping.session_id_for(result.run_id, trial.id)
+            # ATIF span ids are minted by Intake from its own identity scheme, so unlike the
+            # OTLP path this one has to read the id back rather than know it locally.
             span_id = await _resolve_root_span_id(platform, workspace=resolved_workspace, session_id=session_id)
+            return await _publish_scores(trial, session_id=session_id, span_id=span_id)
 
-            written = 0
-            for score in scores_by_trial.get(trial.id, []):
-                rows, omitted = mapping.score_to_evaluator_results(score, session_id=session_id, span_id=span_id)
-                for row in rows:
-                    row["workspace"] = resolved_workspace
-                    await platform.intake.evaluator_results.create(**row)
-                    written += 1
-                skipped.extend(SkippedScore(trial_id=trial.id, name=item.name, reason=item.reason) for item in omitted)
+    async def _publish_scores(trial: AgentEvalTrial, *, session_id: str, span_id: str) -> PublishedTrial:
+        written = 0
+        for score in scores_by_trial.get(trial.id, []):
+            rows, omitted = mapping.score_to_evaluator_results(score, session_id=session_id, span_id=span_id)
+            for row in rows:
+                row["workspace"] = resolved_workspace
+                await platform.intake.evaluator_results.create(**row)
+                written += 1
+            skipped.extend(SkippedScore(trial_id=trial.id, name=item.name, reason=item.reason) for item in omitted)
 
-            return PublishedTrial(
-                trial_id=trial.id,
-                session_id=session_id,
-                span_id=span_id,
-                evaluator_result_count=written,
-            )
+        return PublishedTrial(
+            trial_id=trial.id,
+            session_id=session_id,
+            span_id=span_id,
+            evaluator_result_count=written,
+        )
 
     outcomes = await asyncio.gather(*(_publish_trial(trial) for trial in result.trials), return_exceptions=True)
 

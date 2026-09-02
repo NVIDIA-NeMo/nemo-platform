@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import json
 from base64 import b64encode
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from copy import deepcopy
-from typing import Any, cast
+from typing import Any, TypeAlias, cast
 
 from google.protobuf import json_format
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
-from opentelemetry.proto.trace.v1.trace_pb2 import Span
+from opentelemetry.proto.trace.v1.trace_pb2 import Span, Status
 
 _MESSAGE_ATTRIBUTE_KEY = "gen_ai.output.messages"
 _SPAN_KIND_ATTRIBUTE = "openinference.span.kind"
@@ -42,6 +42,9 @@ FINAL_OUTPUT_ATTRIBUTE_KEYS = (
 # know about is ineligible: a tool result and a judge's score are both recorded in the same
 # `output.value` attribute an answer uses, and scoring one as the model's answer is silent.
 ANSWER_SPAN_KINDS = frozenset({"AGENT", "CHAIN", "LLM"})
+
+#: Attribute value types OTLP's ``AnyValue`` carries that a caller here needs to write.
+AttributeValue: TypeAlias = str | int | float | bool
 
 
 def validate_resource_spans(value: Any) -> list[dict[str, Any]]:
@@ -291,6 +294,101 @@ def _loads(text: str) -> Any:
         return json.loads(text)
     except RecursionError as error:
         raise ValueError("OTLP JSON is nested too deeply to parse") from error
+
+
+def set_span_attributes(request: ExportTraceServiceRequest, attributes: Mapping[str, AttributeValue]) -> None:
+    """Set attributes on every span of a trace, replacing any the producer set.
+
+    Span attributes are written rather than resource attributes because Intake merges the two
+    layers as ``{**resource, **span}``. A producer that publishes one of these keys itself
+    would win from the resource layer and silently redirect whatever the value identifies.
+    """
+    for span in _spans(request):
+        _set_attributes(span, attributes)
+
+
+def set_root_span_attributes(request: ExportTraceServiceRequest, attributes: Mapping[str, AttributeValue]) -> None:
+    """Set attributes on the trace's root span alone, if it has exactly one.
+
+    Totals for a whole run belong on the one span that represents it. Writing them to every
+    span would have any rollup that sums across a trace count them once per span.
+    """
+    root = _root_span(request)
+    if root is not None:
+        _set_attributes(root, attributes)
+
+
+def set_root_span_error(request: ExportTraceServiceRequest, *, message: str | None = None) -> None:
+    """Mark the trace's root span as failed, if it has exactly one.
+
+    Intake reads span status, not attributes, to decide a span failed.
+    """
+    root = _root_span(request)
+    if root is None:
+        return
+    root.status.code = Status.STATUS_CODE_ERROR
+    if message is not None:
+        root.status.message = message
+
+
+def fill_missing_start_times(request: ExportTraceServiceRequest, *, start_time_unix_nano: int) -> None:
+    """Give spans without a start time one, so re-publishing the same trace replaces it.
+
+    Intake stores a span with no start time against its own ingest clock, and start time is
+    part of the key its spans table replaces on — so an absent one makes every publish a new
+    row rather than a replacement of the last.
+    """
+    for span in _spans(request):
+        if not span.start_time_unix_nano:
+            span.start_time_unix_nano = start_time_unix_nano
+
+
+def _root_span(request: ExportTraceServiceRequest) -> Span | None:
+    """The single parentless span of a trace, or ``None`` when there is not exactly one."""
+    roots = [span for span in _spans(request) if not span.parent_span_id]
+    return roots[0] if len(roots) == 1 else None
+
+
+def _spans(request: ExportTraceServiceRequest) -> Iterator[Span]:
+    """Yield every span in the request, in resource and scope order."""
+    for resource_span in request.resource_spans:
+        for scope_span in resource_span.scope_spans:
+            yield from scope_span.spans
+
+
+def _set_attributes(span: Span, attributes: Mapping[str, AttributeValue]) -> None:
+    """Write attributes onto one span, replacing keys it already carries."""
+    existing = {attribute.key: attribute for attribute in span.attributes}
+    for key, value in attributes.items():
+        attribute = existing.get(key)
+        if attribute is None:
+            attribute = span.attributes.add()
+            attribute.key = key
+        if isinstance(value, bool):
+            attribute.value.bool_value = value
+        elif isinstance(value, int):
+            attribute.value.int_value = value
+        elif isinstance(value, float):
+            attribute.value.double_value = value
+        else:
+            attribute.value.string_value = value
+
+
+def root_span_id(request: ExportTraceServiceRequest) -> str | None:
+    """Return the hex id of the trace's root span, or ``None`` when it has no single root.
+
+    A trace with several roots has no one span that stands for the whole run, so there is
+    nothing to attach a trial-level score to.
+    """
+    roots = [span for span in _spans(request) if not span.parent_span_id]
+    if len(roots) != 1:
+        return None
+    span_id = bytes(roots[0].span_id)
+    # Intake requires a present, non-zero id and drops the span otherwise, which would leave
+    # anything scored against this id pointing at a span that was never stored.
+    if not any(span_id):
+        return None
+    return span_id.hex()
 
 
 # Byte lengths of the OTLP id fields, which decide whether a string is hex for that field.

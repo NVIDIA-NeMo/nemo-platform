@@ -9,6 +9,8 @@ from nemo_evaluator_sdk.values.otlp import (
     export_request_from_resource_spans,
     final_output_text,
     resource_spans_from_text,
+    root_span_id,
+    set_span_attributes,
     span_text_strings,
 )
 
@@ -346,3 +348,68 @@ def test_a_span_declaring_no_kind_is_not_eligible() -> None:
 
 def test_span_kind_is_matched_case_insensitively() -> None:
     assert _answer(_span("a" * 16, end=5, kind="agent", **{"output.value": "answer"})) == "answer"
+
+
+def test_root_span_id_is_the_span_without_a_parent() -> None:
+    request = _parsed(
+        {"traceId": _HEX_TRACE_ID, "spanId": _HEX_SPAN_ID, "name": "root"},
+        {"traceId": _HEX_TRACE_ID, "spanId": "aabbccddeeff0011", "parentSpanId": _HEX_SPAN_ID, "name": "child"},
+    )
+
+    assert root_span_id(request) == _HEX_SPAN_ID
+
+
+@pytest.mark.parametrize(
+    "spans",
+    [
+        pytest.param([], id="no spans"),
+        pytest.param(
+            [
+                {"traceId": _HEX_TRACE_ID, "spanId": _HEX_SPAN_ID, "name": "a"},
+                {"traceId": _HEX_TRACE_ID, "spanId": "aabbccddeeff0011", "name": "b"},
+            ],
+            id="two roots",
+        ),
+        pytest.param(
+            [{"traceId": _HEX_TRACE_ID, "spanId": "0000000000000000", "name": "zero id"}],
+            id="all-zero root id",
+        ),
+    ],
+)
+def test_no_scorable_root_span(spans: list[dict[str, Any]]) -> None:
+    # A trial-level score needs one span standing for the whole run, and Intake drops a span
+    # whose id is absent or all zero, so scoring against it would point at nothing stored.
+    assert root_span_id(_parsed(*spans)) is None
+
+
+def test_set_span_attributes_overrides_what_the_producer_wrote() -> None:
+    request = _parsed(
+        {
+            "traceId": _HEX_TRACE_ID,
+            "spanId": _HEX_SPAN_ID,
+            "name": "root",
+            "attributes": [{"key": "gen_ai.conversation.id", "value": {"stringValue": "producer-own"}}],
+        },
+        {"traceId": _HEX_TRACE_ID, "spanId": "aabbccddeeff0011", "parentSpanId": _HEX_SPAN_ID, "name": "child"},
+    )
+
+    set_span_attributes(request, {"gen_ai.conversation.id": "run:trial", "nemo.evaluation.name": "exp"})
+
+    for span in request.resource_spans[0].scope_spans[0].spans:
+        attributes = {attribute.key: attribute.value.string_value for attribute in span.attributes}
+        assert attributes["gen_ai.conversation.id"] == "run:trial"
+        assert attributes["nemo.evaluation.name"] == "exp"
+
+
+def test_each_attribute_value_type_maps_to_its_any_value_field() -> None:
+    # bool is an int subclass, so an ordering slip would write it to int_value instead.
+    request = _parsed({"traceId": _HEX_TRACE_ID, "spanId": _HEX_SPAN_ID, "name": "root"})
+
+    set_span_attributes(request, {"s": "text", "i": 7, "f": 1.5, "b": True})
+
+    values = {a.key: a.value for a in request.resource_spans[0].scope_spans[0].spans[0].attributes}
+    assert values["s"].string_value == "text"
+    assert values["i"].int_value == 7
+    assert values["f"].double_value == pytest.approx(1.5)
+    assert values["b"].bool_value is True
+    assert values["b"].WhichOneof("value") == "bool_value"
