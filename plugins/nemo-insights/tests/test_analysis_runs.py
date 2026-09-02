@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import inspect
 from datetime import datetime, timezone
 from typing import Any, cast
 
@@ -19,10 +20,13 @@ from nemo_insights_plugin.analysis_runs import (
     build_execute_agent_job_config,
     create_analysis_run,
     get_analysis_run,
+    list_analysis_runs,
     mint_analysis_run_name,
 )
 from nemo_insights_plugin.entities import AnalysisRun
+from nemo_insights_plugin.schema import AnalysisRunPage
 from nemo_platform import APIStatusError, AsyncNeMoPlatform
+from nemo_platform_plugin.entities.base import ListResponse, PaginationInfo
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.entity_naming import NAME_MAX_LENGTH, NAME_PATTERN
 from pydantic import ValidationError
@@ -30,6 +34,7 @@ from pydantic import ValidationError
 DEFAULT_MODEL = "default/big"
 FAST_MODEL = "default/small"
 RUN_NAME = "insights-run-0123456789abcdef0123456789abcdef"
+DECLARED_SORT_DEFAULT = "-created_at"
 
 
 def _request(**overrides: Any) -> CreateAnalysisRunRequest:
@@ -80,6 +85,7 @@ class _StubEntities:
 
     def __init__(self, existing: AnalysisRun | None = None, create_error: Exception | None = None) -> None:
         self.created: list[AnalysisRun] = []
+        self.list_queries: list[dict[str, Any]] = []
         self._existing = existing
         self._create_error = create_error
 
@@ -94,6 +100,19 @@ class _StubEntities:
             raise NemoEntityNotFoundError(f"{workspace}/{name}")
         return self._existing
 
+    async def list(self, _type: type, **query: Any) -> ListResponse[AnalysisRun]:
+        self.list_queries.append(query)
+        return ListResponse(
+            data=[self._existing] if self._existing is not None else [],
+            pagination=PaginationInfo(
+                page=query["page"],
+                page_size=query["page_size"],
+                current_page_size=1 if self._existing is not None else 0,
+                total_pages=1,
+                total_results=1 if self._existing is not None else 0,
+            ),
+        )
+
 
 def _sdk(jobs: _StubExecuteJobs) -> AsyncNeMoPlatform:
     """The route only touches ``sdk.agents.jobs.execute``; cast past the concrete type."""
@@ -102,6 +121,15 @@ def _sdk(jobs: _StubExecuteJobs) -> AsyncNeMoPlatform:
 
 def _entities(stub: _StubEntities) -> NemoEntitiesClient:
     return cast(NemoEntitiesClient, stub)
+
+
+def _raise(error: Exception) -> Any:
+    """Replace a stub method with one that fails, for the error-path tests."""
+
+    async def _fail(*_args: Any, **_kwargs: Any) -> Any:
+        raise error
+
+    return _fail
 
 
 def _api_status_error(status_code: int, body: Any) -> APIStatusError:
@@ -374,3 +402,68 @@ async def test_get_returns_404_for_an_unknown_run() -> None:
         await get_analysis_run("default", RUN_NAME, _sdk(_StubExecuteJobs()), _entities(entities))
 
     assert excinfo.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# List: filter, sort and pagination assembly
+# ---------------------------------------------------------------------------
+
+
+async def _list(entities: _StubEntities, **overrides: Any) -> AnalysisRunPage:
+    """Call the handler directly, supplying what FastAPI would otherwise resolve.
+
+    A direct call bypasses dependency resolution, so the ``Query`` defaults
+    arrive as ``Query`` objects rather than values; pass them explicitly.
+    """
+    return await list_analysis_runs(
+        overrides.pop("workspace", "default"),
+        page=overrides.pop("page", 1),
+        page_size=overrides.pop("page_size", 20),
+        sort=overrides.pop("sort", DECLARED_SORT_DEFAULT),
+        agent=overrides.pop("agent", None),
+        entity_client=_entities(entities),
+        **overrides,
+    )
+
+
+def test_the_route_declares_the_expected_sort_default() -> None:
+    """Direct handler calls cannot observe it, so pin the declaration itself."""
+    assert inspect.signature(list_analysis_runs).parameters["sort"].default.default == "-created_at"
+
+
+async def test_list_passes_the_page_and_sort_through_to_the_entity_query() -> None:
+    entities = _StubEntities(existing=_run())
+
+    page = await list_analysis_runs(
+        "team-a", page=2, page_size=5, sort="created_at", agent=None, entity_client=_entities(entities)
+    )
+
+    query = entities.list_queries[0]
+    assert (query["workspace"], query["page"], query["page_size"], query["sort"]) == ("team-a", 2, 5, "created_at")
+    assert page.sort == "created_at"
+    assert page.pagination is not None
+    assert (page.pagination.page, page.pagination.total_results) == (2, 1)
+
+
+async def test_list_builds_an_agent_filter_only_when_one_is_asked_for() -> None:
+    """An empty filter must go down as None, not as an empty dict the store would apply."""
+    with_agent = _StubEntities(existing=_run())
+    without_agent = _StubEntities(existing=_run())
+
+    filtered = await _list(with_agent, agent="demo-agent")
+    unfiltered = await _list(without_agent, agent=None)
+
+    assert with_agent.list_queries[0]["filter_obj"] == {"agent": "demo-agent"}
+    assert filtered.filter == {"agent": "demo-agent"}
+    assert without_agent.list_queries[0]["filter_obj"] is None
+    assert unfiltered.filter is None
+
+
+async def test_list_surfaces_a_store_failure_as_a_500() -> None:
+    entities = _StubEntities()
+    entities.list = _raise(RuntimeError("entity store down"))  # type: ignore[method-assign]
+
+    with pytest.raises(HTTPException) as excinfo:
+        await _list(entities)
+
+    assert excinfo.value.status_code == 500
