@@ -696,9 +696,53 @@ def test_mlflow_to_atif_converts_export_to_private_v17_trajectory(tmp_path: Path
         "mlflow_span_tree_linearized",
         "orchestration_parent_not_emitted_as_step",
     ]
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == []
     if os.name == "posix":
         assert output.stat().st_mode & 0o777 == 0o700
         assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_mlflow_to_atif_normalizes_parent_bounded_microsecond_event_times() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    event_time_micros = 1_788_000_000_000_006
+    event_time_nanos = event_time_micros * 1_000
+    root, tool = payload["traces"][0]["data"]["spans"]
+    root["start_time_unix_nano"] = event_time_nanos - 2_000
+    root["end_time_unix_nano"] = event_time_nanos + 2_000
+    tool["start_time_unix_nano"] = event_time_nanos - 1_000
+    tool["end_time_unix_nano"] = event_time_nanos + 1_000
+    tool["events"] = [{"name": "completed", "time_unix_nano": event_time_micros}]
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    preserved_tool = trajectory["extra"]["mlflow"]["spans"][1]
+    assert preserved_tool["events"][0]["time_unix_nano"] == event_time_nanos
+    assert trajectory["steps"][1]["extra"]["mlflow"]["events"][0]["time_unix_nano"] == event_time_nanos
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == [
+        "event_time_microseconds_normalized_to_nanoseconds"
+    ]
+
+
+def test_mlflow_to_atif_does_not_normalize_event_time_outside_parent_bounds() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    event_time = 1_788_000_000_000_006
+    payload["traces"][0]["data"]["spans"][1]["events"] = [{"name": "unbounded", "time_unix_nano": event_time}]
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    preserved_tool = trajectory["extra"]["mlflow"]["spans"][1]
+    assert preserved_tool["events"][0]["time_unix_nano"] == event_time
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == []
 
 
 def test_mlflow_to_atif_accepts_one_bare_trace_to_dict_value(tmp_path: Path) -> None:
@@ -717,6 +761,39 @@ def test_mlflow_to_atif_accepts_one_bare_trace_to_dict_value(tmp_path: Path) -> 
 
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["converted"] == 1
+
+
+def test_mlflow_to_atif_uses_request_preview_after_empty_input_placeholders() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    info = payload["traces"][0]["info"]
+    info["request_preview"] = "Where is Paris?"
+    info["trace_metadata"]["mlflow.traceInputs"] = "{}"
+    payload["traces"][0]["data"]["spans"][0]["attributes"]["mlflow.spanInputs"] = "[]"
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    assert trajectory["steps"][0]["message"] == "Where is Paris?"
+
+
+def test_mlflow_to_atif_uses_later_populated_root_input_attribute() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    root_attributes = payload["traces"][0]["data"]["spans"][0]["attributes"]
+    root_attributes["mlflow.spanInputs"] = "{}"
+    root_attributes["input.value"] = "Use the populated root input."
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    assert trajectory["steps"][0]["message"] == "Use the populated root input."
 
 
 def test_mlflow_to_atif_matches_current_mlflow_external_and_native_trace_ids(tmp_path: Path) -> None:
