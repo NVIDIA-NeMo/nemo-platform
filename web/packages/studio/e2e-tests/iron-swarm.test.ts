@@ -128,9 +128,12 @@ test.describe('Iron Swarm plugin', () => {
     // The run view is the plugin's most composed screen. Its swarm graph is the part worth
     // asserting: every phase of a war-game has a lane, so a missing lane means the run record and
     // the view disagree about what a run is made of.
-    await expect(page.getByText('ATTACKER SWARM')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText('DEFENDER SWARM')).toBeVisible();
-    await expect(page.getByText('VALIDATOR SWARM')).toBeVisible();
-    await expect(page.getByText('OPENSHELL SANDBOX')).toBeVisible();
+    //
+    // Every lane gets the same generous timeout. The graph lays out progressively, so giving only
+    // the first assertion room to wait made the rest race the layout — the test then failed and
+    // passed on retry, which is worse than not having it.
+    for (const lane of ['ATTACKER SWARM', 'OPENSHELL SANDBOX', 'DEFENDER SWARM', 'VALIDATOR SWARM']) {
+      await expect(page.getByText(lane)).toBeVisible({ timeout: 30_000 });
+    }
   });
 });
