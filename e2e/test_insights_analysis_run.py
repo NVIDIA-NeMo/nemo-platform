@@ -25,8 +25,11 @@ from typing import Any
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.inference_middleware import BackendFormat
 from nemo_platform_plugin.jobs.client import JobsClient
-from nmp.testing import MockProviderResponse, add_mock_provider
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import CreateModelEntityRequest
+from nmp.testing import MockProviderResponse, add_mock_provider, wait_for_model_entity
 
 from e2e.agents_deploy_helpers import unique_name
 
@@ -133,7 +136,7 @@ def _mock_analyst_models(sdk: NeMoPlatform, workspace: str) -> tuple[str, str]:
     default_model = unique_name("analyst-default")
     fast_model = unique_name("analyst-fast")
 
-    add_mock_provider(
+    provider = add_mock_provider(
         sdk,
         workspace=workspace,
         name=unique_name("analyst-provider"),
@@ -151,6 +154,25 @@ def _mock_analyst_models(sdk: NeMoPlatform, workspace: str) -> tuple[str, str]:
         },
         served_models={default_model: default_model, fast_model: fast_model},
     )
+
+    # Create the Model Entities rather than waiting on provider autodiscovery.
+    # The models controller reconciles a provider's served_models into entities
+    # asynchronously, so relying on it races the run we are about to submit --
+    # and the Analyst resolves Model Entities, not served-model ids. This is the
+    # same create-then-wait the evaluator e2e does for the same reason.
+    models = client_from_platform(sdk, ModelsClient)
+    for name in (default_model, fast_model):
+        models.create_model(
+            workspace=workspace,
+            body=CreateModelEntityRequest(
+                name=name,
+                backend_format=BackendFormat.OPENAI_CHAT,
+                model_providers=[f"{workspace}/{provider.name}"],
+            ),
+            exist_ok=True,
+        ).data()
+        wait_for_model_entity(sdk, workspace, name)
+
     return f"{workspace}/{default_model}", f"{workspace}/{fast_model}"
 
 
