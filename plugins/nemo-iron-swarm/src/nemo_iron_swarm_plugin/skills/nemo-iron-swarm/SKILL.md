@@ -86,8 +86,8 @@ Bring-your-own mode: Iron Swarm war-games the image the user's own Dockerfile bu
 **First, confirm NeMo Relay is attached** — `--relay-confirmed` is a promise, not proof, and a
 victim that *looks* instrumented but runs unguarded corrupts the whole run. Walk
 [references/relay-attachment.md](references/relay-attachment.md); if the agent is not instrumented
-yet, help the user make the edits it describes (and defer to Relay's own published skills —
-github.com/nvidia/skills, NVIDIA/NeMo-Relay — for frameworks beyond those).
+yet, help the user make the edits it describes (and defer to NeMo Relay's own documentation and
+published skills for frameworks beyond those).
 
 ```bash
 nemo iron-swarm init --project-dir ./my-agent --name my-agent --harness langgraph --relay-confirmed

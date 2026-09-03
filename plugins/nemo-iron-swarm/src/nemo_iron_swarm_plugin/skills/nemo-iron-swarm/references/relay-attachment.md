@@ -6,8 +6,8 @@ SPDX-License-Identifier: Apache-2.0
 # Attaching NeMo Relay so the war-game can guard tool calls
 
 Scope: exactly what Iron Swarm needs and verifies. For attachment modes and frameworks beyond
-these, use NeMo Relay's own published skills (github.com/nvidia/skills, the NVIDIA/NeMo-Relay
-repo) — they are the authoritative integration guide; do not improvise wiring.
+these, use NeMo Relay's own documentation and published skills — they are the authoritative
+integration guide; do not improvise wiring.
 
 A Fabric agent (Route A) needs **none of this in code** — the `telemetry: {provider: relay,
 atof: {enabled: true}}` block in `agent.yaml` makes the adapter do all of it. This reference is
@@ -69,5 +69,5 @@ Two checks, two moments; each failure names its cause:
 | "emitted no new Relay events in 30s (N older records present)" | this invocation went untraced | the serving path bypasses the instrumented agent object |
 | "Relay recorded no tool call at all" (after round 1) | tool calls bypass Relay — the trap above | obligation 2: `create_tool_node` / middleware in the tool path |
 
-A worked, verified example of all of it: `examples/langgraph-victim/` in the iron-swarm repo —
+A worked, verified example of all of it: `plugins/nemo-iron-swarm/examples/langgraph-victim/` —
 `agent.py` (tools node wiring) and `server.py` (`initialize()` + per-request scope + callback).
