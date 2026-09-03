@@ -8831,6 +8831,7 @@ nemo evaluator [OPTIONS] COMMAND [ARGS]...
 
 * `agent-evaluate`: Run agent evaluation over tasks against a model, agent,...
 * `evaluate`: Run evaluator SDK metrics against inline rows or...
+* `retrieve-eval`: Evaluate dense retrieval over a BEIR corpus with nDCG and...
 
 #### nemo evaluator info
 
@@ -9081,6 +9082,110 @@ Show input/output schemas.
 
 ```shell
 nemo evaluator evaluate explain [OPTIONS]
+```
+
+**Options:**
+
+* `--profile`: Annotate the bundle with this profile. Profile metadata lands in MR 1.4b.
+* `--cluster`: Accepted for forward compatibility; unused in MR 1.4a.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo evaluator retrieve-eval
+
+Evaluate dense retrieval over a BEIR corpus with nDCG and recall.
+
+**Usage:**
+
+```shell
+nemo evaluator retrieve-eval [OPTIONS] [COMMAND] [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run locally, in-process.
+* `submit`: Submit to a cluster.
+* `explain`: Show input/output schemas.
+
+##### nemo evaluator retrieve-eval run
+
+Run locally, in-process.
+
+**Usage:**
+
+```shell
+nemo evaluator retrieve-eval run [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--dataset.root`: Reference to a Fileset (format: workspace/fileset-name).
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+Job Spec flags are generated from the RetrieveEvalInputSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `target`, `baseline`, `k`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
+##### nemo evaluator retrieve-eval submit
+
+Submit to a cluster.
+
+**Usage:**
+
+```shell
+nemo evaluator retrieve-eval submit [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Job Spec:**
+
+* `--dataset.root`: Reference to a Fileset (format: workspace/fileset-name).
+
+**Spec Source:**
+
+* `--spec`: Spec as a JSON string. [default: \{}]
+* `--spec-file <PATH>`: Path to a YAML or JSON spec file (used as base; per-flag values override).
+
+**Submission:**
+
+* `-o`: Backend option override, 'backend.key=value' (repeatable). [default: ]
+* `--options-file <PATH>`: Path to a YAML or JSON options file (nested by backend name).
+* `--profile`: Execution profile (operator-configured). Required unless the active cluster has a 'default' profile.
+* `--cluster`: Configured cluster name to resolve via the NeMo CLI config.
+* `--base-url`: Explicit plugin-service base URL (overrides --cluster and all other submit host resolution).
+* `--workspace`: Workspace scope for the submission. [default: default]
+
+Job Spec flags are generated from the RetrieveEvalInputSpec Pydantic schema. Precedence: --spec-file (base) → --spec JSON (overlay) → per-flag values (top).
+
+Some spec fields cannot be represented as CLI flags: `target`, `baseline`, `k`. Supply them with --spec or --spec-file. Individual flags override values from the supplied spec.
+​
+
+##### nemo evaluator retrieve-eval explain
+
+Show input/output schemas.
+
+**Usage:**
+
+```shell
+nemo evaluator retrieve-eval explain [OPTIONS]
 ```
 
 **Options:**

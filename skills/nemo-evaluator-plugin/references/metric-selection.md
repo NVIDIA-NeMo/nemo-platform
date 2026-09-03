@@ -11,7 +11,8 @@ derivable from them by string substitution. Run
 
 The supported set is exactly: `bleu`, `exact-match`, `f1`, `llm-judge`,
 `nemo-agent-toolkit-remote`, `number-check`, `remote`, `rouge`,
-`string-check`, and `tool-calling`.
+`retrieval-map`, `retrieval-ndcg`, `retrieval-precision`,
+`retrieval-recall`, `string-check`, and `tool-calling`.
 
 | Goal | Prefer |
 | --- | --- |
@@ -20,7 +21,7 @@ The supported set is exactly: `bleu`, `exact-match`, `f1`, `llm-judge`,
 | Numeric value or threshold | `NumberCheckMetric` |
 | Text overlap | `F1Metric`, `BLEUMetric`, or `ROUGEMetric` |
 | Semantic quality or a written rubric | `LLMJudgeMetric` |
-| Retrieval smoke test | A deterministic context assertion or `LLMJudgeMetric` |
+| BEIR retrieval quality | `RetrievalNDCGMetric`, `RetrievalRecallMetric`, `RetrievalPrecisionMetric`, and `RetrievalMAPMetric` |
 | Tool-call correctness | `ToolCallingMetric` |
 | Existing scoring service | `RemoteMetric` or `NemoAgentToolkitRemoteMetric` |
 | Agent answer or goal completion | A task-specific custom metric that implements `nemo_evaluator_sdk.metrics.protocol.Metric` or `LLMJudgeMetric` |
@@ -36,10 +37,15 @@ Metric templates are Jinja over a context that depends on the evaluation shape:
 | --- | --- |
 | Dataset-driven | `item.*` (the dataset row), `sample.*` (generated output) |
 | Task-driven | `inputs.*`, `reference.*` (grader-only), `task.*`, `trial.*`, `sample.output_text` |
+| Retrieval-driven | BEIR qrels and ranked document IDs; no Jinja template context |
 
 A dataset-driven template (`{{item.expected}}`) fails on every trial in an
 agent evaluation. The error names the available keys — read it before changing
 the metric.
+
+Retrieval metrics operate on a complete BEIR corpus. Run them through
+`Evaluator.run_sync(retrieval=..., target=...)` or the `retrieve-eval` job, not
+through dataset rows.
 
 ### Explore the metrics provided by the SDK
 

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import fsspec.asyn
 from filesets import FilesetFileSystem
+from nemo_evaluator_sdk.retrieval.beir import BeirDataset
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from pydantic import Field, RootModel
@@ -107,6 +108,11 @@ def download_dataset_sync(
 ) -> Path:
     """Download a FilesetRef dataset to a local directory using the sync client."""
     return _download_fileset_ref_sync(client, dataset, destination, recursive=recursive)
+
+
+def load_beir_dataset(path: str | Path) -> BeirDataset:
+    """Validate and load a downloaded BEIR test fileset."""
+    return BeirDataset.from_path(path)
 
 
 def _match_path_parts(path_parts: tuple[str, ...], pattern_parts: tuple[str, ...]) -> bool:

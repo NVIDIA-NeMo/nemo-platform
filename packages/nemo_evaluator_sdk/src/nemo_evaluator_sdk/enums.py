@@ -19,6 +19,10 @@ class MetricType(str, Enum):
     TOOL_CALLING = "tool-calling"
     REMOTE = "remote"
     NEMO_AGENT_TOOLKIT_REMOTE = "nemo-agent-toolkit-remote"
+    RETRIEVAL_NDCG = "retrieval-ndcg"
+    RETRIEVAL_RECALL = "retrieval-recall"
+    RETRIEVAL_PRECISION = "retrieval-precision"
+    RETRIEVAL_MAP = "retrieval-map"
 
     TOPIC_ADHERENCE = "topic_adherence"
     TOOL_CALL_ACCURACY = "tool_call_accuracy"
