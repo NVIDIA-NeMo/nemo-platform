@@ -42,6 +42,12 @@ extra_headers = { x-inference-priority = "interactive", X-Existing = "retained" 
 
 [llm_clients.fallback]
 format = "anthropic_messages"
+
+[tool.ruff]
+[tool.ruff.lint.a]
+[tool.ruff.lint]
+[[tool.poetry.source]]
+[tool.ruff.lint.b]
 """
         )
     )
@@ -52,6 +58,8 @@ format = "anthropic_messages"
         "X-Inference-Priority": "batch",
     }
     assert config["llm_clients"]["fallback"]["extra_headers"] == {"X-Inference-Priority": "batch"}
+    assert config["tool"]["ruff"]["lint"]["a"] == {}
+    assert config["tool"]["ruff"]["lint"]["b"] == {}
 
     with pytest.raises(ValueError, match="routing config formats are mutually exclusive"):
         SwitchyardProfileConfig(routing_config_toml="schema_version = 1", routing_profiles={"routes": {}})
@@ -87,8 +95,19 @@ def test_generic_harbor_020_patches_cover_langgraph_and_pi(tmp_path: Path) -> No
         'command = f"uv venv {venv_dir} --python {python_version} --clear; "\n'
     )
     langgraph_patch(langgraph)
-    assert "/installed-agent/langgraph-venv" in langgraph.read_text()
+    assert "/tmp/harbor-langgraph-venv" in langgraph.read_text()
     assert "uv venv {venv_dir} --python {python_version} --clear" in langgraph.read_text()
+    assert "/opt/harbor/pip.pyz" in (PLUGIN_ROOT / "deploy/compose/Dockerfile").read_text()
+
+    legacy = tmp_path / "legacy_langgraph.py"
+    legacy.write_text(
+        '_REMOTE_VENV_DIR = PurePosixPath("/opt/harbor-langgraph-venv")\n'
+        'command = f"python3 -m venv {venv_dir}; " "python -m pip install uv; "\n'
+    )
+    langgraph_patch(legacy)
+    assert "/tmp/harbor-langgraph-venv" in legacy.read_text()
+    assert "python /tmp/pip.pyz install uv" in legacy.read_text()
+    assert "bootstrap.pypa.io" not in legacy.read_text()
 
     pi_patch = runpy.run_path(str(PLUGIN_ROOT / "harbor-patches/patch_pi_extra_env.py"))["patch"]
     pi = tmp_path / "pi.py"

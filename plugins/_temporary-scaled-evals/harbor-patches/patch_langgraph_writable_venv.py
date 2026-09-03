@@ -10,7 +10,7 @@ from pathlib import Path
 
 VENV_PATH_REPLACEMENT = (
     '_REMOTE_VENV_DIR = PurePosixPath("/opt/harbor-langgraph-venv")',
-    '_REMOTE_VENV_DIR = PurePosixPath("/installed-agent/langgraph-venv")',
+    '_REMOTE_VENV_DIR = PurePosixPath("/tmp/harbor-langgraph-venv")',
 )
 
 LEGACY_REPLACEMENTS = (
@@ -20,10 +20,7 @@ LEGACY_REPLACEMENTS = (
     ),
     (
         '"python -m pip install uv; "',
-        '"python -c \\"import urllib.request; "\n'
-        "\"urllib.request.urlretrieve(\\'https://bootstrap.pypa.io/pip/pip.pyz\\', \"\n"
-        '"\\\'/installed-agent/pip.pyz\\\')\\"; "\n'
-        '"python /installed-agent/pip.pyz install uv; "',
+        '"python /tmp/pip.pyz install uv; "',
     ),
 )
 

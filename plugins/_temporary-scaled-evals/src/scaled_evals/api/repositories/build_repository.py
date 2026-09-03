@@ -56,6 +56,8 @@ class TaskBuildRepository:
                 """,
                 (image_ref, image_digest, task_id, revision),
             )
+            if cur.rowcount != 1:
+                return
             cur.execute(
                 """
                 UPDATE tasks SET current_revision = %s, updated_at = NOW()

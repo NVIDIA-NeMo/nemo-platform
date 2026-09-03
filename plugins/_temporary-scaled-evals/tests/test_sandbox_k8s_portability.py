@@ -7,6 +7,7 @@ import ast
 import asyncio
 import io
 import re
+import runpy
 import sys
 import tarfile
 from pathlib import Path
@@ -116,7 +117,7 @@ def test_separate_verifier_and_artifact_paths_are_portable() -> None:
         r"^/root/?$",
         r"^/root/\.",
     )
-    assert 'filter="data"' in source
+    assert 'getattr(tarfile, "data_filter", None)' in source
 
 
 def test_multi_service_exec_and_artifact_transfer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -184,6 +185,9 @@ def test_multi_service_exec_and_artifact_transfer(monkeypatch: pytest.MonkeyPatc
     assert calls[0]["exclude"] == []
     with pytest.raises(ServiceOperationsUnsupportedError):
         asyncio.run(environment.service_exec("true", service="missing"))
+    environment._withheld_sidecar_containers = {"postgres-db"}
+    with pytest.raises(ServiceOperationsUnsupportedError, match="withheld"):
+        asyncio.run(environment.service_exec("true", service="postgres_db"))
 
 
 def test_compose_restore_and_dispatch_extraction_limits(
@@ -216,15 +220,22 @@ def test_compose_restore_and_dispatch_extraction_limits(
         sandbox_k8s._extract_pack(archive, tmp_path / "size")
 
 
-def test_root_patch_constrains_sidecars_and_ipv6() -> None:
-    source = ROOT_PATCH.read_text()
-    assert '"KILL"' in source
+def test_root_patch_constrains_sidecars_and_ipv6(tmp_path: Path) -> None:
+    patch = runpy.run_path(str(ROOT_PATCH))
+    client = tmp_path / "client.py"
+    client.write_text(
+        """                            container.name == "sandbox"
+                            and not container.read_only_root_filesystem
+"""
+        + patch["_SYSCTLS_LOW_PORTS_ONLY"]
+    )
+
+    patch["patch_sidecar_capabilities"](tmp_path)
+    patch["patch_sysctls"](tmp_path)
+
+    source = client.read_text()
+    assert 'container.name == "sandbox"' not in source
     assert "not container.read_only_root_filesystem" in source
-    assert "def patch_sidecar_capabilities" in source
-    assert 'new = """                            not container.read_only_root_filesystem' in source
-    assert "_SYSCTLS_GRANT,\n    )" in source
-    assert '"ip": "127.0.0.1"' in source
-    assert "SANDBOX_K8S_INTERNAL_IPV6_LOOPBACK" in source
     assert all(
         sysctl in source
         for sysctl in (
@@ -244,6 +255,12 @@ def test_deployment_owns_baseline_rbac_and_documents_scoped_overrides() -> None:
         if rule.get("apiGroups") == ["agents.x-k8s.io"] and rule.get("resources") == ["sandboxes"]
     )
     assert sandbox_rule["verbs"] == ["create", "delete", "get", "list", "watch"]
+    claim_rule = next(
+        rule
+        for rule in role["rules"]
+        if rule.get("apiGroups") == ["extensions.agents.x-k8s.io"] and rule.get("resources") == ["sandboxclaims"]
+    )
+    assert claim_rule["verbs"] == ["create", "delete", "get", "list", "watch"]
 
     docs = (PLUGIN_ROOT / "deploy/k8s/README.md").read_text()
     assert "enable_ipv6_loopback: true" in docs

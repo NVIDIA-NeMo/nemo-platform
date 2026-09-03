@@ -142,7 +142,7 @@ def _attach_images(
 def create_benchmark_import(
     body: BenchmarkImportCreate, db: Db, current: Principal, response: Response
 ) -> BenchmarkImport:
-    manifest = body.manifest.model_dump(mode="json", exclude_none=True)
+    manifest = body.manifest.model_dump(mode="json")
     observed_sha = canonical_manifest_sha256(manifest)
     if observed_sha != body.manifest_sha256:
         raise _http_error(

@@ -113,6 +113,7 @@ _SANDBOX_LOG_POLL_INTERVAL_SECONDS = 5.0
 _SANDBOX_LOG_POLL_TIMEOUT_SECONDS = 15.0
 _SANDBOX_LOG_MAX_BYTES_PER_FILE = 64 * 1024
 _SANDBOX_LOG_MAX_BYTES_PER_POLL = 256 * 1024
+_PIP_ZIPAPP = Path("/opt/harbor/pip.pyz")
 _SANDBOX_LOG_MAX_LINE_CHARS = 16 * 1024
 _AUTOSCALER_SAFE_TO_EVICT_ANNOTATION = "cluster-autoscaler.kubernetes.io/safe-to-evict"
 _SANDBOX_LOG_POLL_SCRIPT = r"""
@@ -624,8 +625,10 @@ class K8sSandboxEnvironment(_HarborBaseEnvironment):
         # reported no compose support would fail Harbor's validation for any
         # task that declares services.
         dropped_verifier_sidecars = 0
+        self._withheld_sidecar_containers: set[str] = set()
         if _is_verifier_sandbox(session_id) and kwargs.get("sidecars"):
             dropped_verifier_sidecars = len(kwargs.pop("sidecars"))
+            self._withheld_sidecar_containers = set(self._sidecar_containers)
             sidecar_wait_ports = None
             sidecar_log_containers = None
 
@@ -1193,6 +1196,8 @@ done
         setup_script += "true\n"
         try:
             await self._sandbox.run_command(["bash", "-c", setup_script])
+            if _PIP_ZIPAPP.is_file():
+                await self._sandbox.upload_file(_PIP_ZIPAPP.read_bytes(), "/tmp/pip.pyz")
             self.logger.debug("Pre-created Harbor directories in sandbox")
         except Exception as exc:
             self.logger.warning("Could not pre-create Harbor dirs: %s", exc)
@@ -1638,8 +1643,9 @@ done
             f"REMOTE_TAR={_shell_quote(remote_tar)} "
             f"TARGET={_shell_quote(target_dir)} "
             "python3 -c 'import os,tarfile; "
-            'tarfile.open(os.environ["REMOTE_TAR"], "r").extractall('
-            'os.environ["TARGET"], filter="data")\' '
+            'archive=tarfile.open(os.environ["REMOTE_TAR"], "r"); '
+            'data_filter=getattr(tarfile, "data_filter", None); '
+            'archive.extractall(os.environ["TARGET"], **({"filter": data_filter} if data_filter else {}))\' '
             "&& status=0 || status=$?\n"
             f"rm -f {_shell_quote(remote_tar)}\n"
             "exit ${status:-0}"
@@ -1713,10 +1719,14 @@ done
     def _sidecar_container(self, service: str) -> str:
         """Resolve a compose service name to its container name in this pod."""
         container = sanitize_k8s_name(service)
-        if container in self._sidecar_containers:
-            return container
         from harbor.environments.base import ServiceOperationsUnsupportedError
 
+        if container in getattr(self, "_withheld_sidecar_containers", set()):
+            raise ServiceOperationsUnsupportedError(
+                f"compose service {service!r} was withheld from the separate verifier pod"
+            )
+        if container in self._sidecar_containers:
+            return container
         declared = ", ".join(sorted(self._sidecar_containers)) or "none"
         raise ServiceOperationsUnsupportedError(
             f"compose service {service!r} has no sidecar container in this pod "

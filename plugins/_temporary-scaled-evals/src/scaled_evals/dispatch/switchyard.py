@@ -1222,10 +1222,9 @@ def _apply_native_default_inference_priority(value: MutableMapping[str, Any]) ->
             continue
         if not isinstance(headers, MutableMapping):
             raise ValueError(f"Switchyard TOML llm_clients.{name}.extra_headers must be an object")
-        for key in list(headers):
-            if str(key).lower() == "x-inference-priority":
-                del headers[key]
-        headers["X-Inference-Priority"] = "batch"
+        normalized = {str(key): item for key, item in headers.items() if str(key).lower() != "x-inference-priority"}
+        normalized["X-Inference-Priority"] = "batch"
+        raw_client["extra_headers"] = normalized
 
 
 def _with_default_inference_priority(value: Mapping[str, Any]) -> dict[str, Any]:

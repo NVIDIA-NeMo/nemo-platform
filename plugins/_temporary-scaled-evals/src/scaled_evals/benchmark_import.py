@@ -225,7 +225,10 @@ def _validate_pack(
             subject=subject,
         )
     )
-    actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    if size > max_pack_bytes:
+        return checks
+    with path.open("rb") as raw:
+        actual_sha256 = hashlib.file_digest(raw, "sha256").hexdigest()
     checks.append(
         ConformanceCheck(
             code="pack_sha256",

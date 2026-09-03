@@ -10,9 +10,11 @@ from fastapi import HTTPException
 
 try:
     from scaled_evals.api.auth import CurrentPrincipal
+    from scaled_evals.api.routers import benchmark_imports as benchmark_imports_router
     from scaled_evals.api.routers.benchmark_imports import publish_benchmark_import
     from scaled_evals.api.schemas.benchmark_imports import BenchmarkImportCreate
     from scaled_evals.benchmark_import import (
+        _validate_pack,
         import_id_from_legacy_state,
         load_import_images,
         write_legacy_import_state,
@@ -21,7 +23,10 @@ except ImportError as exc:
     pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
 
 
-def test_import_schema_and_compatibility_state_preserve_portable_metadata(tmp_path: Path) -> None:
+def test_import_schema_and_compatibility_state_preserve_portable_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     request = BenchmarkImportCreate.model_validate(
         {
             "manifest_sha256": "a" * 64,
@@ -30,6 +35,7 @@ def test_import_schema_and_compatibility_state_preserve_portable_metadata(tmp_pa
                 "catalog_id": "fixture",
                 "visibility": "public",
                 "source": {"type": "git", "commit": "b" * 40},
+                "nullable_extension": None,
                 "tasks": [
                     {
                         "name": "Task",
@@ -43,6 +49,21 @@ def test_import_schema_and_compatibility_state_preserve_portable_metadata(tmp_pa
         }
     )
     assert request.visibility == "public"
+    assert "nullable_extension" in request.manifest.model_dump(mode="json")
+    observed_manifest: dict = {}
+    monkeypatch.setattr(
+        benchmark_imports_router,
+        "canonical_manifest_sha256",
+        lambda manifest: observed_manifest.update(manifest) or "b" * 64,
+    )
+    with pytest.raises(HTTPException, match="manifest digest"):
+        benchmark_imports_router.create_benchmark_import(
+            request,
+            MagicMock(),
+            CurrentPrincipal(owner_type="USER", owner_id="owner"),
+            MagicMock(),
+        )
+    assert "nullable_extension" in observed_manifest
 
     images_path = tmp_path / "images.jsonl"
     images_path.write_text(
@@ -81,6 +102,11 @@ def test_import_schema_and_compatibility_state_preserve_portable_metadata(tmp_pa
     )
     assert import_id_from_legacy_state(state_path) == "bmi_one"
     assert json.loads(state_path.read_text())[0]["source_commit"] == "abc"
+
+    oversized = tmp_path / "oversized.tar.gz"
+    oversized.write_bytes(b"x")
+    checks = _validate_pack(oversized, expected_sha256="0" * 64, max_pack_bytes=0, subject="task")
+    assert [(check.code, check.status) for check in checks] == [("pack_size", "failed")]
 
 
 def test_publish_rejects_benchmark_slug_owned_by_another_principal() -> None:

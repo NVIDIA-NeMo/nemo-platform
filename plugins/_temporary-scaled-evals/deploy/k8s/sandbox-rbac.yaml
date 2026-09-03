@@ -11,9 +11,7 @@
 # plane and the code under evaluation — acceptable for a Phase-1 lab namespace,
 # not for anything multi-tenant.
 #
-# The sandbox verbs themselves come from the cluster-wide `agent-sandbox-edit`
-# ClusterRoles installed with the agent-sandbox controller, which this file only
-# binds. It does not install the CRDs or the controller; see README.md.
+# This file does not install the CRDs or the controller; see README.md.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -23,6 +21,9 @@ rules:
   # grant deployment-owned instead of depending on optional installation roles.
   - apiGroups: ["agents.x-k8s.io"]
     resources: ["sandboxes"]
+    verbs: ["create", "delete", "get", "list", "watch"]
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
     verbs: ["create", "delete", "get", "list", "watch"]
   # The pods the controller creates from each Sandbox.
   - apiGroups: [""]

@@ -50,7 +50,8 @@ RUN set -eu; \
         /opt/harbor/qualification-catalog.json > /opt/harbor/default-version.txt; \
     python -c 'import json,sys; print(json.load(open(sys.argv[1]))["sandbox_k8s"]["version"])' \
         /opt/harbor/qualification-catalog.json > /opt/harbor/sandbox-k8s-version.txt; \
-    test -s /opt/harbor/selectable-versions.txt
+    test -s /opt/harbor/selectable-versions.txt; \
+    python -c 'import urllib.request; urllib.request.urlretrieve("https://bootstrap.pypa.io/pip/pip.pyz", "/opt/harbor/pip.pyz")'
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     set -eu; \
