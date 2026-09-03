@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { SAFE_SYNTHESIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import { gateSafeSynthesizerRoutes, getWorkspaceSafeSynthesizerRoute } from '@studio/routes/utils';
-import { DatabaseCheck } from 'lucide-react';
 import { FC, lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -62,12 +62,14 @@ export const safeSynthesizerRoutes: RouteObject[] = gateSafeSynthesizerRoutes([
   },
 ]);
 
+const NavIcon = ENTITY_ICONS.safeSynthesizerJobs;
+
 export const getSafeSynthesizerSideNavItems = (workspace: string) =>
   SAFE_SYNTHESIZER_ENABLED
     ? [
         {
           id: 'safeSynthesizer',
-          slotIcon: <DatabaseCheck className={iconColorClass} />,
+          slotIcon: <NavIcon className={iconColorClass} />,
           slotLabel: 'Safe Synthesizer',
           href: getWorkspaceSafeSynthesizerRoute(workspace),
         },

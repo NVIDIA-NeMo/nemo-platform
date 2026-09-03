@@ -1,25 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  Anchor,
-  BrainCircuit,
-  ChartNetwork,
-  Database,
-  FlaskConical,
-  FolderOpen,
-  HatGlasses,
-  Lightbulb,
-  ListChecks,
-  ListTree,
-  LockKeyhole,
-  Radar,
-  Rocket,
-  ShieldCheck,
-  UsersRound,
-  VenetianMask,
-  type LucideIcon,
-} from 'lucide-react';
+import type { EntityKey } from '@nemo/common/src/constants/entityIcons';
 
 /**
  * A create call-to-action for a first-use empty state.
@@ -35,13 +17,13 @@ export interface EmptyStateCreateAction {
 }
 
 /**
- * Per-entity copy, iconography, and self-service affordances for an empty
- * state. One entry per entity lives in {@link ENTITY_EMPTY_STATES}; callsites
- * never inline this content.
+ * Per-entity copy and self-service affordances for an empty state. One entry
+ * per entity lives in {@link ENTITY_EMPTY_STATES}; callsites never inline this
+ * content. The glyph is not here on purpose — it comes from `ENTITY_ICONS`, so
+ * an empty state cannot show a different icon than the rest of the entity's
+ * surfaces.
  */
 export interface EmptyStateDescriptor {
-  /** A `lucide-react` icon. The component applies the standard size token. */
-  icon: LucideIcon;
   /** Sentence-case, entity-specific first-use heading. */
   heading: string;
   /** 1–2 sentences answering "why would I create one?". */
@@ -54,43 +36,21 @@ export interface EmptyStateDescriptor {
   skillPrompt?: string;
 }
 
-/** Keys of entities that have a standardized empty state. */
-export type EntityKey =
-  | 'guardrails'
-  | 'guardrailChecks'
-  | 'filesets'
-  | 'filesetFiles'
-  | 'customModels'
-  | 'baseModels'
-  | 'deployments'
-  | 'inferenceProviders'
-  | 'virtualModels'
-  | 'secrets'
-  | 'members'
-  | 'jobs'
-  | 'anonymizerJobs'
-  | 'dataDesignerJobs'
-  | 'safeSynthesizerJobs'
-  | 'agentEvaluations'
-  | 'evaluationResults'
-  | 'evaluationSessions'
-  | 'experiments'
-  | 'evalComparison'
-  | 'optimizerInsights'
-  | 'insightExperiments'
-  | 'insightTraces'
-  | 'telemetryTraces'
-  | 'telemetrySpans'
-  | 'agentMonitorRuns'
-  | 'agents';
+/**
+ * Keys of entities that have a standardized empty state — the subset of
+ * {@link EntityKey} that has migrated onto {@link EntityEmptyState}. Narrowing
+ * from `EntityKey` is what guarantees every empty state resolves an icon.
+ */
+export type EmptyStateEntityKey = Exclude<EntityKey, 'datasets'>;
+
+export type { EntityKey };
 
 /**
  * Canonical empty-state registry. Grows one entry at a time as entities migrate
  * onto {@link EntityEmptyState}.
  */
-export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
+export const ENTITY_EMPTY_STATES: Record<EmptyStateEntityKey, EmptyStateDescriptor> = {
   guardrails: {
-    icon: ShieldCheck,
     heading: 'No guardrail configs yet',
     subheading:
       'Guardrail configs add content-safety, jailbreak, and PII rails to the models in this workspace.',
@@ -100,7 +60,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me create my first guardrail config with the nemo-guardrails skill',
   },
   guardrailChecks: {
-    icon: ListChecks,
     heading: 'No tests yet',
     subheading: 'Add a test case on the Tests tab, then run it to see its result here.',
     cliCommand:
@@ -108,7 +67,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me verify my guardrail config with the nemo-guardrails skill',
   },
   filesets: {
-    icon: Database,
     heading: 'No filesets yet',
     subheading:
       'Filesets group the files your agents and jobs read from — training data, models, or other artifacts.',
@@ -117,7 +75,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me create my first fileset with the nemo-files skill',
   },
   filesetFiles: {
-    icon: FolderOpen,
     heading: 'No files yet',
     subheading: 'Upload files to this fileset to make them available to agents and jobs.',
     createAction: { label: 'Upload Files' },
@@ -125,7 +82,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me upload files to a fileset with the nemo-files skill',
   },
   customModels: {
-    icon: BrainCircuit,
     heading: 'No custom models yet',
     subheading: 'Customize a model with fine-tuning or prompt tuning to meet your specific needs.',
     createAction: { label: 'Customize Model' },
@@ -133,13 +89,11 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me create my first custom model with the nemo-customizer skill',
   },
   baseModels: {
-    icon: BrainCircuit,
     heading: 'No base models available',
     subheading:
       'Registered inference providers in this workspace automatically surface their base models here.',
   },
   deployments: {
-    icon: Rocket,
     heading: 'No deployments yet',
     subheading: 'Deploy a custom model to serve it for inference.',
     createAction: { label: 'Create Deployment' },
@@ -147,7 +101,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me deploy my first model with the nemo-build-agent skill',
   },
   inferenceProviders: {
-    icon: Radar,
     heading: 'No inference providers yet',
     subheading:
       'Register an inference provider to make its models available for chat and evaluation.',
@@ -157,7 +110,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me create my first inference provider with the nemo-inference skill',
   },
   virtualModels: {
-    icon: Radar,
     heading: 'No virtual models yet',
     subheading:
       'Virtual models route inference traffic across one or more providers, with optional switchyard and guardrail middleware.',
@@ -167,7 +119,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me create my first virtual model with the nemo-inference skill',
   },
   secrets: {
-    icon: LockKeyhole,
     heading: 'No secrets yet',
     subheading:
       'Store API keys and credentials as secrets so providers and jobs can reference them securely.',
@@ -177,7 +128,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me create my first secret with the nemo-secrets skill',
   },
   members: {
-    icon: UsersRound,
     heading: 'No members yet',
     subheading:
       'Add a member to grant Viewer, Editor, or Admin access beyond the implicit workspace owners.',
@@ -186,13 +136,11 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
       'nemo workspaces members create --workspace <workspace-id> --principal <email> --roles <RoleName>',
   },
   jobs: {
-    icon: FlaskConical,
     heading: 'No jobs yet',
     subheading:
       'Jobs from customization, evaluation, anonymization, and data generation appear here once submitted.',
   },
   anonymizerJobs: {
-    icon: VenetianMask,
     heading: 'No anonymizer jobs yet',
     subheading:
       'Detect and protect PII in your datasets through context-aware replacement and rewriting.',
@@ -201,7 +149,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me create my first anonymizer job with the nemo-anonymizer skill',
   },
   dataDesignerJobs: {
-    icon: Lightbulb,
     heading: 'No Data Designer jobs yet',
     subheading: 'Create and manage Data Designer jobs to generate or transform synthetic datasets.',
     createAction: { label: 'New Job' },
@@ -210,7 +157,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
       'Help me create my first synthetic dataset with the nemo-data-designer-plugin skill',
   },
   safeSynthesizerJobs: {
-    icon: ShieldCheck,
     heading: 'No Safe Synthesizer jobs yet',
     subheading: 'Generate a private version of a sensitive tabular dataset.',
     createAction: { label: 'Synthesize Data' },
@@ -220,7 +166,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
       'Help me create my first Safe Synthesizer job with the nemo-safe-synthesizer skill',
   },
   agentEvaluations: {
-    icon: FlaskConical,
     heading: 'No evaluation jobs yet',
     subheading:
       'Apply a model_optimization suggestion or submit an evaluate-agent job to see results here.',
@@ -230,7 +175,6 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
       'Help me create my first agent evaluation with the nemo-nemo-evaluator-plugin skill',
   },
   evaluationResults: {
-    icon: FlaskConical,
     heading: 'No evaluations yet',
     subheading: 'Submit an evaluation job to score a model or agent against a benchmark.',
     createAction: { label: 'Create Evaluation' },
@@ -238,12 +182,10 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me create my first evaluation with the nemo-nemo-evaluator-plugin skill',
   },
   evaluationSessions: {
-    icon: FlaskConical,
     heading: 'No test cases',
     subheading: 'Run an experiment to see test case results here.',
   },
   experiments: {
-    icon: FlaskConical,
     heading: 'No experiments yet',
     subheading: 'Log an experiment to compare evaluation runs across models and configurations.',
     createAction: { label: 'Create Experiment' },
@@ -251,30 +193,25 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     skillPrompt: 'Help me log my first experiment with the nemo-experiments-upload skill',
   },
   evalComparison: {
-    icon: ChartNetwork,
     heading: 'No evaluations selected',
     subheading: 'Select evaluations to compare their results side by side.',
   },
   optimizerInsights: {
-    icon: Lightbulb,
     heading: 'No insights yet',
     subheading: 'Run an optimizer analysis on an agent to surface insights here.',
     cliCommand: 'nemo agents optimize-skills run --spec-file <spec>.yml',
     skillPrompt: 'Help me run my first optimizer analysis with the nemo-skills-optimization skill',
   },
   insightExperiments: {
-    icon: FlaskConical,
     heading: 'No experiments yet',
     subheading: 'This insight has no linked experiments yet.',
     createAction: { label: 'Run Experiment' },
   },
   insightTraces: {
-    icon: Anchor,
     heading: 'No traces yet',
     subheading: 'This insight has no linked traces yet.',
   },
   telemetryTraces: {
-    icon: ListTree,
     heading: 'No traces yet',
     subheading: 'Trace summaries will appear here after spans are ingested.',
     cliCommand:
@@ -284,18 +221,15 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
       'Help me import traces into the "<workspace>" workspace with the nemo-intake skill.',
   },
   telemetrySpans: {
-    icon: Anchor,
     heading: 'No spans yet',
     subheading: 'Spans will appear here once your agent starts sending telemetry.',
   },
   agentMonitorRuns: {
-    icon: HatGlasses,
     heading: 'No runs yet',
     subheading:
       'Agent invocations populate this list once telemetry reaches the nemo-agent-telemetry fileset.',
   },
   agents: {
-    icon: HatGlasses,
     heading: 'No agents yet',
     subheading: 'Build and deploy an agent to see it listed here.',
     cliCommand: 'nemo agents create --name <agent-name> --agent-config <agent.yaml>',
