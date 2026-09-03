@@ -85,3 +85,5 @@ After the user approves registration and deployment:
 Docker is the supported local container path. Kubernetes requires a published
 image reachable by the configured executor and a separately verified runtime
 contract.
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
