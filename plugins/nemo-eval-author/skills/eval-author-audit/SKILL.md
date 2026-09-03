@@ -339,8 +339,10 @@ Treat that list as the input for a later task-generation step.
 
 - For audit-generation inputs and reconciliation modes, return to
   [Step 2: Generate Or Reconcile Audit.md](#step-2-generate-or-reconcile-auditmd).
-- When aggregate `uncovered_items` includes actionable tools
+- When aggregate `uncovered_items` includes actionable items
   (`reason: not_covered_by_any_input_report`), hand off to
   [`eval-author-task-create`](../eval-author-task-create/SKILL.md) to scaffold
-  and prove one gap at a time. Capability or failure-case items with
-  `reason: not_measured_by_any_method` stay audit findings only in v1.
+  and prove one gap at a time. Items with
+  `reason: not_measured_by_any_method`, such as failure-case items and
+  capability items measured without the `capabilities` method, stay audit
+  findings only in v1.
