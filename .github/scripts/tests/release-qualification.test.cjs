@@ -14,19 +14,28 @@ const REQUEST = {
   version: "0.5.1",
 };
 
-function githubClient(deployments, statuses = [{ state: "success" }]) {
+function githubClient(
+  deployments,
+  statuses = [{ id: 1, state: "success", created_at: "2026-09-01T00:00:00Z" }],
+) {
+  const listDeployments = () => {};
+  const listDeploymentStatuses = () => {};
+
   return {
-    paginate: async (_method, request) => {
-      assert.equal(request.environment, "release-qualified");
-      return deployments;
+    paginate: async (method, request) => {
+      if (method === listDeployments) {
+        assert.equal(request.environment, "release-qualified");
+        return deployments;
+      }
+
+      assert.equal(method, listDeploymentStatuses);
+      assert.equal(request.deployment_id, 42);
+      return statuses;
     },
     rest: {
       repos: {
-        listDeployments: () => {},
-        listDeploymentStatuses: async (request) => {
-          assert.equal(request.deployment_id, 42);
-          return { data: statuses };
-        },
+        listDeployments,
+        listDeploymentStatuses,
       },
     },
   };
@@ -99,7 +108,40 @@ test("rejects a non-success qualification", async () => {
             },
           },
         ],
-        [{ state: "inactive" }],
+        [{ id: 1, state: "inactive", created_at: "2026-09-01T00:00:00Z" }],
+      ),
+    }),
+    /is not release-qualified/,
+  );
+});
+
+test("uses the newest deployment status", async () => {
+  await assert.rejects(
+    requireReleaseQualification({
+      ...REQUEST,
+      github: githubClient(
+        [
+          {
+            id: 42,
+            payload: {
+              platform_ref: SOURCE_SHA,
+              release_branch: "release/0.5",
+              release_version: "0.5.1",
+            },
+          },
+        ],
+        [
+          {
+            id: 1,
+            state: "success",
+            created_at: "2026-09-01T00:00:00Z",
+          },
+          {
+            id: 2,
+            state: "inactive",
+            created_at: "2026-09-02T00:00:00Z",
+          },
+        ],
       ),
     }),
     /is not release-qualified/,

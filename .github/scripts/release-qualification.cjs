@@ -36,15 +36,23 @@ async function requireReleaseQualification({
 
   if (deployment) {
     try {
-      const { data: statuses } = await github.rest.repos.listDeploymentStatuses(
+      const statuses = await github.paginate(
+        github.rest.repos.listDeploymentStatuses,
         {
           owner,
           repo,
           deployment_id: deployment.id,
-          per_page: 1,
+          per_page: 100,
         },
       );
-      if (statuses[0]?.state === "success") {
+      const latestStatus = [...statuses]
+        .sort(
+          (left, right) =>
+            left.created_at.localeCompare(right.created_at) ||
+            left.id - right.id,
+        )
+        .at(-1);
+      if (latestStatus?.state === "success") {
         return;
       }
     } catch {
