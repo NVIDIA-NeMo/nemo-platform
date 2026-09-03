@@ -4,6 +4,7 @@
 import asyncio
 import json
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterable
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceMiddlewareError,
     InferenceResponse,
 )
+from nemo_platform_plugin.refs import ENTITY_REF_PATTERN
 from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.entities.utils import parse_model_entity_ref
 from nmp.core.inference_gateway.api.backend_format import resolve_backend_format
@@ -57,6 +59,13 @@ ResponseResult = Union[dict[str, Any], AsyncIterator[dict[str, Any]]]
 logger = logging.getLogger(__name__)
 
 DEFAULT_CHUNK_SIZE = 4096
+
+# A model name safe to blind-substring-replace inside an error body: the entity-ref
+# shape (``[\w.-]`` segments with an optional ``/``), which both the entity store
+# (ENTITY_REF_PATTERN) and HuggingFace repo ids conform to. Its character set has no
+# JSON-structural characters, so replacing it can't corrupt a JSON body. See
+# _rewrite_model_field_in_error_body.
+_SAFE_MODEL_NAME = re.compile(ENTITY_REF_PATTERN)
 
 # OpenAPI extra configuration for proxy endpoints that accept arbitrary JSON bodies.
 # This is used to generate proper requestBody schema in OpenAPI spec for POST/PUT/PATCH
@@ -676,42 +685,35 @@ def _rewrite_model_field_in_error_body(
     leaks in error cases (rate-limit messages, content-policy blocks, "model not
     found", etc.). This restores parity with the happy-path rewrite.
 
-    Two body shapes are handled:
+    This is **best-effort UX scrubbing**, not a guarantee. It does a single
+    substring replacement over the raw body, so it is format-agnostic — it works
+    the same whether the body is a JSON object, plain text, or something we can't
+    parse — and, because it makes exactly one pass over the *original* string, it
+    cannot double-apply the swap (a parse-then-blanket-replace approach mangles
+    ``model-1`` → ``default/model-1`` → ``default/default/model-1`` whenever the
+    restored id contains the served name, which is the common case).
 
-    * **JSON object** — parsed, run through :func:`_rewrite_model_field` (so the
-      same top-level / ``message`` / ``response`` locations are covered), and
-      re-serialized. This catches the structured ``model`` field OpenAI- and
-      Anthropic-shaped error bodies echo back.
-    * **Anything else** (plain text, a JSON scalar/array, or unparseable text) —
-      a plain substring replacement of *served_model_name* with
-      *restored_model_id*, which covers free-form messages like
-      ``"The model `served-name` does not exist"``.
-
-    The JSON path additionally does a substring pass over the re-serialized text
-    so a served name embedded in a *message string* (e.g. OpenAI's
-    ``"error": {"message": "The model `served-name` does not exist ..."}``) is
-    scrubbed too, not just a structured ``model`` field. Both passes are strict
-    substring/equality swaps, so an empty *error_body* or one that never mentions
-    the served name is returned unchanged.
+    To keep that blind replacement from corrupting a JSON body, both names must be
+    plain model ids — they are matched against :data:`ENTITY_REF_PATTERN`
+    (``[\\w.-]`` segments with an optional ``/``), the same shape the entity store
+    and HuggingFace both use, whose character set contains no JSON-structural
+    characters (no quotes, braces, brackets, colons, backslashes). If either name
+    falls outside that shape (or is empty), the scrub is skipped entirely and the
+    body is returned untouched — the served name persists rather than risk mangling
+    the response.
     """
-    if not error_body:
+    if not error_body or not served_model_name:
         return error_body
 
-    try:
-        parsed = json.loads(error_body)
-    except (json.JSONDecodeError, ValueError):
-        return error_body.replace(served_model_name, restored_model_id)
+    if not (_SAFE_MODEL_NAME.match(served_model_name) and _SAFE_MODEL_NAME.match(restored_model_id)):
+        logger.warning(
+            "Skipping error-body model-name scrub: a model name is not a plain model id "
+            "(served=%r restored=%r); leaving the body untouched to avoid corrupting it.",
+            served_model_name,
+            restored_model_id,
+        )
+        return error_body
 
-    if isinstance(parsed, dict):
-        _rewrite_model_field(parsed, served_model_name, restored_model_id)
-        reserialized = json.dumps(parsed)
-        # Also scrub the served name out of any free-form message strings that
-        # _rewrite_model_field (which only touches structured `model` fields)
-        # would miss.
-        return reserialized.replace(served_model_name, restored_model_id)
-
-    # A JSON scalar or array — no structured `model` field to target, so fall
-    # back to a substring replace over the original text.
     return error_body.replace(served_model_name, restored_model_id)
 
 

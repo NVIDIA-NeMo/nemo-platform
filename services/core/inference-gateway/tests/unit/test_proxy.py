@@ -1868,10 +1868,29 @@ def test_rewrite_model_field_partial_match_only():
 
 def test_rewrite_error_body_json_structured_model_field():
     """A structured ``model`` field in a JSON error body is rewritten."""
-    body = json.dumps({"error": {"message": "boom"}, "model": "served-name"})
-    out = _rewrite_model_field_in_error_body(body, "served-name", "ws/entity")
-    assert json.loads(out)["model"] == "ws/entity"
-    assert "served-name" not in out
+    body = json.dumps({"error": {"message": "boom"}, "model": "model-1"})
+    out = _rewrite_model_field_in_error_body(body, "model-1", "default/model-1")
+    assert json.loads(out)["model"] == "default/model-1"
+
+
+def test_rewrite_error_body_no_double_application_when_restored_contains_served():
+    """Regression: the served name is applied exactly once even when the restored id
+    *contains* it (the common ``model-1`` -> ``default/model-1`` case). A parse-then-
+    blanket-replace approach would re-hit the already-rewritten value and produce
+    ``default/default/model-1``; a single pass over the original must not.
+
+    Covers a served name appearing BOTH as a structured ``model`` field and inside a
+    free-form error message string in the same body.
+    """
+    served, restored = "model-1", "default/model-1"
+    body = json.dumps({"model": served, "error": {"message": f"{served} is unavailable"}})
+    out = _rewrite_model_field_in_error_body(body, served, restored)
+
+    parsed = json.loads(out)  # still valid JSON
+    assert parsed["model"] == restored
+    assert parsed["error"]["message"] == f"{restored} is unavailable"
+    # The doubled-prefix mangling must not appear anywhere.
+    assert "default/default/" not in out
 
 
 def test_rewrite_error_body_json_model_in_message_string():
@@ -1880,41 +1899,61 @@ def test_rewrite_error_body_json_model_in_message_string():
     body = json.dumps(
         {
             "error": {
-                "message": "The model `served-name` does not exist or you do not have access to it.",
+                "message": "The model `model-1` does not exist or you do not have access to it.",
                 "type": "invalid_request_error",
                 "code": "model_not_found",
             }
         }
     )
-    out = _rewrite_model_field_in_error_body(body, "served-name", "ws/entity")
-    assert "served-name" not in out
-    assert "ws/entity" in json.loads(out)["error"]["message"]
+    out = _rewrite_model_field_in_error_body(body, "model-1", "default/model-1")
+    parsed = json.loads(out)  # substring swap kept the body valid JSON
+    assert "default/model-1" in parsed["error"]["message"]
+    assert "`model-1`" not in parsed["error"]["message"]
 
 
 def test_rewrite_error_body_plain_text_substring_replace():
     """A non-JSON plain-text error body is handled by substring replacement."""
-    body = "Upstream error: model served-name is overloaded, retry later."
-    out = _rewrite_model_field_in_error_body(body, "served-name", "ws/entity")
-    assert out == "Upstream error: model ws/entity is overloaded, retry later."
+    body = "Upstream error: model model-1 is overloaded, retry later."
+    out = _rewrite_model_field_in_error_body(body, "model-1", "default/model-1")
+    assert out == "Upstream error: model default/model-1 is overloaded, retry later."
 
 
 def test_rewrite_error_body_empty_is_noop():
     """An empty error body is returned unchanged."""
-    assert _rewrite_model_field_in_error_body("", "served-name", "ws/entity") == ""
+    assert _rewrite_model_field_in_error_body("", "model-1", "default/model-1") == ""
+
+
+def test_rewrite_error_body_empty_served_name_is_noop():
+    """An empty *served_model_name* is a no-op: ``str.replace("", ...)`` would otherwise
+    splice the restored id between every character and corrupt the whole body."""
+    body = json.dumps({"error": {"message": "boom"}})
+    assert _rewrite_model_field_in_error_body(body, "", "default/model-1") == body
 
 
 def test_rewrite_error_body_no_match_passthrough():
     """A body that never mentions the served name is returned unchanged."""
     body = json.dumps({"error": {"message": "rate limit exceeded"}})
-    assert _rewrite_model_field_in_error_body(body, "served-name", "ws/entity") == body
+    assert _rewrite_model_field_in_error_body(body, "model-1", "default/model-1") == body
 
 
-def test_rewrite_error_body_json_scalar_falls_back_to_substring():
-    """A JSON scalar/array (no dict to target) falls back to substring replace."""
-    body = json.dumps("served-name is unavailable")
-    out = _rewrite_model_field_in_error_body(body, "served-name", "ws/entity")
-    assert "served-name" not in out
-    assert "ws/entity" in out
+def test_rewrite_error_body_skips_when_name_has_json_unsafe_char():
+    """If a model name isn't a plain entity-ref/model id (e.g. it carries a quote or
+    brace), the blind substring swap could corrupt a JSON body — so the scrub is
+    skipped entirely and the body (served name included) is returned untouched.
+    """
+    body = json.dumps({"model": 'weird"name', "error": {"message": 'weird"name failed'}})
+    # served name contains a double-quote -> outside ENTITY_REF_PATTERN -> skip
+    assert _rewrite_model_field_in_error_body(body, 'weird"name', "default/model-1") == body
+    # restored id malformed (contains a brace) -> also skip
+    body2 = json.dumps({"model": "model-1"})
+    assert _rewrite_model_field_in_error_body(body2, "model-1", "default/{model-1}") == body2
+
+
+def test_rewrite_error_body_scalar_json_string_is_scrubbed():
+    """A JSON scalar (a bare quoted string body) is still scrubbed by the single pass."""
+    body = json.dumps("model-1 is unavailable")
+    out = _rewrite_model_field_in_error_body(body, "model-1", "default/model-1")
+    assert out == json.dumps("default/model-1 is unavailable")
 
 
 def _error_response(status: int, body: bytes, *, content_type: str = "application/json") -> Mock:
