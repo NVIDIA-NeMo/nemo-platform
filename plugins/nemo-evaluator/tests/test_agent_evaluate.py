@@ -800,6 +800,35 @@ async def test_compile_gym_environment_adds_staging_step_before_evaluation(mocke
     assert evaluate_config["target"]["environment"] == "dev/custom-gym"
 
 
+async def test_compile_gym_environment_uses_host_commands_for_subprocess_profile(
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        return_value="registry.example/nmp-gym-tasks:test",
+    )
+    _enable_fileset_sandbox(mocker)
+    _patch_execution_profiles(mocker, [SubprocessJobExecutionProfile()])
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target())
+
+    compiled = await AgentEvalJob.compile(
+        workspace="dev",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    assert [step.name for step in job_spec.steps] == ["stage-environment", "agent-evaluate"]
+
+    stage, evaluate = job_spec.steps
+    assert isinstance(stage.executor, SubprocessExecutionProvider)
+    assert stage.executor.command == ["python", "-m", "nemo_evaluator.tasks.stage_environment"]
+    assert isinstance(evaluate.executor, SubprocessExecutionProvider)
+    assert evaluate.executor.command == ["python", "-m", "nemo_evaluator.tasks.agent_evaluate"]
+
+
 async def test_compile_rejects_fileset_environment_when_sandboxing_is_disabled(mocker: MockerFixture) -> None:
     mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", None)
     mocker.patch(

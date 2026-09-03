@@ -362,38 +362,6 @@ def test_build_command_prefers_virtual_env_python(tmp_path) -> None:
     ]
 
 
-def test_build_command_rewrites_gym_tasks_container_python(tmp_path) -> None:
-    venv_python = tmp_path / "venv" / "bin" / "python"
-    venv_python.parent.mkdir(parents=True)
-    venv_python.write_text("#!/bin/sh\n", encoding="utf-8")
-    venv_python.chmod(0o755)
-    executor = SubprocessExecutionProvider(
-        provider="subprocess",
-        profile="default",
-        command=["/app/.venv/bin/python", "-m", "nemo_evaluator.tasks.stage_environment"],
-    )
-
-    assert SubprocessJobBackend._build_command(executor, str(tmp_path / "venv")) == [
-        str(venv_python),
-        "-m",
-        "nemo_evaluator.tasks.stage_environment",
-    ]
-
-
-def test_build_command_rewrites_gym_tasks_container_python_without_virtual_env() -> None:
-    executor = SubprocessExecutionProvider(
-        provider="subprocess",
-        profile="default",
-        command=["/app/.venv/bin/python", "-m", "nemo_evaluator.tasks.agent_evaluate"],
-    )
-
-    assert SubprocessJobBackend._build_command(executor, None) == [
-        sys.executable,
-        "-m",
-        "nemo_evaluator.tasks.agent_evaluate",
-    ]
-
-
 def test_schedule_python_command_does_not_depend_on_runtime_path(
     mock_nmp_client, tmp_path, mock_platform_config, test_step_pending
 ):

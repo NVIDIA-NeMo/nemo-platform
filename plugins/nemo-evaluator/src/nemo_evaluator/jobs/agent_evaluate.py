@@ -340,23 +340,29 @@ class AgentEvalJob(NemoJob):
         """Compile the canonical spec into a plugin-native agent-evaluation job."""
         del entity_client, job_name, options
         canonical_spec = spec if isinstance(spec, AgentEvalSpec) else AgentEvalSpec.model_validate(spec.model_dump())
-        if isinstance(canonical_spec.target, GymRunnerTarget) and canonical_spec.target.environment is not None:
-            evaluator_config = EvaluatorConfig()
-            try:
-                require_fileset_environment_sandboxed(canonical_spec.target, evaluator_config)
-                execution_profile = await cls._execution_profile_for_storage(
-                    async_sdk=async_sdk,
-                    profile=profile or "default",
-                )
-                require_fileset_sandbox_storage_identity(
-                    canonical_spec.target,
-                    evaluator_config,
-                    execution_profile=execution_profile,
-                )
-            except SandboxUnavailableError as exc:
-                raise PlatformJobCompilationError(str(exc)) from exc
+        execution_profile: BaseExecutionProfile | None = None
+        if isinstance(canonical_spec.target, GymRunnerTarget):
+            execution_profile = await cls._execution_profile(
+                async_sdk=async_sdk,
+                profile=profile or "default",
+            )
+            if canonical_spec.target.environment is not None:
+                evaluator_config = EvaluatorConfig()
+                try:
+                    require_fileset_environment_sandboxed(canonical_spec.target, evaluator_config)
+                    require_fileset_sandbox_storage_identity(
+                        canonical_spec.target,
+                        evaluator_config,
+                        execution_profile=execution_profile,
+                    )
+                except SandboxUnavailableError as exc:
+                    raise PlatformJobCompilationError(str(exc)) from exc
         del workspace
-        platform_spec = compile_agent_eval_job(canonical_spec, profile=profile)
+        platform_spec = compile_agent_eval_job(
+            canonical_spec,
+            profile=profile,
+            use_subprocess=isinstance(execution_profile, SubprocessJobExecutionProfile),
+        )
         if isinstance(canonical_spec.target, HarborRunnerTarget):
             step = next(iter(platform_spec["steps"]))
             executor = cast(dict[str, Any], step["executor"])
@@ -367,19 +373,30 @@ class AgentEvalJob(NemoJob):
         return platform_spec
 
     @staticmethod
-    async def _execution_profile_for_storage(
+    async def _execution_profile(
         *,
         async_sdk: AsyncNeMoPlatform | None,
         profile: str,
     ) -> BaseExecutionProfile | None:
-        """Look up the selected execution profile so FileSet staging can share its PVC."""
+        """Resolve the profile that Jobs will use for this submission."""
         if async_sdk is None:
             return None
         try:
             profiles = (await client_from_platform(async_sdk, AsyncJobsClient).get_execution_profiles()).data()
         except (NemoTransportError, NemoResponseValidationError, InternalServerError):
             return None
-        return next((item for item in profiles if item.profile == profile), None)
+        # Profiles are keyed by (provider, profile), so cpu/default and subprocess/default may both
+        # be advertised. The Jobs API rewrites a CPU step to subprocess whenever a same-named
+        # subprocess profile is configured. Prefer that profile here as well, so Gym emits the
+        # host-portable `python -m ...` command that the rewritten step will need.
+        matching_profile: BaseExecutionProfile | None = None
+        for item in profiles:
+            if item.profile != profile:
+                continue
+            if isinstance(item, SubprocessJobExecutionProfile):
+                return item
+            matching_profile = item
+        return matching_profile
 
     @staticmethod
     async def _resolve_harbor_subprocess_executor(

@@ -490,9 +490,7 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
         command = executor_config.command
         if not command:
             raise ValueError(_ERR_COMMAND_REQUIRED)
-        # Gym steps compile to the gym-tasks image interpreter (`/app/.venv/bin/python`).
-        # Match on the basename so a host subprocess remaps that the same way as a bare `python`.
-        if Path(command[0]).name in {"python", "python3"}:
+        if command[0] in {"python", "python3"}:
             if virtual_env:
                 venv_python = Path(virtual_env) / "bin" / "python"
                 if os.access(venv_python, os.X_OK):
