@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import http.client
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Coroutine, Mapping
@@ -37,6 +39,75 @@ from sandboxed_gym.serve_config import (
 LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+#: Below this a request cannot have been cut for staying open too long, so the host went away
+#: instead. Only used to choose which hint an error carries.
+MIN_PROXY_CUTOFF_S = 30.0
+
+
+class RolloutTransportError(RuntimeError):
+    """A failed rollout POST, tagged with where it failed and whether a retry can help."""
+
+    def __init__(self, message: str, *, retryable: bool, origin: str) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        #: "proxy" (in transit), "sandbox" (the host reported it), or "client" (our own limits).
+        self.origin = origin
+
+
+def _decode_json_object(body: str) -> Mapping[str, Any] | None:
+    try:
+        decoded = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    return decoded if isinstance(decoded, Mapping) else None
+
+
+def _sandbox_reported_error(body: str) -> str | None:
+    """The Gym host's own error message from a response body, or None.
+
+    The host wraps its failures as ``{"error": {"code", "message"}}``. The sandbox proxy uses a
+    *flat* ``{"code", "message"}``, so looking only for this nested envelope is what keeps a proxy
+    timeout from being reported as an environment failure.
+    """
+    decoded = _decode_json_object(body)
+    if decoded is None or decoded.get("error") is None:
+        return None
+    error = decoded["error"]
+    if isinstance(error, Mapping):
+        return f"{error.get('code', 'unknown')}: {error.get('message', '')}".strip()
+    return str(error)
+
+
+def _proxy_reported_error(body: str) -> str | None:
+    """The sandbox proxy's own error from a response body, or None.
+
+    The proxy emits a flat ``{"code", "message"}`` with no nested ``error`` key, including when its
+    read timeout fires -- where the underlying ``ReadTimeout`` stringifies to an empty message.
+    That is a decision the proxy already made, not a dropped connection: retrying re-runs
+    generation for the same wall time and fails the same way.
+    """
+    decoded = _decode_json_object(body)
+    if decoded is None or "error" in decoded:
+        return None
+    code = decoded.get("code")
+    message = decoded.get("message", "")
+    if not isinstance(code, str) or not isinstance(message, str):
+        return None
+    return f"{code}: {message}".strip()
+
+
+def _transit_failure_hint(elapsed: float) -> str:
+    """Name the likely cause of a POST that failed in transit, from how long it ran."""
+    if elapsed < MIN_PROXY_CUTOFF_S:
+        return (
+            "too fast to be the proxy's request-duration cap, so the host stopped answering -- "
+            "check whether the sandbox is still running (OOMKilled, evicted, or crashed)"
+        )
+    return (
+        "the sandbox proxy caps how long one request may stay open, so lower "
+        "sandbox.rollout_chunk_size if this persists"
+    )
 
 
 def _run_coro_sync(coro: Coroutine[Any, Any, T]) -> T:
@@ -135,6 +206,7 @@ def build_gym_host_spec(
         sandbox.max_request_bytes,
         sandbox.max_response_bytes,
         dataset_path=dataset_path,
+        rollout_deadline_s=sandbox.rollout_timeout_s,
         extra=bootstrap_extra,
     )
 
@@ -204,6 +276,10 @@ class SandboxedGymSession:
         self._rollout_timeout_s = float(cfg.sandbox.rollout_timeout_s)
         self._max_request_bytes = cfg.sandbox.max_request_bytes
         self._max_response_bytes = cfg.sandbox.max_response_bytes
+        self._chunk_size = cfg.sandbox.rollout_chunk_size
+        self._max_in_flight = cfg.sandbox.rollout_max_in_flight
+        self._max_attempts = cfg.sandbox.rollout_max_attempts
+        self._retry_backoff_s = float(cfg.sandbox.rollout_retry_backoff_s)
 
     def descriptor(
         self, *, mode: str | None = None, orchestrator_url: str | None = None
@@ -223,38 +299,211 @@ class SandboxedGymSession:
         )
 
     def run_rollouts(self, examples: list[dict[str, Any]]) -> list[Any]:
+        """Run ``examples`` on the host as bounded concurrent chunks.
+
+        Results are not in input order and never have been -- Gym yields through
+        ``as_completed``. Attribution travels on each result as ``_ng_task_index`` /
+        ``_ng_rollout_index``; see ``_with_row_identity`` in the host runtime.
+        """
         if not examples:
             raise ValueError("rollout batch must not be empty")
-        body = json.dumps({"examples": examples}).encode("utf-8")
+        return _run_coro_sync(self._post_all_chunks(examples))
+
+    async def _post_all_chunks(self, examples: list[dict[str, Any]]) -> list[Any]:
+        chunks = [examples[start : start + self._chunk_size] for start in range(0, len(examples), self._chunk_size)]
+        semaphore = asyncio.Semaphore(self._max_in_flight)
+        # return_exceptions so one chunk failing does not leave the others running detached.
+        parts = await asyncio.gather(
+            *(
+                self._post_chunk_with_retries(index, chunk, len(chunks), semaphore)
+                for index, chunk in enumerate(chunks)
+            ),
+            return_exceptions=True,
+        )
+        failures = [part for part in parts if isinstance(part, BaseException)]
+        # A failure that is not a transport error is a bug in this process, not a report about
+        # the sandbox. Re-raised as itself: wrapping it would give it a plausible retryable/origin
+        # and hide the stack that explains it.
+        for failure in failures:
+            if not isinstance(failure, RolloutTransportError):
+                raise failure
+        if failures:
+            whole_batch = (
+                " Every chunk failed, so the sandbox itself is the likelier cause than any one request."
+                if len(failures) == len(chunks) > 1
+                else ""
+            )
+            raise RolloutTransportError(
+                f"{len(failures)} of {len(chunks)} rollout chunk(s) failed for this batch of "
+                f"{len(examples)} example(s).{whole_batch} First failure: {failures[0]}",
+                retryable=False,
+                origin=getattr(failures[0], "origin", "proxy"),
+            ) from failures[0]
+        return [result for part in parts for result in part]  # ty: ignore[not-iterable]
+
+    async def _post_chunk_with_retries(
+        self, index: int, chunk: list[dict[str, Any]], total: int, semaphore: asyncio.Semaphore
+    ) -> list[Any]:
+        label = f"chunk {index + 1}/{total}"
+        for attempt in range(1, self._max_attempts + 1):
+            try:
+                async with semaphore:
+                    started = time.monotonic()
+                    results = await asyncio.to_thread(self._post_chunk, chunk)
+            except RolloutTransportError as exc:
+                if not exc.retryable or attempt == self._max_attempts:
+                    raise RolloutTransportError(
+                        f"rollout {label} ({len(chunk)} example(s)) failed after {attempt} attempt(s): {exc}",
+                        retryable=exc.retryable,
+                        origin=exc.origin,
+                    ) from exc
+                backoff = self._retry_backoff_s * attempt
+                LOGGER.warning(
+                    "rollout %s attempt %d/%d failed (%s); retrying in %.1fs: %s",
+                    label,
+                    attempt,
+                    self._max_attempts,
+                    exc.origin,
+                    backoff,
+                    exc,
+                )
+                # Slept outside the semaphore so a backing-off chunk frees its slot.
+                await asyncio.sleep(backoff)
+                continue
+            LOGGER.info("rollout %s: %d result(s) in %.1fs", label, len(results), time.monotonic() - started)
+            return results
+        raise AssertionError("unreachable: the loop either returns or raises")
+
+    def _post_chunk(self, chunk: list[dict[str, Any]]) -> list[Any]:
+        body = json.dumps({"examples": chunk}).encode("utf-8")
         if len(body) > self._max_request_bytes:
-            raise ValueError(f"rollout request exceeds max_request_bytes ({len(body)} > {self._max_request_bytes})")
+            raise RolloutTransportError(
+                f"rollout request exceeds max_request_bytes ({len(body)} > {self._max_request_bytes}); "
+                f"lower sandbox.rollout_chunk_size",
+                retryable=False,
+                origin="client",
+            )
         request = urllib.request.Request(
             self.host.rollout_url,
             data=body,
             method="POST",
-            headers={
-                "Content-Type": "application/json",
-                **self.host.headers,
-            },
+            headers={"Content-Type": "application/json", **self.host.headers},
         )
+        started = time.monotonic()
         try:
             with urllib.request.urlopen(request, timeout=self._rollout_timeout_s) as response:
                 payload = response.read()
         except urllib.error.HTTPError as exc:
-            error_body = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"rollout POST failed with HTTP {exc.code}: {error_body}") from exc
+            raise self._transport_error(exc.read().decode("utf-8", errors="replace"), exc.code, chunk, started) from exc
+        except urllib.error.URLError as exc:
+            # Raised before any response headers arrived, so the host almost certainly never began
+            # this chunk. Safe to retry.
+            raise self._in_transit_error(str(exc.reason), chunk, started, retryable=True) from exc
+        except (OSError, http.client.HTTPException) as exc:
+            # The body died mid-read: a reset, a truncated response, a socket timeout. The heartbeat
+            # holds this connection open for the length of a batch, so there is far more of it to
+            # interrupt than there used to be, and none of it arrives as a URLError.
+            #
+            # Deliberately NOT retryable. Reaching a body means the host answered, which it only
+            # does after `submit_rollouts` has started the work -- and it has no request id to
+            # deduplicate against, so a retry runs the same examples a second time while the first
+            # is still going. Duplicated generation and duplicated environment side effects are a
+            # worse outcome than a failed chunk, and only the host can make this safe.
+            raise self._in_transit_error(f"{type(exc).__name__}: {exc}", chunk, started, retryable=False) from exc
         if len(payload) > self._max_response_bytes:
-            raise ValueError(
-                f"rollout response exceeds max_response_bytes ({len(payload)} > {self._max_response_bytes})"
+            raise RolloutTransportError(
+                f"rollout response exceeds max_response_bytes ({len(payload)} > {self._max_response_bytes})",
+                retryable=False,
+                origin="client",
             )
-        decoded = json.loads(payload.decode("utf-8"))
+        return self._decode_results(payload)
+
+    def _in_transit_error(
+        self, detail: str, chunk: list[dict[str, Any]], started: float, *, retryable: bool
+    ) -> RolloutTransportError:
+        elapsed = time.monotonic() - started
+        return RolloutTransportError(
+            f"rollout POST to {self.host.rollout_url} failed after {elapsed:.1f}s for "
+            f"{len(chunk)} example(s): {detail}; {_transit_failure_hint(elapsed)}",
+            retryable=retryable,
+            origin="proxy",
+        )
+
+    def _transport_error(
+        self, body: str, status: int, chunk: list[dict[str, Any]], started: float
+    ) -> RolloutTransportError:
+        """Classify a non-2xx response by who produced it."""
+        elapsed = time.monotonic() - started
+        reported = _sandbox_reported_error(body)
+        if reported is not None:
+            # The host answered, so the environment failed: deterministic, and a retry only
+            # spends generation time to reach the same place.
+            return RolloutTransportError(
+                f"the sandboxed environment failed this rollout after {elapsed:.1f}s for "
+                f"{len(chunk)} example(s) (HTTP {status} from {self.host.rollout_url}): {reported}",
+                retryable=False,
+                origin="sandbox",
+            )
+        proxy_reported = _proxy_reported_error(body)
+        if proxy_reported is not None:
+            # The proxy answered with its own envelope, so it has already given up.
+            return RolloutTransportError(
+                f"rollout POST was rejected by the sandbox proxy with HTTP {status} after "
+                f"{elapsed:.1f}s for {len(chunk)} example(s) to {self.host.rollout_url}: "
+                f"{proxy_reported}; {_transit_failure_hint(elapsed)}",
+                retryable=False,
+                origin="proxy",
+            )
+        return RolloutTransportError(
+            f"rollout POST was rejected in transit with HTTP {status} after {elapsed:.1f}s for "
+            f"{len(chunk)} example(s) to {self.host.rollout_url}; {_transit_failure_hint(elapsed)}. "
+            f"Body: {body[:512]}",
+            retryable=True,
+            origin="proxy",
+        )
+
+    def _decode_results(self, payload: bytes) -> list[Any]:
+        body = payload.decode("utf-8")
+        if not body.strip():
+            # Heartbeats and nothing else: the host committed its 200, padded the connection while
+            # it worked, and then went away without ever writing the envelope -- an OOMKill or an
+            # evicted pod mid-batch. Reported as the sandbox failing rather than as malformed JSON,
+            # which is what `json.loads` alone would have called it.
+            raise RolloutTransportError(
+                f"the sandboxed Gym host answered and then stopped without sending a result "
+                f"envelope ({len(payload)} byte(s) of heartbeat only); it most likely died "
+                f"mid-batch -- check whether the sandbox was OOMKilled or evicted",
+                retryable=False,
+                origin="sandbox",
+            )
+        try:
+            # The host heartbeats leading whitespace while a batch runs; json tolerates it.
+            decoded = json.loads(body)
+        except json.JSONDecodeError as exc:
+            # Narrow on purpose: a *non-empty* malformed body is a broken response contract, not a
+            # transport blip, so it must not be retried into looking like one.
+            raise RolloutTransportError(
+                f"the sandboxed Gym host returned a body that is not JSON ({exc}); first 200 bytes: {body[:200]!r}",
+                retryable=False,
+                origin="sandbox",
+            ) from exc
         if isinstance(decoded, dict) and "error" in decoded:
-            raise RuntimeError(f"rollout runtime error: {decoded['error']}")
+            # A 200 carrying an error: the host had already committed its status line when it
+            # failed, so this is the only channel it had left.
+            raise RolloutTransportError(
+                f"the sandboxed Gym host reported {decoded['error']}",
+                retryable=False,
+                origin="sandbox",
+            )
         if isinstance(decoded, dict) and "results" in decoded:
             return list(decoded["results"])
         if isinstance(decoded, list):
             return decoded
-        raise RuntimeError(f"unexpected rollout response shape: {type(decoded)}")
+        raise RolloutTransportError(
+            f"unexpected rollout response shape: {type(decoded).__name__}",
+            retryable=False,
+            origin="client",
+        )
 
     def shutdown(self) -> None:
         try:
