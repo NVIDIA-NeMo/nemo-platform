@@ -20,6 +20,11 @@ import {
 import { ControlledJsonInput } from '@studio/components/NewCustomizationForm/ControlledJsonInput';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
+import {
+  AUTOMODEL_SPEC_DEFAULTS,
+  UNSLOTH_SPEC_DEFAULTS,
+  specSliderProps,
+} from '@studio/util/forms/specDefaults';
 import { useFormContext } from 'react-hook-form';
 
 const INIT_LORA_WEIGHTS_OPTIONS = [
@@ -74,7 +79,7 @@ export const LoraParametersSection = () => {
           <ControlledSliderWithTextInput
             useControllerProps={{ name: 'automodel.training.lora.alpha', control }}
             formFieldProps={{ slotLabel: 'Alpha' }}
-            defaultValue={32}
+            {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'training_lora_alpha')}
             min={1}
             max={512}
             step={1}
@@ -83,7 +88,7 @@ export const LoraParametersSection = () => {
           <ControlledSliderWithTextInput
             useControllerProps={{ name: 'automodel.training.lora.dropout', control }}
             formFieldProps={{ slotLabel: 'Dropout' }}
-            defaultValue={0}
+            {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'training_lora_dropout')}
             min={0}
             max={1}
             step={0.01}
@@ -156,7 +161,7 @@ export const LoraParametersSection = () => {
         <ControlledSliderWithTextInput
           useControllerProps={{ name: 'unsloth.training.lora.alpha', control }}
           formFieldProps={{ slotLabel: 'Alpha' }}
-          defaultValue={16}
+          {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'training_lora_use_triton')}
           min={1}
           max={512}
           step={1}
@@ -165,7 +170,7 @@ export const LoraParametersSection = () => {
         <ControlledSliderWithTextInput
           useControllerProps={{ name: 'unsloth.training.lora.dropout', control }}
           formFieldProps={{ slotLabel: 'Dropout' }}
-          defaultValue={0}
+          {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'training_lora_dropout')}
           min={0}
           max={1}
           step={0.01}

@@ -21,6 +21,7 @@ import { ControlledStringListInput } from '@studio/components/NewCustomizationFo
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import { GrpoAdvancedSection } from '@studio/components/NewCustomizationForm/GrpoAdvancedSection';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
+import { GRPO_SPEC_DEFAULTS, specSliderProps } from '@studio/util/forms/specDefaults';
 import { useFormContext } from 'react-hook-form';
 
 /** GRPO supports full-weight and LoRA only — lora_merged is rejected by the backend. */
@@ -54,7 +55,7 @@ export const GrpoParametersSection = () => {
               slotLabel: 'Max Sequence Length',
               slotInfo: 'Maximum token length for training sequences, including rollout context.',
             }}
-            defaultValue={2048}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'max_seq_length')}
             min={128}
             max={131072}
             step={128}
@@ -67,7 +68,7 @@ export const GrpoParametersSection = () => {
               slotInfo:
                 'Group size: responses sampled per prompt, scored against the group mean. Below 4 the advantage estimate is noisy; larger groups are steadier but cost more memory. NeMo RL key: num_generations_per_prompt.',
             }}
-            defaultValue={8}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'num_generations_per_prompt')}
             min={2}
             max={64}
             step={1}
@@ -80,7 +81,7 @@ export const GrpoParametersSection = () => {
               slotInfo:
                 'Number of prompts sampled per training step. Must satisfy: prompts_per_step × rollouts_per_prompt is a multiple of the global batch size.',
             }}
-            defaultValue={8}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'num_prompts_per_step')}
             min={1}
             max={256}
             step={1}
@@ -102,7 +103,7 @@ export const GrpoParametersSection = () => {
               slotLabel: 'Max Rollout Turns',
               slotInfo: 'Maximum agent turns per rollout. Single-turn environments use 1.',
             }}
-            defaultValue={1}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'overlong_filtering')}
             min={1}
             max={20}
             step={1}
@@ -115,7 +116,7 @@ export const GrpoParametersSection = () => {
               slotInfo:
                 'Sampling temperature for rollout generation. Must stay above 0 — GRPO learns from the spread of rewards within a prompt group, and greedy sampling makes every rollout identical, so the spread is zero and the run does nothing. Applies to validation rollouts too. NeMo RL key: temperature.',
             }}
-            defaultValue={1.0}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'temperature')}
             min={0.05}
             max={2}
             step={0.05}
@@ -128,7 +129,7 @@ export const GrpoParametersSection = () => {
               slotInfo:
                 "Cap on tokens generated per rollout turn; cannot exceed max sequence length. Known limitation: NeMo Gym's verifiers_agent ignores this and uses its own environment max_tokens, so bound response length through Max Sequence Length or the environment. NeMo RL key: max_new_tokens.",
             }}
-            defaultValue={2048}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'max_new_tokens')}
             min={128}
             max={131072}
             step={128}
@@ -166,7 +167,7 @@ export const GrpoParametersSection = () => {
                   slotInfo:
                     'Over-generate each step by this factor so dynamic sampling has candidates to filter. Only settable while dynamic sampling is on.',
                 }}
-                defaultValue={1}
+                {...specSliderProps(GRPO_SPEC_DEFAULTS, 'use_dynamic_sampling')}
                 min={1}
                 max={8}
                 step={0.1}
@@ -179,7 +180,7 @@ export const GrpoParametersSection = () => {
                   slotInfo:
                     'How many generation batches one step may consume trying to fill itself before the run fails.',
                 }}
-                defaultValue={10}
+                {...specSliderProps(GRPO_SPEC_DEFAULTS, 'dynamic_sampling_max_gen_batches')}
                 min={1}
                 max={100}
                 step={1}
@@ -317,7 +318,7 @@ export const GrpoParametersSection = () => {
               slotLabel: 'Epochs',
               slotInfo: 'Passes through the dataset. Max Steps overrides this when both are set.',
             }}
-            defaultValue={1}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'epochs')}
             min={1}
             max={100}
             step={1}
@@ -330,7 +331,7 @@ export const GrpoParametersSection = () => {
               slotInfo:
                 "Peak learning rate. RL fine-tuning runs far lower than SFT: the platform GRPO examples train at 5e-6. Above roughly 2e-5 a full-weight policy typically collapses within a few dozen steps. LoRA needs no separate value — the adapter's effective rate is scaled by alpha / rank, so the default rank 16 / alpha 32 trains at an effective 1e-5.",
             }}
-            defaultValue={5e-6}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'learning_rate')}
             min={1e-7}
             max={1e-4}
             step={1e-7}
@@ -343,7 +344,7 @@ export const GrpoParametersSection = () => {
               slotInfo:
                 'KL penalty coefficient against the reference policy. Higher values keep the model closer to the reference. 0 disables it, which is what most current GRPO recipes do for verifiable-reward tasks; when enabled it usually sits between 0.001 and 0.01.',
             }}
-            defaultValue={0.0}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'ref_policy_kl_penalty')}
             min={0}
             max={0.1}
             step={0.001}
@@ -356,7 +357,7 @@ export const GrpoParametersSection = () => {
               slotInfo:
                 'Caps the run at this many optimizer steps. It only ever shortens a run — GRPO trains for one epoch, so the budget is whichever of the two comes first.',
             }}
-            defaultValue={500}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'max_steps')}
             min={1}
             max={10000}
             step={1}
@@ -369,7 +370,7 @@ export const GrpoParametersSection = () => {
               slotInfo:
                 'Rollouts per optimizer step, across all GPUs. The rollout batch (prompts per step × rollouts per prompt) is split into chunks of this size, so it has to divide that product exactly.',
             }}
-            defaultValue={32}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'batch_size')}
             min={1}
             max={256}
             step={1}
@@ -385,7 +386,7 @@ export const GrpoParametersSection = () => {
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'rl.training.micro_batch_size', control }}
                     formFieldProps={{ slotLabel: 'Micro Batch Size' }}
-                    defaultValue={1}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'micro_batch_size')}
                     min={1}
                     max={64}
                     step={1}
@@ -394,7 +395,7 @@ export const GrpoParametersSection = () => {
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'rl.training.warmup_steps', control }}
                     formFieldProps={{ slotLabel: 'Warmup Steps' }}
-                    defaultValue={0}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'warmup_steps')}
                     min={0}
                     max={1000}
                     step={1}
@@ -403,7 +404,7 @@ export const GrpoParametersSection = () => {
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'rl.training.weight_decay', control }}
                     formFieldProps={{ slotLabel: 'Weight Decay' }}
-                    defaultValue={0.01}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'weight_decay')}
                     min={0}
                     max={1}
                     step={0.01}
@@ -441,7 +442,7 @@ export const GrpoParametersSection = () => {
                       slotLabel: 'Max Gradient Norm',
                       slotInfo: 'Gradient clipping threshold.',
                     }}
-                    defaultValue={1.0}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'max_grad_norm')}
                     min={0}
                     max={10}
                     step={0.1}
@@ -453,7 +454,7 @@ export const GrpoParametersSection = () => {
                       slotLabel: 'Seed',
                       slotInfo: 'Random seed for reproducibility.',
                     }}
-                    defaultValue={42}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'seed')}
                     min={0}
                     max={999999}
                     step={1}
@@ -481,7 +482,7 @@ export const GrpoParametersSection = () => {
                       slotLabel: 'Min Learning Rate',
                       slotInfo: 'Floor the cosine schedule decays to. Keep it below the peak LR.',
                     }}
-                    defaultValue={0}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'optimizer_type')}
                     min={0}
                     max={1e-4}
                     step={1e-7}
@@ -490,7 +491,7 @@ export const GrpoParametersSection = () => {
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'rl.training.adam_beta1', control }}
                     formFieldProps={{ slotLabel: 'Adam β₁' }}
-                    defaultValue={0.9}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'seed')}
                     min={0}
                     max={0.999}
                     step={0.001}
@@ -499,7 +500,7 @@ export const GrpoParametersSection = () => {
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'rl.training.adam_beta2', control }}
                     formFieldProps={{ slotLabel: 'Adam β₂' }}
-                    defaultValue={0.999}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'adam_beta2')}
                     min={0}
                     max={0.9999}
                     step={0.0001}
@@ -512,7 +513,7 @@ export const GrpoParametersSection = () => {
                       slotInfo:
                         'Numerical stability term. The platform default is 1e-5, the value NeMo uses for bf16 training; 1e-8 is the Torch default.',
                     }}
-                    defaultValue={1e-5}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'adam_eps')}
                     min={1e-10}
                     max={1e-4}
                     step={1e-8}
@@ -525,7 +526,7 @@ export const GrpoParametersSection = () => {
                       slotInfo:
                         'GRPO validation is a scored rollout pass, not a loss computation, so each one costs about as much as a training step. Interpreted as a step count, clamped to the run length; validation always runs at least once before training ends. NeMo RL key: val_check_interval.',
                     }}
-                    defaultValue={50}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'val_check_interval')}
                     min={2}
                     max={1000}
                     step={1}
@@ -557,7 +558,7 @@ export const GrpoParametersSection = () => {
                       slotInfo:
                         'Number of best checkpoints to retain, ranked by mean validation reward — higher is better. Falls back to the latest checkpoint when the dataset ships no validation split.',
                     }}
-                    defaultValue={1}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'val_at_end')}
                     min={1}
                     max={10}
                     step={1}
@@ -607,7 +608,7 @@ export const GrpoParametersSection = () => {
               <ControlledSliderWithTextInput
                 useControllerProps={{ name: 'grpo.lora.rank', control }}
                 formFieldProps={{ slotLabel: 'LoRA Rank' }}
-                defaultValue={16}
+                {...specSliderProps(GRPO_SPEC_DEFAULTS, 'lora_rank')}
                 min={1}
                 max={256}
                 step={1}
@@ -619,7 +620,7 @@ export const GrpoParametersSection = () => {
                   slotLabel: 'LoRA Alpha',
                   slotInfo: 'Scaling factor; effective LR multiplier = alpha / rank.',
                 }}
-                defaultValue={32}
+                {...specSliderProps(GRPO_SPEC_DEFAULTS, 'lora_alpha')}
                 min={1}
                 max={512}
                 step={1}
@@ -628,7 +629,7 @@ export const GrpoParametersSection = () => {
               <ControlledSliderWithTextInput
                 useControllerProps={{ name: 'grpo.lora.dropout', control }}
                 formFieldProps={{ slotLabel: 'LoRA Dropout' }}
-                defaultValue={0}
+                {...specSliderProps(GRPO_SPEC_DEFAULTS, 'lora_dropout')}
                 min={0}
                 max={1}
                 step={0.01}
