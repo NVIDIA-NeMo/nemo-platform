@@ -14,7 +14,7 @@ import type { VariableDef } from '@nemo/common/src/components/form/VariableTextA
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { logger } from '@nemo/common/src/utils/logger';
-import { useEvaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import { useEvaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import type { EvaluateJobRequest, MetricInline, Model } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Button,

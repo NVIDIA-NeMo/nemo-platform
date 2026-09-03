@@ -16,11 +16,11 @@ import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledT
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema';
 import {
   getSecretsListSecretsQueryKey,
   useSecretsUpdateSecret,
-} from '@nemo/sdk/generated/platform/api';
-import { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/platform/secrets';
 import { FormField, Stack, Text, TextInput } from '@nvidia/foundations-react-core';
 import { useQueryClient } from '@tanstack/react-query';
 import { FC } from 'react';

@@ -9,7 +9,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
-import { useJobsGetJob, useJobsListJobResults } from '@nemo/sdk/generated/platform/api';
+import { useJobsGetJob, useJobsListJobResults } from '@nemo/sdk/generated/platform/jobs';
 import { Flex, Grid, PageHeader, Panel, Spinner, Stack } from '@nvidia/foundations-react-core';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';

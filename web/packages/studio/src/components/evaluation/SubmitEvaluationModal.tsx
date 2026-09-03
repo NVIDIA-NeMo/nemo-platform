@@ -10,23 +10,24 @@ import { DEFAULT_DEBOUNCE_MS } from '@nemo/common/src/constants';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getEntityNameError, toValidEntityName } from '@nemo/common/src/utils/entityName';
-import { useAgentsListAgents } from '@nemo/sdk/generated/agents/api';
-import { evaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import { useAgentsListAgents } from '@nemo/sdk/generated/agents/agents';
+import { evaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import type {
   AgentEvaluateJobRequest,
   EvaluateJobRequest,
 } from '@nemo/sdk/generated/evaluator/schema';
+import { deleteEvaluation, useListEvaluations } from '@nemo/sdk/generated/platform/evaluations';
 import {
   createExperiment,
-  deleteEvaluation,
   deleteExperiment,
+  useListExperiments,
+} from '@nemo/sdk/generated/platform/experiments';
+import {
   filesCreateFileset,
   filesDeleteFileset,
   filesDownloadFile,
   filesUploadFile,
-  useListEvaluations,
-  useListExperiments,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/files';
 import {
   Anchor,
   Button,

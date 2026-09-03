@@ -5,7 +5,7 @@ import {
   filesCreateFileset,
   filesListFilesetFiles,
   filesUploadFile,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/files';
 
 // Idempotent seeding of an eval-config fileset, shared by the agent-evaluation
 // submit flow (which supplies its own `eval-config.json`) and the optimizer

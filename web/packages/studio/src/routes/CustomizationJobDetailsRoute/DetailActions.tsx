@@ -5,12 +5,10 @@ import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { CJobCancellableStatuses, CJobLaunchableStatuses } from '@nemo/common/src/constants/query';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import {
-  useCustomizationCancelAutomodelJob,
-  useCustomizationCancelRlJob,
-  useCustomizationCancelUnslothJob,
-} from '@nemo/sdk/generated/customizer/api';
-import { getJobsGetJobQueryKey } from '@nemo/sdk/generated/platform/api';
+import { useCustomizationCancelAutomodelJob } from '@nemo/sdk/generated/customizer/automodel-jobs';
+import { useCustomizationCancelRlJob } from '@nemo/sdk/generated/customizer/rl-jobs';
+import { useCustomizationCancelUnslothJob } from '@nemo/sdk/generated/customizer/unsloth-jobs';
+import { getJobsGetJobQueryKey } from '@nemo/sdk/generated/platform/jobs';
 import { PlatformJobStatus, type PlatformJobResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex } from '@nvidia/foundations-react-core';
 import { getCustomizationJobStatusQueryKey } from '@studio/hooks/useCustomizationJobStatus';

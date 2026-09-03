@@ -19,7 +19,7 @@ import {
   useModelsDeleteModel,
   useModelsDeleteModelAdapter,
   useModelsListModels,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/models';
 import type {
   Adapter,
   DatetimeFilter,

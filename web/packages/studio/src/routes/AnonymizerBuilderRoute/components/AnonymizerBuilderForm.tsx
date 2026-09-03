@@ -5,7 +5,7 @@ import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import {
   useAnonymizerCreateRunJob,
   useAnonymizerListEntityLabels,
-} from '@nemo/sdk/generated/anonymizer/api';
+} from '@nemo/sdk/generated/anonymizer/anonymizer';
 import type { PreviewRequest, RunJob } from '@nemo/sdk/generated/anonymizer/schema';
 import {
   Banner,

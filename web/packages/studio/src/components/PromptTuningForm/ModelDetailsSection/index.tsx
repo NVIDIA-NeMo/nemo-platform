@@ -10,7 +10,7 @@ import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledT
 import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import { compileSystemPrompt } from '@nemo/common/src/models/utils';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
-import { useModelsGetModel as useGetModel } from '@nemo/sdk/generated/platform/api';
+import { useModelsGetModel as useGetModel } from '@nemo/sdk/generated/platform/models';
 import { FormField, Stack } from '@nvidia/foundations-react-core';
 import { useSetFieldErrorOnApiError } from '@studio/hooks/evaluation/useSetFieldErrorOnApiError';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';

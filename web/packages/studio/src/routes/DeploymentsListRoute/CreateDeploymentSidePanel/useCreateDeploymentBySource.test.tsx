@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import {
-  filesCreateFileset,
-  modelsCreateDeployment,
-  modelsCreateDeploymentConfig,
-  modelsCreateModel,
-} from '@nemo/sdk/generated/platform/api';
+import { filesCreateFileset } from '@nemo/sdk/generated/platform/files';
+import { modelsCreateDeploymentConfig } from '@nemo/sdk/generated/platform/model-deployment-configs';
+import { modelsCreateDeployment } from '@nemo/sdk/generated/platform/model-deployments';
+import { modelsCreateModel } from '@nemo/sdk/generated/platform/models';
 import {
   defaultWizardValues,
   WORKSPACE_PICKER_FILESET,
@@ -21,7 +19,10 @@ import { act, renderHook } from '@testing-library/react';
 import { type ReactNode } from 'react';
 
 vi.mock('@nemo/common/src/providers/toast/useToast');
-vi.mock('@nemo/sdk/generated/platform/api');
+vi.mock('@nemo/sdk/generated/platform/files');
+vi.mock('@nemo/sdk/generated/platform/model-deployment-configs');
+vi.mock('@nemo/sdk/generated/platform/model-deployments');
+vi.mock('@nemo/sdk/generated/platform/models');
 
 const mockUseToast = vi.mocked(useToast);
 const mockFilesCreateFileset = vi.mocked(filesCreateFileset);

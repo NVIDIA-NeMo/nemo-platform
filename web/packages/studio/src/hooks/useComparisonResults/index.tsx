@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEvaluatorGetEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import { useEvaluatorGetEvaluateJob } from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import {
   useAggregatedEvaluationResults,
   useAggregatedEvaluations,

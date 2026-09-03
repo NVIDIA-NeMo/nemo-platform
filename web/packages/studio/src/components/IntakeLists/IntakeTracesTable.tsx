@@ -7,8 +7,8 @@ import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
-import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { Trace, TraceFilter, TraceSortField } from '@nemo/sdk/generated/platform/schema';
+import { useListTraces } from '@nemo/sdk/generated/platform/traces';
 import {
   isDefaultStartedAtFilter,
   makeDefaultStartedAtFilter,

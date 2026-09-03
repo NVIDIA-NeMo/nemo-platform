@@ -69,7 +69,7 @@ vi.mock('@nemo/common/src/api/entity-store/usePromptTunableBaseModelIds', () => 
   usePromptTunableBaseModelIds: () => mockUsePromptTunableBaseModelIds(),
 }));
 
-vi.mock('@nemo/sdk/generated/platform/api', () => ({
+vi.mock('@nemo/sdk/generated/platform/models', () => ({
   useModelsGetModel: () => ({
     data: undefined,
     isLoading: false,

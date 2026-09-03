@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { withOperators } from '@nemo/common/src/api/filterOperators';
-import { jobsListJobs } from '@nemo/sdk/generated/platform/api';
+import { jobsListJobs } from '@nemo/sdk/generated/platform/jobs';
 import type {
   PlatformJobListSortField,
   PlatformJobResponse,

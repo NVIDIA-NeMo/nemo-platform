@@ -8,11 +8,11 @@ import {
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { getListEvaluationsQueryKey } from '@nemo/sdk/generated/platform/evaluations';
 import {
   deleteExperiment,
-  getListEvaluationsQueryKey,
   getListExperimentsQueryKey,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/experiments';
 import { Button, Text } from '@nvidia/foundations-react-core';
 import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import type { AgentExperimentRow } from '@studio/routes/agents/AgentDetailRoute/evaluations/groupByExperiment';

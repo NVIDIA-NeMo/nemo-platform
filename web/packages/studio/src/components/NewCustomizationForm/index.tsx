@@ -6,11 +6,9 @@ import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
-import {
-  useCustomizationCreateAutomodelJob,
-  useCustomizationCreateRlJob,
-  useCustomizationCreateUnslothJob,
-} from '@nemo/sdk/generated/customizer/api';
+import { useCustomizationCreateAutomodelJob } from '@nemo/sdk/generated/customizer/automodel-jobs';
+import { useCustomizationCreateRlJob } from '@nemo/sdk/generated/customizer/rl-jobs';
+import { useCustomizationCreateUnslothJob } from '@nemo/sdk/generated/customizer/unsloth-jobs';
 import {
   Banner,
   Button,

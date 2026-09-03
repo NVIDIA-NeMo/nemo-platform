@@ -14,9 +14,9 @@ import { logger } from '@nemo/common/src/utils/logger';
 import {
   getEvaluatorGetEvaluateJobQueryKey,
   useEvaluatorCancelEvaluateJob,
-} from '@nemo/sdk/generated/evaluator/api';
+} from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
-import { useGetEvaluation } from '@nemo/sdk/generated/platform/api';
+import { useGetEvaluation } from '@nemo/sdk/generated/platform/evaluations';
 import { Banner, Button, Flex, Modal, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { evalDurationMs } from '@studio/api/evaluation/utils';
 import { ButtonLaunchEvaluation } from '@studio/components/evaluation/ButtonLaunchEvaluation';

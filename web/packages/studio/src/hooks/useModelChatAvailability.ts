@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useModelsGetModel } from '@nemo/sdk/generated/platform/api';
+import { useModelsGetModel } from '@nemo/sdk/generated/platform/models';
 import type { Adapter, ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { useModelDeploymentStatus } from '@studio/hooks/useModelDeploymentStatus';
 import { useModelEntityChatStatusWithGrace } from '@studio/hooks/useModelEntityChatStatusWithGrace';

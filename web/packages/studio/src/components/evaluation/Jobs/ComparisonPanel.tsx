@@ -4,7 +4,7 @@
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { renderMultipleSelectedValues } from '@nemo/common/src/utils/form';
 import { getColorsFromLength } from '@nemo/common/src/utils/formatters';
-import { useEvaluatorListEvaluateJobResults } from '@nemo/sdk/generated/evaluator/api';
+import { useEvaluatorListEvaluateJobResults } from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Flex,
