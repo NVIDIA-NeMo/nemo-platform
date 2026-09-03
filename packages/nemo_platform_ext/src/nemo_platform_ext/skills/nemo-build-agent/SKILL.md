@@ -34,21 +34,35 @@ allowed-tools: [Bash, Read, Write, Edit]
 # Build a NeMo Platform agent
 
 Build a tested, config-driven LangChain Deep Agent and onboard it through the
-NeMo Platform Fabric path. Fabric owns the Deep Agents runtime and constructs
-the agent from config. Customer code runs only when it is packaged as a
+NeMo Platform Fabric path. Fabric owns runtime orchestration and constructs the
+agent from config. The generated customer project owns its Deep Agents runtime
+dependencies. Customer code runs only when it is packaged as a
 config-referenced service such as MCP.
 
-## Confirm the path and environment
+## Explain the path in customer language
 
-Before writing files:
+Do not assume the user knows NeMo Platform, Fabric, Ethos, MCP or Agent Skills.
+Introduce each term only when it affects a decision.
 
-1. Confirm the target workspace, environment, model provider, network access,
-   credential availability and whether Docker deployment is available.
-2. Explain that this build path uses the external LangChain Deep Agents runtime
-   supported by Fabric. Fabric constructs the agent from Platform config.
-3. Explain that executable custom tools must be delivered through MCP and that
-   instruction-only capabilities may be delivered as Agent Skills.
-4. Ask whether to continue with this supported path.
+Before writing implementation files:
+
+1. Explain that an Ethos is a plain-language design contract for the agent. It
+   records who the agent serves, what it should accomplish, the tools and data
+   it may use, required approvals, forbidden actions, failure behavior and the
+   examples that will become tests. It is not code or deployment config.
+2. Explain that the Ethos will be drafted from the user's answers, shown for
+   review and revised until the user explicitly approves it. No implementation
+   begins before that approval.
+3. Explain that the supported build path uses the external LangChain Deep
+   Agents runtime. NeMo Platform does not vendor the customer's agent or make
+   Deep Agents a hidden Platform dependency. The generated customer project
+   declares and installs compatible pinned Deep Agents and Fabric adapter
+   versions. Fabric registers the agent and makes it available for deployment,
+   testing, observation and optimization in NeMo Platform.
+4. Explain executable tools only when the requested agent needs them: custom
+   code is exposed through MCP so the deployed agent can call it. Explain Agent
+   Skills only when an instruction package is the right artifact.
+5. Ask whether to continue with this supported path.
 
 If the user declines, stop. Offer onboarding of an existing agent through an
 available Fabric adapter. Do not fall back to NAT.
@@ -56,9 +70,10 @@ available Fabric adapter. Do not fall back to NAT.
 ## Approve and persist the design
 
 Use `agents/<agent-name>-ethos/ETHOS.md` as the canonical design and package
-root. If an Ethos exists, summarize it and confirm that it is approved for this
-build. If it is absent or needs changes, gather only the missing implementation
-inputs:
+root. If an Ethos exists, summarize it in plain language and confirm that it is
+approved for this build. If it is absent or needs changes, gather the design
+inputs conversationally. Ask about the customer's work first and translate the
+answers into NeMo artifacts yourself:
 
 - concrete role, users and outcomes;
 - tools, data, credentials and side effects;
@@ -70,6 +85,15 @@ Route unresolved design questions to `nemo-explore`. Then invoke `nemo-ethos`
 to render, validate and save `agents/<agent-name>-ethos/ETHOS.md`. Show the
 result and wait for explicit approval. Do not create implementation files before
 the Ethos is approved.
+
+## Confirm the build environment
+
+After the Ethos is approved and before creating implementation files, confirm
+the target workspace, environment, model provider, network access, credential
+availability and whether Docker deployment is available. Discover what can be
+read from the current environment instead of asking the user to supply NeMo
+specific details they may not know. Explain any missing prerequisite in terms
+of the capability it blocks.
 
 ## Choose supported artifacts
 
@@ -94,10 +118,11 @@ accepted `interrupt_on` setting as proof that the deployed workflow can resume.
 ## Build the project
 
 Keep the deployable project under `agents/<agent-name>-ethos/`. Create only the
-files required by the selected shape. For custom Python tools, use a `uv`
-project with a locked dependency set, a typed MCP server and a console script.
-Do not install globally. Do not add `deepagents` to the customer project unless
-customer code directly imports its API.
+files required by the selected shape. Use a `uv` project with a locked
+dependency set. Declare compatible pinned versions of `deepagents` and the
+Fabric Deep Agents adapter in that generated project. For custom Python tools,
+add a typed MCP server and a console script. Do not install dependencies
+globally or add them to NeMo Platform itself.
 
 Give tools narrow schemas, bounded output, explicit permissions, capped retries
 for transient failures and redacted errors. Never write credentials, customer
@@ -185,8 +210,8 @@ and thresholds. Report passed, failed and skipped checks separately.
 - Prompt instructions and subagent delegation do not guarantee fixed ordering.
 - Packaging copies the selected build context. Untracked secrets can enter an
   image even when they are absent from committed files.
-- The NeMo Agents plugin owns the compatible Fabric Deep Agents dependency.
-  Avoid adding a second unconstrained runtime version to the customer project.
+- The generated customer project owns compatible pinned Deep Agents and Fabric
+  adapter dependencies. Do not rely on them being installed by NeMo Platform.
 - Docker is the supported local container path. Treat Kubernetes as a separate
   environment contract that must be verified.
 

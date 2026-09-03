@@ -5,7 +5,7 @@
     {"type":"explicit","prompt":"Invoke nemo-build-agent for the approved support-triage Ethos.","expected_skill":"nemo-build-agent"},
     {"type":"explicit","prompt":"Run nemo-build-agent to package, deploy, and verify the claims agent.","expected_skill":"nemo-build-agent"},
     {"type":"implicit","prompt":"The IT helpdesk Ethos is approved. Build its tools and tests, create the explicit Fabric config, and onboard it to NeMo Platform.","expected_skill":"nemo-build-agent"},
-    {"type":"implicit","prompt":"Build a customer support agent from my answers. Save the Ethos, show it to me for approval, then implement and register the agent through Fabric.","expected_skill":"nemo-build-agent"},
+    {"type":"implicit","prompt":"I want to build a customer support agent, but I do not know NeMo Platform terminology. Walk me through the design, explain what you need me to approve, then implement and register it through the supported platform path.","expected_skill":"nemo-build-agent"},
     {"type":"implicit","prompt":"Turn this approved refund agent design into a tested Deep Agents deployment and prove the refund tool is reachable after packaging.","expected_skill":"nemo-build-agent"},
     {"type":"implicit","prompt":"The Ethos is approved. Build the agent and its mock based tests now. The production API credential is unavailable, so record the live test as skipped and do not register or deploy.","expected_skill":"nemo-build-agent"},
     {"type":"contextual","prompt":"We approved the support triage Ethos yesterday and the NeMo workspace is ready now. Implement the approved agent, test it and onboard it through Fabric.","expected_skill":"nemo-build-agent"},

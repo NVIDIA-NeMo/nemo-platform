@@ -129,6 +129,12 @@ class TestLoadPlatformSkills:
         assert (skill.source_dir / "references" / "testing-and-signoff.md").is_file()
         assert (skill.source_dir / "references" / "packaging.md").is_file()
 
+    def test_build_agent_keeps_deep_agents_dependency_in_generated_project(self):
+        skill = load_skills()["nemo-build-agent"]
+        assert "generated customer project owns compatible pinned Deep Agents" in skill.content
+        assert "Do not rely on them being installed by NeMo Platform" in skill.content
+        assert "NeMo Agents plugin owns the compatible Fabric Deep Agents dependency" not in skill.content
+
     def test_model_selection_benchmark_cache_is_packaged(self):
         skill = load_skills()["nemo-model-selection"]
         assert skill.source_dir is not None
