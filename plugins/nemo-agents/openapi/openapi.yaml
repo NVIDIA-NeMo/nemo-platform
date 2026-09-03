@@ -154,6 +154,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/agents/{name}/status:
+    get:
+      tags:
+      - Agents
+      summary: Get Agent Status
+      description: "Report the runtime status of an agent, including its MCP servers.\n\
+        \nA stdio MCP server that never spawns degrades an agent silently \u2014 the\n\
+        harness just gets fewer tools \u2014 so every declared server is listed here\n\
+        whether or not it started, and each running deployment is asked to resolve\n\
+        its own servers against the PATH its runtime actually has."
+      operationId: get_agent_status_apis_agents_v2_workspaces__workspace__agents__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentStatus'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/agents/v2/workspaces/{workspace}/compute-specs:
     post:
       tags:
@@ -3970,6 +4007,60 @@ components:
         \ ``agent_deployment``\nLifecycle: pending \u2192 starting \u2192 running\
         \ | failed.\nThe :class:`~nemo_agents_plugin.runner.controller.AgentDeploymentController`\n\
         drives state transitions by reconciling this entity against the\n:class:`~nemo_agents_plugin.runner.backend.RunnerBackend`."
+    AgentDeploymentStatus:
+      properties:
+        deployment:
+          type: string
+          title: Deployment
+          description: Name of the AgentDeployment.
+        deployment_mode:
+          type: string
+          enum:
+          - subprocess
+          - docker
+          - k8s
+          title: Deployment Mode
+          description: subprocess | docker | k8s.
+        status:
+          type: string
+          enum:
+          - pending
+          - starting
+          - running
+          - failed
+          - deleting
+          title: Status
+          description: Deployment lifecycle status.
+        endpoint:
+          type: string
+          title: Endpoint
+          description: Routable endpoint of the runtime, when it has one.
+          default: ''
+        error:
+          type: string
+          title: Error
+          description: Deployment-level error, when the deployment itself failed.
+          default: ''
+        probe_error:
+          type: string
+          title: Probe Error
+          description: Why the MCP status could not be read from the runtime; empty
+            when the check ran.
+          default: ''
+        mcp_servers:
+          items:
+            $ref: '#/components/schemas/McpServerStatus'
+          type: array
+          title: Mcp Servers
+          description: Every MCP server this deployment's config declares, with its
+            runtime state.
+      type: object
+      required:
+      - deployment
+      - deployment_mode
+      - status
+      title: AgentDeploymentStatus
+      description: Runtime status of one deployment of an agent, with its MCP servers.
     AgentEnvironment:
       properties:
         description:
@@ -4376,6 +4467,46 @@ components:
         The session entity owns Platform-level conversation identity only. Live
 
         harness state remains process-local to the deployment''s serving runtime.'
+    AgentStatus:
+      properties:
+        agent:
+          type: string
+          title: Agent
+          description: Name of the agent.
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace the agent belongs to.
+        checked_at:
+          type: string
+          format: date-time
+          title: Checked At
+          description: When the status was assembled.
+        declared_mcp_servers:
+          items:
+            $ref: '#/components/schemas/McpServerStatus'
+          type: array
+          title: Declared Mcp Servers
+          description: MCP servers declared in the stored agent config, each reported
+            as 'not_started'.
+        deployments:
+          items:
+            $ref: '#/components/schemas/AgentDeploymentStatus'
+          type: array
+          title: Deployments
+          description: Runtime status per deployment of this agent.
+      type: object
+      required:
+      - agent
+      - workspace
+      - checked_at
+      title: AgentStatus
+      description: "Response body for ``GET /v2/workspaces/{workspace}/agents/{name}/status``.\n\
+        \n``declared_mcp_servers`` is the static view from the stored agent config\
+        \ \u2014\nwhat the agent expects to exist \u2014 and is populated whether\
+        \ or not anything\nis deployed. ``deployments`` adds the runtime view, one\
+        \ entry per\ndeployment, each reporting the same servers as the runtime actually\
+        \ finds\nthem."
     AgentWorkdir:
       properties:
         base_workdir:
@@ -5822,6 +5953,78 @@ components:
         the url + env + secrets for that same name. Matched by server-name key at
 
         compile time; ``secrets`` are merged into the server''s ``env``.'
+    McpServerStatus:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Server name as declared under mcp.servers in the agent config.
+        transport:
+          type: string
+          title: Transport
+          description: Transport as declared (e.g. 'stdio', 'streamable_http').
+        target:
+          type: string
+          title: Target
+          description: Command to spawn for stdio servers, or the endpoint URL for
+            remote ones.
+        args:
+          items:
+            type: string
+          type: array
+          title: Args
+          description: Arguments passed to a stdio command.
+        exposure:
+          type: string
+          title: Exposure
+          description: '''harness_native'' or ''fabric_managed''.'
+          default: ''
+        state:
+          type: string
+          enum:
+          - running
+          - unresolved
+          - spawn_failed
+          - unreachable
+          - not_started
+          - unknown
+          title: State
+          description: 'running: reachable and initialized. unresolved: stdio command
+            not found on the runtime PATH. spawn_failed: command resolved but the
+            server died or never initialized. unreachable: remote server did not answer.
+            not_started: nothing is running to check against. unknown: transport not
+            understood, so no check was made.'
+        command_resolved:
+          type: boolean
+          title: Command Resolved
+          description: Whether a stdio command was found on the runtime PATH. Always
+            false for remote transports, which have no command to resolve. The path
+            it resolved to is deliberately not reported.
+          default: false
+        detail:
+          type: string
+          title: Detail
+          description: Human-readable explanation of the state.
+          default: ''
+        error:
+          type: string
+          title: Error
+          description: Error message or stderr snippet when the server failed to start.
+          default: ''
+        tools:
+          items:
+            type: string
+          type: array
+          title: Tools
+          description: Tool names the server advertised, when it started.
+      type: object
+      required:
+      - name
+      - transport
+      - target
+      - state
+      title: McpServerStatus
+      description: Runtime state of one MCP server an agent declares.
     ModelProviderOverride:
       properties:
         base_url:
