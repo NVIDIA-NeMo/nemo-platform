@@ -11,9 +11,13 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from scaled_evals.cli.main import _default_switchyard_dockerfile_path
-from scaled_evals.dispatch.switchyard import SwitchyardProfileConfig, _routing_profiles_text
-from scaled_evals.harbor_runners import resolve_harbor_runner, supported_harbor_versions
+
+try:
+    from scaled_evals.cli.main import _default_switchyard_dockerfile_path
+    from scaled_evals.dispatch.switchyard import SwitchyardProfileConfig, _routing_profiles_text
+    from scaled_evals.harbor_runners import resolve_harbor_runner, supported_harbor_versions
+except ImportError as exc:
+    pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 

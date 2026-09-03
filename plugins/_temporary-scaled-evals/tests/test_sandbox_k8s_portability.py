@@ -15,7 +15,11 @@ from typing import Any
 
 import pytest
 import yaml
-from scaled_evals.dispatch import sandbox_k8s
+
+try:
+    from scaled_evals.dispatch import sandbox_k8s
+except ImportError as exc:
+    pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
 
 PLUGIN_ROOT = Path(__file__).parents[1]
 HARBOR_PATCH = PLUGIN_ROOT / "harbor-patches/sandbox_k8s_harbor.py"

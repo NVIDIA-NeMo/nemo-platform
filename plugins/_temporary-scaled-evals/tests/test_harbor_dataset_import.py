@@ -7,17 +7,21 @@ from unittest.mock import MagicMock
 
 import pytest
 from httpx import Request, Response
-from scaled_evals.api.build.task_image_identity import (
-    TaskImageIdentityError,
-    normalize_upstream_image_ref,
-    resolve_upstream_image,
-)
-from scaled_evals.api.settings import settings
-from scaled_evals.dispatch.harbor_dataset_images import dataset_configs, effective_image_mode
-from scaled_evals.harbor_dataset_import import (
-    HarborDatasetImageImport,
-    build_image_import_context,
-)
+
+try:
+    from scaled_evals.api.build.task_image_identity import (
+        TaskImageIdentityError,
+        normalize_upstream_image_ref,
+        resolve_upstream_image,
+    )
+    from scaled_evals.api.settings import settings
+    from scaled_evals.dispatch.harbor_dataset_images import dataset_configs, effective_image_mode
+    from scaled_evals.harbor_dataset_import import (
+        HarborDatasetImageImport,
+        build_image_import_context,
+    )
+except ImportError as exc:
+    pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
 
 
 def test_import_context_is_pinned_and_deterministic() -> None:

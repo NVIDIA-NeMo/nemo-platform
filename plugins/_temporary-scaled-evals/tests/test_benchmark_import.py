@@ -7,14 +7,18 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
-from scaled_evals.api.auth import CurrentPrincipal
-from scaled_evals.api.routers.benchmark_imports import publish_benchmark_import
-from scaled_evals.api.schemas.benchmark_imports import BenchmarkImportCreate
-from scaled_evals.benchmark_import import (
-    import_id_from_legacy_state,
-    load_import_images,
-    write_legacy_import_state,
-)
+
+try:
+    from scaled_evals.api.auth import CurrentPrincipal
+    from scaled_evals.api.routers.benchmark_imports import publish_benchmark_import
+    from scaled_evals.api.schemas.benchmark_imports import BenchmarkImportCreate
+    from scaled_evals.benchmark_import import (
+        import_id_from_legacy_state,
+        load_import_images,
+        write_legacy_import_state,
+    )
+except ImportError as exc:
+    pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
 
 
 def test_import_schema_and_compatibility_state_preserve_portable_metadata(tmp_path: Path) -> None:
