@@ -2836,6 +2836,13 @@ def benchmark_run_preflight(ctx: click.Context, request_body: str) -> None:
     help=("Exact supported framework version or alias (for Harbor, use a catalog version or stable)."),
 )
 @click.option("--framework-profile-id", default=None)
+@click.option(
+    "--member-framework-profile",
+    "member_framework_profiles",
+    multiple=True,
+    metavar="TASK_ID=PROFILE_ID",
+    help="Per-member framework profile override, repeatable.",
+)
 @click.option("--harbor-profile-id", default=None)
 @click.option("--switchyard-profile-id", default=None)
 @click.option("--intake-profile-id", default=None)
@@ -2903,6 +2910,7 @@ def benchmark_run_create(
     benchmark_revision: int | None,
     framework_version: str | None,
     framework_profile_id: str | None,
+    member_framework_profiles: tuple[str, ...],
     harbor_profile_id: str | None,
     switchyard_profile_id: str | None,
     intake_profile_id: str | None,
@@ -2937,6 +2945,16 @@ def benchmark_run_create(
         cred_map[k] = v
     if cred_map:
         body["credentials"] = cred_map
+    member_profile_map: dict[str, str] = {}
+    for item in member_framework_profiles:
+        if "=" not in item:
+            raise click.ClickException(
+                f"--member-framework-profile must be TASK_ID=PROFILE_ID, got {item!r}"
+            )
+        task_id, profile_id = item.split("=", 1)
+        member_profile_map[task_id] = profile_id
+    if member_profile_map:
+        body["member_framework_profile_ids"] = member_profile_map
     if agent_bundle is not None:
         body["agent_bundle_id"] = agent_bundle
     if extra_skill_object_key:

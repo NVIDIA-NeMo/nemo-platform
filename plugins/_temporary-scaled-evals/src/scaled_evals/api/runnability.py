@@ -132,6 +132,12 @@ def _reference_shape_error(body: CreateEvaluationRequest | CreateBenchmarkRunReq
     ):
         if value is not None and not value.startswith("cfg_"):
             return f"{field_name} must be a cfg_ id"
+    if isinstance(body, CreateBenchmarkRunRequest):
+        for task_id, profile_id in body.member_framework_profile_ids.items():
+            if not task_id.startswith("task_"):
+                return f"member_framework_profile_ids key must be a task_ id: {task_id}"
+            if not profile_id.startswith("cfg_"):
+                return f"member_framework_profile_ids[{task_id}] must be a cfg_ id"
     for role, credential_id in body.credentials.items():
         if not credential_id.startswith("cred_"):
             return f"credentials[{role}] must be a cred_ id"
@@ -149,6 +155,11 @@ def _append_reference_checks(
         (body.switchyard_profile_id, "switchyard"),
         (body.intake_profile_id, "intake"),
     ]
+    if isinstance(body, CreateBenchmarkRunRequest):
+        profile_slots.extend(
+            (profile_id, _framework_profile_type(body.framework))
+            for profile_id in body.member_framework_profile_ids.values()
+        )
     profile_slots = [(profile_id, kind) for profile_id, kind in profile_slots if profile_id]
     try:
         db.evaluations.validate_profile_references(profile_slots)
@@ -628,6 +639,28 @@ def preflight_benchmark_run(
             )
         )
         summary = BenchmarkMemberSummary(total=0, ready=0, blocked=0)
+        return BlockedPreflight(
+            _report("benchmark_run", checks, summary),
+            PreflightBlocker(422, "invalid_reference", message),
+        )
+    unknown_profile_tasks = sorted(
+        set(body.member_framework_profile_ids) - {str(member["task_id"]) for member in members}
+    )
+    if unknown_profile_tasks:
+        message = (
+            "member framework profile override references task(s) outside the benchmark: "
+            + ", ".join(unknown_profile_tasks)
+        )
+        checks.append(
+            _check(
+                "benchmark_members",
+                "incompatible",
+                message,
+                blocking=True,
+                code="invalid_reference",
+            )
+        )
+        summary = BenchmarkMemberSummary(total=len(members), ready=0, blocked=len(members))
         return BlockedPreflight(
             _report("benchmark_run", checks, summary),
             PreflightBlocker(422, "invalid_reference", message),

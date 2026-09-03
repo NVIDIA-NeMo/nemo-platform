@@ -32,6 +32,13 @@ class CreateBenchmarkRunRequest(BaseModel):
         description="Exact supported framework version or documented alias.",
     )
     framework_profile_id: str | None = None
+    member_framework_profile_ids: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Optional task_id to framework profile mapping. A member override takes precedence "
+            "over framework_profile_id for that task."
+        ),
+    )
     harbor_profile_id: str | None = Field(
         default=None,
         description="Compatibility alias for framework_profile_id on Harbor requests.",

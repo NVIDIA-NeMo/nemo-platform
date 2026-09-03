@@ -61,6 +61,7 @@ def _agent_bundle_id(runner_metadata: Mapping[str, Any]) -> str | None:
 
 
 def _reproduce_request(run: Mapping[str, Any], member: Mapping[str, Any]) -> CreateBenchmarkRunRequest:
+    runner_metadata = run.get("runner_metadata") or {}
     return CreateBenchmarkRunRequest(
         name=_rerun_name(str(run["name"])),
         benchmark_id=str(run["benchmark_id"]),
@@ -68,10 +69,13 @@ def _reproduce_request(run: Mapping[str, Any], member: Mapping[str, Any]) -> Cre
         framework=run.get("framework") or "harbor",
         framework_version=run.get("framework_version"),
         framework_profile_id=run.get("framework_profile_id"),
+        member_framework_profile_ids=dict(
+            runner_metadata.get("member_framework_profile_ids") or {}
+        ),
         switchyard_profile_id=run.get("switchyard_profile_id"),
         intake_profile_id=run.get("intake_profile_id"),
         credentials=dict(run.get("credentials") or {}),
-        agent_bundle_id=_agent_bundle_id(run.get("runner_metadata") or {}),
+        agent_bundle_id=_agent_bundle_id(runner_metadata),
         extra_skill_object_keys=list(member.get("extra_skill_object_keys") or []),
         instruction_prefix=member.get("instruction_prefix"),
         instruction_postfix=member.get("instruction_postfix"),
@@ -127,6 +131,8 @@ def _create_command(body: CreateBenchmarkRunRequest) -> list[str]:
     ):
         if value:
             command.extend([option, value])
+    for task_id, profile_id in sorted(body.member_framework_profile_ids.items()):
+        command.extend(["--member-framework-profile", f"{task_id}={profile_id}"])
     for role, credential_id in sorted(body.credentials.items()):
         command.extend(["--credential", f"{role}={credential_id}"])
     for object_key in body.extra_skill_object_keys:
@@ -195,6 +201,8 @@ def create_benchmark_run(body: CreateBenchmarkRunRequest, db: Db, current: Princ
     revision = preflight.revision
     members = preflight.members
     runner_metadata = preflight.runner_metadata
+    if body.member_framework_profile_ids:
+        runner_metadata["member_framework_profile_ids"] = dict(body.member_framework_profile_ids)
 
     run_id = make_id("bmr")
     spawn = [
@@ -203,6 +211,7 @@ def create_benchmark_run(body: CreateBenchmarkRunRequest, db: Db, current: Princ
             "task_id": m["task_id"],
             "task_revision": m["task_revision"],
             "task_slug": m.get("task_slug"),
+            "framework_profile_id": body.member_framework_profile_ids.get(str(m["task_id"])),
         }
         for m in members
     ]

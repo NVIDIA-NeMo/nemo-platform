@@ -89,6 +89,13 @@ uv run scaled-evals-migrate --dsn ...  # or an explicit target
 | `/apis/scaled-evals/v1/{healthz,readyz,metrics}` | Vendored ops probes; `readyz` checks dependencies |
 | `/apis/scaled-evals/v1/*` | scaled-evals `/v1` semantics (tasks, evaluations, …) |
 
+Benchmark-run creation accepts `member_framework_profile_ids`, a task ID to
+framework profile ID map whose entries override the run-level
+`framework_profile_id` for matching members. The CLI exposes the map as
+repeatable `--member-framework-profile TASK_ID=PROFILE_ID` options. Overrides
+are rejected unless both references are valid and the task belongs to the
+selected benchmark revision.
+
 **Not mounted:** Switchyard lease/publish (`/v1/switchyard/*`). Switchyard modules remain in-tree for dispatch import compatibility but are out of Phase 1 product surface.
 
 **Removed:** OAuth client discovery (`/v1/auth/config`), which existed only to
