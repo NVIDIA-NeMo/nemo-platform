@@ -19,10 +19,12 @@ from pathlib import Path
 from typing import Any, Literal, TypeAlias, overload
 from urllib.parse import urlparse
 
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, model_validator
 
 from nemo_evaluator_sdk.values.atif import FinalMetrics, Step, ToolCall, Trajectory
 from nemo_evaluator_sdk.values.otlp import (
+    export_request_from_resource_spans,
     resource_spans_from_request,
     resource_spans_from_text,
     validate_resource_spans,
@@ -374,6 +376,18 @@ class OTLPTraceHandle:
     def __init__(self, descriptor: EvidenceDescriptor) -> None:
         self._descriptor = descriptor
         self._resource_spans: list[dict[str, Any]] | None = None
+        self._export_request: ExportTraceServiceRequest | None = None
+
+    async def export_request(self) -> ExportTraceServiceRequest:
+        """Return the trace as the typed OTLP request, parsed once.
+
+        Serializing this is what OTLP ingest accepts, so a consumer that publishes and one
+        that reads share a representation instead of re-encoding between two.
+        """
+        if self._export_request is None:
+            resource_spans = await self.resource_spans()
+            self._export_request = await asyncio.to_thread(export_request_from_resource_spans, resource_spans)
+        return self._export_request
 
     async def resource_spans(self) -> list[dict[str, Any]]:
         """Return concatenated OTLP ``resourceSpans``, loading and validating once.
