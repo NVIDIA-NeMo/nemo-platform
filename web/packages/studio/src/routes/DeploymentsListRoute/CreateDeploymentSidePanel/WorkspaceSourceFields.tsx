@@ -5,10 +5,11 @@
 
 import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
 import { FilesetSearchableSelect } from '@nemo/common/src/components/FilesetSearchableSelect';
-import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { type ModelSelection, ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2';
 import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { Flex, FormField, RadioGroupRoot, Stack } from '@nvidia/foundations-react-core';
+import { EngineFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/EngineFields';
+import { GPULoraFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/GPULoraFields';
 import {
   WORKSPACE_PICKER_FILESET,
   WORKSPACE_PICKER_MODEL,
@@ -81,16 +82,9 @@ export const WorkspaceSourceFields: FC<WorkspaceSourceFieldsProps> = ({
         />
       )}
 
-      <ControlledTextInput
-        useControllerProps={{ control, name: 'gpu' }}
-        name="gpu"
-        label="GPUs"
-        type="number"
-        formFieldProps={{
-          slotInfo: 'Uses the multi-LLM NIM; verify model architecture is supported.',
-          slotError: errors.gpu?.message,
-        }}
-      />
+      <EngineFields control={control} errors={errors} />
+
+      <GPULoraFields control={control} errors={errors} />
     </Stack>
   );
 };
