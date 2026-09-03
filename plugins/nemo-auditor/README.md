@@ -36,7 +36,7 @@ nemo auditor configs create quick-scan -w default -f ./quick-scan.json
 
 # Create a target inline
 nemo auditor targets create nemotron-3.5-lightning-30b -w default -d '{
-  "type": "nim",
+  "type": "nim.NVOpenAIChat",
   "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
   "options": {"uri": "http://localhost:9000/v1"}
 }'
@@ -79,7 +79,7 @@ cfg = client.auditor.configs.create(
 tgt = client.auditor.targets.create(
     workspace="default",
     name="nemotron-3.5-lightning-30b",
-    type="nim",
+    type="nim.NVOpenAIChat",
     model="nvidia/nemotron-3.5-lightning-30b-a3b",
     options={"uri": "http://localhost:9000/v1"},
 )

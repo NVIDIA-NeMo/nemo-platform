@@ -1287,7 +1287,7 @@ nemo inference gateway provider post v1/chat/completions \
 "model": "default/my-model",
 "messages": [{"role": "user", "content": "Hello!"}],
 "max_tokens": 100,
-"chat_template_kwargs": {"thinking": false}
+"chat_template_kwargs": {"enable_thinking": false}
 }'
 ```
 
@@ -1302,7 +1302,7 @@ response = client.inference.gateway.provider.post(
         "model": "default/my-model",
         "messages": [{"role": "user", "content": "Hello!"}],
         "max_tokens": 100,
-        "chat_template_kwargs": {"thinking": False},
+        "chat_template_kwargs": {"enable_thinking": False},
     },
 )
 ```
