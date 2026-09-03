@@ -211,6 +211,14 @@ def test_analyze_checkpoint_updates_model_with_plugin_model_spec(tmp_path: Path)
     assert body.spec.tool_call_config is not None
     assert body.spec.tool_call_config.tool_call_parser == "llama3_json"
 
+    infer_model_cfg_from_hf.assert_called_once()
+    assert infer_model_cfg_from_hf.call_args.args == (str(tmp_path / "model"),)
+    assert type(infer_model_cfg_from_hf.call_args.args[0]) is str
+    assert infer_model_cfg_from_hf.call_args.kwargs == {
+        "is_trusted": False,
+        "file_listing": ["config.json", "model.safetensors"],
+    }
+
     files_sdk.download.assert_called_once_with(
         remote_path=["config.json"],
         local_path=tmp_path / "model",
