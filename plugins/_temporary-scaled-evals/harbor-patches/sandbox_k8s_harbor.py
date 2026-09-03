@@ -253,6 +253,14 @@ def _ensure_harbor() -> None:
         )
 
 
+def _service_operations_unsupported(message: str) -> RuntimeError:
+    try:
+        from harbor.environments.base import ServiceOperationsUnsupportedError
+    except ImportError:
+        return RuntimeError(message)
+    return ServiceOperationsUnsupportedError(message)
+
+
 def _add_harbor_crd_mounts(
     volumes: list[Volume],
     volume_mounts: list[VolumeMount],
@@ -1716,22 +1724,26 @@ done
     # ``service_download_dir_with_exclusions`` are generic in Harbor and build on
     # these two.
 
+    @staticmethod
+    def is_main_service(service: str | None) -> bool:
+        """Return whether a compose service refers to the agent container."""
+        return service is None or service == "main"
+
     def _sidecar_container(self, service: str) -> str:
         """Resolve a compose service name to its container name in this pod."""
         container = sanitize_k8s_name(service)
-        from harbor.environments.base import ServiceOperationsUnsupportedError
 
         if container in getattr(self, "_withheld_sidecar_containers", set()):
-            raise ServiceOperationsUnsupportedError(
-                f"compose service {service!r} was withheld from the separate verifier pod"
+            raise _service_operations_unsupported(
+                f"compose service {service!r} was withheld from the separate verifier pod",
             )
         if container in self._sidecar_containers:
             return container
         declared = ", ".join(sorted(self._sidecar_containers)) or "none"
-        raise ServiceOperationsUnsupportedError(
+        raise _service_operations_unsupported(
             f"compose service {service!r} has no sidecar container in this pod "
             f"(declared sidecars: {declared}). Add it to the Harbor profile's "
-            "environment.kwargs.sidecars list."
+            "environment.kwargs.sidecars list.",
         )
 
     async def service_exec(
@@ -1837,6 +1849,45 @@ done
             exclude=[],
             service=service,
         )
+
+    async def service_download_dir_with_exclusions(
+        self,
+        *,
+        source_dir: str,
+        target_dir: Path | str,
+        exclude: list[str],
+        service: str | None = None,
+    ) -> None:
+        """Download a compose-service directory while excluding matching paths."""
+        remote_tar = f"/tmp/harbor-transfer-{secrets.token_hex(8)}.tar.gz"
+        exclude_flags = " ".join(f"--exclude={_shell_quote(pattern)}" for pattern in exclude)
+        try:
+            result = await self.service_exec(
+                f"tar czf {_shell_quote(remote_tar)} {exclude_flags} -C {_shell_quote(source_dir)} .",
+                service=service,
+                timeout_sec=120,
+                user="root",
+            )
+            if result.return_code != 0:
+                output = result.stderr or result.stdout or "no output"
+                raise RuntimeError(f"Failed to create transfer archive for {source_dir!r}: {output}")
+
+            target = Path(target_dir)
+            target.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(suffix=".tar.gz") as host_tar:
+                await self.service_download_file(remote_tar, host_tar.name, service=service)
+                with tarfile.open(host_tar.name, "r:gz") as archive:
+                    archive.extractall(path=target, filter="data")
+        finally:
+            try:
+                await self.service_exec(
+                    f"rm -f {_shell_quote(remote_tar)}",
+                    service=service,
+                    timeout_sec=120,
+                    user="root",
+                )
+            except Exception as exc:
+                self.logger.warning("Could not remove transfer archive %s: %s", remote_tar, exc)
 
     # -- Harbor optional: is_dir / is_file ----------------------------------
 

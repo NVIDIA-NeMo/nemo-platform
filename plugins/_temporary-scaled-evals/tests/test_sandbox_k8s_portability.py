@@ -32,6 +32,11 @@ def _harbor_environment_methods(names: set[str]) -> type:
     environment = next(
         node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "K8sSandboxEnvironment"
     )
+    unsupported = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_service_operations_unsupported"
+    )
     methods = [
         node
         for node in environment.body
@@ -60,7 +65,7 @@ def _harbor_environment_methods(names: set[str]) -> type:
         ),
     }
     exec(
-        compile(ast.Module(body=[isolated], type_ignores=[]), str(HARBOR_PATCH), "exec"),
+        compile(ast.Module(body=[unsupported, isolated], type_ignores=[]), str(HARBOR_PATCH), "exec"),
         namespace,
     )
     return namespace["Environment"]
@@ -143,7 +148,14 @@ def test_multi_service_exec_and_artifact_transfer(monkeypatch: pytest.MonkeyPatc
             return b"artifact"
 
     environment = _harbor_environment_methods(
-        {"_sidecar_container", "service_exec", "service_download_file", "service_download_dir"}
+        {
+            "is_main_service",
+            "_sidecar_container",
+            "service_exec",
+            "service_download_file",
+            "service_download_dir",
+            "service_download_dir_with_exclusions",
+        }
     )()
     environment._sandbox = Sandbox()
     environment._sidecar_containers = {"postgres-db"}
@@ -187,6 +199,9 @@ def test_multi_service_exec_and_artifact_transfer(monkeypatch: pytest.MonkeyPatc
         asyncio.run(environment.service_exec("true", service="missing"))
     environment._withheld_sidecar_containers = {"postgres-db"}
     with pytest.raises(ServiceOperationsUnsupportedError, match="withheld"):
+        asyncio.run(environment.service_exec("true", service="postgres_db"))
+    del base.ServiceOperationsUnsupportedError
+    with pytest.raises(RuntimeError, match="withheld"):
         asyncio.run(environment.service_exec("true", service="postgres_db"))
 
 

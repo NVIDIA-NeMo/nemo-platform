@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import hashlib
 import json
+import tarfile
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -107,6 +110,25 @@ def test_import_schema_and_compatibility_state_preserve_portable_metadata(
     oversized.write_bytes(b"x")
     checks = _validate_pack(oversized, expected_sha256="0" * 64, max_pack_bytes=0, subject="task")
     assert [(check.code, check.status) for check in checks] == [("pack_size", "failed")]
+
+    directory_task_toml = tmp_path / "directory-task-toml.tar.gz"
+    with tarfile.open(directory_task_toml, "w:gz") as archive:
+        task_dir = tarfile.TarInfo("tasks/task/task.toml")
+        task_dir.type = tarfile.DIRTYPE
+        archive.addfile(task_dir)
+        dockerfile = b"FROM scratch\n"
+        docker_member = tarfile.TarInfo("Dockerfile")
+        docker_member.size = len(dockerfile)
+        archive.addfile(docker_member, BytesIO(dockerfile))
+    with directory_task_toml.open("rb") as raw:
+        digest = hashlib.file_digest(raw, "sha256").hexdigest()
+    checks = _validate_pack(
+        directory_task_toml,
+        expected_sha256=digest,
+        max_pack_bytes=directory_task_toml.stat().st_size,
+        subject="task",
+    )
+    assert any(check.code == "harbor_structure" and check.status == "failed" for check in checks)
 
 
 def test_publish_rejects_benchmark_slug_owned_by_another_principal() -> None:

@@ -294,8 +294,9 @@ def _validate_pack(
                     subject=subject,
                 )
             )
-            task_tomls = [name for name in names if re.fullmatch(r"tasks/[^/]+/task\.toml", name)]
-            dockerfiles = [name for name in names if name == "Dockerfile"]
+            files = {name: member for member, name in zip(members, names, strict=True) if member.isfile()}
+            task_tomls = [name for name in files if re.fullmatch(r"tasks/[^/]+/task\.toml", name)]
+            dockerfiles = [name for name in files if name == "Dockerfile"]
             if len(task_tomls) != 1 or len(dockerfiles) != 1:
                 checks.append(
                     ConformanceCheck(
@@ -306,8 +307,9 @@ def _validate_pack(
                     )
                 )
             else:
-                member = archive.extractfile(task_tomls[0])
-                assert member is not None
+                member = archive.extractfile(files[task_tomls[0]])
+                if member is None:
+                    raise tarfile.ReadError("cannot read task.toml")
                 task_config = tomllib.loads(member.read().decode("utf-8"))
                 raw_task_name = task_config["task"].get("name") if isinstance(task_config.get("task"), dict) else None
                 task_name = raw_task_name if isinstance(raw_task_name, str) else ""
@@ -335,8 +337,9 @@ def _validate_pack(
                         subject=subject,
                     )
                 )
-                docker = archive.extractfile("Dockerfile")
-                assert docker is not None
+                docker = archive.extractfile(files["Dockerfile"])
+                if docker is None:
+                    raise tarfile.ReadError("cannot read Dockerfile")
                 docker_text = docker.read().decode("utf-8", errors="replace")
                 workdirs = re.findall(r"(?im)^\s*WORKDIR\s+([^\s#]+)", docker_text)
                 invalid_workdir = bool(
