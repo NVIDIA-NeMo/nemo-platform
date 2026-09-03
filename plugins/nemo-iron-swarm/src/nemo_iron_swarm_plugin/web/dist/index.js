@@ -22927,7 +22927,7 @@ var Hw = Vw({
 			workspace: e,
 			agent: j
 		}, { onSuccess: (e) => {
-			A("port", String(e.port)), A("secrets", e.secrets.join(", "));
+			A("port", String(e.port)), A("secrets", e.secrets.join(", ")), A("egress", e.egress.join(", "));
 		} });
 	}, [
 		j,
@@ -23134,8 +23134,8 @@ var Hw = Vw({
 										name: "egress"
 									},
 									formFieldProps: {
-										slotLabel: "Egress Allow-list (optional)",
-										slotHelp: "Comma-separated host[:port] for external services the agent calls (e.g. en.wikipedia.org, raw.githubusercontent.com). Needed when the tool hosts are not discoverable from the agent config."
+										slotLabel: "Egress Allow-list",
+										slotHelp: ne.isPending ? "Detecting from the agent…" : "Comma-separated host[:port]. Auto-detected from the agent config (model endpoints, network MCP servers). Add hosts only the packaged code knows about."
 									}
 								}),
 								/* @__PURE__ */ p(x, {

@@ -496,13 +496,18 @@ def _resolve_victim_port(sdk: Any, workspace: str, name: str) -> tuple[int, list
     return 8000, [f"no running deployment for {workspace}/{name!r}; defaulting victim port to 8000."]
 
 
-def inspect_agent(ref: str, *, sdk: Any, default_workspace: str) -> tuple[str, int, list[str], list[str]]:
+def inspect_agent(ref: str, *, sdk: Any, default_workspace: str) -> tuple[str, int, list[str], list[str], list[str]]:
     """Derive the create-form defaults for a deployed agent without materializing anything.
 
-    Returns ``(qualified_ref, port, secrets, warnings)``: the victim port from the running deployment
-    (else iron-swarm's default) and the secret names scanned from the stored config. Cheap read-only
-    counterpart to :func:`resolve_agent_to_manifest`, used to pre-fill (and let the operator override)
-    the port/secret fields before creating the manifest.
+    Returns ``(qualified_ref, port, secrets, egress, warnings)``: the victim port from the running
+    deployment (else iron-swarm's default), the secret names scanned from the stored config, and the
+    hosts that config names. Cheap read-only counterpart to :func:`resolve_agent_to_manifest`, used
+    to pre-fill (and let the operator override) those fields before creating the manifest.
+
+    Egress is included even though ``resolve_agent_to_manifest`` derives it again on submit, because
+    a blank box does not read as "derived for you" — it reads as "no egress", which invites an
+    operator to type the hosts in by hand. That is worse than leaving it empty: an explicit value
+    wins over the derived one, so the manifest stops tracking the agent's own config from then on.
     """
     workspace, name = parse_agent_ref(ref, default_workspace)
     agent_config = _fetch_agent_config(sdk, workspace, name)
@@ -511,7 +516,7 @@ def inspect_agent(ref: str, *, sdk: Any, default_workspace: str) -> tuple[str, i
     require_guardable_harness(agent_config, f"{workspace}/{name}")
     port, warnings = _resolve_victim_port(sdk, workspace, name)
     secrets = derive_secret_names(agent_config)
-    return f"{workspace}/{name}", port, secrets, warnings
+    return f"{workspace}/{name}", port, secrets, derive_egress(agent_config), warnings
 
 
 def resolve_agent_to_manifest(

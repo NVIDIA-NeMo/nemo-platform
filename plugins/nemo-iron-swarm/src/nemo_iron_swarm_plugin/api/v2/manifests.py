@@ -195,14 +195,14 @@ async def inspect_agent_endpoint(workspace: str, body: InspectAgentRequest) -> I
     """
     sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
 
-    def _inspect() -> tuple[str, int, list[str], list[str]]:
+    def _inspect() -> tuple[str, int, list[str], list[str], list[str]]:
         return inspect_agent(body.agent, sdk=sdk, default_workspace=workspace)
 
     try:
-        ref, port, secrets, warnings = await run_in_threadpool(_inspect)
+        ref, port, secrets, egress, warnings = await run_in_threadpool(_inspect)
     except AgentResolutionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return InspectAgentResponse(agent=ref, port=port, secrets=secrets, warnings=warnings)
+    return InspectAgentResponse(agent=ref, port=port, secrets=secrets, egress=egress, warnings=warnings)
 
 
 @router.post("/manifests/inspect-project", response_model=InspectProjectResponse, tags=["Iron Swarm Manifests"])

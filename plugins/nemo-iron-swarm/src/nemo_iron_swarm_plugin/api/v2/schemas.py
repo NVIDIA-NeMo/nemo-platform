@@ -208,6 +208,11 @@ class InspectAgentResponse(BaseModel):
     agent: str = Field(description="Resolved ``workspace/name`` of the agent.")
     port: int = Field(description="Victim port derived from the running deployment (else the default).")
     secrets: list[str] = Field(default_factory=list, description="Secret names derived from the agent config.")
+    egress: list[str] = Field(
+        default_factory=list,
+        description="Hosts the agent's own config names (model endpoints, network MCP servers). Shown so "
+        "the form does not read as 'no egress' for an agent that has some.",
+    )
     warnings: list[str] = Field(default_factory=list, description="Non-fatal notes (e.g. no running deployment).")
 
 

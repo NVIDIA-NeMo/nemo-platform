@@ -82,7 +82,13 @@ def test_inspect_agent_returns_derived_defaults(client, monkeypatch) -> None:
     monkeypatch.setattr(
         manifests_module,
         "inspect_agent",
-        lambda *_a, **_k: ("default/clockbot", 9123, ["INFERENCE_API_KEY"], ["heads up"]),
+        lambda *_a, **_k: (
+            "default/clockbot",
+            9123,
+            ["INFERENCE_API_KEY"],
+            ["https://inference-api.nvidia.com/v1"],
+            ["heads up"],
+        ),
     )
     resp = client.post(
         "/apis/iron-swarm/v2/workspaces/default/manifests/inspect-agent",
@@ -90,10 +96,13 @@ def test_inspect_agent_returns_derived_defaults(client, monkeypatch) -> None:
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
+    # Egress is pre-filled rather than left blank: an empty box reads as "no egress", which invites
+    # typing the hosts in by hand — and an explicit value then wins over the derived one.
     assert body == {
         "agent": "default/clockbot",
         "port": 9123,
         "secrets": ["INFERENCE_API_KEY"],
+        "egress": ["https://inference-api.nvidia.com/v1"],
         "warnings": ["heads up"],
     }
 

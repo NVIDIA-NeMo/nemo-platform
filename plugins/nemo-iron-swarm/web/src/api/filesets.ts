@@ -110,6 +110,7 @@ export interface InspectAgentResult {
   agent: string;
   port: number;
   secrets: string[];
+  egress: string[];
   warnings: string[];
 }
 
