@@ -70,8 +70,8 @@ cfg = client.auditor.configs.create(
     workspace="default",
     name="quick-scan",
     system=AuditSystemData(lite=True, parallel_attempts=4),
-    run=AuditRunData(generations=3),
-    plugins=AuditPluginsData(probe_spec="latentinjection", detector_spec="auto"),
+    run=AuditRunData(generations=1),
+    plugins=AuditPluginsData(probe_spec="goodside.Tag", detector_spec="auto"),
     reporting=AuditReportData(report_prefix="quick-scan"),
 )
 
@@ -101,9 +101,13 @@ result = client.auditor.run(
     target="nemotron-3-nano-30b",
     workspace="default",
 )
-print(result["status"], result["returncode"])
-for name, ref in result["results"].items():
-    print(name, ref["artifact_url"])
+print(f"Audit status: {result['status']}")
+if result["status"] == "failed":
+    print(f"Audit failed: {result.get('error', 'unknown error')}")
+else:
+    print(result["probes_complete"], result["probes_failed"])
+    for name, ref in result["results"].items():
+        print(name, ref["artifact_url"])
 ```
 
 `submit()` posts the job to the K8s executor and returns an `AuditorJobResource` handle.
