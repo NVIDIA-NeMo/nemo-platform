@@ -1159,3 +1159,110 @@ def test_environment_delete_confirmation() -> None:
 
     assert result.exit_code == 0, result.stderr
     assert "Environment 'env1' deleted." in result.stdout
+
+
+def test_environment_spec_create_routes_through_sdk() -> None:
+    """The CLI builds the request via the plugin SDK (single source of truth).
+
+    Spy the SDK resource method to prove the CLI delegates to it rather than
+    hand-rolling the request path/body.
+    """
+    from nemo_agents_plugin import sdk as sdk_module
+
+    captured: dict[str, Any] = {}
+
+    def _spy(self, *, name, workspace=None, spec=None):
+        captured["name"] = name
+        captured["workspace"] = workspace
+        captured["spec"] = spec
+        return {"name": name}
+
+    app = AgentsCLI().get_cli()
+    with patch.object(sdk_module._EnvironmentSpecResource, "create", _spy):
+        result = CliRunner().invoke(
+            app,
+            [
+                "environment-specs",
+                "create",
+                "ben",
+                "--spec",
+                '{"env": {"LOG_LEVEL": "debug"}}',
+                "--workspace",
+                "team-a",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    assert captured["name"] == "ben"
+    assert captured["workspace"] == "team-a"
+    assert captured["spec"] == {"env": {"LOG_LEVEL": "debug"}}
+
+
+def test_compute_spec_create_via_sdk_translates_http_error() -> None:
+    """A server error raised inside the SDK is translated to the CLI's rich message.
+
+    The rerouted create commands call the SDK inside ``_run_sdk``; this asserts an
+    httpx.HTTPStatusError from the SDK surfaces as the same ``... agent API`` stderr
+    message + exit 1 the old direct ``_api_request`` path produced.
+    """
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "boom"})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            [
+                "compute-specs",
+                "create",
+                "big",
+                "--spec",
+                '{"resources": {"limits": {"cpu": "2"}}}',
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 1
+    assert "POST agent API" in result.stderr
+
+
+def test_environment_spec_create_via_sdk_sends_auth_header() -> None:
+    """The CLI threads its resolved auth header through the SDK to the wire.
+
+    Covers the ``_agents_sdk`` seam: the CLI builds an AgentsResource whose
+    ``default_headers`` carry the context auth token, so a create routed through the
+    SDK carries ``Authorization`` on the actual request.
+    """
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["auth"] = req.headers.get("authorization")
+        return httpx.Response(201, json={"name": "ben"})
+
+    app = AgentsCLI().get_cli()
+    with (
+        _install_mock_transport(handler),
+        patch(
+            "nemo_agents_plugin.cli._resolve_context_headers",
+            return_value={"Authorization": "Bearer tok-xyz"},
+        ),
+    ):
+        result = CliRunner().invoke(
+            app,
+            [
+                "environment-specs",
+                "create",
+                "ben",
+                "--spec",
+                '{"provider": "local"}',
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    assert captured["auth"] == "Bearer tok-xyz"
