@@ -155,8 +155,15 @@ def _mock_analyst_models(sdk: NeMoPlatform, workspace: str) -> tuple[str, str]:
 
 
 def _job_diagnostics(sdk: NeMoPlatform, workspace: str, job_name: str, prefix: str) -> str:
-    """Explain a failed run with the backing job's own logs."""
+    """Explain a failed run with the backing job's own error details and logs."""
     parts = [prefix]
+    try:
+        job = sdk.agents.jobs.execute.get(job_name, workspace=workspace)
+        for field in ("error_details", "status_details"):
+            if detail := job.get(field):
+                parts.append(f"{field}: {json.dumps(detail, indent=2, default=str)}")
+    except Exception as error:
+        parts.append(f"Could not fetch the job: {error}")
     try:
         logs = client_from_platform(sdk, JobsClient).list_job_logs(workspace=workspace, name=job_name)
         for entry in logs.items():
