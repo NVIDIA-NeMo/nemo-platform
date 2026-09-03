@@ -382,6 +382,7 @@ def _without_user_intent_evidence(text: str) -> str:
 def _write_capability_judgments(
     path: Path,
     *,
+    trace: Path | None = None,
     capability: str = "account_recovery",
     evidence_index: int = 0,
     kind: str = "user_intent",
@@ -395,6 +396,7 @@ def _write_capability_judgments(
         json.dumps(
             {
                 "schema": "nemo.eval_author.audit_capability_judgments.v1",
+                "trace_sha256": _digest(trace) if trace is not None else "sha256:" + ("0" * 64),
                 "judged_by": "eval-author-audit skill",
                 "judgments": [
                     {
@@ -2330,7 +2332,7 @@ def test_audit_measure_uses_capability_judgments_for_non_tool_evidence(tmp_path:
     trace = tmp_path / "trajectory.json"
     _write_atif_trace(trace, tool_calls=["customer.lookup"])
     judgments = tmp_path / ".eval-author" / "capability-judgments.json"
-    _write_capability_judgments(judgments)
+    _write_capability_judgments(judgments, trace=trace)
     out_dir = tmp_path / ".eval-author" / "audit-measurements"
 
     code, summary, stderr = _run_json_script(
@@ -2362,6 +2364,7 @@ def test_audit_measure_uses_capability_judgments_for_non_tool_evidence(tmp_path:
     assert details["judgment_input"] == {
         "provided": True,
         "schema": "nemo.eval_author.audit_capability_judgments.v1",
+        "trace_sha256": _digest(trace),
         "judged_by": "eval-author-audit skill",
         "judgment_count": 1,
     }
@@ -2390,7 +2393,7 @@ def test_audit_measure_capability_judgment_does_not_override_missing_tool_eviden
     trace = tmp_path / "trajectory.json"
     _write_atif_trace(trace)
     judgments = tmp_path / ".eval-author" / "capability-judgments.json"
-    _write_capability_judgments(judgments)
+    _write_capability_judgments(judgments, trace=trace)
     out_dir = tmp_path / ".eval-author" / "audit-measurements"
 
     code, summary, stderr = _run_json_script(
@@ -2432,7 +2435,7 @@ def test_audit_measure_rejects_stale_capability_judgments_without_writing(tmp_pa
     trace = tmp_path / "trajectory.json"
     _write_atif_trace(trace, tool_calls=["customer.lookup"])
     judgments = tmp_path / ".eval-author" / "capability-judgments.json"
-    _write_capability_judgments(judgments, description="Old user-intent wording.")
+    _write_capability_judgments(judgments, trace=trace, description="Old user-intent wording.")
     out_dir = tmp_path / ".eval-author" / "audit-measurements"
 
     code, report, _ = _run_json_script(
@@ -2456,6 +2459,41 @@ def test_audit_measure_rejects_stale_capability_judgments_without_writing(tmp_pa
     assert report["written"] is False
     assert report["error_type"] == "measurement"
     assert "description does not match audit evidence description" in report["error"]
+    assert not out_dir.exists()
+
+
+@_needs_harbor
+def test_audit_measure_rejects_capability_judgments_from_another_trace(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    judged_trace = tmp_path / "judged-trajectory.json"
+    _write_atif_trace(judged_trace, tool_calls=["customer.lookup"])
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments, trace=judged_trace)
+    measured_trace = tmp_path / "measured-trajectory.json"
+    _write_atif_trace(measured_trace, tool_calls=["customer.lookup"], trajectory_id="different-trajectory")
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(measured_trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "does not match measured trace" in report["error"]
     assert not out_dir.exists()
 
 

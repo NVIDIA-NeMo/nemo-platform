@@ -248,6 +248,7 @@ def _judgment_input_summary(judgments: JsonObject | None) -> JsonObject:
     summary: JsonObject = {
         "provided": True,
         "schema": judgments["schema"],
+        "trace_sha256": judgments["trace_sha256"],
         "judgment_count": len(judgments["judgments"]),
     }
     judged_by = judgments.get("judged_by")

@@ -187,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         audit = load_audit_spec(args.audit)
         pending_subject = _subject(args)
         loaded_trace = _load_harbor_trajectory(pending_subject.trace_path)
+        _validate_capability_judgment_trace(inputs, loaded_trace)
         subject_info = _finalize_subject(pending_subject, loaded_trace)
         reports = _measure_all(
             audit=audit,
@@ -366,6 +367,19 @@ def _load_capability_judgments(path: Path | None) -> JsonObject | None:
         generated=False,
     )
     return payload
+
+
+def _validate_capability_judgment_trace(inputs: MeasurementInputs, loaded_trace: LoadedTrace) -> None:
+    """Reject a judgment sidecar authored for different ATIF content."""
+    judgments = inputs.capability_judgments
+    if judgments is None:
+        return
+    expected = f"sha256:{loaded_trace.content_sha256}"
+    actual = judgments["trace_sha256"]
+    if actual != expected:
+        raise AuditMeasurementError(
+            f"capability judgments trace_sha256 {actual!r} does not match measured trace {expected!r}"
+        )
 
 
 def _measure_all(

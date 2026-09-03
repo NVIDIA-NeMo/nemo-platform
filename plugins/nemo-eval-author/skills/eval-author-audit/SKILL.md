@@ -248,6 +248,9 @@ structured judgment file under `.eval-author/` using
 capability `name` plus the zero-based `evidence_required` index, copy the
 evidence `kind` and `description` exactly, and judge only non-tool evidence. Do
 not write judgments for `tool_call`; the script measures those deterministically.
+Set the sidecar's required `trace_sha256` to `sha256:` followed by the lowercase
+SHA-256 digest of the exact ATIF trajectory file you inspected. Measurement
+rejects the sidecar if those trace bytes have changed or another trace is used.
 Use the capability description, evidence description, and concrete trace content
 as the rubric: mark `satisfied` only when the trace clearly demonstrates the
 requirement, `missing` when it clearly does not, and `unclear` when the trace is
@@ -272,7 +275,8 @@ uv run --with-requirements <skill_dir>/requirements.txt \
 Capability coverage is conjunctive: every deterministic requirement must be
 satisfied, and every judged evidence requirement must be satisfied. Missing
 judgments leave the capability uncovered. Stale judgments fail measurement
-before the script writes a coverage report.
+before the script writes a coverage report, including judgments bound to a
+different trace digest.
 
 The script writes one folder per task, run, and method. Task and run ids are
 encoded as single path components so ids containing `/` cannot create nested or

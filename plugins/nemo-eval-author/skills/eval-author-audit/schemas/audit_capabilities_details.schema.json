@@ -115,6 +115,10 @@
       "type": "string",
       "pattern": "\\S"
     },
+    "sha256Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
     "itemName": {
       "description": "Stable machine-readable audit item or tool name.",
       "type": "string",
@@ -219,6 +223,9 @@
         "schema": {
           "const": "nemo.eval_author.audit_capability_judgments.v1"
         },
+        "trace_sha256": {
+          "$ref": "#/$defs/sha256Digest"
+        },
         "judged_by": {
           "$ref": "#/$defs/nonEmptyString"
         },
@@ -226,7 +233,24 @@
           "type": "integer",
           "minimum": 0
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "provided": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "schema",
+              "trace_sha256"
+            ]
+          }
+        }
+      ]
     },
     "toolCall": {
       "type": "object",

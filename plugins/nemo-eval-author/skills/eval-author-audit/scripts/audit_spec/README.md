@@ -21,7 +21,9 @@ Current assumptions:
   Harbor.
 - Capability measurement may also consume a local skill-authored judgment
   sidecar with `--capability-judgments`. That sidecar is for non-tool evidence
-  only; deterministic tool requirements still come from the ATIF trace.
+  only; deterministic tool requirements still come from the ATIF trace. The
+  sidecar's required `trace_sha256` binds its judgments to the exact ATIF bytes
+  that were inspected, and measurement rejects a digest mismatch.
 - Reports are written under encoded path components:
   `<out-dir>/task=<task-id>/run=<run-id>/<method>/coverage.json` and
   `details.json`. The raw `task_id` and `run_id` remain in the JSON payloads.
@@ -101,5 +103,6 @@ Private shared helpers live in `scripts/audit_spec/_schema.py`,
 judgment can satisfy non-tool evidence kinds such as `user_intent`, `output`,
 `outcome`, `policy_boundary`, and `verifier`, but it cannot cover a capability
 when required tools or `tool_call` evidence are missing. Missing judgments are
-reported as `unjudged` and leave the capability uncovered. Unknown evidence kinds
-remain `unsupported`.
+reported as `unjudged` and leave the capability uncovered. Judgments bound to a
+different trace digest are rejected before reports are written. Unknown evidence
+kinds remain `unsupported`.

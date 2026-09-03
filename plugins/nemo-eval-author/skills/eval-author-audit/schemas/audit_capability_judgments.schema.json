@@ -7,12 +7,17 @@
   "additionalProperties": false,
   "required": [
     "schema",
+    "trace_sha256",
     "judgments"
   ],
   "properties": {
     "schema": {
       "description": "Version marker for capability judgment sidecars.",
       "const": "nemo.eval_author.audit_capability_judgments.v1"
+    },
+    "trace_sha256": {
+      "description": "SHA-256 digest of the exact ATIF trajectory bytes inspected for these judgments.",
+      "$ref": "#/$defs/sha256Digest"
     },
     "judged_by": {
       "description": "Human-readable identifier for the skill, model, or reviewer that authored these judgments.",
@@ -35,6 +40,10 @@
       "description": "String value that must contain at least one non-whitespace character.",
       "type": "string",
       "pattern": "\\S"
+    },
+    "sha256Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "itemName": {
       "description": "Stable machine-readable audit item or tool name.",
