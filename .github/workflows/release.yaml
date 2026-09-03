@@ -150,7 +150,6 @@ jobs:
     outputs:
       release_type: ${{ steps.plan.outputs.release_type }}
       release_scope: ${{ steps.plan.outputs.release_scope }}
-      release_branch: ${{ steps.plan.outputs.release_branch }}
       source_sha: ${{ steps.plan.outputs.source_sha }}
       version: ${{ steps.plan.outputs.version }}
       release_label: ${{ steps.plan.outputs.release_label }}
