@@ -32,8 +32,14 @@ from nemo_evaluator_sdk.metrics.protocol import (
     MetricResult,
 )
 from nemo_evaluator_sdk.values.atif import Trajectory
-from nemo_evaluator_sdk.values.evidence import EVIDENCE_TRACE
+from nemo_evaluator_sdk.values.evidence import (
+    EVIDENCE_FORMAT_ATIF,
+    EVIDENCE_FORMAT_OTLP,
+    EVIDENCE_TRACE,
+    CandidateEvidence,
+)
 from nemo_evaluator_sdk.values.metrics import MetricBase
+from nemo_evaluator_sdk.values.otlp import span_text_strings
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
@@ -166,20 +172,41 @@ class SkillUsedMetric(MetricBase):
         evidence = candidate.evidence
         if evidence is None or evidence.get(self.trace_evidence) is None:
             return False
-        try:
-            handle = await evidence.trace(self.trace_evidence)
-            if handle.format == "otlp":
-                resource_spans = await handle.resource_spans()
-                return any(_otlp_references(resource_spans, loc) for loc in locations)
-            trajectory = await handle.trace()
-        except (KeyError, ValueError, ValidationError, OSError) as exc:
-            # Best-effort: a missing/malformed/invalid trajectory must score skill_used=False, not raise.
-            # ValidationError covers Trajectory.model_validate; OSError covers the underlying file read.
+        # Each view is resolved and read before the next is considered, so a trace that is
+        # discovered but will not parse falls through to the other rather than answering for it.
+        unreadable: list[str] = []
+        for evidence_format, read in ((EVIDENCE_FORMAT_OTLP, _otlp_used), (EVIDENCE_FORMAT_ATIF, _atif_used)):
+            try:
+                return await read(evidence, self.trace_evidence, locations)
+            except KeyError:
+                continue
+            except (ValueError, ValidationError, OSError) as exc:
+                # ValidationError covers Trajectory.model_validate; OSError the underlying read.
+                unreadable.append(f"{evidence_format}: {exc}")
+        if unreadable:
             logger.warning(
-                "SkillUsedMetric scored skill_used=False: could not read trace %r: %s", self.trace_evidence, exc
+                "SkillUsedMetric scored skill_used=False: could not read trace %r (%s)",
+                self.trace_evidence,
+                "; ".join(unreadable),
             )
-            return False
-        return any(_trajectory_references(trajectory, loc) for loc in locations)
+        return False
+
+
+async def _otlp_used(evidence: CandidateEvidence, name: str, locations: list[str]) -> bool:
+    """Whether the OTLP view of a trace references any staged skill location."""
+    resource_spans = await (await evidence.trace(name, format=EVIDENCE_FORMAT_OTLP)).resource_spans()
+    return any(_otlp_references(resource_spans, location) for location in locations)
+
+
+async def _atif_used(evidence: CandidateEvidence, name: str, locations: list[str]) -> bool:
+    """Whether the ATIF view of a trace references any staged skill location."""
+    trajectory = await (await evidence.trace(name, format=EVIDENCE_FORMAT_ATIF)).trace()
+    return any(_trajectory_references(trajectory, location) for location in locations)
+
+
+def _otlp_references(resource_spans: list[dict[str, Any]], needle: str) -> bool:
+    """Whether any string attribute on the trace's spans or events contains ``needle``."""
+    return any(needle in blob for blob in span_text_strings(resource_spans))
 
 
 class TrialMeasurements(BaseModel):
@@ -256,97 +283,6 @@ def _trajectory_references(trajectory: Trajectory, needle: str) -> bool:
                 if result.content is not None and needle in json.dumps(result.content, default=str):
                     return True
     return False
-
-
-def _otlp_references(resource_spans: list[dict[str, Any]], needle: str) -> bool:
-    """Check whether an OTLP string payload references ``needle``.
-
-    Args:
-        resource_spans: OTLP resource-span export units.
-        needle: Staged skill location to find.
-
-    Returns:
-        Whether any span or span-event string attribute contains ``needle``.
-    """
-    return any(needle in blob for blob in _otlp_string_blobs(resource_spans))
-
-
-def _otlp_string_blobs(resource_spans: list[dict[str, Any]]) -> list[str]:
-    """Collect searchable string attributes from OTLP spans and events.
-
-    Args:
-        resource_spans: OTLP resource-span export units.
-
-    Returns:
-        String values found beneath span and event attributes.
-    """
-    blobs: list[str] = []
-    for resource_span in resource_spans:
-        for scope_span in _otlp_dict_items(resource_span.get("scopeSpans")):
-            for span in _otlp_dict_items(scope_span.get("spans")):
-                blobs.extend(_otlp_attr_strings(span.get("attributes")))
-                for event in _otlp_dict_items(span.get("events")):
-                    blobs.extend(_otlp_attr_strings(event.get("attributes")))
-    return blobs
-
-
-def _otlp_dict_items(value: Any) -> list[dict[str, Any]]:
-    """Return only dictionary elements from an OTLP repeated field.
-
-    Args:
-        value: Candidate decoded repeated field.
-
-    Returns:
-        Dictionary elements, or an empty list for malformed containers.
-    """
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, dict)]
-
-
-def _otlp_attr_strings(attributes: Any) -> list[str]:
-    """Collect string leaves from decoded OTLP attributes.
-
-    Args:
-        attributes: Candidate OTLP key-value attribute list.
-
-    Returns:
-        String leaves contained in each attribute value.
-    """
-    blobs: list[str] = []
-    for item in _otlp_dict_items(attributes):
-        blobs.extend(_otlp_any_strings(item.get("value")))
-    return blobs
-
-
-def _otlp_any_strings(value: Any) -> list[str]:
-    """Collect string leaves from one decoded OTLP ``AnyValue``.
-
-    Args:
-        value: Candidate OTLP ``AnyValue`` object.
-
-    Returns:
-        Recursively nested string values.
-    """
-    if isinstance(value, str):
-        return [value]
-    if not isinstance(value, dict):
-        return []
-    if (text := value.get("stringValue")) is not None:
-        return [str(text)]
-    if isinstance(array := value.get("arrayValue"), dict):
-        blobs: list[str] = []
-        values = array.get("values")
-        if isinstance(values, list):
-            for item in values:
-                blobs.extend(_otlp_any_strings(item))
-        return blobs
-    if isinstance(kvlist := value.get("kvlistValue"), dict):
-        blobs = []
-        for item in _otlp_dict_items(kvlist.get("values")):
-            blobs.extend(_otlp_any_strings(item.get("value")))
-        return blobs
-    return []
 
 
 def _as_int(value: Any) -> int | None:

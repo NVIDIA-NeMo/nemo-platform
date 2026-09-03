@@ -83,9 +83,10 @@ def run_task_to_evaluation_context(trial: AgentEvalTrial, *, evaluation_name: st
 async def atif_steps_from_trial(trial: AgentEvalTrial, *, started_at: datetime) -> list[AtifStepParam] | None:
     """Return the trial's real ATIF steps, or None when it carries no ATIF trajectory.
 
-    Only runners whose agent emits ATIF attach one; Harbor's ``oracle`` and ``nop`` never do, and
-    an unreadable or malformed trajectory is treated the same as an absent one so a publish is
-    never lost to bad evidence.
+    Reads the ATIF view by name rather than the trial's primary trace, which may be an OTLP
+    one. Only runners whose agent emits ATIF attach one; Harbor's
+    ``oracle`` and ``nop`` never do, and an unreadable or malformed trajectory is treated the
+    same as an absent one so a publish is never lost to bad evidence.
 
     The SDK's read model is deliberately more permissive than Intake's ingest schema, so steps that
     parse here can still be rejected there; :func:`nemo_evaluator.intake.publish.publish_to_intake`
@@ -94,12 +95,15 @@ async def atif_steps_from_trial(trial: AgentEvalTrial, *, started_at: datetime) 
     evidence = trial.evidence
     if evidence is None:
         return None
-    descriptor = evidence.get(EVIDENCE_TRACE)
-    if descriptor is None or descriptor.format != EVIDENCE_FORMAT_ATIF:
+    try:
+        handle = await evidence.trace(EVIDENCE_TRACE, format=EVIDENCE_FORMAT_ATIF)
+    except KeyError:
+        # Absent is the normal case for a runner whose agent emits no ATIF, and is
+        # distinct from a trace that exists but will not read.
         return None
     try:
-        steps = await (await evidence.trace(EVIDENCE_TRACE)).steps()
-    except (OSError, ValueError, KeyError) as error:
+        steps = await handle.steps()
+    except (OSError, ValueError) as error:
         logger.warning("Ignoring unreadable ATIF trace for trial %s: %s", trial.id, error)
         return None
 
