@@ -92,5 +92,12 @@ Dockerfile plus whatever it COPYs. Derivation rules:
 - What a project can never state about itself — `--harness` and `--relay-confirmed` — is always
   asked of you.
 
-A worked BYO example lives in the iron-swarm repo at `examples/langgraph-victim/` (hand-built
-StateGraph, FastAPI serving loop, Relay wired per `references/relay-attachment.md`).
+## Worked examples
+
+`plugins/nemo-iron-swarm/examples/` has a complete, runnable victim for every guardable harness,
+across both routes — see its README for the matrix. In short:
+
+- Route A (registered Fabric agent): `relay-victim/` (deepagents) and `hermes-victim/` (hermes).
+- Route B (BYO project): `langchain-victim/`, `langgraph-victim/`, and `other-victim/`
+  (framework-free) — same two tools and server shape across all three, so the only difference is
+  the Relay-attachment line described in [relay-attachment.md](relay-attachment.md).
