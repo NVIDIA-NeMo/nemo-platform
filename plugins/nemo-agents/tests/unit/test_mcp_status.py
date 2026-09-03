@@ -37,9 +37,6 @@ _WORKING_SERVER = textwrap.dedent(
 
 _CRASHING_SERVER = "import sys; sys.stderr.write('ModuleNotFoundError: no such package\\n'); sys.exit(1)"
 
-# A server whose stderr names host paths, the way a real traceback does.
-_PATHY_SERVER = "import sys; sys.stderr.write('FileNotFoundError: /private/var/host/secrets/keys.json\\n'); sys.exit(1)"
-
 
 def _config(servers: dict[str, dict[str, Any]]) -> AgentConfig:
     return AgentConfig.model_validate(
@@ -93,7 +90,7 @@ class TestProbeStdioServers:
         # The PATH the probe searched is host layout, not status.
         assert os.environ["PATH"] not in status.detail
 
-    async def test_resolved_command_that_dies_is_spawn_failed_with_stderr(self) -> None:
+    async def test_resolved_command_that_dies_is_spawn_failed_with_generic_error(self) -> None:
         config = _config(
             {
                 "iocs": {
@@ -108,7 +105,8 @@ class TestProbeStdioServers:
 
         assert status.state == "spawn_failed"
         assert status.command_resolved is True
-        assert "ModuleNotFoundError: no such package" in status.error
+        assert status.error == "Server exited before initializing."
+        assert "ModuleNotFoundError" not in status.error
 
     async def test_working_server_is_running_and_lists_its_tools(self, tmp_path: Path) -> None:
         script = tmp_path / "server.py"
@@ -137,16 +135,19 @@ class TestProbeStdioServers:
         assert status.state == "unresolved"
 
 
-class TestPathRedaction:
-    """Status is a report on the agent, not a map of the host filesystem."""
+class TestStderrNotExposed:
+    """A crashed server's stderr — which can hold whatever its declared env held — never reaches the API."""
 
-    async def test_stderr_paths_are_reduced_to_their_filename(self) -> None:
+    async def test_stderr_secret_env_value_is_not_in_the_response(self) -> None:
+        secret = "sk-super-secret-token-value"  # noqa: S105 — test fixture, not a real credential.
+        server = "import os, sys; sys.stderr.write(os.environ['API_KEY']); sys.exit(1)"
         config = _config(
             {
                 "iocs": {
                     "transport": "stdio",
                     "url": sys.executable,
-                    "args": ["-c", _PATHY_SERVER],
+                    "args": ["-c", server],
+                    "env": {"API_KEY": secret},
                 }
             }
         )
@@ -154,8 +155,8 @@ class TestPathRedaction:
         [status] = await probe_mcp_servers(config, timeout=15)
 
         assert status.state == "spawn_failed"
-        assert "/private/var/host/secrets" not in status.error
-        assert ".../keys.json" in status.error
+        assert secret not in status.error
+        assert status.error == "Server exited before initializing."
 
 
 class TestProbeRemoteServers:
@@ -174,6 +175,33 @@ class TestProbeRemoteServers:
 
         assert status.state == "running"
         assert status.detail == "Responded with HTTP 200."
+
+    async def test_client_error_response_is_not_running(self, httpx_status_url) -> None:
+        url = httpx_status_url(404)
+        config = _config({"docs": {"transport": "streamable_http", "url": url}})
+
+        [status] = await probe_mcp_servers(config, timeout=5)
+
+        assert status.state == "unreachable"
+        assert status.detail == "Responded with HTTP 404."
+
+    async def test_server_error_response_is_not_running(self, httpx_status_url) -> None:
+        url = httpx_status_url(500)
+        config = _config({"docs": {"transport": "streamable_http", "url": url}})
+
+        [status] = await probe_mcp_servers(config, timeout=5)
+
+        assert status.state == "unreachable"
+        assert status.detail == "Responded with HTTP 500."
+
+    async def test_redirect_response_is_not_running(self, httpx_status_url) -> None:
+        url = httpx_status_url(302)
+        config = _config({"docs": {"transport": "streamable_http", "url": url}})
+
+        [status] = await probe_mcp_servers(config, timeout=5)
+
+        assert status.state == "unreachable"
+        assert status.detail == "Responded with HTTP 302."
 
 
 class TestProbeUnknownTransport:
@@ -195,3 +223,18 @@ def httpx_mock_url() -> Any:
     with respx.mock:
         respx.get(url).respond(200)
         yield url
+
+
+@pytest.fixture
+def httpx_status_url() -> Any:
+    """A factory for a URL that answers with a given status code, via respx."""
+    import respx
+
+    url = "https://mcp.example.invalid/mcp"
+    with respx.mock:
+
+        def _make(status_code: int) -> str:
+            respx.get(url).respond(status_code)
+            return url
+
+        yield _make

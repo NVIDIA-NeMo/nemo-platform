@@ -159,11 +159,7 @@ paths:
       tags:
       - Agents
       summary: Get Agent Status
-      description: "Report the runtime status of an agent, including its MCP servers.\n\
-        \nA stdio MCP server that never spawns degrades an agent silently \u2014 the\n\
-        harness just gets fewer tools \u2014 so every declared server is listed here\n\
-        whether or not it started, and each running deployment is asked to resolve\n\
-        its own servers against the PATH its runtime actually has."
+      description: Report the runtime status of an agent, including its MCP servers.
       operationId: get_agent_status_apis_agents_v2_workspaces__workspace__agents__name__status_get
       parameters:
       - name: workspace
@@ -185,6 +181,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentStatus'
+        '404':
+          description: Agent not found
         '422':
           description: Validation Error
           content:
@@ -4501,12 +4499,16 @@ components:
       - workspace
       - checked_at
       title: AgentStatus
-      description: "Response body for ``GET /v2/workspaces/{workspace}/agents/{name}/status``.\n\
-        \n``declared_mcp_servers`` is the static view from the stored agent config\
-        \ \u2014\nwhat the agent expects to exist \u2014 and is populated whether\
-        \ or not anything\nis deployed. ``deployments`` adds the runtime view, one\
-        \ entry per\ndeployment, each reporting the same servers as the runtime actually\
-        \ finds\nthem."
+      description: 'Response body for ``GET /v2/workspaces/{workspace}/agents/{name}/status``.
+
+
+        ``declared_mcp_servers`` is the static view from the stored agent config,
+
+        what the agent expects to exist, and is populated whether or not anything
+
+        is deployed. ``deployments`` adds the runtime view, one entry per deployment,
+
+        each reporting the same servers as the runtime actually finds them.'
     AgentWorkdir:
       properties:
         base_workdir:

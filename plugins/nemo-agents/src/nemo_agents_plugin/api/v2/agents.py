@@ -10,6 +10,7 @@ prefix from the RouterSpec).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -154,7 +155,12 @@ async def _get_agent_or_404(workspace: str, name: str, entity_client: NemoEntiti
         raise HTTPException(status_code=500, detail="Failed to get agent.") from exc
 
 
-@router.get("/agents/{name}/status", response_model=AgentStatus, tags=["Agents"])
+@router.get(
+    "/agents/{name}/status",
+    response_model=AgentStatus,
+    tags=["Agents"],
+    responses={404: {"description": "Agent not found"}},
+)
 @scope.read
 @path_rule(
     callers=[CallerKind.PRINCIPAL],
@@ -176,12 +182,13 @@ async def get_agent_status(
 
     agent_config = config_from_dict(agent.config)
     deployments = sorted((d for d in result.data if d.agent == name), key=lambda d: d.name)
+    deployment_statuses = await asyncio.gather(*(_deployment_status(deployment) for deployment in deployments))
     return AgentStatus(
         agent=name,
         workspace=workspace,
         checked_at=datetime.now(UTC),
         declared_mcp_servers=declared_mcp_servers(agent_config) if agent_config else [],
-        deployments=[await _deployment_status(deployment) for deployment in deployments],
+        deployments=list(deployment_statuses),
     )
 
 

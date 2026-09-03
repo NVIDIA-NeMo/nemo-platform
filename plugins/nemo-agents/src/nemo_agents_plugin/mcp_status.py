@@ -13,7 +13,11 @@ subprocess would really inherit.
 Nothing here reports host filesystem layout. Whether a stdio command resolved
 is a boolean, never a path; messages are one short sentence and never quote the
 ``PATH`` that was searched; and any absolute path that still reaches a message
-or a captured stderr snippet is reduced to its final component on the way out.
+is reduced to its final component on the way out. A spawned server's stderr is
+never included in the response — the declared env it runs with can hold
+secrets that a crashing process might echo back — so a launch failure is
+reported as a short generic sentence, with the captured stderr logged
+server-side only, for operators to read from logs rather than the API.
 """
 
 from __future__ import annotations
@@ -79,7 +83,7 @@ class McpServerStatus(BaseModel):
         ),
     )
     detail: str = Field(default="", description="Human-readable explanation of the state.")
-    error: str = Field(default="", description="Error message or stderr snippet when the server failed to start.")
+    error: str = Field(default="", description="Short, generic error message when the server failed to start.")
     tools: list[str] = Field(default_factory=list, description="Tool names the server advertised, when it started.")
 
 
@@ -190,10 +194,11 @@ async def _start_stdio_server(
                         listed = await session.list_tools()
                         return True, [tool.name for tool in listed.tools], ""
         except TimeoutError:
-            return False, [], _with_stderr(f"Server did not initialize within {timeout:g}s.", errlog)
-        except Exception as exc:  # noqa: BLE001 — any launch failure is reportable status, not a 500.
-            logger.debug("MCP stdio probe of '%s' failed", command, exc_info=True)
-            return False, [], _with_stderr(f"{type(exc).__name__}: {exc}", errlog)
+            logger.debug("MCP stdio probe of '%s' timed out: %s", command, _stderr_tail(errlog))
+            return False, [], f"Server did not initialize within {timeout:g}s."
+        except Exception:  # noqa: BLE001 — any launch failure is reportable status, not a 500.
+            logger.debug("MCP stdio probe of '%s' failed: %s", command, _stderr_tail(errlog), exc_info=True)
+            return False, [], "Server exited before initializing."
 
 
 async def _probe_remote_server(name: str, server: McpServerConfig, timeout: float) -> McpServerStatus:
@@ -219,6 +224,13 @@ async def _probe_remote_server(name: str, server: McpServerConfig, timeout: floa
             state="unreachable",
             detail="Server did not respond.",
             error=f"{type(exc).__name__}: {exc}",
+        )
+    if response.is_error or response.is_redirect:
+        return _base_status(
+            name,
+            server,
+            state="unreachable",
+            detail=f"Responded with HTTP {response.status_code}.",
         )
     return _base_status(
         name,
@@ -273,15 +285,14 @@ def _default_environment() -> dict[str, str]:
     return get_default_environment()
 
 
-def _with_stderr(message: str, errlog: IO[str]) -> str:
-    """Append the tail of the server's stderr to *message*, when it wrote any."""
+def _stderr_tail(errlog: IO[str]) -> str:
+    """Read the tail of the server's captured stderr, for server-side logs only."""
     try:
         errlog.flush()
         errlog.seek(0)
-        snippet = errlog.read()[-_STDERR_SNIPPET_BYTES:].strip()
+        return errlog.read()[-_STDERR_SNIPPET_BYTES:].strip()
     except (OSError, ValueError):
-        return message
-    return f"{message}\n{snippet}" if snippet else message
+        return ""
 
 
 def config_from_dict(config: dict) -> AgentConfig | None:
