@@ -14,7 +14,7 @@ An `AuditTarget` identifies the model under test. It pairs a garak generator cla
 | Field | Description |
 |-------|-------------|
 | `type` | A fully-qualified [garak generator class](https://reference.garak.ai/en/latest/generators.html), such as `nim.NVOpenAIChat`, `openai.OpenAIGenerator`, `rest.RestGenerator`, or `test.Blank`. |
-| `model` | The provider's model identifier passed through to garak (for example, `nvidia/nemotron-3-nano-30b-a3b`). |
+| `model` | The provider's model identifier passed through to garak (for example, `nvidia/nemotron-3.5-lightning-30b-a3b`). |
 | `options` | A nested dict whose top-level key is the generator namespace (`nim`, `openai`, `rest`, ...). Contents are passed through to garak unchanged, with one exception: the [`nmp_uri_spec`](/documentation/vulnerability-scanning/targets/inference-gateway) sentinel is resolved to a concrete `uri` at run time. |
 | `description` | Optional free-form description shown in listings. |
 
@@ -38,9 +38,9 @@ Use a `provider` name from this output in the target below. The model identifier
 ```python
 target = client.auditor.targets.create(
     workspace="default",
-    name="nemotron-3-nano-30b",
+    name="nemotron-3.5-lightning-30b",
     type="nim.NVOpenAIChat",
-    model="nvidia/nvidia/nemotron-3-nano-30b-a3b",
+    model="nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
     options={
         "nim": {
             "max_tokens": 1024,
@@ -110,7 +110,7 @@ for entry in listing["data"]:
 ## Retrieve a Target
 
 ```python
-target = client.auditor.targets.get(workspace="default", name="nemotron-3-nano-30b")
+target = client.auditor.targets.get(workspace="default", name="nemotron-3.5-lightning-30b")
 ```
 
 ## Update a Target
@@ -120,7 +120,7 @@ target = client.auditor.targets.get(workspace="default", name="nemotron-3-nano-3
 ```python
 updated = client.auditor.targets.update(
     workspace="default",
-    name="nemotron-3-nano-30b",
+    name="nemotron-3.5-lightning-30b",
     type="nim.NVOpenAIChat",
     model="nvidia/meta/llama-3.3-70b-instruct",
     options={
@@ -137,5 +137,5 @@ updated = client.auditor.targets.update(
 ## Delete a Target
 
 ```python
-client.auditor.targets.delete(workspace="default", name="nemotron-3-nano-30b")
+client.auditor.targets.delete(workspace="default", name="nemotron-3.5-lightning-30b")
 ```
