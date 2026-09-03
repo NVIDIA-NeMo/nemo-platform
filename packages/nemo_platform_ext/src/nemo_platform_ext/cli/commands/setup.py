@@ -200,13 +200,17 @@ class ProbeConfig:
 # NVIDIA's gateway routes by model name before checking auth, so a fake model
 # returns 404 without ever validating the key. We use a supported model so the
 # gateway reaches the auth layer and returns 401/403 for bad credentials.
-_NVIDIA_BUILD_PROBE_MODEL = "nvidia/nemotron-3-nano-30b-a3b"
+_NVIDIA_BUILD_PROBE_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
 _PROBE_CONFIGS: dict[str, ProbeConfig] = {
     "nvidia-build": ProbeConfig(
         "POST",
         "v1/chat/completions",
-        {"model": _NVIDIA_BUILD_PROBE_MODEL, "messages": [], "max_tokens": 1},
+        {
+            "model": _NVIDIA_BUILD_PROBE_MODEL,
+            "messages": [{"role": "user", "content": "Respond with 'OK'"}],
+            "max_tokens": 1,
+        },
     ),
     "openai": ProbeConfig("GET", "models"),
     "anthropic": ProbeConfig("GET", "v1/models"),

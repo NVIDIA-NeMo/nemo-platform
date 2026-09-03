@@ -2076,8 +2076,8 @@ class TestInteractiveModelPairSelection:
                 f"{self._MOD}._get_all_model_choices",
                 return_value=[
                     (
-                        "default/nvidia-nemotron-3-nano-30b-a3b",
-                        "nvidia-nemotron-3-nano-30b-a3b (nvidia-build)",
+                        "default/nvidia-nemotron-3.5-lightning-30b-a3b",
+                        "nvidia-nemotron-3.5-lightning-30b-a3b (nvidia-build)",
                     )
                 ],
             ),
@@ -2110,7 +2110,7 @@ class TestInteractiveModelPairSelection:
         provider_a = MagicMock()
         provider_a.name = "nvidia-build"
         provider_a.served_models = [
-            MagicMock(model_entity_id="default/nvidia-nemotron-3-nano-30b-a3b"),
+            MagicMock(model_entity_id="default/nvidia-nemotron-3.5-lightning-30b-a3b"),
         ]
         provider_b = MagicMock()
         provider_b.name = "my-ollama-custom"
@@ -2177,10 +2177,10 @@ class TestPickDefaultChatEntity:
                     "default/nvidia-nv-embedqa-e5-v5",
                     "default/llama-nemoguard-8b",
                     "default/nv-rerankqa-mistral-4b",
-                    "default/nvidia-nemotron-3-nano-30b-a3b",
+                    "default/nvidia-nemotron-3.5-lightning-30b-a3b",
                 ]
             )
-            == "default/nvidia-nemotron-3-nano-30b-a3b"
+            == "default/nvidia-nemotron-3.5-lightning-30b-a3b"
         )
 
     def test_returns_none_when_nothing_qualifies(self):
@@ -2306,7 +2306,7 @@ class TestAutoModelPairSelection:
                 return_value=[
                     "default/adept-fuyu-8b",
                     "default/nvidia-nv-embedqa-e5-v5",
-                    "default/nvidia-nemotron-3-nano-30b-a3b",
+                    "default/nvidia-nemotron-3.5-lightning-30b-a3b",
                 ],
             ),
             patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
@@ -2326,8 +2326,8 @@ class TestAutoModelPairSelection:
         save_pair.assert_called_once_with(
             cli_context,
             ModelPair(
-                default="default/nvidia-nemotron-3-nano-30b-a3b",
-                fast="default/nvidia-nemotron-3-nano-30b-a3b",
+                default="default/nvidia-nemotron-3.5-lightning-30b-a3b",
+                fast="default/nvidia-nemotron-3.5-lightning-30b-a3b",
             ),
         )
 
@@ -2448,7 +2448,7 @@ class TestValidateApiKey:
         with patch(f"{self._MOD}.httpx.request", return_value=mock_resp) as mock_req:
             _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "test-key")
 
-        assert mock_req.call_args.kwargs["json"]["model"] == "nvidia/nemotron-3-nano-30b-a3b"
+        assert mock_req.call_args.kwargs["json"]["model"] == "nvidia/nemotron-3.5-lightning-30b-a3b"
 
     @pytest.mark.parametrize("status_code", [429, 500, 502])
     def test_non_2xx_non_rejection_returns_warning(self, status_code):

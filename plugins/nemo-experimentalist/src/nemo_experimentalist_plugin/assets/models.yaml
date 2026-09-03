@@ -113,10 +113,10 @@ models:
     provider: Moonshot
     range: reasoning_specialized
     notes: Strong open-weight reasoning.
-  - model_id: nvidia/nvidia/nemotron-3-nano-30b-a3b
+  - model_id: nvidia/nvidia/nemotron-3.5-lightning-30b-a3b
     provider: NVIDIA
     range: reasoning_specialized
-    notes: Nemotron Nano A3B reasoning.
+    notes: Nemotron 3.5 Lightning A3B reasoning.
   - model_id: nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
     provider: NVIDIA
     range: reasoning_specialized
