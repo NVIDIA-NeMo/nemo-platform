@@ -65,14 +65,24 @@ def _save_mitigations(ctx: JobContext) -> None:
     iron-swarm writes it under ``.iron-swarm/run-logs/<run_id>/`` at the end of a hardening run; the Studio
     Mitigations view fetches it via the results API. Best-effort — never fail the run over it.
     """
+    run_logs = ctx.storage.persistent / ".iron-swarm" / "run-logs"
     try:
         candidates = sorted(
-            (ctx.storage.persistent / ".iron-swarm" / "run-logs").glob("*/mitigations.json"),
+            run_logs.glob("*/mitigations.json"),
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
         if candidates:
             ctx.results.save("mitigations", candidates[0])
+            logger.info("saved mitigations result from %s", candidates[0])
+        else:
+            # Not saving is indistinguishable from having nothing to save once the job's temp storage is
+            # reclaimed, and the Harden tab simply never appears — so say which directory came up empty.
+            logger.warning(
+                "no mitigations.json under %s; the Harden tab will be hidden for this run (run-logs present: %s)",
+                run_logs,
+                sorted(p.name for p in run_logs.glob("*")) if run_logs.is_dir() else "<missing>",
+            )
     except Exception:  # capturing the artifact is best-effort, not part of the war-game
         logger.warning("failed to save mitigations result", exc_info=True)
 
@@ -83,14 +93,18 @@ def _save_validation(ctx: JobContext) -> None:
     iron-swarm writes it under ``.iron-swarm/run-logs/<run_id>/`` for any run that ran validators — including
     the frozen validate-only sanity check. Drives the Studio scorecard. Best-effort — never fail the run.
     """
+    run_logs = ctx.storage.persistent / ".iron-swarm" / "run-logs"
     try:
         candidates = sorted(
-            (ctx.storage.persistent / ".iron-swarm" / "run-logs").glob("*/validation.json"),
+            run_logs.glob("*/validation.json"),
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
         if candidates:
             ctx.results.save("validation", candidates[0])
+            logger.info("saved validation result from %s", candidates[0])
+        else:
+            logger.warning("no validation.json under %s; the run's scorecard will be unavailable", run_logs)
     except Exception:  # capturing the artifact is best-effort, not part of the war-game
         logger.warning("failed to save validation result", exc_info=True)
 
