@@ -279,6 +279,13 @@ def _inline_analyst(request: CreateAnalysisRunRequest, *, workspace: str) -> dic
             ethos=request.ethos,
             since=request.since,
             evaluation_id=request.evaluation_id,
+            # The Analyst's self-observability builds its own OTLP exporter from
+            # the operator's local CLI config, which does not exist in a task
+            # pod, so on a cluster it exports unauthenticated at best. Telemetry
+            # for these runs belongs in the agent config's relay endpoints,
+            # where the agents layer already carries auth; until that is wired,
+            # a run must not depend on it.
+            enable_observability=False,
         ),
     }
 
