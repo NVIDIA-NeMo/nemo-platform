@@ -13,6 +13,7 @@ import { Divider, FormField, Stack, TextInput } from '@nvidia/foundations-react-
 import { ControlledJsonInput } from '@studio/components/NewCustomizationForm/ControlledJsonInput';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
+import { GRPO_SPEC_DEFAULTS, specSliderProps } from '@studio/util/forms/specDefaults';
 import { useFormContext } from 'react-hook-form';
 
 const POLICY_BACKEND_ITEMS = [
@@ -58,7 +59,7 @@ export const GrpoAdvancedSection = () => {
               slotInfo:
                 'KL penalty coefficient against the reference policy. Higher values keep the model closer to the reference.',
             }}
-            defaultValue={0.0}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'ref_policy_kl_penalty')}
             min={0}
             max={1}
             step={0.01}
@@ -70,7 +71,7 @@ export const GrpoAdvancedSection = () => {
               slotLabel: 'Clip Min',
               slotInfo: 'Lower bound for PPO-style importance ratio clipping.',
             }}
-            defaultValue={0.2}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'ratio_clip_min')}
             min={0}
             max={1}
             step={0.01}
@@ -82,7 +83,7 @@ export const GrpoAdvancedSection = () => {
               slotLabel: 'Clip Max',
               slotInfo: 'Upper bound for PPO-style importance ratio clipping.',
             }}
-            defaultValue={0.28}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'ratio_clip_max')}
             min={0}
             max={2}
             step={0.01}
@@ -238,7 +239,7 @@ export const GrpoAdvancedSection = () => {
               slotLabel: 'Sequence Length Round',
               slotInfo: 'Round bucketed micro-batch sequence lengths up to a multiple of this.',
             }}
-            defaultValue={64}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'batching_strategy')}
             min={1}
             max={1024}
             step={1}
@@ -276,7 +277,7 @@ export const GrpoAdvancedSection = () => {
               slotLabel: 'vLLM GPU Memory Utilization',
               slotInfo: 'Fraction of each GPU vLLM reserves for weights plus KV cache.',
             }}
-            defaultValue={0.5}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'vllm_tensor_parallel_size')}
             min={0.05}
             max={1}
             step={0.05}
