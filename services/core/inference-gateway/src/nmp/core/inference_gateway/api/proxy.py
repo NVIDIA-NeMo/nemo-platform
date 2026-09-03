@@ -91,6 +91,8 @@ REQUEST_HEADERS_TO_DROP = frozenset(
     {
         "host",  # upstream shouldn't see the host header of our server
         "authorization",  # any auth to upstreams should be from Secrets, not the request
+        "x-api-key",  # like authorization: upstream auth comes from Secrets. Anthropic/Bedrock
+        # backends read this header, so a client's placeholder (e.g. "not-used") would 401 upstream.
         "x-forwarded-host",  # some backends (e.g. LiteLLM) use this to alter routing
         "x-forwarded-proto",
         "x-forwarded-for",
