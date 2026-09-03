@@ -25,7 +25,23 @@ it does — the run's tool-path preflight fails if any tool call skips it.
 export NMP_BASE_URL=http://localhost:8080
 
 nemo iron-swarm init --project-dir plugins/nemo-iron-swarm/examples/other-victim \
-    --name other-victim --harness other --relay-confirmed
+    --name other-victim --harness other --relay-confirmed \
+    --secrets INFERENCE_API_KEY \
+    --egress inference-api.nvidia.com \
+    --start-command "/usr/local/bin/python /app/server.py" \
+    --binary "/usr/local/bin/python*"
 nemo iron-swarm synth-benign --manifest-id other-victim --yes
 nemo iron-swarm run --manifest-id other-victim
 ```
+
+### Why the four extra flags
+
+`init` derives what the Dockerfile *states* and warns about the rest rather than guessing. The
+model host and API key live in `agent.py`, and this image installs to the system Python rather than
+a venv — so four things cannot be derived, and each fails differently if omitted: the credential
+name (victim starts, then fails its first model call), the egress host (default-deny sandbox drops
+model traffic mid-run), the absolute start command (OpenShell replaces `PATH`, so bare `python`
+never resolves), and the interpreter glob (the egress policy would match no process, granting
+nothing).
+
+If your own project declares these in the Dockerfile, `init` picks them up and you pass nothing.
