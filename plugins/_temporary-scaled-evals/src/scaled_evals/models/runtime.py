@@ -59,6 +59,7 @@ class LaunchSpec(BaseModel):
     harbor_profile_id: str | None = None
     framework_config: dict[str, Any] = Field(default_factory=dict)
     harbor_config: dict[str, Any] = Field(default_factory=dict)
+    harbor_dataset_image_imports: list[dict[str, Any]] = Field(default_factory=list)
     switchyard_profile_id: str | None = None
     switchyard_config: dict[str, Any] = Field(default_factory=dict)
     switchyard: SwitchyardLease | None = None

@@ -29,6 +29,7 @@ from scaled_evals.api.schemas.runnability import (
 )
 from scaled_evals.api.settings import settings
 from scaled_evals.api.tenancy import is_admin
+from scaled_evals.dispatch.harbor_dataset_images import effective_image_mode
 from scaled_evals.dispatch.registry import get_backend_capabilities
 
 ObjectExists = Callable[[str], bool]
@@ -169,6 +170,48 @@ def _append_reference_checks(
             "referenced config profiles are accessible" if profile_slots else "no config profiles were requested",
         )
     )
+
+    if body.framework == "harbor" and body.framework_profile_id:
+        profile_row = db.evaluations.load_framework_profile(body.framework_profile_id)
+        profile = profile_row.get("config") if profile_row else None
+        if isinstance(profile, dict) and profile.get("dataset_only") is True:
+            try:
+                effective_image_mode(profile)
+            except ValueError as exc:
+                message = str(exc)
+                checks.append(
+                    _check(
+                        "harbor_dataset_images",
+                        "incompatible",
+                        message,
+                        blocking=True,
+                        code="managed_dataset_images_required",
+                    )
+                )
+                return PreflightBlocker(422, "managed_dataset_images_required", message)
+            if (
+                not settings.image_builder_service_url
+                and not settings.cloud_build_enabled
+                and not settings.buildkit_enabled
+            ):
+                message = "managed Harbor dataset images require an enabled image builder"
+                checks.append(
+                    _check(
+                        "harbor_dataset_images",
+                        "unavailable",
+                        message,
+                        blocking=True,
+                        code="managed_dataset_builder_unavailable",
+                    )
+                )
+                return PreflightBlocker(503, "managed_dataset_builder_unavailable", message)
+            checks.append(
+                _check(
+                    "harbor_dataset_images",
+                    "ready",
+                    "dataset task images will be materialized through managed task revisions",
+                )
+            )
 
     credential_ids = sorted(set(body.credentials.values()))
     try:

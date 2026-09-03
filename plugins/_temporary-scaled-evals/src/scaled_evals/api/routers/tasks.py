@@ -82,8 +82,8 @@ def _client_error_code(exc: ClientError) -> str:
     return str(exc.response.get("Error", {}).get("Code", ""))
 
 
-def _validate_uploaded_task_pack(task_id: str, db: Db) -> UploadedTaskPack:
-    revision = db.tasks.latest_revision_for_finalize(task_id)
+def _validate_uploaded_task_pack(task_id: str, db: Db, *, expected_revision: int | None = None) -> UploadedTaskPack:
+    revision = db.tasks.revision_for_finalize(task_id, expected_revision=expected_revision)
     if revision is None:
         raise _http_error(404, "not_found", "task not found")
     if revision.status != "uploading":
@@ -386,7 +386,7 @@ def finalize_task(
     elif prebuilt_image is None:
         build_backend = "buildkit"
 
-    uploaded_pack = _validate_uploaded_task_pack(task_id, db)
+    uploaded_pack = _validate_uploaded_task_pack(task_id, db, expected_revision=(body.revision if body else None))
 
     if prebuilt_image is not None and settings.task_image_validation_mode == "disabled":
         assert body is not None
@@ -397,6 +397,7 @@ def finalize_task(
             image_digest=body.image_digest or "",
             tarball_sha256=body.tarball_sha256,
             expected_revision=uploaded_pack.revision,
+            exact_revision=body.revision is not None,
             tarball_size_bytes=uploaded_pack.size_bytes,
             tenant_storage_quota_bytes=settings.task_pack_tenant_storage_quota_bytes,
         )
@@ -425,6 +426,7 @@ def finalize_task(
         build_credentials=build_credentials,
         tarball_sha256=(body.tarball_sha256 if body else None),
         expected_revision=uploaded_pack.revision if uploaded_pack is not None else None,
+        exact_revision=bool(body and body.revision is not None),
         tarball_size_bytes=uploaded_pack.size_bytes if uploaded_pack is not None else None,
         tenant_storage_quota_bytes=(
             settings.task_pack_tenant_storage_quota_bytes if uploaded_pack is not None else None

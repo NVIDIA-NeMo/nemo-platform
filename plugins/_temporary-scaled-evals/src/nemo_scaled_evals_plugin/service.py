@@ -21,6 +21,7 @@ from scaled_evals.api.db import close_pool, open_pool
 from scaled_evals.api.routers import (
     admin,
     agent_bundles,
+    benchmark_imports,
     benchmark_runs,
     benchmarks,
     config_profiles,
@@ -40,6 +41,7 @@ _V1_ROUTERS = (
     ops.router,
     tasks.router,
     benchmarks.router,
+    benchmark_imports.router,
     benchmark_runs.router,
     credentials.router,
     config_profiles.router,

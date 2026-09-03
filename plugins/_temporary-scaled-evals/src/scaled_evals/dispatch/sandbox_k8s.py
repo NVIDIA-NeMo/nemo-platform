@@ -175,6 +175,7 @@ _TASKS_PATH_RE = re.compile(
 )
 _PROFILE_ENV_KEYS = ("env", "environment", "vars")
 _PROFILE_TEMPLATE_KEYS = ("config", "harbor_config", "template", "harbor_template")
+_PROFILE_METADATA_KEYS = ("dataset_only", "dataset_image_mode")
 # The file that marks the root of a Harbor task tree inside an uploaded pack.
 _TASK_TREE_MARKER = "task.toml"
 _EVALUATION_LABEL = "scaled-evals.nvidia.com/evaluation-id"
@@ -193,6 +194,10 @@ StatusReader = Callable[[LaunchHandle], RuntimeStatus]
 def _should_stage_uploaded_task_tree(spec: LaunchSpec) -> bool:
     """Only finalized uploaded-image revisions use the uploaded task tree at dispatch."""
     return bool(spec.image_ref and spec.tarball_object_key)
+
+
+def _dataset_image_map(spec: LaunchSpec) -> dict[str, str]:
+    return {str(item["source_image"]): str(item["runtime_image"]) for item in spec.harbor_dataset_image_imports}
 
 
 def load_env_file(path: Path) -> dict[str, str]:
@@ -229,6 +234,7 @@ def render_harbor_config(
     writable_root_authorized: bool = False,
     agent_bundle: Mapping[str, Any] | None = None,
     benchmark_run_id: str | None = None,
+    dataset_image_map: Mapping[str, str] | None = None,
 ) -> str:
     """Interpolate ``${VAR}`` from ``env`` and set ``job_name`` to the evaluation id.
 
@@ -253,10 +259,20 @@ def render_harbor_config(
     run uses the uploaded task tree rather than one baked into the runner image.
     Falsy ``task_path`` leaves the baked/global task path untouched.
     """
-    profile_text, profile_env = _normalize_harbor_profile_config(profile_config or {})
-    template = profile_text or config_text
+    profile = profile_config or {}
+    dataset_only = _is_dataset_only_harbor_profile(profile)
+    profile_text, profile_env = _normalize_harbor_profile_config(profile)
+    template = (
+        _dataset_only_harbor_template(
+            config_text,
+            profile_text,
+            dataset_image_map=dataset_image_map,
+        )
+        if dataset_only
+        else profile_text or config_text
+    )
     sub_env = {**env, **profile_env}
-    if image_ref:
+    if image_ref and not dataset_only:
         sub_env["TASK_IMAGE"] = image_ref
     if task_path:
         # Resolve the task-path placeholder to the staged tree so configs that
@@ -284,7 +300,7 @@ def render_harbor_config(
         rendered, replaced = pattern.subn(f"{key}: {value}", rendered, count=1)
         if replaced == 0:
             rendered = f"{key}: {value}\n{rendered}"
-    if image_ref:
+    if image_ref and not dataset_only:
         rendered = _bind_task_image(rendered, image_ref)
     if task_path:
         rendered = _TASKS_PATH_RE.sub(lambda m: f"{m.group('lead')}{task_path}", rendered, count=1)
@@ -309,6 +325,53 @@ def render_harbor_config(
     rendered = _bind_writable_root_authorization(rendered, writable_root_authorized)
     rendered = _bind_default_inference_priority(rendered)
     return _enforce_sandbox_tls_policy(rendered, allow_insecure_tls=allow_insecure_tls)
+
+
+def _dataset_only_harbor_template(
+    base_text: str,
+    profile_text: str | None,
+    *,
+    dataset_image_map: Mapping[str, str] | None = None,
+) -> str:
+    """Merge a dataset selector into the target's K8s Harbor environment.
+
+    A Harbor dataset provides task paths and task-local images, but not the
+    deployment's K8s connection settings.  Keep those settings from the target
+    template while removing its anchor task and image, then let the adapter
+    select each resolved task's declared image.
+    """
+    try:
+        base = yaml.safe_load(base_text) or {}
+        profile = yaml.safe_load(profile_text or "") or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid Harbor config: {exc}") from exc
+    if not isinstance(base, dict) or not isinstance(profile, dict):
+        raise ValueError("Harbor config must be an object")
+
+    merged = _deep_merge_harbor_config(base, profile)
+    merged.pop("tasks", None)
+    environment = merged.get("environment")
+    if not isinstance(environment, dict):
+        raise ValueError("dataset-only Harbor profiles require a target environment object")
+    kwargs = environment.setdefault("kwargs", {})
+    if not isinstance(kwargs, dict):
+        raise ValueError("dataset-only Harbor environment.kwargs must be an object")
+    kwargs.pop("image", None)
+    kwargs["_scaled_evals_prefer_task_image"] = True
+    if dataset_image_map:
+        kwargs["_scaled_evals_task_image_map"] = dict(dataset_image_map)
+    return yaml.safe_dump(merged, sort_keys=False)
+
+
+def _deep_merge_harbor_config(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _deep_merge_harbor_config(existing, value)
+        else:
+            merged[key] = value
+    return merged
 
 
 def _bind_default_inference_priority(config_text: str) -> str:
@@ -686,13 +749,20 @@ def _root_authorized_for_spec(spec: LaunchSpec) -> bool:
     """Return whether operators approved root for this immutable task image."""
     if not settings.sandbox_k8s_allow_root:
         return False
-    digest_match = re.search(
-        r"(?:^|@)(sha256:[0-9a-f]{64})$",
-        (spec.image_digest or "").strip().lower(),
-    )
-    if digest_match is None:
+    values = [str(item.get("image_digest") or "") for item in spec.harbor_dataset_image_imports] or [
+        spec.image_digest or ""
+    ]
+    digests = []
+    for value in values:
+        digest_match = re.search(
+            r"(?:^|@)(sha256:[0-9a-f]{64})$",
+            value.strip().lower(),
+        )
+        if digest_match is None:
+            return False
+        digests.append(digest_match.group(1))
+    if not digests:
         return False
-    digest = digest_match.group(1)
     if settings.sandbox_k8s_root_allow_all_images:
         return True
     allowed = {
@@ -705,7 +775,7 @@ def _root_authorized_for_spec(spec: LaunchSpec) -> bool:
             )
         )
     }
-    return digest in allowed
+    return set(digests) <= allowed
 
 
 def _task_image_ref_for_sandbox(spec: LaunchSpec) -> str:
@@ -917,7 +987,10 @@ def _normalize_harbor_profile_config(
         # API-created profiles may store the Harbor YAML parsed as a JSON object
         # instead of wrapping the raw YAML under ``harbor_config``. Treat that
         # shape as an equivalent full template.
-        profile_text = yaml.safe_dump(dict(profile_config), sort_keys=False)
+        profile_text = yaml.safe_dump(
+            {key: value for key, value in profile_config.items() if key not in _PROFILE_METADATA_KEYS},
+            sort_keys=False,
+        )
 
     top_level_env = {
         key: value
@@ -928,7 +1001,28 @@ def _normalize_harbor_profile_config(
     return profile_text, profile_env
 
 
+def _is_dataset_only_harbor_profile(profile_config: Mapping[str, Any]) -> bool:
+    """Return whether a profile delegates task resolution to Harbor's dataset registry."""
+    value = profile_config.get("dataset_only", False)
+    if not isinstance(value, bool):
+        raise ValueError("harbor profile 'dataset_only' must be a boolean")
+    if not value:
+        return False
+    template, _ = _normalize_harbor_profile_config(profile_config)
+    try:
+        config = yaml.safe_load(template or "")
+    except yaml.YAMLError as exc:
+        raise ValueError("dataset-only Harbor profile must contain valid YAML") from exc
+    if not isinstance(config, dict) or not isinstance(config.get("datasets"), list) or not config["datasets"]:
+        raise ValueError("dataset-only Harbor profile requires a non-empty datasets list")
+    if config.get("tasks"):
+        raise ValueError("dataset-only Harbor profile must not define tasks")
+    return True
+
+
 def _is_structured_harbor_profile_config(profile_config: Mapping[str, Any]) -> bool:
+    if profile_config.get("dataset_only") is True and isinstance(profile_config.get("datasets"), list):
+        return True
     environment = profile_config.get("environment")
     if not isinstance(environment, Mapping):
         return False
@@ -1868,7 +1962,8 @@ def make_sandbox_k8s_docker_submitter(
         staged_task_dir = work / spec.evaluation_id / "task"
         tarball_object_key = spec.tarball_object_key
         if (
-            _should_stage_uploaded_task_tree(spec)
+            not _is_dataset_only_harbor_profile(spec.harbor_config)
+            and _should_stage_uploaded_task_tree(spec)
             and tarball_object_key is not None
             and _stage_task_tree(tarball_object_key, staged_task_dir)
         ):
@@ -1913,6 +2008,7 @@ def make_sandbox_k8s_docker_submitter(
             writable_root_authorized=writable_root_authorized,
             agent_bundle=spec.agent_bundle,
             benchmark_run_id=spec.benchmark_run_id,
+            dataset_image_map=_dataset_image_map(spec),
         )
         writable_root_requested = _writable_root_requested(rendered)
         if writable_root_requested:
@@ -1980,6 +2076,7 @@ def make_sandbox_k8s_docker_submitter(
                 "writable_root_requested": writable_root_requested,
                 "writable_root_authorized": writable_root_authorized,
                 "task_image_ref": task_image_ref,
+                "harbor_dataset_image_imports": spec.harbor_dataset_image_imports,
             },
         )
 
@@ -2370,7 +2467,8 @@ def make_sandbox_k8s_submitter(
         staged_task_path: str | None = None
         tarball_object_key = spec.tarball_object_key
         if (
-            _should_stage_uploaded_task_tree(spec)
+            not _is_dataset_only_harbor_profile(spec.harbor_config)
+            and _should_stage_uploaded_task_tree(spec)
             and tarball_object_key is not None
             and _stage_task_tree(tarball_object_key, staged_task_dir)
         ):
@@ -2432,6 +2530,7 @@ def make_sandbox_k8s_submitter(
             writable_root_authorized=writable_root_authorized,
             agent_bundle=spec.agent_bundle,
             benchmark_run_id=spec.benchmark_run_id,
+            dataset_image_map=_dataset_image_map(spec),
         )
         writable_root_requested = _writable_root_requested(rendered)
         if writable_root_requested:
@@ -2484,6 +2583,7 @@ def make_sandbox_k8s_submitter(
                 "writable_root_requested": writable_root_requested,
                 "writable_root_authorized": writable_root_authorized,
                 "task_image_ref": task_image_ref,
+                "harbor_dataset_image_imports": spec.harbor_dataset_image_imports,
             },
         )
 

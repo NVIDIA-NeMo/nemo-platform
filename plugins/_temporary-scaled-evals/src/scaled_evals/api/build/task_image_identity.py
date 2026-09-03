@@ -129,6 +129,68 @@ def parse_task_image_ref(image_ref: str) -> TaskImageReference:
     return TaskImageReference(registry, repository, tag=tag, digest=digest)
 
 
+def normalize_upstream_image_ref(image_ref: str) -> str:
+    """Expand Docker-compatible shorthand before resolving an upstream image."""
+
+    value = image_ref.strip()
+    if not value or any(char.isspace() for char in value) or "://" in value:
+        raise TaskImageIdentityError("upstream image must be an OCI reference")
+    name = value.split("@", 1)[0]
+    first = name.split("/", 1)[0]
+    if "/" not in name or ("." not in first and ":" not in first and first != "localhost"):
+        value = f"docker.io/{value}"
+        name = value.split("@", 1)[0]
+    repository = name.split("/", 1)[1]
+    if "/" not in repository:
+        value = value.replace("docker.io/", "docker.io/library/", 1)
+    if "@" not in value and ":" not in value.rsplit("/", 1)[-1]:
+        value = f"{value}:latest"
+    return parse_task_image_ref(value).normalized_ref
+
+
+def resolve_upstream_image(
+    image_ref: str,
+    *,
+    client: httpx.Client | None = None,
+) -> ResolvedTaskImage:
+    """Resolve a publicly readable source image without destination policy.
+
+    This identity is used only as an immutable ``FROM`` input to a deployment-
+    managed build. Registry credentials are deliberately ignored: Harbor
+    dataset imports are a shared cache of public content, not a private-image
+    import path. The source image is never admitted directly as a task image.
+    """
+
+    ref = parse_task_image_ref(normalize_upstream_image_ref(image_ref))
+    reference = ref.digest or ref.tag
+    assert reference is not None
+    response = _request_manifest(
+        ref,
+        reference,
+        client=client,
+        allow_registry_credentials=False,
+    )
+    actual = response.headers.get("Docker-Content-Digest", "").strip().lower()
+    if not actual and response.content:
+        actual = f"sha256:{hashlib.sha256(response.content).hexdigest()}"
+    try:
+        actual = normalize_digest(actual)
+    except TaskImageIdentityError as exc:
+        raise TaskImageIdentityError(
+            "upstream registry did not return a verifiable sha256 manifest digest"
+        ) from exc
+    expected = ref.digest
+    if expected and actual != expected:
+        raise TaskImageIdentityError(
+            f"upstream image digest mismatch: expected {expected}, registry resolved {actual}"
+        )
+    return ResolvedTaskImage(
+        runtime_ref=ref.normalized_ref,
+        digest=actual,
+        immutable_ref=ref.digest_ref(actual),
+    )
+
+
 def _policy_entries(value: str) -> tuple[str, ...]:
     return tuple(item.strip().lower().rstrip("/") for item in value.split(",") if item.strip())
 
@@ -256,10 +318,13 @@ def _request_manifest(
     reference: str,
     *,
     client: httpx.Client | None,
+    allow_registry_credentials: bool = True,
 ) -> httpx.Response:
     scheme = "http" if settings.task_image_registry_insecure else "https"
-    url = f"{scheme}://{ref.registry}/v2/{ref.repository}/manifests/{reference}"
-    headers = {"Accept": _MANIFEST_ACCEPT, **_registry_auth_headers(ref.registry)}
+    registry_api_host = "registry-1.docker.io" if ref.registry == "docker.io" else ref.registry
+    url = f"{scheme}://{registry_api_host}/v2/{ref.repository}/manifests/{reference}"
+    registry_headers = _registry_auth_headers(ref.registry) if allow_registry_credentials else {}
+    headers = {"Accept": _MANIFEST_ACCEPT, **registry_headers}
     owns_client = client is None
     client = client or httpx.Client(
         timeout=settings.task_image_registry_timeout_seconds,
@@ -269,7 +334,14 @@ def _request_manifest(
     try:
         response = client.get(url, headers=headers)
         if response.status_code == 401:
-            token = _registry_bearer_token(client, response, ref, headers)
+            try:
+                token = _registry_bearer_token(client, response, ref, registry_headers)
+            except TaskImageIdentityError as exc:
+                if not allow_registry_credentials:
+                    raise TaskImageIdentityError(
+                        f"upstream image is not publicly readable: {ref.normalized_ref}"
+                    ) from exc
+                raise
             if token:
                 response = client.get(
                     url,
@@ -284,6 +356,10 @@ def _request_manifest(
             client.close()
 
     if response.status_code == 401:
+        if not allow_registry_credentials:
+            raise TaskImageIdentityError(
+                f"upstream image is not publicly readable: {ref.normalized_ref}"
+            )
         raise TaskImageIdentityError(
             f"registry {ref.registry!r} rejected task image verification; configure readable "
             "registry credentials for the build and dispatch workers"
@@ -335,7 +411,7 @@ def _registry_auth_entry(registry: str) -> dict[str, str] | None:
         normalized = key.removeprefix("https://").removeprefix("http://").rstrip("/")
         if normalized == registry and isinstance(value, dict):
             return {str(k): str(v) for k, v in value.items() if v is not None}
-    raise TaskImageIdentityError(f"registry auth file has no credentials for {registry!r}")
+    return None
 
 
 def _registry_bearer_token(
