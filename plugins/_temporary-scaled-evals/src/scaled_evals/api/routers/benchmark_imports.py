@@ -346,7 +346,11 @@ def publish_benchmark_import(
             for slug in benchmark["task_slugs"]
         ]
         existing = db.benchmarks.get_by_slug(benchmark["slug"])
-        if existing is not None and existing.get("owner_id") != current.owner_id:
+        if (
+            existing is not None
+            and existing.get("owner_id") != current.owner_id
+            and not (existing.get("owner_id") is None and current.source == "disabled")
+        ):
             raise _http_error(
                 409,
                 "benchmark_slug_owned_by_another_user",
