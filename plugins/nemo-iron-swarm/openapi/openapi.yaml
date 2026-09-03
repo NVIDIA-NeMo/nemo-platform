@@ -1627,6 +1627,14 @@ components:
           type: array
           title: Secrets
           description: Secret names derived from the agent config.
+        egress:
+          items:
+            type: string
+          type: array
+          title: Egress
+          description: Hosts the agent's own config names (model endpoints, network
+            MCP servers). Shown so the form does not read as 'no egress' for an agent
+            that has some.
         warnings:
           items:
             type: string

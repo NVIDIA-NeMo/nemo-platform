@@ -92,6 +92,7 @@ export const NewIronSwarmManifestRoute: FC = () => {
         onSuccess: (facts) => {
           setValue('port', String(facts.port));
           setValue('secrets', facts.secrets.join(', '));
+          setValue('egress', facts.egress.join(', '));
         },
       }
     );
@@ -332,11 +333,11 @@ export const NewIronSwarmManifestRoute: FC = () => {
                   <ControlledTextInput
                     useControllerProps={{ control, name: 'egress' }}
                     formFieldProps={{
-                      slotLabel: 'Egress Allow-list (optional)',
-                      slotHelp:
-                        'Comma-separated host[:port] for external services the agent calls (e.g. ' +
-                        'en.wikipedia.org, raw.githubusercontent.com). Needed when the tool hosts are not ' +
-                        'discoverable from the agent config.',
+                      slotLabel: 'Egress Allow-list',
+                      slotHelp: inspectAgent.isPending
+                        ? 'Detecting from the agent…'
+                        : 'Comma-separated host[:port]. Auto-detected from the agent config (model ' +
+                          'endpoints, network MCP servers). Add hosts only the packaged code knows about.',
                     }}
                   />
                   <ControlledTextInput
