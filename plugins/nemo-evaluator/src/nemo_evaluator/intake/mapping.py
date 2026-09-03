@@ -73,15 +73,6 @@ _SESSION_ID_ATTRIBUTE = "gen_ai.conversation.id"
 _EVALUATION_NAME_ATTRIBUTE = "nemo.evaluation.name"
 _TEST_CASE_NAME_ATTRIBUTE = "nemo.test_case.name"
 
-# Trial-level totals, which Intake reads as numbers. ATIF carried these as ``final_metrics``;
-# under OTLP they go on the root span, which is the span that stands for the whole trial.
-_MEASUREMENT_ATTRIBUTES = {
-    "prompt_tokens": "gen_ai.usage.input_tokens",
-    "completion_tokens": "gen_ai.usage.output_tokens",
-    "cache_read_tokens": "gen_ai.usage.cached_tokens",
-    "cost_usd": "gen_ai.usage.cost",
-}
-
 
 def session_id_for(run_id: str, trial_id: str) -> str:
     """Return the stable, adapter-minted session id for a trial.
@@ -201,9 +192,15 @@ async def otlp_ingest_for_trial(
 
 def _trial_totals(trial: AgentEvalTrial, measurements: TrialMeasurements) -> dict[str, str | int | float]:
     """The trial-level totals and error that ATIF conveyed outside the step list."""
+    # Read as numbers by Intake. ATIF carried these as ``final_metrics``; under OTLP they go on
+    # the root span, which is the span that stands for the whole trial.
     totals: dict[str, str | int | float] = {}
-    for field, attribute in _MEASUREMENT_ATTRIBUTES.items():
-        value = getattr(measurements, field)
+    for value, attribute in (
+        (measurements.prompt_tokens, "gen_ai.usage.input_tokens"),
+        (measurements.completion_tokens, "gen_ai.usage.output_tokens"),
+        (measurements.cache_read_tokens, "gen_ai.usage.cached_tokens"),
+        (measurements.cost_usd, "gen_ai.usage.cost"),
+    ):
         if value is not None:
             totals[attribute] = value
     if trial.error is not None:

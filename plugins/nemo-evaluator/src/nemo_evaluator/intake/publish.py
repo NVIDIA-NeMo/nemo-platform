@@ -136,9 +136,9 @@ async def publish_to_intake(
 ) -> PublishReport:
     """Publish a completed ``AgentEvalResult`` to Intake under an existing Experiment.
 
-    For each trial: POST the ATIF trajectory, resolve its root span, then POST one
-    evaluator-result per metric output. Trials are published concurrently up to
-    ``max_concurrency``.
+    For each trial: POST its OTLP trace when it has one, else fall back to the ATIF
+    trajectory, then POST one evaluator-result per metric output against the trial's
+    root span. Trials are published concurrently up to ``max_concurrency``.
 
     Publishing is **not atomic** and Intake has no rollback, so a per-trial failure
     must not abort the others: every trial that can land does, and the failures are
@@ -182,76 +182,81 @@ async def publish_to_intake(
     semaphore = asyncio.Semaphore(max_concurrency)
     skipped: list[SkippedScore] = []
 
+    async def _publish_otlp(trial: AgentEvalTrial, *, measurements: TrialMeasurements, session_id: str) -> str | None:
+        """Publish the trial's OTLP trace and return its root span id, or ``None`` when it has none."""
+        otlp = await mapping.otlp_ingest_for_trial(
+            trial,
+            session_id=session_id,
+            evaluation_name=experiment_id,
+            measurements=measurements,
+            started_at=started_at,
+        )
+        if otlp is None:
+            return None
+        payload, span_id = otlp
+        response = await platform.intake.ingest.otlp.v1.traces.create(body=payload, workspace=resolved_workspace)
+        # OTLP ingest answers 200 with a per-span error list, so a partly-stored trace is
+        # invisible unless the body is read — including the case where the span the scores
+        # are about to reference is the one that was dropped.
+        if response.errors:
+            raise PublishError(
+                f"Intake rejected {len(response.errors)} span(s) of trial {trial.id!r}: {response.errors}"
+            )
+        return span_id
+
+    async def _publish_atif(trial: AgentEvalTrial, *, measurements: TrialMeasurements, session_id: str) -> str:
+        """Publish the trial's ATIF trajectory and return the root span id Intake minted for it."""
+        # A recorded runtime gives the trajectory a real end so Intake's latency rollup sees the
+        # trial's wall-clock duration instead of 0; absent → no window, latency stays unmeasured.
+        ended_at = (
+            started_at + timedelta(seconds=measurements.runtime_sec) if measurements.runtime_sec is not None else None
+        )
+
+        def build_body(steps: Sequence[AtifStepParam] | None) -> AtifCreateParams:
+            body = mapping.trial_to_atif_ingest(
+                trial,
+                run_id=result.run_id,
+                evaluation_name=experiment_id,
+                agent_name=agent_name,
+                started_at=started_at,
+                agent_version=agent_version,
+                model_name=model_name,
+                final_metrics=_token_final_metrics(measurements),
+                ended_at=ended_at,
+                steps=steps,
+            )
+            body["workspace"] = resolved_workspace
+            return body
+
+        recorded_steps = await mapping.atif_steps_from_trial(trial, started_at=started_at)
+        try:
+            await platform.intake.ingest.atif.create(**build_body(recorded_steps))
+        except UnprocessableEntityError as error:
+            # The SDK's ATIF read model accepts shapes ingest does not, so a trajectory that
+            # parsed locally can still be refused. Losing the trial's scores over a trace
+            # detail is the wrong trade — fall back to the single-step trajectory a runner
+            # with no trace would have sent. Guard on emptiness rather than ``is None``: with no
+            # steps to drop, the retry would resend the body ingest just refused.
+            if not recorded_steps:
+                raise
+            logger.warning(
+                "Intake rejected the recorded trajectory for trial %s (%s); publishing its final output instead.",
+                trial.id,
+                error,
+            )
+            await platform.intake.ingest.atif.create(**build_body(None))
+
+        # ATIF span ids are minted by Intake from its own identity scheme, so unlike the
+        # OTLP path this one has to read the id back rather than know it locally.
+        return await _resolve_root_span_id(platform, workspace=resolved_workspace, session_id=session_id)
+
     async def _publish_trial(trial: AgentEvalTrial) -> PublishedTrial:
         async with semaphore:
             measurements = TrialMeasurements.from_metadata(trial.metadata)
-            # A recorded runtime gives the trajectory a real end so Intake's latency rollup sees the
-            # trial's wall-clock duration instead of 0; absent → no window, latency stays unmeasured.
-            ended_at = (
-                started_at + timedelta(seconds=measurements.runtime_sec)
-                if measurements.runtime_sec is not None
-                else None
-            )
-
-            def build_body(steps: Sequence[AtifStepParam] | None) -> AtifCreateParams:
-                body = mapping.trial_to_atif_ingest(
-                    trial,
-                    run_id=result.run_id,
-                    evaluation_name=experiment_id,
-                    agent_name=agent_name,
-                    started_at=started_at,
-                    agent_version=agent_version,
-                    model_name=model_name,
-                    final_metrics=_token_final_metrics(measurements),
-                    ended_at=ended_at,
-                    steps=steps,
-                )
-                body["workspace"] = resolved_workspace
-                return body
-
             session_id = mapping.session_id_for(result.run_id, trial.id)
-            otlp = await mapping.otlp_ingest_for_trial(
-                trial,
-                session_id=session_id,
-                evaluation_name=experiment_id,
-                measurements=measurements,
-                started_at=started_at,
-            )
-            if otlp is not None:
-                payload, span_id = otlp
-                response = await platform.intake.ingest.otlp.v1.traces.create(
-                    body=payload, workspace=resolved_workspace
-                )
-                # OTLP ingest answers 200 with a per-span error list, so a partly-stored trace is
-                # invisible unless the body is read — including the case where the span the scores
-                # are about to reference is the one that was dropped.
-                if response.errors:
-                    raise PublishError(
-                        f"Intake rejected {len(response.errors)} span(s) of trial {trial.id!r}: {response.errors}"
-                    )
-                return await _publish_scores(trial, session_id=session_id, span_id=span_id)
-
-            recorded_steps = await mapping.atif_steps_from_trial(trial, started_at=started_at)
-            try:
-                await platform.intake.ingest.atif.create(**build_body(recorded_steps))
-            except UnprocessableEntityError as error:
-                # The SDK's ATIF read model accepts shapes ingest does not, so a trajectory that
-                # parsed locally can still be refused. Losing the trial's scores over a trace
-                # detail is the wrong trade — fall back to the single-step trajectory a runner
-                # with no trace would have sent. Guard on emptiness rather than ``is None``: with no
-                # steps to drop, the retry would resend the body ingest just refused.
-                if not recorded_steps:
-                    raise
-                logger.warning(
-                    "Intake rejected the recorded trajectory for trial %s (%s); publishing its final output instead.",
-                    trial.id,
-                    error,
-                )
-                await platform.intake.ingest.atif.create(**build_body(None))
-
-            # ATIF span ids are minted by Intake from its own identity scheme, so unlike the
-            # OTLP path this one has to read the id back rather than know it locally.
-            span_id = await _resolve_root_span_id(platform, workspace=resolved_workspace, session_id=session_id)
+            span_id = await _publish_otlp(trial, measurements=measurements, session_id=session_id)
+            if span_id is None:
+                span_id = await _publish_atif(trial, measurements=measurements, session_id=session_id)
             return await _publish_scores(trial, session_id=session_id, span_id=span_id)
 
     async def _publish_scores(trial: AgentEvalTrial, *, session_id: str, span_id: str) -> PublishedTrial:
