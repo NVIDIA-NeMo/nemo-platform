@@ -180,7 +180,6 @@ async function resolveReleasePlan({
   return {
     releaseType,
     releaseScope,
-    releaseSeries,
     releaseBranch,
     sourceSha,
     version,

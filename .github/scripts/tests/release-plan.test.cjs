@@ -56,7 +56,6 @@ test("resolves a stable Helm-only release", async () => {
   });
 
   assert.equal(plan.sourceSha, SHA);
-  assert.equal(plan.releaseSeries, "1.2");
   assert.equal(plan.releaseBranch, "release/1.2");
   assert.equal(plan.releaseLabel, "1.2.3");
   assert.equal(plan.includeHelm, true);
