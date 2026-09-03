@@ -18,7 +18,6 @@ import tomlkit
 import typer
 from nemo_platform_sdk_tools.sdk.core.common import WRAPPER_DISTRIBUTION_NAME, SdkInfo, get_sdk_info
 from nemo_platform_sdk_tools.sdk.post_generation_exist_ok import inject_exist_ok
-from nemo_platform_sdk_tools.sdk.post_generation_jobs_compat import inject_jobs_compat
 from tomlkit.items import AoT, Table
 
 app = typer.Typer(
@@ -747,8 +746,6 @@ def update_all() -> None:
     copy_build_hook()
     typer.echo()
     copy_source_overrides()
-    typer.echo()
-    inject_jobs_compat()
     typer.echo()
     replace_strings()
     typer.echo()

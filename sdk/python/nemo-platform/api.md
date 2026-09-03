@@ -13,7 +13,6 @@ from nemo_platform.types import (
     DatetimeFilter,
     DeleteResponse,
     EnvironmentMetadataContent,
-    FileStorageType,
     FilesetMetadata,
     FinetuningType,
     GenericSortField,
@@ -28,14 +27,8 @@ from nemo_platform.types import (
     ModelSpec,
     OidcDiscoveryResponse,
     PaginationData,
-    PlatformJobListResultResponse,
     PlatformJobLog,
     PlatformJobLogPage,
-    PlatformJobResultResponse,
-    PlatformJobStatus,
-    PlatformJobStatusResponse,
-    PlatformJobStepStatusResponse,
-    PlatformJobTaskStatusResponse,
     PromptData,
     SlidingWindowConfig,
     StringFilter,
@@ -56,8 +49,6 @@ from nemo_platform.types import (
 # [Guardrail](src/nemo_platform/resources/guardrail/api.md)
 
 # [Inference](src/nemo_platform/resources/inference/api.md)
-
-# [Jobs](src/nemo_platform/resources/jobs/api.md)
 
 # [Models](src/nemo_platform/resources/models/api.md)
 

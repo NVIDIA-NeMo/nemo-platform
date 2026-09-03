@@ -6,7 +6,7 @@ title: "List Active Jobs"
 description: ""
 ---
 <a id="ft-list-active-customization-jobs"></a>
-List active customization jobs and their high-level status. Customization jobs run on the platform's Jobs service, so you list them through that service and filter by `source` and `status`. The `source` scopes results to a backend (`automodel` or `unsloth`), while `status="active"` excludes completed, failed, and cancelled jobs. Each entry includes the job definition (model, dataset, training configuration) and overall status.
+List active customization jobs and their high-level status. Customization jobs run on the platform's Jobs service, so you list them through that service and filter by `source` and `status`. The `source` scopes results to a backend, while `status="active"` excludes completed, failed, and cancelled jobs. Each entry includes the job definition (model, dataset, training configuration) and overall status.
 
 <Tip>
 
@@ -40,11 +40,13 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-# List active automodel customization jobs
+# List active customization jobs for a backend.
+# Change this to the source value for the backend that created the jobs.
+backend_source = "automodel"
 jobs = client.jobs.list(
     workspace="default",
     filter={
-        "source": "automodel",  # Use "unsloth" for the Unsloth backend
+        "source": backend_source,
         "status": "active",
     },
     page=1,
@@ -61,7 +63,7 @@ for job in jobs.data:
 filtered_jobs = client.jobs.list(
     workspace="default",
     filter={
-        "source": "automodel",
+        "source": backend_source,
         "status": "active",
         "project": "my-finetuning-project",
     },

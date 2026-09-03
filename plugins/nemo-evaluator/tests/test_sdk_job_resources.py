@@ -18,6 +18,8 @@ from unittest.mock import Mock
 import httpx
 import pytest
 from nemo_evaluator.sdk.job_resources import (
+    AgentEvaluatorJob,
+    AgentEvaluatorJobResource,
     AsyncEvaluatorJobResource,
     EvaluatorJob,
     EvaluatorJobResource,
@@ -31,6 +33,7 @@ from nemo_evaluator.sdk.job_resources import (
 )
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
@@ -57,6 +60,22 @@ _JOB_PAYLOAD = {
     },
 }
 
+_AGENT_JOB_PAYLOAD = {
+    "name": "job-123",
+    "status": "created",
+    "spec": {
+        "tasks": [{"id": "task-1", "intent": "answer the prompt", "metrics": []}],
+        "trials": [
+            AgentEvalTrial(
+                id="trial-1",
+                task_id="task-1",
+                status=AgentEvalTrialStatus.COMPLETED,
+                output=AgentOutput(output_text="ok"),
+            ).model_dump(mode="json")
+        ],
+    },
+}
+
 
 @pytest.fixture
 def http_client(mocker: MockerFixture) -> Mock:
@@ -78,6 +97,12 @@ async def async_http_client() -> AsyncIterator[httpx.AsyncClient]:
 def job() -> EvaluatorJob:
     """Return a typed evaluator job payload."""
     return EvaluatorJob.model_validate(_JOB_PAYLOAD)
+
+
+@pytest.fixture
+def agent_job() -> AgentEvaluatorJob:
+    """Return a typed agent-evaluation job payload."""
+    return AgentEvaluatorJob.model_validate(_AGENT_JOB_PAYLOAD)
 
 
 @pytest.fixture
@@ -229,6 +254,50 @@ def test_get_job_status_delegates_to_metric_jobs_resource(
     assert job_resource.get_job_status() == status
     http_client.get.assert_called_once_with(
         "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/status",
+        headers={"Authorization": "Bearer platform-token"},
+    )
+
+
+def test_delete_delegates_to_metric_job_route(
+    job_resource: EvaluatorJobResource,
+    http_client: Mock,
+) -> None:
+    """Deleting a job should call the evaluator plugin job route over HTTP."""
+    http_client.delete.return_value = httpx.Response(
+        204,
+        request=httpx.Request(
+            "DELETE",
+            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123",
+        ),
+    )
+
+    assert job_resource.delete() is None
+    http_client.delete.assert_called_once_with(
+        "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123",
+        headers={"Authorization": "Bearer platform-token"},
+    )
+
+
+def test_agent_delete_delegates_to_job_route(http_client: Mock, agent_job: AgentEvaluatorJob) -> None:
+    """Agent-evaluation resources should also support deleting their platform job."""
+    resource = AgentEvaluatorJobResource(
+        job=agent_job,
+        http_client=cast(httpx.Client, http_client),
+        base_url="https://nmp.test",
+        workspace="client-ws",
+        headers={"Authorization": "Bearer platform-token"},
+    )
+    http_client.delete.return_value = httpx.Response(
+        204,
+        request=httpx.Request(
+            "DELETE",
+            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123",
+        ),
+    )
+
+    assert resource.delete() is None
+    http_client.delete.assert_called_once_with(
+        "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123",
         headers={"Authorization": "Bearer platform-token"},
     )
 
@@ -761,6 +830,27 @@ async def test_async_get_job_status_delegates_to_metric_jobs_resource(
     async_http_client._transport = httpx.MockTransport(handler)
 
     assert await async_job_resource.get_job_status() == status
+
+
+@pytest.mark.asyncio
+async def test_async_delete_delegates_to_metric_job_route(
+    async_job_resource: AsyncEvaluatorJobResource,
+    async_http_client: httpx.AsyncClient,
+) -> None:
+    """Async deleting a job should call the evaluator plugin job route over HTTP."""
+    seen: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(204, request=request)
+
+    async_http_client._transport = httpx.MockTransport(handler)
+
+    assert await async_job_resource.delete() is None
+    assert len(seen) == 1
+    assert seen[0].method == "DELETE"
+    assert str(seen[0].url) == "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123"
+    assert seen[0].headers["authorization"] == "Bearer platform-token"
 
 
 @pytest.mark.asyncio
