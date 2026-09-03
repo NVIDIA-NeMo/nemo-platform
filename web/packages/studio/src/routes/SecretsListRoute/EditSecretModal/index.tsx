@@ -16,7 +16,7 @@ import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledT
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema';
+import type { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema';
 import {
   getSecretsListSecretsQueryKey,
   useSecretsUpdateSecret,
