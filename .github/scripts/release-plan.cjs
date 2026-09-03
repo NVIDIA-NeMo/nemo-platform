@@ -3,6 +3,7 @@
 
 // Release plan parsing is independent of the GitHub Actions runtime.
 const SEMVER_CORE_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const RELEASE_SERIES_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 // ECMA-compatible SemVer 2.0.0 pattern from https://semver.org/.
 const SEMVER_PATTERN = new RegExp(
   "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)" +
@@ -38,10 +39,32 @@ function selectArtifacts(value, allowedArtifacts, label, inputName) {
   return allowedArtifacts.filter((artifact) => requestedIds.has(artifact.id));
 }
 
+function deriveNextReleaseVersion(releaseSeries, tags) {
+  const match = RELEASE_SERIES_PATTERN.exec(releaseSeries);
+  if (!match) {
+    throw new Error(
+      "Stable releases require a MAJOR.MINOR release series, for example 0.5.",
+    );
+  }
+
+  const [, major, minor] = match;
+  const latestPatch = tags.reduce((latest, tag) => {
+    const tagMatch = SEMVER_CORE_PATTERN.exec(tag);
+    if (!tagMatch || tagMatch[1] !== major || tagMatch[2] !== minor) {
+      return latest;
+    }
+    return Math.max(latest, Number(tagMatch[3]));
+  }, -1);
+
+  return `${releaseSeries}.${latestPatch + 1}`;
+}
+
 async function resolveReleasePlan({
   env,
   context,
   getCommit,
+  getTags,
+  sourceBelongsToBranch,
   now = () => new Date(),
 }) {
   const allWheels = JSON.parse(env.RELEASE_WHEELS_JSON);
@@ -58,7 +81,10 @@ async function resolveReleasePlan({
     ? (inputs["helm-version"] ?? "").trim()
     : "";
   let sourceSha = isManual ? (inputs["source-sha"] ?? "").trim() : context.sha;
-  const version = releaseType === "stable" ? (inputs.version ?? "").trim() : "";
+  const releaseSeries =
+    releaseType === "stable" ? (inputs["release-series"] ?? "").trim() : "";
+  const releaseBranch = releaseSeries ? `release/${releaseSeries}` : "";
+  let version = "";
 
   if (releaseType === "stable") {
     if (!/^[0-9a-f]{40}$/i.test(sourceSha)) {
@@ -66,8 +92,13 @@ async function resolveReleasePlan({
         "Stable releases require an exact 40-character source SHA.",
       );
     }
-    if (!SEMVER_CORE_PATTERN.test(version)) {
-      throw new Error("Stable releases require a MAJOR.MINOR.PATCH version.");
+    version = deriveNextReleaseVersion(releaseSeries, await getTags());
+    if (
+      !(await sourceBelongsToBranch(sourceSha.toLowerCase(), releaseBranch))
+    ) {
+      throw new Error(
+        `Source SHA ${sourceSha} does not belong to ${releaseBranch}.`,
+      );
     }
   } else {
     if (sourceSha && !/^[0-9a-f]{40}$/i.test(sourceSha)) {
@@ -149,6 +180,8 @@ async function resolveReleasePlan({
   return {
     releaseType,
     releaseScope,
+    releaseSeries,
+    releaseBranch,
     sourceSha,
     version,
     releaseLabel,
@@ -165,4 +198,4 @@ async function resolveReleasePlan({
   };
 }
 
-module.exports = { resolveReleasePlan };
+module.exports = { deriveNextReleaseVersion, resolveReleasePlan };

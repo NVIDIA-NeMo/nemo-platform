@@ -19,10 +19,34 @@ jobs:
     name: Notify CI consumer
     runs-on: ubuntu-latest
     steps:
+      - name: Check out workflow revision
+        if: startsWith(github.ref_name, 'release/')
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Derive next release version
+        if: startsWith(github.ref_name, 'release/')
+        id: release-version
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { deriveNextReleaseVersion } = require("./.github/scripts/release-plan.cjs");
+            const tags = await github.paginate(github.rest.repos.listTags, {
+              ...context.repo,
+              per_page: 100,
+            });
+            const releaseSeries = context.ref.replace("refs/heads/release/", "");
+            core.setOutput(
+              "version",
+              deriveNextReleaseVersion(releaseSeries, tags.map(({ name }) => name)),
+            );
+
       - name: Send completion event
         env:
           GH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
           DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          RELEASE_VERSION: ${{ steps.release-version.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -30,7 +54,7 @@ jobs:
           release_version=""
           if [[ "${GITHUB_REF_NAME}" == release/* ]]; then
             event_type="release-branch-updated"
-            release_version="${GITHUB_REF_NAME#release/}"
+            release_version="${RELEASE_VERSION}"
           fi
 
           jq -n \
