@@ -6,7 +6,7 @@ import {
   evaluatorGetEvaluateJob,
   evaluatorListEvaluateJobResults,
   evaluatorListEvaluateJobs,
-} from '@nemo/sdk/generated/evaluator/api';
+} from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import {
   EvaluateJob,
   EvaluateJobsPage,

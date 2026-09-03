@@ -14,17 +14,17 @@ import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import {
-  getGetVirtualModelQueryKey,
-  getListVirtualModelsQueryKey,
-  useDeleteVirtualModel,
-  useListVirtualModels,
-} from '@nemo/sdk/generated/platform/api';
 import type {
   DatetimeFilter,
   VirtualModel,
   VirtualModelFilter,
 } from '@nemo/sdk/generated/platform/schema';
+import {
+  getGetVirtualModelQueryKey,
+  getListVirtualModelsQueryKey,
+  useDeleteVirtualModel,
+  useListVirtualModels,
+} from '@nemo/sdk/generated/platform/virtual-models';
 import { type DropdownEntry, Stack, Text } from '@nvidia/foundations-react-core';
 import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
 import { getVirtualModelChatRoute, getVirtualModelDetailsRoute } from '@studio/routes/utils';

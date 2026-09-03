@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { logger } from '@nemo/common/src/utils/logger';
-import { useEntitiesListWorkspaces } from '@nemo/sdk/generated/platform/api';
+import { useEntitiesListWorkspaces } from '@nemo/sdk/generated/platform/entity-store';
 import { Workspace } from '@nemo/sdk/generated/platform/schema';
 import {
   Block,

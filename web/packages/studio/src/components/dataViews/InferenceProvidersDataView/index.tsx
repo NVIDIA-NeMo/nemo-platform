@@ -28,7 +28,7 @@ import {
   getModelsListProvidersQueryKey,
   useModelsDeleteProvider,
   useModelsListProviders,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/model-providers';
 import {
   ModelProvider,
   ModelProviderFilter,

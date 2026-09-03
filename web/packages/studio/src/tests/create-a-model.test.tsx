@@ -7,7 +7,7 @@ import {
 } from '@nemo/common/src/constants/inferenceParameters';
 import { DEFAULT_PROMPT_TEMPLATE } from '@nemo/common/src/models/constants';
 import { compileSystemPrompt } from '@nemo/common/src/models/utils';
-import { useFilesListFilesets as useListDatasets } from '@nemo/sdk/generated/platform/api';
+import { useFilesListFilesets as useListDatasets } from '@nemo/sdk/generated/platform/files';
 import { ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { DEFAULT_NAMESPACE } from '@studio/constants/constants';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
@@ -31,8 +31,8 @@ const baseModel = entityStoreBaseModel1;
 
 // Mock the platform API to override useFilesListFilesets
 const useListFilesetsMock = vi.hoisted(() => vi.fn());
-vi.mock('@nemo/sdk/generated/platform/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@nemo/sdk/generated/platform/api')>();
+vi.mock('@nemo/sdk/generated/platform/files', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@nemo/sdk/generated/platform/files')>();
   return {
     ...actual,
     useFilesListFilesets: useListFilesetsMock,

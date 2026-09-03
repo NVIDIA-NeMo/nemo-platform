@@ -3,7 +3,10 @@
 
 import { logger } from '@nemo/common/src/utils/logger';
 import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
-import { filesDownloadFile, getFilesDownloadFileQueryKey } from '@nemo/sdk/generated/platform/api';
+import {
+  filesDownloadFile,
+  getFilesDownloadFileQueryKey,
+} from '@nemo/sdk/generated/platform/files';
 import type { EntityIdentifier } from '@studio/api/common/types';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';

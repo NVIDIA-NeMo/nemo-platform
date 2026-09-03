@@ -4,7 +4,7 @@
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { AccordionPanel } from '@nemo/common/src/components/AccordionPanel';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
-import { useEvaluatorGetEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import { useEvaluatorGetEvaluateJob } from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   Badge,

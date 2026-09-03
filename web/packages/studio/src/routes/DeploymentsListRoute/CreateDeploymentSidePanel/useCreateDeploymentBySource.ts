@@ -16,13 +16,19 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   filesCreateFileset,
   getFilesListFilesetsQueryKey,
+} from '@nemo/sdk/generated/platform/files';
+import {
   getModelsListDeploymentConfigsQueryKey,
-  getModelsListDeploymentsQueryKey,
-  getModelsListModelsQueryKey,
-  modelsCreateDeployment,
   modelsCreateDeploymentConfig,
+} from '@nemo/sdk/generated/platform/model-deployment-configs';
+import {
+  getModelsListDeploymentsQueryKey,
+  modelsCreateDeployment,
+} from '@nemo/sdk/generated/platform/model-deployments';
+import {
+  getModelsListModelsQueryKey,
   modelsCreateModel,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/models';
 import {
   Engine,
   type CreateFilesetRequest,

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { MockToastProvider } from '@nemo/common/src/tests/MockToastProvider';
-import { useFilesDownloadFile } from '@nemo/sdk/generated/platform/api';
+import { useFilesDownloadFile } from '@nemo/sdk/generated/platform/files';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   useSafeSynthesizerDownloadJobResultSyntheticData,
   useSafeSynthesizerListJobResults,
-} from '@nemo/sdk/generated/safe-synthesizer/api';
+} from '@nemo/sdk/generated/safe-synthesizer/safe-synthesizer';
 import { type GenerateJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { SafeSynthesizerFilesetPreview } from '@studio/components/SafeSynthesizerFilesetPreview';
@@ -26,11 +26,11 @@ vi.mock('papaparse', () => ({
 }));
 
 // Mock generated SafeSynthesizer API hooks
-vi.mock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
+vi.mock('@nemo/sdk/generated/safe-synthesizer/safe-synthesizer', () => ({
   useSafeSynthesizerListJobResults: vi.fn(),
   useSafeSynthesizerDownloadJobResultSyntheticData: vi.fn(),
 }));
-vi.mock('@nemo/sdk/generated/platform/api', () => ({
+vi.mock('@nemo/sdk/generated/platform/files', () => ({
   useFilesDownloadFile: vi.fn(),
 }));
 

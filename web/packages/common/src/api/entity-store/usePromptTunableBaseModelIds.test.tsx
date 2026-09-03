@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { modelsListModels } from '@nemo/sdk/generated/platform/api';
+import { modelsListModels } from '@nemo/sdk/generated/platform/models';
 import type { ModelEntity, ModelEntitysPage } from '@nemo/sdk/generated/platform/schema';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -10,8 +10,8 @@ import type { ReactNode } from 'react';
 import { usePromptTunableBaseModelIds } from './usePromptTunableBaseModelIds';
 import { DEFAULT_NAMESPACE } from '../../constants';
 
-vi.mock('@nemo/sdk/generated/platform/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@nemo/sdk/generated/platform/api')>();
+vi.mock('@nemo/sdk/generated/platform/models', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@nemo/sdk/generated/platform/models')>();
   return {
     ...actual,
     modelsListModels: vi.fn(),
