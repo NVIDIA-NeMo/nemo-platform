@@ -2251,7 +2251,10 @@ def _otlp_answer_trace(text: str) -> str:
         "name": "run",
         "startTimeUnixNano": "1",
         "endTimeUnixNano": "9",
-        "attributes": [{"key": "output.value", "value": {"stringValue": text}}],
+        "attributes": [
+            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
+            {"key": "output.value", "value": {"stringValue": text}},
+        ],
     }
     return json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": [span]}]}]}) + "\n"
 
@@ -2318,3 +2321,54 @@ def test_an_unreadable_otlp_trace_does_not_lose_the_atif_answer(
     assert "Ignoring unreadable OTLP trace" in caplog.text
     assert trial.output is not None
     assert trial.output.output_text == _final_agent_message(read_atif(trial_dir / "agent" / "trajectory.json"))
+
+
+def test_an_empty_message_envelope_falls_back_to_the_atif_answer(tmp_path: Path) -> None:
+    # An OTLP trace whose only output is an envelope with no assistant text is not an answer,
+    # so the trial's ATIF trajectory still supplies one.
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    span = {
+        "traceId": "0" * 32,
+        "spanId": "a" * 16,
+        "name": "run",
+        "startTimeUnixNano": "1",
+        "endTimeUnixNano": "9",
+        "attributes": [
+            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
+            {"key": "gen_ai.output.messages", "value": {"stringValue": "[]"}},
+        ],
+    }
+    (traces / "trace.jsonl").write_text(
+        json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": [span]}]}]}) + "\n", encoding="utf-8"
+    )
+    (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    assert trial.output is not None
+    assert trial.output.output_text == _final_agent_message(read_atif(trial_dir / "agent" / "trajectory.json"))
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_otlp_trace_is_not_promoted_over_a_valid_atif_one(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    (traces / "trace.jsonl").write_text("{not json at all\n", encoding="utf-8")
+    (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    primary = trial.get_evidence("trace")
+    assert primary is not None
+    assert primary.format == "atif"
+    assert trial.evidence is not None
+    assert isinstance(await trial.evidence.trace(), ATIFTraceHandle)
+    # The malformed file is demoted, not hidden.
+    assert trial.get_evidence("trace:otlp") is not None

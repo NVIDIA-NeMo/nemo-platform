@@ -152,11 +152,14 @@ A runner may record the same trial in more than one encoding. Harbor registers b
 and get a narrowed handle back, with no runtime branch:
 
 ```python
-otlp = await evidence.trace(format="otlp")  # OTLPTraceHandle
-resource_spans = await otlp.resource_spans()
+from nemo_evaluator_sdk.values.evidence import CandidateEvidence
 
-atif = await evidence.trace(format="atif")  # ATIFTraceHandle
-calls = await atif.tool_calls()
+async def read_both_views(evidence: CandidateEvidence) -> None:
+    otlp = await evidence.trace(format="otlp")  # OTLPTraceHandle
+    resource_spans = await otlp.resource_spans()
+
+    atif = await evidence.trace(format="atif")  # ATIFTraceHandle
+    calls = await atif.tool_calls()
 ```
 
 `trace()` with no `format` still returns whichever encoding the runner made primary. For Harbor

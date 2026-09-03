@@ -37,7 +37,6 @@ from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_OTLP,
     EVIDENCE_TRACE,
     CandidateEvidence,
-    TraceHandle,
 )
 from nemo_evaluator_sdk.values.metrics import MetricBase
 from nemo_evaluator_sdk.values.otlp import span_text_strings
@@ -173,32 +172,36 @@ class SkillUsedMetric(MetricBase):
         evidence = candidate.evidence
         if evidence is None or evidence.get(self.trace_evidence) is None:
             return False
-        try:
-            handle = await _skill_trace_handle(evidence, self.trace_evidence)
-            if handle.format == EVIDENCE_FORMAT_OTLP:
-                resource_spans = await handle.resource_spans()
-                return any(_otlp_references(resource_spans, loc) for loc in locations)
-            trajectory = await handle.trace()
-        except (KeyError, ValueError, ValidationError, OSError) as exc:
-            # Best-effort: a missing/malformed/invalid trajectory must score skill_used=False, not raise.
-            # ValidationError covers Trajectory.model_validate; OSError covers the underlying file read.
+        # Each view is resolved and read before the next is considered, so a trace that is
+        # discovered but will not parse falls through to the other rather than answering for it.
+        unreadable: list[str] = []
+        for evidence_format, read in ((EVIDENCE_FORMAT_OTLP, _otlp_used), (EVIDENCE_FORMAT_ATIF, _atif_used)):
+            try:
+                return await read(evidence, self.trace_evidence, locations)
+            except KeyError:
+                continue
+            except (ValueError, ValidationError, OSError) as exc:
+                # ValidationError covers Trajectory.model_validate; OSError the underlying read.
+                unreadable.append(f"{evidence_format}: {exc}")
+        if unreadable:
             logger.warning(
-                "SkillUsedMetric scored skill_used=False: could not read trace %r: %s", self.trace_evidence, exc
+                "SkillUsedMetric scored skill_used=False: could not read trace %r (%s)",
+                self.trace_evidence,
+                "; ".join(unreadable),
             )
-            return False
-        return any(_trajectory_references(trajectory, loc) for loc in locations)
+        return False
 
 
-async def _skill_trace_handle(evidence: CandidateEvidence, name: str) -> TraceHandle:
-    """The ATIF view of a trace when the trial has one, otherwise the OTLP view.
+async def _otlp_used(evidence: CandidateEvidence, name: str, locations: list[str]) -> bool:
+    """Whether the OTLP view of a trace references any staged skill location."""
+    resource_spans = await (await evidence.trace(name, format=EVIDENCE_FORMAT_OTLP)).resource_spans()
+    return any(_otlp_references(resource_spans, location) for location in locations)
 
-    ATIF answers a content question against typed messages and tool calls, so it wins when
-    both exist and the score stays independent of which encoding a runner made primary.
-    """
-    try:
-        return await evidence.trace(name, format=EVIDENCE_FORMAT_ATIF)
-    except KeyError:
-        return await evidence.trace(name, format=EVIDENCE_FORMAT_OTLP)
+
+async def _atif_used(evidence: CandidateEvidence, name: str, locations: list[str]) -> bool:
+    """Whether the ATIF view of a trace references any staged skill location."""
+    trajectory = await (await evidence.trace(name, format=EVIDENCE_FORMAT_ATIF)).trace()
+    return any(_trajectory_references(trajectory, location) for location in locations)
 
 
 def _otlp_references(resource_spans: list[dict[str, Any]], needle: str) -> bool:

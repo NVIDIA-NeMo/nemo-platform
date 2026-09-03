@@ -99,9 +99,9 @@ async def test_present_and_used_when_only_an_otlp_trace_reads_the_skill() -> Non
 
 
 @pytest.mark.asyncio
-async def test_atif_answers_even_when_an_otlp_view_would_disagree() -> None:
-    # The score must not turn on which encoding a runner made primary, so ATIF wins
-    # whenever the trial carries both.
+async def test_otlp_answers_when_a_trial_carries_both_views() -> None:
+    # OTLP is the richer view and the trial's primary trace, so it answers; ATIF fills the gap
+    # for agents that emit no spans rather than overriding them.
     atif = EvidenceDescriptor(kind="trace", format="atif", data=_atif(tool_path="README.md"))
     otlp = EvidenceDescriptor(
         kind="trace",
@@ -114,10 +114,7 @@ async def test_atif_answers_even_when_an_otlp_view_would_disagree() -> None:
                             "spans": [
                                 {
                                     "attributes": [
-                                        {
-                                            "key": "output.value",
-                                            "value": {"stringValue": f"{_LOCATION}/SKILL.md"},
-                                        }
+                                        {"key": "output.value", "value": {"stringValue": f"{_LOCATION}/SKILL.md"}}
                                     ]
                                 }
                             ]
@@ -129,10 +126,46 @@ async def test_atif_answers_even_when_an_otlp_view_would_disagree() -> None:
     )
     sample = {
         "skills": [_PROV],
-        "evidence": CandidateEvidence(descriptors={EVIDENCE_TRACE: atif, "trace:atif": atif, "trace:otlp": otlp}),
+        "evidence": CandidateEvidence(descriptors={EVIDENCE_TRACE: otlp, "trace:atif": atif, "trace:otlp": otlp}),
     }
 
-    assert await _score(sample) == {"skill_present": True, "skill_used": False}
+    assert await _score(sample) == {"skill_present": True, "skill_used": True}
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_atif_view_does_not_suppress_the_otlp_answer() -> None:
+    # Discovery finds the ATIF file; only reading it reveals it is unusable. Answering False
+    # there would let a broken file hide evidence the trial actually carries.
+    broken = EvidenceDescriptor(
+        kind="trace", format="atif", data={"schema_version": "ATIF-v1.7", "steps": "not-a-list"}
+    )
+    otlp = EvidenceDescriptor(
+        kind="trace",
+        format="otlp",
+        data={
+            "resourceSpans": [
+                {
+                    "scopeSpans": [
+                        {
+                            "spans": [
+                                {
+                                    "attributes": [
+                                        {"key": "output.value", "value": {"stringValue": f"read {_LOCATION}/SKILL.md"}}
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+    )
+    sample = {
+        "skills": [_PROV],
+        "evidence": CandidateEvidence(descriptors={EVIDENCE_TRACE: broken, "trace:atif": broken, "trace:otlp": otlp}),
+    }
+
+    assert await _score(sample) == {"skill_present": True, "skill_used": True}
 
 
 @pytest.mark.asyncio

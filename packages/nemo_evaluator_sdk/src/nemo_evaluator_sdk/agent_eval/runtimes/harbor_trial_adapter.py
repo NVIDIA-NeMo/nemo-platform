@@ -42,6 +42,7 @@ from nemo_evaluator_sdk.values.otlp import (
     final_output_text,
     resource_spans_from_text,
 )
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -113,22 +114,27 @@ def _trial_from_harbor_result(
     # as 0 and counted in the summary; FAILED would exclude it from scoring.
     status = AgentEvalTrialStatus.COMPLETED if error is None and reward is not None else AgentEvalTrialStatus.PARTIAL
 
-    extension_descriptors, selected_trace = _harbor_extension_evidence(trial_dir)
+    extension_descriptors, atif_trace, otlp_trace = _harbor_extension_evidence(trial_dir)
     descriptors = standard_evidence_descriptors(
         logs_dir=(trial_dir / "agent").resolve(),
         final_state_dir=(trial_dir / "artifacts").resolve(),
         verifier_logs_dir=(trial_dir / "verifier").resolve(),
     )
     descriptors.update(extension_descriptors)
-    if selected_trace is not None:
-        descriptors[EVIDENCE_TRACE] = selected_trace
+
+    # Discovery names an OTLP trace from its artifact path alone; only reading it proves it
+    # parses. Both the primary trace and the answer follow from that one read.
+    otlp_request = _read_otlp(otlp_trace)
+    primary_trace = otlp_trace if otlp_request is not None else atif_trace
+    if primary_trace is not None:
+        descriptors[EVIDENCE_TRACE] = primary_trace
 
     return AgentEvalTrial(
         id=trial_id,
         task_id=task_id,
         status=status,
         output=AgentOutput(
-            output_text=_trial_output_text(descriptors),
+            output_text=_trial_output_text(otlp_request, atif_trace),
             metadata={"harbor_trial_dir": str(trial_dir)},
         ),
         evidence=CandidateEvidence(descriptors=descriptors),
@@ -137,30 +143,31 @@ def _trial_from_harbor_result(
     )
 
 
-def _trial_output_text(descriptors: Mapping[str, EvidenceDescriptor]) -> str | None:
+def _trial_output_text(
+    otlp_request: ExportTraceServiceRequest | None, atif_trace: EvidenceDescriptor | None
+) -> str | None:
     """The agent's answer for the trial, from its OTLP trace when that carries one.
 
-    ATIF remains the fallback because an agent may emit no OTLP trace, and OTLP spans
-    that carry no output attribute yield nothing to read. Both being absent is normal:
-    oracle and nop produce neither.
+    ATIF remains the fallback because an agent may emit no OTLP trace, and OTLP spans that
+    carry no output attribute yield nothing to read. Both being absent is normal: oracle and
+    nop produce neither.
     """
-    otlp_trace = descriptors.get(f"{EVIDENCE_TRACE}:{EVIDENCE_FORMAT_OTLP}")
-    if otlp_trace is not None and otlp_trace.ref is not None:
-        answer = _otlp_final_message(Path(otlp_trace.ref))
+    if otlp_request is not None:
+        answer = final_output_text(otlp_request)
         if answer:
             return answer
-
-    atif_trace = descriptors.get(f"{EVIDENCE_TRACE}:{EVIDENCE_FORMAT_ATIF}")
     if atif_trace is None or atif_trace.ref is None:
         return None
     return _final_agent_message(read_atif(Path(atif_trace.ref)))
 
 
-def _otlp_final_message(path: Path) -> str | None:
-    """The answer recorded on an OTLP trace file, or ``None`` when it cannot be read."""
+def _read_otlp(descriptor: EvidenceDescriptor | None) -> ExportTraceServiceRequest | None:
+    """Parse a trial's OTLP trace, or ``None`` when it is absent or will not read."""
+    if descriptor is None or descriptor.ref is None:
+        return None
+    path = Path(descriptor.ref)
     try:
-        resource_spans = resource_spans_from_text(path.read_text(encoding="utf-8"))
-        return final_output_text(export_request_from_resource_spans(resource_spans))
+        return export_request_from_resource_spans(resource_spans_from_text(path.read_text(encoding="utf-8")))
     except (OSError, ValueError) as error:
         logger.warning("Ignoring unreadable OTLP trace %s: %s", path, error)
         return None
@@ -272,13 +279,12 @@ def _display_artifact_path(relative_path: Path) -> Path:
 
 def _harbor_extension_evidence(
     trial_dir: Path,
-) -> tuple[dict[str, EvidenceDescriptor], EvidenceDescriptor | None]:
+) -> tuple[dict[str, EvidenceDescriptor], EvidenceDescriptor | None, EvidenceDescriptor | None]:
     """Describe every Harbor trial file and pick the standard trace.
 
     Every discovered file remains available through an extension evidence key.
     The first trace of each encoding is additionally registered under ``trace:atif``
     and ``trace:otlp``, so a metric can read either view of a trial that emits both.
-    OTLP is returned for the standard ``trace`` key when present, otherwise ATIF.
     Harbor's built-in ATIF dump ``agent/trajectory.json`` is used as a fallback when
     no path-declared ATIF file is present.
 
@@ -286,8 +292,9 @@ def _harbor_extension_evidence(
         trial_dir: Harbor attempt directory to inspect recursively.
 
     Returns:
-        A pair containing all discovered extension descriptors and the standard trace
-        descriptor, or ``None`` when the trial has no trace at all.
+        All discovered extension descriptors, then the ATIF and OTLP traces, either of
+        which is ``None`` when the trial emitted no trace of that encoding. Choosing
+        between them is the caller's, which can read the OTLP trace before promoting it.
     """
     descriptors: dict[str, EvidenceDescriptor] = {
         "trial_dir": EvidenceDescriptor(
@@ -436,8 +443,7 @@ def _harbor_extension_evidence(
         if descriptor is not None:
             descriptors[f"{EVIDENCE_TRACE}:{evidence_format}"] = descriptor
 
-    # OTLP carries span timing and concurrency that ATIF's turn shape cannot represent.
-    return descriptors, otlp_trace if otlp_trace is not None else atif_trace
+    return descriptors, atif_trace, otlp_trace
 
 
 def _rewards_mapping(data: Mapping[str, Any]) -> dict[str, float]:

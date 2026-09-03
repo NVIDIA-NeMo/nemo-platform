@@ -15,7 +15,10 @@ from nemo_evaluator_sdk.values.otlp import (
 _TRACE_ID = "0" * 32
 
 
-def _span(span_id: str, *, end: int, parent: str | None = None, **attributes: str) -> dict[str, Any]:
+def _span(
+    span_id: str, *, end: int, parent: str | None = None, kind: str = "AGENT", **attributes: str
+) -> dict[str, Any]:
+    attributes = {"openinference.span.kind": kind, **attributes}
     span: dict[str, Any] = {
         "traceId": _TRACE_ID,
         "spanId": span_id,
@@ -85,11 +88,22 @@ def test_the_last_assistant_message_wins_within_one_payload() -> None:
     assert _answer(_span("a" * 16, end=5, **{"gen_ai.output.messages": payload})) == "second"
 
 
-@pytest.mark.parametrize("payload", ["not json at all", '{"not": "a list"}', "[]"])
-def test_an_unrecognized_message_payload_falls_back_to_its_raw_text(payload: str) -> None:
-    # A raw payload is a worse answer than extracted text but a better one than None, which
-    # makes the content metrics raise rather than score.
-    assert _answer(_span("a" * 16, end=5, **{"gen_ai.output.messages": payload})) == payload
+def test_a_plain_text_message_payload_is_the_answer() -> None:
+    # Not JSON at all is the one case where the raw value is plausibly the answer itself.
+    assert _answer(_span("a" * 16, end=5, **{"gen_ai.output.messages": "not json at all"})) == "not json at all"
+
+
+@pytest.mark.parametrize("payload", ['{"not": "a list"}', "[]", '[{"role": "user", "parts": []}]'])
+def test_structured_payloads_without_assistant_text_yield_no_answer(payload: str) -> None:
+    # Returning the raw JSON here would score serialized telemetry, and would look truthy to
+    # the caller so the ATIF fallback never runs.
+    assert _answer(_span("a" * 16, end=5, **{"gen_ai.output.messages": payload})) is None
+
+
+def test_a_later_key_answers_when_the_message_payload_carries_no_text() -> None:
+    answer = _answer(_span("a" * 16, end=5, **{"gen_ai.output.messages": "[]", "final_result": "typed result"}))
+
+    assert answer == "typed result"
 
 
 def test_key_precedence_prefers_output_value_over_the_message_payload() -> None:
@@ -276,3 +290,59 @@ def test_the_callers_resource_spans_are_not_mutated() -> None:
     export_request_from_resource_spans(resource_spans)
 
     assert resource_spans[0]["scopeSpans"][0]["spans"][0]["spanId"] == _HEX_SPAN_ID
+
+
+def _nested_attribute_payload(depth: int) -> str:
+    value = '{"arrayValue":{"values":[' * depth + '{"stringValue":"leaf"}' + "]}}" * depth
+    return (
+        '{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"%s","spanId":"%s","name":"s",'
+        '"attributes":[{"key":"k","value":%s}]}]}]}]}' % (_HEX_TRACE_ID, _HEX_SPAN_ID, value)
+    )
+
+
+def test_a_deeply_nested_attribute_fails_conversion_as_a_value_error() -> None:
+    # json.loads accepts this depth, so the decode-time guard does not fire; the conversion
+    # recurses and must not leak RecursionError past a caller guarding on ValueError.
+    resource_spans = resource_spans_from_text(_nested_attribute_payload(400))
+
+    with pytest.raises(ValueError, match="nested too deeply"):
+        export_request_from_resource_spans(resource_spans)
+
+
+@pytest.mark.parametrize("depth", [400, 2000])
+def test_span_text_strings_walks_any_depth(depth: int) -> None:
+    resource_spans = resource_spans_from_text(_nested_attribute_payload(depth))
+
+    assert list(span_text_strings(resource_spans)) == ["leaf"]
+
+
+@pytest.mark.parametrize("kind", ["TOOL", "EVALUATOR", "RETRIEVER", "GUARDRAIL"])
+def test_a_non_answer_span_is_never_the_answer(kind: str) -> None:
+    # These record their output under the same `output.value` key an answer uses, so scoring
+    # one as the model's answer would be silent rather than an error.
+    answer = _answer(
+        _span("a" * 16, end=1),
+        _span("b" * 16, end=9, parent="a" * 16, kind=kind, **{"output.value": "NOT THE ANSWER"}),
+    )
+
+    assert answer is None
+
+
+def test_a_non_answer_root_is_excluded_too() -> None:
+    assert _answer(_span("a" * 16, end=5, kind="TOOL", **{"output.value": "tool only"})) is None
+
+
+def test_a_span_declaring_no_kind_is_not_eligible() -> None:
+    span = {
+        "traceId": _TRACE_ID,
+        "spanId": "a" * 16,
+        "name": "no-kind",
+        "endTimeUnixNano": "5",
+        "attributes": [{"key": "output.value", "value": {"stringValue": "unattributed"}}],
+    }
+
+    assert _answer(span) is None
+
+
+def test_span_kind_is_matched_case_insensitively() -> None:
+    assert _answer(_span("a" * 16, end=5, kind="agent", **{"output.value": "answer"})) == "answer"

@@ -20,6 +20,9 @@ from google.protobuf import json_format
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.proto.trace.v1.trace_pb2 import Span
 
+_MESSAGE_ATTRIBUTE_KEY = "gen_ai.output.messages"
+_SPAN_KIND_ATTRIBUTE = "openinference.span.kind"
+
 # Span attributes that can carry an agent's final answer, in precedence order.
 #
 # Deliberately narrower than Intake's ``OTLP_OUTPUT_PAYLOAD_ATTRIBUTE_KEYS``
@@ -31,11 +34,14 @@ from opentelemetry.proto.trace.v1.trace_pb2 import Span
 # independently of the services and must not depend on one.
 FINAL_OUTPUT_ATTRIBUTE_KEYS = (
     "output.value",
-    "gen_ai.output.messages",
+    _MESSAGE_ATTRIBUTE_KEY,
     "final_result",
 )
 
-_MESSAGE_ATTRIBUTE_KEY = "gen_ai.output.messages"
+# Span kinds whose output can be the agent's answer. An include list, so a kind this does not
+# know about is ineligible: a tool result and a judge's score are both recorded in the same
+# `output.value` attribute an answer uses, and scoring one as the model's answer is silent.
+ANSWER_SPAN_KINDS = frozenset({"AGENT", "CHAIN", "LLM"})
 
 
 def validate_resource_spans(value: Any) -> list[dict[str, Any]]:
@@ -135,6 +141,8 @@ def export_request_from_resource_spans(resource_spans: list[dict[str, Any]]) -> 
         )
     except json_format.ParseError as error:
         raise ValueError(f"invalid OTLP payload: {error}") from error
+    except RecursionError as error:
+        raise ValueError("OTLP payload is nested too deeply to convert") from error
 
 
 def final_output_text(request: ExportTraceServiceRequest) -> str | None:
@@ -142,7 +150,8 @@ def final_output_text(request: ExportTraceServiceRequest) -> str | None:
 
     A root span represents the run as a whole, so its output is the answer when it has one.
     Otherwise the latest-ending span carrying an output attribute is the closest equivalent
-    to ATIF's "last agent step wins".
+    to ATIF's "last agent step wins". Only :data:`ANSWER_SPAN_KINDS` are considered, so a
+    trace of nothing but tool calls has no answer rather than a misattributed one.
 
     Args:
         request: Parsed OTLP export request.
@@ -150,7 +159,9 @@ def final_output_text(request: ExportTraceServiceRequest) -> str | None:
     Returns:
         The answer text, or ``None`` when no span carries one.
     """
-    spans = [span for rs in request.resource_spans for ss in rs.scope_spans for span in ss.spans]
+    spans = [
+        span for rs in request.resource_spans for ss in rs.scope_spans for span in ss.spans if _is_answer_span(span)
+    ]
     by_recency = sorted(spans, key=lambda span: span.end_time_unix_nano, reverse=True)
     roots = [span for span in by_recency if not span.parent_span_id]
     for span in roots + by_recency:
@@ -158,6 +169,14 @@ def final_output_text(request: ExportTraceServiceRequest) -> str | None:
         if text:
             return text
     return None
+
+
+def _is_answer_span(span: Span) -> bool:
+    """Whether this span's output could be the agent's answer, by its declared kind."""
+    for attribute in span.attributes:
+        if attribute.key == _SPAN_KIND_ATTRIBUTE:
+            return attribute.value.string_value.upper() in ANSWER_SPAN_KINDS
+    return False
 
 
 def _span_output_text(span: Span) -> str | None:
@@ -170,24 +189,27 @@ def _span_output_text(span: Span) -> str | None:
         raw = value.string_value
         if not raw:
             continue
-        return _assistant_text(raw) if key == _MESSAGE_ATTRIBUTE_KEY else raw
+        text = _assistant_text(raw) if key == _MESSAGE_ATTRIBUTE_KEY else raw
+        if text:
+            return text
     return None
 
 
-def _assistant_text(raw: str) -> str:
+def _assistant_text(raw: str) -> str | None:
     """Extract the assistant's text from a ``gen_ai.output.messages`` payload.
 
     The payload is a JSON array of ``{"role", "parts": [{"type", "content"}]}`` messages.
-    Anything that does not match that shape is returned unchanged: a raw payload is a worse
-    answer than extracted text but a better one than nothing, since a missing output makes
-    the content metrics raise rather than score.
+    Structured data carrying no assistant text yields ``None``, so a caller can fall back to
+    another key or another trace format rather than scoring serialized telemetry. Text that
+    is not JSON at all is returned unchanged: a producer writing the answer as plain text
+    here is the one case where the raw value is the answer.
     """
     try:
         messages = _loads(raw)
     except ValueError:
         return raw
     if not isinstance(messages, list):
-        return raw
+        return None
     for message in reversed(messages):
         if not isinstance(message, dict) or message.get("role") != "assistant":
             continue
@@ -203,7 +225,7 @@ def _assistant_text(raw: str) -> str:
                 contents.append(content)
         if contents:
             return "".join(contents)
-    return raw
+    return None
 
 
 def span_text_strings(resource_spans: list[dict[str, Any]]) -> Iterator[str]:
@@ -241,17 +263,22 @@ def _attribute_strings(attributes: Any) -> Iterator[str]:
 
 
 def _any_value_strings(value: Any) -> Iterator[str]:
-    """Yield the string leaves of one decoded OTLP ``AnyValue``."""
-    if not isinstance(value, dict):
-        return
-    if isinstance(text := value.get("stringValue"), str):
-        yield text
-    elif isinstance(array := value.get("arrayValue"), dict):
-        for item in _objects(array.get("values")):
-            yield from _any_value_strings(item)
-    elif isinstance(kvlist := value.get("kvlistValue"), dict):
-        for item in _objects(kvlist.get("values")):
-            yield from _any_value_strings(item.get("value"))
+    """Yield the string leaves of one decoded OTLP ``AnyValue``, in no particular order.
+
+    An ``AnyValue`` nests without limit, so this walks an explicit stack rather than
+    recursing: a producer's nesting depth must not become this process's recursion limit.
+    """
+    pending = [value]
+    while pending:
+        current = pending.pop()
+        if not isinstance(current, dict):
+            continue
+        if isinstance(text := current.get("stringValue"), str):
+            yield text
+        elif isinstance(array := current.get("arrayValue"), dict):
+            pending.extend(_objects(array.get("values")))
+        elif isinstance(kvlist := current.get("kvlistValue"), dict):
+            pending.extend(item.get("value") for item in _objects(kvlist.get("values")))
 
 
 def _loads(text: str) -> Any:
