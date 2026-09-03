@@ -154,14 +154,13 @@ standalone chart:
 
 - **Harbor lives in the image.** It is not a dependency of the plugin, so the
   Dockerfile installs `harbor` plus `sandbox-k8s[harbor]` into `/opt/harbor` and
-  overlays the same patched adapter the standalone image uses. Only the
-  catalog's *default* version is built, so a request naming another
-  `framework_version` fails with a missing runner.
+  overlays the same patched adapter the standalone image uses. Every catalog
+  release marked `selectable` is built; `0.13.2` remains the default.
 - **Sandboxes share the control-plane namespace.** `sandbox-rbac.yaml` is
   therefore all namespace-scoped. The plugin owns the baseline Sandbox CR
-  create/read/delete verbs and binds the cluster's extension ClusterRoles for
-  claims and templates. There is no isolation between the control plane and
-  evaluated code — fine for a lab namespace, not for multi-tenancy.
+  create/read/delete verbs directly rather than depending on optional
+  user-facing ClusterRoles. There is no isolation between the control plane
+  and evaluated code — fine for a lab namespace, not for multi-tenancy.
 - **The CRDs and controller are a cluster prerequisite.** Nothing here installs
   them. The cluster must already run `agent-sandbox-controller` (conventionally
   in `agent-sandbox-system`) with `sandboxes.agents.x-k8s.io` registered; on a

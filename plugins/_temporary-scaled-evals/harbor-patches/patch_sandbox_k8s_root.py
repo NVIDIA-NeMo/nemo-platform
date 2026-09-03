@@ -424,7 +424,7 @@ def patch(package_dir: Path) -> None:
 
     _insert_after_once(
         client_path,
-        """        self._astra_chamber: str | None = normalize_astra_chamber(astra_chamber)
+        """        self._api_client = self._load_config(kubeconfig_path, context, in_cluster, verify_ssl)
 """,
         """        self._kubeconfig_path = kubeconfig_path
         self._context = context
