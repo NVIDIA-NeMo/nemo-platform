@@ -62,7 +62,7 @@ class _Toleration(_Model):
 
 def _gpu_helpers() -> dict[str, Any]:
     tree = ast.parse(PATCH.read_text(encoding="utf-8"))
-    helpers = [
+    helpers: list[ast.stmt] = [
         node
         for node in tree.body
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
@@ -87,7 +87,7 @@ def _gpu_helpers() -> dict[str, Any]:
 
 def _image_helpers() -> dict[str, Any]:
     tree = ast.parse(PATCH.read_text(encoding="utf-8"))
-    helpers = [
+    helpers: list[ast.stmt] = [
         node
         for node in tree.body
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
@@ -210,6 +210,7 @@ def _environment_method(name: str, *, extra_namespace: dict[str, Any] | None = N
         keywords=[],
         body=[method],
         decorator_list=[],
+        type_params=[],
     )
     ast.fix_missing_locations(isolated)
     namespace: dict[str, Any] = {
@@ -237,7 +238,7 @@ def _live_log_environment() -> type:
         "_emit_sandbox_log_text",
         "_emit_sandbox_log_line",
     }
-    methods = [
+    methods: list[ast.stmt] = [
         node
         for node in environment.body
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name in names
@@ -248,6 +249,7 @@ def _live_log_environment() -> type:
         keywords=[],
         body=methods,
         decorator_list=[],
+        type_params=[],
     )
     ast.fix_missing_locations(isolated)
     namespace: dict[str, Any] = {
@@ -281,7 +283,7 @@ def test_harbor_patch_defers_cleanup_failure_to_evaluation_runtime() -> None:
         def warning(self, message: str, value: object) -> None:
             self.warnings.append((message, value))
 
-    environment = type("Environment", (), {})()
+    environment: Any = type("Environment", (), {})()
     environment._started = True
     environment._sandbox = Sandbox()
     environment.logger = Logger()
@@ -459,7 +461,7 @@ def test_task_owned_home_paths_transfer_but_agent_dotfiles_stay_denied() -> None
 
 def test_persistent_path_reaches_verifier_exec_unless_explicitly_overridden() -> None:
     merge_env = _environment_method("_merge_env")
-    environment = type("Environment", (), {})()
+    environment: Any = type("Environment", (), {})()
     environment._persistent_env = {"PATH": "/installed-tools/bin:/usr/bin", "HOME": "/app"}
 
     inherited = merge_env(environment, {"VERIFY": "1"})
@@ -557,7 +559,7 @@ def test_harbor_patch_upload_dir_extracts_with_system_tar(tmp_path: Path) -> Non
                 stderr=completed.stderr,
             )
 
-    environment = type("Environment", (), {})()
+    environment: Any = type("Environment", (), {})()
     environment._sandbox = Sandbox()
 
     asyncio.run(_environment_method("upload_dir")(environment, source, str(target)))
@@ -587,7 +589,7 @@ def test_harbor_patch_retries_start_after_sandbox_creation_conflict() -> None:
 
 def test_harbor_patch_deletes_conflict_without_stopping_new_sandbox() -> None:
     tree = ast.parse(PATCH.read_text(encoding="utf-8"))
-    helpers = [
+    helpers: list[ast.stmt] = [
         node
         for node in tree.body
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
@@ -762,7 +764,7 @@ def test_rootless_command_uses_independent_default_timeout() -> None:
             return object()
 
     sandbox = Sandbox()
-    environment = type("Environment", (), {})()
+    environment: Any = type("Environment", (), {})()
     environment._rootless_active = True
     environment._command_timeout = 4200.0
     environment._working_dir = "/app"

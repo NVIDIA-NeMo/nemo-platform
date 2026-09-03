@@ -61,8 +61,8 @@ def test_multiple_previous_keys_are_supported(monkeypatch: pytest.MonkeyPatch) -
 def test_settings_require_a_valid_primary_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CREDENTIALS_ENCRYPTION_KEY")
     with pytest.raises(ValidationError, match="credentials_encryption_key"):
-        Settings(_env_file=None)
+        Settings(_env_file=None)  # ty: ignore[missing-argument, unknown-argument]
 
     monkeypatch.setenv("CREDENTIALS_ENCRYPTION_KEY", "not-a-fernet-key")
     with pytest.raises(ValidationError, match="must be a valid Fernet key"):
-        Settings(_env_file=None)
+        Settings(_env_file=None)  # ty: ignore[missing-argument, unknown-argument]

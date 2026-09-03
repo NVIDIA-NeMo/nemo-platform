@@ -392,6 +392,7 @@ def test_root_patch_grants_capabilities_only_to_authorized_writable_root_contain
         keywords=[],
         body=[build_manifest],
         decorator_list=[],
+        type_params=[],
     )
     ast.fix_missing_locations(isolated)
     namespace: dict[str, Any] = {"Any": Any, "os": os}
@@ -468,6 +469,7 @@ def test_root_patch_sends_keepalive_ping_during_long_exec(tmp_path: Path) -> Non
         keywords=[],
         body=[drain],
         decorator_list=[],
+        type_params=[],
     )
     ast.fix_missing_locations(isolated)
 

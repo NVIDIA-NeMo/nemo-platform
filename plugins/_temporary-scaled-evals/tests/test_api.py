@@ -453,26 +453,26 @@ def test_hosted_task_image_settings_require_tag_runtime_references() -> None:
         ValidationError,
         match="SANDBOX_K8S_TASK_IMAGE_REFERENCE_MODE=tag",
     ):
-        Settings(
-            _env_file=None,
-            credentials_encryption_key=Fernet.generate_key().decode(),
-            task_image_hosted_mode=True,
-            task_image_validation_mode="resolve",
-            task_image_allowed_registries="artifactory.nvidia.com",
-            task_image_admission_policy="rhacs",
-            sandbox_k8s_task_image_reference_mode="digest",
+        Settings.model_validate(
+            {
+                "credentials_encryption_key": Fernet.generate_key().decode(),
+                "task_image_hosted_mode": True,
+                "task_image_validation_mode": "resolve",
+                "task_image_allowed_registries": "artifactory.nvidia.com",
+                "sandbox_k8s_task_image_reference_mode": "digest",
+            }
         )
 
 
-def test_hosted_task_image_settings_accept_explicit_rhacs_policy() -> None:
-    configured = Settings(
-        _env_file=None,
-        credentials_encryption_key=Fernet.generate_key().decode(),
-        task_image_hosted_mode=True,
-        task_image_validation_mode="resolve",
-        task_image_allowed_registries="artifactory.nvidia.com",
-        task_image_admission_policy="rhacs",
-        sandbox_k8s_task_image_reference_mode="tag",
+def test_hosted_task_image_settings_accept_tag_references() -> None:
+    configured = Settings.model_validate(
+        {
+            "credentials_encryption_key": Fernet.generate_key().decode(),
+            "task_image_hosted_mode": True,
+            "task_image_validation_mode": "resolve",
+            "task_image_allowed_registries": "artifactory.nvidia.com",
+            "sandbox_k8s_task_image_reference_mode": "tag",
+        }
     )
 
     assert configured.task_image_hosted_mode is True

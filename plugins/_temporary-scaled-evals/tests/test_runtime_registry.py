@@ -69,9 +69,7 @@ def _spec() -> LaunchSpec:
         (GymSandboxOpenSandboxBackend, "gym_sandbox_opensandbox"),
     ],
 )
-def test_builtin_backend_adapter_preserves_unwired_operation_errors(
-    backend_type: type[CallableRuntimeBackend], backend_name: str
-) -> None:
+def test_builtin_backend_adapter_preserves_unwired_operation_errors(backend_type: type[Any], backend_name: str) -> None:
     backend = backend_type()
     handle = LaunchHandle(backend=backend_name, external_id="ev_adapter")
 
@@ -253,7 +251,7 @@ def test_registry_loads_runtime_plugin_module(monkeypatch, tmp_path: Path) -> No
             )
         )
 
-    module.register_runtime_backends = register_runtime_backends  # type: ignore[attr-defined]
+    setattr(module, "register_runtime_backends", register_runtime_backends)
     monkeypatch.setitem(sys.modules, module.__name__, module)
 
     registry = RuntimeBackendRegistry()
@@ -275,7 +273,7 @@ def test_registry_loads_runtime_plugin_custom_function(monkeypatch, tmp_path: Pa
             )
         )
 
-    module.install = install  # type: ignore[attr-defined]
+    setattr(module, "install", install)
     monkeypatch.setitem(sys.modules, module.__name__, module)
 
     registry = RuntimeBackendRegistry()
