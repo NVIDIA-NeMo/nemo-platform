@@ -206,7 +206,11 @@ _PROBE_CONFIGS: dict[str, ProbeConfig] = {
     "nvidia-build": ProbeConfig(
         "POST",
         "v1/chat/completions",
-        {"model": _NVIDIA_BUILD_PROBE_MODEL, "messages": [], "max_tokens": 1},
+        {
+            "model": _NVIDIA_BUILD_PROBE_MODEL,
+            "messages": [{"role": "user", "content": "Respond with 'OK'"}],
+            "max_tokens": 1,
+        },
     ),
     "openai": ProbeConfig("GET", "models"),
     "anthropic": ProbeConfig("GET", "v1/models"),
