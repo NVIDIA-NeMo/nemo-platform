@@ -102,6 +102,9 @@ _ENV_MAP: dict[str, str] = {
 #: host, and packaging runs there for the CLI and the platform job alike.
 WHEEL_ENV = "NEMO_AGENTS_WHEEL"
 
+#: Newest wheel in the checkout's ``dist``, so the value survives every rebuild.
+WHEEL_LATEST = "LATEST"
+
 PINNED_NEMO_RELAY_CLI_VERSION = "0.7.3"
 PINNED_NEMO_RELAY_INSTALLER_COMMIT = "40c5990361afc26ae8b901ff1f49c2b03ddd9ede"
 PINNED_NEMO_RELAY_INSTALLER_SHA256 = "ba2585a32e568643819992fa66b750004328351fce422b979d8c11cfc8bbfadb"

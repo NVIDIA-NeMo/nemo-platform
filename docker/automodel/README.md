@@ -11,7 +11,7 @@ Two images for the **nmp-automodel** customization backend, plus the shared **`n
 |-------|------------|------|
 | `nmp-automodel-base` | `docker/automodel/Dockerfile.nmp-automodel-base` | PyTorch 26.05 + Automodel + `mamba-ssm` / `causal-conv1d` wheels |
 | `nmp-customizer-tasks` | `docker/Dockerfile.nmp-customizer-tasks` | Shared CPU tasks (`file_io`, `model_entity`, `model_spec`, LoRA sidecar) |
-| `nmp-automodel-training` | `docker/automodel/Dockerfile.nmp-automodel-training` | Training step (`nmp.automodel.tasks.training`) |
+| `nmp-automodel-training` | `docker/automodel/Dockerfile.nmp-automodel-training` | Training (`nmp.automodel.tasks.training`) and retrieval mining (`nmp.automodel.tasks.retrieval_mine`) |
 
 Full references (default tag `local`):
 
@@ -92,7 +92,9 @@ Override registry: `export WHEELS_REGISTRY=...` and `export IMAGE_REGISTRY=...` 
 
 **Customizer tasks image (`nmp-customizer-tasks`):** `uv sync --package nmp-customization-common --package nmp-models --no-dev --inexact` from the customizer workspace slice (`docker/customizer/`). Hosts shared CPU steps (`file_io`, `model_entity`, `model_spec`, LoRA sidecar) for all customization backends.
 
-**Training image:** Do **not** use `uv sync` — it upgrades `transformers` and breaks `PreTrainedModel`. Use **`uv pip install -e`** with **`--overrides no_override_requirements.txt`**, then `uv pip install --no-deps -e /opt/Automodel` to re-pin `nemo_automodel` from the base clone (not PyPI).
+**Training image (`nmp-automodel-training`):** GPU training (`nmp.automodel.tasks.training`) and retrieval mining (`nmp.automodel.tasks.retrieval_mine`). Platform glue is installed with `uv pip install --overrides /app/docker/automodel/no_override_requirements.txt -e "/app/services/automodel[training]"` (alongside its platform dependencies), then `uv pip install --no-deps -e /opt/Automodel` re-pins `nemo_automodel` from the base clone (not PyPI). `uv sync` is not used here: it upgrades `transformers` and breaks `PreTrainedModel`.
+
+**Retrieval mining:** Data Designer's `retrieval-prepare` stages the encoder into shared job storage with `nmp-customizer-tasks`, then the training image loads it with `HF_HUB_OFFLINE=1`. All retrieval steps share one container-backed profile (`data_designer.job_executor_profile`, or `--profile`).
 
 ## Runtime
 
@@ -108,6 +110,10 @@ docker run --rm my-registry/nemo-platform-dev/nmp-customizer-tasks:local \
 
 # Training image — default CMD prints training help.
 docker run --rm my-registry/nemo-platform-dev/nmp-automodel-training:local
+
+# Training image — retrieval hard-negative mining.
+docker run --rm my-registry/nemo-platform-dev/nmp-automodel-training:local \
+  -m nmp.automodel.tasks.retrieval_mine --help
 ```
 
 The job compiler resolves `nmp-customizer-tasks` and `nmp-automodel-training` under `NMP_AUTOMODEL_IMAGE_REGISTRY` (default `my-registry/nemo-platform-dev`). See `nmp.automodel.images`.

@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+format: wheels-v1
+config_paths:
+  - resources_servers/wheels_v1_example/configs/wheels_v1_example.yaml
+metadata:
+  name: wheels-v1-environment

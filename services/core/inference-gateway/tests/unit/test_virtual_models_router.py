@@ -223,11 +223,11 @@ class TestCreateVirtualModel:
             client,
             "vm-full",
             default_model_entity="default/llama-70b",
-            request_middleware=[{"name": "nemo-switchyard", "config_type": "routellm_config"}],
+            request_middleware=[{"name": "nemo-switchyard", "config_type": "routellm_config", "config": {}}],
             response_middleware=[
                 {"name": "nemo-guardrails", "config_type": "guardrail_config", "config_id": "default/safe"}
             ],
-            post_response_middleware=[{"name": "nemo-logger", "config_type": "log_config"}],
+            post_response_middleware=[{"name": "nemo-logger", "config_type": "log_config", "config": {}}],
             models=[{"model": "default/claude-sonnet", "backend_format": "ANTHROPIC_MESSAGES"}],
             override_proxy="nemo-switchyard.http-proxy",
         )
@@ -281,7 +281,7 @@ class TestCreateVirtualModel:
             BASE,
             json={
                 "name": "vm-missing-plugin",
-                "request_middleware": [{"name": "missing-plugin", "config_type": "cfg"}],
+                "request_middleware": [{"name": "missing-plugin", "config_type": "cfg", "config": {}}],
             },
         )
 
@@ -319,7 +319,7 @@ class TestCreateVirtualModel:
             BASE,
             json={
                 "name": "vm-plugin-error",
-                "request_middleware": [{"name": "my-plugin", "config_type": "cfg"}],
+                "request_middleware": [{"name": "my-plugin", "config_type": "cfg", "config": {}}],
             },
         )
 
@@ -338,7 +338,7 @@ class TestCreateVirtualModel:
             BASE,
             json={
                 "name": "vm-plugin-server-error",
-                "request_middleware": [{"name": "my-plugin", "config_type": "cfg"}],
+                "request_middleware": [{"name": "my-plugin", "config_type": "cfg", "config": {}}],
             },
         )
 
@@ -636,7 +636,7 @@ class TestUpdateVirtualModel:
         """PATCH replaces middleware lists when provided."""
         _create(client, "vm-mw")
         _install_registry(client, {"nemo-guardrails": _make_plugin()})
-        mw = [{"name": "nemo-guardrails", "config_type": "guardrail_config"}]
+        mw = [{"name": "nemo-guardrails", "config_type": "guardrail_config", "config": {}}]
         resp = client.patch(f"{BASE}/vm-mw", json={"request_middleware": mw})
         assert resp.status_code == 200
         assert resp.json()["request_middleware"][0]["name"] == "nemo-guardrails"
@@ -672,7 +672,7 @@ class TestUpdateVirtualModel:
 
         resp = client.patch(
             f"{BASE}/vm-update-missing-plugin",
-            json={"request_middleware": [{"name": "missing-plugin", "config_type": "cfg"}]},
+            json={"request_middleware": [{"name": "missing-plugin", "config_type": "cfg", "config": {}}]},
         )
 
         assert resp.status_code == 422

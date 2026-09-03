@@ -239,6 +239,8 @@ navigation:
         contents:
           - page: CLI
             path: ../../data-designer/cli.mdx
+          - page: Retrieval SDG
+            path: ../../data-designer/retrieval-sdg.mdx
           - section: Tutorials
             path: ../../data-designer/tutorials/index.mdx
             contents:

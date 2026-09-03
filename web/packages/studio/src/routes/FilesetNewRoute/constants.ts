@@ -27,6 +27,11 @@ export const PURPOSE_OPTIONS: {
     description:
       'For model weights and checkpoints. Enables model-specific metadata, including tool-calling and model configuration fields.',
   },
+  {
+    value: FilesetPurpose.environment,
+    label: 'Environment',
+    description: 'For executable environment packages consumed by sandboxed workloads.',
+  },
 ];
 
 export const DATASET_TYPE_CUSTOM = 'custom';

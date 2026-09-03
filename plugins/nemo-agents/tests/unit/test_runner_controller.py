@@ -642,7 +642,8 @@ async def test_check_health_marks_failed_when_subprocess_exited() -> None:
 async def test_check_health_marks_running_when_healthy() -> None:
     """Backward behaviour: a healthy process flips to ``running``."""
     ctrl, backend = _make_controller()
-    backend.get_deployment_status = AsyncMock(return_value=DeploymentInfo(name="dep-1", status="starting"))
+    info = DeploymentInfo(name="dep-1", status="starting")
+    backend.get_deployment_status = AsyncMock(return_value=info)
     backend.health_check = AsyncMock(return_value=True)
     dep = AgentDeployment(
         name="dep-1",
@@ -656,6 +657,12 @@ async def test_check_health_marks_running_when_healthy() -> None:
     await ctrl._check_health(dep)
 
     assert dep.status == "running"
+    assert info.status == "running"
+
+    ctrl._reconcile_deployment_sessions_after_restart = AsyncMock()  # type: ignore[method-assign]
+    ctrl._observe_runtime_instance = AsyncMock()  # type: ignore[method-assign]
+    await ctrl._verify_running(dep)
+    ctrl._reconcile_deployment_sessions_after_restart.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

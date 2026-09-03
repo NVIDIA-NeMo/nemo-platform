@@ -25,7 +25,7 @@ jobs:
           PR_TITLE: ${{ github.event.issue.title }}
           PR_URL: ${{ github.event.issue.html_url }}
           REPOSITORY: ${{ github.repository }}
-          SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
+          SLACK_ALERTS_WEBHOOK: ${{ secrets.SLACK_RELEASE_WEBHOOK }}
         run: |
           escaped_pr_title="$(sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' <<<"${PR_TITLE}")"
           text="$(printf '%s\n' \

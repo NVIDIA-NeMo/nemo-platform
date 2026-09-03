@@ -377,6 +377,1128 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-generate:
+    post:
+      tags:
+      - Data Designer
+      summary: Create Job
+      operationId: create_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_generate_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrievalGenerateJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalGenerateJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Data Designer
+      summary: List Jobs
+      operationId: list_jobs_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_generate_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/RetrievalGenerateJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/RetrievalGenerateJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalGenerateJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-generate/{job}/results/{name}:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Result
+      operationId: get_job_result_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_generate__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-generate/{job}/results/{name}/download:
+    get:
+      tags:
+      - Data Designer
+      summary: Download Job Result
+      operationId: download_job_result_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_generate__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-generate/{name}:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job
+      operationId: get_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_generate__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalGenerateJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Data Designer
+      summary: Delete Job
+      operationId: delete_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_generate__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-generate/{name}/cancel:
+    post:
+      tags:
+      - Data Designer
+      summary: Cancel Job
+      operationId: cancel_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_generate__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalGenerateJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-generate/{name}/logs:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_generate__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-generate/{name}/results:
+    get:
+      tags:
+      - Data Designer
+      summary: List Job Results
+      operationId: list_job_results_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_generate__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-generate/{name}/status:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Status
+      operationId: get_job_status_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_generate__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-prepare:
+    post:
+      tags:
+      - Data Designer
+      summary: Create Job
+      operationId: create_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_prepare_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrievalPrepareJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalPrepareJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Data Designer
+      summary: List Jobs
+      operationId: list_jobs_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_prepare_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/RetrievalPrepareJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/RetrievalPrepareJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalPrepareJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-prepare/{job}/results/{name}:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Result
+      operationId: get_job_result_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_prepare__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-prepare/{job}/results/{name}/download:
+    get:
+      tags:
+      - Data Designer
+      summary: Download Job Result
+      operationId: download_job_result_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_prepare__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-prepare/{name}:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job
+      operationId: get_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_prepare__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalPrepareJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Data Designer
+      summary: Delete Job
+      operationId: delete_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_prepare__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-prepare/{name}/cancel:
+    post:
+      tags:
+      - Data Designer
+      summary: Cancel Job
+      operationId: cancel_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_prepare__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalPrepareJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-prepare/{name}/logs:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_prepare__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-prepare/{name}/results:
+    get:
+      tags:
+      - Data Designer
+      summary: List Job Results
+      operationId: list_job_results_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_prepare__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-prepare/{name}/status:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Status
+      operationId: get_job_status_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_prepare__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-run:
+    post:
+      tags:
+      - Data Designer
+      summary: Create Job
+      operationId: create_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_run_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrievalRunJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalRunJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Data Designer
+      summary: List Jobs
+      operationId: list_jobs_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_run_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/RetrievalRunJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/RetrievalRunJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalRunJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-run/{job}/results/{name}:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Result
+      operationId: get_job_result_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_run__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-run/{job}/results/{name}/download:
+    get:
+      tags:
+      - Data Designer
+      summary: Download Job Result
+      operationId: download_job_result_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_run__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-run/{name}:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job
+      operationId: get_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_run__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalRunJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Data Designer
+      summary: Delete Job
+      operationId: delete_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_run__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-run/{name}/cancel:
+    post:
+      tags:
+      - Data Designer
+      summary: Cancel Job
+      operationId: cancel_job_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_run__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalRunJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-run/{name}/logs:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_run__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-run/{name}/results:
+    get:
+      tags:
+      - Data Designer
+      summary: List Job Results
+      operationId: list_job_results_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_run__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/retrieval-run/{name}/status:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Status
+      operationId: get_job_status_apis_data_designer_v2_workspaces__workspace__jobs_retrieval_run__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/data-designer/v2/workspaces/{workspace}/preview:
     post:
       tags:
@@ -403,6 +1525,45 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PreviewSpec'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/retrieval-preview:
+    post:
+      tags:
+      - Data Designer
+      summary: Preview retrieval SDG generation without publishing a full job fileset.
+      description: Preview retrieval SDG generation without publishing a full job
+        fileset.
+      operationId: RetrievalPreviewFunction__route_apis_data_designer_v2_workspaces__workspace__retrieval_preview_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          title: X-Request-Id
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrievalPreviewSpec'
       responses:
         '200':
           description: Successful Response
@@ -2815,6 +3976,826 @@ components:
         \   retry_backoff: The backoff factor for the retry delay in seconds. Defaults\
         \ to 2.0.\n    max_parallel_requests: The maximum number of parallel requests\
         \ to make. Defaults to 4."
+    RetrievalGenerateJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/RetrievalGenerateStepConfig'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: RetrievalGenerateJob
+    RetrievalGenerateJobConfig:
+      properties:
+        corpus:
+          type: string
+          title: Corpus
+          description: Fileset ref (workspace/fileset[#subdir]) or hf:// URI.
+        provider:
+          type: string
+          title: Provider
+          description: Default Inference Gateway provider (name or workspace/name).
+        chat_provider:
+          title: Chat Provider
+          description: Optional provider override for artifact extraction, Q&A generation,
+            and quality judging.
+          type: string
+        embed_provider:
+          title: Embed Provider
+          description: Optional provider override for embedding calls.
+          type: string
+        corpus_id:
+          type: string
+          title: Corpus Id
+          default: retrieval_sdg
+        dataset_name:
+          title: Dataset Name
+          type: string
+        file_extensions:
+          title: File Extensions
+          items:
+            type: string
+          type: array
+        min_text_length:
+          type: integer
+          minimum: 0.0
+          title: Min Text Length
+          default: 50
+        sentences_per_chunk:
+          type: integer
+          minimum: 1.0
+          title: Sentences Per Chunk
+          default: 5
+        num_sections:
+          type: integer
+          minimum: 1.0
+          title: Num Sections
+          default: 1
+        num_files:
+          title: Num Files
+          type: integer
+          minimum: 1.0
+        max_artifacts_per_type:
+          type: integer
+          minimum: 1.0
+          title: Max Artifacts Per Type
+          default: 2
+        num_pairs:
+          type: integer
+          minimum: 1.0
+          title: Num Pairs
+          default: 7
+        query_counts:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Query Counts
+        reasoning_counts:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Reasoning Counts
+        min_hops:
+          type: integer
+          minimum: 1.0
+          title: Min Hops
+          default: 1
+        max_hops:
+          type: integer
+          minimum: 1.0
+          title: Max Hops
+          default: 3
+        min_complexity:
+          type: integer
+          maximum: 5.0
+          minimum: 1.0
+          title: Min Complexity
+          default: 2
+        similarity_threshold:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Similarity Threshold
+          default: 0.9
+        buffer_size:
+          type: integer
+          minimum: 1.0
+          title: Buffer Size
+          default: 200
+        resume:
+          type: string
+          enum:
+          - never
+          - always
+          - if_possible
+          title: Resume
+          default: never
+        num_records:
+          title: Num Records
+          type: integer
+          minimum: 1.0
+        artifact_extraction_model:
+          type: string
+          title: Artifact Extraction Model
+          description: Chat model for artifact extraction.
+        qa_generation_model:
+          type: string
+          title: Qa Generation Model
+          description: Chat model for question/answer generation.
+        quality_judge_model:
+          type: string
+          title: Quality Judge Model
+          description: Chat model for quality judging.
+        embed_model:
+          type: string
+          title: Embed Model
+          description: Embedding model for retrieval SDG.
+        hf_token_secret:
+          title: Hf Token Secret
+          type: string
+      type: object
+      required:
+      - corpus
+      - provider
+      - artifact_extraction_model
+      - qa_generation_model
+      - quality_judge_model
+      - embed_model
+      title: RetrievalGenerateJobConfig
+      description: Submitter-facing spec for Stage 0 retrieval SDG.
+    RetrievalGenerateJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/RetrievalGenerateJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+        output_location:
+          title: Output Location
+          type: string
+      type: object
+      required:
+      - spec
+      title: RetrievalGenerateJobRequest
+    RetrievalGenerateJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: RetrievalGenerateJobsListFilter
+      type: object
+    RetrievalGenerateJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/RetrievalGenerateJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: RetrievalGenerateJobsPage
+    RetrievalGenerateJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: RetrievalGenerateJobsSortField
+    RetrievalGenerateStepConfig:
+      properties:
+        job_config:
+          $ref: '#/components/schemas/RetrievalGenerateJobConfig'
+        model_providers:
+          items:
+            $ref: '#/components/schemas/ModelProvider'
+          type: array
+          title: Model Providers
+        chat_provider_name:
+          type: string
+          title: Chat Provider Name
+        embed_provider_name:
+          type: string
+          title: Embed Provider Name
+      type: object
+      required:
+      - job_config
+      - model_providers
+      - chat_provider_name
+      - embed_provider_name
+      title: RetrievalGenerateStepConfig
+    RetrievalMiningOptions:
+      properties:
+        hard_neg_margin_type:
+          type: string
+          enum:
+          - perc
+          - abs
+          title: Hard Neg Margin Type
+          default: perc
+        query_embedding_batch_size:
+          type: integer
+          minimum: 1.0
+          title: Query Embedding Batch Size
+          default: 16
+        document_embedding_batch_size:
+          type: integer
+          minimum: 1.0
+          title: Document Embedding Batch Size
+          default: 16
+        corpus_chunk_size:
+          type: integer
+          minimum: 1.0
+          title: Corpus Chunk Size
+          default: 50000
+        load_embeddings_from_cache:
+          type: boolean
+          title: Load Embeddings From Cache
+          default: false
+        use_negatives_from_file:
+          type: boolean
+          title: Use Negatives From File
+          default: false
+      type: object
+      title: RetrievalMiningOptions
+      description: Automodel hard-negative mining knobs not covered by the prepare
+        job's common fields.
+    RetrievalPrepareJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/RetrievalPrepareStepConfig'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: RetrievalPrepareJob
+    RetrievalPrepareJobConfig:
+      properties:
+        sdg_input:
+          title: Sdg Input
+          description: Fileset or hf:// URI to Stage 0 output or generation_result.json.
+          type: string
+        train_input_file:
+          title: Train Input File
+          description: Fileset containing a pre-converted wrapped train.json; skips
+            conversion.
+          type: string
+        corpus_id:
+          type: string
+          title: Corpus Id
+          default: retrieval_sdg
+        quality_threshold:
+          type: number
+          maximum: 10.0
+          minimum: 0.0
+          title: Quality Threshold
+          default: 7.0
+        train_ratio:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Train Ratio
+          default: 0.8
+        val_ratio:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Val Ratio
+          default: 0.0
+        seed:
+          type: integer
+          title: Seed
+          default: 42
+        max_pos_docs:
+          type: integer
+          minimum: 1.0
+          title: Max Pos Docs
+          default: 5
+        use_group_id_in_eval:
+          type: boolean
+          title: Use Group Id In Eval
+          default: false
+        split_strategy:
+          type: string
+          enum:
+          - random
+          - dedupped
+          - cluster
+          title: Split Strategy
+          default: random
+        enable_mining:
+          type: boolean
+          title: Enable Mining
+          description: When true, run GPU hard-negative mining after conversion. Conversion-only
+            is the default.
+          default: false
+        model:
+          type: string
+          title: Model
+          description: Platform model entity whose fileset contains the mining encoder
+            and tokenizer.
+          default: nvidia/Nemotron-3-Embed-1B-BF16
+        hard_negatives_to_mine:
+          type: integer
+          minimum: 1.0
+          title: Hard Negatives To Mine
+          default: 5
+        hard_neg_margin:
+          type: number
+          maximum: 1.0
+          exclusiveMinimum: 0.0
+          title: Hard Neg Margin
+          default: 0.95
+        mining_batch_size:
+          type: integer
+          minimum: 1.0
+          title: Mining Batch Size
+          default: 128
+        query_prefix:
+          type: string
+          title: Query Prefix
+          default: 'query: '
+        passage_prefix:
+          type: string
+          title: Passage Prefix
+          default: 'passage: '
+        query_max_length:
+          type: integer
+          minimum: 1.0
+          title: Query Max Length
+          default: 512
+        passage_max_length:
+          type: integer
+          minimum: 1.0
+          title: Passage Max Length
+          default: 512
+        attn_implementation:
+          type: string
+          enum:
+          - sdpa
+          - flash_attention_2
+          - eager
+          title: Attn Implementation
+          default: sdpa
+        add_bos_token:
+          title: Add Bos Token
+          default: true
+          type: boolean
+        add_eos_token:
+          title: Add Eos Token
+          default: false
+          type: boolean
+        dist_backend:
+          type: string
+          title: Dist Backend
+          default: nccl
+        dist_timeout_minutes:
+          type: integer
+          minimum: 1.0
+          title: Dist Timeout Minutes
+          default: 30
+        mining:
+          $ref: '#/components/schemas/RetrievalMiningOptions'
+        hf_token_secret:
+          title: Hf Token Secret
+          type: string
+      type: object
+      title: RetrievalPrepareJobConfig
+      description: Submitter-facing spec for Stage 1 conversion and optional GPU mining.
+    RetrievalPrepareJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/RetrievalPrepareJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+        output_location:
+          title: Output Location
+          type: string
+      type: object
+      required:
+      - spec
+      title: RetrievalPrepareJobRequest
+    RetrievalPrepareJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: RetrievalPrepareJobsListFilter
+      type: object
+    RetrievalPrepareJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/RetrievalPrepareJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: RetrievalPrepareJobsPage
+    RetrievalPrepareJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: RetrievalPrepareJobsSortField
+    RetrievalPrepareStepConfig:
+      properties:
+        job_config:
+          $ref: '#/components/schemas/RetrievalPrepareJobConfig'
+        phase:
+          type: string
+          enum:
+          - convert
+          - mine
+          title: Phase
+          default: convert
+        model_fileset:
+          title: Model Fileset
+          type: string
+        model_trust_remote_code:
+          type: boolean
+          title: Model Trust Remote Code
+          default: false
+      type: object
+      required:
+      - job_config
+      title: RetrievalPrepareStepConfig
+    RetrievalPreviewSpec:
+      properties:
+        generate:
+          $ref: '#/components/schemas/RetrievalGenerateJobConfig'
+        num_records:
+          type: integer
+          minimum: 1.0
+          title: Num Records
+          default: 1
+      type: object
+      required:
+      - generate
+      title: RetrievalPreviewSpec
+    RetrievalRunJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/RetrievalRunJobConfig'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: RetrievalRunJob
+    RetrievalRunJobConfig:
+      properties:
+        generate:
+          $ref: '#/components/schemas/RetrievalGenerateJobConfig'
+        prepare:
+          $ref: '#/components/schemas/RetrievalPrepareJobConfig'
+      type: object
+      required:
+      - generate
+      title: RetrievalRunJobConfig
+      description: Convenience spec that chains generate then prepare via the jobs
+        service.
+    RetrievalRunJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/RetrievalRunJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+        output_location:
+          title: Output Location
+          type: string
+      type: object
+      required:
+      - spec
+      title: RetrievalRunJobRequest
+    RetrievalRunJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: RetrievalRunJobsListFilter
+      type: object
+    RetrievalRunJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/RetrievalRunJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: RetrievalRunJobsPage
+    RetrievalRunJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: RetrievalRunJobsSortField
     SamplerColumnConfig:
       properties:
         name:

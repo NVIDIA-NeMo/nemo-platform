@@ -25,7 +25,10 @@ from sandboxed_gym.host.models import (
     build_bootstrap_env,
 )
 from sandboxed_gym.host.provider import SandboxedGymHostProvider, get_host_provider
-from sandboxed_gym.runtime.gym_host_runtime import GYM_GLOBAL_CONFIG_ENV_KEY
+from sandboxed_gym.runtime.gym_host_runtime import (
+    ENVIRONMENT_PACKAGE_REQUIRED_ENV_KEY,
+    GYM_GLOBAL_CONFIG_ENV_KEY,
+)
 from sandboxed_gym.serve_config import (
     SandboxedGymServeConfig,
     SandboxedGymSessionDescriptor,
@@ -113,6 +116,16 @@ def build_gym_host_spec(
         )
 
     gym_global = apply_sandbox_runtime_defaults(cfg.gym_global_config)
+    # Caller's variables first so they cannot displace the gym config, package-required flag,
+    # broker endpoint, or mount paths. `build_bootstrap_env` also refuses reserved-key collisions.
+    bootstrap_extra = {
+        **cfg.host_env,
+        GYM_GLOBAL_CONFIG_ENV_KEY: json.dumps(gym_global, sort_keys=True),
+    }
+    if cfg.environment_path is not None:
+        # The mount path is ``/job/environment`` with or without a FileSet. This flag is how the
+        # host distinguishes a required package from an image-bundled tree at the same path.
+        bootstrap_extra[ENVIRONMENT_PACKAGE_REQUIRED_ENV_KEY] = "true"
     bootstrap_env = build_bootstrap_env(
         cfg.job_id,
         cfg.environment_path or sandbox.env_mount_path,
@@ -122,9 +135,7 @@ def build_gym_host_spec(
         sandbox.max_request_bytes,
         sandbox.max_response_bytes,
         dataset_path=dataset_path,
-        # The caller's own variables first, so nothing it passes can displace the broker endpoint
-        # or the mount paths the runtime needs to come up.
-        extra={**cfg.host_env, GYM_GLOBAL_CONFIG_ENV_KEY: json.dumps(gym_global, sort_keys=True)},
+        extra=bootstrap_extra,
     )
 
     egress_allow = collect_gym_host_egress_allows(

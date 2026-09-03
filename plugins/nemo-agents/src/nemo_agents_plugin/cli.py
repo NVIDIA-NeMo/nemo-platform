@@ -27,6 +27,8 @@ group at startup. Numeric optimize is likewise auto-injected from
 - ``get``          — get an agent by name
 - ``delete``       — delete an agent
 - ``deploy``       — create a deployment for an agent (waits for ``running`` by default)
+- ``chat``         — open an interactive new or existing deployed-agent session
+- ``sessions``     — sub-group: list / get / close persisted sessions
 - ``undeploy``     — stop and remove a deployment
 - ``logs``         — print or tail the local deployment log file
 - ``deployments``  — sub-group: list / get / delete deployments
@@ -42,11 +44,13 @@ import re
 import sys
 import tempfile
 import time
+from contextlib import closing
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from pkgutil import resolve_name
 from typing import Any, ClassVar, Literal, Optional, cast
+from urllib.parse import urlencode
 
 import click
 import httpx
@@ -64,6 +68,7 @@ from nemo_agents_plugin.cli_context import (
 from nemo_agents_plugin.cli_context import (
     resolve_context_headers as _resolve_context_headers,
 )
+from nemo_agents_plugin.deployment_routing import is_deployment_routable
 from nemo_agents_plugin.entities import (
     AGENT_SPEC_FILENAME,
     CONTAINER_DEPLOYMENT_MODES,
@@ -73,24 +78,35 @@ from nemo_agents_plugin.entities import (
     MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    AgentDeployment,
+    AgentSession,
+    SessionStatus,
     ethos_fileset_name,
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
+from nemo_agents_plugin.session_lifecycle import session_expiration_is_due
+from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform import NeMoPlatform
+from nemo_platform_ext.cli.chat_tui import ExitAction, StreamingResponse, run_chat_tui
+from nemo_platform_ext.cli.core.api import is_tty
 from nemo_platform_ext.cli.core.formatters import Column, format_output
 from nemo_platform_ext.cli.core.help_formatter import NmpGroup
+from nemo_platform_ext.ui.prompts import is_interactive
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
 from nemo_platform_plugin.discovery import AGENT_CLI_GROUP, discover_entry_points
 from nemo_platform_plugin.job import NemoJob
+from pydantic import ValidationError
 from typer.main import get_command as _typer_get_command
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_WORKSPACE = "default"
 _LIST_OUTPUT_FORMAT = Literal["table", "json", "yaml", "csv", "markdown", "raw"]
+_DEPLOYMENT_RESOLUTION_PAGE_SIZE = 100
+
 _AGENT_LIST_COLUMNS = [
     Column("name"),
     Column("workspace"),
@@ -104,6 +120,14 @@ _DEPLOYMENT_LIST_COLUMNS = [
     Column("workspace"),
     Column("status"),
     Column("endpoint"),
+    Column("created_at"),
+]
+_SESSION_LIST_COLUMNS = [
+    Column("name"),
+    Column("status"),
+    Column("deployment_id"),
+    Column("last_active_at"),
+    Column("expires_at"),
     Column("created_at"),
 ]
 _ENVIRONMENT_LIST_COLUMNS = [
@@ -871,6 +895,150 @@ def _package_render_only(
 
 def _register_platform_commands(app: typer.Typer) -> None:
     """Register Agent Resources commands (require a running cluster) onto *app*."""
+
+    @app.command(rich_help_panel="Deployed agent interaction (requires running cluster)")
+    def chat(
+        input: Optional[str] = typer.Option(
+            None,
+            "--input",
+            "-i",
+            help="Optional first message to send before prompting for the next turn.",
+        ),
+        agent_deployment: Optional[str] = typer.Option(
+            None,
+            "--agent-deployment",
+            "-d",
+            help="Deployment to start a new persisted session against.",
+        ),
+        session: Optional[str] = typer.Option(
+            None,
+            "--session",
+            "-s",
+            help="Name of an existing persisted session to resume.",
+        ),
+        session_name: Optional[str] = typer.Option(
+            None,
+            "--session-name",
+            help="Name for a new session; valid only with --agent-deployment.",
+        ),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        timeout: float = typer.Option(
+            300,
+            "--timeout",
+            "-t",
+            min=0.001,
+            envvar="NEMO_AGENTS_INVOKE_TIMEOUT",
+            help="Request timeout in seconds for each streamed agent turn.",
+        ),
+    ) -> None:
+        """Chat interactively with a new or existing deployed-agent session."""
+        _validate_session_chat_options(
+            agent_deployment=agent_deployment,
+            session=session,
+            session_name=session_name,
+            input=input,
+        )
+        if not _is_interactive_session_chat():
+            typer.echo(
+                "Error: Agent chat requires an interactive terminal. "
+                "Use `nemo agents invoke` for one-shot or scripted input.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+        _platform_session_chat(
+            base_url=_resolve_base_url(base_url),
+            workspace=workspace,
+            agent_deployment=agent_deployment,
+            session=session,
+            session_name=session_name,
+            input=input,
+            timeout=timeout,
+        )
+
+    sessions_app = typer.Typer(
+        name="sessions",
+        help="Discover and manage persisted deployed-agent sessions.",
+        no_args_is_help=True,
+    )
+    app.add_typer(sessions_app, rich_help_panel="Deployed agent interaction (requires running cluster)")
+
+    @sessions_app.command(name="list")
+    def sessions_list(
+        ctx: typer.Context,
+        agent_deployment: Optional[str] = typer.Option(
+            None,
+            "--agent-deployment",
+            "-d",
+            help="Limit results to sessions bound to this deployment.",
+        ),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format for the list of sessions.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values in table/markdown/csv output.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List persisted sessions, newest first."""
+        base_url = _resolve_base_url(base_url)
+        path = f"/apis/agents/v2/workspaces/{workspace}/sessions"
+        if agent_deployment is not None:
+            if not agent_deployment.strip():
+                typer.echo("Error: --agent-deployment must not be empty.", err=True)
+                raise typer.Exit(code=2)
+            deployment = _api_request(
+                "GET",
+                base_url,
+                f"/apis/agents/v2/workspaces/{workspace}/deployments/{agent_deployment}",
+            )
+            deployment_id = _require_deployment_id(deployment, agent_deployment)
+            path += f"?{urlencode({'filter[deployment_id]': deployment_id})}"
+
+        resp = _api_request("GET", base_url, path)
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_SESSION_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @sessions_app.command(name="get")
+    def sessions_get(
+        name: str = typer.Argument(..., help="Session name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get a persisted session by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/sessions/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @sessions_app.command(name="close")
+    def sessions_close(
+        name: str = typer.Argument(..., help="Session name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Close a session and release its deployed runtime."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Close session '{name}'? It cannot be resumed after it is closed.", abort=True)
+        _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/sessions/{name}/close")
+        typer.echo(f"Session '{name}' closed.")
 
     @app.command(rich_help_panel="Agent Resources (requires running cluster)")
     def create(
@@ -1877,7 +2045,6 @@ def _local_fabric_invoke(config: dict[str, Any], inputs: list[Any], *, base_dir:
     from nemo_agents_plugin.fabric.invocation import invoke_agent_config_once
     from nemo_agents_plugin.fabric.runtime import FabricRuntimeExecutionError
     from nemo_agents_plugin.fabric.translator import FabricTranslationError
-    from pydantic import ValidationError
 
     try:
         agent_config = AgentConfig.model_validate(config)
@@ -1949,9 +2116,308 @@ def _platform_invoke(
             raise typer.Exit(code=1)
 
 
+def _is_interactive_session_chat() -> bool:
+    """Return whether the process can safely run the agent chat TUI."""
+    return is_interactive() and is_tty()
+
+
+def _validate_session_chat_options(
+    *,
+    agent_deployment: str | None,
+    session: str | None,
+    session_name: str | None,
+    input: str | None,
+) -> None:
+    """Validate the mutually exclusive new-session and resume selectors."""
+    if agent_deployment is not None and not agent_deployment.strip():
+        typer.echo("Error: --agent-deployment must not be empty.", err=True)
+        raise typer.Exit(code=2)
+    if session is not None and not session.strip():
+        typer.echo("Error: --session must not be empty.", err=True)
+        raise typer.Exit(code=2)
+    if session_name is not None and not session_name.strip():
+        typer.echo("Error: --session-name must not be empty.", err=True)
+        raise typer.Exit(code=2)
+    if input is not None and not input.strip():
+        typer.echo("Error: --input must not be empty.", err=True)
+        raise typer.Exit(code=2)
+
+    if (agent_deployment is None) == (session is None):
+        typer.echo("Error: Provide exactly one of --agent-deployment or --session.", err=True)
+        raise typer.Exit(code=2)
+    if session_name is not None and agent_deployment is None:
+        typer.echo("Error: --session-name can only be used with --agent-deployment.", err=True)
+        raise typer.Exit(code=2)
+
+
+def _platform_session_chat(
+    *,
+    base_url: str,
+    workspace: str,
+    agent_deployment: str | None,
+    session: str | None,
+    session_name: str | None,
+    input: str | None,
+    timeout: float,
+) -> None:
+    """Resolve a new or existing persisted session, then enter its chat transport."""
+    if agent_deployment is not None:
+        deployment, created_session, session_id = _create_session_for_deployment(
+            base_url=base_url,
+            workspace=workspace,
+            deployment_name=agent_deployment,
+            session_name=session_name,
+        )
+        typer.echo(
+            f"Session '{created_session.name}' created. Resume with:\n"
+            f"  nemo agents chat --session {created_session.name} --workspace {workspace} --base-url {base_url}"
+        )
+        _run_resolved_session_chat(
+            base_url=base_url,
+            workspace=workspace,
+            deployment=deployment,
+            session=created_session,
+            session_id=session_id,
+            input=input,
+            timeout=timeout,
+        )
+        return
+
+    assert session is not None
+    deployment, resolved_session, session_id = _resolve_existing_session(
+        base_url=base_url,
+        workspace=workspace,
+        session_name=session,
+    )
+    typer.echo("Resuming runtime context; prior messages are not redisplayed.")
+    _run_resolved_session_chat(
+        base_url=base_url,
+        workspace=workspace,
+        deployment=deployment,
+        session=resolved_session,
+        session_id=session_id,
+        input=input,
+        timeout=timeout,
+    )
+
+
+def _run_resolved_session_chat(
+    *,
+    base_url: str,
+    workspace: str,
+    deployment: AgentDeployment,
+    session: AgentSession,
+    session_id: str,
+    input: str | None,
+    timeout: float,
+) -> None:
+    """Run the shared TUI for an already-resolved session."""
+    url = (
+        f"{base_url.rstrip('/')}/apis/agents/v2/workspaces/{workspace}"
+        f"/deployments/{deployment.name}/-/v1/chat/completions"
+    )
+    headers = {**_resolve_context_headers(), SESSION_ID_HEADER: session_id}
+    display_info = {
+        "Deployment": deployment.name,
+        "Session": session.name,
+        "Status": session.status.value,
+    }
+    if session.expires_at is not None:
+        display_info["Expires"] = session.expires_at.isoformat()
+
+    try:
+        with httpx.Client(timeout=timeout) as client:
+
+            def send_turn(user_input: str) -> StreamingResponse:
+                request = client.build_request(
+                    "POST",
+                    url,
+                    headers=headers,
+                    json={"messages": [{"role": "user", "content": user_input}], "stream": True},
+                )
+                response = client.send(request, stream=True)
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError:
+                    response.read()
+                    response.close()
+                    raise
+                return cast(StreamingResponse, closing(response))
+
+            run_chat_tui(
+                send_turn=send_turn,
+                display_info=display_info,
+                initial_message=input,
+                exit_action=ExitAction.DETACH,
+            )
+    except httpx.TimeoutException as exc:
+        typer.echo(
+            f"Error: session chat request timed out after {timeout:.0f}s. Use --timeout to increase it.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+    except httpx.HTTPStatusError as exc:
+        print_http_status_error(exc, action="chat with deployed agent")
+        raise typer.Exit(code=1)
+    except httpx.RequestError as exc:
+        print_http_request_error(exc, action="chat with deployed agent")
+        raise typer.Exit(code=1)
+
+
 # ---------------------------------------------------------------------------
 # Platform API helpers
 # ---------------------------------------------------------------------------
+
+
+def _require_deployment_id(response: Any, deployment_name: str) -> str:
+    """Return a valid deployment ID or exit with the standard response error."""
+    try:
+        deployment_id = response["id"]
+        if not isinstance(deployment_id, str) or not deployment_id:
+            raise ValueError
+        return deployment_id
+    except (KeyError, TypeError, ValueError):
+        typer.echo(f"Error: Deployment '{deployment_name}' returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+
+
+def _create_session_for_deployment(
+    *,
+    base_url: str,
+    workspace: str,
+    deployment_name: str,
+    session_name: str | None,
+) -> tuple[AgentDeployment, AgentSession, str]:
+    """Validate a Fabric deployment and create its persisted Platform session."""
+    deployment_response = _api_request(
+        "GET",
+        base_url,
+        f"/apis/agents/v2/workspaces/{workspace}/deployments/{deployment_name}",
+    )
+    deployment_id = _require_deployment_id(deployment_response, deployment_name)
+    try:
+        deployment = AgentDeployment.model_validate(deployment_response)
+    except (KeyError, TypeError, ValueError):
+        typer.echo(f"Error: Deployment '{deployment_name}' returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+
+    config_format = deployment.config.get("config_format")
+    if config_format != NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+        typer.echo(
+            f"Error: Deployment '{deployment.name}' is not Fabric-backed (config_format={config_format!r}).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if not is_deployment_routable(deployment):
+        typer.echo(
+            f"Error: Deployment '{deployment.name}' is not routable "
+            f"(mode='{deployment.deployment_mode}', status='{deployment.status}').",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    payload = {"deployment_id": deployment_id}
+    if session_name is not None:
+        payload["name"] = session_name
+    response = _api_request(
+        "POST",
+        base_url,
+        f"/apis/agents/v2/workspaces/{workspace}/sessions",
+        json_body=payload,
+    )
+    try:
+        session_id = response["id"]
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError
+        created_session = AgentSession.model_validate(response)
+    except (KeyError, TypeError, ValueError):
+        typer.echo("Error: Session creation returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+
+    return deployment, created_session, session_id
+
+
+def _resolve_existing_session(
+    *,
+    base_url: str,
+    workspace: str,
+    session_name: str,
+) -> tuple[AgentDeployment, AgentSession, str]:
+    """Resolve a resumable persisted session and its bound deployment."""
+    response = _api_request(
+        "GET",
+        base_url,
+        f"/apis/agents/v2/workspaces/{workspace}/sessions/{session_name}",
+    )
+    try:
+        session_id = response["id"]
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError
+        resolved_session = AgentSession.model_validate(response)
+    except (KeyError, TypeError, ValueError):
+        typer.echo(f"Error: Session '{session_name}' returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+    if resolved_session.status is not SessionStatus.ACTIVE:
+        typer.echo(
+            f"Error: Session '{session_name}' is {resolved_session.status.value} and cannot be resumed.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if session_expiration_is_due(resolved_session, at=datetime.now(UTC)):
+        typer.echo(f"Error: Session '{session_name}' is expired and cannot be resumed.", err=True)
+        raise typer.Exit(code=1)
+
+    deployment = _resolve_deployment_by_id(
+        base_url=base_url,
+        workspace=workspace,
+        deployment_id=resolved_session.deployment_id,
+        session_name=session_name,
+    )
+    return deployment, resolved_session, session_id
+
+
+def _resolve_deployment_by_id(
+    *,
+    base_url: str,
+    workspace: str,
+    deployment_id: str,
+    session_name: str,
+) -> AgentDeployment:
+    """Find a session's bound deployment through the paginated list API."""
+    page = 1
+    while True:
+        query = urlencode({"page": page, "page_size": _DEPLOYMENT_RESOLUTION_PAGE_SIZE})
+        response = _api_request(
+            "GET",
+            base_url,
+            f"/apis/agents/v2/workspaces/{workspace}/deployments?{query}",
+        )
+        for candidate in _unwrap_list(response):
+            if candidate.get("id") != deployment_id:
+                continue
+            try:
+                deployment = AgentDeployment.model_validate(candidate)
+            except ValidationError:
+                typer.echo(
+                    f"Error: Deployment ID '{deployment_id}' for session '{session_name}' "
+                    "returned an invalid response.",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+            return deployment
+
+        pagination = response.get("pagination") if isinstance(response, dict) else None
+        total_pages = pagination.get("total_pages") if isinstance(pagination, dict) else None
+        if not isinstance(total_pages, int) or page >= total_pages:
+            break
+        page += 1
+
+    typer.echo(
+        f"Error: Session '{session_name}' references deployment ID '{deployment_id}', "
+        f"but no matching deployment exists in workspace '{workspace}'.",
+        err=True,
+    )
+    raise typer.Exit(code=1)
 
 
 def _unwrap_list(resp: Any) -> list[dict[str, Any]]:

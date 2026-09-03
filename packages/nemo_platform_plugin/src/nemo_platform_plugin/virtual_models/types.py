@@ -3,10 +3,11 @@
 
 """Shared request and query types for Inference Gateway VirtualModel CRUD.
 
-The canonical VirtualModel response and nested middleware types remain in
-``inference_middleware`` because middleware plugins already consume them. This
-module re-exports those types alongside the CRUD request contract used by both
-the Inference Gateway router and the typed client.
+The concrete VirtualModel response and nested middleware models live in
+``inference_middleware_models`` for CRUD/API schema code. Middleware hook code
+imports the lightweight ``VirtualModel`` protocol from ``inference_middleware``.
+This module re-exports the concrete CRUD types alongside the request contract
+used by both the Inference Gateway router and the typed client.
 
 Entity-store filter models remain server-side. Clients pass the public filter
 expression as a string through :class:`ListVirtualModelsQueryParams`.
@@ -16,7 +17,7 @@ from __future__ import annotations
 
 from typing import NotRequired, TypedDict
 
-from nemo_platform_plugin.inference_middleware import (
+from nemo_platform_plugin.inference_middleware_models import (
     _AUTOPROVISIONED_DESC,
     MiddlewareCall,
     VirtualModel,

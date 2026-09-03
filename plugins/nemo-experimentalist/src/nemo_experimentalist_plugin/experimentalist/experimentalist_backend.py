@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from pathlib import Path
 from typing import Any, TypeVar, cast
 from urllib.parse import urlparse
@@ -55,6 +55,28 @@ logger = logging.getLogger(__name__)
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
+async def _ingest_otlp(
+    client: AsyncNeMoPlatform,
+    payloads: Iterable[bytes],
+    *,
+    workspace: str,
+    trial_id: str,
+) -> None:
+    """Send OTLP payloads to Intake, failing if it could not map every span.
+
+    Intake answers 200 with a per-span error list, so a partial ingest is invisible
+    unless the response body is read. Raising keeps the caller from repointing the
+    trial at a trace that never fully landed; ``persist_evaluation`` catches this per
+    trial, so the run continues.
+    """
+    for payload in payloads:
+        response = await client.intake.ingest.otlp.v1.traces.create(body=payload, workspace=workspace)
+        if response.errors:
+            raise RuntimeError(
+                f"Intake rejected {len(response.errors)} span(s) for trial {trial_id}: {response.errors}"
+            )
+
+
 async def _upload_trace_otlp(
     client: AsyncNeMoPlatform,
     workspace: str,
@@ -74,14 +96,9 @@ async def _upload_trace_otlp(
         "nemo.trial.id": trial_id,
         **(extra_attrs or {}),
     }
-    url = f"/apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces"
-    for payload in jsonl_to_protobuf(path, extra_resource_attrs=attrs):
-        await client.post(
-            url,
-            cast_to=object,
-            content=payload,
-            options={"headers": {"Content-Type": "application/x-protobuf"}},
-        )
+    await _ingest_otlp(
+        client, jsonl_to_protobuf(path, extra_resource_attrs=attrs), workspace=workspace, trial_id=trial_id
+    )
 
 
 async def _upload_trace_atif(
@@ -106,8 +123,8 @@ async def _upload_trace_atif(
         task_id=task_id,
         agent_attrs=extra_attrs or {},
     )
-    url = f"/apis/intake/v2/workspaces/{workspace}/ingest/atif"
-    await client.post(url, cast_to=object, body=payload)
+    payload["workspace"] = workspace
+    await client.intake.ingest.atif.create(**payload)
 
 
 _BASELINE_AGENT_LABEL = "agent-0"
@@ -742,14 +759,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                     "nemo.trial.id": trial.id,
                     **agent_attrs,
                 }
-                url = f"/apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces"
-                for payload in spans_to_protobuf(rows, attrs):
-                    await self.client.post(
-                        url,
-                        cast_to=object,
-                        content=payload,
-                        options={"headers": {"Content-Type": "application/x-protobuf"}},
-                    )
+                await _ingest_otlp(self.client, spans_to_protobuf(rows, attrs), workspace=workspace, trial_id=trial.id)
                 trace = await self._retrieve_trace_with_retry(trace_id, workspace=workspace)
         else:
             trace_format = str(trial.trace.metadata.get("trace_format", "otlp"))
