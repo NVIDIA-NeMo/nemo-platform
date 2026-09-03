@@ -39,7 +39,7 @@ import {
 } from '@studio/routes/agents/AgentDetailRoute/walkthroughStorage';
 import { getAgentsListRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import { ClipboardCheck, Dot, ListTree, Rocket } from 'lucide-react';
-import { type FC, useEffect, useRef, useState } from 'react';
+import { type FC, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 
 const TAB_SEARCH_PARAM = 'tab';
@@ -135,6 +135,19 @@ export const AgentDetailRoute: FC = () => {
   // under another's name.
   const [builtImage, setBuiltImage] = useState<{ agent: string; image: string } | undefined>();
   const builtImageForAgent = builtImage?.agent === agentName ? builtImage?.image : undefined;
+  // Stable identity, and a no-op when nothing changed: the panel reports the tag
+  // from an effect keyed on this callback, so a new closure or a new object here
+  // re-runs it forever.
+  const rememberBuiltImage = useCallback(
+    (image: string) => {
+      setBuiltImage((current) =>
+        current?.agent === agentName && current?.image === image
+          ? current
+          : { agent: agentName ?? '', image }
+      );
+    },
+    [agentName]
+  );
 
   const canRunEvaluation = !!agentName && canDeploy;
 
@@ -261,10 +274,10 @@ export const AgentDetailRoute: FC = () => {
               workspace={workspace}
               canPackage={canPackage}
               onImageBuilt={(image) => {
-                setBuiltImage({ agent: agentName ?? '', image });
+                rememberBuiltImage(image);
                 setCreateDeploymentOpen(true);
               }}
-              onImageAvailable={(image) => setBuiltImage({ agent: agentName ?? '', image })}
+              onImageAvailable={rememberBuiltImage}
             />
           </TabsContent>
 
