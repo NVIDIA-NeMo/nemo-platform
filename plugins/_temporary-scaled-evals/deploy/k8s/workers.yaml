@@ -91,7 +91,8 @@ spec:
             - |
               set -e
               mkdir -p /sa-kube/.kube
-              cat > /sa-kube/.kube/config <<'EOF'
+              namespace="$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)"
+              cat > /sa-kube/.kube/config <<EOF
               apiVersion: v1
               kind: Config
               clusters:
@@ -103,7 +104,7 @@ spec:
                 - name: incluster
                   context:
                     cluster: incluster
-                    namespace: nemo-platform-scaled-evals
+                    namespace: ${namespace}
                     user: incluster
               current-context: incluster
               users:
