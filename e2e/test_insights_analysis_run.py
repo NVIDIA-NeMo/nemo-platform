@@ -45,6 +45,9 @@ pytestmark = [
 ]
 
 REPORT_RESULT_NAME = "analysis-report"
+# Written by the execute-agent job; the only place an adapter failure is recorded.
+FABRIC_RUN_RESULT_NAME = "fabric_run_result"
+FABRIC_ERROR_RESULT_NAME = "fabric_error"
 JOB_TIMEOUT_SECONDS = 600.0
 
 ANALYST_SUMMARY = "Filed one insight from the deterministic e2e change-set."
@@ -179,6 +182,14 @@ def _mock_analyst_models(sdk: NeMoPlatform, workspace: str) -> tuple[str, str]:
 def _job_diagnostics(sdk: NeMoPlatform, workspace: str, job_name: str, prefix: str) -> str:
     """Explain a failed run with the backing job's own error details and logs."""
     parts = [prefix]
+    # Fabric reports an adapter failure as a failed *result*, not an exception,
+    # so the task exits non-zero with nothing in its stdout and the Analyst's
+    # own error lives only in these results.
+    for result_name in (FABRIC_ERROR_RESULT_NAME, FABRIC_RUN_RESULT_NAME):
+        try:
+            parts.append(f"{result_name}: {_download_job_result(sdk, workspace, job_name, result_name)}")
+        except Exception as error:
+            parts.append(f"Could not fetch {result_name}: {error}")
     try:
         job = sdk.agents.jobs.execute.get(job_name, workspace=workspace)
         for field in ("error_details", "status_details"):
