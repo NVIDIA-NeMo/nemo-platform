@@ -107,6 +107,16 @@ def _busybox_image(config: DeploymentsPluginConfig) -> str:
     return _image(config.busybox_image, config.busybox_image_tag)
 
 
+def _weights_permissions_init_container(config: DeploymentsPluginConfig, volume_name: str) -> Container:
+    """chmod the model store so a non-root server can read the puller's 0600 HF cache."""
+    return Container(
+        name="weights-permissions-init",
+        image=_busybox_image(config),
+        command=["sh", "-c", f"chmod -R a+rX {_WEIGHTS_MOUNT}"],
+        volumeMounts=[VolumeMount(name=volume_name, mountPath=_WEIGHTS_MOUNT)],
+    )
+
+
 def _weighted(resolved: ResolvedPluginDeployment, engine: str) -> bool:
     is_files = resolved.weights_type == ModelWeightsType.FILES_SERVICE
     if engine == ENGINE_VLLM:
@@ -319,7 +329,12 @@ def compile_model_deployment(
     mounts: list[VolumeMount] = []
     if weighted:
         mounts.append(VolumeMount(name=names.volume, mountPath=_WEIGHTS_MOUNT, readOnly=True))
-    init_containers: list[Container] = list(tool_call_inits or [])
+    init_containers: list[Container] = []
+    # Skip when k8s pins a shared uid; otherwise the root puller's 0600 HF cache is unreadable.
+    security_context = backend_config.k8s.security_context if backend_config and backend_config.k8s else None
+    if weighted and (security_context is None or security_context.run_as_user is None):
+        init_containers.append(_weights_permissions_init_container(config, names.volume))
+    init_containers.extend(tool_call_inits or [])
     server_config_containers: list[Container]
     readiness_probe = Probe(httpGet=HTTPGetAction(path=resolve_health_path(engine, resolved.view), port=8000))
     vllm_command = ["vllm", "serve"] if engine == ENGINE_VLLM else None
