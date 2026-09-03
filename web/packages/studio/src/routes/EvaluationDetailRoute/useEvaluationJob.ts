@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
+import { JOB_POLLING_INTERVAL_LONG } from '@nemo/common/src/constants';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import type { EvaluationResponse, PlatformJobResponse } from '@nemo/sdk/generated/platform/schema';
 import { fetchEvaluatorJobs } from '@studio/api/evaluation/evaluator-jobs';
@@ -48,7 +48,7 @@ export const useEvaluationJob = (
       if (published) return false;
       const status = query.state.data?.status;
       const settled = PlatformJobTerminalStatuses.some((terminal) => terminal === status);
-      return settled ? false : JOB_POLLING_INTERVAL_MS;
+      return settled ? false : JOB_POLLING_INTERVAL_LONG;
     },
   });
 
