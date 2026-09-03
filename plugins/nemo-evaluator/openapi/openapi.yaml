@@ -1247,6 +1247,380 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/retrieve-eval/jobs:
+    post:
+      tags:
+      - Evaluator Plugin Retrieve Eval Jobs Routes
+      summary: Create Job
+      operationId: create_job_apis_evaluator_v2_workspaces__workspace__retrieve_eval_jobs_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrieveEvalJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrieveEvalJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Evaluator Plugin Retrieve Eval Jobs Routes
+      summary: List Jobs
+      operationId: list_jobs_apis_evaluator_v2_workspaces__workspace__retrieve_eval_jobs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/RetrieveEvalJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/RetrieveEvalJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrieveEvalJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/retrieve-eval/jobs/{job}/results/{name}:
+    get:
+      tags:
+      - Evaluator Plugin Retrieve Eval Jobs Routes
+      summary: Get Job Result
+      operationId: get_job_result_apis_evaluator_v2_workspaces__workspace__retrieve_eval_jobs__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/retrieve-eval/jobs/{job}/results/{name}/download:
+    get:
+      tags:
+      - Evaluator Plugin Retrieve Eval Jobs Routes
+      summary: Download Job Result
+      operationId: download_job_result_apis_evaluator_v2_workspaces__workspace__retrieve_eval_jobs__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/retrieve-eval/jobs/{name}:
+    get:
+      tags:
+      - Evaluator Plugin Retrieve Eval Jobs Routes
+      summary: Get Job
+      operationId: get_job_apis_evaluator_v2_workspaces__workspace__retrieve_eval_jobs__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrieveEvalJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Evaluator Plugin Retrieve Eval Jobs Routes
+      summary: Delete Job
+      operationId: delete_job_apis_evaluator_v2_workspaces__workspace__retrieve_eval_jobs__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/retrieve-eval/jobs/{name}/cancel:
+    post:
+      tags:
+      - Evaluator Plugin Retrieve Eval Jobs Routes
+      summary: Cancel Job
+      operationId: cancel_job_apis_evaluator_v2_workspaces__workspace__retrieve_eval_jobs__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrieveEvalJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/retrieve-eval/jobs/{name}/logs:
+    get:
+      tags:
+      - Evaluator Plugin Retrieve Eval Jobs Routes
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_evaluator_v2_workspaces__workspace__retrieve_eval_jobs__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/retrieve-eval/jobs/{name}/results:
+    get:
+      tags:
+      - Evaluator Plugin Retrieve Eval Jobs Routes
+      summary: List Job Results
+      operationId: list_job_results_apis_evaluator_v2_workspaces__workspace__retrieve_eval_jobs__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/evaluator/v2/workspaces/{workspace}/retrieve-eval/jobs/{name}/status:
+    get:
+      tags:
+      - Evaluator Plugin Retrieve Eval Jobs Routes
+      summary: Get Job Status
+      operationId: get_job_status_apis_evaluator_v2_workspaces__workspace__retrieve_eval_jobs__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/evaluator/v2/workspaces/{workspace}/tasks:
     get:
       tags:
@@ -4470,6 +4844,13 @@ components:
       - name
       title: Model
       description: Model definition for use without persisting to the Models API.
+    ModelRef:
+      type: string
+      pattern: ^[a-z](?:[a-z0-9@.+_]|-[a-z0-9@.+_]){1,62}/[a-z](?:[a-z0-9@.+_]|-[a-z0-9@.+_]){1,62}$
+      title: ModelRef
+      description: Reference to a model that can be resolved by an evaluator backend.
+      examples:
+      - workspace/model_name
     ModelTarget:
       properties:
         kind:
@@ -4996,6 +5377,217 @@ components:
       - -updated_at
       title: ResultSort
       description: Sort fields for result queries (``-`` prefix sorts descending).
+    RetrieveEvalInputSpec:
+      properties:
+        dataset:
+          allOf:
+          - $ref: '#/components/schemas/FilesetRef'
+          description: Fileset containing a BEIR test split.
+        target:
+          anyOf:
+          - $ref: '#/components/schemas/Model'
+          - $ref: '#/components/schemas/ModelRef'
+          title: Target
+          description: Embedding NIM model or platform model reference.
+        baseline:
+          anyOf:
+          - $ref: '#/components/schemas/Model'
+          - $ref: '#/components/schemas/ModelRef'
+          title: Baseline
+          description: Optional baseline embedding model used for relative nDCG@10
+            and Recall@10.
+        k:
+          items:
+            type: integer
+          type: array
+          minItems: 1
+          title: K
+          default:
+          - 1
+          - 5
+          - 10
+          - 100
+      additionalProperties: false
+      type: object
+      required:
+      - dataset
+      - target
+      title: RetrieveEvalInputSpec
+      description: Submitter-facing BEIR retrieval evaluation spec.
+    RetrieveEvalJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/RetrieveEvalSpec'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: RetrieveEvalJob
+    RetrieveEvalJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/RetrieveEvalInputSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+        output_location:
+          title: Output Location
+          type: string
+      type: object
+      required:
+      - spec
+      title: RetrieveEvalJobRequest
+    RetrieveEvalJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: RetrieveEvalJobsListFilter
+      type: object
+    RetrieveEvalJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/RetrieveEvalJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: RetrieveEvalJobsPage
+    RetrieveEvalJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: RetrieveEvalJobsSortField
+    RetrieveEvalSpec:
+      properties:
+        dataset:
+          $ref: '#/components/schemas/FilesetRef'
+        target:
+          $ref: '#/components/schemas/Model'
+        baseline:
+          $ref: '#/components/schemas/Model'
+        k:
+          items:
+            type: integer
+          type: array
+          minItems: 1
+          title: K
+          default:
+          - 1
+          - 5
+          - 10
+          - 100
+      additionalProperties: false
+      type: object
+      required:
+      - dataset
+      - target
+      title: RetrieveEvalSpec
+      description: Canonical BEIR retrieval evaluation spec.
     Revision:
       properties:
         revision:

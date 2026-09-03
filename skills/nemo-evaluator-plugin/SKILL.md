@@ -22,7 +22,7 @@ example, submit a NeMo Platform evaluation job, and retrieve its results.
 
 Establish these inputs before building an evaluation:
 
-- Evaluation interface: [dataset-driven vs. task-driven agentic evaluation](references/evaluation-shapes.md#difference-summary)
+- Evaluation interface: [dataset-driven, task-driven, or retrieval-driven evaluation](references/evaluation-shapes.md#difference-summary)
 - Execution interface: standalone SDK evaluation or a durable NeMo Platform job.
 - Pass/fail dataset examples: the smallest representative pass and failure cases.
 - Metrics: the behaviors to score and the template fields they consume.
@@ -30,8 +30,9 @@ Establish these inputs before building an evaluation:
 
 ## Instructions
 
-1. Clarify whether the input is [dataset-driven rows](references/evaluation-shapes.md#dataset-driven-evaluation)
-   or [task-driven agent work](references/evaluation-shapes.md#task-driven-evaluation).
+1. Clarify whether the input is [dataset-driven rows](references/evaluation-shapes.md#dataset-driven-evaluation),
+   [task-driven agent work](references/evaluation-shapes.md#task-driven-evaluation), or a
+   [BEIR retrieval corpus](references/evaluation-shapes.md#retrieval-driven-evaluation).
 2. Choose the simplest metric that measures the requested behavior. Prefer deterministic metrics when possible.
 3. Build a tiny smoke case with one expected pass and one expected failure.
 4. Validate metric behavior with the standalone SDK and inspect row-level output plus aggregates.
@@ -49,6 +50,7 @@ metric for a rubric, RAG workflow, or tool-calling evaluation.
 | Dataset-driven platform job | `client.evaluator.submit(...)` or `nemo evaluator evaluate submit` |
 | Multiple inline/stored metric refs in one job | `nemo evaluator evaluate submit` with an `EvaluateInputSpec` |
 | Task-driven platform job | `client.evaluator.submit(tasks=..., target=<runner>)` or `nemo evaluator agent-evaluate submit` |
+| Retrieval-driven platform job | `nemo evaluator retrieve-eval submit` |
 | Reusable platform definitions and result indexes | `client.evaluator.metrics`, `.tasks`, `.tasksets`, `.eval_results`, `.agent_eval_results` |
 
 Default to `submit` for every plugin evaluation. The plugin's local execution
@@ -90,10 +92,11 @@ In a NeMo Platform repository checkout, run commands through the workspace:
 uv run nemo evaluator info
 # lists available metric names; add a metric name to print its schema.
 uv run nemo evaluator metric-types
-# next two commands print the dataset-driven and task-driven job input and
+# next three commands print the dataset-driven, task-driven, and retrieval job input and
 # output schemas - can be very large, use with caution to avoid filling up the context window.
 uv run nemo evaluator evaluate explain
 uv run nemo evaluator agent-evaluate explain
+uv run nemo evaluator retrieve-eval explain
 ```
 
 When the skill and plugin are installed, use the installed `nemo` command
