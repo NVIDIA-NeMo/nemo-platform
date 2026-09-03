@@ -316,6 +316,8 @@ class _TrainingBase(BaseModel):
             lr, warmup = 3e-6, 100
         else:
             return self.model_copy(update={"recipe": recipe})
+        if getattr(self, "type", None) == "distillation":
+            raise ValueError("Knowledge distillation only supports the sft recipe.")
         updates: dict[str, object] = {"recipe": recipe}
         if "batch_size" not in self.model_fields_set:
             updates["batch_size"] = 128

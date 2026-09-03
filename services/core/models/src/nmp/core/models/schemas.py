@@ -163,7 +163,7 @@ class ModelSpec(BaseModel):
     is_embedding_model: bool = Field(
         False,
         description="Deprecated compatibility alias for head_type == 'embedding'.",
-        deprecated=True,
+        json_schema_extra={"deprecated": True},
     )
 
     @model_validator(mode="after")

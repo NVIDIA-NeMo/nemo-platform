@@ -70,6 +70,26 @@ def test_distillation_rejects_encoder_recipe() -> None:
         )
 
 
+def test_distillation_auto_rejects_resolved_encoder_recipe() -> None:
+    spec = AutomodelJobInput.model_validate(
+        {
+            "model": "embed",
+            "dataset": {"training": "default/train"},
+            "training": {
+                "training_type": "distillation",
+                "teacher_model": "default/teacher",
+                "recipe": "auto",
+            },
+        }
+    )
+    with pytest.raises(ValueError, match="only supports the sft recipe"):
+        spec.with_resolved_recipe("embedding")
+    with pytest.raises(ValueError, match="only supports the sft recipe"):
+        spec.with_resolved_recipe("cross_encoder")
+    resolved = spec.with_resolved_recipe("causal_lm")
+    assert resolved.training.recipe == "auto"
+
+
 def test_encoder_recipes_apply_nemotron_job_defaults() -> None:
     embed = AutomodelJobInput.model_validate(
         {

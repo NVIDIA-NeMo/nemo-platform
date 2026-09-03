@@ -15,6 +15,7 @@ from nemo_platform_plugin.models.types import ModelEntity
 from nmp.automodel.adapter import automodel_spec_to_compiler_output
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
+    DistillationTraining,
     EmbeddingParams,
     LoRAParams,
     OutputResponse,
@@ -192,6 +193,14 @@ def test_sft_training_encoder_defaults_do_not_override_explicit_hparams() -> Non
     assert training.batch_size == 16
     assert training.learning_rate == 2e-5
     assert training.warmup_steps == 1
+
+
+def test_distillation_with_resolved_recipe_rejects_encoder_recipes() -> None:
+    training = DistillationTraining.model_validate({"recipe": "auto", "teacher_model": "default/teacher"})
+    with pytest.raises(ValueError, match="only supports the sft recipe"):
+        training.with_resolved_recipe("bi_encoder")
+    resolved = training.with_resolved_recipe("sft")
+    assert resolved.recipe == "sft"
 
 
 def test_resolve_training_recipe_auto_uses_cross_encoder_head() -> None:

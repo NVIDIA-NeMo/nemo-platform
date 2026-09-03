@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import warnings
+
 from nemo_platform_plugin.models.types import ModelSpec as PluginModelSpec
 from nmp.core.models.schemas import ModelSpec
 
@@ -64,3 +66,12 @@ def test_true_like_alias_strings_normalize_to_embedding() -> None:
             spec = spec_cls.model_validate({**_MINIMAL, "is_embedding_model": alias})
             assert spec.head_type == "embedding"
             assert spec.is_embedding_model is True
+
+
+def test_constructing_model_spec_does_not_warn_on_deprecated_alias() -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ModelSpec(**_MINIMAL, head_type="embedding")
+        PluginModelSpec(**_MINIMAL, head_type="embedding")
+        _ = ModelSpec(**_MINIMAL, head_type="embedding").is_embedding_model
+    assert not any(issubclass(w.category, DeprecationWarning) for w in caught)

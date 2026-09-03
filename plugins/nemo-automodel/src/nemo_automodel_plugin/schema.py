@@ -201,6 +201,8 @@ class AutomodelJobInput(AutomodelSchema):
         recipe = self.training.recipe
         if recipe == "auto" and checkpoint_head_type in ("embedding", "cross_encoder"):
             recipe = "bi_encoder" if checkpoint_head_type == "embedding" else "cross_encoder"
+        if self.training.training_type == "distillation" and recipe not in ("auto", "sft"):
+            raise ValueError("distillation only supports the sft recipe")
 
         training = self.training.model_copy(update={"recipe": recipe})
         if recipe == "bi_encoder":
