@@ -139,14 +139,17 @@ result = auditor.run(
     workspace="default",
 )
 
-print(result["status"], result["probes_complete"], result["probes_failed"])
-# completed 1 0
-
-for name, ref in result["results"].items():
-    print(f"{name}: {ref['artifact_url']}")
-# report-jsonl: file:///var/folders/.../results/report-jsonl
-# report-html: file:///var/folders/.../results/report-html
-# report-hitlog-jsonl: file:///var/folders/.../results/report-hitlog-jsonl
+print(f"Audit status: {result['status']}")
+if result["status"] == "failed":
+    print(f"Audit failed: {result.get('error', 'unknown error')}")
+else:
+    print(result["probes_complete"], result["probes_failed"])
+    # 1 0
+    for name, ref in result["results"].items():
+        print(f"{name}: {ref['artifact_url']}")
+    # report-jsonl: file:///var/folders/.../results/report-jsonl
+    # report-html: file:///var/folders/.../results/report-html
+    # report-hitlog-jsonl: file:///var/folders/.../results/report-hitlog-jsonl
 ```
 
 If you prefer to skip the entity-store roundtrip, pass the inline `AuditConfig` and `AuditTarget` objects from the previous two steps directly:

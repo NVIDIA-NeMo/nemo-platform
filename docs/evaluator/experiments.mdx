@@ -292,8 +292,11 @@ curl --fail-with-body -X POST \
       }'
 ```
 
-To **move or re-scope** an existing Evaluation's membership, `PATCH` its `experiment_ids`, which must
-stay non-empty. First create the second Experiment and capture its ID:
+### Associate an Evaluation with Another Experiment
+
+An Evaluation can belong to several Experiments simultaneously, which is useful when the same run should
+appear on both a per-project board and a cross-project benchmark. To demonstrate adding a second membership,
+first create the second Experiment and capture its ID:
 
 ```bash
 curl --fail-with-body -X POST \
@@ -311,7 +314,7 @@ export OTHER_EXPERIMENT_ID=$(curl --fail-with-body --silent \
   | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
 ```
 
-Then add both Experiment IDs to the Evaluation:
+Then `PATCH` the existing Evaluation's `experiment_ids` with both IDs. The list must stay non-empty:
 
 ```bash
 curl --fail-with-body -X PATCH \
@@ -320,9 +323,6 @@ curl --fail-with-body -X PATCH \
   -H "Content-Type: application/json" \
   -d '{ "experiment_ids": ["'"$EXPERIMENT_ID"'", "'"$OTHER_EXPERIMENT_ID"'"] }'
 ```
-
-An Evaluation can belong to several Experiments simultaneously, which is useful when the same run should
-appear on both a per-project board and a cross-project benchmark.
 
 ### Update an Evaluation
 
