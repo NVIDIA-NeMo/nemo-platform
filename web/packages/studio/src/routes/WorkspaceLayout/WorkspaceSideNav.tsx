@@ -116,7 +116,6 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     const modelSubItems = [
       ...deploymentsNav,
       ...customizerNav,
-      ...evalNav,
       ...modelCompareNav,
       ...virtualModelsNav,
     ];
@@ -163,6 +162,8 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
           ]
         : [];
 
+    const evaluationItems = [...experimentNav, ...evalNav];
+
     const governanceItems = getGuardrailsSideNavItems(workspace);
 
     return [
@@ -171,7 +172,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ? [{ group: 'Observability', items: observabilityItems }]
         : []),
       ...(componentItems.length > 0 ? [{ group: 'Components', items: componentItems }] : []),
-      ...(experimentNav.length > 0 ? [{ group: 'Evaluations', items: experimentNav }] : []),
+      ...(evaluationItems.length > 0 ? [{ group: 'Evaluations', items: evaluationItems }] : []),
       ...(dataItems.length > 0 ? [{ group: 'Data', items: dataItems }] : []),
       ...(governanceItems.length > 0 ? [{ group: 'Governance', items: governanceItems }] : []),
     ];
