@@ -14,7 +14,11 @@ interface Props {
 }
 
 export const LogsTab: FC<Props> = ({ customizationJobName, workspace, jobStatus }) => {
-  const { data: logs, isLoading } = useJobLogs({
+  const {
+    data: logs,
+    isLoading,
+    loadProgress,
+  } = useJobLogs({
     workspace,
     name: customizationJobName,
     jobStatus,
@@ -25,6 +29,7 @@ export const LogsTab: FC<Props> = ({ customizationJobName, workspace, jobStatus 
       <LogViewer
         logs={logs ?? []}
         isLoading={isLoading}
+        loadProgress={loadProgress}
         downloadFilename={`${customizationJobName}.log`}
         fillHeight
       />

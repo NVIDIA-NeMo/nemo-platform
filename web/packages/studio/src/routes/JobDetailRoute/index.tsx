@@ -30,7 +30,11 @@ export const JobDetailRoute: FC = () => {
     },
   });
 
-  const { data: logs, isLoading: isLoadingLogs } = useJobLogs({
+  const {
+    data: logs,
+    isLoading: isLoadingLogs,
+    loadProgress,
+  } = useJobLogs({
     workspace,
     name: jobName,
     jobStatus: job?.status,
@@ -117,6 +121,7 @@ export const JobDetailRoute: FC = () => {
           <LogViewer
             logs={logs ?? []}
             isLoading={isLoadingLogs}
+            loadProgress={loadProgress}
             downloadFilename={`job-${jobName}-logs.txt`}
           />
         </Panel>

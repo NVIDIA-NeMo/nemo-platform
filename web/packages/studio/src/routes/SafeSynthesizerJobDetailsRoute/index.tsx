@@ -57,7 +57,11 @@ export const GenerateJobDetailsRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
           }
         );
 
-      const { data: logs, isLoading } = useJobLogs({
+      const {
+        data: logs,
+        isLoading,
+        loadProgress,
+      } = useJobLogs({
         workspace,
         name: safeSynthesizerJobName,
         jobStatus: job.status,
@@ -110,7 +114,12 @@ export const GenerateJobDetailsRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
                   jobResultSummary={jobResultSummary}
                 />
               </Grid>
-              <ProgressSection jobId={safeSynthesizerJobName} isLoading={isLoading} logs={logs} />
+              <ProgressSection
+                jobId={safeSynthesizerJobName}
+                isLoading={isLoading}
+                logs={logs}
+                loadProgress={loadProgress}
+              />
             </Stack>
           </Stack>
         </AccessibleTitle>
