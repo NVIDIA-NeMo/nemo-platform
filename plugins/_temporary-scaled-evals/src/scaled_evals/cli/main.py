@@ -546,7 +546,10 @@ def benchmark_import_compat_finalize(
     images = _merge_import_images(tuple(f"@{path}" for path in prebuilt_image_results))
     payload = load_benchmark_manifest(manifest)
     if prebuilt_results_only:
-        missing = sorted({str(task["slug"]) for task in payload["tasks"]} - set(images))
+        tasks = payload.get("tasks")
+        if not isinstance(tasks, list):
+            raise click.ClickException("benchmark import manifest must contain a tasks list")
+        missing = sorted({str(task["slug"]) for task in tasks} - set(images))
         if missing:
             raise click.ClickException(f"--prebuilt-results-only is missing image results for {len(missing)} tasks")
     try:
