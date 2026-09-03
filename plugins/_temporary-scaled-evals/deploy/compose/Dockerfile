@@ -31,10 +31,6 @@ FROM ${BUILDKIT_IMAGE} AS buildkit
 # through uv sync. sandbox-k8s is pinned to the version matching the cluster's
 # agent-sandbox CRD; harbor comes from the curated catalog the plugin ships.
 #
-# ponytail: only the catalog's default version is built, where upstream builds
-# every selectable version. Ceiling: requesting a non-default framework_version
-# fails with a missing runner. Upgrade path: loop over selectable-versions.txt
-# as upstream's Dockerfile does — it costs one venv and ~1 min per extra version.
 # =============================================================================
 FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim AS harbor
 
@@ -48,42 +44,66 @@ COPY plugins/_temporary-scaled-evals/src/scaled_evals/data/harbor_runner_qualifi
      /opt/harbor/qualification-catalog.json
 
 RUN set -eu; \
+    python -c 'import json,sys; c=json.load(open(sys.argv[1])); print(" ".join(v for v,r in c["releases"].items() if r["selectable"]))' \
+        /opt/harbor/qualification-catalog.json > /opt/harbor/selectable-versions.txt; \
     python -c 'import json,sys; c=json.load(open(sys.argv[1])); v=c["default_version"]; assert c["releases"][v]["selectable"]; print(v)' \
         /opt/harbor/qualification-catalog.json > /opt/harbor/default-version.txt; \
     python -c 'import json,sys; print(json.load(open(sys.argv[1]))["sandbox_k8s"]["version"])' \
-        /opt/harbor/qualification-catalog.json > /opt/harbor/sandbox-k8s-version.txt
+        /opt/harbor/qualification-catalog.json > /opt/harbor/sandbox-k8s-version.txt; \
+    test -s /opt/harbor/selectable-versions.txt
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     set -eu; \
-    version="$(cat /opt/harbor/default-version.txt)"; \
     sandbox_k8s_version="$(cat /opt/harbor/sandbox-k8s-version.txt)"; \
-    runner="/opt/harbor/${version}"; \
-    uv venv "${runner}/.venv"; \
-    VIRTUAL_ENV="${runner}/.venv" uv pip install \
-        "harbor==${version}" "sandbox-k8s[harbor]==${sandbox_k8s_version}" \
-        ${HARBOR_EXTRA_INDEX_URL:+--extra-index-url "$HARBOR_EXTRA_INDEX_URL"}; \
-    "${runner}/.venv/bin/python" -c \
-        'import importlib.metadata as m, sys; assert m.version("harbor") == sys.argv[1]; assert m.version("sandbox-k8s") == sys.argv[2]' \
-        "${version}" "${sandbox_k8s_version}"
+    for version in $(cat /opt/harbor/selectable-versions.txt); do \
+        runner="/opt/harbor/${version}"; \
+        uv venv "${runner}/.venv"; \
+        VIRTUAL_ENV="${runner}/.venv" uv pip install \
+            "harbor==${version}" "sandbox-k8s[harbor]==${sandbox_k8s_version}" \
+            ${HARBOR_EXTRA_INDEX_URL:+--extra-index-url "$HARBOR_EXTRA_INDEX_URL"}; \
+        "${runner}/.venv/bin/python" -c \
+            'import importlib.metadata as m, sys; assert m.version("harbor") == sys.argv[1]; assert m.version("sandbox-k8s") == sys.argv[2]' \
+            "${version}" "${sandbox_k8s_version}"; \
+    done
 
 # Upstream sandbox-k8s lacks emptyDir mounts for /solution, /tests, /logs and
 # /installed-agent, which the oracle verifier path needs. Overlay the same
 # patched adapter the standalone image uses, in place, located via importlib.
 COPY plugins/_temporary-scaled-evals/harbor-patches/sandbox_k8s_harbor.py /tmp/sandbox_k8s_harbor.py
 COPY plugins/_temporary-scaled-evals/harbor-patches/patch_sandbox_k8s_root.py /tmp/patch_sandbox_k8s_root.py
-RUN set -eu; \
-    runner="/opt/harbor/$(cat /opt/harbor/default-version.txt)"; \
-    harbor_py="$("${runner}/.venv/bin/python" -c 'import importlib.util; print(importlib.util.find_spec("sandbox_k8s.harbor").origin)')"; \
-    cp /tmp/sandbox_k8s_harbor.py "$harbor_py"; \
-    "${runner}/.venv/bin/python" /tmp/patch_sandbox_k8s_root.py "$(dirname "$harbor_py")"
+RUN set -eu; for version in $(cat /opt/harbor/selectable-versions.txt); do \
+        runner="/opt/harbor/${version}"; \
+        harbor_py="$("${runner}/.venv/bin/python" -c 'import importlib.util; print(importlib.util.find_spec("sandbox_k8s.harbor").origin)')"; \
+        cp /tmp/sandbox_k8s_harbor.py "$harbor_py"; \
+        "${runner}/.venv/bin/python" /tmp/patch_sandbox_k8s_root.py "$(dirname "$harbor_py")"; \
+    done
+
+# Harbor 0.20 changed both adapters. Keep their writable-volume and environment
+# compatibility patches generic so older selectable runners remain buildable.
+COPY plugins/_temporary-scaled-evals/harbor-patches/patch_langgraph_writable_venv.py /tmp/patch_langgraph_writable_venv.py
+COPY plugins/_temporary-scaled-evals/harbor-patches/patch_pi_extra_env.py /tmp/patch_pi_extra_env.py
+RUN set -eu; for version in $(cat /opt/harbor/selectable-versions.txt); do \
+        runner="/opt/harbor/${version}"; \
+        langgraph_py="$("${runner}/.venv/bin/python" -c 'import importlib.util; s=importlib.util.find_spec("harbor.agents.installed.langgraph"); print(s.origin if s else "")')"; \
+        if [ -n "$langgraph_py" ]; then \
+            "${runner}/.venv/bin/python" /tmp/patch_langgraph_writable_venv.py "$langgraph_py"; \
+        fi; \
+        pi_py="$("${runner}/.venv/bin/python" -c 'import importlib.util; s=importlib.util.find_spec("harbor.agents.installed.pi"); print(s.origin if s else "")')"; \
+        if [ -n "$pi_py" ]; then \
+            "${runner}/.venv/bin/python" /tmp/patch_pi_extra_env.py "$pi_py"; \
+        fi; \
+    done
 
 # Harbor resolves jobs_dir relative to its own root, so point it at the path the
 # runtime mounts writable. /opt/harbor itself stays read-only.
 RUN set -eu; \
-    version="$(cat /opt/harbor/default-version.txt)"; \
-    ln -s "${version}" /opt/harbor/default; \
-    rm -rf "/opt/harbor/${version}/jobs"; \
-    ln -s /var/lib/scaled-evals/harbor-jobs "/opt/harbor/${version}/jobs"
+    for version in $(cat /opt/harbor/selectable-versions.txt); do \
+        runner="/opt/harbor/${version}"; \
+        test -x "${runner}/.venv/bin/harbor"; \
+        rm -rf "${runner}/jobs"; \
+        ln -s /var/lib/scaled-evals/harbor-jobs "${runner}/jobs"; \
+    done; \
+    ln -s "$(cat /opt/harbor/default-version.txt)" /opt/harbor/default
 
 FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim
 

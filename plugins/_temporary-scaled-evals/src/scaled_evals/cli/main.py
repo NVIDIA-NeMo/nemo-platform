@@ -296,7 +296,7 @@ def _default_switchyard_dockerfile_path(
     if requested:
         return _clean_relative_path(requested, label="--dockerfile-path")
     context_dockerfile = "Dockerfile" if context_path == "." else f"{context_path.rstrip('/')}/Dockerfile"
-    official_dockerfile = "benchmark/switchyard-server.Dockerfile"
+    official_dockerfile = "benchmark/switchyard-rust-server.Dockerfile"
     if (
         context_path == "."
         and not (context_dir / context_dockerfile).is_file()
@@ -329,7 +329,7 @@ def _default_switchyard_dockerfile_path(
     default=None,
     help=(
         "Dockerfile path inside --context-dir. Defaults to Dockerfile, or "
-        "benchmark/switchyard-server.Dockerfile for the GitHub Switchyard repo."
+        "benchmark/switchyard-rust-server.Dockerfile for the GitHub Switchyard repo."
     ),
 )
 @click.option(

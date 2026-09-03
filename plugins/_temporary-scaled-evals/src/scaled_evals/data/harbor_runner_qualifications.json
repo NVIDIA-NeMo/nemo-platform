@@ -3,9 +3,9 @@
   "default_version": "0.13.2",
   "aliases": {"default": "0.13.2", "stable": "0.13.2"},
   "validation": {
-    "performed_at": "2026-07-07T20:50:00Z",
+    "performed_at": "2026-08-18T04:00:00Z",
     "platform": "linux/amd64",
-    "python_version": "3.12.13",
+    "python_version": "3.12.14",
     "checks": ["exact-package-install", "adapter-imports", "harbor-run-help"],
     "e2e_status": "pending"
   },
@@ -17,8 +17,8 @@
     "wheel_sha256": "f6d89d7e331221fac61679b0ede90de5d04225e972ca15bbcad905847045491a"
   },
   "adapter": {
-    "version": "scaled-evals-overlay-v29",
-    "bundle_sha256": "29a40f2f4ee9106e6900498dd0be87a9da7f0db0d80b65af33d2a5407c07d666",
+    "version": "scaled-evals-overlay-v30",
+    "bundle_sha256": "8548185a42701818a27a2ac67ea90233f7b10d15f09bc9f8741be0c89be6ff31",
     "files": [
       "compose/harbor-runner/patches/patch_claude_code_initial_turns.py",
       "compose/harbor-runner/patches/patch_codex_custom_provider.py",
@@ -165,6 +165,16 @@
       "wheel_filename": "harbor-0.18.0-py3-none-any.whl",
       "wheel_sha256": "e436f04fca35bb3705be603b8c123d0472418d10120cfd7e5ba8dc902e56bc32",
       "released_at": "2026-07-07T20:29:45.064139Z"
+    },
+    "0.20.0": {
+      "selectable": true,
+      "qualification": "supported",
+      "git_tag": "v0.20.0",
+      "git_tag_object_sha": "f75477f2ad0b04fad199b0cb80689cc23a06c72d",
+      "git_commit_sha": "459ff6ec99417589b7f679d14ddf3b3f0ae4f1dc",
+      "wheel_filename": "harbor-0.20.0-py3-none-any.whl",
+      "wheel_sha256": "4b7e48223aea2384cdb8c9eff35eaebd482fc9b1ec09f8193a121c47356ff19a",
+      "released_at": "2026-07-18T21:25:19.206383Z"
     }
   }
 }

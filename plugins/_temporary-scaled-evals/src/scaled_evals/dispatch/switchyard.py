@@ -26,7 +26,7 @@ import os
 import re
 import subprocess
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +34,7 @@ from typing import Any, Literal, Protocol
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import httpx
+import tomlkit
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -144,6 +145,7 @@ class SwitchyardProfileConfig(BaseModel):
     routing_profiles_yml: str | None = None
     switchyard_routing_profiles_yaml: str | None = None
     switchyard_routing_profiles_yml: str | None = None
+    routing_config_toml: str | None = None
     routing_profiles: dict[str, Any] | None = None
     command: list[str] | None = None
     args: list[str] | None = None
@@ -182,6 +184,7 @@ class SwitchyardProfileConfig(BaseModel):
                 "routing_profiles_yml",
                 "switchyard_routing_profiles_yaml",
                 "switchyard_routing_profiles_yml",
+                "routing_config_toml",
                 "routing_profiles",
                 "command",
                 "args",
@@ -207,6 +210,18 @@ class SwitchyardProfileConfig(BaseModel):
                 raise ValueError("external switchyard profile contains managed-only field(s): " + ", ".join(supplied))
         if self.mode == "managed" and self.endpoint is not None:
             raise ValueError("endpoint is only valid for external switchyard profiles")
+        yaml_configured = any(
+            value is not None
+            for value in (
+                self.routing_profiles_yaml,
+                self.routing_profiles_yml,
+                self.switchyard_routing_profiles_yaml,
+                self.switchyard_routing_profiles_yml,
+                self.routing_profiles,
+            )
+        )
+        if self.routing_config_toml is not None and yaml_configured:
+            raise ValueError("Switchyard routing config formats are mutually exclusive")
         binding_targets = {target for targets in self.credential_bindings.values() for target in targets}
         collisions = sorted(binding_targets & set(self.env))
         if collisions:
@@ -1156,6 +1171,11 @@ def _default_switchyard_args(config: SwitchyardProfileConfig) -> list[str]:
 
 
 def _routing_profiles_text(config: SwitchyardProfileConfig) -> str:
+    if config.routing_config_toml is not None:
+        routing_config = tomlkit.loads(config.routing_config_toml)
+        _apply_native_default_inference_priority(routing_config)
+        return tomlkit.dumps(routing_config)
+
     raw = (
         config.routing_profiles_yaml
         or config.routing_profiles_yml
@@ -1183,6 +1203,29 @@ def _routing_profiles_text(config: SwitchyardProfileConfig) -> str:
             },
         }
     return yaml.safe_dump(_with_default_inference_priority(routing_profiles), sort_keys=False)
+
+
+def _apply_native_default_inference_priority(value: MutableMapping[str, Any]) -> None:
+    """Apply the batch default to every native Switchyard LLM client."""
+    llm_clients = value.get("llm_clients")
+    if llm_clients is None:
+        return
+    if not isinstance(llm_clients, MutableMapping):
+        raise ValueError("Switchyard TOML llm_clients must be an object")
+
+    for name, raw_client in llm_clients.items():
+        if not isinstance(raw_client, MutableMapping):
+            raise ValueError(f"Switchyard TOML llm_clients.{name} must be an object")
+        headers = raw_client.get("extra_headers")
+        if headers is None:
+            raw_client["extra_headers"] = {"X-Inference-Priority": "batch"}
+            continue
+        if not isinstance(headers, MutableMapping):
+            raise ValueError(f"Switchyard TOML llm_clients.{name}.extra_headers must be an object")
+        for key in list(headers):
+            if str(key).lower() == "x-inference-priority":
+                del headers[key]
+        headers["X-Inference-Priority"] = "batch"
 
 
 def _with_default_inference_priority(value: Mapping[str, Any]) -> dict[str, Any]:
