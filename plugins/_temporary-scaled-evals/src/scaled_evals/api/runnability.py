@@ -650,9 +650,8 @@ def preflight_benchmark_run(
         set(body.member_framework_profile_ids) - {str(member["task_id"]) for member in members}
     )
     if unknown_profile_tasks:
-        message = (
-            "member framework profile override references task(s) outside the benchmark: "
-            + ", ".join(unknown_profile_tasks)
+        message = "member framework profile override references task(s) outside the benchmark: " + ", ".join(
+            unknown_profile_tasks
         )
         checks.append(
             _check(

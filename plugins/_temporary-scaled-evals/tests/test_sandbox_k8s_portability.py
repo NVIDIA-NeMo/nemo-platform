@@ -39,6 +39,7 @@ def _harbor_environment_methods(names: set[str]) -> type:
         keywords=[],
         body=methods,
         decorator_list=[],
+        type_params=[],
     )
     ast.fix_missing_locations(isolated)
     namespace: dict[str, Any] = {

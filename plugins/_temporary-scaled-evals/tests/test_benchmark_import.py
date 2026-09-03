@@ -94,9 +94,7 @@ def test_publish_rejects_benchmark_slug_owned_by_another_principal() -> None:
             "task_revision": 1,
         }
     ]
-    db.benchmark_imports.benchmarks.return_value = [
-        {"slug": "bench", "name": "Bench", "task_slugs": ["task"]}
-    ]
+    db.benchmark_imports.benchmarks.return_value = [{"slug": "bench", "name": "Bench", "task_slugs": ["task"]}]
     db.benchmarks.get_by_slug.return_value = {
         "id": "bm_other",
         "owner_id": "other",

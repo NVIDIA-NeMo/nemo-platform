@@ -200,13 +200,9 @@ def test_member_profile_selection_and_metadata_are_persisted(
         owner_id="dev",
     )
 
-    insert = next(
-        call for call in cursor.execute.call_args_list if "INSERT INTO benchmark_runs" in call.args[0]
-    )
+    insert = next(call for call in cursor.execute.call_args_list if "INSERT INTO benchmark_runs" in call.args[0])
     assert insert.args[1][10].obj == metadata
-    assert [
-        (member["framework_profile_id"], member["harbor_profile_id"]) for member in created
-    ] == [
+    assert [(member["framework_profile_id"], member["harbor_profile_id"]) for member in created] == [
         ("cfg_member", "cfg_member"),
         ("cfg_default", "cfg_default"),
     ]
@@ -283,11 +279,7 @@ def test_reproduction_preserves_member_profiles_in_stable_order() -> None:
         "task_0": "cfg_first",
     }
     command = _create_command(body)
-    options = [
-        command[index + 1]
-        for index, value in enumerate(command)
-        if value == "--member-framework-profile"
-    ]
+    options = [command[index + 1] for index, value in enumerate(command) if value == "--member-framework-profile"]
     assert options == ["task_0=cfg_first", "task_1=cfg_second"]
 
 

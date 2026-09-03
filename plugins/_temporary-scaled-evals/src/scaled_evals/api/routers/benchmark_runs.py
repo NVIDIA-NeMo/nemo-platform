@@ -69,9 +69,7 @@ def _reproduce_request(run: Mapping[str, Any], member: Mapping[str, Any]) -> Cre
         framework=run.get("framework") or "harbor",
         framework_version=run.get("framework_version"),
         framework_profile_id=run.get("framework_profile_id"),
-        member_framework_profile_ids=dict(
-            runner_metadata.get("member_framework_profile_ids") or {}
-        ),
+        member_framework_profile_ids=dict(runner_metadata.get("member_framework_profile_ids") or {}),
         switchyard_profile_id=run.get("switchyard_profile_id"),
         intake_profile_id=run.get("intake_profile_id"),
         credentials=dict(run.get("credentials") or {}),

@@ -168,7 +168,8 @@ def benchmark_import_group(ctx: click.Context) -> None:
 
 
 def _import_summary(data: dict[str, Any]) -> list[str]:
-    tasks = data.get("tasks") if isinstance(data.get("tasks"), list) else []
+    raw_tasks = data.get("tasks")
+    tasks = [task for task in raw_tasks if isinstance(task, dict)] if isinstance(raw_tasks, list) else []
     counts: dict[str, int] = {}
     for task in tasks:
         status = str(task.get("status") or "unknown")
@@ -2948,9 +2949,7 @@ def benchmark_run_create(
     member_profile_map: dict[str, str] = {}
     for item in member_framework_profiles:
         if "=" not in item:
-            raise click.ClickException(
-                f"--member-framework-profile must be TASK_ID=PROFILE_ID, got {item!r}"
-            )
+            raise click.ClickException(f"--member-framework-profile must be TASK_ID=PROFILE_ID, got {item!r}")
         task_id, profile_id = item.split("=", 1)
         member_profile_map[task_id] = profile_id
     if member_profile_map:

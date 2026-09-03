@@ -36,7 +36,7 @@ async def resolve(datasets: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from harbor.models.job.config import DatasetConfig
 
     try:
-        from harbor.job_plan import JobPlan
+        from harbor.job_plan import JobPlan  # ty: ignore[unresolved-import]
 
         cache_tasks = JobPlan.cache_tasks
     except ImportError:

@@ -480,9 +480,7 @@ class BenchmarkRunRepository:
             )
             run = cur.fetchone()
             for member in members:
-                member_framework_profile_id = (
-                    member.get("framework_profile_id") or framework_profile_id
-                )
+                member_framework_profile_id = member.get("framework_profile_id") or framework_profile_id
                 evaluations.create(
                     member["id"],
                     name=f"{name} · {member.get('task_slug') or member['task_id']}",
@@ -497,9 +495,7 @@ class BenchmarkRunRepository:
                     task_id=member["task_id"],
                     task_revision=member["task_revision"],
                     framework_profile_id=member_framework_profile_id,
-                    harbor_profile_id=(
-                        member_framework_profile_id if framework == "harbor" else harbor_profile_id
-                    ),
+                    harbor_profile_id=(member_framework_profile_id if framework == "harbor" else harbor_profile_id),
                     switchyard_profile_id=switchyard_profile_id,
                     intake_profile_id=intake_profile_id,
                     credentials=credentials,
