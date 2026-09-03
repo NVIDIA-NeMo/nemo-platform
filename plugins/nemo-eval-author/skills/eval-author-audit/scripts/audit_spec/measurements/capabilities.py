@@ -59,21 +59,9 @@ def measure(audit: JsonObject, trajectory: Trajectory, *, judgments: JsonObject 
         "covered": covered,
         "details": {
             "schema": DETAILS_SCHEMA,
-            "item_kind": ITEM_KIND,
-            "audit_capabilities": [item["name"] for item in audit_capabilities],
             "covered": covered,
             "missing": missing,
             "judgment_input": _judgment_input_summary(judgments),
-            "judged_evidence_kinds": _evidence_kinds_with_status(
-                capability_results.values(),
-                statuses={"satisfied", "missing", "unclear"},
-                measurements={"judged"},
-            ),
-            "unjudged_evidence_kinds": _evidence_kinds_with_status(
-                capability_results.values(),
-                statuses={"unjudged"},
-            ),
-            "unsupported_evidence_kinds": _unsupported_evidence_kinds(capability_results.values()),
             "observed_tool_calls": observed_tool_calls,
             "tool_call_counts": tool_call_counts(observed_tool_calls),
             "capability_results": capability_results,
@@ -105,9 +93,7 @@ def _capability_result(
         evidence_results=evidence_results,
     )
     return {
-        "name": item["name"],
         "covered": not missing_reasons,
-        "required_tools": required_tools,
         "required_tool_results": required_tool_results,
         "evidence_results": evidence_results,
         "missing_reasons": missing_reasons,
@@ -255,34 +241,6 @@ def _judgment_input_summary(judgments: JsonObject | None) -> JsonObject:
     if isinstance(judged_by, str) and judged_by.strip():
         summary["judged_by"] = judged_by.strip()
     return summary
-
-
-def _evidence_kinds_with_status(
-    results: Iterable[JsonObject],
-    *,
-    statuses: set[str],
-    measurements: set[str] | None = None,
-) -> list[str]:
-    """Return evidence kinds matching status and optional measurement filters."""
-    kinds: list[str] = []
-    for result in results:
-        for evidence in result["evidence_results"]:
-            if evidence["status"] not in statuses:
-                continue
-            if measurements is not None and evidence["measurement"] not in measurements:
-                continue
-            kinds.append(evidence["kind"])
-    return list(dict.fromkeys(kinds))
-
-
-def _unsupported_evidence_kinds(results: Iterable[JsonObject]) -> list[str]:
-    """Return unsupported evidence kinds observed across capability results."""
-    kinds: list[str] = []
-    for result in results:
-        for evidence in result["evidence_results"]:
-            if evidence["status"] == "unsupported":
-                kinds.append(evidence["kind"])
-    return list(dict.fromkeys(kinds))
 
 
 def _dedupe_names(names: Iterable[str]) -> list[str]:

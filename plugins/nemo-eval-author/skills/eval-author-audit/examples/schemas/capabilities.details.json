@@ -16,10 +16,6 @@
   "method": {
     "name": "capabilities"
   },
-  "item_kind": "capability",
-  "audit_capabilities": [
-    "account_recovery"
-  ],
   "covered": [
     "account_recovery"
   ],
@@ -31,11 +27,6 @@
     "judged_by": "eval-author-audit skill",
     "judgment_count": 1
   },
-  "judged_evidence_kinds": [
-    "user_intent"
-  ],
-  "unjudged_evidence_kinds": [],
-  "unsupported_evidence_kinds": [],
   "observed_tool_calls": [
     {
       "tool": "customer.lookup",
@@ -58,12 +49,7 @@
   },
   "capability_results": {
     "account_recovery": {
-      "name": "account_recovery",
       "covered": true,
-      "required_tools": [
-        "customer.lookup",
-        "password.reset"
-      ],
       "required_tool_results": [
         {
           "tool": "customer.lookup",

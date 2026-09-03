@@ -10,14 +10,9 @@
     "audit",
     "subject",
     "method",
-    "item_kind",
-    "audit_capabilities",
     "covered",
     "missing",
     "judgment_input",
-    "judged_evidence_kinds",
-    "unjudged_evidence_kinds",
-    "unsupported_evidence_kinds",
     "observed_tool_calls",
     "tool_call_counts",
     "capability_results"
@@ -48,14 +43,6 @@
         }
       }
     },
-    "item_kind": {
-      "description": "Audit item kind measured by capability coverage.",
-      "const": "capability"
-    },
-    "audit_capabilities": {
-      "description": "Capability item names declared by the audit denominator.",
-      "$ref": "#/$defs/nameList"
-    },
     "covered": {
       "description": "Capability names covered by deterministic evidence and any required skill-authored judgments.",
       "$ref": "#/$defs/nameList"
@@ -67,18 +54,6 @@
     "judgment_input": {
       "description": "Summary of the optional judgment sidecar consumed by this measurement.",
       "$ref": "#/$defs/judgmentInput"
-    },
-    "judged_evidence_kinds": {
-      "description": "Non-tool evidence kinds evaluated by skill-authored judgments.",
-      "$ref": "#/$defs/stringList"
-    },
-    "unjudged_evidence_kinds": {
-      "description": "Judgeable non-tool evidence kinds that lacked a supplied judgment and therefore blocked coverage.",
-      "$ref": "#/$defs/stringList"
-    },
-    "unsupported_evidence_kinds": {
-      "description": "Evidence kinds this method neither measures deterministically nor accepts from judgment input.",
-      "$ref": "#/$defs/stringList"
     },
     "observed_tool_calls": {
       "description": "All tool calls found in the ATIF trace.",
@@ -479,22 +454,14 @@
         }
       ],
       "required": [
-        "name",
         "covered",
-        "required_tools",
         "required_tool_results",
         "evidence_results",
         "missing_reasons"
       ],
       "properties": {
-        "name": {
-          "$ref": "#/$defs/itemName"
-        },
         "covered": {
           "type": "boolean"
-        },
-        "required_tools": {
-          "$ref": "#/$defs/nameList"
         },
         "required_tool_results": {
           "type": "array",

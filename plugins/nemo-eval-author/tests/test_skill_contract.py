@@ -2155,13 +2155,9 @@ def test_audit_measure_reports_capability_coverage_from_tool_call_evidence(tmp_p
     assert coverage["item_kind_count"] == 1
     assert coverage["covered"] == ["account_recovery"]
     assert details["schema"] == "nemo.eval_author.audit_capabilities_details.v1"
-    assert details["audit_capabilities"] == ["account_recovery"]
     assert details["covered"] == ["account_recovery"]
     assert details["missing"] == []
     assert details["judgment_input"] == {"provided": False, "judgment_count": 0}
-    assert details["judged_evidence_kinds"] == []
-    assert details["unjudged_evidence_kinds"] == []
-    assert details["unsupported_evidence_kinds"] == []
     assert details["tool_call_counts"] == {"customer.lookup": 1}
     assert capability["covered"] is True
     assert capability["missing_reasons"] == []
@@ -2272,8 +2268,8 @@ def test_audit_measure_dedupes_capability_required_tools(tmp_path: Path) -> None
     details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
     capability = details["capability_results"]["account_recovery"]
 
-    assert capability["required_tools"] == ["customer.lookup"]
     assert len(capability["required_tool_results"]) == 1
+    assert capability["required_tool_results"][0]["tool"] == "customer.lookup"
     assert capability["covered"] is True
 
 
@@ -2309,9 +2305,6 @@ def test_audit_measure_reports_capability_unjudged_evidence_without_covering(tmp
     assert details["covered"] == []
     assert details["missing"] == ["account_recovery"]
     assert details["judgment_input"] == {"provided": False, "judgment_count": 0}
-    assert details["judged_evidence_kinds"] == []
-    assert details["unjudged_evidence_kinds"] == ["user_intent"]
-    assert details["unsupported_evidence_kinds"] == []
     assert capability["covered"] is False
     assert capability["required_tool_results"][0]["status"] == "satisfied"
     assert capability["evidence_results"][0] == {
@@ -2368,9 +2361,6 @@ def test_audit_measure_uses_capability_judgments_for_non_tool_evidence(tmp_path:
         "judged_by": "eval-author-audit skill",
         "judgment_count": 1,
     }
-    assert details["judged_evidence_kinds"] == ["user_intent"]
-    assert details["unjudged_evidence_kinds"] == []
-    assert details["unsupported_evidence_kinds"] == []
     assert capability["covered"] is True
     assert capability["missing_reasons"] == []
     assert capability["evidence_results"][0] == {
