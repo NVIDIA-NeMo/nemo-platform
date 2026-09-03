@@ -7,7 +7,7 @@
 #   export NMP_BASE_URL=http://127.0.0.1:8080
 #   uv run nemo services run --host 127.0.0.1 --port 8080
 #
-# Use default service set (omit --services) or --service-group all. Then:
+# Use default service set (omit --services) or --service-group all --controller-group all. Then:
 #   nemo auth login --unsigned-token
 #   uv run nemo-platform run task --task nmp.platform_seed
 
@@ -125,6 +125,11 @@ evaluator:
   recreate_existing_system_entities: True
 
 safe_synthesizer: {}
+
+# Retrieval jobs mix CPU and GPU container steps; cpu/default is subprocess locally, so
+# point them at the Docker-backed gpu profile (cpu/gpu and gpu/gpu). Not needed on Kubernetes/CI.
+data_designer:
+  job_executor_profile: gpu
 
 # Audit jobs need real Docker containers (auditor-tasks image with garak). cpu/default is
 # diverted to the subprocess backend above for local dev, so point auditor jobs at the

@@ -30,6 +30,7 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceMiddlewareError,
     InferenceRequest,
     InferenceResponse,
+    TypedResponseResult,
 )
 from nemo_switchyard._processors import CTX_PATH_UPDATE
 from nmp.core.inference_gateway.api.typed_response import TypedResponseStream
@@ -100,9 +101,7 @@ def _wrap_streaming(
     return None
 
 
-def _wrap_non_streaming(
-    typed_body: openai_chat_types.ChatCompletion | anthropic_types.Message,
-) -> CompletionChatResponse | AnthropicChatResponse:
+def _wrap_non_streaming(typed_body: TypedResponseResult) -> CompletionChatResponse | AnthropicChatResponse:
     """Wrap a non-streaming pydantic model into the matching Switchyard response wrapper.
 
     The Switchyard response pipeline expects a ``ChatResponse`` as input. This is the

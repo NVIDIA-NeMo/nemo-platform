@@ -16,12 +16,19 @@ import signal
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal, TypeAlias, cast
+from typing import Any, Literal, TypeAlias, overload
 from urllib.parse import urlparse
 
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, model_validator
 
 from nemo_evaluator_sdk.values.atif import FinalMetrics, Step, ToolCall, Trajectory
+from nemo_evaluator_sdk.values.otlp import (
+    export_request_from_resource_spans,
+    resource_spans_from_request,
+    resource_spans_from_text,
+    validate_resource_spans,
+)
 
 # Standard evidence keys shared by inference, persistence, and agent evaluation.
 EVIDENCE_INITIAL_STATE = "initial_state"
@@ -369,6 +376,18 @@ class OTLPTraceHandle:
     def __init__(self, descriptor: EvidenceDescriptor) -> None:
         self._descriptor = descriptor
         self._resource_spans: list[dict[str, Any]] | None = None
+        self._export_request: ExportTraceServiceRequest | None = None
+
+    async def export_request(self) -> ExportTraceServiceRequest:
+        """Return the trace as the typed OTLP request, parsed once.
+
+        Serializing this is what OTLP ingest accepts, so a consumer that publishes and one
+        that reads share a representation instead of re-encoding between two.
+        """
+        if self._export_request is None:
+            resource_spans = await self.resource_spans()
+            self._export_request = await asyncio.to_thread(export_request_from_resource_spans, resource_spans)
+        return self._export_request
 
     async def resource_spans(self) -> list[dict[str, Any]]:
         """Return concatenated OTLP ``resourceSpans``, loading and validating once.
@@ -389,65 +408,11 @@ class OTLPTraceHandle:
         descriptor = self._descriptor
         if descriptor.data is not None:
             if isinstance(descriptor.data, list):
-                return self._validate_resource_spans(descriptor.data)
-            return self._resource_spans_from_request(descriptor.data)
+                return validate_resource_spans(descriptor.data)
+            return resource_spans_from_request(descriptor.data)
         if descriptor.ref is None:
             raise ValueError("trace evidence descriptor requires ref or data")
-
-        raw = _local_filesystem_ref(descriptor.ref).read_text(encoding="utf-8")
-        if not raw.strip():
-            return []
-        try:
-            requests = [json.loads(raw)]
-        except json.JSONDecodeError:
-            requests = []
-            for line_number, line in enumerate(raw.splitlines(), start=1):
-                if not line.strip():
-                    continue
-                try:
-                    requests.append(json.loads(line))
-                except json.JSONDecodeError as exc:
-                    raise ValueError(f"invalid OTLP JSON on line {line_number}") from exc
-
-        resource_spans: list[dict[str, Any]] = []
-        for request in requests:
-            resource_spans.extend(self._resource_spans_from_request(request))
-        return resource_spans
-
-    @classmethod
-    def _resource_spans_from_request(cls, request: Any) -> list[dict[str, Any]]:
-        """Extract validated ``resourceSpans`` from one OTLP request object.
-
-        Args:
-            request: Decoded OTLP/JSON request value.
-
-        Returns:
-            The request's validated resource-span objects.
-        """
-        if not isinstance(request, dict):
-            raise ValueError("OTLP trace request must be an object")
-        if "resourceSpans" not in request:
-            raise ValueError("OTLP trace request requires a resourceSpans list")
-        return cls._validate_resource_spans(request["resourceSpans"])
-
-    @staticmethod
-    def _validate_resource_spans(value: Any) -> list[dict[str, Any]]:
-        """Validate the list shape exposed by :meth:`resource_spans`.
-
-        Args:
-            value: Candidate resource-span list.
-
-        Returns:
-            Resource-span objects in their original order.
-        """
-        if not isinstance(value, list):
-            raise ValueError("OTLP resourceSpans must be a list")
-        resource_spans: list[dict[str, Any]] = []
-        for index, resource_span in enumerate(value):
-            if not isinstance(resource_span, dict):
-                raise ValueError(f"OTLP resourceSpans[{index}] must be an object")
-            resource_spans.append(cast(dict[str, Any], resource_span))
-        return resource_spans
+        return resource_spans_from_text(_local_filesystem_ref(descriptor.ref).read_text(encoding="utf-8"))
 
 
 class ATIFTraceHandle:
@@ -578,12 +543,56 @@ class CandidateEvidence(BaseModel):
         self._filesystem_cache[name] = handle
         return handle
 
-    async def trace(self, name: str = "trace") -> TraceHandle:
-        """Return a cached trace handle for a named trace descriptor (read lazily on first access)."""
-        cached = self._trace_cache.get(name)
+    def _resolve_trace_key(self, name: str, evidence_format: str | None) -> str:
+        """Return the descriptor key holding ``name`` in ``evidence_format``.
+
+        A producer carrying several encodings of one trace registers each under
+        ``"{name}:{format}"`` as well as naming one of them primary under ``name``.
+        ``name`` is tried first so a caller asking for the encoding that is already
+        primary shares one cached handle instead of parsing the descriptor twice.
+        A candidate is accepted on its declared ``format``, never on its key suffix,
+        so a mis-filed descriptor cannot falsify the caller's narrowed return type.
+        """
+        if evidence_format is None:
+            return name
+        for key in (name, f"{name}:{evidence_format}"):
+            descriptor = self.get(key)
+            if descriptor is not None and (descriptor.format or EVIDENCE_FORMAT_ATIF) == evidence_format:
+                return key
+        raise KeyError(f"missing evidence descriptor {name!r} in format {evidence_format!r}")
+
+    @overload
+    async def trace(self, name: str = ..., *, format: None = ...) -> TraceHandle: ...
+
+    @overload
+    async def trace(self, name: str = ..., *, format: Literal["atif"]) -> ATIFTraceHandle: ...
+
+    @overload
+    async def trace(self, name: str = ..., *, format: Literal["otlp"]) -> OTLPTraceHandle: ...
+
+    @overload
+    async def trace(self, name: str = ..., *, format: str) -> TraceHandle: ...
+
+    async def trace(self, name: str = "trace", *, format: str | None = None) -> TraceHandle:
+        """Return a cached trace handle for a named trace descriptor (read lazily on first access).
+
+        Args:
+            name: Evidence key naming the trace's role, such as ``"trace"``.
+            format: Encoding to read the trace as. When omitted, the descriptor stored
+                under ``name`` decides, giving the producer's primary view.
+
+        Returns:
+            A handle over the trace, typed to the requested format when one is given.
+
+        Raises:
+            KeyError: No descriptor holds ``name`` in the requested format.
+            ValueError: The resolved descriptor declares a format with no handle.
+        """
+        key = self._resolve_trace_key(name, format)
+        cached = self._trace_cache.get(key)
         if cached is not None:
             return cached
-        descriptor = self.require(name, kind="trace")
+        descriptor = self.require(key, kind=EVIDENCE_TRACE)
         handle: TraceHandle
         if descriptor.format is None or descriptor.format == EVIDENCE_FORMAT_ATIF:
             handle = ATIFTraceHandle(descriptor)
@@ -591,7 +600,7 @@ class CandidateEvidence(BaseModel):
             handle = OTLPTraceHandle(descriptor)
         else:
             raise ValueError(f"unknown trace evidence format {descriptor.format!r}")
-        self._trace_cache[name] = handle
+        self._trace_cache[key] = handle
         return handle
 
     async def logs(self, name: str = "logs") -> LogHandle:

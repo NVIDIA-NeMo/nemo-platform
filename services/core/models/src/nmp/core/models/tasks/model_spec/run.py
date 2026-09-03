@@ -261,7 +261,7 @@ class ModelSpecRunner:
 
         logger.info(os.listdir(dest_dir))
         is_trusted = me.trust_remote_code if me.trust_remote_code is not None else False
-        model_spec = infer_model_cfg_from_hf(dest_dir, is_trusted=is_trusted, file_listing=all_file_paths)
+        model_spec = infer_model_cfg_from_hf(str(dest_dir), is_trusted=is_trusted, file_listing=all_file_paths)
         # Embedding if model name or storage path contains "embed"; use or to avoid
         # overwriting a correct True from model name when storage path lacks "embed"
         model_spec.is_embedding_model = is_embedding_model(me.name)
@@ -302,7 +302,7 @@ class ModelSpecRunner:
             me: ModelEntity = self._models.update_model(
                 name=config.name,
                 workspace=config.workspace,
-                body=UpdateModelEntityRequest(spec=PluginModelSpec.model_validate(model_spec)),
+                body=UpdateModelEntityRequest(spec=PluginModelSpec.model_validate(model_spec.model_dump())),
             ).data()
         except NotFoundError as err:
             raise ModelSpecCreationError(
@@ -338,6 +338,8 @@ def run(*, sdk: NeMoPlatform | None = None, job_ctx: NMPJobContext | None = None
         ).with_options(workspace=job_ctx.workspace)
         runner = ModelSpecRunner(sdk=sdk, job_ctx=job_ctx)
 
+        if job_ctx.config_path is None:
+            raise ModelSpecCreationError("Failed to create model spec: job step config path is not configured")
         config = get_config(job_ctx.config_path)
 
         logger.info(f"Starting model spec task with job context: {job_ctx}")

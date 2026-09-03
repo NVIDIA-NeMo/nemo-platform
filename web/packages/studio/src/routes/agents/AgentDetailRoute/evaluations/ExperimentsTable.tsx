@@ -8,18 +8,18 @@ import {
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { getListEvaluationsQueryKey } from '@nemo/sdk/generated/platform/evaluations';
 import {
   deleteExperiment,
-  getListEvaluationsQueryKey,
   getListExperimentsQueryKey,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/experiments';
 import { Button, Text } from '@nvidia/foundations-react-core';
 import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import type { AgentExperimentRow } from '@studio/routes/agents/AgentDetailRoute/evaluations/groupByExperiment';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { FolderTree, Trash } from 'lucide-react';
-import { type ComponentProps, type FC, useCallback, useState } from 'react';
+import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 interface ExperimentsTableProps {
@@ -41,6 +41,12 @@ export const ExperimentsTable: FC<ExperimentsTableProps> = ({ workspace, experim
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const dataViewState = useStudioDataViewState();
+  // StudioDataView renders exactly the rows it is given and never slices, so apply the page here.
+  const { pageIndex, pageSize } = dataViewState.pagination.state;
+  const pageRows = useMemo(
+    () => experiments.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize),
+    [experiments, pageIndex, pageSize]
+  );
   const [deleteRows, setDeleteRows] = useState<AgentExperimentRow[]>([]);
 
   const handleDelete = useCallback(
@@ -120,7 +126,7 @@ export const ExperimentsTable: FC<ExperimentsTableProps> = ({ workspace, experim
           </Button>
         )}
         attributes={{
-          DataViewRoot: { data: experiments },
+          DataViewRoot: { data: pageRows, totalCount: experiments.length },
           DataViewTableContent: {
             renderEmptyState: () => (
               <TableEmptyState

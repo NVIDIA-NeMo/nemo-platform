@@ -13,7 +13,6 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
-from typing import Literal
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
@@ -27,14 +26,13 @@ from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     build_trials_from_job_dir,
     discover_harbor_tasks,
     reward_payload_from_result,
-    run_harbor_eval,
     scoped_harbor_agent_import,
 )
-from nemo_evaluator_sdk.agent_eval.runtimes.harbor_trial_adapter import _trial_from_harbor_result
+from nemo_evaluator_sdk.agent_eval.runtimes.harbor_trial_adapter import _final_agent_message, _trial_from_harbor_result
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, TrialError
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
-from nemo_evaluator_sdk.values.evidence import ATIFTraceHandle
+from nemo_evaluator_sdk.values.evidence import ATIFTraceHandle, OTLPTraceHandle, read_atif
 from pydantic import BaseModel, ValidationError
 
 _HELLO_WORLD_DATASET = Path(__file__).resolve().parents[2] / "examples" / "harbor" / "hello_world_dataset"
@@ -415,56 +413,6 @@ async def test_native_runner_uses_job_dir_as_cache(tmp_path: Path, monkeypatch: 
     assert [trial.task_id for trial in trials] == ["t"]
     assert trials[0].metadata["reward"] == 1.0
     assert imported == [], f"a cache hit must not import harbor, but imported {imported}"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["native", "offline"])
-async def test_runner_forwards_trace_format_in_both_modes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
-) -> None:
-    from nemo_evaluator_sdk.agent_eval.runtimes import harbor_runtime
-
-    config, job_dir, task = _seed_cached_job(tmp_path)
-    observed: list[str] = []
-    real_build_trials = harbor_runtime.build_trials_from_job_dir
-
-    def recording_build_trials(job_dir, tasks, *, reward_key="reward", trace_format="atif"):
-        observed.append(trace_format)
-        return real_build_trials(job_dir, tasks, reward_key=reward_key, trace_format=trace_format)
-
-    monkeypatch.setattr(harbor_runtime, "build_trials_from_job_dir", recording_build_trials)
-    runner = (
-        HarborAgentTaskRunner(config=config, trace_format="otlp")
-        if mode == "native"
-        else HarborAgentTaskRunner(job_dir=job_dir, trace_format="otlp")
-    )
-
-    await runner.run_tasks([task])
-
-    assert observed == ["otlp"]
-
-
-@pytest.mark.asyncio
-async def test_run_harbor_eval_forwards_trace_format_to_the_runner(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    observed: list[str] = []
-    sentinel = object()
-
-    async def recording_run(self, *, tasks, target, config):
-        observed.append(target.runner_info().config["trace_format"])
-        return sentinel
-
-    monkeypatch.setattr(AgentEvaluator, "run", recording_run)
-
-    result = await run_harbor_eval(
-        HarborRuntimeConfig(jobs_dir=tmp_path / "jobs"),
-        _HELLO_WORLD_DATASET,
-        trace_format="otlp",
-    )
-
-    assert result is sentinel
-    assert observed == ["otlp"]
 
 
 def _stamp_for(config: HarborRuntimeConfig, task: AgentEvalTask, job_dir: Path) -> None:
@@ -1858,9 +1806,7 @@ def _atif_trajectory_payload() -> dict[str, object]:
     }
 
 
-def _trial_with_trajectory(
-    tmp_path: Path, payload: object, *, trace_format: Literal["otlp", "atif"] = "atif"
-) -> AgentEvalTrial:
+def _trial_with_trajectory(tmp_path: Path, payload: object) -> AgentEvalTrial:
     job_dir = tmp_path / "job"
     _write_trial(job_dir, "t__1", "t", reward=1.0)
     trial_dir = job_dir / "t__1"
@@ -1869,7 +1815,7 @@ def _trial_with_trajectory(
     else:
         (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(payload))
     data = json.loads((trial_dir / "result.json").read_text())
-    return _trial_from_harbor_result(trial_dir, data, reward_key="reward", trace_format=trace_format)
+    return _trial_from_harbor_result(trial_dir, data, reward_key="reward")
 
 
 def test_atif_trajectory_is_labelled_atif(tmp_path: Path) -> None:
@@ -1980,9 +1926,9 @@ def _write_evidence_trial(job_dir: Path, trial_name: str = "task__A1b2") -> Path
     return trial_dir
 
 
-def _adapt_evidence_trial(job_dir: Path, *, trace_format: Literal["otlp", "atif"] = "atif") -> AgentEvalTrial:
+def _adapt_evidence_trial(job_dir: Path) -> AgentEvalTrial:
     task = AgentEvalTask(id="task", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])
-    return build_trials_from_job_dir(job_dir, [task], trace_format=trace_format)[0]
+    return build_trials_from_job_dir(job_dir, [task])[0]
 
 
 def test_harbor_evidence_descriptors_are_typed_absolute_and_described(tmp_path: Path) -> None:
@@ -2084,7 +2030,7 @@ def test_harbor_evidence_keys_preserve_colliding_files_and_noncolliding_aliases(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('{"resourceSpans": []}\n' if path.suffix == ".jsonl" else relative, encoding="utf-8")
 
-    trial = _adapt_evidence_trial(job_dir, trace_format="otlp")
+    trial = _adapt_evidence_trial(job_dir)
 
     expected_refs = {
         "trace:artifacts/traces/x.jsonl": trial_dir / "artifacts/traces/x.jsonl",
@@ -2102,9 +2048,7 @@ def test_harbor_evidence_keys_preserve_colliding_files_and_noncolliding_aliases(
         assert descriptor.ref == str(path.resolve())
 
 
-def test_configured_trace_format_selects_one_standard_trace_and_keeps_all_extensions(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_otlp_becomes_the_standard_trace_when_both_formats_are_present(tmp_path: Path) -> None:
     job_dir = tmp_path / "job"
     job_dir.mkdir()
     trial_dir = _write_evidence_trial(job_dir)
@@ -2115,24 +2059,36 @@ def test_configured_trace_format_selects_one_standard_trace_and_keeps_all_extens
     otlp.write_text('{"resourceSpans": []}\n', encoding="utf-8")
     atif.write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
 
-    otlp_trial = _adapt_evidence_trial(job_dir, trace_format="otlp")
-    atif_trial = _adapt_evidence_trial(job_dir, trace_format="atif")
+    trial = _adapt_evidence_trial(job_dir)
 
-    otlp_trace = otlp_trial.get_evidence("trace")
-    atif_trace = atif_trial.get_evidence("trace")
-    assert otlp_trace is not None
-    assert atif_trace is not None
-    assert otlp_trace.ref == str(otlp.resolve())
-    assert otlp_trace.format == "otlp"
-    assert otlp_trace.description == "Agent execution trace JSONL for nested/traces/trace.jsonl."
-    assert otlp_trace.metadata == {}
-    assert atif_trace.ref == str(atif.resolve())
-    assert atif_trace.format == "atif"
-    assert atif_trace.description == "Agent execution ATIF trajectory for nested/traces/trajectory.atif.json."
-    assert atif_trace.metadata == {}
-    assert otlp_trial.get_evidence("trace:nested/traces/trajectory.atif.json") is not None
-    assert atif_trial.get_evidence("trace:nested/traces/trace.jsonl") is not None
-    assert "matched no trace" not in caplog.text
+    standard = trial.get_evidence("trace")
+    assert standard is not None
+    assert standard.ref == str(otlp.resolve())
+    assert standard.format == "otlp"
+    assert standard.description == "Agent execution trace JSONL for nested/traces/trace.jsonl."
+    assert standard.metadata == {}
+    # The ATIF view stays reachable, both by format and through its path key.
+    by_format = trial.get_evidence("trace:atif")
+    assert by_format is not None
+    assert by_format.ref == str(atif.resolve())
+    assert trial.get_evidence("trace:nested/traces/trajectory.atif.json") is not None
+
+
+def test_atif_becomes_the_standard_trace_when_no_otlp_trace_exists(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    atif = traces / "trajectory.atif.json"
+    atif.write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    standard = trial.get_evidence("trace")
+    assert standard is not None
+    assert standard.format == "atif"
+    assert standard.ref == str(atif.resolve())
 
 
 @pytest.mark.asyncio
@@ -2145,7 +2101,7 @@ async def test_named_atif_trace_keeps_its_identity_and_validates_lazily(tmp_path
     atif = traces / "broken.atif.json"
     atif.write_text(json.dumps({"schema_version": "ATIF-v1.7", "steps": []}), encoding="utf-8")
 
-    trial = _adapt_evidence_trial(job_dir, trace_format="atif")
+    trial = _adapt_evidence_trial(job_dir)
 
     extension = trial.get_evidence("trace:traces/broken.atif.json")
     selected = trial.get_evidence("trace")
@@ -2162,50 +2118,17 @@ async def test_named_atif_trace_keeps_its_identity_and_validates_lazily(tmp_path
         await handle.trace()
 
 
-def test_trace_selection_warns_only_when_opposite_format_exists(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_a_trial_with_no_trace_artifact_has_no_standard_trace(tmp_path: Path) -> None:
     job_dir = tmp_path / "job"
     job_dir.mkdir()
     trial_dir = _write_evidence_trial(job_dir)
     (trial_dir / "agent" / "trajectory.json").unlink()
-    traces = trial_dir / "traces"
-    traces.mkdir()
-    atif = traces / "trajectory.atif.json"
-    atif.write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
 
-    with caplog.at_level(logging.WARNING):
-        trial = _adapt_evidence_trial(job_dir, trace_format="otlp")
+    trial = _adapt_evidence_trial(job_dir)
 
     assert trial.get_evidence("trace") is None
-    assert "trace_format='otlp'" in caplog.text
-    assert "atif" in caplog.text
-
-    caplog.clear()
-    atif.unlink()
-    with caplog.at_level(logging.WARNING):
-        no_trace = _adapt_evidence_trial(job_dir, trace_format="otlp")
-    assert no_trace.get_evidence("trace") is None
-    assert "matched no trace" not in caplog.text
-
-
-def test_invalid_trace_format_is_rejected_at_public_boundaries(tmp_path: Path) -> None:
-    job_dir = tmp_path / "job"
-    job_dir.mkdir()
-    task = AgentEvalTask(id="task", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])
-
-    with pytest.raises(ValueError, match="trace_format"):
-        HarborAgentTaskRunner(job_dir=job_dir, trace_format="json")  # ty: ignore[invalid-argument-type]
-    with pytest.raises(ValueError, match="trace_format"):
-        build_trials_from_job_dir(job_dir, [task], trace_format="json")  # ty: ignore[invalid-argument-type]
-    with pytest.raises(ValueError, match="trace_format"):
-        asyncio.run(
-            run_harbor_eval(
-                HarborRuntimeConfig(jobs_dir=tmp_path / "jobs"),
-                _HELLO_WORLD_DATASET,
-                trace_format="json",  # ty: ignore[invalid-argument-type]
-            )
-        )
+    assert trial.get_evidence("trace:atif") is None
+    assert trial.get_evidence("trace:otlp") is None
 
 
 @pytest.mark.parametrize(
@@ -2263,3 +2186,189 @@ def test_empty_final_agent_message_is_not_backfilled_from_earlier_reasoning(tmp_
     trial = _trial_with_trajectory(tmp_path, payload)
 
     assert trial.output.output_text is None
+
+
+@pytest.mark.asyncio
+async def test_both_trace_formats_are_readable_when_a_trial_emits_both(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    (traces / "trace.jsonl").write_text('{"resourceSpans": []}\n', encoding="utf-8")
+    (traces / "trajectory.atif.json").write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    assert trial.evidence is not None
+    assert isinstance(await trial.evidence.trace(format="atif"), ATIFTraceHandle)
+    assert isinstance(await trial.evidence.trace(format="otlp"), OTLPTraceHandle)
+    # OTLP is primary, and naming that format reuses its handle rather than reparsing.
+    primary = trial.get_evidence("trace")
+    assert primary is not None
+    assert primary.format == "otlp"
+    assert await trial.evidence.trace() is await trial.evidence.trace(format="otlp")
+
+
+@pytest.mark.asyncio
+async def test_atif_stays_readable_by_format_when_it_is_also_the_primary(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    (traces / "trajectory.atif.json").write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    assert trial.evidence is not None
+    assert isinstance(await trial.evidence.trace(format="atif"), ATIFTraceHandle)
+
+
+def test_harbors_builtin_atif_dump_is_reachable_by_format(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    (traces / "trace.jsonl").write_text('{"resourceSpans": []}\n', encoding="utf-8")
+    dump = trial_dir / "agent" / "trajectory.json"
+    dump.write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    # agent/trajectory.json declares no format in its path, so it reaches trace:atif
+    # only through the legacy fallback, and only when it parses as ATIF.
+    trial = _adapt_evidence_trial(job_dir)
+
+    atif = trial.get_evidence("trace:atif")
+    assert atif is not None
+    assert atif.ref == str(dump.resolve())
+
+
+def _otlp_answer_trace(text: str) -> str:
+    span = {
+        "traceId": "0" * 32,
+        "spanId": "a" * 16,
+        "name": "run",
+        "startTimeUnixNano": "1",
+        "endTimeUnixNano": "9",
+        "attributes": [
+            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
+            {"key": "output.value", "value": {"stringValue": text}},
+        ],
+    }
+    return json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": [span]}]}]}) + "\n"
+
+
+def test_output_text_comes_from_the_otlp_trace_when_the_trial_has_one(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    (traces / "trace.jsonl").write_text(_otlp_answer_trace("otlp answer"), encoding="utf-8")
+    (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    assert trial.output is not None
+    assert trial.output.output_text == "otlp answer"
+
+
+def test_output_text_falls_back_to_atif_when_the_otlp_trace_carries_no_answer(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    # A span tree with no output attribute yields nothing to read, so ATIF still answers.
+    (traces / "trace.jsonl").write_text('{"resourceSpans": []}\n', encoding="utf-8")
+    (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    atif_answer = _final_agent_message(read_atif(trial_dir / "agent" / "trajectory.json"))
+    assert atif_answer
+    assert trial.output is not None
+    assert trial.output.output_text == atif_answer
+
+
+def test_output_text_is_absent_when_the_trial_has_no_readable_trace(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    (trial_dir / "agent" / "trajectory.json").unlink()
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    assert trial.output is not None
+    assert trial.output.output_text is None
+
+
+def test_an_unreadable_otlp_trace_does_not_lose_the_atif_answer(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    (traces / "trace.jsonl").write_text("{not json\n", encoding="utf-8")
+    (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING):
+        trial = _adapt_evidence_trial(job_dir)
+
+    assert "Ignoring unreadable OTLP trace" in caplog.text
+    assert trial.output is not None
+    assert trial.output.output_text == _final_agent_message(read_atif(trial_dir / "agent" / "trajectory.json"))
+
+
+def test_an_empty_message_envelope_falls_back_to_the_atif_answer(tmp_path: Path) -> None:
+    # An OTLP trace whose only output is an envelope with no assistant text is not an answer,
+    # so the trial's ATIF trajectory still supplies one.
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    span = {
+        "traceId": "0" * 32,
+        "spanId": "a" * 16,
+        "name": "run",
+        "startTimeUnixNano": "1",
+        "endTimeUnixNano": "9",
+        "attributes": [
+            {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
+            {"key": "gen_ai.output.messages", "value": {"stringValue": "[]"}},
+        ],
+    }
+    (traces / "trace.jsonl").write_text(
+        json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": [span]}]}]}) + "\n", encoding="utf-8"
+    )
+    (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    assert trial.output is not None
+    assert trial.output.output_text == _final_agent_message(read_atif(trial_dir / "agent" / "trajectory.json"))
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_otlp_trace_is_not_promoted_over_a_valid_atif_one(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    trial_dir = _write_evidence_trial(job_dir)
+    traces = trial_dir / "traces"
+    traces.mkdir()
+    (traces / "trace.jsonl").write_text("{not json at all\n", encoding="utf-8")
+    (trial_dir / "agent" / "trajectory.json").write_text(json.dumps(_atif_trajectory_payload()), encoding="utf-8")
+
+    trial = _adapt_evidence_trial(job_dir)
+
+    primary = trial.get_evidence("trace")
+    assert primary is not None
+    assert primary.format == "atif"
+    assert trial.evidence is not None
+    assert isinstance(await trial.evidence.trace(), ATIFTraceHandle)
+    # The malformed file is demoted, not hidden.
+    assert trial.get_evidence("trace:otlp") is not None

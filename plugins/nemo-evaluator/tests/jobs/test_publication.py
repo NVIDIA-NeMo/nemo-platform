@@ -336,7 +336,9 @@ def test_publishes_and_reports_what_landed() -> None:
     assert outcome.trial_count == 1
     assert outcome.evaluator_result_count == 1
     assert outcome.error is None
-    assert client.evaluations.retrieved == ["eval-1"]
+    # Twice: this path needs the entity to stamp durations onto, and ``publish_to_intake``
+    # re-checks for itself because it is public and cannot assume its caller did.
+    assert client.evaluations.retrieved == ["eval-1", "eval-1"]
 
 
 def test_durations_are_stamped_without_dropping_existing_metadata() -> None:

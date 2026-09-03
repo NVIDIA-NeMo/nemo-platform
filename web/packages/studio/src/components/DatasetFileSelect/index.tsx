@@ -5,7 +5,7 @@ import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import {
   useFilesListFilesetFiles,
   useFilesRetrieveFileset,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/files';
 import type { FilesetFileOutput } from '@nemo/sdk/generated/platform/schema';
 import {
   Flex,

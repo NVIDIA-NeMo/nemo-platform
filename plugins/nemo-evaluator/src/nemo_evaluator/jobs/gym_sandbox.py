@@ -19,10 +19,16 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from typing import Any
 
 from nemo_evaluator.config import EvaluatorConfig
 from nemo_evaluator.jobs.agent_spec import GymRunnerTarget
+from nemo_platform_plugin.jobs.execution_profiles import (
+    KubernetesJobExecutionProfile,
+    VolcanoJobExecutionProfile,
+)
+from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
 from pydantic import BaseModel, ConfigDict, Field
 
 #: Env-var names that look like a credential. Used to refuse a sandboxed run that would hand one to
@@ -174,8 +180,11 @@ def resolve_sandbox_plan(config: EvaluatorConfig, target: GymRunnerTarget) -> Sa
     """The sandbox settings for this target, or ``None`` when the deployment runs Gym colocated.
 
     Raises rather than falling back: a cluster that cannot sandbox refuses the run instead of
-    quietly running user environment code beside this job's credentials.
+    quietly running user environment code beside this job's credentials. A FileSet environment
+    cannot run colocated at all -- ``GymAgentTaskRunner`` would ignore the staged package.
     """
+    if target.environment is not None:
+        require_fileset_environment_sandboxed(target, config)
     if not config.sandboxed_gym_default:
         return None
     require_sandbox_available(config)
@@ -197,6 +206,49 @@ def resolve_sandbox_plan(config: EvaluatorConfig, target: GymRunnerTarget) -> Sa
         allow_insecure_memory_backend=config.sandbox_allow_insecure_memory_backend,
         approved_images=tuple(config.sandbox_approved_images),
     )
+
+
+def require_fileset_environment_sandboxed(target: GymRunnerTarget, config: EvaluatorConfig) -> None:
+    """Refuse a custom environment that colocated execution would silently ignore."""
+    if target.environment is None:
+        return
+    if not config.sandboxed_gym_default:
+        raise SandboxUnavailableError(
+            "Gym environment FileSets require sandboxed execution. Enable `sandboxed_gym_default`, "
+            "or omit `target.environment` so colocated GymAgentTaskRunner cannot ignore the staged package."
+        )
+    require_sandbox_available(config)
+    require_no_plaintext_credentials(target)
+
+
+def job_storage_pvc_name(profile: BaseExecutionProfile) -> str | None:
+    """PVC claim used by Kubernetes/Volcano execution-profile job storage, if any."""
+    if not isinstance(profile, KubernetesJobExecutionProfile | VolcanoJobExecutionProfile):
+        return None
+    pvc_name = profile.config.storage.pvc_name
+    return pvc_name or None
+
+
+def require_fileset_sandbox_storage_identity(
+    target: GymRunnerTarget,
+    config: EvaluatorConfig,
+    *,
+    execution_profile: BaseExecutionProfile | None,
+) -> None:
+    """Fail when staging would write PVC A and OpenSandbox would mount PVC B."""
+    if target.environment is None or config.sandbox_host_provider == "docker":
+        return
+    job_claim = job_storage_pvc_name(execution_profile) if execution_profile is not None else None
+    sandbox_claim = config.sandbox_job_storage_pvc_claim
+    if job_claim is None or sandbox_claim is None:
+        return
+    if job_claim != sandbox_claim:
+        raise SandboxUnavailableError(
+            f"FileSet-backed Gym execution stages onto the Jobs execution-profile storage PVC "
+            f"{job_claim!r} but OpenSandbox mounts `sandbox_job_storage_pvc_claim` {sandbox_claim!r}. "
+            f"Set `sandbox_job_storage_pvc_claim` to {job_claim!r} so the staged environment is the "
+            "one the Gym host mounts."
+        )
 
 
 def _egress_rules(plan: SandboxPlan) -> list[dict[str, Any]]:
@@ -242,29 +294,64 @@ def host_env(target: GymRunnerTarget) -> dict[str, str]:
     return env
 
 
-def serve_config(target: GymRunnerTarget, plan: SandboxPlan, *, job_id: str) -> dict[str, Any]:
+def serve_config(
+    target: GymRunnerTarget,
+    plan: SandboxPlan,
+    *,
+    job_id: str,
+    workspace: str = "default",
+    persistent_storage_path: Path | None = None,
+) -> dict[str, Any]:
     """Assemble the ``SandboxedGymServeConfig`` payload for one evaluation.
 
     Job-derived and deployment-derived settings meet here and nowhere else: the target supplies the
     environment selection and its own environment variables, the resolved plan supplies the cluster
     facts, and the broker token and rollout URL are minted by the session itself.
     """
+    environment_pvc_claim = plan.job_storage_pvc_claim
+    host_provider_options = dict(plan.host_provider_options)
+    fileset_environment = target.environment is not None
+
+    if fileset_environment:
+        # Each FileSet is staged onto this job's persistent directory. A shared environment mount
+        # would miss that tree (and let concurrent jobs clobber each other).
+        environment_sub_path = f"jobs/{workspace}/{job_id}/{plan.environment_sub_path}"
+        workspace_sub_path = f"jobs/{workspace}/{job_id}/{plan.workspace_sub_path}"
+    else:
+        environment_sub_path = plan.environment_sub_path
+        # Job-scoped, unlike the shared read-only environment mount: the configured workspace
+        # sub-path is deployment-wide, so two concurrent evaluations would otherwise scribble over
+        # each other's state in one directory.
+        workspace_sub_path = f"{plan.workspace_sub_path.rstrip('/')}/{job_id}"
+
+    # The subprocess backend gives both evaluator steps one real host directory. A FileSet-backed
+    # Docker host must bind that directory rather than reconstructing a Kubernetes PVC layout under
+    # its configured root. Keep this trusted runtime path out of the submitted target.
+    if plan.host_provider == "docker" and fileset_environment:
+        if persistent_storage_path is None:
+            raise SandboxUnavailableError(
+                "FileSet-backed Docker Gym execution requires the job's persistent storage path"
+            )
+        persistent_storage_path = persistent_storage_path.resolve()
+        host_provider_options["root_dir"] = str(persistent_storage_path.parent)
+        environment_pvc_claim = persistent_storage_path.name
+        environment_sub_path = plan.environment_sub_path
+        workspace_sub_path = plan.workspace_sub_path
+
     return {
         "job_id": job_id,
         "host_provider": plan.host_provider,
+        "environment_path": "/job/environment" if fileset_environment else None,
         "sandbox": {
             "image": plan.runtime_image,
             # One claim, two sub-paths. The environment mount is read-only and the workspace is not,
             # so they must not resolve to the same directory.
-            "environment_pvc_claim": plan.job_storage_pvc_claim,
-            "environment_sub_path": plan.environment_sub_path,
-            "workspace_pvc_claim": plan.job_storage_pvc_claim,
-            # Job-scoped, unlike the environment mount: the workspace is writable, and the
-            # configured sub-path is deployment-wide, so two concurrent evaluations would otherwise
-            # scribble over each other's state in one directory.
-            "workspace_sub_path": f"{plan.workspace_sub_path.rstrip('/')}/{job_id}",
+            "environment_pvc_claim": environment_pvc_claim,
+            "environment_sub_path": environment_sub_path,
+            "workspace_pvc_claim": environment_pvc_claim,
+            "workspace_sub_path": workspace_sub_path,
             "resources": plan.resources,
-            "host_provider_options": dict(plan.host_provider_options),
+            "host_provider_options": host_provider_options,
             "network_policy": {"egress_allow": _egress_rules(plan)},
         },
         "episode_broker": {
@@ -294,10 +381,25 @@ class SessionBackedGymRunner:
     #: non-empty id because it scopes episode ownership and orphan reconciliation by it.
     LOCAL_JOB_ID = "agent-eval-local"
 
-    def __init__(self, *, target: GymRunnerTarget, plan: SandboxPlan, job_id: str | None) -> None:
+    def __init__(
+        self,
+        *,
+        target: GymRunnerTarget,
+        plan: SandboxPlan,
+        job_id: str | None,
+        workspace: str = "default",
+        persistent_storage_path: Path | None = None,
+    ) -> None:
+        """Keep the resolved plan and the job's storage identity for ``run_tasks``.
+
+        ``workspace`` and ``persistent_storage_path`` exist so a FileSet-backed host mounts the
+        tree the stage step wrote, rather than a shared deployment-wide environment cache.
+        """
         self._target = target
         self._plan = plan
         self._job_id = job_id or self.LOCAL_JOB_ID
+        self._workspace = workspace
+        self._persistent_storage_path = persistent_storage_path
         self._delegate: Any | None = None
 
     def runner_info(self) -> Any:
@@ -331,7 +433,13 @@ class SessionBackedGymRunner:
         )
         from sandboxed_gym import SandboxedGymOrchestrator, SandboxedGymServeConfig
 
-        payload = serve_config(self._target, self._plan, job_id=self._job_id)
+        payload = serve_config(
+            self._target,
+            self._plan,
+            job_id=self._job_id,
+            workspace=self._workspace,
+            persistent_storage_path=self._persistent_storage_path,
+        )
         orchestrator = SandboxedGymOrchestrator()
         # `start` provisions a host and blocks on its readiness probe, so it runs off the event loop.
         session = await asyncio.to_thread(orchestrator.start, SandboxedGymServeConfig.model_validate(payload))

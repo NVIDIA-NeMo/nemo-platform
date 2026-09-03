@@ -61,6 +61,19 @@ def test_authentik_compose_disables_model_provider_seed_without_ngc_key():
     assert "ports" not in nemo_service
 
 
+def test_authentik_compose_runs_only_core_services_and_controllers():
+    compose = yaml.safe_load(Path("contrib/auth/authentik/compose/docker-compose.yml").read_text())
+
+    assert compose["services"]["nemo"]["command"] == [
+        "--host",
+        "0.0.0.0",
+        "--service-group",
+        "core",
+        "--controller-group",
+        "core",
+    ]
+
+
 def test_authentik_compose_defaults_support_direct_docker_compose_start():
     compose_path = Path("contrib/auth/authentik/compose/docker-compose.yml")
     compose_text = compose_path.read_text(encoding="utf-8")

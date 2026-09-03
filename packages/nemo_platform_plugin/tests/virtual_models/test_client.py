@@ -15,7 +15,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import httpx
-from nemo_platform_plugin.inference_middleware import VirtualModel
+from nemo_platform_plugin.inference_middleware_models import VirtualModel
 from nemo_platform_plugin.virtual_models.client import VirtualModelsClient
 from nemo_platform_plugin.virtual_models.types import CreateVirtualModelRequest
 

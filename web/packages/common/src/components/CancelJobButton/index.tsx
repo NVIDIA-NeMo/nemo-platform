@@ -9,7 +9,7 @@ import {
   getJobsGetJobQueryKey,
   getJobsListJobsQueryKey,
   useJobsCancelJob,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/jobs';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Text } from '@nvidia/foundations-react-core';
 import { useQueryClient } from '@tanstack/react-query';

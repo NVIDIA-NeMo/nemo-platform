@@ -44,6 +44,7 @@ dependencies = [
   # adapters are the weight (codex ~299 MB, claude ~231 MB) and stay in the `fabric` extra below, so
   # only *resolving and running* a harness pulls them.
   "nemo-fabric>=0.2.0,<0.3.0",
+  "opentelemetry-proto>=1.27.0",
 ]
 version = "0.0.0"
 

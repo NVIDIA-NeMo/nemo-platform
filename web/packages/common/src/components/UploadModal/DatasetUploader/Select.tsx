@@ -8,7 +8,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/Context/useUploadModalContext';
 import { getExistingFileId } from '@nemo/common/src/components/UploadModal/utils';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
-import { filesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
+import { filesListFilesetFiles } from '@nemo/sdk/generated/platform/files';
 import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Flex, Text } from '@nvidia/foundations-react-core';
 import { type FC, useCallback, useEffect, useMemo, useRef } from 'react';

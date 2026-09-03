@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { agentsCreateAgent, agentsGetAgent } from '@nemo/sdk/generated/agents/api';
+import { agentsCreateAgent, agentsGetAgent } from '@nemo/sdk/generated/agents/agents';
 import {
   filesCreateFileset,
   filesDeleteFileset,
   filesRetrieveFileset,
   filesUploadFile,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/files';
 import {
   AgentSpecFilesetConflictError,
   AgentSpecFilesetOrphanError,
@@ -15,14 +15,14 @@ import {
 } from '@studio/api/agents/useCreateAgentFromUpload';
 import type { UploadAgentEntry } from '@studio/routes/agents/AgentsListRoute/NewAgentModal/type';
 
-vi.mock('@nemo/sdk/generated/agents/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@nemo/sdk/generated/agents/api')>()),
+vi.mock('@nemo/sdk/generated/agents/agents', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@nemo/sdk/generated/agents/agents')>()),
   agentsCreateAgent: vi.fn(),
   agentsGetAgent: vi.fn(),
 }));
 
-vi.mock('@nemo/sdk/generated/platform/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@nemo/sdk/generated/platform/api')>()),
+vi.mock('@nemo/sdk/generated/platform/files', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@nemo/sdk/generated/platform/files')>()),
   filesRetrieveFileset: vi.fn(),
   filesCreateFileset: vi.fn(),
   filesUploadFile: vi.fn(),

@@ -46,6 +46,9 @@ navigation:
             path: ../../agents/observability.mdx
           - section: Optimize Agents
             contents:
+              - page: ETHOS.md
+                path: ../../agents/ethos.mdx
+                slug: ethos
               - page: Run the Agent Optimizer
                 path: ../../agents/optimization.mdx
               - page: Insight-Driven Optimization
@@ -239,6 +242,8 @@ navigation:
         contents:
           - page: CLI
             path: ../../data-designer/cli.mdx
+          - page: Retrieval SDG
+            path: ../../data-designer/retrieval-sdg.mdx
           - section: Tutorials
             path: ../../data-designer/tutorials/index.mdx
             contents:

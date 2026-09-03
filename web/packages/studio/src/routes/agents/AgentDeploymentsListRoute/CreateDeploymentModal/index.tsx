@@ -9,8 +9,8 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getAgentsListDeploymentsQueryKey,
   useAgentsCreateDeployment,
-  useAgentsListAgents,
-} from '@nemo/sdk/generated/agents/api';
+} from '@nemo/sdk/generated/agents/agent-deployments';
+import { useAgentsListAgents } from '@nemo/sdk/generated/agents/agents';
 import { Stack } from '@nvidia/foundations-react-core';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect } from 'react';

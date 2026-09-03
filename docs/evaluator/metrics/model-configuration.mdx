@@ -31,12 +31,12 @@ evaluator: Evaluator = client.evaluator  # this object is an Evaluator resource
 Define the endpoint URL and model name directly:
 
 ```python
-from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk import Model, SecretRef
 
 model = Model(
     url="https://integrate.api.nvidia.com/v1",
-    name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 ```
 
@@ -53,9 +53,9 @@ model = Model(
 
 `api_key_secret` is an optional property on the `Model` object. Omit it when the endpoint does not require API-key authentication.
 
-For `nemo_evaluator_sdk.Evaluator` runs, `api_key_secret` names an environment variable available to the local Python process. For example, `api_key_secret="NVIDIA_API_KEY"` reads `os.environ["NVIDIA_API_KEY"]`.
+For `nemo_evaluator_sdk.Evaluator` runs, the `SecretRef` root names an environment variable available to the local Python process. For example, `api_key_secret=SecretRef(root="NVIDIA_API_KEY")` reads `os.environ["NVIDIA_API_KEY"]`.
 
-For remote `evaluator.submit(...)` jobs, `api_key_secret` must name a NeMo platform secret in the target workspace. Create the secret before submitting the job:
+For remote `evaluator.submit(...)` jobs, the `SecretRef` root must name a NeMo platform secret in the target workspace. Create the secret before submitting the job:
 
 ```python
 client.secrets.create(
@@ -74,27 +74,36 @@ from nemo_evaluator_sdk import (
     ExactMatchMetric,
     InferenceParams,
     Model,
+    SecretRef,
 )
 
 model = Model(
     url="https://integrate.api.nvidia.com/v1",
-    name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 
 metric = ExactMatchMetric(reference="{{item.expected_answer}}")
+dataset = [
+    {"question": "What is the capital of France?", "expected_answer": "Paris"},
+]
 
 job = evaluator.submit(
     metric=metric,
-    dataset=[
-        {"question": "What is the capital of France?", "expected_answer": "Paris"},
-    ],
+    dataset=dataset,
     config=RunConfigOnlineModel(
         parallelism=4,
         inference=InferenceParams(temperature=0.1, max_tokens=64),
     ),
     target=model,
-    prompt_template="Answer this question concisely: {{item.question}}",
+    prompt_template={
+        "messages": [
+            {
+                "role": "user",
+                "content": "Answer this question concisely: {{item.question}}",
+            },
+        ],
+    },
 )
 job.wait_until_done()
 result = job.get_result()
@@ -105,12 +114,12 @@ result = job.get_result()
 Use a model field on the metric when the metric itself calls an LLM to score existing outputs.
 
 ```python
-from nemo_evaluator_sdk import Model, RangeScore, LLMJudgeMetric
+from nemo_evaluator_sdk import LLMJudgeMetric, Model, RangeScore, SecretRef
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1",
-    name="meta/llama-3.1-70b-instruct",
-    api_key_secret="nvidia-api-key",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = LLMJudgeMetric(
     model=judge_model,
@@ -182,13 +191,13 @@ You can supply the evaluation target two ways. Which one is valid depends on whe
 An inline `Model` carries the resolved endpoint details. Always pass an inline `Model` as the `target` (or as a judge/embeddings field on the metric). If your deployment stores platform model entities, resolve the entity into endpoint details before constructing the `Model`:
 
 ```python
-from nemo_evaluator_sdk import Model, RunConfigOnlineModel
+from nemo_evaluator_sdk import Model, RunConfigOnlineModel, SecretRef
 
 model_entity = client.models.retrieve("my-model", workspace="default")
 model = Model(
     url=client.models.get_model_entity_route_openai_url(model_entity),
     name="my-model",
-    api_key_secret="nvidia-api-key",
+    api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 
 job = evaluator.submit(
@@ -196,6 +205,14 @@ job = evaluator.submit(
     dataset=dataset,
     config=RunConfigOnlineModel(parallelism=4),
     target=model,
+    prompt_template={
+        "messages": [
+            {
+                "role": "user",
+                "content": "Answer this question concisely: {{item.question}}",
+            },
+        ],
+    },
 )
 job.wait_until_done()
 result = job.get_result()
@@ -213,6 +230,14 @@ job = evaluator.submit(
     dataset=dataset,
     config=RunConfigOnlineModel(),
     target=ModelRef(root="default/my-model"),
+    prompt_template={
+        "messages": [
+            {
+                "role": "user",
+                "content": "Answer this question concisely: {{item.question}}",
+            },
+        ],
+    },
 )
 ```
 

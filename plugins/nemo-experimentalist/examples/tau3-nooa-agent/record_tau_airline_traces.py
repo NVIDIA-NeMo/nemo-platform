@@ -24,7 +24,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_nat
     HarborNativeOutcomeEvaluator,
 )
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
-from nemo_platform import AsyncNeMoPlatform, NotFoundError
+from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
@@ -131,6 +131,24 @@ def _write_upload_summary(
     return summary_path
 
 
+async def _ensure_evaluation(client: AsyncNeMoPlatform, *, workspace: str, name: str) -> None:
+    """Register the Evaluation these spans name, or Intake drops them."""
+    try:
+        group = await client.experiments.create(workspace=workspace, name=name)
+    except ConflictError:
+        group = await client.experiments.retrieve(name, workspace=workspace)
+    try:
+        await client.evaluations.create(
+            workspace=workspace,
+            name=name,
+            experiment_ids=[group.id],
+            dataset_name=name,
+            dataset_version="v1",
+        )
+    except ConflictError:
+        pass
+
+
 async def _upload_trials(
     client: AsyncNeMoPlatform,
     trials: list[TrialResult],
@@ -142,7 +160,6 @@ async def _upload_trials(
     model: str,
 ) -> dict[str, str]:
     trace_ids: dict[str, str] = {}
-    url = f"/apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces"
 
     for trial in trials:
         if trial.trace is None:
@@ -164,12 +181,7 @@ async def _upload_trials(
         if not payloads:
             raise RuntimeError(f"Trial {trial.id} produced an empty agent execution trace")
         for payload in payloads:
-            await client.post(
-                url,
-                cast_to=object,
-                content=payload,
-                options={"headers": {"Content-Type": "application/x-protobuf"}},
-            )
+            await client.intake.ingest.otlp.v1.traces.create(body=payload, workspace=workspace)
         trace_ids[trial.id] = trace_id
 
     return trace_ids
@@ -235,6 +247,7 @@ async def run(args: argparse.Namespace) -> Path:
                     ),
                 )
             ).data()
+            await _ensure_evaluation(client, workspace=args.workspace, name=evaluation_name)
             trace_ids = await _upload_trials(
                 client,
                 uploadable_trials,
@@ -277,6 +290,7 @@ async def run(args: argparse.Namespace) -> Path:
                 body=CreateWorkspaceRequest(name=args.workspace, description="Tau3 Airline agent traces for Insights"),
             )
         ).data()
+        await _ensure_evaluation(client, workspace=args.workspace, name=evaluation_name)
         run_dir.mkdir(parents=True)
 
         options = HarborEvaluatorConfig(

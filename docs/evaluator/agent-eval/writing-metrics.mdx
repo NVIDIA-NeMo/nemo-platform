@@ -113,8 +113,9 @@ class KeywordMatchMetric:
 ## Reading evidence
 
 `candidate.evidence` (a `CandidateEvidence`) holds named descriptors, each exposed through a typed
-handle. `trace()` returns an `ATIFTraceHandle | OTLPTraceHandle` union. Always guard for missing
-evidence, then narrow on `handle.format` before using format-specific methods:
+handle. `trace()` returns the runner's primary view as an `ATIFTraceHandle | OTLPTraceHandle` union.
+Always guard for missing evidence, then narrow on `handle.format` before using format-specific
+methods:
 
 ```python
 from nemo_evaluator_sdk.metrics.protocol import MetricInput
@@ -136,13 +137,36 @@ async def read_trace(input: MetricInput) -> None:
 
 | Evidence | Handle | Reads |
 |---|---|---|
-| **trace** (`EVIDENCE_TRACE`) | `ATIFTraceHandle` (`format == "atif"`) | `.trace()`, `.tool_calls()`, `.steps()`, `.token_usage()` |
-| **trace** (`EVIDENCE_TRACE`) | `OTLPTraceHandle` (`format == "otlp"`) | `.resource_spans()` |
+| **trace** (`EVIDENCE_TRACE`) | `ATIFTraceHandle` — `await evidence.trace(format="atif")` | `.trace()`, `.tool_calls()`, `.steps()`, `.token_usage()` |
+| **trace** (`EVIDENCE_TRACE`) | `OTLPTraceHandle` — `await evidence.trace(format="otlp")` | `.resource_spans()` |
 | **filesystem** (`EVIDENCE_FINAL_STATE`, `EVIDENCE_INITIAL_STATE`) | `await evidence.filesystem(name)` | `.run_verifier(command)`, `.diff(other)` — run a check or diff two snapshots |
 | **logs** | `await evidence.logs(name)` | `.read_text(file)`, `.tail(file)` |
 
 OTLP exposes the unflattened `resourceSpans` tree; it does not provide a generic `tool_calls()` method.
 It's a responsibility of consumer to parse `resourceSpans` tree specific to OTLP exporter to extract the searched data.
+
+### Asking for one trace format
+
+A runner may record the same trial in more than one encoding. Harbor registers both under
+`trace:atif` and `trace:otlp` when the agent under test emits both. Pass `format=` to choose one
+and get a narrowed handle back, with no runtime branch:
+
+```python
+from nemo_evaluator_sdk.values.evidence import CandidateEvidence
+
+async def read_both_views(evidence: CandidateEvidence) -> None:
+    otlp = await evidence.trace(format="otlp")  # OTLPTraceHandle
+    resource_spans = await otlp.resource_spans()
+
+    atif = await evidence.trace(format="atif")  # ATIFTraceHandle
+    calls = await atif.tool_calls()
+```
+
+`trace()` with no `format` still returns whichever encoding the runner made primary. For Harbor
+that is the OTLP trace when the agent emits one and the ATIF trace otherwise — there is no setting
+to choose between them. A `format=` request raises `KeyError` when the trial carries no trace in
+that encoding, so a metric that depends on one specific view fails loudly instead of silently
+scoring nothing.
 
 The [Score by Component](/documentation/evaluate-models/agent-eval/score-by-component) guide has a
 complete, runnable trajectory metric; the SDK's `example_metrics.py` (under

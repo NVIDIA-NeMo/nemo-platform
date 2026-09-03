@@ -352,6 +352,25 @@ def test_gym_host_spec_carries_global_config_in_bootstrap():
     assert any(rule.host == "broker.svc.cluster.local" for rule in spec.egress_allow)
 
 
+def test_explicit_environment_path_requires_a_valid_package():
+    from sandboxed_gym.config import BrokerEndpoint
+    from sandboxed_gym.orchestrator import build_gym_host_spec
+    from sandboxed_gym.runtime.gym_host_runtime import ENVIRONMENT_PACKAGE_REQUIRED_ENV_KEY
+
+    broker = BrokerEndpoint(
+        url="http://broker.svc.cluster.local:51234",
+        host="broker.svc.cluster.local",
+        port=51234,
+        token="token",
+    )
+
+    custom = build_gym_host_spec(_serve_cfg(environment_path="/job/environment"), broker)
+    bundled = build_gym_host_spec(_serve_cfg(), broker)
+
+    assert custom.bootstrap_env[ENVIRONMENT_PACKAGE_REQUIRED_ENV_KEY] == "true"
+    assert ENVIRONMENT_PACKAGE_REQUIRED_ENV_KEY not in bundled.bootstrap_env
+
+
 def test_sandbox_config_round_trip():
     cfg = SandboxConfig(
         image="runtime:dev",

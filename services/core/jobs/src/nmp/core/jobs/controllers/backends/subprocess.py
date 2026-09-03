@@ -62,6 +62,8 @@ SUBPROCESS_INHERITED_ENV_ALLOWLIST = frozenset(
     {
         "PATH",
         "VIRTUAL_ENV",
+        # A path on the build host, so operator-set like the rest of this list.
+        "NEMO_AGENTS_WHEEL",
     }
 )
 
