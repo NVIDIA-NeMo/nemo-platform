@@ -19,6 +19,11 @@ kind: Role
 metadata:
   name: scaled-evals-sandbox-access
 rules:
+  # The plugin creates and observes Sandbox CRs directly. Keep this baseline
+  # grant deployment-owned instead of depending on optional installation roles.
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes"]
+    verbs: ["create", "delete", "get", "list", "watch"]
   # The pods the controller creates from each Sandbox.
   - apiGroups: [""]
     resources: ["pods"]

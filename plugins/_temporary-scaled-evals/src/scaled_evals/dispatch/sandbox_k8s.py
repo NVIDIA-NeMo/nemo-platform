@@ -1071,13 +1071,22 @@ def _augment_harbor_env(
 
 
 def _extract_pack(tarball_path: Path, dest: Path) -> None:
-    """Extract a gzip pack into ``dest``, rejecting unsafe member paths.
+    """Extract a bounded gzip pack into ``dest``, rejecting unsafe paths."""
 
-    Mirrors the build path's extraction (api/build/buildkit.py): the 3.12
-    ``data`` filter blocks absolute paths and ``..`` traversal out of ``dest``.
-    """
     with tarfile.open(tarball_path, "r:gz") as tar:
-        tar.extractall(dest, filter="data")
+        members = tar.getmembers()
+        if len(members) > settings.task_pack_max_members:
+            raise ValueError(
+                f"task pack exceeds configured member limit ({len(members)} > {settings.task_pack_max_members})"
+            )
+        extracted_size = sum(member.size for member in members)
+        if extracted_size > settings.task_pack_max_extracted_size_bytes:
+            raise ValueError(
+                "task pack exceeds configured extracted-size limit "
+                f"({extracted_size} bytes > "
+                f"{settings.task_pack_max_extracted_size_bytes} bytes)"
+            )
+        tar.extractall(dest, members=members, filter="data")
 
 
 def _find_task_tree(root: Path) -> Path | None:
@@ -1110,6 +1119,33 @@ def _task_trees_match(source: Path, dest: Path) -> bool:
         if source_path.is_file() and not filecmp.cmp(source_path, dest_path, shallow=False):
             return False
     return True
+
+
+_COMPOSE_FILENAMES = ("docker-compose.yaml", "docker-compose.yml")
+
+
+def _restore_compose_definition(pack_root: Path, task_tree: Path) -> None:
+    """Put a pack-root compose file back where Harbor looks for it.
+
+    Packing flattens ``environment/`` to the pack root so the root doubles as the
+    image build context, which leaves the staged task tree without the
+    ``environment/docker-compose.yaml`` a multi-service task declares upstream.
+    Harbor reads that path to decide whether a task's compose services can exist,
+    and refuses any artifact entry or verifier collect hook naming a service when
+    it finds nothing -- so the file has to travel with the tree.
+
+    This only restores a declaration. Nothing on this runtime builds or runs
+    compose: the services themselves come from the profile's ``sidecars`` list.
+    A pack with no compose file is left alone, so single-container tasks see no
+    change at all.
+    """
+    environment_dir = task_tree / "environment"
+    for filename in _COMPOSE_FILENAMES:
+        source = pack_root / filename
+        if not source.is_file() or (environment_dir / filename).exists():
+            continue
+        environment_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, environment_dir / filename)
 
 
 def _stage_task_tree(tarball_object_key: str, dest: Path) -> Path | None:
@@ -1159,6 +1195,7 @@ def _stage_task_tree(tarball_object_key: str, dest: Path) -> Path | None:
             lock_path = dest.with_name(f".{dest.name}.lock")
             try:
                 shutil.copytree(task_src, staging)
+                _restore_compose_definition(extracted, staging)
                 with lock_path.open("a+") as lock_file:
                     fcntl.flock(lock_file, fcntl.LOCK_EX)
                     if dest.exists():
