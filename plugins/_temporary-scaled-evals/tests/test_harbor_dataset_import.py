@@ -3,13 +3,16 @@
 
 import io
 import tarfile
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import Request, Response
 from scaled_evals.api.build.task_image_identity import (
+    TaskImageIdentityError,
     normalize_upstream_image_ref,
     resolve_upstream_image,
 )
+from scaled_evals.api.settings import settings
 from scaled_evals.dispatch.harbor_dataset_images import dataset_configs, effective_image_mode
 from scaled_evals.harbor_dataset_import import (
     HarborDatasetImageImport,
@@ -69,6 +72,65 @@ def test_upstream_image_resolution_expands_docker_shorthand() -> None:
 
     assert resolved.immutable_ref == "docker.io/alexgshaw/task@sha256:" + "a" * 64
     assert requested == ["https://registry-1.docker.io/v2/alexgshaw/task/manifests/20251031"]
+
+
+def test_upstream_resolution_enforces_registry_and_bearer_host_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = MagicMock()
+    with pytest.raises(TaskImageIdentityError, match="registry.example.*not approved"):
+        resolve_upstream_image("registry.example/team/task:latest", client=client)
+    client.get.assert_not_called()
+
+    monkeypatch.setattr(
+        settings,
+        "harbor_dataset_upstream_allowed_registries",
+        "docker.io,ghcr.io,registry.example",
+    )
+    monkeypatch.setattr(settings, "task_image_registry_insecure", True)
+    client.get.return_value = Response(
+        401,
+        headers={
+            "WWW-Authenticate": (
+                'Bearer realm="https://tokens.example/token",'
+                'service="registry.example",scope="repository:team/task:pull"'
+            )
+        },
+        request=Request("GET", "https://registry.example/v2/team/task/manifests/latest"),
+    )
+    with pytest.raises(TaskImageIdentityError, match="not publicly readable"):
+        resolve_upstream_image("registry.example/team/task:latest", client=client)
+    assert client.get.call_count == 1
+
+    responses = iter(
+        [
+            Response(
+                401,
+                headers={
+                    "WWW-Authenticate": (
+                        'Bearer realm="https://auth.docker.io/token",'
+                        'service="registry.docker.io",scope="repository:library/ubuntu:pull"'
+                    )
+                },
+                request=Request("GET", "https://registry-1.docker.io/v2/library/ubuntu/manifests/latest"),
+            ),
+            Response(
+                200,
+                json={"token": "public-token"},
+                request=Request("GET", "https://auth.docker.io/token"),
+            ),
+            Response(
+                200,
+                headers={"Docker-Content-Digest": "sha256:" + "a" * 64},
+                request=Request("GET", "https://registry-1.docker.io/v2/library/ubuntu/manifests/latest"),
+            ),
+        ]
+    )
+    docker_client = MagicMock()
+    docker_client.get.side_effect = lambda *_args, **_kwargs: next(responses)
+    assert resolve_upstream_image("ubuntu:latest", client=docker_client).digest == "sha256:" + "a" * 64
+    assert docker_client.get.call_count == 3
+    assert docker_client.get.call_args_list[0].args[0].startswith("https://registry-1.docker.io/")
 
 
 def test_dataset_image_mode_is_always_managed() -> None:

@@ -17,31 +17,12 @@
     "wheel_sha256": "f6d89d7e331221fac61679b0ede90de5d04225e972ca15bbcad905847045491a"
   },
   "adapter": {
-    "version": "scaled-evals-overlay-v30",
-    "bundle_sha256": "8548185a42701818a27a2ac67ea90233f7b10d15f09bc9f8741be0c89be6ff31",
+    "version": "nemo-platform-plugin-overlay-v1",
     "files": [
-      "compose/harbor-runner/patches/patch_claude_code_initial_turns.py",
-      "compose/harbor-runner/patches/patch_codex_custom_provider.py",
-      "compose/harbor-runner/patches/patch_codex_model_path.py",
-      "compose/harbor-runner/patches/patch_hermes_extra_env.py",
-      "compose/harbor-runner/patches/patch_langgraph_inference_headers.py",
-      "compose/harbor-runner/patches/patch_langgraph_writable_venv.py",
-      "compose/harbor-runner/patches/patch_opencode_extra_env.py",
-      "compose/harbor-runner/patches/patch_openclaw_upload.py",
-      "compose/harbor-runner/patches/patch_openhands_inference_headers.py",
-      "compose/harbor-runner/patches/patch_pi_extra_env.py",
-      "compose/harbor-runner/patches/patch_sandbox_k8s_root.py",
-      "compose/harbor-runner/patches/patch_terminus2_tmux_env.py",
-      "compose/harbor-runner/patches/matrix_command_agent.py",
-      "compose/harbor-runner/patches/preinstalled_claude_code.py",
-      "compose/harbor-runner/patches/preinstalled_codex.py",
-      "compose/harbor-runner/patches/preinstalled_hermes.py",
-      "compose/harbor-runner/patches/preinstalled_openhands.py",
-      "compose/harbor-runner/patches/preinstalled_openclaw.py",
-      "compose/harbor-runner/patches/preinstalled_opencode.py",
-      "compose/harbor-runner/patches/preinstalled_pi.py",
-      "compose/harbor-runner/patches/preinstalled_utils.py",
-      "compose/harbor-runner/patches/sandbox_k8s_harbor.py"
+      "harbor-patches/patch_langgraph_writable_venv.py",
+      "harbor-patches/patch_pi_extra_env.py",
+      "harbor-patches/patch_sandbox_k8s_root.py",
+      "harbor-patches/sandbox_k8s_harbor.py"
     ]
   },
   "releases": {

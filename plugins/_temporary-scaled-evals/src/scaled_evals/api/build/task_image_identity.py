@@ -162,6 +162,7 @@ def resolve_upstream_image(
     """
 
     ref = parse_task_image_ref(normalize_upstream_image_ref(image_ref))
+    _require_allowed_upstream_registry(ref)
     reference = ref.digest or ref.tag
     assert reference is not None
     response = _request_manifest(
@@ -193,6 +194,15 @@ def resolve_upstream_image(
 
 def _policy_entries(value: str) -> tuple[str, ...]:
     return tuple(item.strip().lower().rstrip("/") for item in value.split(",") if item.strip())
+
+
+def _require_allowed_upstream_registry(ref: TaskImageReference) -> None:
+    registries = _policy_entries(settings.harbor_dataset_upstream_allowed_registries)
+    if ref.registry not in registries:
+        raise TaskImageIdentityError(
+            f"upstream image registry {ref.registry!r} is not approved; allowed registries: "
+            + ", ".join(registries)
+        )
 
 
 def require_allowed_task_image(ref: TaskImageReference) -> None:
@@ -320,7 +330,7 @@ def _request_manifest(
     client: httpx.Client | None,
     allow_registry_credentials: bool = True,
 ) -> httpx.Response:
-    scheme = "http" if settings.task_image_registry_insecure else "https"
+    scheme = "http" if allow_registry_credentials and settings.task_image_registry_insecure else "https"
     registry_api_host = "registry-1.docker.io" if ref.registry == "docker.io" else ref.registry
     url = f"{scheme}://{registry_api_host}/v2/{ref.repository}/manifests/{reference}"
     registry_headers = _registry_auth_headers(ref.registry) if allow_registry_credentials else {}
@@ -335,7 +345,13 @@ def _request_manifest(
         response = client.get(url, headers=headers)
         if response.status_code == 401:
             try:
-                token = _registry_bearer_token(client, response, ref, registry_headers)
+                token = _registry_bearer_token(
+                    client,
+                    response,
+                    ref,
+                    registry_headers,
+                    allow_insecure=allow_registry_credentials and settings.task_image_registry_insecure,
+                )
             except TaskImageIdentityError as exc:
                 if not allow_registry_credentials:
                     raise TaskImageIdentityError(
@@ -419,6 +435,8 @@ def _registry_bearer_token(
     response: httpx.Response,
     ref: TaskImageReference,
     registry_headers: dict[str, str],
+    *,
+    allow_insecure: bool,
 ) -> str | None:
     challenge = response.headers.get("WWW-Authenticate", "")
     scheme, _, raw_parameters = challenge.partition(" ")
@@ -430,9 +448,12 @@ def _registry_bearer_token(
     if not parsed.hostname or parsed.scheme not in {"http", "https"}:
         raise TaskImageIdentityError("registry returned an invalid bearer-token challenge")
     registry_host = ref.registry.split(":", 1)[0]
-    if parsed.scheme != "https" and not (
-        settings.task_image_registry_insecure and parsed.hostname == registry_host
-    ):
+    allowed_hosts = {registry_host}
+    if ref.registry == "docker.io":
+        allowed_hosts.add("auth.docker.io")
+    if parsed.hostname not in allowed_hosts:
+        raise TaskImageIdentityError("registry bearer-token challenge host must match the registry")
+    if parsed.scheme != "https" and not (allow_insecure and parsed.hostname == registry_host):
         raise TaskImageIdentityError("registry bearer-token challenge must use HTTPS")
     query = {
         key: value for key, value in parameters.items() if key in {"service", "scope"} and value

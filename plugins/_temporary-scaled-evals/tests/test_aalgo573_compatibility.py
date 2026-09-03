@@ -59,6 +59,15 @@ def test_harbor_catalog_and_compose_image_advertise_the_same_runners() -> None:
     assert catalog["aliases"]["default"] == "0.13.2"
     assert "0.20.0" in supported_harbor_versions()
     assert resolve_harbor_runner("0.20.0").harbor_dir == "/opt/harbor/0.20.0"
+    assert catalog["adapter"] == {
+        "version": "nemo-platform-plugin-overlay-v1",
+        "files": [
+            "harbor-patches/patch_langgraph_writable_venv.py",
+            "harbor-patches/patch_pi_extra_env.py",
+            "harbor-patches/patch_sandbox_k8s_root.py",
+            "harbor-patches/sandbox_k8s_harbor.py",
+        ],
+    }
 
     dockerfile = (PLUGIN_ROOT / "deploy/compose/Dockerfile").read_text()
     assert "selectable-versions.txt" in dockerfile

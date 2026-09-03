@@ -182,8 +182,11 @@ def _append_reference_checks(
         )
     )
 
-    if body.framework == "harbor" and body.framework_profile_id:
-        profile_row = db.evaluations.load_framework_profile(body.framework_profile_id)
+    framework_profile_ids = {body.framework_profile_id} if body.framework_profile_id else set()
+    if isinstance(body, CreateBenchmarkRunRequest):
+        framework_profile_ids.update(body.member_framework_profile_ids.values())
+    for framework_profile_id in sorted(framework_profile_ids) if body.framework == "harbor" else ():
+        profile_row = db.evaluations.load_framework_profile(framework_profile_id)
         profile = profile_row.get("config") if profile_row else None
         if isinstance(profile, dict) and profile.get("dataset_only") is True:
             try:

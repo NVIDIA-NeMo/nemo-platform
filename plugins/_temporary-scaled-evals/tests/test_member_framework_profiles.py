@@ -25,6 +25,7 @@ try:
         preflight_benchmark_run,
     )
     from scaled_evals.api.schemas.benchmark_runs import CreateBenchmarkRunRequest
+    from scaled_evals.api.settings import settings
     from scaled_evals.cli import client as client_module
     from scaled_evals.cli.main import cli
 except ImportError as exc:
@@ -97,6 +98,55 @@ def test_member_profile_references_are_validated(monkeypatch: pytest.MonkeyPatch
     assert isinstance(result, BlockedPreflight)
     assert result.blocker.status_code == 422
     assert "outside the benchmark: task_1" in result.blocker.message
+
+
+def test_member_dataset_profiles_receive_image_and_builder_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evaluations = MagicMock()
+    db = MagicMock(evaluations=evaluations)
+    body = CreateBenchmarkRunRequest(
+        name="suite",
+        benchmark_id="bm_suite",
+        framework_profile_id="cfg_default",
+        member_framework_profile_ids={"task_0": "cfg_member"},
+    )
+    profiles = {
+        "cfg_default": {"config": {}},
+        "cfg_member": {
+            "config": {
+                "dataset_only": True,
+                "dataset_image_mode": "direct",
+            }
+        },
+    }
+    evaluations.load_framework_profile.side_effect = profiles.get
+
+    blocker = _append_reference_checks(
+        db,
+        body,
+        CurrentPrincipal(owner_type="DEV", owner_id="dev"),
+        [],
+    )
+    assert blocker is not None
+    assert blocker.code == "managed_dataset_images_required"
+
+    profiles["cfg_member"]["config"]["dataset_image_mode"] = "managed"
+    monkeypatch.setattr(settings, "image_builder_service_url", "")
+    monkeypatch.setattr(settings, "cloud_build_enabled", False)
+    monkeypatch.setattr(settings, "buildkit_enabled", False)
+    blocker = _append_reference_checks(
+        db,
+        body,
+        CurrentPrincipal(owner_type="DEV", owner_id="dev"),
+        [],
+    )
+    assert blocker is not None
+    assert blocker.code == "managed_dataset_builder_unavailable"
+    assert {call.args[0] for call in evaluations.load_framework_profile.call_args_list[-2:]} == {
+        "cfg_default",
+        "cfg_member",
+    }
 
 
 def test_member_profile_selection_and_metadata_are_persisted(

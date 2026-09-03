@@ -3,7 +3,12 @@
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import pytest
+from fastapi import HTTPException
+from scaled_evals.api.auth import CurrentPrincipal
+from scaled_evals.api.routers.benchmark_imports import publish_benchmark_import
 from scaled_evals.api.schemas.benchmark_imports import BenchmarkImportCreate
 from scaled_evals.benchmark_import import (
     import_id_from_legacy_state,
@@ -72,3 +77,39 @@ def test_import_schema_and_compatibility_state_preserve_portable_metadata(tmp_pa
     )
     assert import_id_from_legacy_state(state_path) == "bmi_one"
     assert json.loads(state_path.read_text())[0]["source_commit"] == "abc"
+
+
+def test_publish_rejects_benchmark_slug_owned_by_another_principal() -> None:
+    db = MagicMock()
+    db.benchmark_imports.get.return_value = {
+        "id": "bmi_one",
+        "manifest": {"benchmarks": [{"slug": "bench"}]},
+        "visibility": "public",
+    }
+    db.benchmark_imports.tasks.return_value = [
+        {
+            "slug": "task",
+            "status": "ready",
+            "task_id": "task_one",
+            "task_revision": 1,
+        }
+    ]
+    db.benchmark_imports.benchmarks.return_value = [
+        {"slug": "bench", "name": "Bench", "task_slugs": ["task"]}
+    ]
+    db.benchmarks.get_by_slug.return_value = {
+        "id": "bm_other",
+        "owner_id": "other",
+    }
+
+    with pytest.raises(HTTPException) as exc_info:
+        publish_benchmark_import(
+            "bmi_one",
+            db,
+            CurrentPrincipal(owner_type="USER", owner_id="owner"),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["error"]["code"] == "benchmark_slug_owned_by_another_user"
+    db.benchmarks.update.assert_not_called()
+    db.benchmarks.create_next_revision.assert_not_called()

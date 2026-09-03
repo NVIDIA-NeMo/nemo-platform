@@ -346,6 +346,12 @@ def publish_benchmark_import(
             for slug in benchmark["task_slugs"]
         ]
         existing = db.benchmarks.get_by_slug(benchmark["slug"])
+        if existing is not None and existing.get("owner_id") != current.owner_id:
+            raise _http_error(
+                409,
+                "benchmark_slug_owned_by_another_user",
+                f"benchmark slug {benchmark['slug']!r} is owned by another user",
+            )
         if existing is None:
             benchmark_id = make_id("bm")
             created = db.benchmarks.create_with_initial_revision(
