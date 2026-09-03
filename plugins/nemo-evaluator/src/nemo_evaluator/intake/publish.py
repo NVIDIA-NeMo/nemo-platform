@@ -29,7 +29,7 @@ from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
-from nemo_platform import AsyncNeMoPlatform, UnprocessableEntityError
+from nemo_platform import AsyncNeMoPlatform, NotFoundError, UnprocessableEntityError
 from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
 from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
 from nemo_platform.types.intake.ingest.atif_step_param import AtifStepParam
@@ -154,8 +154,10 @@ async def publish_to_intake(
     already landed replaces its rows instead of duplicating them, which is what makes
     a worker retry after a partial publish safe.
 
-    ``experiment_id`` must reference an Experiment that already exists — ATIF ingest
-    rejects unknown experiments with HTTP 400. Creating the Experiment/group is a
+    ``experiment_id`` must reference an evaluation that already exists and is not
+    deleted; it is checked once up front. ATIF ingest enforces this server-side, but
+    OTLP ingest does not, so nothing else would stop the primary path from writing
+    spans against an evaluation that cannot hold them. Creating the evaluation is a
     separate, caller-side step via the platform Experiments SDK.
 
     Agent identity (``agent_name``/``agent_version``/``model_name``) is taken as
@@ -174,6 +176,14 @@ async def publish_to_intake(
             f"Cannot publish run {result.run_id!r}: metadata.started_at is unset, and publishing "
             "without it would write trajectories that duplicate on re-publish."
         )
+
+    try:
+        await platform.evaluations.retrieve(experiment_id, workspace=resolved_workspace)
+    except NotFoundError as error:
+        raise PublishError(
+            f"Cannot publish run {result.run_id!r}: evaluation {experiment_id!r} does not exist in "
+            f"workspace {resolved_workspace!r}, or has been deleted."
+        ) from error
 
     scores_by_trial: dict[str, list[AgentEvalTaskScore]] = defaultdict(list)
     for score in result.scores:

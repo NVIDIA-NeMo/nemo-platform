@@ -22,7 +22,7 @@ from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEval
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, TrialError
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
-from nemo_platform import AsyncNeMoPlatform, UnprocessableEntityError
+from nemo_platform import AsyncNeMoPlatform, NotFoundError, UnprocessableEntityError
 
 # --- fakes ------------------------------------------------------------------
 
@@ -77,6 +77,24 @@ class _FakeTraces:
         return _gen()
 
 
+class _FakeEvaluations:
+    """Resolves the run's evaluation, or 404s the way ingest does for a missing or deleted one."""
+
+    def __init__(self, calls: list[dict[str, Any]], *, missing: bool = False) -> None:
+        self._calls = calls
+        self._missing = missing
+
+    async def retrieve(self, name: str, *, workspace: str) -> object:
+        self._calls.append({"name": name, "workspace": workspace})
+        if self._missing:
+            raise NotFoundError(
+                "evaluation not found",
+                response=httpx.Response(404, request=httpx.Request("GET", "http://intake/evaluations")),
+                body=None,
+            )
+        return SimpleNamespace(name=name)
+
+
 class _FakeClient:
     def __init__(
         self,
@@ -87,8 +105,11 @@ class _FakeClient:
         fail_eval_session: str | None = None,
         atif: Any | None = None,
         otlp_errors: list[str] | None = None,
+        evaluation_missing: bool = False,
     ) -> None:
         self.workspace = workspace
+        self.evaluation_calls: list[dict[str, Any]] = []
+        self.evaluations = _FakeEvaluations(self.evaluation_calls, missing=evaluation_missing)
         self.atif_calls: list[dict[str, Any]] = []
         self.otlp_calls: list[dict[str, Any]] = []
         self.eval_calls: list[dict[str, Any]] = []
@@ -205,6 +226,22 @@ async def test_publishes_trajectory_and_scores() -> None:
         "span:run-1:t-1",
         3,
     )
+
+
+async def test_an_unknown_evaluation_fails_the_run_before_any_trial_is_written() -> None:
+    # OTLP ingest does not check the evaluation exists the way ATIF ingest does, so without this
+    # guard the primary path would write spans against an evaluation that cannot hold them.
+    result = _result(
+        trials=[_trial("t-1")],
+        scores=[_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])],
+    )
+    client = _FakeClient(evaluation_missing=True)
+
+    with pytest.raises(PublishError, match="does not exist"):
+        await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+
+    assert client.evaluation_calls == [{"name": "exp-1", "workspace": "default"}]
+    assert (client.otlp_calls, client.atif_calls, client.eval_calls) == ([], [], [])
 
 
 async def test_multiple_trials_each_get_their_own_session_and_span() -> None:
