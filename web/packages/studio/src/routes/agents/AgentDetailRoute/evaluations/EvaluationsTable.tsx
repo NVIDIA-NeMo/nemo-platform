@@ -116,6 +116,14 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
   // the form is closed.
   const [rerunSource, setRerunSource] = useState<AgentEvaluationRow | null>(null);
   const rows = useMemo(() => mergeRows(evaluations, jobs), [evaluations, jobs]);
+  // StudioDataView is `dataMode="manual"`, so it renders exactly the rows it is handed and leaves
+  // paging to the caller. Both source lists are already in memory, so slice here rather than
+  // refetching a page.
+  const { pageIndex, pageSize } = dataViewState.pagination.state;
+  const pageRows = useMemo(
+    () => rows.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize),
+    [rows, pageIndex, pageSize]
+  );
 
   const handleDelete = useCallback(
     async (rowsToDelete: AgentEvaluationRow[]) => {
@@ -135,13 +143,15 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
     [workspace, queryClient]
   );
 
+  // Always the evaluation's own results, never the job that produced them — the Job cell links
+  // there. The route is nested under an experiment, so a row whose experiment has not resolved has
+  // nowhere to go.
   const destinationFor = useCallback(
     (row: AgentEvalTableRow): string | undefined => {
       const experimentName = row.evaluation ? primaryExperimentName(row.evaluation) : undefined;
-      if (row.evaluation && experimentName) {
-        return getEvaluationDetailRoute(workspace, experimentName, row.evaluation.name);
-      }
-      return row.job ? evalJobDetailRoute(workspace, row.job) : undefined;
+      return row.evaluation && experimentName
+        ? getEvaluationDetailRoute(workspace, experimentName, row.evaluation.name)
+        : undefined;
     },
     [workspace]
   );
@@ -322,7 +332,8 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
         )}
         attributes={{
           DataViewRoot: {
-            data: rows,
+            data: pageRows,
+            totalCount: rows.length,
             reactTableOptions: {
               enableRowSelection: (row) => row.original.evaluation != null,
             },

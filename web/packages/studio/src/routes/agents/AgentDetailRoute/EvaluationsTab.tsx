@@ -7,10 +7,13 @@ import { EvaluationsTable } from '@studio/routes/agents/AgentDetailRoute/evaluat
 import { ExperimentsTable } from '@studio/routes/agents/AgentDetailRoute/evaluations/ExperimentsTable';
 import { groupByExperiment } from '@studio/routes/agents/AgentDetailRoute/evaluations/groupByExperiment';
 import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
-import { type FC, useMemo, useState } from 'react';
+import { type FC, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router';
 
 const VIEW_EVALUATIONS = 'evaluations';
 const VIEW_EXPERIMENTS = 'experiments';
+/** `tab` already belongs to the agent's outer tabs, so this view gets its own parameter. */
+const VIEW_SEARCH_PARAM = 'view';
 
 const VIEW_ITEMS = [
   { value: VIEW_EVALUATIONS, children: 'Evaluations' },
@@ -29,7 +32,23 @@ interface EvaluationsTabProps {
  *  both datasets because a run in flight is only a job: it has no published evaluation to show
  *  until it finishes, so `EvaluationsTable` merges the two rather than losing it. */
 export const EvaluationsTab: FC<EvaluationsTabProps> = ({ workspace, agentName, evals, jobs }) => {
-  const [view, setView] = useState<string>(VIEW_EVALUATIONS);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view =
+    searchParams.get(VIEW_SEARCH_PARAM) === VIEW_EXPERIMENTS ? VIEW_EXPERIMENTS : VIEW_EVALUATIONS;
+  const setView = useCallback(
+    (next: string) => {
+      setSearchParams(
+        (previous) => {
+          const params = new URLSearchParams(previous);
+          if (next === VIEW_EXPERIMENTS) params.set(VIEW_SEARCH_PARAM, next);
+          else params.delete(VIEW_SEARCH_PARAM);
+          return params;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
   const experiments = useMemo(() => groupByExperiment(evals), [evals]);
 
   return (
