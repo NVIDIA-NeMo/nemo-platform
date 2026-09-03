@@ -226,7 +226,7 @@ class ArithmeticExpressionCorrectnessMetric(Metric):
 
 Run the metric through the Evaluator SDK so you exercise the normal dataset loading, metric execution, aggregation, and result objects before submitting a service-side job.
 
-For an offline evaluation, datasets often store predictions under task-specific column names such as `model_expression`, `answer`, or `prediction`. Use `FieldMapping` to map that column to the evaluator's canonical `output` field. The Evaluator SDK then passes it to your metric as `metric_input.candidate.output_text`.
+For an offline evaluation, datasets often store predictions under task-specific column names such as `model_expression`, `answer`, or `prediction`. Use `FieldMapping` to map that column to the evaluator's canonical `output` field. The Evaluator SDK then passes it to your metric as `input.candidate.output_text`.
 
 The local dataset includes correct expressions, a valid expression with the wrong value, and an invalid expression so you can see both metric outputs vary.
 
