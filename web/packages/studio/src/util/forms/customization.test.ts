@@ -349,7 +349,7 @@ describe('GRPO form validation', () => {
   it.each([1, 2])('accepts Triton LoRA kernels at tensor parallel size %i', (tp) => {
     const data = validGrpo();
     data.grpo.finetuning_type = RlGRPOTrainingFinetuningType.lora;
-    data.grpo.lora.use_triton = true;
+    data.grpo.lora = { ...data.grpo.lora, use_triton: true };
     data.rl.training.parallelism = { ...data.rl.training.parallelism, tensor_parallel_size: tp };
     expect(messages(data)).toEqual([]);
   });
