@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
-import { useGetEvaluation, useGetExperiment } from '@nemo/sdk/generated/platform/api';
+import { useGetEvaluation } from '@nemo/sdk/generated/platform/evaluations';
+import { useGetExperiment } from '@nemo/sdk/generated/platform/experiments';
 import { Badge, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import { EvaluationSessionsDataView } from '@studio/components/dataViews/EvaluationSessionsDataView';

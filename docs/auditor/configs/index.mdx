@@ -9,6 +9,19 @@ description: ""
 
 An `AuditConfig` selects which garak probes and detectors run during an audit, how many generations to make per probe, and where the reports land. Configurations are persisted in the NeMo Platform entity store and referenced by name from `client.auditor.run(...)`.
 
+## Initialize the SDK
+
+```python
+import os
+
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+```
+
 ## What an AuditConfig Holds
 
 A configuration has four sub-blocks plus a free-form description. Each sub-block has sensible defaults, so a minimal configuration only needs a workspace and a name.
@@ -48,10 +61,10 @@ from nemo_auditor.entities import (
 config = client.auditor.configs.create(
     workspace="default",
     name="quick-scan",
-    description="Lite latentinjection scan, 3 generations per probe.",
+    description="Bounded scan using one probe and one generation.",
     system=AuditSystemData(lite=True, parallel_attempts=4),
-    run=AuditRunData(generations=3),
-    plugins=AuditPluginsData(probe_spec="latentinjection", detector_spec="auto"),
+    run=AuditRunData(generations=1),
+    plugins=AuditPluginsData(probe_spec="goodside.Tag", detector_spec="auto"),
     reporting=AuditReportData(report_prefix="quick-scan"),
 )
 ```

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { jobsGetJob } from '@nemo/sdk/generated/platform/api';
+import { jobsGetJob } from '@nemo/sdk/generated/platform/jobs';
 import { Banner, Button, Card, Flex, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import type { AssistantToolArgs } from '@studio/routes/agents/AssistantChatRoute/toolParts';

@@ -46,6 +46,9 @@ navigation:
             path: ../../agents/observability.mdx
           - section: Optimize Agents
             contents:
+              - page: ETHOS.md
+                path: ../../agents/ethos.mdx
+                slug: ethos
               - page: Run the Agent Optimizer
                 path: ../../agents/optimization.mdx
               - page: Insight-Driven Optimization

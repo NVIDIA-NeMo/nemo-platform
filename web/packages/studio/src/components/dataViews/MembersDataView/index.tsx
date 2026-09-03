@@ -12,7 +12,7 @@ import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { useEntitiesListWorkspaceMembers } from '@nemo/sdk/generated/platform/api';
+import { useEntitiesListWorkspaceMembers } from '@nemo/sdk/generated/platform/entity-store';
 import type { WorkspaceMember } from '@nemo/sdk/generated/platform/schema';
 import { type DropdownEntry, Text } from '@nvidia/foundations-react-core';
 import { Loading } from '@studio/components/Layouts/Loading';

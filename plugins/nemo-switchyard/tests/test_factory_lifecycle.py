@@ -21,6 +21,8 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceMiddlewareContext,
     InferenceRequest,
     InferenceResponse,
+)
+from nemo_platform_plugin.inference_middleware_models import (
     MiddlewareCall,
     VirtualModel,
     VirtualModelInferenceConfig,

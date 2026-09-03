@@ -51,6 +51,7 @@ Homepage = "https://docs.nvidia.com/nemo/microservices/latest/about/index.html"
 aiohttp = ["aiohttp", "httpx_aiohttp>=0.1.9"]
 nemo-evaluator-sdk = [
   "pydantic>=2.10.6",
+  "sandboxed-gym",
   "jinja2>=3.1.6",
   "jsonschema>=4.23.0",
   "jsonpath-ng>=1.7.0",
@@ -65,7 +66,7 @@ nemo-evaluator-sdk = [
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
   "nemo-relay>=0.7.2,<0.8",
   "nemo-fabric>=0.2.0,<0.3.0",
-  "sandboxed-gym",
+  "opentelemetry-proto>=1.27.0",
 ]
 
 [project.entry-points."nemo.skills"]

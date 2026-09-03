@@ -6,7 +6,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from nemo_platform_plugin.inference_middleware import VirtualModel, guardrail_config_membership_filter
+from nemo_platform_plugin.inference_middleware_models import VirtualModel, guardrail_config_membership_filter
 from nmp.common.api import ParsedFilter, make_filter_dep
 from nmp.common.api.common import DeleteResponse, GenericSortField, Page, PaginationData
 from nmp.common.api.utils import generate_openapi_extra_params

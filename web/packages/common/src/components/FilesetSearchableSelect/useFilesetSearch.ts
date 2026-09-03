@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { withOperators } from '@nemo/common/src/api/filterOperators';
-import { filesListFilesets, getFilesListFilesetsQueryKey } from '@nemo/sdk/generated/platform/api';
+import {
+  filesListFilesets,
+  getFilesListFilesetsQueryKey,
+} from '@nemo/sdk/generated/platform/files';
 import type {
   FilesetOutput,
   FilesetPurpose,

@@ -25,7 +25,7 @@ import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getModelEntityChatStatus } from '@nemo/common/src/utils/models';
 import { getSortParam } from '@nemo/common/src/utils/query';
-import { useModelsGetModel } from '@nemo/sdk/generated/platform/api';
+import { useModelsGetModel } from '@nemo/sdk/generated/platform/models';
 import type { ModelEntity, ModelEntitySortField } from '@nemo/sdk/generated/platform/schema';
 import {
   Checkbox,

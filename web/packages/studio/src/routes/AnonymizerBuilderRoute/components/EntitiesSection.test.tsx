@@ -11,7 +11,7 @@ import { render, screen } from '@testing-library/react';
 import type { FC, ReactNode } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 
-vi.mock('@nemo/sdk/generated/anonymizer/api', () => ({
+vi.mock('@nemo/sdk/generated/anonymizer/anonymizer', () => ({
   useAnonymizerListEntityLabels: () => ({
     data: { data: ['email', 'ssn', 'first_name'] },
     isLoading: false,

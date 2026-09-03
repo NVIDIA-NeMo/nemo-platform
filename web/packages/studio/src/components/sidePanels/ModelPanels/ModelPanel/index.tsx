@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
+import { getProviderProxyGetQueryKey } from '@nemo/sdk/generated/platform/inference-gateway';
 import {
   getModelsListModelsQueryKey,
-  getProviderProxyGetQueryKey,
   useModelsDeleteModel,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/models';
 import {
   type Adapter,
   type ModelDeployment,

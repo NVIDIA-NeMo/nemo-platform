@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { Stack } from '@nvidia/foundations-react-core';
 import { INTAKE_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import { INTAKE_FILTER_ACTION_TARGET_ID } from '@studio/routes/IntakeLayout';
 import { gateIntakeRoutes, getIntakeTracesRoute } from '@studio/routes/utils';
-import { ListTree } from 'lucide-react';
 import { type FC, lazy } from 'react';
 import { Navigate, type RouteObject } from 'react-router';
 
@@ -70,12 +70,14 @@ export const intakeRoutes: RouteObject[] = gateIntakeRoutes([
   },
 ]);
 
+const NavIcon = ENTITY_ICONS.telemetryTraces;
+
 export const getIntakeSideNavItems = (workspace: string) =>
   INTAKE_ENABLED
     ? [
         {
           id: 'traces',
-          slotIcon: <ListTree className={iconColorClass} />,
+          slotIcon: <NavIcon className={iconColorClass} />,
           slotLabel: 'Traces',
           href: getIntakeTracesRoute(workspace),
         },

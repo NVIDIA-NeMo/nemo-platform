@@ -99,7 +99,7 @@ validates the full schema:
 
 ```yaml
 agent: research-agent
-ethos: ETHOS.md                  # optional; falls back to ETHOS.md, then README.md
+ethos: ETHOS.md                  # optional
 workspace: default               # optional; defaults to "default"
 agent_source: .                  # local dir or git URL with optional @ref
 task_template: ./task-template
@@ -108,6 +108,8 @@ datasets:
   validation: ./harbor_eval/dataset/validation
 ```
 
+The optional `ethos` path is the agent's [ETHOS.md](/documentation/agents/optimize-agents/ethos) contract.
+When omitted, the Analyst looks for `ETHOS.md`, then `README.md`, beside the profile.
 Relative paths resolve against the profile. An adjacent `.env` is loaded when
 a profile is found, without replacing variables already set in the shell.
 `NMP_BASE_URL` is the base-URL environment variable for this workflow, and
@@ -214,7 +216,7 @@ Its method is to survey sessions broadly, gather evidence (starting from
 negative feedback and error spans), cluster similar failures across many
 sessions, check for existing Insights, then emit a single result containing new
 Insights and evidence appended to existing ones. Give the Analyst an optional
-Ethos (`--ethos ETHOS.md`) so it can flag divergence from
+[Ethos](/documentation/agents/optimize-agents/ethos) (`--ethos ETHOS.md`) so it can flag divergence from
 intended behavior.
 
 ### Experimenter
@@ -348,7 +350,7 @@ nemo agents analyst run \
 
 Useful flags:
 
-- `--ethos ETHOS.md`: Append Ethos so the Analyst can flag
+- `--ethos ETHOS.md`: Append [Ethos](/documentation/agents/optimize-agents/ethos) so the Analyst can flag
   divergence from intended behavior.
 - `--insights-file-output tmp/insights.yaml`: Read and write Insights from a
   specific local YAML file. Trace reads still hit `--base-url`.
@@ -534,7 +536,7 @@ Run the Analyst for one analysis of an agent's traces.
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--agent` | yes, unless a profile supplies it | profile `agent` | Agent under test the Analyst should focus on. |
-| `--ethos` | no | profile `ethos`, else `ETHOS.md` or `README.md` beside the profile | Path to Ethos Markdown for the AUT. |
+| `--ethos` | no | profile `ethos`, else `ETHOS.md` or `README.md` beside the profile | Path to [Ethos](/documentation/agents/optimize-agents/ethos) Markdown for the AUT. |
 | `--workspace` | no | profile `workspace`, else `default` | Workspace to operate in. |
 | `--base-url` | no | `NMP_BASE_URL`, else `http://localhost:8080` | Running platform instance the Analyst's tools call. |
 | `--profile` | no | discovered by walking up from the current working directory | Path to `optimizer.yaml`. |
@@ -563,7 +565,7 @@ Run the local Experimenter loop.
 | `--insight-id` | no | Not applicable | Select an exact ID, exact title, or zero-based index from a local multi-Insight file. |
 | `--no-insight` | no | off | Run against a dataset directly rather than guided by an Insight. |
 | `--agent` | no | profile `agent_source` | Baseline agent override: a local directory or a git URL with optional ref (`...repo.git@main`). A git source records provenance and enables opening a draft PR for the winner. |
-| `--ethos` | no | profile `ethos` | Location of a Markdown file describing the AUT. |
+| `--ethos` | no | profile `ethos` | Path to [Ethos](/documentation/agents/optimize-agents/ethos) Markdown for the AUT. |
 | `--train-dataset` | yes, unless the profile supplies it | profile `datasets.train` | Train dataset. Local path for the Harbor evaluator. |
 | `--validation-dataset` | yes, unless the profile supplies it | profile `datasets.validation` | Validation dataset. Local path for the Harbor evaluator. |
 | `--task-template` | required with an Insight | profile `task_template` | Evaluator-specific task-template URI, used to build the Insight-specific evaluation suite. |

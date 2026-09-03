@@ -6,7 +6,7 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { logger } from '@nemo/common/src/utils/logger';
-import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
+import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/files';
 import {
   Button,
   Flex,

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { getGatewayProxyGetQueryKey } from '@nemo/sdk/generated/platform/api';
+import { getGatewayProxyGetQueryKey } from '@nemo/sdk/generated/platform/inference-gateway';
 import { useMutation, UseMutationOptions } from '@tanstack/react-query';
 import OpenAI from 'openai';
 import type { ChatCompletion, ChatCompletionCreateParams } from 'openai/resources/index.mjs';

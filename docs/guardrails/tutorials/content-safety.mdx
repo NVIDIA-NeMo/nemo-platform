@@ -12,7 +12,7 @@ Learn how to use NeMo Platform to apply content safety checks to user inputs and
 
 For the content safety checks, this tutorial uses the [Llama-3.1-Nemotron-Safety-Guard-8B-v3](https://build.nvidia.com/nvidia/llama-3_1-nemotron-safety-guard-8b-v3) NIM, which is trained to classify input or output content as safe or unsafe.
 
-For the main model, this tutorial uses the [Nemotron 3 Nano 30B-A3B](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b) NIM.
+For the main model, this tutorial uses the [Nemotron 3.5 Lightning 30B-A3B](https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b) NIM.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ Before you begin:
 
 This tutorial uses the following NIMs, available on `build.nvidia.com`:
 
-- `main` model: `nvidia/nemotron-3-nano-30b-a3b`
+- `main` model: `nvidia/nemotron-3.5-lightning-30b-a3b`
 - `content_safety` model: `nvidia/llama-3.1-nemotron-safety-guard-8b-v3`
 
 ---
@@ -119,7 +119,7 @@ The plugin runs only when a VirtualModel references it in its middleware list. W
 ```python
 client.inference.virtual_models.create(
     name="guarded-content-safety",
-    default_model_entity="default/nvidia-nemotron-3-nano-30b-a3b",
+    default_model_entity="default/nvidia-nemotron-3.5-lightning-30b-a3b",
     request_middleware=[
         {
             "name": "nemo-guardrails",
@@ -181,7 +181,7 @@ print(response.model_dump_json(indent=2))
 {
   "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
   "object": "chat.completion",
-  "model": "nvidia/nemotron-3-nano-30b-a3b",
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
   "choices": [
     {
       "index": 0,
@@ -196,10 +196,10 @@ print(response.model_dump_json(indent=2))
 ```
 
 </Accordion>
-The `Nemotron-Safety-Guard-8B-v3` and `Nemotron 3 Nano 30B-A3B` NIMs both support multiple languages. For the full list, refer to the model cards:
+The `Nemotron-Safety-Guard-8B-v3` and `Nemotron 3.5 Lightning 30B-A3B` NIMs both support multiple languages. For the full list, refer to the model cards:
 
 - [Nemotron-Safety-Guard-8B-v3](https://build.nvidia.com/nvidia/llama-3_1-nemotron-safety-guard-8b-v3/modelcard)
-- [Nemotron 3 Nano 30B-A3B](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b)
+- [Nemotron 3.5 Lightning 30B-A3B](https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b)
 
 Send an unsafe request in French that the content safety input rail blocks.
 
@@ -224,7 +224,7 @@ print(response.model_dump_json(indent=2))
 {
   "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
   "object": "chat.completion",
-  "model": "nvidia/nemotron-3-nano-30b-a3b",
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
   "choices": [
     {
       "index": 0,
@@ -261,7 +261,7 @@ print(response.model_dump_json(indent=2))
 {
   "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
   "object": "chat.completion",
-  "model": "nvidia/nemotron-3-nano-30b-a3b",
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
   "choices": [
     {
       "index": 0,
@@ -294,7 +294,7 @@ print(response.model_dump_json(indent=2))
 {
   "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
   "object": "chat.completion",
-  "model": "nvidia/nemotron-3-nano-30b-a3b",
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
   "choices": [
     {
       "index": 0,

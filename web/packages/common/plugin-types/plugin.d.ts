@@ -9331,6 +9331,17 @@ interface Props$4<DataType> {
 }
 export declare const StudioDataView: <DataType>({ attributes, children, makeColumns, dataViewState, onRowClick, maxTwoLines, renderBulkActions, scrollContainerRef, searchField, toolbarSlotEnd }: Props$4<DataType>) => import("react/jsx-runtime").JSX.Element;
 //#endregion
+//#region src/utils/logs.d.ts
+/**
+ * Incremental state of a multi-page log fetch. `total` is the server-side line count
+ * for the whole job, known once the first page resolves.
+ */
+interface LogLoadProgress {
+  /** Lines fetched so far across every page walked. Not reduced by retention trimming. */
+  loaded: number;
+  total: number;
+}
+//#endregion
 //#region src/components/LogViewer/index.d.ts
 interface LogViewerProps {
   logs: PlatformJobLog[];
@@ -9339,6 +9350,9 @@ interface LogViewerProps {
   rows?: number;
   fillHeight?: boolean;
   emptyMessage?: string;
+  /** Progress of the initial multi-page fetch, shown beneath the loading spinner.
+   *  Ignored once logs are on screen. Callers that fetch in one shot can omit it. */
+  loadProgress?: LogLoadProgress | null;
   /** Where the copy confirmation goes. Defaults to the surrounding ToastProvider; plugins pass `host.notifications.notify`. */
   onNotify?: NotifyFn;
 }
