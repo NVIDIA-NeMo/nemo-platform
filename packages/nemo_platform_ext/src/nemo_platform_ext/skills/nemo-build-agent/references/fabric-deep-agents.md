@@ -72,7 +72,8 @@ remote agent, stop and report the adapter gap.
 ## Version boundary
 
 Read the installed Fabric Deep Agents adapter descriptor and the NeMo Agents
-config model before emitting adapter settings. Declare compatible pinned
-versions of `deepagents` and the Fabric Deep Agents adapter in the generated
-customer project. Do not rely on either package being present in the NeMo
-Platform installation.
+config model before emitting adapter settings. The optional NeMo Agents plugin
+supplies the adapter and its Deep Agents runtime dependency. Reuse the installed
+versions and let the plugin dependency metadata select compatible versions. Do
+not add a separate harness constraint to the generated customer project unless
+its own code directly imports that API.

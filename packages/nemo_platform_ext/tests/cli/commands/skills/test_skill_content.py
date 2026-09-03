@@ -129,11 +129,21 @@ class TestLoadPlatformSkills:
         assert (skill.source_dir / "references" / "testing-and-signoff.md").is_file()
         assert (skill.source_dir / "references" / "packaging.md").is_file()
 
-    def test_build_agent_keeps_deep_agents_dependency_in_generated_project(self):
+    def test_build_agent_uses_agents_plugin_harness_dependency(self):
         skill = load_skills()["nemo-build-agent"]
-        assert "generated customer project owns compatible pinned Deep Agents" in skill.content
-        assert "Do not rely on them being installed by NeMo Platform" in skill.content
-        assert "NeMo Agents plugin owns the compatible Fabric Deep Agents dependency" not in skill.content
+        assert "optional NeMo Agents plugin supplies the selected harness adapter" in skill.content
+        assert "Do not add a separate Deep Agents version constraint" in skill.content
+        assert "If the NeMo Agents plugin and Deep Agents harness are already available" in skill.content
+        assert 'uv pip install "nemo-platform[nemo-agents-plugin]"' in skill.content
+        assert "uv pip install -e plugins/nemo-agents/" in skill.content
+
+    def test_build_agent_covers_plugin_dependency_failure_paths(self):
+        skill = load_skills()["nemo-build-agent"]
+        assert "If the plugin is absent" in skill.content
+        assert "ask for approval before" in skill.content
+        assert "If the plugin is present" in skill.content
+        assert "its Deep Agents adapter or runtime is absent" in skill.content
+        assert "Do not install the harness independently" in skill.content
 
     def test_model_selection_benchmark_cache_is_packaged(self):
         skill = load_skills()["nemo-model-selection"]

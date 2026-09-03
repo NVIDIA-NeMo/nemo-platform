@@ -24,7 +24,7 @@
     "expected_behavior": [
       "The project is rooted at agents/refund-ethos and keeps ETHOS.md and agent.yaml together",
       "agent.yaml declares config_format nemo-agents-spec-v1 and a configured deepagents harness",
-      "The generated project declares compatible pinned deepagents and Fabric Deep Agents adapter dependencies instead of relying on the Platform installation",
+      "The agent verifies the optional NeMo Agents plugin and Deep Agents harness, reuses them when present and does not add a separate harness version constraint",
       "Custom Python behavior is installed as an MCP console script and declared under mcp.servers",
       "The implementation does not rely on Fabric importing src package agent.py",
       "Tests prove an unverified or failed identity cannot issue a refund",
@@ -85,6 +85,48 @@
       "The agent reports the missing deployed resume path",
       "The agent stops before registration or deployment",
       "The agent does not replace the approval with prompt instructions or a NAT workflow"
+    ]
+  },
+  {
+    "id": "nemo-build-agent-007-plugin-install-declined",
+    "question": "The Ethos is approved, but this NeMo Platform environment does not have the optional Agents plugin. Continue without installing anything.",
+    "expected_skill": "nemo-build-agent",
+    "expected_script": null,
+    "ground_truth": "The agent explains that Fabric agent management is optional but required for this build, asks before installation and stops when installation is declined. It does not install Deep Agents independently or fall back to NAT.",
+    "expected_behavior": [
+      "The agent checks both the Agents plugin and Deep Agents harness instead of assuming they are present",
+      "The agent explains what capability the optional plugin provides",
+      "The agent performs no installation after the user declines",
+      "The agent does not install Deep Agents or its Fabric adapter independently",
+      "The agent does not create a NAT fallback"
+    ]
+  },
+  {
+    "id": "nemo-build-agent-008-existing-harness",
+    "question": "The approved Ethos is ready. The NeMo Agents plugin, Fabric Deep Agents adapter and Deep Agents runtime are already installed in the Platform environment. Build without changing installed package versions.",
+    "expected_skill": "nemo-build-agent",
+    "expected_script": null,
+    "ground_truth": "The agent verifies the installed plugin, adapter and runtime, reuses them and does not reinstall or add a separate harness version constraint to the generated project.",
+    "expected_behavior": [
+      "The agent verifies the plugin through the NeMo CLI and checks the active Python environment",
+      "The agent reuses the installed harness",
+      "The agent does not reinstall the Agents plugin",
+      "The agent does not change installed harness versions",
+      "The generated project does not add Deep Agents or its Fabric adapter unless project code directly imports that API"
+    ]
+  },
+  {
+    "id": "nemo-build-agent-009-broken-plugin-install",
+    "question": "The approved Ethos is ready. The NeMo Agents plugin appears in the plugin list, but its Fabric Deep Agents adapter is missing from the active Python environment.",
+    "expected_skill": "nemo-build-agent",
+    "expected_script": null,
+    "ground_truth": "The agent reports a broken Agents plugin installation and asks before reinstalling that plugin. It does not repair the environment by installing an independently pinned harness package.",
+    "expected_behavior": [
+      "The agent reports that plugin presence alone does not prove harness availability",
+      "The agent stops before implementation while the required adapter is missing",
+      "The agent offers to reinstall the same Agents plugin only after approval",
+      "The agent does not install or pin Deep Agents independently",
+      "The agent repeats plugin and Python environment checks after any approved reinstall"
     ]
   }
 ]

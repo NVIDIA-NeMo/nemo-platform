@@ -23,8 +23,7 @@ preconditions:
   - nemo_setup_complete
   - workspace_exists
   - provider_registered
-  - agents_plugin_available
-compatibility: NeMo Platform >= 0.1.0 with the agents plugin and a supported Fabric Deep Agents adapter; Python and uv for local MCP projects; network access and provider credentials for live model tests; Docker for packaged custom code; macOS or Linux.
+compatibility: NeMo Platform >= 0.4.0; installs the optional NeMo Agents plugin when the user approves and verifies its supported Fabric Deep Agents adapter; Python and uv for local MCP projects; network access and provider credentials for live model tests; Docker for packaged custom code; macOS or Linux.
 maturity: beta
 license: Apache-2.0
 user-invocable: true
@@ -35,9 +34,9 @@ allowed-tools: [Bash, Read, Write, Edit]
 
 Build a tested, config-driven LangChain Deep Agent and onboard it through the
 NeMo Platform Fabric path. Fabric owns runtime orchestration and constructs the
-agent from config. The generated customer project owns its Deep Agents runtime
-dependencies. Customer code runs only when it is packaged as a
-config-referenced service such as MCP.
+agent from config. The optional NeMo Agents plugin supplies the Fabric harness
+adapters and their runtime dependencies. Customer code runs only when it is
+packaged as a config-referenced service such as MCP.
 
 ## Explain the path in customer language
 
@@ -54,11 +53,10 @@ Before writing implementation files:
    review and revised until the user explicitly approves it. No implementation
    begins before that approval.
 3. Explain that the supported build path uses the external LangChain Deep
-   Agents runtime. NeMo Platform does not vendor the customer's agent or make
-   Deep Agents a hidden Platform dependency. The generated customer project
-   declares and installs compatible pinned Deep Agents and Fabric adapter
-   versions. Fabric registers the agent and makes it available for deployment,
-   testing, observation and optimization in NeMo Platform.
+   Agents runtime. NeMo Platform does not vendor the customer's agent. The
+   optional NeMo Agents plugin installs the supported Fabric adapter and its
+   Deep Agents dependency. Fabric registers the agent and makes it available
+   for deployment, testing, observation and optimization in NeMo Platform.
 4. Explain executable tools only when the requested agent needs them: custom
    code is exposed through MCP so the deployed agent can call it. Explain Agent
    Skills only when an instruction package is the right artifact.
@@ -95,6 +93,27 @@ read from the current environment instead of asking the user to supply NeMo
 specific details they may not know. Explain any missing prerequisite in terms
 of the capability it blocks.
 
+Check `nemo plugins list -f json` and `nemo agents --help`. Then inspect the
+active Python environment for `nemo_agents_plugin`,
+`nemo_fabric_adapters.deepagents` and `deepagents`. Do not infer that a harness
+is available from config acceptance alone.
+
+If the NeMo Agents plugin and Deep Agents harness are already available, reuse
+them. Do not reinstall or change their versions. If the plugin is absent,
+explain that agent management is optional in NeMo Platform and that this build
+requires it. Show the appropriate install command and ask for approval before
+running it:
+
+- Published Platform install: `uv pip install "nemo-platform[nemo-agents-plugin]"`
+- NeMo Platform source checkout: `uv pip install -e plugins/nemo-agents/`
+
+The plugin owns selection of compatible Fabric adapter and harness versions.
+Do not add a separate Deep Agents version constraint. After installation,
+restart Platform services and repeat all four checks. If the plugin is present
+but its Deep Agents adapter or runtime is absent, report a broken plugin
+installation. Offer to reinstall the same Agents plugin only after approval.
+Do not install the harness independently as an untracked repair.
+
 ## Choose supported artifacts
 
 Read [references/fabric-deep-agents.md](references/fabric-deep-agents.md).
@@ -118,11 +137,10 @@ accepted `interrupt_on` setting as proof that the deployed workflow can resume.
 ## Build the project
 
 Keep the deployable project under `agents/<agent-name>-ethos/`. Create only the
-files required by the selected shape. Use a `uv` project with a locked
-dependency set. Declare compatible pinned versions of `deepagents` and the
-Fabric Deep Agents adapter in that generated project. For custom Python tools,
-add a typed MCP server and a console script. Do not install dependencies
-globally or add them to NeMo Platform itself.
+files required by the selected shape. For custom Python tools, use a `uv`
+project with a locked dependency set, a typed MCP server and a console script.
+Do not install dependencies globally. Do not add `deepagents` or a Fabric
+adapter to the generated project unless its own code directly imports that API.
 
 Give tools narrow schemas, bounded output, explicit permissions, capped retries
 for transient failures and redacted errors. Never write credentials, customer
@@ -210,8 +228,9 @@ and thresholds. Report passed, failed and skipped checks separately.
 - Prompt instructions and subagent delegation do not guarantee fixed ordering.
 - Packaging copies the selected build context. Untracked secrets can enter an
   image even when they are absent from committed files.
-- The generated customer project owns compatible pinned Deep Agents and Fabric
-  adapter dependencies. Do not rely on them being installed by NeMo Platform.
+- The optional NeMo Agents plugin supplies the selected harness adapter and its
+  runtime dependencies. Reuse an installed harness and let the plugin resolve
+  compatible versions.
 - Docker is the supported local container path. Treat Kubernetes as a separate
   environment contract that must be verified.
 

@@ -50,10 +50,20 @@ IMAGE_TAG="$AGENT_NAME:local"
   --tag "$IMAGE_TAG"
 ```
 
-Do not use `--skip-validation`. A source checkout may have an unpublished
-NeMo Platform version that cannot be resolved inside the generated image. In
-that case, report the release dependency or use an explicitly reviewed custom
-template. Do not silently weaken validation.
+Do not use `--skip-validation`. For a source checkout, build the current
+Platform wheel and point packaging at it:
+
+```bash
+uv build --package nemo-platform --wheel --out-dir dist
+NEMO_AGENTS_WHEEL=LATEST .venv/bin/nemo agents package \
+  --agent "agents/$AGENT_NAME-ethos/agent.yaml" \
+  --pyproject "agents/$AGENT_NAME-ethos/pyproject.toml" \
+  --tag "$IMAGE_TAG"
+```
+
+`NEMO_AGENTS_WHEEL=LATEST` is the supported source checkout path. Do not treat
+the checkout's `0.0.0` project metadata as the released Platform version and do
+not silently weaken validation.
 
 ## Deploy the packaged image
 
