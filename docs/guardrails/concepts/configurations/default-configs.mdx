@@ -68,7 +68,7 @@ Create a VirtualModel that uses the `content-safety` default configuration:
 
 ```bash
 nemo inference virtual-models create guarded-with-defaults \
-  --default-model-entity system/nvidia-nemotron-3-nano-30b-a3b \
+  --default-model-entity system/nvidia-nemotron-3.5-lightning-30b-a3b \
   --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"system/content-safety"}]' \
   --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"system/content-safety"}]'
 ```
@@ -79,7 +79,7 @@ nemo inference virtual-models create guarded-with-defaults \
 ```python
 client.inference.virtual_models.create(
     name="guarded-with-defaults",
-    default_model_entity="system/nvidia-nemotron-3-nano-30b-a3b",
+    default_model_entity="system/nvidia-nemotron-3.5-lightning-30b-a3b",
     request_middleware=[
         {
             "name": "nemo-guardrails",

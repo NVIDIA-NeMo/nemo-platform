@@ -100,7 +100,7 @@ response = client.inference.gateway.provider.post(
     "v1/chat/completions",
     name="my-nvidia-build",
     body={
-        "model": "nvidia/nemotron-3-nano-30b-a3b",
+        "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
         "messages": [{"role": "user", "content": "Hello!"}],
         "max_tokens": 100,
     },

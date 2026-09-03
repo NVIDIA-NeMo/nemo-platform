@@ -69,7 +69,7 @@ response = client.inference.gateway.provider.post(
     "v1/chat/completions",
     name="my-nvidia-build",
     body={
-        "model": "nvidia/nemotron-3-nano-30b-a3b",
+        "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
         "messages": [{"role": "user", "content": "Hello!"}],
         "max_tokens": 100,
     },
@@ -1274,7 +1274,7 @@ The platform translates tool calling configuration into NIM environment variable
 
 ## Controlling Reasoning at Request Level
 
-Some models (for example, `nvidia/nemotron-3-nano-30b-a3b`) enable reasoning/thinking by default. (From the model card: "[nemotron-3] responds to user queries and tasks by first generating a reasoning trace and then concluding with a final response") You can disable it on a per-request basis by passing `chat_template_kwargs` directly in the request body:
+Some models (for example, `nvidia/nemotron-3.5-lightning-30b-a3b`) enable reasoning/thinking by default. (From the model card: "[nemotron-3.5] responds to user queries and tasks by first generating a reasoning trace and then concluding with a final response") You can disable it on a per-request basis by passing `chat_template_kwargs` directly in the request body:
 
 <Tabs>
 
@@ -1287,7 +1287,7 @@ nemo inference gateway provider post v1/chat/completions \
 "model": "default/my-model",
 "messages": [{"role": "user", "content": "Hello!"}],
 "max_tokens": 100,
-"chat_template_kwargs": {"thinking": false}
+"chat_template_kwargs": {"enable_thinking": false}
 }'
 ```
 
@@ -1302,7 +1302,7 @@ response = client.inference.gateway.provider.post(
         "model": "default/my-model",
         "messages": [{"role": "user", "content": "Hello!"}],
         "max_tokens": 100,
-        "chat_template_kwargs": {"thinking": False},
+        "chat_template_kwargs": {"enable_thinking": False},
     },
 )
 ```

@@ -106,9 +106,9 @@ Define the model under test. This example uses garak's `nim.NVOpenAIChat` genera
 ```python
 target = auditor.targets.create(
     workspace="default",
-    name="nemotron-3-nano-30b",
+    name="nemotron-3.5-lightning-30b",
     type="nim.NVOpenAIChat",
-    model="nvidia/nvidia/nemotron-3-nano-30b-a3b",
+    model="nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
     options={
         "nim": {
             "max_tokens": 1024,
@@ -135,7 +135,7 @@ The `nmp_uri_spec` sentinel inside `options.nim` tells the plugin to resolve a c
 ```python
 result = auditor.run(
     config="quick-scan",
-    target="nemotron-3-nano-30b",
+    target="nemotron-3.5-lightning-30b",
     workspace="default",
 )
 
@@ -205,7 +205,7 @@ Delete the entities you created:
 
 ```python
 auditor.configs.delete(workspace="default", name="quick-scan")
-auditor.targets.delete(workspace="default", name="nemotron-3-nano-30b")
+auditor.targets.delete(workspace="default", name="nemotron-3.5-lightning-30b")
 ```
 
 Report artifacts are left in place under the scheduler's temporary directory; the OS reaps them eventually.
