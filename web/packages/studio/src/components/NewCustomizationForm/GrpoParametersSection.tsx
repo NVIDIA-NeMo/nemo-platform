@@ -328,7 +328,7 @@ export const GrpoParametersSection = () => {
             formFieldProps={{
               slotLabel: 'Learning Rate',
               slotInfo:
-                'Peak learning rate. RL fine-tuning runs far lower than SFT: the platform GRPO examples train at 5e-6 full-weight and 1e-5 for LoRA. Above roughly 2e-5 a full-weight policy typically collapses within a few dozen steps.',
+                "Peak learning rate. RL fine-tuning runs far lower than SFT: the platform GRPO examples train at 5e-6. Above roughly 2e-5 a full-weight policy typically collapses within a few dozen steps. LoRA needs no separate value — the adapter's effective rate is scaled by alpha / rank, so the default rank 16 / alpha 32 trains at an effective 1e-5.",
             }}
             defaultValue={5e-6}
             min={1e-7}

@@ -280,7 +280,8 @@ describe('GRPO defaults', () => {
   };
 
   // The inherited 1e-4 is SFT-scale and collapses a full-weight policy in a few dozen
-  // steps; the platform GRPO fixtures train at 5e-6 full-weight, 1e-5 for LoRA.
+  // steps; the platform GRPO fixtures train at 5e-6. One value covers both finetuning
+  // types -- the backend's lora.alpha/rank scaling raises the adapter's effective rate.
   it('trains at an RL-scale learning rate, not the inherited SFT default', () => {
     expect(training.learning_rate).toBe(5e-6);
     expect(training.learning_rate).toBeLessThan(2e-5);

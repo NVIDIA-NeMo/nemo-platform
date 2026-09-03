@@ -225,7 +225,9 @@ export const RL_GRPO_TRAINING_DEFAULTS = {
   // RL_DPO_DEFAULTS would otherwise apply a KL penalty the user never asked for.
   ref_policy_kl_penalty: 0.0,
   // The shared 1e-4 is SFT-scale and collapses a policy within a few dozen RL steps;
-  // the platform GRPO fixtures train at 5e-6 full-weight, 1e-5 for LoRA.
+  // the platform GRPO fixtures train at 5e-6. Deliberately not conditional on
+  // finetuning_type: the backend scales an adapter's effective rate by lora.alpha/rank,
+  // so the default rank 16 / alpha 32 already puts a LoRA run at an effective 1e-5.
   learning_rate: 5e-6,
   // Backend default is 1e-5; the shared block's Torch 1e-8 overrides it. Fixed here,
   // not in the shared block, so DPO's numerics are untouched (DPO still diverges).
