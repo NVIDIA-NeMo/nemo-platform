@@ -44,6 +44,12 @@ and a hardened image/bundle you can adopt.
 This skill is an interview: ask the user two questions (steps 2 and 3) and follow only the branch
 they pick. Do not dump every path at them.
 
+> **Do not choose the target agent for the user.** Even when the request names a concrete goal
+> ("harden an example agent"), you must still ask *which* one in step 2 before any state-changing
+> command (`agents create`, `agents package`, `iron-swarm init`). Picking one yourself — because it
+> is the default, the first listed, or the one you just built — is the single most common way this
+> skill goes wrong. Ask first, every time.
+
 ## 1. Pre-flight
 
 ```bash
@@ -57,9 +63,19 @@ nemo iron-swarm doctor
 - Verify: `doctor` reports every check green before moving on. If it cannot be made green, stop
   and tell the user what is missing; do not improvise around the sandbox.
 
-## 2. Interview — what kind of agent do you have?
+## 2. Interview — which agent, and what kind?
 
-Ask, then follow exactly one route:
+**Ask the user which agent to war-game — do not pick for them.** Use an interactive question and
+offer, at minimum:
+
+- each bundled example victim as a concrete choice — the plugin ships one per guardable harness
+  under `plugins/nemo-iron-swarm/examples/` (`relay-victim` deepagents, `hermes-victim` hermes,
+  `langchain-victim`, `langgraph-victim`, `other-victim`); see that directory's README for the
+  matrix;
+- **an option to point you at their own directory** (a Fabric `agent.yaml` or a BYO Dockerfile
+  project).
+
+Once they choose, the agent's kind decides the route below — follow exactly one:
 
 ### Route A — a Fabric agent (has an `agent.yaml`, harness `deepagents` or `hermes`)
 
