@@ -36,7 +36,7 @@ class VirtualModelListParams(TypedDict, total=False):
     filter: VirtualModelFilterParam
     """
     Filter virtual models by workspace, project, name, default_model_entity,
-    created_at, and updated_at.
+    guardrail_config, created_at, and updated_at.
     """
 
     page: int

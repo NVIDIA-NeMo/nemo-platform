@@ -92,6 +92,45 @@ def test_build_ingest_payload_preserves_producer_fields(tmp_path):
     assert payload["steps"] == [{"step_id": 1, "source": "user", "message": "hi"}]
 
 
+def test_build_ingest_payload_raises_when_schema_version_is_absent(tmp_path):
+    ref = _ref(tmp_path, _trajectory(schema_version=None))
+    with pytest.raises(ValueError, match="no schema_version"):
+        build_ingest_payload(ref, evaluation_name="exp-1", task_id="case-a", agent_attrs={})
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [
+        pytest.param({}, id="empty"),
+        pytest.param({"name": "Codeact"}, id="no-version"),
+        pytest.param({"version": "1.0"}, id="no-name"),
+    ],
+)
+def test_build_ingest_payload_raises_when_agent_identity_is_absent(tmp_path, agent):
+    # Without these the cast would claim a shape the payload does not have.
+    ref = _ref(tmp_path, _trajectory(agent=agent))
+    with pytest.raises(ValueError, match="no agent name and version"):
+        build_ingest_payload(ref, evaluation_name="exp-1", task_id="case-a", agent_attrs={})
+
+
+def test_build_ingest_payload_names_the_agent_type_when_it_is_not_an_object(tmp_path):
+    # "no name and version" would send a producer looking for missing fields rather than
+    # a wrong type.
+    ref = _ref(tmp_path, _trajectory(agent="Codeact"))
+    with pytest.raises(ValueError, match="agent is not an object"):
+        build_ingest_payload(ref, evaluation_name="exp-1", task_id="case-a", agent_attrs={})
+
+
+def test_build_ingest_payload_accepts_blank_agent_identity(tmp_path):
+    # Intake types agent name and version as plain str, so blank is valid; the guard
+    # checks presence, not content, and must not be stricter than the server.
+    ref = _ref(tmp_path, _trajectory(agent={"name": "", "version": ""}))
+
+    payload = build_ingest_payload(ref, evaluation_name="exp-1", task_id="case-a", agent_attrs={})
+
+    assert payload["agent"] == {"name": "", "version": ""}
+
+
 def test_build_ingest_payload_fills_only_blank_agent_fields(tmp_path):
     # Producer set name and version; model_name is absent.
     payload = build_ingest_payload(

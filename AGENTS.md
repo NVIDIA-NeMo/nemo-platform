@@ -104,6 +104,13 @@ Before doing anything that requires a running NeMo platform (`nemo services`, `n
 
 When working with the NeMo CLI (`nemo`), always check available skills first before exploring `--help`. Skills contain exact command syntax, JSON structures, and working examples that are much faster than trial-and-error discovery.
 
+## GitHub Actions
+
+- Keep executable GitHub Actions helpers in `.github/scripts/`. Put their tests in `.github/scripts/tests/`: Python tests use `test_*.py`; GitHub JavaScript tests use `*.test.cjs`.
+- Keep workflow `actions/github-script` blocks as thin adapters. Check out the workflow revision before loading a helper with `require()`.
+- Run `make check-github-scripts` to test, lint, and format-check GitHub JavaScript helpers locally.
+- Run `flox activate --dir tools/actionlint -- actionlint` to validate GitHub workflow and action syntax.
+
 ## Building a Studio plugin web UI
 
 A plugin can ship a web UI that Studio loads at runtime and renders **inside its own React tree** — sharing Studio's React, router, and KUI design system rather than bundling its own. Before writing or reviewing plugin web code, read [plugins/example-plugin/web/AGENTS.md](plugins/example-plugin/web/AGENTS.md): it holds the contract (a `Root` component + `navItems`, externalized shared deps, KUI + theme tokens, auth rules) and is the canonical template to copy.
@@ -267,7 +274,7 @@ Check for an existing instance before starting (`lsof -iTCP:8080 -sTCP:LISTEN` o
 
 ```bash
 tmux -f /exec-daemon/tmux.portal.conf new-session -d -s nemo-platform -c /workspace -- \
-  'export NMP_BASE_URL=http://localhost:8080 && uv run nemo services run --service-group all --port 8080'
+  'export NMP_BASE_URL=http://localhost:8080 && uv run nemo services run --service-group all --controller-group all --port 8080'
 ```
 
 Wait for readiness: `curl -sf http://localhost:8080/health/ready` → `{"status":"ready"}`.

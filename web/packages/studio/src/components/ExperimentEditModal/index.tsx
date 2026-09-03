@@ -10,12 +10,20 @@ import {
   useUpdateExperiment,
 } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
-import { FormField, Stack, TextArea, TextInput } from '@nvidia/foundations-react-core';
+import { FormField, Stack, TextInput } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
-import { DefaultSortControl } from '@studio/components/DefaultSortControl';
-import { ExperimentFlagSwitch } from '@studio/components/ExperimentFlagSwitch';
+import { trendVisibilityStorageKey } from '@studio/components/charts/ExperimentTrendChart/visibility';
+import {
+  EXPERIMENT_SETTINGS_NAMES,
+  type ExperimentSettingsValues,
+  experimentSettingsFrom,
+  experimentSettingsPayload,
+} from '@studio/components/evaluation/shared/experimentSettings';
+import { ExperimentSettingsFields } from '@studio/components/evaluation/shared/ExperimentSettingsFields';
+import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { AxiosError } from 'axios';
-import { type FC, type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FC, type FormEvent, useEffect, useMemo } from 'react';
+import { useForm } from 'react-hook-form';
 
 export interface ExperimentEditModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   workspace: string;
@@ -29,22 +37,15 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
   group,
 }) => {
   const toast = useToast();
-  const [description, setDescription] = useState(group.description ?? '');
-  const [defaultSort, setDefaultSort] = useState<string>(group.default_sort);
-  const [isFavorite, setIsFavorite] = useState(group.is_favorite ?? false);
-  const [showEvaluationsOverTime, setShowEvaluationsOverTime] = useState(
-    group.show_evaluations_over_time ?? false
-  );
 
-  // Reset local form state whenever the modal (re)opens or points at a different group.
+  const { control, handleSubmit, reset } = useForm<ExperimentSettingsValues>({
+    defaultValues: experimentSettingsFrom(group),
+  });
+
+  // Reset form state whenever the modal (re)opens or points at a different group.
   useEffect(() => {
-    if (open) {
-      setDescription(group.description ?? '');
-      setDefaultSort(group.default_sort);
-      setIsFavorite(group.is_favorite ?? false);
-      setShowEvaluationsOverTime(group.show_evaluations_over_time ?? false);
-    }
-  }, [open, group]);
+    if (open) reset(experimentSettingsFrom(group));
+  }, [open, group, reset]);
 
   // Offer the group's discovered evaluators as first-class sort fields (only fetched while open).
   const { data: experimentsPage } = useListEvaluations(
@@ -62,6 +63,13 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
     [experimentsPage]
   );
 
+  // `resolveTrendVisible` already retires a stored choice whose stamped flag no longer matches, which
+  // covers the flag moving anywhere else — API, CLI, another tab. It cannot cover a round trip: turn
+  // the flag off and back on and the stamp matches again, so a viewer who had hidden the chart would
+  // watch the owner's edit do nothing. An explicit edit here is unambiguous, so drop the choice
+  // outright. Deleting through the hook notifies the open page, so the chart follows without a reload.
+  const [, , clearTrendChoice] = useLocalStorage(trendVisibilityStorageKey(group.id));
+
   const { mutateAsync: updateExperiment, isPending } = useUpdateExperiment({
     mutation: {
       onSuccess: () => {
@@ -73,8 +81,7 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
     },
   });
 
-  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); // FormModal doesn't preventDefault; without RHF's handler we must.
+  const submit = async (values: ExperimentSettingsValues) => {
     try {
       await updateExperiment({
         workspace,
@@ -82,17 +89,17 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
         data: {
           // Name is immutable for a group; send it unchanged so the update isn't treated as a rename.
           name: group.name,
-          description: description || undefined,
-          default_sort: defaultSort,
           // The endpoint replaces the whole group, so resend the producer-owned fields this
           // form doesn't edit; omitting them clears the group's summary and insight link.
           insight_id: group.insight_id,
           summary: group.summary,
           metadata: group.metadata,
-          is_favorite: isFavorite,
-          show_evaluations_over_time: showEvaluationsOverTime,
+          ...experimentSettingsPayload(values),
         },
       });
+      if (values.showEvaluationsOverTime !== (group.show_evaluations_over_time ?? false)) {
+        clearTrendChoice();
+      }
       onClose();
     } catch (error) {
       const detail = error instanceof AxiosError ? error.response?.data?.detail : undefined;
@@ -104,6 +111,11 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
             : 'Unknown error';
       toast.error(`Failed to update experiment: ${message}`);
     }
+  };
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); // FormModal doesn't preventDefault; without RHF's handler we must.
+    void handleSubmit(submit)(e);
   };
 
   return (
@@ -122,30 +134,11 @@ export const ExperimentEditModal: FC<ExperimentEditModalProps> = ({
         <FormField slotLabel="Name">
           <TextInput value={group.name} disabled />
         </FormField>
-        <FormField slotLabel="Description (optional)">
-          <TextArea
-            disabled={isPending}
-            value={description}
-            onValueChange={(v: string) => setDescription(v)}
-          />
-        </FormField>
-        <DefaultSortControl
-          value={defaultSort}
-          onChange={setDefaultSort}
+        <ExperimentSettingsFields
+          control={control}
+          names={EXPERIMENT_SETTINGS_NAMES}
+          disabled={isPending}
           evaluatorOptions={evaluatorOptions}
-          disabled={isPending}
-        />
-        <ExperimentFlagSwitch
-          flag="show_evaluations_over_time"
-          checked={showEvaluationsOverTime}
-          onCheckedChange={setShowEvaluationsOverTime}
-          disabled={isPending}
-        />
-        <ExperimentFlagSwitch
-          flag="is_favorite"
-          checked={isFavorite}
-          onCheckedChange={setIsFavorite}
-          disabled={isPending}
         />
       </Stack>
     </FormModal>

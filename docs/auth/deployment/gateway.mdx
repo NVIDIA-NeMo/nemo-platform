@@ -89,7 +89,7 @@ http_filters:
           uri: "http://nemo:8080"
           cluster: nemo
           timeout: 5s
-        path_prefix: "/apis/auth/authenticate"
+        path_prefix: "/apis/auth/ext-authz"
         authorization_response:
           allowed_upstream_headers:
             patterns:
@@ -102,7 +102,7 @@ http_filters:
       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 ```
 
-Envoy HTTP `ext_authz` callouts preserve the original request method and build the check URL from `path_prefix` plus the original request path. For example, `DELETE /apis/entities/v2/workspaces/default` is checked as `DELETE /apis/auth/authenticate/apis/entities/v2/workspaces/default`. NeMo accepts that prefixed callout URL, validates only the bearer token, and returns trusted principal headers. The original request path is still authorized later by the service PDP check after Envoy forwards the request.
+Envoy HTTP `ext_authz` callouts preserve the original request method and build the check URL from `path_prefix` plus the original request path. For example, `DELETE /apis/entities/v2/workspaces/default` is checked as `DELETE /apis/auth/ext-authz/apis/entities/v2/workspaces/default`. NeMo accepts that prefixed callout URL, validates only the bearer token, and returns trusted principal headers. The original request path is still authorized later by the service PDP check after Envoy forwards the request. `/apis/auth/authenticate` remains the direct JSON token-inspection endpoint and is not the configured Envoy callout.
 
 </Accordion>
 ### Header Stripping

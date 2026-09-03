@@ -75,7 +75,7 @@ from nemo_evaluator_sdk import (
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
-        name="meta/llama-3.1-70b-instruct",
+        name="nvidia/nemotron-3.5-lightning-30b-a3b",
     ),
     scores=[
         RangeScore(
@@ -173,7 +173,7 @@ from nemo_evaluator_sdk import Evaluator as LocalEvaluator
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
-        name="meta/llama-3.1-70b-instruct",
+        name="nvidia/nemotron-3.5-lightning-30b-a3b",
     ),
     scores=[
         RubricScore(
@@ -280,7 +280,7 @@ from nemo_evaluator_sdk.values import Rubric
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
-        name="meta/llama-3.1-70b-instruct",
+        name="nvidia/nemotron-3.5-lightning-30b-a3b",
     ),
     scores=[
         RubricScore(
@@ -545,7 +545,7 @@ metric = {
  "type": "llm-judge",
  "model": {
  "url": "<judge-url>/v1",
- "name": "meta/llama-3.1-70b-instruct",
+ "name": "nvidia/nemotron-3.5-lightning-30b-a3b",
  },
  "scores": [
  {
@@ -629,7 +629,7 @@ metric = {
     "type": "llm-judge",
     "model": {
         "url": "<nim-url>/v1",
-        "name": "nvidia/llama-3.3-nemotron-super-49b-v1",
+        "name": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     },
     # ... scores ...
     "system_prompt": "'detailed thinking on'",

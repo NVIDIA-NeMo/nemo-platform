@@ -20,7 +20,7 @@ from nemo_platform_plugin.inference_middleware import (
     BackendFormat,
     NemoInferenceMiddleware,
 )
-from nemo_platform_plugin.inference_middleware import (
+from nemo_platform_plugin.inference_middleware_models import (
     VirtualModel as PluginVirtualModel,
 )
 from nmp.core.inference_gateway.api.middleware_registry import (
@@ -642,7 +642,7 @@ class TestNotifyHooks:
         plugin_b = _make_mock_plugin()
         registry = MiddlewareRegistry(plugins={"plugin-a": plugin_a, "plugin-b": plugin_b})
 
-        vm = _make_sdk_vm("ws", "vm", request_middleware=[_make_sdk_call("plugin-a")])
+        vm = _make_sdk_vm("ws", "vm", request_middleware=[_make_sdk_call("plugin-a", config={})])
         await registry.notify_upserted(vm)
 
         plugin_a.on_virtual_model_upserted.assert_awaited_once()
@@ -653,7 +653,7 @@ class TestNotifyHooks:
         plugin_a = _make_mock_plugin()
         registry = MiddlewareRegistry(plugins={"plugin-a": plugin_a})
 
-        vm = _make_sdk_vm("ws", "vm", response_middleware=[_make_sdk_call("plugin-a")])
+        vm = _make_sdk_vm("ws", "vm", response_middleware=[_make_sdk_call("plugin-a", config={})])
         await registry.notify_destroyed(vm)
 
         plugin_a.on_virtual_model_destroyed.assert_awaited_once()
@@ -665,7 +665,7 @@ class TestNotifyHooks:
         plugin.on_virtual_model_upserted = AsyncMock(side_effect=RuntimeError("boom"))
         registry = MiddlewareRegistry(plugins={"my-plugin": plugin})
 
-        vm = _make_sdk_vm("ws", "vm", request_middleware=[_make_sdk_call("my-plugin")])
+        vm = _make_sdk_vm("ws", "vm", request_middleware=[_make_sdk_call("my-plugin", config={})])
         # Should not raise
         await registry.notify_upserted(vm)
         assert "my-plugin" in caplog.text
@@ -675,13 +675,14 @@ class TestNotifyHooks:
         plugin = _make_mock_plugin()
         registry = MiddlewareRegistry(plugins={"my-plugin": plugin})
 
-        vm = _make_sdk_vm("ws", "my-vm", request_middleware=[_make_sdk_call("my-plugin")])
+        vm = _make_sdk_vm("ws", "my-vm", request_middleware=[_make_sdk_call("my-plugin", config={})])
         await registry.notify_upserted(vm)
 
         call_arg = plugin.on_virtual_model_upserted.call_args[0][0]
         assert isinstance(call_arg, PluginVirtualModel)
         assert call_arg.workspace == "ws"
         assert call_arg.name == "my-vm"
+        assert call_arg.request_middleware[0].config == {}
 
 
 # ---------------------------------------------------------------------------

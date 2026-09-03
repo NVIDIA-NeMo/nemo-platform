@@ -15,11 +15,14 @@ param types and filtered to tests that work without Docker.
 import uuid
 
 import pytest
-from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH
 from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
 from e2e.services_pool import RunningServices
@@ -258,7 +261,10 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
     secret_name = f"e2e-secret-{uuid.uuid4().hex[:8]}"
     secret_value = "s3cret-val"
 
-    secret = sdk.secrets.create(workspace=workspace, name=secret_name, value=secret_value)
+    secrets = client_from_platform(sdk, SecretsClient)
+    secret = secrets.create_secret(
+        workspace=workspace, body=PlatformSecretCreateRequest(name=secret_name, value=secret_value)
+    ).data()
     assert secret.name is not None, "Failed to create platform secret"
 
     secret_deleted = False
@@ -303,14 +309,14 @@ def test_job_using_secret_environment_variable(sdk: NeMoPlatform, workspace: str
         all_messages = " ".join(log.message for log in step_logs.data)
         assert secret_value in all_messages, "Step logs do not show secret environment variable was used"
 
-        sdk.secrets.delete(workspace=workspace, name=secret_name)
+        secrets.delete_secret(workspace=workspace, name=secret_name)
         secret_deleted = True
         with pytest.raises(NotFoundError):
-            sdk.secrets.retrieve(secret_name, workspace=workspace)
+            secrets.get_secret(name=secret_name, workspace=workspace).data()
     finally:
         if not secret_deleted:
             try:
-                sdk.secrets.delete(workspace=workspace, name=secret_name)
+                secrets.delete_secret(workspace=workspace, name=secret_name)
             except Exception:
                 pass
 

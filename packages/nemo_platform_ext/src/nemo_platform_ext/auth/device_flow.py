@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from nemo_platform_ext.auth.token_provider import refresh_token_grant
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_ext.client.tls import httpx_tls_config_from_env
 
 console = Console()
 
@@ -66,15 +66,17 @@ class DeviceFlow:
         token_endpoint: str,
         client_id: str,
         scope: str = "openid email profile",
+        certificate_authority: str | None = None,
     ):
         self.device_authorization_endpoint = device_authorization_endpoint
         self.token_endpoint = token_endpoint
         self.client_id = client_id
         self.scope = scope
+        self.certificate_authority = certificate_authority
 
     async def start_device_authorization(self) -> DeviceCodeResponse:
         """Start the device authorization flow."""
-        async with httpx.AsyncClient(verify=client_verify_from_env()) as client:
+        async with httpx.AsyncClient(**httpx_tls_config_from_env(self.certificate_authority)) as client:
             response = await client.post(
                 self.device_authorization_endpoint,
                 data={
@@ -104,7 +106,7 @@ class DeviceFlow:
         """Poll the token endpoint until authorization is complete."""
         start_time = time.time()
 
-        async with httpx.AsyncClient(verify=client_verify_from_env()) as client:
+        async with httpx.AsyncClient(**httpx_tls_config_from_env(self.certificate_authority)) as client:
             while time.time() - start_time < expires_in:
                 await _async_pause(interval)
 
@@ -154,6 +156,7 @@ async def authenticate_with_device_flow(
     client_id: str,
     scope: str = "openid email profile",
     open_browser: bool = True,
+    certificate_authority: str | None = None,
 ) -> TokenResponse:
     """Perform OAuth device flow authentication.
 
@@ -172,6 +175,7 @@ async def authenticate_with_device_flow(
         token_endpoint=token_endpoint,
         client_id=client_id,
         scope=scope,
+        certificate_authority=certificate_authority,
     )
 
     # Start device authorization
@@ -215,6 +219,7 @@ async def refresh_access_token(
     client_id: str,
     refresh_token: str,
     scope: str | None = None,
+    certificate_authority: str | None = None,
 ) -> TokenResponse:
     """
     Refresh an access token using a refresh token.
@@ -238,6 +243,7 @@ async def refresh_access_token(
             client_id,
             refresh_token,
             scope=scope,
+            certificate_authority=certificate_authority,
         )
     except RuntimeError as e:
         raise DeviceFlowError(str(e)) from e
@@ -258,6 +264,7 @@ def authenticate_with_password_grant(
     username: str,
     password: str,
     scope: str = "openid profile email",
+    certificate_authority: str | None = None,
 ) -> TokenResponse:
     """Obtain tokens using the Resource Owner Password Credentials grant (RFC 6749).
 
@@ -284,7 +291,7 @@ def authenticate_with_password_grant(
         "password": password,
         "scope": scope,
     }
-    with httpx.Client(verify=client_verify_from_env()) as client:
+    with httpx.Client(**httpx_tls_config_from_env(certificate_authority)) as client:
         response = client.post(token_endpoint, data=data, timeout=30.0)
 
     if response.status_code != 200:

@@ -8,5 +8,5 @@ import { Spinner } from '@nvidia/foundations-react-core';
  * Slotted in slotEnd
  */
 export const TextInputSpinner = () => {
-  return <Spinner aria-label="Loading" size="small" className="h-full" />;
+  return <Spinner aria-label="Loading" size="small" className="[&>div]:contents" />;
 };

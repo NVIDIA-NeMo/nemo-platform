@@ -137,6 +137,37 @@ class TestDeviceFlow:
                 },
                 timeout=30.0,
             )
+            mock_client_class.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_start_device_authorization_uses_context_certificate_authority(self, monkeypatch):
+        """Test device authorization uses an explicit context CA bundle."""
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+        flow = DeviceFlow(
+            device_authorization_endpoint="https://sso.example.com/device/code",
+            token_endpoint="https://sso.example.com/oauth/token",
+            client_id="test-client",
+            certificate_authority="/tmp/context-ca.pem",
+        )
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.raise_for_status = MagicMock()
+            mock_response.json.return_value = {
+                "device_code": "device_code_123",
+                "user_code": "ABC-123",
+                "verification_uri": "https://sso.example.com/device",
+                "expires_in": 1800,
+            }
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client_class.return_value = mock_client
+
+            await flow.start_device_authorization()
+
+            mock_client_class.assert_called_once_with(verify="/tmp/context-ca.pem")
 
     @pytest.mark.asyncio
     async def test_start_device_authorization_uses_nemo_scoped_ca_bundle(self, device_flow, monkeypatch):
@@ -371,7 +402,26 @@ class TestRefreshAccessToken:
                 "client-id",
                 "refresh-token",
                 scope="openid profile",
+                certificate_authority=None,
             )
+
+    @pytest.mark.asyncio
+    async def test_refresh_access_token_uses_context_certificate_authority(self):
+        with patch("nemo_platform_ext.auth.device_flow.refresh_token_grant") as mock_refresh:
+            mock_refresh.return_value = {
+                "access_token": "new_access",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }
+
+            await refresh_access_token(
+                token_endpoint="https://idp/token",
+                client_id="client-id",
+                refresh_token="refresh-token",
+                certificate_authority="/tmp/context-ca.pem",
+            )
+
+            assert mock_refresh.call_args.kwargs["certificate_authority"] == "/tmp/context-ca.pem"
 
     @pytest.mark.asyncio
     async def test_refresh_access_token_failure(self):
@@ -427,6 +477,7 @@ class TestPasswordGrant:
                 },
                 timeout=30.0,
             )
+            mock_client_class.assert_called_once_with()
 
     def test_authenticate_with_password_grant_uses_nemo_scoped_ca_bundle(self, monkeypatch):
         monkeypatch.setenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, "/tmp/nemo-ca.pem")
@@ -453,6 +504,33 @@ class TestPasswordGrant:
             )
 
             mock_client_class.assert_called_once_with(verify="/tmp/nemo-ca.pem")
+
+    def test_authenticate_with_password_grant_uses_context_certificate_authority(self, monkeypatch):
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        with patch("httpx.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "access_token": "access_123",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }
+            mock_client.post.return_value = mock_response
+            mock_client.__enter__.return_value = mock_client
+            mock_client.__exit__.return_value = None
+            mock_client_class.return_value = mock_client
+
+            authenticate_with_password_grant(
+                token_endpoint="https://idp/token",
+                client_id="client-id",
+                username="user",
+                password="secret",
+                certificate_authority="/tmp/context-ca.pem",
+            )
+
+            mock_client_class.assert_called_once_with(verify="/tmp/context-ca.pem")
 
     def test_authenticate_with_password_grant_failure(self):
         with patch("httpx.Client") as mock_client_class:

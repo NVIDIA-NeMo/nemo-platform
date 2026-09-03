@@ -34,6 +34,7 @@ Read **only** the workflow file that matches the selected mode, then follow it:
 - When the dataset requires person data (names, demographics, addresses), read `references/person-sampling.md`.
 - If a dataset script that matches the dataset description already exists, ask the user whether to edit it or create a new one.
 - For commands and context specific to this NeMo Platform plugin (e.g., sourcing model configs from IGW providers or in-script `ModelConfig`s, installing or publishing Nemotron Personas locales, platform-side resource pointers), read `references/nemo-platform-plugin-additions.md`.
+- For Nemotron retrieval SDG Stage 0/1 (`retrieval-generate` / `retrieval-prepare`), read `references/retrieval-sdg.md`. Do not use `create` for that pipeline.
 
 # Usage Tips and Common Pitfalls
 
@@ -83,9 +84,8 @@ def generator_function(row: dict) -> dict:
 
 def load_config_builder() -> dd.DataDesignerConfigBuilder:
     config_builder = dd.DataDesignerConfigBuilder(
-        # Declaring model configs programmatically here is the portable path:
-        # it works for both local `run` and cluster `submit`, while the local
-        # YAML registry alternative only works for `run`. The provider below
+        # Declaring model configs programmatically here is optional in the upstream
+        # library, but required for workloads running on NeMo Platform. The provider below
         # is a common default created during `nemo setup` — confirm it (or
         # discover others) with `nemo inference providers list`. See
         # references/nemo-platform-plugin-additions.md for the local-YAML alternative.
@@ -108,4 +108,4 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     return config_builder
 ```
 
-Only include Pydantic models, custom generators, seed datasets, and extra dependencies when the task requires them. Prefer including `model_configs` when the dataset uses LLM columns — declaring it in the script keeps the config portable between local `run` and cluster `submit`, while the local YAML registry alternative only works for `run`.
+Only include Pydantic models, custom generators, seed datasets, and extra dependencies when the task requires them.

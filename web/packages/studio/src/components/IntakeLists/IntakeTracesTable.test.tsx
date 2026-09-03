@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { IntakeTracesTable } from '@studio/components/IntakeLists/IntakeTracesTable';
 import { ROUTES } from '@studio/constants/routes';
 import { mockTracesPage } from '@studio/mocks/intake/telemetry';
@@ -103,5 +104,33 @@ describe('IntakeTracesTable', () => {
     expect(screen.queryByText('Status')).not.toBeInTheDocument();
     expect(screen.queryByText('Session ID')).not.toBeInTheDocument();
     expect(screen.queryByText('Evaluation Run ID')).not.toBeInTheDocument();
+  });
+  it('offers the intake skill and CLI when no traces have been ingested', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get('*/apis/intake/v2/workspaces/:workspace/traces', () =>
+        HttpResponse.json({ data: [], pagination: { total_results: 0 } })
+      )
+    );
+
+    renderRoute(<IntakeTracesTable workspace="test-workspace" />, {
+      history: '/workspaces/default/intake/traces',
+    });
+
+    const descriptor = ENTITY_EMPTY_STATES.telemetryTraces;
+    expect(await screen.findByText(descriptor.heading)).toBeInTheDocument();
+
+    const help = await screen.findByTestId('entity-empty-state-help');
+    expect(help).toHaveTextContent(
+      descriptor.skillPrompt!.replaceAll('<workspace>', 'test-workspace')
+    );
+    expect(descriptor.skillPrompt).toMatch(/nemo-intake skill/);
+    expect(help).not.toHaveTextContent('<workspace>');
+
+    await user.click(screen.getByRole('radio', { name: 'CLI' }));
+    expect(help).toHaveTextContent(
+      descriptor.cliCommand!.replaceAll('<workspace>', 'test-workspace')
+    );
+    expect(help).not.toHaveTextContent('<workspace>');
   });
 });

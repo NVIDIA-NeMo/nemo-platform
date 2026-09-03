@@ -12,7 +12,9 @@ from typing import ClassVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from nemo_insights_plugin._perms import AnalysisConfigPerms, AnalysisRunStatusPerms, InsightPerms
+from nemo_insights_plugin.analysis_runs import router as analysis_runs_router
 from nemo_insights_plugin.authz import scope
+from nemo_insights_plugin.config import InsightsConfig
 from nemo_insights_plugin.entities import (
     AnalysisConfig,
     AnalysisRunStatus,
@@ -32,6 +34,7 @@ from nemo_insights_plugin.schema import (
     UpdateInsightRequest,
 )
 from nemo_platform_plugin.authz import CallerKind, path_rule
+from nemo_platform_plugin.config import get_nemo_config
 from nemo_platform_plugin.entities import (
     EntityValidationError as NemoEntityValidationError,
 )
@@ -69,6 +72,7 @@ class InsightsService(NemoService):
     dependencies: ClassVar[list[str]] = ["entities", "jobs", "intake"]
 
     def get_routers(self) -> list[RouterSpec]:
+        config = get_nemo_config(InsightsConfig)
         return [
             RouterSpec(
                 _build_insights_router(),
@@ -89,9 +93,20 @@ class InsightsService(NemoService):
                 prefix="/v2/workspaces/{workspace}",
             ),
             RouterSpec(
-                add_job_routes(AnalyzeJob, authz=scope),
+                add_job_routes(
+                    AnalyzeJob,
+                    service_name="insights",
+                    default_profile=config.analyst.job_profile,
+                    authz=scope,
+                ),
                 tag="Insights Analysis Jobs",
                 description="Submit and track one-shot insights analyst jobs.",
+                prefix="/v2/workspaces/{workspace}",
+            ),
+            RouterSpec(
+                analysis_runs_router,
+                tag="Insights Analysis Runs",
+                description="Submit Insights analysis runs backed by generic execute-agent jobs.",
                 prefix="/v2/workspaces/{workspace}",
             ),
         ]

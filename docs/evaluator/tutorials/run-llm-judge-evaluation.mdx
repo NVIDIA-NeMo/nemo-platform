@@ -142,7 +142,7 @@ print(
 
 <Note>
 
-Local runs resolve `Model(api_key_secret="NVIDIA_API_KEY")` from your local environment. Remote jobs run in the platform job runtime, so they use the platform secret name created above.
+Local runs resolve `Model(api_key_secret=SecretRef(root="NVIDIA_API_KEY"))` from your local environment. Remote jobs run in the platform job runtime, so they use the platform secret name created above.
 
 </Note>
 ---
@@ -151,7 +151,7 @@ Local runs resolve `Model(api_key_secret="NVIDIA_API_KEY")` from your local envi
 
 Import the evaluator SDK types and configure judge models for local and remote execution. The judge is the LLM that evaluates responses.
 
-This tutorial uses `nvidia/nemotron-3-nano-30b-a3b` from NVIDIA Build.
+This tutorial uses `nvidia/nemotron-3.5-lightning-30b-a3b` from NVIDIA Build.
 
 ```python
 from nemo_evaluator_sdk import RunConfig, LLMJudgeMetric
@@ -160,24 +160,25 @@ from nemo_evaluator_sdk.values import (
     JSONScoreParser,
     Model,
     RangeScore,
+    SecretRef,
 )
 from nemo_evaluator.sdk import FilesetRef
 
 JUDGE_MODEL_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-JUDGE_MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b"
+JUDGE_MODEL_NAME = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
 # `nemo_evaluator_sdk.Evaluator` resolves this name from your local environment.
 LOCAL_JUDGE_MODEL = Model(
     url=JUDGE_MODEL_URL,
     name=JUDGE_MODEL_NAME,
-    api_key_secret=NVIDIA_BUILD_API_KEY_ENV,
+    api_key_secret=SecretRef(root=NVIDIA_BUILD_API_KEY_ENV),
 )
 
 # Remote evaluator.submit() resolves this value from the platform secret.
 REMOTE_JUDGE_MODEL = Model(
     url=JUDGE_MODEL_URL,
     name=JUDGE_MODEL_NAME,
-    api_key_secret=nvidia_api_key_secret.name,
+    api_key_secret=SecretRef(root=nvidia_api_key_secret.name),
 )
 ```
 
@@ -722,7 +723,7 @@ The local model should use the environment variable name:
 LOCAL_JUDGE_MODEL = Model(
     url=JUDGE_MODEL_URL,
     name=JUDGE_MODEL_NAME,
-    api_key_secret="NVIDIA_API_KEY",
+    api_key_secret=SecretRef(root="NVIDIA_API_KEY"),
 )
 ```
 
@@ -732,7 +733,7 @@ Remote jobs should use the platform secret name instead:
 REMOTE_JUDGE_MODEL = Model(
     url=JUDGE_MODEL_URL,
     name=JUDGE_MODEL_NAME,
-    api_key_secret=nvidia_api_key_secret.name,
+    api_key_secret=SecretRef(root=nvidia_api_key_secret.name),
 )
 ```
 

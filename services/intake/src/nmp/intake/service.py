@@ -15,11 +15,14 @@ from nmp.intake.experiments.denormalizer import EvaluationDenormalizer
 from nmp.intake.local_clickhouse import (
     DockerUnavailableError,
     LocalClickHouseProvisioningError,
+    check_local_clickhouse_data_directory,
     reconcile_local_clickhouse,
     stop_local_clickhouse,
 )
+from nmp.intake.readiness import CLICKHOUSE_UNAVAILABLE_MESSAGE
 from nmp.intake.repository.clickhouse.evaluation_rollup import ClickHouseEvaluationRollupRepository
-from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
 from nmp.intake.spans.api import annotations, evaluator_results, sessions, spans, trace_metrics, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
 from nmp.intake.spans.ingest import atif, chat_completions, otlp
@@ -43,6 +46,7 @@ class IntakeService(Service[IntakeConfig]):
         self._local_clickhouse_data_dir: Path | None = None
         self._owns_local_clickhouse = False
         self._ready = False
+        self._readiness_message = ""
 
     @property
     def title(self) -> str:
@@ -51,6 +55,11 @@ class IntakeService(Service[IntakeConfig]):
     @property
     def description(self) -> str:
         return "Intake service for ingesting and reading sessions, traces, spans, annotations, and evaluator results"
+
+    @property
+    def readiness_message(self) -> str:
+        """Return actionable guidance when ClickHouse prevents Intake readiness."""
+        return self._readiness_message
 
     def get_routers(self) -> List[RouterConfig]:
         """Return routers for the intake service."""
@@ -140,6 +149,7 @@ class IntakeService(Service[IntakeConfig]):
         """Close the client and stop the managed local ClickHouse container."""
 
         self._ready = False
+        self._readiness_message = ""
         # Stop the denormalizer first: its final flush still needs the ClickHouse client below.
         if self.denormalizer is not None:
             await self.denormalizer.stop()
@@ -157,4 +167,25 @@ class IntakeService(Service[IntakeConfig]):
                 await super().on_shutdown()
 
     async def is_ready(self) -> bool:
-        return self._ready
+        client = self.clickhouse_client
+        if not self._ready or client is None:
+            return False
+
+        try:
+            if self._owns_local_clickhouse:
+                await check_local_clickhouse_data_directory(data_dir=self._local_clickhouse_data_dir)
+            executor = ClickHouseExecutor(client)
+            await executor.fetch_scalar(
+                ClickHouseQuery(
+                    name="intake_readiness",
+                    statement=f"SELECT 1 AS ready FROM {executor.table(ClickHouseTable.SPANS)} LIMIT 1",
+                )
+            )
+        except Exception:
+            if self._readiness_message != CLICKHOUSE_UNAVAILABLE_MESSAGE:
+                logger.warning("Intake ClickHouse readiness probe failed", exc_info=True)
+            self._readiness_message = CLICKHOUSE_UNAVAILABLE_MESSAGE
+            return False
+
+        self._readiness_message = ""
+        return self._ready and client is self.clickhouse_client

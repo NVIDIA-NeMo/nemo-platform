@@ -129,10 +129,14 @@ resolve the same interpreter as their parent.
 | GRPO | `VllmGenerationWorker`, `SyncRolloutActor` | **`vllm`** | `vllm`, `deep_ep`, `deep_gemm`, `flashinfer` |
 | GRPO (Gym) | `NemoGym` | **`nemo_gym`** | NeMo-Gym workspace member |
 
-`dtensor_cfg._v2` defaults to false, so DPO and plain full-weight GRPO both resolve to the
-**V1** DTensor worker and the `fsdp` extra. The GRPO compiler sets `_v2: true` when the job
-asks for something only V2 implements — LoRA, expert parallelism, or `automodel_kwargs` —
-which selects **V2** and therefore the `automodel` extra.
+GRPO picks its worker from `training.policy_backend`, which the compiler maps straight onto
+`dtensor_cfg._v2`: `automodel` (the default) → **V2** and the `automodel` extra, `dtensor` →
+**V1** and the `fsdp` extra. Nothing promotes the backend implicitly — a job that pairs
+`policy_backend: dtensor` with LoRA, expert parallelism or `automodel_kwargs` is rejected in
+`GRPOTraining` before it is scheduled, since those three are V2-only.
+
+DPO does not expose the knob: `dpo_config` writes its `dtensor_cfg` as a literal with no
+`_v2` key, so DPO is always **V1** and the `fsdp` extra.
 
 **LoRA requires V2 or Megatron.** DTensor V1 asserts `lora_cfg.enabled is False`
 (`nemo_rl/models/policy/lm_policy.py`); the DTensor LoRA implementation lives in
@@ -233,10 +237,17 @@ latency.
 
 User environments therefore *do* add startup time, and cannot be prebaked. Two things bound it:
 
-- The packaging format matters. `wheels-v1` / `adapter-wheels-v1` FileSets vendor
-  their wheels, so the install is a local-file install with **no PyPI egress**
-  (works under deny-default network policy, and is faster/more deterministic).
-  `native-v1` installs from source and needs egress.
+- The packaging format matters, but only via wheelhouse completeness. There are two
+  installs: Gym's per-server venv build reads `wheels/` through `UV_FIND_LINKS` (a
+  candidate pool — **an index is still enabled**, so a missing distribution is fetched
+  from it), and only NeMo-RL's later `install_environment_wheels` uses `--no-index`.
+  **`wheels-v1` is the only format that can run under deny-default network policy**, and
+  only when `wheels/` also covers the venv build: the server's own closure plus
+  `nemo-gym` at the image version and Gym's pinned `ray[default]` / `openai`.
+  `native-v1` vendors nothing and always needs egress. `adapter-wheels-v1` also always
+  needs egress despite vendoring wheels — its `verifiers_agent` harness builds its own
+  venv from a `requirements.txt` that installs `verifiers` from GitHub, which no
+  environment wheelhouse can satisfy.
 - Platform bootstrap for all three formats lives in
   `nmp.rl.tasks.environment.bootstrap.bootstrap_environment_package` (validators +
   offline wheel install). The Gym host / RL image entrypoint should call that —
@@ -419,11 +430,12 @@ the uv cache + venv prefetch rather than via wheel images:
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile. It comes in with the `automodel` extra,
   which the GRPO policy worker needs, so it is built from source here.
-  `.python-version` pinning an exact patch release, which uv honours over whatever
-  `uv python install` provisioned. Bumping `PYTHON_VERSION` alone therefore fixed nothing:
-  every venv came up on RL's version while ours sat unused on disk, so the image shipped
-  two interpreters and ran the vulnerable one — silently. `UV_PYTHON` overrides the file
-  and persists into the runtime image, so node-built venvs agree too.
+- **CPython is copied, not uv-managed.** RL uses `.python-version` to pin an exact patch
+  release. CPython 3.13.15 is copied from `python:3.13.15-slim-bookworm` into `/opt/cpython`
+  (uv's catalog has no linux-gnu 3.13.15 build; bookworm's OpenSSL 3.0 matches Ubuntu
+  24.04 on cuda-dl-base, while trixie _ssl needs OPENSSL_3.3.0 and does not import).
+  `UV_PYTHON=/opt/cpython/bin/python3.13` overrides `.python-version` so worker venvs
+  cannot silently stay on 3.13.14.
 
 ## Layering for fast CI rebuilds
 
@@ -508,8 +520,8 @@ readable by the non-root user. Hence `UV_CACHE_DIR=/opt/uv_cache`:
 - It cannot be a BuildKit `--mount=type=cache` — those never enter the image, so every
   symlink would dangle.
 - It cannot sit at uv's default `~/.cache/uv`, because `/root` is mode `700` and the
-  training image runs as a configured non-root UID (1000 by default, the same reason the
-  managed Python lives under `/opt`).
+  training image runs as a configured non-root UID (1000 by default, the same reason
+  CPython is copied under `/opt/cpython`).
 - **`/opt/uv_cache` must never be deleted** — pruning it breaks every venv that points into
   it. The prune step in the publish stage deliberately leaves it alone.
 

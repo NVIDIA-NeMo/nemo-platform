@@ -15,9 +15,10 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import List
+from typing import List, Optional
 
 from ..._models import BaseModel
+from .platform_job_secret import PlatformJobSecret
 from .platform_job_step_spec import PlatformJobStepSpec
 
 __all__ = ["PlatformJobSpec"]
@@ -28,3 +29,6 @@ class PlatformJobSpec(BaseModel):
 
     steps: List[PlatformJobStepSpec]
     """List of steps to be executed in the job"""
+
+    secrets: Optional[List[PlatformJobSecret]] = None
+    """Secrets referenced by the job"""

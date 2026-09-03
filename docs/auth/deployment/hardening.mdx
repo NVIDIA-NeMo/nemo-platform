@@ -30,7 +30,7 @@ For the security architecture, see [Security Model](/documentation/access-contro
 
 - [ ] **Strip auth headers from external requests**: Configure your ingress/gateway to remove `X-NMP-Principal-Id`, `X-NMP-Principal-Email`, `X-NMP-Principal-Groups`, `X-NMP-Principal-On-Behalf-Of`, and `X-NMP-Scopes` from all incoming external traffic. See [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
 - [ ] **Enable TLS termination**: Terminate TLS at the ingress or load balancer. Tokens in `Authorization` headers are sent in the clear without TLS.
-- [ ] **Consider gateway bearer-auth callout**: To enforce bearer-token validation before requests reach platform services, configure Envoy `ext_authz` to call `/apis/auth/authenticate`. See [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
+- [ ] **Consider gateway bearer-auth callout**: To enforce bearer-token validation before requests reach platform services, configure Envoy `ext_authz` to call `/apis/auth/ext-authz`. See [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
 
 ## Policy Engine
 

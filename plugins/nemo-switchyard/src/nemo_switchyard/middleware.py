@@ -17,10 +17,8 @@ entries pointing at the same factory — the user is opting into both pipelines.
 from __future__ import annotations
 
 import logging
-from typing import Any, Union, cast
+from typing import Any
 
-import anthropic.types as anthropic_types
-import openai.types.chat as openai_chat_types
 from nemo_platform_plugin.inference_middleware import (
     InferenceMiddlewareContext,
     InferenceMiddlewareError,
@@ -48,7 +46,7 @@ from switchyard.lib.proxy_context import (
     CTX_PROXY_ACTUAL_MODEL,
     ProxyContext,
 )
-from switchyard.lib.registry import lookup, register, unregister  # noqa: PYI021
+from switchyard.lib.registry import MiddlewareFactory, lookup, register, unregister  # noqa: PYI021
 
 logger = logging.getLogger(__name__)
 
@@ -247,9 +245,7 @@ class SwitchyardMiddleware(NemoInferenceMiddleware):
                 )
                 return response
         else:
-            chat_response = _wrap_non_streaming(
-                cast(Union[openai_chat_types.ChatCompletion, anthropic_types.Message], response.typed_body)
-            )
+            chat_response = _wrap_non_streaming(response.typed_body)
 
         # Phase-tagged lookup: only succeeds if the user listed this config under
         # response_middleware. If they only listed it under request_middleware,
@@ -372,7 +368,12 @@ class SwitchyardMiddleware(NemoInferenceMiddleware):
 
         factory_name = f"nemo-switchyard-{config_type}-{cfg_hash}"
         try:
-            vm_factory = VMFactoryInstance(factory_class, validated_config, factory_name, config_type=config_type)
+            vm_factory: MiddlewareFactory[Any] = VMFactoryInstance(
+                factory_class,
+                validated_config,
+                factory_name,
+                config_type=config_type,
+            )
             register(vm_factory)
             _state.FACTORIES_BY_CONFIG_HASH[cfg_hash] = factory_name
             logger.info(

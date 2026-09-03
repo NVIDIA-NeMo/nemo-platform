@@ -4,7 +4,7 @@
 import { formatEvaluatorScore } from '@nemo/common/src/utils/formatters';
 import { useListEvaluations } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
-import { Anchor, Card, Tag, Text } from '@nvidia/foundations-react-core';
+import { Anchor, Card, Text } from '@nvidia/foundations-react-core';
 import { MetricTrend } from '@studio/components/charts/MetricTrend';
 import {
   DELTA_COMPARISON_LABEL,
@@ -15,6 +15,7 @@ import {
 import { Metric } from '@studio/routes/ExperimentRoute/Metric';
 import { UpdatedAt } from '@studio/routes/ExperimentRoute/UpdatedAt';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
+import { Star } from 'lucide-react';
 import { type FC, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router';
 
@@ -60,16 +61,19 @@ export const ExperimentCard: FC<ExperimentCardProps> = ({ group, workspace }) =>
       {/* Main info */}
       <div className="flex flex-col items-start gap-2 flex-1">
         <div className="flex items-center gap-2">
+          {group.is_favorite && (
+            <Star
+              size={24}
+              className="text-brand shrink-0"
+              fill="currentColor"
+              aria-label="Favorite"
+            />
+          )}
           <Anchor asChild>
             <Link to={detailRoute} className="no-underline hover:underline">
               <Text kind="title/sm">{group.name}</Text>
             </Link>
           </Anchor>
-          {group.is_favorite && (
-            <Tag kind="outline" color="green" density="compact" readOnly>
-              Favorite
-            </Tag>
-          )}
         </div>
         {group.description && (
           <Text kind="body/regular/sm" className="text-secondary">

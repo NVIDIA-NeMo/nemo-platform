@@ -28,14 +28,12 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceMiddlewareUnavailableError,
     InferenceRequest,
     InferenceResponse,
-    MiddlewareCall,
     ModelProviderInferenceTarget,
     NemoInferenceMiddleware,
     OpenAICompatibleInferenceTarget,
-    TypedResponse,
-    VirtualModel,
-    VirtualModelInferenceConfig,
 )
+from nemo_platform_plugin.inference_middleware_models import MiddlewareCall, VirtualModel, VirtualModelInferenceConfig
+from nemo_platform_plugin.inference_middleware_types import TypedResponse
 from pydantic import TypeAdapter, ValidationError
 
 # ---------------------------------------------------------------------------
@@ -368,10 +366,10 @@ class TestInferenceMiddlewareExceptions:
 
 class TestMiddlewareCall:
     def test_requires_name_and_config_type(self):
-        call = MiddlewareCall(name="nemo-switchyard", config_type="routellm_config")
+        call = MiddlewareCall(name="nemo-switchyard", config_type="routellm_config", config={})
         assert call.name == "nemo-switchyard"
         assert call.config_type == "routellm_config"
-        assert call.config is None
+        assert call.config == {}
         assert call.config_id is None
 
     def test_inline_config(self):
@@ -395,6 +393,28 @@ class TestMiddlewareCall:
     def test_config_type_required(self):
         with pytest.raises(ValidationError):
             MiddlewareCall(name="nemo-switchyard")  # ty: ignore[missing-argument]
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"name": "nemo-switchyard", "config_type": "routellm_config"},
+            {
+                "name": "nemo-switchyard",
+                "config_type": "routellm_config",
+                "config": {},
+                "config_id": "default/router",
+            },
+            {
+                "name": "nemo-switchyard",
+                "config_type": "routellm_config",
+                "config_id": "default/router",
+                "config": {},
+            },
+        ],
+    )
+    def test_requires_exactly_one_config_source(self, payload: dict[str, object]):
+        with pytest.raises(ValidationError, match="Exactly one of config or config_id"):
+            MiddlewareCall.model_validate(payload)
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ const experiment: RecentExperiment = {
   latestCreatedAt: '2026-08-10T00:00:00Z',
   evaluationCount: 3,
   isFavorite: false,
+  showsOverTime: true,
   series: [
     {
       id: 'solved',
@@ -112,6 +113,47 @@ describe('RecentExperimentsPanel', () => {
     expect(screen.getByText('Favorites')).toBeInTheDocument();
     expect(screen.queryByText('Recent experiments')).not.toBeInTheDocument();
     expect(screen.queryByText('Measure agent performance')).not.toBeInTheDocument();
+  });
+
+  it('summarizes an experiment that does not show its evaluations over time', () => {
+    render(
+      <RecentExperimentsPanel
+        experiments={[{ ...experiment, showsOverTime: false }]}
+        onOpenExperiment={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('evaluations')).toBeInTheDocument();
+    expect(screen.getByText('v2 use cases')).toBeInTheDocument();
+    expect(screen.getByText('Dataset of early v2 use cases.')).toBeInTheDocument();
+    // No trend is claimed for evaluations that are not successive runs of one measurement.
+    expect(screen.queryByText('vs. 7 days ago')).not.toBeInTheDocument();
+  });
+
+  it('opens a summarized experiment from its title', async () => {
+    const user = userEvent.setup();
+    const onOpenExperiment = vi.fn();
+    const summarized = { ...experiment, showsOverTime: false };
+    render(
+      <RecentExperimentsPanel experiments={[summarized]} onOpenExperiment={onOpenExperiment} />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'v2 use cases' }));
+
+    expect(onOpenExperiment).toHaveBeenCalledWith(summarized);
+  });
+
+  it('leaves a summarized experiment whose name never resolved unclickable', () => {
+    render(
+      <RecentExperimentsPanel
+        experiments={[{ ...experiment, showsOverTime: false, name: null }]}
+        onOpenExperiment={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Unnamed experiment')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unnamed experiment' })).not.toBeInTheDocument();
   });
 
   it('prompts for a first evaluation when the agent has no experiments', async () => {

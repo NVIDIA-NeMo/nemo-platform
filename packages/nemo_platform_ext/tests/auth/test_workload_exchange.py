@@ -3,14 +3,19 @@
 
 """Tests for RFC 8693 workload identity token exchange."""
 
+import ast
 import json
 import time
 from base64 import urlsafe_b64encode
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
+import nemo_platform_ext.auth.workload_exchange as workload_exchange_module
 import pytest
 from nemo_platform_ext.auth.workload_exchange import (
     ACCESS_TOKEN_TYPE,
+    DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE,
     JWT_TOKEN_TYPE,
     TOKEN_EXCHANGE_GRANT_TYPE,
     WorkloadTokenExchangeError,
@@ -20,6 +25,19 @@ from nemo_platform_ext.auth.workload_exchange import (
 )
 from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+
+
+def test_workload_exchange_module_has_no_nmp_common_dependency():
+    assert workload_exchange_module.__file__ is not None
+    tree = ast.parse(Path(workload_exchange_module.__file__).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            imported = [node.module or ""]
+        else:
+            continue
+        assert not any(name == "nmp.common" or name.startswith("nmp.common.") for name in imported)
 
 
 def _make_jwt(claims: dict) -> str:
@@ -72,6 +90,19 @@ def test_token_exchange_grant_sends_rfc8693_request(mock_post):
         "audience": "nemo-platform",
         "scope": "openid email groups",
     }
+
+
+@patch("nemo_platform_ext.auth.workload_exchange.httpx.post")
+def test_token_exchange_grant_uses_docker_opaque_subject_token_type(mock_post):
+    mock_post.return_value = httpx.Response(200, json={"access_token": "exchanged-token", "expires_in": 300})
+
+    token_exchange_grant(
+        token_endpoint="https://idp.example.com/token",
+        client_id="nemo-platform-workload",
+        subject_token="nmp_obo_v1.delegation.secret",
+    )
+
+    assert mock_post.call_args.kwargs["data"]["subject_token_type"] == DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE
 
 
 @patch("nemo_platform_ext.auth.workload_exchange.httpx.post")
@@ -129,6 +160,27 @@ def test_token_exchange_grant_uses_nemo_scoped_ca_bundle(mock_post, monkeypatch)
 
     assert result["access_token"] == access_token
     assert mock_post.call_args.kwargs["verify"] == "/tmp/nemo-ca.pem"
+
+
+@patch("nemo_platform_ext.auth.workload_exchange.httpx.post")
+def test_token_exchange_grant_uses_context_certificate_authority(mock_post, tmp_path, monkeypatch):
+    access_token = _make_jwt({"exp": int(time.time()) + 3600})
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"access_token": access_token}
+    mock_post.return_value = response
+    context_ca = str(tmp_path / "context-ca.pem")
+    monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+    result = token_exchange_grant(
+        token_endpoint="https://idp.example.com/token",
+        client_id="nemo-platform-workload",
+        subject_token="subject-token",
+        certificate_authority=context_ca,
+    )
+
+    assert result["access_token"] == access_token
+    assert mock_post.call_args.kwargs["verify"] == context_ca
 
 
 @patch("nemo_platform_ext.auth.workload_exchange.httpx.post")
@@ -242,6 +294,7 @@ def test_provider_rejects_expired_exchange_response_and_retries_with_current_sub
         subject_token_file=subject_token_file,
         audience="nemo-platform",
         scope="openid email groups",
+        certificate_authority="/tmp/context-ca.pem",
         refresh_margin_seconds=0,
     )
 
@@ -256,3 +309,4 @@ def test_provider_rejects_expired_exchange_response_and_retries_with_current_sub
     assert mock_exchange.call_args_list[1].kwargs["subject_token"] == "subject-token-two"
     assert mock_exchange.call_args_list[1].kwargs["audience"] == "nemo-platform"
     assert mock_exchange.call_args_list[1].kwargs["scope"] == "openid email groups"
+    assert mock_exchange.call_args_list[1].kwargs["certificate_authority"] == "/tmp/context-ca.pem"

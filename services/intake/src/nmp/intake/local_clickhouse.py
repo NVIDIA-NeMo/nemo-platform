@@ -160,6 +160,12 @@ async def stop_local_clickhouse(*, data_dir: Path | None = None) -> bool:
     return await asyncio.to_thread(_stop_local_clickhouse, data_dir=data_dir)
 
 
+async def check_local_clickhouse_data_directory(*, data_dir: Path | None = None) -> None:
+    """Verify that the managed container can write its ClickHouse data directory."""
+
+    await asyncio.to_thread(_check_local_clickhouse_data_directory, data_dir=data_dir)
+
+
 def _reconcile_local_clickhouse(
     settings: ClickHouseSettings,
     *,
@@ -236,6 +242,37 @@ def _stop_local_clickhouse(*, data_dir: Path | None = None) -> bool:
         raise
     except Exception as exc:
         raise LocalClickHouseProvisioningError(f"Failed to stop local ClickHouse: {exc}") from exc
+    finally:
+        client.close()
+
+
+def _check_local_clickhouse_data_directory(*, data_dir: Path | None = None) -> None:
+    resolved_data_dir = _resolve_data_dir(data_dir)
+    client = _connect_docker()
+    try:
+        container_name = _managed_container_name(resolved_data_dir)
+        container = _get_container(client, container_name)
+        if container is None:
+            container_name = LEGACY_CONTAINER_NAME
+            container = _get_container(client, container_name)
+        if container is None:
+            raise LocalClickHouseProvisioningError(
+                f"Managed ClickHouse container for data directory {resolved_data_dir} does not exist"
+            )
+        _validate_lifecycle_target(
+            container,
+            expected_name=container_name,
+            data_dir=resolved_data_dir,
+            action="check readiness for",
+            allow_unlabeled_legacy=container_name == LEGACY_CONTAINER_NAME,
+        )
+        if container.status != "running":
+            raise LocalClickHouseProvisioningError(f"Managed ClickHouse container {container_name} is not running")
+        _check_clickhouse_data_directory_access(container)
+    except LocalClickHouseProvisioningError:
+        raise
+    except Exception as exc:
+        raise LocalClickHouseProvisioningError(f"Failed to check local ClickHouse data storage: {exc}") from exc
     finally:
         client.close()
 
@@ -589,25 +626,12 @@ def _ensure_data_directory_identity(data_dir: Path, *, manage_permissions: bool)
     )
 
 
-def _ensure_clickhouse_data_directory_access(container: Container) -> None:
+def _check_clickhouse_data_directory_access(container: Container) -> None:
     result = container.exec_run(
         [
             "sh",
             "-c",
-            "mkdir -p /var/lib/clickhouse/tmp && chown -R clickhouse:clickhouse /var/lib/clickhouse",
-        ],
-        user="root",
-    )
-    if result.exit_code != 0:
-        output = result.output.decode(errors="replace") if isinstance(result.output, bytes) else str(result.output)
-        raise LocalClickHouseProvisioningError(
-            f"Could not prepare ClickHouse data storage in {container.name}: {output.strip()}"
-        )
-
-    result = container.exec_run(
-        [
-            "sh",
-            "-c",
+            "mkdir -p /var/lib/clickhouse/tmp && "
             'probe=$(mktemp /var/lib/clickhouse/tmp/.nmp-write-probe.XXXXXX) && rm -f "$probe"',
         ],
         user="clickhouse",
@@ -620,9 +644,9 @@ def _ensure_clickhouse_data_directory_access(container: Container) -> None:
 
 
 def _prepare_and_wait_until_ready(container: Container, settings: ClickHouseSettings) -> str:
-    _ensure_clickhouse_data_directory_access(container)
     url = _container_http_url(container)
     _wait_until_ready(replace(settings, url=url))
+    _check_clickhouse_data_directory_access(container)
     logger.info("Local ClickHouse is ready at %s", url, extra={"container": container.name})
     return url
 

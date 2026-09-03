@@ -16,15 +16,23 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.constants import (
+    DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE as _DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE,
+)
+from nemo_platform_plugin.client.constants import (
+    JWT_WORKLOAD_SUBJECT_TOKEN_TYPE,
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    subject_token_type_for_exchange,
+)
 
 from nemo_platform_ext.auth.token_provider import DEFAULT_REFRESH_MARGIN_SECONDS, TokenSet
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_ext.client.tls import httpx_tls_config_from_env
 
 logger = logging.getLogger(__name__)
 
 TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange"
-JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
+JWT_TOKEN_TYPE = JWT_WORKLOAD_SUBJECT_TOKEN_TYPE
+DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE = _DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE
 ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
 
 
@@ -79,6 +87,7 @@ def token_exchange_grant(
     subject_token: str,
     audience: str | None = None,
     scope: str | None = None,
+    certificate_authority: str | None = None,
     timeout: float = 30.0,
 ) -> dict[str, object]:
     """Execute RFC 8693 token exchange and return token response JSON."""
@@ -87,7 +96,7 @@ def token_exchange_grant(
         "grant_type": TOKEN_EXCHANGE_GRANT_TYPE,
         "client_id": client_id,
         "subject_token": subject_token,
-        "subject_token_type": JWT_TOKEN_TYPE,
+        "subject_token_type": subject_token_type_for_exchange(subject_token),
         "requested_token_type": ACCESS_TOKEN_TYPE,
     }
     if audience:
@@ -95,7 +104,12 @@ def token_exchange_grant(
     if scope:
         data["scope"] = scope
 
-    response = httpx.post(token_endpoint, data=data, timeout=timeout, verify=client_verify_from_env())
+    response = httpx.post(
+        token_endpoint,
+        data=data,
+        timeout=timeout,
+        **httpx_tls_config_from_env(certificate_authority),
+    )
 
     if response.status_code != 200:
         error_data: dict[str, object] = {}
@@ -157,6 +171,7 @@ class WorkloadTokenExchangeProvider:
     subject_token_file: Path
     audience: str | None = None
     scope: str | None = None
+    certificate_authority: str | None = None
     refresh_margin_seconds: float = DEFAULT_REFRESH_MARGIN_SECONDS
     tokens: TokenSet = field(default_factory=lambda: TokenSet(access_token=""))
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -181,6 +196,7 @@ class WorkloadTokenExchangeProvider:
             subject_token=subject_token,
             audience=self.audience,
             scope=self.scope,
+            certificate_authority=self.certificate_authority,
         )
         access_token = _access_token_from_response(token_data)
         try:

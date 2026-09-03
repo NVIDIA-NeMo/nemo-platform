@@ -60,6 +60,13 @@ class EnvironmentConfig(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class RuntimeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    timeout_seconds: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    max_turns: int | None = Field(default=None, gt=0, le=(1 << 32) - 1)
+
+
 class TelemetryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -67,6 +74,7 @@ class TelemetryConfig(BaseModel):
     provider: str | None = None
     output_dir: str | None = None
     project: str | None = None
+    agent_name: str | None = None
     atif: dict[str, Any] | None = None
     atof: dict[str, Any] | None = None
     opentelemetry: dict[str, Any] | None = None
@@ -132,6 +140,7 @@ class AgentConfig(BaseModel):
     skills: SkillsConfig | None = None
     mcp: McpConfig | None = None
     tools: ToolsConfig | None = None
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     environment: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 

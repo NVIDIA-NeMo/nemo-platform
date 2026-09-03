@@ -21,6 +21,9 @@ from unittest.mock import patch
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.core.auth.app.bundle import build_authorization_data as _real_build_authorization_data
 from nmp.core.inference_gateway.service import InferenceGatewayService
 from nmp.core.models.service import ModelsService
@@ -112,7 +115,9 @@ class TestIGWViewerAccess:
         viewer_email = unique_email("viewer")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -136,7 +141,9 @@ class TestIGWViewerAccess:
         model_name = short_unique_name("mdl")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -167,7 +174,9 @@ class TestIGWViewerAccess:
         model_name = short_unique_name("mdl")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -197,7 +206,9 @@ class TestIGWViewerAccess:
         viewer_email = unique_email("viewer")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         provider = add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -227,7 +238,9 @@ class TestIGWViewerAccess:
         viewer_email = unique_email("viewer")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         provider = add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -262,7 +275,9 @@ class TestIGWEditorAccess:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -286,7 +301,9 @@ class TestIGWEditorAccess:
         model_name = short_unique_name("mdl")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -317,7 +334,9 @@ class TestIGWEditorAccess:
         model_name = short_unique_name("mdl")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -347,7 +366,9 @@ class TestIGWEditorAccess:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         provider = add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -377,7 +398,9 @@ class TestIGWEditorAccess:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         provider = add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -412,7 +435,9 @@ class TestIGWUnauthorizedWorkspace:
         norole_email = unique_email("norole")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
 
         norole_sdk = as_user(sdk, norole_email)
         response = norole_sdk._client.get(
@@ -429,7 +454,9 @@ class TestIGWUnauthorizedWorkspace:
         norole_email = unique_email("norole")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
 
         norole_sdk = as_user(sdk, norole_email)
         response = norole_sdk._client.post(
@@ -447,7 +474,9 @@ class TestIGWUnauthorizedWorkspace:
         norole_email = unique_email("norole")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
 
         norole_sdk = as_user(sdk, norole_email)
         response = norole_sdk._client.post(
@@ -465,7 +494,9 @@ class TestIGWUnauthorizedWorkspace:
         norole_email = unique_email("norole")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
 
         norole_sdk = as_user(sdk, norole_email)
         response = norole_sdk._client.post(
@@ -483,7 +514,9 @@ class TestIGWUnauthorizedWorkspace:
         norole_email = unique_email("norole")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
 
         norole_sdk = as_user(sdk, norole_email)
         response = norole_sdk._client.get(
@@ -572,7 +605,9 @@ class TestIGWScopeChecks:
             viewer_email = unique_email("viewer")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -593,7 +628,9 @@ class TestIGWScopeChecks:
             model_name = short_unique_name("mdl")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             add_mock_provider(
                 admin_sdk,
                 workspace=workspace,
@@ -621,7 +658,9 @@ class TestIGWScopeChecks:
             model_name = short_unique_name("mdl")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             add_mock_provider(
                 admin_sdk,
                 workspace=workspace,
@@ -648,7 +687,9 @@ class TestIGWScopeChecks:
             viewer_email = unique_email("viewer")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             provider = add_mock_provider(
                 admin_sdk,
                 workspace=workspace,
@@ -685,7 +726,9 @@ class TestIGWServicePrincipalAccess:
         workspace = short_unique_name("igw-svc-l")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         # Intentionally no workspace membership granted to service:evaluator
 
         response = sdk._client.get(
@@ -699,7 +742,9 @@ class TestIGWServicePrincipalAccess:
         model_name = short_unique_name("mdl")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -720,7 +765,9 @@ class TestIGWServicePrincipalAccess:
         model_name = short_unique_name("mdl")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -739,7 +786,9 @@ class TestIGWServicePrincipalAccess:
         workspace = short_unique_name("igw-svc-p")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         provider = add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -760,7 +809,9 @@ class TestIGWServicePrincipalAccess:
         norole_email = unique_email("norole")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
 
         response = sdk._client.get(
             f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/models",
@@ -798,7 +849,9 @@ class TestIGWDelegatedServicePrincipalAccess:
         obo_email = unique_email("obo-norole")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -818,7 +871,9 @@ class TestIGWDelegatedServicePrincipalAccess:
         obo_email = unique_email("obo-viewer")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(admin_sdk, workspace=workspace, principal=obo_email, roles=["Viewer"])
 
         response = sdk._client.get(
@@ -833,7 +888,9 @@ class TestIGWDelegatedServicePrincipalAccess:
         obo_email = unique_email("obo-norole")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         add_mock_provider(
             admin_sdk,
             workspace=workspace,
@@ -854,7 +911,9 @@ class TestIGWDelegatedServicePrincipalAccess:
         obo_email = unique_email("obo-editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         add_mock_provider(
             admin_sdk,
             workspace=workspace,

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import data_designer.config as dd
 import nemo_data_designer_plugin.testing.utils as u
@@ -11,7 +11,6 @@ from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from nemo_data_designer_plugin.jobs.create import CreateJob
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig, DataDesignerStepConfig
-from nemo_platform import AsyncNeMoPlatform
 
 
 def test_create_job_runs_step_config() -> None:
@@ -43,30 +42,6 @@ def test_create_job_runs_step_config() -> None:
 
     run_step_config_result.assert_called_once()
     assert result == run_result
-
-
-@pytest.mark.asyncio
-async def test_to_spec_local_does_not_reject_tool_configs() -> None:
-    builder = dd.DataDesignerConfigBuilder(tool_configs=[dd.ToolConfig(tool_alias="hello", providers=["provider"])])
-    builder.add_column(
-        column_config=dd.SamplerColumnConfig(
-            name="category",
-            sampler_type=dd.SamplerType.CATEGORY,
-            params=dd.CategorySamplerParams(values=["a", "b"]),
-        )
-    )
-    dd_job_config = DataDesignerJobConfig(num_records=42, config=builder.build())
-
-    step_config = await CreateJob.to_spec(
-        dd_job_config,
-        workspace="workspace",
-        entity_client=Mock(),
-        async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-        is_local=True,
-    )
-
-    assert isinstance(step_config, DataDesignerStepConfig)
-    assert step_config.job_config == dd_job_config
 
 
 @pytest.mark.asyncio
@@ -330,7 +305,7 @@ async def test_to_spec_pure_internal_errors_raise_internal_error(monkeypatch: py
         return [NDDInternalError("simulated internal failure")]
 
     monkeypatch.setattr(
-        "data_designer_nemo.context.RemoteDataDesignerContext.validate",
+        "data_designer_nemo.context.DataDesignerContext.validate",
         _internal_only,
     )
 

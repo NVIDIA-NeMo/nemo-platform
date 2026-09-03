@@ -109,3 +109,46 @@ def test_nemo_agents_deployment_resolution_injects_gateway_and_normalizes(
     assert resolved["environment"]["provider"] == "local"
     assert "workflow" not in resolved
     assert calls == ["test-workspace"]
+
+
+def test_nemo_agents_deployment_resolution_stamps_registered_agent_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        agent_config_formats,
+        "inject_fabric_gateway_url",
+        lambda config, workspace: config,
+    )
+
+    resolved = resolve_agent_config_for_deployment(
+        NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+        _nemo_agents_config(),
+        workspace="test-workspace",
+        agent_name="test-agent-hzwy9s",
+    )
+
+    # The spec's own ``name`` stays untouched; only telemetry is retagged so
+    # per-agent trace queries match the Platform-registered name.
+    assert resolved["name"] == "test-agent"
+    assert resolved["telemetry"]["agent_name"] == "test-agent-hzwy9s"
+
+
+def test_nemo_agents_deployment_resolution_keeps_explicit_telemetry_agent_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        agent_config_formats,
+        "inject_fabric_gateway_url",
+        lambda config, workspace: config,
+    )
+    config = _nemo_agents_config()
+    config["telemetry"] = {"enabled": True, "agent_name": "author-chosen-name"}
+
+    resolved = resolve_agent_config_for_deployment(
+        NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+        config,
+        workspace="test-workspace",
+        agent_name="test-agent-hzwy9s",
+    )
+
+    assert resolved["telemetry"]["agent_name"] == "author-chosen-name"

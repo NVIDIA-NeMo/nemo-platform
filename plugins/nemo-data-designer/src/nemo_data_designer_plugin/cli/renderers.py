@@ -52,7 +52,7 @@ _PREVIEW_FRAME_ADAPTER: TypeAdapter[PreviewFrame] = TypeAdapter(PreviewFrame)
 
 
 def _coerce_preview_frame(frame: Any) -> BaseModel | None:
-    """Turn a raw frame (BaseModel from local run, dict from HTTP) into a typed frame.
+    """Turn a raw frame into a typed frame.
 
     Returns ``None`` if the frame can't be parsed (unknown ``kind`` etc.) so
     the renderer can silently skip it instead of raising.
@@ -68,7 +68,7 @@ def _coerce_preview_frame(frame: Any) -> BaseModel | None:
 
 
 class PreviewRenderer(CLIRenderer):
-    """Renderer for ``nemo data-designer preview {run,submit}``.
+    """Renderer for ``nemo data-designer preview``.
 
     Streams log frames as colored Rich output during execution; on completion
     shows the dataset, analysis report, and a success summary. On error,
@@ -258,7 +258,7 @@ class PreviewRenderer(CLIRenderer):
 
 
 class CreateRenderer(CLIRenderer):
-    """Renderer for ``nemo data-designer create {run,submit}``.
+    """Renderer for ``nemo data-designer create``.
 
     Wraps the synchronous job result with header / success messaging. The
     full result dict is still echoed at the end so users can copy job IDs
@@ -270,17 +270,14 @@ class CreateRenderer(CLIRenderer):
 
     def on_frame(self, frame: Any, *, ctx: RendererContext) -> None:
         # Jobs are non-streaming; on_frame fires exactly once with the
-        # scheduler's result for run, or the submission response for submit.
-        # Print it directly so useful artifact paths stay visible.
+        # submission response. Print it directly so useful artifact
+        # paths stay visible.
         console.print()
         console.print(frame)
 
     def on_complete(self, *, ctx: RendererContext) -> None:
         console.print()
-        if ctx.is_local:
-            print_success("Create complete.")
-        else:
-            print_success("Create submitted.")
+        print_success("Create submitted.")
 
     def on_error(self, error: BaseException, *, ctx: RendererContext) -> None:
         print_error(f"Create failed: {error}")

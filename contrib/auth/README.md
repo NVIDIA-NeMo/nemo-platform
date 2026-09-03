@@ -15,6 +15,15 @@ adaptation:
   group binding, not as internal `service:*` principals
 - document provider-specific setup in a local `README.md`
 
+Managed job OBO tests use the provider for user and controller authentication,
+but the workload-to-submitter binding is NeMo Platform auth state. Jobs receive
+`NMP_WORKLOAD_IDENTITY_TOKEN_FILE`, exchange that subject token through
+`/apis/auth/token`, and receive a NeMo Platform token whose top-level subject
+is the job submitter and whose RFC 8693 `act.sub` is the workload actor. Provider
+manifests may include workload-provider token grants for contract tests, but
+managed Docker job OBO must not depend on provider-specific fields such as
+`jti`.
+
 Open-source providers with `mode: compose-ci` are intended for the shared auth
 matrix. Reference-only providers stay documented and manifest-driven but are
 excluded from the local Compose-backed matrix.

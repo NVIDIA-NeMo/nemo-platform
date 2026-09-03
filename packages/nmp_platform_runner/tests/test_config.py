@@ -164,6 +164,14 @@ def test_no_arguments_defaults_to_all_services_and_default_controllers():
     assert resolved.controllers.issuperset({"jobs", "models", "entities"})
 
 
+def test_service_group_all_does_not_start_controllers():
+    """Helm API pods use --service-group=all with no controllers; do not auto-start them."""
+    resolved = resolve(service_group="all")
+
+    assert "entities" in resolved.services
+    assert resolved.controllers == set()
+
+
 def test_service_group_core_resolves_core_services_only():
     resolved = resolve(service_group="core")
 
@@ -312,6 +320,67 @@ auth:
         env: dict[str, str] = {"NMP_SIDECARS": "old-value"}
         apply_run_environment(_make_config(sidecars=set()), env=env)
         assert "NMP_SIDECARS" not in env
+
+    def test_quickstart_platform_config_backfills_dev_secret_key_creation(self, tmp_path: Path):
+        config_path = tmp_path / "platform-config.yaml"
+        config_path.write_text("secrets: {}\n", encoding="utf-8")
+
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(config_path=str(config_path)), env=env)
+
+        assert env["NMP_SECRETS_ALLOW_KEY_CREATION"] == "1"
+        assert env["NMP_SECRETS_LOCAL_KEY_CREATION_PATH"] == "/data/nmp-encryption-key.txt"
+
+    def test_quickstart_platform_config_preserves_explicit_secret_key_creation_false(self, tmp_path: Path):
+        config_path = tmp_path / "platform-config.yaml"
+        config_path.write_text("secrets:\n  allow_key_creation: false\n", encoding="utf-8")
+
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(config_path=str(config_path)), env=env)
+
+        assert "NMP_SECRETS_ALLOW_KEY_CREATION" not in env
+        assert "NMP_SECRETS_LOCAL_KEY_CREATION_PATH" not in env
+
+    def test_quickstart_platform_config_preserves_existing_secret_env(self, tmp_path: Path):
+        config_path = tmp_path / "platform-config.yaml"
+        config_path.write_text("secrets: {}\n", encoding="utf-8")
+
+        env: dict[str, str] = {"NMP_SECRETS_ALLOW_KEY_CREATION": "0"}
+        apply_run_environment(_make_config(config_path=str(config_path)), env=env)
+
+        assert env["NMP_SECRETS_ALLOW_KEY_CREATION"] == "0"
+        assert "NMP_SECRETS_LOCAL_KEY_CREATION_PATH" not in env
+
+    def test_quickstart_platform_config_preserves_named_secret_provider(self, tmp_path: Path):
+        config_path = tmp_path / "platform-config.yaml"
+        config_path.write_text(
+            """
+secrets:
+  encryption:
+    current_provider: local_v1
+    providers:
+      secret_key:
+        local_v1:
+          from_env: NMP_SECRETS_DEFAULT_ENCRYPTION_KEY
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(config_path=str(config_path)), env=env)
+
+        assert "NMP_SECRETS_ALLOW_KEY_CREATION" not in env
+        assert "NMP_SECRETS_LOCAL_KEY_CREATION_PATH" not in env
+
+    def test_non_quickstart_config_does_not_backfill_dev_secret_key_creation(self, tmp_path: Path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("secrets: {}\n", encoding="utf-8")
+
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(config_path=str(config_path)), env=env)
+
+        assert "NMP_SECRETS_ALLOW_KEY_CREATION" not in env
+        assert "NMP_SECRETS_LOCAL_KEY_CREATION_PATH" not in env
 
 
 class TestApplyRunEnvDeployed:

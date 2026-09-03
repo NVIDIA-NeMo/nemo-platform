@@ -20,6 +20,8 @@ from nemo_iron_swarm_plugin.config import (
     read_env_file,
     write_env_file,
 )
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.secrets.client import SecretsClient
 
 
 def resolve_inference_key(config: IronSwarmConfig) -> tuple[str | None, str]:
@@ -29,8 +31,8 @@ def resolve_inference_key(config: IronSwarmConfig) -> tuple[str | None, str]:
     explicit ``INFERENCE_API_KEY`` still wins at run time, where the job injects via ``setdefault``.
     """
     try:
-        sdk = make_sdk(base_url())
-        secret = sdk.secrets.access(config.inference_secret_name, workspace=config.default_workspace)
+        secrets = client_from_platform(make_sdk(base_url()), SecretsClient)
+        secret = secrets.access_secret(name=config.inference_secret_name, workspace=config.default_workspace).data()
         if secret and secret.value:
             return secret.value, f"secret '{config.inference_secret_name}'"
     except Exception:  # Secrets store unreachable/absent → fall back to env

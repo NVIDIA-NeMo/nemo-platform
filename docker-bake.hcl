@@ -36,10 +36,13 @@ variable "NMP_COLLECT_SOURCES" {
 }
 
 variable "NMP_PYTHON_IMAGE" {
-  default = "python:3.13.14-slim-trixie"
+  default = "python:3.13.15-slim-trixie"
 }
 
 variable "DISTROLESS_BASE_3_13" {
+  # NGC 3.13-v4.0.9 (2026-08-06) is still CPython 3.13.14 and ships
+  # libexpat1 2.8.2-1~deb13u1 (sheet CVE-2026-66046). No newer 3.13 tag
+  # was published as of 2026-08-27; do not invent one.
   default = "nvcr.io/nvidia/distroless/python:3.13-v4.0.9"
 }
 
@@ -48,6 +51,14 @@ variable "NMP_API_RUNTIME_BASE" {
 }
 
 variable "NMP_CORE_RUNTIME_BASE" {
+  default = "root-distroless-base-3-13"
+}
+
+variable "NMP_CPU_TASKS_RUNTIME_BASE" {
+  default = "root-distroless-base-3-13"
+}
+
+variable "AUDITOR_RUNTIME_BASE" {
   default = "root-distroless-base-3-13"
 }
 
@@ -87,7 +98,9 @@ variable "BAKE_TAG" {
   default = "local"
 }
 
-# Pin for nmp-python-base (built by nmp-python-base-builder; run that target to update)
+# Tag for a published nmp-python-base image. Bake builds that target from
+# NMP_PYTHON_IMAGE (currently python:3.13.15-slim-trixie); this SHA is not
+# wired as a FROM pin. Rebuild the target in CI after changing NMP_PYTHON_IMAGE.
 variable "BASE_TAG_PYTHON" {
   default = "d9e1851f309d3cf5389c0fc0e1049bd3c87593f8"
 }
@@ -115,7 +128,7 @@ variable "NEMO_RL_REPO" {
 # RL pins Gym as a git submodule (-> soluwalana/Gym over https), so Gym rides in with the RL git ADD
 # - no separate Gym pin needed.
 variable "NEMO_RL_REF" {
-  default = "15075a6a584c4860700b905e883a6856b6890b40" # soluwalana/RL nmp/customizer
+  default = "874f94737d5358680607735e339a8c06c01495f7" # soluwalana/RL nmp/customizer
 }
 variable "RL_BASE_CONTEXT" {
   default = ""
@@ -683,9 +696,12 @@ target "nmp-cpu-tasks-docker" {
   contexts = {
     nmp-python-base           = "target:nmp-python-base"
     nmp-workspace             = "target:nmp-workspace"
+    root-busybox              = "target:root-busybox"
+    root-distroless-base-3-13 = "target:root-distroless-base-3-13"
   }
   args = {
-    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+    NMP_COLLECT_SOURCES        = NMP_COLLECT_SOURCES
+    NMP_CPU_TASKS_RUNTIME_BASE = NMP_CPU_TASKS_RUNTIME_BASE
   }
   cache-to   = maybe_registry_cache_to("nmp-cpu-tasks")
   cache-from = maybe_registry_cache_from("nmp-cpu-tasks")
@@ -700,7 +716,8 @@ target "nmp-gym-tasks-docker" {
   context    = "."
   dockerfile = "docker/Dockerfile.nmp-gym-tasks"
   contexts = {
-    nmp-cpu-tasks = "target:nmp-cpu-tasks-docker"
+    nmp-python-base = "target:nmp-python-base"
+    nmp-cpu-tasks   = "target:nmp-cpu-tasks-docker"
   }
   cache-to   = maybe_registry_cache_to("nmp-gym-tasks")
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
@@ -715,7 +732,8 @@ target "nmp-gym-tasks-smoke-test" {
   context    = "."
   dockerfile = "docker/Dockerfile.nmp-gym-tasks"
   contexts = {
-    nmp-cpu-tasks = "target:nmp-cpu-tasks-docker"
+    nmp-python-base = "target:nmp-python-base"
+    nmp-cpu-tasks   = "target:nmp-cpu-tasks-docker"
   }
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
   output     = ["type=cacheonly"]
@@ -1067,10 +1085,12 @@ target "auditor-tasks-docker" {
   contexts = {
     root-lib-source-artifacts = "target:root-lib-source-artifacts"
     root-busybox              = "target:root-busybox"
+    root-distroless-base-3-13 = "target:root-distroless-base-3-13"
   }
   dockerfile = "docker/Dockerfile.auditor-tasks"
   args = {
-    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+    NMP_COLLECT_SOURCES  = NMP_COLLECT_SOURCES
+    AUDITOR_RUNTIME_BASE = AUDITOR_RUNTIME_BASE
   }
   cache-to   = maybe_registry_cache_to("auditor-tasks")
   cache-from = maybe_registry_cache_from("auditor-tasks")

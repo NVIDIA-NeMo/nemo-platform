@@ -69,71 +69,10 @@ Example::
 from __future__ import annotations
 
 from abc import ABC
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
-from typing import Any, AsyncIterator, Protocol, Self, TypeAlias, Union, runtime_checkable
-
-import anthropic.types as anthropic_types
-import anthropic.types.message_create_params as anthropic_params
-import openai.types.chat as openai_chat_types
-import openai.types.chat.completion_create_params as openai_chat_params
-import openai.types.responses.response_create_params as openai_responses_params
-from nemo_platform_plugin.entity import NemoEntity
-from pydantic import BaseModel, Field, ModelWrapValidatorHandler, TypeAdapter, model_validator
-
-TypedResponse: TypeAlias = Union[openai_chat_types.ChatCompletion, anthropic_types.Message]
-OpenAIResponseChunk: TypeAlias = openai_chat_types.ChatCompletionChunk
-AnthropicResponseChunk: TypeAlias = anthropic_types.RawMessageStreamEvent
-TypedResponseChunk: TypeAlias = Union[OpenAIResponseChunk, AnthropicResponseChunk]
-TypedResponseResult: TypeAlias = Union[TypedResponse, AsyncIterator[TypedResponseChunk]]
-
-TypedRequest: TypeAlias = Union[
-    openai_chat_params.CompletionCreateParamsBase,
-    anthropic_params.MessageCreateParamsBase,
-    openai_responses_params.ResponseCreateParamsBase,
-]
-"""Union of the SDK TypedDict param types for each inbound API format.
-
-All three are TypedDicts — plain dicts at runtime. This alias exists for
-static type checking. Plugins that need path-based dispatch should use
-``request.path``, not ``isinstance``, since isinstance on TypedDict types
-just checks ``isinstance(x, dict)``.
-"""
-
-# ---------------------------------------------------------------------------
-# VirtualModel entity and MiddlewareCall schema
-# ---------------------------------------------------------------------------
-
-
-class MiddlewareCall(BaseModel):
-    """One entry in a VirtualModel middleware pipeline.
-
-    Declares which plugin to invoke and how to resolve its configuration.
-    Exactly one of ``config`` (inline dict) or ``config_id`` (entity reference)
-    should be provided. ``config_type`` is always required regardless of which
-    is used — it is the discriminator that tells IGW (and the plugin) which
-    config schema applies.
-
-    Attributes:
-        name: The entry-point key of the plugin to invoke
-            (e.g. ``"nemo-switchyard"``). Must match the plugin's
-            ``nemo.inference_middleware`` entry-point key.
-        config_type: Always required. Maps to the ``entity_type`` of the plugin's
-            config ``NemoEntity`` subclass (e.g. ``"routellm_config"``). Used by
-            IGW to call :meth:`~NemoInferenceMiddleware.validate_middleware_config`
-            with the right discriminator, and by the plugin to dispatch to the
-            correct schema when it supports multiple config types.
-        config: Inline config dict. Mutually exclusive with ``config_id``.
-        config_id: ``"workspace/name"`` reference to a stored config entity.
-            Mutually exclusive with ``config``. IGW resolves this by calling
-            :meth:`~NemoInferenceMiddleware.get_middleware_config` on the plugin.
-    """
-
-    name: str
-    config_type: str
-    config: dict[str, Any] | None = None
-    config_id: str | None = None
+from typing import Any, AsyncIterator, Protocol, TypeAlias, Union, runtime_checkable
 
 
 class BackendFormat(str, Enum):
@@ -141,112 +80,6 @@ class BackendFormat(str, Enum):
 
     OPENAI_CHAT = "OPENAI_CHAT"
     ANTHROPIC_MESSAGES = "ANTHROPIC_MESSAGES"
-
-
-class VirtualModelInferenceConfig(BaseModel):
-    """Inference configuration for one model entity referenced by a VirtualModel."""
-
-    model: str
-    """Model entity reference in ``"workspace/name"`` format."""
-
-    backend_format: BackendFormat | None = Field(
-        default=None,
-        description="Optional backend format override for this VirtualModel entry.",
-        json_schema_extra={"nullable": True},
-    )
-
-
-_AUTOPROVISIONED_DESC = (
-    "Marks this VirtualModel as controller-managed. The Models controller will delete it once no "
-    "ModelProvider serves the matching entity. Setting this manually opts the VirtualModel into "
-    "that cleanup behavior."
-)
-
-
-class VirtualModel(NemoEntity, entity_type="virtual_model"):
-    """Logical inference route.
-
-    Maps a user-facing model name to an optional default model entity and
-    defines ordered middleware pipelines for the request, response, and
-    post-response phases.
-
-    When a caller sets ``model: "workspace/my-virtual-model"`` in an inference
-    request, IGW resolves the ``VirtualModel`` instead of a ``ModelEntity``
-    directly. If ``default_model_entity`` is set, IGW writes it into
-    ``request["model"]`` before the request middleware pipeline runs. Middleware
-    may mutate ``request["model"]`` freely. After the pipeline completes, IGW
-    reads ``request["model"]``, resolves it to a ``ModelProvider`` via the
-    ``ModelCache``, and proxies.
-
-    The ``ModelProviderReconciler`` auto-creates a passthrough ``VirtualModel``
-    for each discovered model (same workspace and name as the ``ModelEntity``,
-    empty middleware lists, ``default_model_entity`` pointing to that entity).
-    All existing inference requests continue to work without changes.
-    """
-
-    default_model_entity: str | None = None
-    """``"workspace/model-entity-name"`` written into ``request["model"]`` before
-    the request middleware pipeline runs. If ``None``, no value is written — a
-    request middleware plugin must handle the backend call itself and return an
-    :class:`InferenceResponse` or ``AsyncIterator``."""
-
-    autoprovisioned: bool = Field(
-        default=False,
-        description=_AUTOPROVISIONED_DESC,
-    )
-    """Whether this VirtualModel was automatically created by the
-    ModelProviderReconciler for a discovered model entity."""
-
-    models: list[VirtualModelInferenceConfig] = Field(default_factory=list)
-    """Model entity references used by this VirtualModel. A per-entry
-    ``backend_format`` overrides the referenced ModelEntity value for requests
-    resolved through this VirtualModel."""
-
-    request_middleware: list[MiddlewareCall] = []
-    """Ordered list of middleware plugins applied before proxying."""
-
-    response_middleware: list[MiddlewareCall] = []
-    """Ordered list of middleware plugins applied after the backend response is
-    received, before returning it to the caller."""
-
-    post_response_middleware: list[MiddlewareCall] = []
-    """Ordered list of middleware plugins invoked after the response has been
-    returned to the caller. Intended for fire-and-forget work (e.g. logging,
-    analytics) that must not block or modify the response."""
-
-    override_proxy: str | None = None
-    """Optional. Names a plugin-provided proxy implementation IGW should use
-    instead of its default ``aiohttp`` proxy. Format: ``"plugin-name.proxy-name"``.
-    If unset, IGW performs the proxy itself."""
-
-    @model_validator(mode="wrap")
-    @classmethod
-    def _hydrate_wire_metadata(
-        cls,
-        value: object,
-        handler: ModelWrapValidatorHandler[Self],
-    ) -> Self:
-        """Retain entity metadata when validating a VirtualModel API response."""
-        model = handler(value)
-        if not isinstance(value, dict):
-            return model
-
-        wire_data = TypeAdapter(dict[str, object]).validate_python(value)
-        optional_string = TypeAdapter(str | None)
-        optional_datetime = TypeAdapter(datetime | None)
-        if "id" in wire_data:
-            model._id = optional_string.validate_python(wire_data["id"])
-        if "created_at" in wire_data:
-            model._created_at = optional_datetime.validate_python(wire_data["created_at"])
-        if "updated_at" in wire_data:
-            model._updated_at = optional_datetime.validate_python(wire_data["updated_at"])
-        if "created_by" in wire_data:
-            model._created_by = optional_string.validate_python(wire_data["created_by"])
-        if "updated_by" in wire_data:
-            model._updated_by = optional_string.validate_python(wire_data["updated_by"])
-        if "parent" in wire_data:
-            model._parent = optional_string.validate_python(wire_data["parent"])
-        return model
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +92,37 @@ ResponseResult = Union[dict[str, Any], AsyncIterator[dict[str, Any]]]
 - ``dict[str, Any]`` — Non-streaming response parsed from the backend.
 - ``AsyncIterator[dict[str, Any]]`` — Streaming response (sequence of chunk dicts).
 """
+
+TypedRequest: TypeAlias = Mapping[str, Any]
+"""Fast-path structural request body type for :attr:`InferenceRequest.typed_body`.
+
+SDK request parameter types are TypedDicts, so they are dict-like at runtime.
+Code that needs the exact SDK TypedDict union can import
+``TypedRequest`` from ``nemo_platform_plugin.inference_middleware_types``.
+"""
+
+
+@runtime_checkable
+class TypedResponse(Protocol):
+    """Fast-path structural response model for :attr:`InferenceResponse.typed_body`.
+
+    The concrete SDK response models live in
+    ``nemo_platform_plugin.inference_middleware_types``. The base middleware
+    interface only needs the shared serialized-model surface.
+    """
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class TypedResponseChunk(Protocol):
+    """Fast-path structural streaming chunk model for typed response streams."""
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]: ...
+
+
+TypedResponseResult: TypeAlias = Union[TypedResponse, AsyncIterator[TypedResponseChunk]]
+"""Structural typed response body or typed streaming chunk iterator."""
 
 
 @dataclass
@@ -575,6 +439,81 @@ RequestResult = Union[InferenceRequest, ImmediateResponse]
 # ---------------------------------------------------------------------------
 # Platform entity Protocols
 # ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class MiddlewareCall(Protocol):
+    """Structural middleware pipeline entry passed through VirtualModel hooks."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def config_type(self) -> str: ...
+
+    @property
+    def config(self) -> dict[str, Any] | None: ...
+
+    @property
+    def config_id(self) -> str | None: ...
+
+
+@runtime_checkable
+class VirtualModelInferenceConfig(Protocol):
+    """Structural model entry referenced by a VirtualModel hook payload."""
+
+    @property
+    def model(self) -> str: ...
+
+    @property
+    def backend_format(self) -> BackendFormat | None: ...
+
+
+@runtime_checkable
+class VirtualModel(Protocol):
+    """Structural VirtualModel type passed to middleware lifecycle hooks.
+
+    Middleware plugins should import this type from
+    ``nemo_platform_plugin.inference_middleware``. The concrete Pydantic entity
+    model used by IGW's API layer lives outside this fast import path.
+    """
+
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def workspace(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def default_model_entity(self) -> str | None: ...
+
+    @property
+    def autoprovisioned(self) -> bool: ...
+
+    @property
+    def models(self) -> Sequence[VirtualModelInferenceConfig]: ...
+
+    @property
+    def request_middleware(self) -> Sequence[MiddlewareCall]: ...
+
+    @property
+    def response_middleware(self) -> Sequence[MiddlewareCall]: ...
+
+    @property
+    def post_response_middleware(self) -> Sequence[MiddlewareCall]: ...
+
+    @property
+    def override_proxy(self) -> str | None: ...
+
+    @property
+    def guardrail_config_ids(self) -> Sequence[str]: ...
+
+    def middleware_calls(self) -> Iterator[MiddlewareCall]: ...
+
+    def references_guardrail_config(self, config_id: str) -> bool: ...
 
 
 @runtime_checkable

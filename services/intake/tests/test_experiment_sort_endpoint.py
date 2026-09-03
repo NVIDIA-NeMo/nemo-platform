@@ -8,7 +8,11 @@ which is exactly the "ClickHouse disabled / unavailable" condition. A metric-bac
 computed without rollups, so it must fail loudly rather than silently degrade to name order.
 """
 
+from unittest.mock import AsyncMock
+
+import pytest
 from fastapi.testclient import TestClient
+from nmp.intake.readiness import CLICKHOUSE_UNAVAILABLE_MESSAGE
 
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
 EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
@@ -34,6 +38,24 @@ def test_run_count_sort_returns_503_when_rollups_unavailable(client: TestClient)
     _make_evaluation(client)
     response = client.get(EVALUATIONS, params={"sort": "run_count"})
     assert response.status_code == 503, response.text
+
+
+def test_session_reads_return_actionable_503_when_clickhouse_is_unavailable(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _make_evaluation(client)
+    service = client.app.state.intake_service
+    monkeypatch.setattr(
+        service.clickhouse_client,
+        "query",
+        AsyncMock(side_effect=ConnectionError("ClickHouse unavailable")),
+    )
+
+    response = client.get(f"{EVALUATIONS}/exp-1/sessions")
+
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == CLICKHOUSE_UNAVAILABLE_MESSAGE
 
 
 def test_entity_sort_still_succeeds_without_rollups(client: TestClient) -> None:

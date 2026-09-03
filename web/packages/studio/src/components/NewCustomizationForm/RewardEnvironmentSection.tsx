@@ -9,7 +9,6 @@ import {
   Anchor,
   Banner,
   Block,
-  Button,
   FormField,
   SelectContent,
   SelectItem,
@@ -20,12 +19,12 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
+import { LINK_DOCS_GRPO_TRAINING } from '@studio/constants/links';
 import {
   type GymEnvironmentManifest,
   useGymEnvironmentManifest,
 } from '@studio/hooks/useGymEnvironmentManifest';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getNewFilesetRoute } from '@studio/routes/utils';
 import { getHumanReadableFileSize } from '@studio/util/files';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import { FC, useMemo } from 'react';
@@ -109,12 +108,8 @@ export const RewardEnvironmentSection: FC = () => {
         <>
           GRPO scores sampled responses using a NeMo Gym environment. Upload one to a fileset first,
           see{' '}
-          <Anchor
-            href="https://github.com/NVIDIA-NeMo/Gym"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Environment Requirements
+          <Anchor href={LINK_DOCS_GRPO_TRAINING} target="_blank" rel="noopener noreferrer">
+            GRPO Environment Guide
           </Anchor>
           .
         </>
@@ -159,21 +154,6 @@ export const RewardEnvironmentSection: FC = () => {
             </SelectContent>
           </SelectRoot>
         </FormField>
-
-        {noEnvs && (
-          <Stack gap="density-sm">
-            <Text kind="body/regular/md" color="secondary">
-              No reward environment filesets exist yet.
-            </Text>
-            <Button
-              color="brand"
-              kind="secondary"
-              onClick={() => window.open(getNewFilesetRoute(workspace), '_blank')}
-            >
-              Create a Fileset
-            </Button>
-          </Stack>
-        )}
 
         {hasSelection && !isManifestPending && (
           <Stack gap="density-sm">

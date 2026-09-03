@@ -17,6 +17,8 @@ from nemo_platform_plugin.inference_middleware import (
     BackendFormat,
     InferenceMiddlewareContext,
     InferenceRequest,
+)
+from nemo_platform_plugin.inference_middleware_models import (
     MiddlewareCall,
     VirtualModel,
     VirtualModelInferenceConfig,
@@ -190,7 +192,7 @@ class TestTranslateFormatRespect:
                 MiddlewareCall(
                     name="nemo-switchyard",
                     config_type="translate",
-                    config=None,
+                    config={},
                 ),
             ],
         )
@@ -213,7 +215,7 @@ class TestTranslateFormatRespect:
                 MiddlewareCall(
                     name="nemo-switchyard",
                     config_type="translate",
-                    config=None,
+                    config={},
                 ),
             ],
         )
@@ -369,7 +371,7 @@ class TestCombinedRandomRoutingAndTranslate:
                 MiddlewareCall(
                     name="nemo-switchyard",
                     config_type="translate",
-                    config=None,
+                    config={},
                 ),
             ],
         )
@@ -557,7 +559,7 @@ class TestConfigValidation:
                 MiddlewareCall(
                     name="nemo-switchyard",
                     config_type="translate",
-                    config=None,  # Uses VM's backend formats
+                    config={},  # Uses VM's backend formats
                 ),
             ],
         )
@@ -616,7 +618,7 @@ class TestCrossFormatTranslation:
                 MiddlewareCall(
                     name="nemo-switchyard",
                     config_type="translate",
-                    config=None,
+                    config={},
                 ),
             ],
         )
@@ -638,7 +640,7 @@ class TestCrossFormatTranslation:
                 MiddlewareCall(
                     name="nemo-switchyard",
                     config_type="translate",
-                    config=None,
+                    config={},
                 ),
             ],
         )
@@ -852,7 +854,7 @@ class TestTypedResultHandling:
                 MiddlewareCall(
                     name="nemo-switchyard",
                     config_type="translate",
-                    config=None,  # Uses VM's backend formats
+                    config={},  # Uses VM's backend formats
                 ),
             ],
         )
@@ -992,7 +994,7 @@ class TestTypedResultHandling:
                 MiddlewareCall(
                     name="nemo-switchyard",
                     config_type="translate",
-                    config=None,
+                    config={},
                 ),
             ],
         )

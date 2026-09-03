@@ -6,6 +6,7 @@ import {
   buildRewardChartData,
   GRPO_DIAGNOSTICS,
   GRPO_METRIC,
+  medianValue,
   readSeries,
   thresholdAxisBounds,
 } from '@studio/util/grpoMetrics';
@@ -107,31 +108,6 @@ describe('buildRewardChartData', () => {
     expect(data?.training).toEqual([0.3, null]);
     expect(data?.validation).toEqual([null, 0.35]);
   });
-
-  it('reports no band when the backend stored no spread series', () => {
-    const data = buildRewardChartData(details({ train_reward: [{ step: 1, value: 0.2 }] }));
-
-    expect(data?.hasSpread).toBe(false);
-    expect(data?.trainingLower).toEqual([null]);
-    expect(data?.trainingUpper).toEqual([null]);
-  });
-
-  it('builds a one-sigma band where a spread series exists', () => {
-    const data = buildRewardChartData(
-      details({
-        train_reward: [
-          { step: 1, value: 0.2 },
-          { step: 2, value: 0.4 },
-        ],
-        'train_total_reward/stddev': [{ step: 2, value: 0.1 }],
-      })
-    );
-
-    expect(data?.hasSpread).toBe(true);
-    // Step 1 has a mean but no spread, so it contributes no band.
-    expect(data?.trainingLower).toEqual([null, 0.30000000000000004]);
-    expect(data?.trainingUpper).toEqual([null, 0.5]);
-  });
 });
 
 describe('GRPO diagnostics', () => {
@@ -182,14 +158,44 @@ describe('GRPO diagnostics', () => {
     ).toEqual({ status: 'success', label: 'ok' });
   });
 
+  it('reads sampling_importance_ratio against 1 rather than as a deviation from it', () => {
+    const { formatValue, evaluate } = diagnostic('samplingImportanceRatio');
+
+    expect(formatValue(1.002)).toBe('1.002');
+    expect(formatValue(0.9994)).toBe('0.999');
+
+    expect(evaluate?.([{ step: 1, value: 1.002 }])).toEqual({ status: 'success', label: 'ok' });
+    expect(evaluate?.([{ step: 1, value: 1.07 }])).toEqual({
+      status: 'warning',
+      label: 'drifting',
+    });
+    expect(evaluate?.([{ step: 1, value: 1.2 }])).toEqual({ status: 'error', label: 'diverged' });
+    // Sampling below the training policy is just as far off-policy as sampling above it.
+    expect(evaluate?.([{ step: 1, value: 0.8 }])).toEqual({ status: 'error', label: 'diverged' });
+  });
+
+  it('renders step time in seconds on the tile and whole units on the axis', () => {
+    const { formatValue, formatAxisValue } = diagnostic('stepTime');
+
+    expect(formatValue(34.2)).toBe('34.2s');
+    expect(formatValue(75)).toBe('1m 15s');
+    // The axis rounds, so two neighbouring ticks cannot render as the same string with a decimal.
+    expect(formatAxisValue?.(34.6)).toBe('34s');
+    expect(formatAxisValue?.(300)).toBe('5m');
+    // `formatTimeInSeconds` renders sub-second values as an empty string; the tile format covers it.
+    expect(formatAxisValue?.(0.4)).toBe('0.4s');
+  });
+
   it('names only metrics the backend actually stores a history for', () => {
-    // Mirrors GRPO_TIME_SERIES_METRICS in nemo_rl_logger.py. The four omitted names are emitted
-    // by nothing on this path, so a tile for one could only ever render a dash.
+    // Mirrors GRPO_TIME_SERIES_METRICS in nemo_rl_logger.py. The names left out store a history
+    // too — they are further readings of the drift the first two entries already report.
     expect(GRPO_DIAGNOSTICS.map((entry) => entry.metric)).toEqual([
       'train_gen_kl_error',
       'train_token_mult_prob_error',
+      'train_sampling_importance_ratio',
       'train_approx_entropy',
       'train_gen_tokens_per_sample/mean',
+      'train_timing/total_step_time',
     ]);
   });
 
@@ -226,12 +232,67 @@ describe('GRPO diagnostics', () => {
     expect(GRPO_DIAGNOSTICS.filter((entry) => entry.chart).map((entry) => entry.title)).toEqual([
       'Generation KL',
       'Policy entropy',
-      'Generated tokens per rollout',
+      'Mean generated tokens per response',
+      'Training step time',
     ]);
+    // Step time is the one charted metric with no tile here: its summary sits beside the reward
+    // chart as a median over the run, which the latest step's value would misreport.
     expect(GRPO_DIAGNOSTICS.filter((entry) => entry.tile).map((entry) => entry.metric)).toEqual([
       'train_gen_kl_error',
       'train_token_mult_prob_error',
+      'train_sampling_importance_ratio',
       'train_approx_entropy',
     ]);
+  });
+});
+
+describe('medianValue', () => {
+  it('has nothing to report for a series the run never wrote', () => {
+    expect(medianValue(undefined)).toBeUndefined();
+    expect(medianValue([])).toBeUndefined();
+  });
+
+  it('averages the middle pair on an even-length series', () => {
+    expect(
+      medianValue([
+        { step: 1, value: 29.8 },
+        { step: 2, value: 33.6 },
+        { step: 3, value: 34.8 },
+        { step: 4, value: 35.4 },
+      ])
+    ).toBe(34.2);
+  });
+
+  it('takes the middle value on an odd-length series', () => {
+    expect(
+      medianValue([
+        { step: 1, value: 30 },
+        { step: 2, value: 34 },
+        { step: 3, value: 36 },
+      ])
+    ).toBe(34);
+  });
+
+  it('ignores a spike that would drag a mean, which is the point of using it', () => {
+    // A checkpoint save or one straggler rollout doubles a single step's wall clock.
+    const series = [
+      { step: 1, value: 33 },
+      { step: 2, value: 34 },
+      { step: 3, value: 35 },
+      { step: 4, value: 36 },
+      { step: 5, value: 400 },
+    ];
+
+    expect(medianValue(series)).toBe(35);
+  });
+
+  it('sorts by value, not by the step order readSeries left it in', () => {
+    expect(
+      medianValue([
+        { step: 1, value: 100 },
+        { step: 2, value: 1 },
+        { step: 3, value: 10 },
+      ])
+    ).toBe(10);
   });
 });

@@ -14,6 +14,7 @@ const LATEST = Date.parse('2026-08-18T00:00:00Z');
 interface RunOptions {
   experimentId: string;
   isFavorite?: boolean;
+  showsEvaluationsOverTime?: boolean;
   experimentName: string;
   experimentDescription: string;
   /** How long before {@link LATEST} the run published. */
@@ -28,6 +29,7 @@ const run = ({
   experimentName,
   experimentDescription,
   isFavorite = false,
+  showsEvaluationsOverTime = true,
   daysAgo,
   scores,
 }: RunOptions): AgentEvaluationRow =>
@@ -43,7 +45,7 @@ const run = ({
         name: experimentName,
         description: experimentDescription,
         isFavorite,
-        showsEvaluationsOverTime: true,
+        showsEvaluationsOverTime,
       },
     ],
     created_at: new Date(LATEST - daysAgo * DAY_MS).toISOString(),
@@ -133,6 +135,24 @@ export const SingleRun: Story = {
           'Continuously evaluate every merge to main against the full Support-Bench v3 benchmark.',
         daysAgo: 0,
         scores: { solved: 0.78, accuracy: 0.91, 'llm-judge.tone': 0.75 },
+      }),
+    ]).recent,
+  },
+};
+
+/** An experiment that does not track its evaluations over time: summarized rather than trended. */
+export const NotShownOverTime: Story = {
+  args: {
+    favorites: [],
+    experiments: toRecentExperiments([
+      run({
+        experimentId: 'exp-golden',
+        experimentName: 'Golden dataset',
+        experimentDescription:
+          'Evaluates routing accuracy and response quality across the three primary support use cases: billing inquiries, returns & refunds, and product routing.',
+        showsEvaluationsOverTime: false,
+        daysAgo: 0,
+        scores: { solved: 0.78 },
       }),
     ]).recent,
   },

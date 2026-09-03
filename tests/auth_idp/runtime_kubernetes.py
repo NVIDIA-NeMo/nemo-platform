@@ -7,6 +7,7 @@ import base64
 import contextlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -44,8 +45,29 @@ ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
 T = TypeVar("T")
 
 
+_DURATION_TOKEN_RE = re.compile(r"(\d+)([hms])")
+
+
+def _duration_seconds(value: str) -> int:
+    if value.isdigit():
+        return int(value)
+
+    total = 0
+    position = 0
+    for match in _DURATION_TOKEN_RE.finditer(value):
+        if match.start() != position:
+            raise ValueError(f"invalid duration: {value}")
+        amount, unit = match.groups()
+        total += int(amount) * {"h": 3600, "m": 60, "s": 1}[unit]
+        position = match.end()
+
+    if position != len(value) or total == 0:
+        raise ValueError(f"invalid duration: {value}")
+    return total
+
+
 # Keep timeouts centralized so slow-cluster tuning is a single, visible edit.
-PYTEST_TIMEOUT_SECONDS = 900
+PYTEST_TIMEOUT_SECONDS = 2400
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 120
 DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS = 60
 POD_DISCOVERY_TIMEOUT_SECONDS = 60
@@ -55,8 +77,17 @@ IMAGE_LOAD_TIMEOUT_SECONDS = 300
 CLUSTER_DELETE_TIMEOUT_SECONDS = 180
 ROLLOUT_STATUS_TIMEOUT = "240s"
 ROLLOUT_COMMAND_TIMEOUT_SECONDS = 300
-HELM_WAIT_TIMEOUT = "10m"
-HELM_UPGRADE_COMMAND_TIMEOUT_SECONDS = 900
+HELM_WAIT_TIMEOUT_DEFAULT = "20m"
+HELM_WAIT_TIMEOUT = os.environ.get("NMP_AUTHENTIK_K8S_HELM_WAIT_TIMEOUT", HELM_WAIT_TIMEOUT_DEFAULT)
+HELM_UPGRADE_COMMAND_GRACE_SECONDS = 300
+try:
+    _helm_wait_seconds = _duration_seconds(HELM_WAIT_TIMEOUT)
+except ValueError as exc:
+    raise RuntimeError(
+        "NMP_AUTHENTIK_K8S_HELM_WAIT_TIMEOUT must be a helm duration such as "
+        f"'20m', '1h30m', or a plain number of seconds; got {HELM_WAIT_TIMEOUT!r}"
+    ) from exc
+HELM_UPGRADE_COMMAND_TIMEOUT_SECONDS = _helm_wait_seconds + HELM_UPGRADE_COMMAND_GRACE_SECONDS
 HELM_REPO_TIMEOUT_SECONDS = 60
 HELM_DEPENDENCY_TIMEOUT_SECONDS = 300
 HTTP_RETRY_TIMEOUT_SECONDS = 180
@@ -169,6 +200,13 @@ def _diagnostic_output_text(output: str | bytes | None) -> str:
     return output
 
 
+def _diagnostic_text_tail(path: Path, *, limit: int = 4000) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[-limit:]
+    except OSError:
+        return ""
+
+
 def _write_diagnostic_timeout(log_dir: Path, name: str, args: list[str], exc: subprocess.TimeoutExpired) -> None:
     (log_dir / name).write_text(
         "\n".join(
@@ -195,6 +233,24 @@ def _write_diagnostic_command(
     timeout: float = DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
 ) -> None:
     _write_diagnostic_process(log_dir, name, _kubectl_command(context, args, kubeconfig), timeout=timeout)
+
+
+def _port_forward_log_file(service: str) -> Path | None:
+    configured_dir = os.environ.get("NMP_AUTHENTIK_K8S_LOG_DIR")
+    if not configured_dir:
+        return None
+    safe_service = service.replace("/", "_")
+    return Path(configured_dir) / f"port-forward-{safe_service}.log"
+
+
+def _port_forward_exit_message(returncode: int, log_file: Path | None) -> str:
+    message = f"kubectl port-forward exited early with {returncode}"
+    if log_file is None:
+        return message
+    log_tail = _diagnostic_text_tail(log_file)
+    if not log_tail.strip():
+        return message
+    return f"{message}\nport-forward log ({log_file}):\n{log_tail}"
 
 
 def _collect_kubernetes_diagnostics(context: str, cluster_name: str, kubeconfig: Path | None = None) -> Path:
@@ -662,28 +718,43 @@ def _start_port_forward_service(
     kubeconfig: Path | None = None,
 ) -> tuple[str, subprocess.Popen[str]]:
     port = _configured_gateway_port() or _free_port()
-    process = subprocess.Popen(
-        _kubectl_command(
-            context,
-            [
-                "-n",
-                NAMESPACE,
-                "port-forward",
-                f"svc/{service}",
-                f"{port}:8080",
-            ],
-            kubeconfig,
-        ),
-        cwd=REPO_ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        text=True,
+    command = _kubectl_command(
+        context,
+        [
+            "-n",
+            NAMESPACE,
+            "port-forward",
+            f"svc/{service}",
+            f"{port}:8080",
+        ],
+        kubeconfig,
     )
+    log_file = _port_forward_log_file(service)
+    log_handle = None
+    stdout = subprocess.DEVNULL
+    if log_file is not None:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        log_handle = log_file.open("w", encoding="utf-8")
+        log_handle.write(f"command: {' '.join(command)}\n\n")
+        log_handle.flush()
+        stdout = log_handle
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=REPO_ROOT,
+            stdout=stdout,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    finally:
+        if log_handle is not None:
+            log_handle.close()
     gateway_url = f"https://127.0.0.1:{port}"
 
     def wait_for_gateway_ready(remaining: float) -> httpx.Response:
         if process.poll() is not None:
-            raise AssertionError(f"kubectl port-forward exited early with {process.returncode}")
+            assert process.returncode is not None
+            raise AssertionError(_port_forward_exit_message(process.returncode, log_file))
         return httpx.get(
             gateway_url + GATEWAY_READY_PATH,
             timeout=min(PORT_FORWARD_HTTP_TIMEOUT_SECONDS, remaining),

@@ -8,15 +8,14 @@ import {
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { deleteEvaluation, getListEvaluationsQueryKey } from '@nemo/sdk/generated/platform/api';
 import { Button, Flex, Text } from '@nvidia/foundations-react-core';
-import { type EvalJobRow, evalJobDetailRoute } from '@studio/api/evaluation/utils';
+import { type EvalJobRow, evalDurationMs, evalJobDetailRoute } from '@studio/api/evaluation/utils';
 import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
-import {
-  evaluatorScores,
-  formatCost,
-  formatLatency,
-} from '@studio/routes/agents/AgentDetailRoute/evaluations/formatRollups';
+import { evaluationFilesetName } from '@studio/components/evaluation/experimentEvalConfig';
+import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
+import { evaluatorScores } from '@studio/routes/agents/AgentDetailRoute/evaluations/formatRollups';
 import {
   type AgentEvaluationRow,
   primaryExperimentName,
@@ -29,6 +28,8 @@ import { useNavigate } from 'react-router';
 
 interface EvaluationsTableProps {
   workspace: string;
+  /** The agent these evaluations belong to, seeded into a re-run started from a row. */
+  agentName?: string;
   evaluations: AgentEvaluationRow[];
   /** All evaluator jobs for the agent (any status), used to link a published evaluation back to
    *  the job that produced it. Absent until the reverse join finds a match. */
@@ -36,11 +37,19 @@ interface EvaluationsTableProps {
 }
 
 /** Every published evaluation for the agent, ungrouped. */
-export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluations, jobs }) => {
+export const EvaluationsTable: FC<EvaluationsTableProps> = ({
+  workspace,
+  agentName,
+  evaluations,
+  jobs,
+}) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const dataViewState = useStudioDataViewState();
   const [deleteRows, setDeleteRows] = useState<AgentEvaluationRow[]>([]);
+  // The evaluation a "New evaluation from this configuration" click is re-running, or null when
+  // the form is closed.
+  const [rerunSource, setRerunSource] = useState<AgentEvaluationRow | null>(null);
   // Reverse of JobsTable's job -> evaluation link: a completed job carries the evaluation it
   // published to, so index by that name to recover the job from an evaluation row.
   const jobByEvaluation = useMemo(() => {
@@ -75,10 +84,6 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
           header: 'Evaluation',
           cell: ({ row }) => <Text title={row.original.name}>{row.original.name}</Text>,
         }),
-        accessor('run_count', {
-          header: 'Runs',
-          cell: ({ row }) => <Text>{row.original.run_count ?? 0}</Text>,
-        }),
         accessor('test_case_count', {
           header: 'Test cases',
           cell: ({ row }) => <Text>{row.original.test_case_count ?? 0}</Text>,
@@ -108,15 +113,39 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
             );
           },
         }),
-        accessor('latency_ms', {
-          header: 'Avg latency',
+        accessor((original) => original.tokens?.mean, {
+          id: 'tokens',
+          header: 'Avg tokens',
           enableSorting: false,
-          cell: ({ row }) => <Text>{formatLatency(row.original.latency_ms?.mean)}</Text>,
+          cell: ({ row }) => {
+            const mean = row.original.tokens?.mean;
+            return <Text>{mean != null ? Math.round(mean).toLocaleString() : '—'}</Text>;
+          },
         }),
-        accessor('cost_usd', {
-          header: 'Cost',
+        accessor((original) => original.tokens?.sum, {
+          id: 'total_tokens',
+          header: 'Total tokens',
           enableSorting: false,
-          cell: ({ row }) => <Text>{formatCost(row.original.cost_usd?.sum)}</Text>,
+          cell: ({ row }) => {
+            const sum = row.original.tokens?.sum;
+            return <Text>{sum != null ? Math.round(sum).toLocaleString() : '—'}</Text>;
+          },
+        }),
+        accessor((original) => evalDurationMs(original.metadata), {
+          id: 'eval_duration',
+          header: 'Duration',
+          enableSorting: false,
+          cell: ({ getValue }) => <Text>{formatDurationMs(getValue<number | undefined>())}</Text>,
+        }),
+        accessor((row) => evalDurationMs(row.metadata), {
+          id: 'duration',
+          header: 'Duration',
+          enableSorting: false,
+          cell: ({ getValue }) => (
+            <Text>
+              {formatDurationMs(getValue<number | undefined>(), { hideMsAboveMinute: true })}
+            </Text>
+          ),
         }),
         accessor('created_at', {
           header: 'Created',
@@ -126,14 +155,27 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
         rowActionsColumn({
           rowActions: (row) => {
             const job = jobByEvaluation[row.name];
-            return job
-              ? [
-                  {
-                    children: 'View job',
-                    onSelect: () => navigate(evalJobDetailRoute(workspace, job)),
-                  },
-                ]
-              : false;
+            const actions = [
+              // Only offered for a row that carries a reusable eval config; without one the form
+              // would open on an evaluation it has to reject.
+              ...(evaluationFilesetName(row)
+                ? [
+                    {
+                      children: 'New evaluation from this configuration',
+                      onSelect: () => setRerunSource(row),
+                    },
+                  ]
+                : []),
+              ...(job
+                ? [
+                    {
+                      children: 'View job',
+                      onSelect: () => navigate(evalJobDetailRoute(workspace, job)),
+                    },
+                  ]
+                : []),
+            ];
+            return actions.length > 0 ? actions : false;
           },
         }),
       ],
@@ -165,6 +207,7 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
           DataViewTableContent: {
             renderEmptyState: () => (
               <TableEmptyState
+                className="py-density-3xl"
                 icon={<FlaskConical className="size-16" />}
                 header="No published evaluations yet"
                 emptyMessage="Results appear here once a run finishes and its telemetry is ingested."
@@ -173,6 +216,16 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
           },
         }}
       />
+
+      {rerunSource && (
+        <SubmitEvaluationModal
+          open
+          onClose={() => setRerunSource(null)}
+          workspace={workspace}
+          agent={agentName ?? rerunSource.agent_names?.[0]}
+          sourceEvaluation={rerunSource.name}
+        />
+      )}
 
       <BulkDeleteModal
         items={deleteRows}

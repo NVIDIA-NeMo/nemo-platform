@@ -32,6 +32,9 @@ from nemo_fabric import Fabric, FabricConfig, FabricError
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_CONCURRENT_INVOCATIONS = 8
+# The gateway derives persisted ``AgentSession.expires_at`` from this same
+# value. If the timeout becomes configurable, single-source it from the
+# deployment so persisted expiry and process-local runtime eviction stay aligned.
 DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS = 30 * 60
 DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS = 5 * 60
 

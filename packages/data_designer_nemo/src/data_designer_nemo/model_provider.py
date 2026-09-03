@@ -60,56 +60,6 @@ def _make_local_model_provider_registry() -> ModelProviderRegistry | None:
         return resolve_model_provider_registry(providers)
 
 
-async def make_local_first_model_provider_registry(
-    model_configs: list[dd.ModelConfig],
-    *,
-    sdk: AsyncNeMoPlatform | NeMoPlatform,
-    default_workspace: str,
-) -> ModelProviderRegistry | None:
-    if len(model_configs) == 0:
-        return None
-
-    logger.info("Building model provider registry. First checking locally-defined providers.")
-
-    local_registry = _make_local_model_provider_registry()
-
-    if local_registry:
-        logger.info(f"Found {len(local_registry.providers)} locally-defined providers.")
-        local_providers = local_registry.providers
-    else:
-        logger.info("No locally-defined providers.")
-        local_providers = []
-
-    # Collect models referencing providers that don't exist in the local registry
-    models_with_non_local_providers = [
-        model_config
-        for model_config in model_configs
-        if model_config.provider not in [provider.name for provider in local_providers]
-    ]
-
-    # If all providers are accounted for, there's nothing to add from IGW, so return the local registry
-    if len(models_with_non_local_providers) == 0:
-        logger.info("All referenced providers accounted for in local config.")
-        return local_registry
-
-    logger.info(
-        f"Identified {len(models_with_non_local_providers)} model configs with non-local model providers. Checking Inference Gateway."
-    )
-
-    igw_registry = await _get_igw_model_provider_registry(sdk, models_with_non_local_providers, default_workspace)
-
-    # In practice this should never happen. The IGW provider registry only returns None when an empty list
-    # of model_configs is provided as input, but we already early-return in that scenario (above). We expect
-    # to only get an actual registry back or an error to be raised.
-    if igw_registry is None:
-        logger.warning("Inference Gateway-based model provider registry is empty.")
-        return None
-
-    all_providers = local_providers + igw_registry.providers
-
-    return ModelProviderRegistry(providers=all_providers)
-
-
 async def _get_igw_model_provider_registry(
     sdk: AsyncNeMoPlatform | NeMoPlatform,
     model_configs: list[dd.ModelConfig],
@@ -142,12 +92,7 @@ class ModelProviderCollection:
     inaccessible_providers: set[str] = field(default_factory=set)
 
     async def add(self, model_config: dd.ModelConfig) -> None:
-        if (user_supplied_provider_name := model_config.provider) is None:
-            self.config_errors.append(
-                f"Model config with alias {model_config.alias!r} does not have an explicit provider defined."
-            )
-            return
-
+        user_supplied_provider_name = model_config.provider
         try:
             workspace, provider_name = parse_provider_reference(user_supplied_provider_name, self.default_workspace)
         except InvalidModelProviderReferenceError:

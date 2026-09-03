@@ -3,6 +3,7 @@
 
 """Unit tests for JWT validation."""
 
+import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,8 +15,11 @@ from jwt.algorithms import RSAAlgorithm
 from nmp.common import http_clients
 from nmp.common.auth.jwt import (
     JWTValidator,
-    TokenClaims,
     UnsignedJWTRejectedError,
+)
+from nmp.common.auth.token_claims import (
+    ActorClaims,
+    TokenClaims,
     groups_from_claim,
     scopes_from_claim,
 )
@@ -85,6 +89,24 @@ class TestTokenClaims:
         assert claims.subject == "user123"
         assert claims.email is None
 
+    def test_token_claims_with_actor(self):
+        """Test TokenClaims with an RFC 8693 actor claim."""
+        claims = TokenClaims(
+            subject="creator@example.com",
+            email="creator@example.com",
+            groups=["workspace-editors"],
+            scopes=[],
+            raw_claims={"sub": "creator@example.com"},
+            actor=ActorClaims(
+                subject="system:serviceaccount:nemo-runs:job-runner",
+                groups=["system:serviceaccounts"],
+            ),
+        )
+
+        assert claims.actor is not None
+        assert claims.actor.subject == "system:serviceaccount:nemo-runs:job-runner"
+        assert claims.actor.groups == ["system:serviceaccounts"]
+
 
 @pytest.mark.parametrize(
     ("value", "expected"),
@@ -153,7 +175,7 @@ class TestJWTValidator:
             mock_client = AsyncMock()
             mock_response = MagicMock()
             mock_response.raise_for_status = MagicMock()
-            mock_response.json.return_value = discovery_doc
+            mock_response.content = json.dumps(discovery_doc).encode("utf-8")
             mock_client.get.return_value = mock_response
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -168,6 +190,22 @@ class TestJWTValidator:
             )
 
     @pytest.mark.asyncio
+    async def test_discover_oidc_config_rejects_non_object_body(self, jwt_validator):
+        """OIDC discovery must return a JSON object."""
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.raise_for_status = MagicMock()
+            mock_response.content = b"[]"
+            mock_client.get.return_value = mock_response
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(jwt.InvalidTokenError, match="OIDC discovery was not a JSON object"):
+                await jwt_validator._discover_oidc_config()
+
+    @pytest.mark.asyncio
     async def test_discover_oidc_config_caches_result(self, jwt_validator):
         """Test that discovery results are cached within TTL."""
         discovery_doc = {"issuer": "https://sso.example.com"}
@@ -176,7 +214,7 @@ class TestJWTValidator:
             mock_client = AsyncMock()
             mock_response = MagicMock()
             mock_response.raise_for_status = MagicMock()
-            mock_response.json.return_value = discovery_doc
+            mock_response.content = json.dumps(discovery_doc).encode("utf-8")
             mock_client.get.return_value = mock_response
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -200,7 +238,7 @@ class TestJWTValidator:
             mock_client = AsyncMock()
             mock_response = MagicMock()
             mock_response.raise_for_status = MagicMock()
-            mock_response.json.return_value = discovery_doc_v1
+            mock_response.content = json.dumps(discovery_doc_v1).encode("utf-8")
             mock_client.get.return_value = mock_response
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -214,7 +252,7 @@ class TestJWTValidator:
             jwt_validator._discovery_cache_time -= 7200  # 2 hours ago
 
             # Update mock to return new document
-            mock_response.json.return_value = discovery_doc_v2
+            mock_response.content = json.dumps(discovery_doc_v2).encode("utf-8")
 
             # Second call should re-fetch
             result2 = await jwt_validator._discover_oidc_config()
@@ -417,6 +455,92 @@ class TestJWTValidator:
             assert result.scopes == ["openid", "profile", "email"]
 
     @pytest.mark.asyncio
+    async def test_validate_token_with_actor_claim(self, jwt_validator):
+        """Test token validation with an RFC 8693 act claim."""
+        valid_claims = {
+            "sub": "creator@example.com",
+            "email": "creator@example.com",
+            "groups": "workspace-editors",
+            "act": {
+                "sub": "system:serviceaccount:nemo-runs:job-runner",
+                "groups": "system:serviceaccounts",
+            },
+            "exp": int(time.time()) + 3600,
+            "iat": int(time.time()),
+            "aud": "test-audience",
+            "iss": "https://sso.example.com",
+        }
+
+        with patch.object(jwt_validator, "_get_jwks_client") as mock_get_jwks:
+            mock_jwks = MagicMock()
+            mock_signing_key = MagicMock()
+            mock_signing_key.key = "test-key"
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
+            mock_get_jwks.return_value = mock_jwks
+
+            with patch("jwt.decode", return_value=valid_claims):
+                result = await jwt_validator.validate_token("valid.token.here")
+
+            assert result is not None
+            assert result.subject == "creator@example.com"
+            assert result.email == "creator@example.com"
+            assert result.groups == ["workspace-editors"]
+            assert result.actor == ActorClaims(
+                subject="system:serviceaccount:nemo-runs:job-runner",
+                groups=["system:serviceaccounts"],
+            )
+
+    @pytest.mark.asyncio
+    async def test_validate_token_ignores_actor_without_subject(self, jwt_validator):
+        """Test act is ignored unless act.sub is a non-empty string."""
+        valid_claims = {
+            "sub": "creator@example.com",
+            "act": {"groups": "system:serviceaccounts"},
+            "exp": int(time.time()) + 3600,
+            "iat": int(time.time()),
+            "aud": "test-audience",
+            "iss": "https://sso.example.com",
+        }
+
+        with patch.object(jwt_validator, "_get_jwks_client") as mock_get_jwks:
+            mock_jwks = MagicMock()
+            mock_signing_key = MagicMock()
+            mock_signing_key.key = "test-key"
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
+            mock_get_jwks.return_value = mock_jwks
+
+            with patch("jwt.decode", return_value=valid_claims):
+                result = await jwt_validator.validate_token("valid.token.here")
+
+            assert result is not None
+            assert result.actor is None
+
+    @pytest.mark.asyncio
+    async def test_validate_token_ignores_actor_with_whitespace_subject(self, jwt_validator):
+        """Test act is ignored when act.sub normalizes to an empty string."""
+        valid_claims = {
+            "sub": "creator@example.com",
+            "act": {"sub": "   ", "groups": "system:serviceaccounts"},
+            "exp": int(time.time()) + 3600,
+            "iat": int(time.time()),
+            "aud": "test-audience",
+            "iss": "https://sso.example.com",
+        }
+
+        with patch.object(jwt_validator, "_get_jwks_client") as mock_get_jwks:
+            mock_jwks = MagicMock()
+            mock_signing_key = MagicMock()
+            mock_signing_key.key = "test-key"
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
+            mock_get_jwks.return_value = mock_jwks
+
+            with patch("jwt.decode", return_value=valid_claims):
+                result = await jwt_validator.validate_token("valid.token.here")
+
+            assert result is not None
+            assert result.actor is None
+
+    @pytest.mark.asyncio
     async def test_validate_token_with_string_groups(self, jwt_validator):
         """Test token validation with comma-separated groups string."""
         valid_claims = {
@@ -440,6 +564,31 @@ class TestJWTValidator:
 
             assert result is not None
             assert result.groups == ["admin", "users", "developers"]
+
+    @pytest.mark.asyncio
+    async def test_validate_token_ignores_non_string_group_values(self, jwt_validator):
+        """Token group extraction should use groups_from_claim semantics."""
+        valid_claims = {
+            "sub": "user123",
+            "groups": ["admin", 42, " users "],
+            "exp": int(time.time()) + 3600,
+            "iat": int(time.time()),
+            "aud": "test-audience",
+            "iss": "https://sso.example.com",
+        }
+
+        with patch.object(jwt_validator, "_get_jwks_client") as mock_get_jwks:
+            mock_jwks = MagicMock()
+            mock_signing_key = MagicMock()
+            mock_signing_key.key = "test-key"
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
+            mock_get_jwks.return_value = mock_jwks
+
+            with patch("jwt.decode", return_value=valid_claims):
+                result = await jwt_validator.validate_token("valid.token.here")
+
+            assert result is not None
+            assert result.groups == ["admin", "users"]
 
     @pytest.mark.asyncio
     async def test_validate_token_with_cognito_groups(self, jwt_validator):
@@ -580,6 +729,50 @@ class TestJWTValidator:
                 "https://custom.example.com/jwks",
                 lifespan=_JWKS_CACHE_LIFESPAN,
             )
+
+    @pytest.mark.asyncio
+    async def test_jwks_uri_returns_configured_uri(self, auth_config):
+        """Configured JWKS URI is exposed without discovery."""
+        auth_config.oidc.jwks_uri = "https://custom.example.com/jwks"
+        validator = JWTValidator(auth_config)
+
+        with patch.object(validator, "_discover_oidc_config", new=AsyncMock()) as discover:
+            assert await validator.jwks_uri() == "https://custom.example.com/jwks"
+
+        discover.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_jwks_uri_returns_discovered_uri(self, auth_config):
+        """Discovery JWKS URI is exposed when no explicit URI is configured."""
+        auth_config.oidc.jwks_uri = None
+        validator = JWTValidator(auth_config)
+
+        with patch.object(
+            validator,
+            "_discover_oidc_config",
+            new=AsyncMock(return_value={"jwks_uri": "https://sso.example.com/discovered-jwks"}),
+        ) as discover:
+            assert await validator.jwks_uri() == "https://sso.example.com/discovered-jwks"
+
+        discover.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_jwks_uses_async_jwks_client_cache(self, auth_config):
+        """JWKS access reuses the validator's async JWKS client."""
+        auth_config.oidc.jwks_uri = "https://custom.example.com/jwks"
+        validator = JWTValidator(auth_config)
+        jwks = {"keys": [{"kty": "RSA", "kid": "idp-key", "n": "modulus", "e": "AQAB"}]}
+
+        with patch("nmp.common.auth.jwt.AsyncJWKSClient") as jwks_client_class:
+            jwks_client = MagicMock()
+            jwks_client.get_jwks = AsyncMock(return_value=jwks)
+            jwks_client_class.return_value = jwks_client
+
+            assert await validator.jwks() == jwks
+            assert await validator.jwks() == jwks
+
+        jwks_client_class.assert_called_once()
+        assert jwks_client.get_jwks.await_count == 2
 
     @pytest.mark.asyncio
     async def test_validate_token_fetches_jwks_with_async_client(self, auth_config, monkeypatch):

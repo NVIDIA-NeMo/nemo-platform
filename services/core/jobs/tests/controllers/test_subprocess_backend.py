@@ -44,8 +44,14 @@ def _step_with_command(step, command: list[str]):
 
 def _step_with_unvalidated_command(step, command: list[str]):
     updated_step = step.model_copy(deep=True)
-    updated_step.step_spec.executor = SubprocessExecutionProvider.model_construct(
-        provider="subprocess", profile="default", command=command
+    step_spec = updated_step.step_spec
+    assert step_spec is not None
+    updated_step.step_spec = step_spec.model_copy(
+        update={
+            "executor": SubprocessExecutionProvider.model_construct(
+                provider="subprocess", profile="default", command=command
+            )
+        }
     )
     return updated_step
 
@@ -149,6 +155,35 @@ def test_schedule_uses_allowlisted_host_environment(mock_nmp_client, tmp_path, m
         patch.dict(
             os.environ,
             {"HOME": "/home/test", "PATH": "/bin", "VIRTUAL_ENV": "/venv", "SECRET_TOKEN": "do-not-leak"},
+            clear=True,
+        ),
+        patch("nmp.core.jobs.controllers.backends.subprocess.create_otel_logger", return_value=None),
+    ):
+        update = backend.schedule(step.step_spec.executor, step)
+
+    assert update.status == PlatformJobStatus.PENDING
+    metadata = backend._process_registry.get(
+        SubprocessProcessKey(step.workspace, step.job, str(step.attempt_id), step.name)
+    )
+    assert metadata is not None
+    assert metadata.process.wait(timeout=5) == 0
+
+
+def test_schedule_passes_the_agent_wheel_through(mock_nmp_client, tmp_path, mock_platform_config, test_step_pending):
+    backend = _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config)
+    step = _step_with_command(
+        test_step_pending,
+        [
+            "/bin/sh",
+            "-c",
+            'test "$NEMO_AGENTS_WHEEL" = "/dist/nemo_platform.whl" && test -z "${SECRET_TOKEN+x}"',
+        ],
+    )
+
+    with (
+        patch.dict(
+            os.environ,
+            {"PATH": "/bin", "NEMO_AGENTS_WHEEL": "/dist/nemo_platform.whl", "SECRET_TOKEN": "do-not-leak"},
             clear=True,
         ),
         patch("nmp.core.jobs.controllers.backends.subprocess.create_otel_logger", return_value=None),

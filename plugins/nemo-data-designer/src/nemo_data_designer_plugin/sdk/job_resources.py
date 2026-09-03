@@ -20,8 +20,8 @@ from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError, extract_h
 from nemo_data_designer_plugin.sdk.job_results import DataDesignerJobResults
 from nemo_data_designer_plugin.sdk.logging import with_logging
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types import PlatformJobStatus
 from nemo_platform_plugin.jobs.archive import safe_extract_tar
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
@@ -47,8 +47,14 @@ async def _async_pause(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
-def _job_url(platform: http.PlatformClient, workspace: str | None, path: str) -> str:
-    return http.url(platform, workspace, f"/jobs/create{path}")
+def _job_url(
+    platform: http.PlatformClient,
+    workspace: str | None,
+    path: str,
+    *,
+    collection: str = "create",
+) -> str:
+    return http.url(platform, workspace, f"/jobs/{collection}{path}")
 
 
 def _raise_for_status(resp: httpx.Response) -> None:
@@ -78,9 +84,9 @@ class _WaitLogCollector:
     def accept_logs(self, current_logs: list[dict[str, str]]) -> None:
         for log in current_logs[len(self.seen_logs) :]:
             self.seen_logs.append(log)
-            if not log["name"].startswith("data_designer"):
+            if not log.get("name", "").startswith("data_designer"):
                 continue
-            level = log["levelname"].lower()
+            level = log.get("levelname", "").lower()
             if level == "info":
                 logger.info(log["message"])
             elif level in {"warning", "warn"}:
@@ -101,10 +107,18 @@ class _WaitLogCollector:
 
 @with_logging
 class DataDesignerJobResource(WithRecordSamplerMixin):
-    def __init__(self, *, job_name: str, platform: NeMoPlatform, workspace: str | None):
+    def __init__(
+        self,
+        *,
+        job_name: str,
+        platform: NeMoPlatform,
+        workspace: str | None,
+        job_collection: str = "create",
+    ):
         self._job_name = job_name
         self._platform = platform
         self._workspace = workspace
+        self._job_collection = job_collection
         self._consecutive_poll_errors = 0
 
     @property
@@ -123,7 +137,7 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
             The job dict with up-to-date details.
         """
         resp = self._platform._client.get(
-            _job_url(self._platform, self._workspace, f"/{self._job_name}"),
+            _job_url(self._platform, self._workspace, f"/{self._job_name}", collection=self._job_collection),
             headers=http.headers(self._platform),
         )
         _raise_for_status(resp)
@@ -136,7 +150,7 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
             The current job status.
         """
         resp = self._platform._client.get(
-            _job_url(self._platform, self._workspace, f"/{self._job_name}/status"),
+            _job_url(self._platform, self._workspace, f"/{self._job_name}/status", collection=self._job_collection),
             headers=http.headers(self._platform),
         )
         _raise_for_status(resp)
@@ -194,7 +208,7 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
         while True:
             params = {"page_cursor": page_cursor} if page_cursor else None
             resp = self._platform._client.get(
-                _job_url(self._platform, self._workspace, f"/{self._job_name}/logs"),
+                _job_url(self._platform, self._workspace, f"/{self._job_name}/logs", collection=self._job_collection),
                 headers=http.headers(self._platform),
                 params=params,
             )
@@ -223,7 +237,12 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
         logger.info(f"🏺 Downloading artifacts from Job {self._job_name!r}")
 
         resp = self._platform._client.get(
-            _job_url(self._platform, self._workspace, f"/{self._job_name}/results/artifacts/download"),
+            _job_url(
+                self._platform,
+                self._workspace,
+                f"/{self._job_name}/results/artifacts/download",
+                collection=self._job_collection,
+            ),
             headers=http.headers(self._platform),
         )
         _raise_for_status(resp)
@@ -232,7 +251,12 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
 
         try:
             analysis_resp = self._platform._client.get(
-                _job_url(self._platform, self._workspace, f"/{self._job_name}/results/analysis/download"),
+                _job_url(
+                    self._platform,
+                    self._workspace,
+                    f"/{self._job_name}/results/analysis/download",
+                    collection=self._job_collection,
+                ),
                 headers=http.headers(self._platform),
             )
             _raise_for_status(analysis_resp)
@@ -258,7 +282,12 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
         self._check_if_result_available(ANALYSIS_RESULT_NAME)
         try:
             resp = self._platform._client.get(
-                _job_url(self._platform, self._workspace, f"/{self._job_name}/results/analysis/download"),
+                _job_url(
+                    self._platform,
+                    self._workspace,
+                    f"/{self._job_name}/results/analysis/download",
+                    collection=self._job_collection,
+                ),
                 headers=http.headers(self._platform),
             )
             _raise_for_status(resp)
@@ -273,7 +302,12 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
         if status == "active" or status in TERMINAL_INCOMPLETE_STATUSES:
             try:
                 resp = self._platform._client.get(
-                    _job_url(self._platform, self._workspace, f"/{self._job_name}/results/{result_name}"),
+                    _job_url(
+                        self._platform,
+                        self._workspace,
+                        f"/{self._job_name}/results/{result_name}",
+                        collection=self._job_collection,
+                    ),
                     headers=http.headers(self._platform),
                 )
                 _raise_for_status(resp)
@@ -317,10 +351,18 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
 
 @with_logging
 class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
-    def __init__(self, *, job_name: str, platform: AsyncNeMoPlatform, workspace: str | None):
+    def __init__(
+        self,
+        *,
+        job_name: str,
+        platform: AsyncNeMoPlatform,
+        workspace: str | None,
+        job_collection: str = "create",
+    ):
         self._job_name = job_name
         self._platform = platform
         self._workspace = workspace
+        self._job_collection = job_collection
         self._consecutive_poll_errors = 0
 
     @property
@@ -339,7 +381,7 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
             The job dict with up-to-date details.
         """
         resp = await self._platform._client.get(
-            _job_url(self._platform, self._workspace, f"/{self._job_name}"),
+            _job_url(self._platform, self._workspace, f"/{self._job_name}", collection=self._job_collection),
             headers=http.headers(self._platform),
         )
         _raise_for_status(resp)
@@ -352,7 +394,7 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
             The current job status.
         """
         resp = await self._platform._client.get(
-            _job_url(self._platform, self._workspace, f"/{self._job_name}/status"),
+            _job_url(self._platform, self._workspace, f"/{self._job_name}/status", collection=self._job_collection),
             headers=http.headers(self._platform),
         )
         _raise_for_status(resp)
@@ -410,7 +452,7 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
         while True:
             params = {"page_cursor": page_cursor} if page_cursor else None
             resp = await self._platform._client.get(
-                _job_url(self._platform, self._workspace, f"/{self._job_name}/logs"),
+                _job_url(self._platform, self._workspace, f"/{self._job_name}/logs", collection=self._job_collection),
                 headers=http.headers(self._platform),
                 params=params,
             )
@@ -439,7 +481,12 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
         logger.info(f"🏺 Downloading artifacts from Job {self._job_name!r}")
 
         resp = await self._platform._client.get(
-            _job_url(self._platform, self._workspace, f"/{self._job_name}/results/artifacts/download"),
+            _job_url(
+                self._platform,
+                self._workspace,
+                f"/{self._job_name}/results/artifacts/download",
+                collection=self._job_collection,
+            ),
             headers=http.headers(self._platform),
         )
         _raise_for_status(resp)
@@ -448,7 +495,12 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
 
         try:
             analysis_resp = await self._platform._client.get(
-                _job_url(self._platform, self._workspace, f"/{self._job_name}/results/analysis/download"),
+                _job_url(
+                    self._platform,
+                    self._workspace,
+                    f"/{self._job_name}/results/analysis/download",
+                    collection=self._job_collection,
+                ),
                 headers=http.headers(self._platform),
             )
             _raise_for_status(analysis_resp)
@@ -474,7 +526,12 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
         await self._check_if_result_available(ANALYSIS_RESULT_NAME)
         try:
             resp = await self._platform._client.get(
-                _job_url(self._platform, self._workspace, f"/{self._job_name}/results/analysis/download"),
+                _job_url(
+                    self._platform,
+                    self._workspace,
+                    f"/{self._job_name}/results/analysis/download",
+                    collection=self._job_collection,
+                ),
                 headers=http.headers(self._platform),
             )
             _raise_for_status(resp)
@@ -489,7 +546,12 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
         if status == "active" or status in TERMINAL_INCOMPLETE_STATUSES:
             try:
                 resp = await self._platform._client.get(
-                    _job_url(self._platform, self._workspace, f"/{self._job_name}/results/{result_name}"),
+                    _job_url(
+                        self._platform,
+                        self._workspace,
+                        f"/{self._job_name}/results/{result_name}",
+                        collection=self._job_collection,
+                    ),
                     headers=http.headers(self._platform),
                 )
                 _raise_for_status(resp)

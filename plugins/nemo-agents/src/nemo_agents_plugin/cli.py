@@ -27,6 +27,8 @@ group at startup. Numeric optimize is likewise auto-injected from
 - ``get``          — get an agent by name
 - ``delete``       — delete an agent
 - ``deploy``       — create a deployment for an agent (waits for ``running`` by default)
+- ``chat``         — open an interactive new or existing deployed-agent session
+- ``sessions``     — sub-group: list / get / close persisted sessions
 - ``undeploy``     — stop and remove a deployment
 - ``logs``         — print or tail the local deployment log file
 - ``deployments``  — sub-group: list / get / delete deployments
@@ -39,15 +41,18 @@ import json
 import logging
 import os
 import re
-import shutil
 import sys
 import tempfile
 import time
-from dataclasses import asdict
-from datetime import datetime
+from contextlib import closing
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from pkgutil import resolve_name
 from typing import Any, ClassVar, Literal, Optional, cast
+from urllib.parse import urlencode
 
+import click
 import httpx
 import typer
 import yaml
@@ -63,6 +68,7 @@ from nemo_agents_plugin.cli_context import (
 from nemo_agents_plugin.cli_context import (
     resolve_context_headers as _resolve_context_headers,
 )
+from nemo_agents_plugin.deployment_routing import is_deployment_routable
 from nemo_agents_plugin.entities import (
     AGENT_SPEC_FILENAME,
     CONTAINER_DEPLOYMENT_MODES,
@@ -72,21 +78,35 @@ from nemo_agents_plugin.entities import (
     MAX_ETHOS_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    AgentDeployment,
+    AgentSession,
+    SessionStatus,
     ethos_fileset_name,
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
+from nemo_agents_plugin.session_lifecycle import session_expiration_is_due
+from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_agents_plugin.usage.cli import register_usage_commands
+from nemo_platform import NeMoPlatform
+from nemo_platform_ext.cli.chat_tui import ExitAction, StreamingResponse, run_chat_tui
+from nemo_platform_ext.cli.core.api import is_tty
 from nemo_platform_ext.cli.core.formatters import Column, format_output
+from nemo_platform_ext.cli.core.help_formatter import NmpGroup
+from nemo_platform_ext.ui.prompts import is_interactive
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
-from nemo_platform_plugin.discovery import discover_agent_cli
+from nemo_platform_plugin.discovery import AGENT_CLI_GROUP, discover_entry_points
 from nemo_platform_plugin.job import NemoJob
+from pydantic import ValidationError
+from typer.main import get_command as _typer_get_command
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_WORKSPACE = "default"
 _LIST_OUTPUT_FORMAT = Literal["table", "json", "yaml", "csv", "markdown", "raw"]
+_DEPLOYMENT_RESOLUTION_PAGE_SIZE = 100
+
 _AGENT_LIST_COLUMNS = [
     Column("name"),
     Column("workspace"),
@@ -100,6 +120,14 @@ _DEPLOYMENT_LIST_COLUMNS = [
     Column("workspace"),
     Column("status"),
     Column("endpoint"),
+    Column("created_at"),
+]
+_SESSION_LIST_COLUMNS = [
+    Column("name"),
+    Column("status"),
+    Column("deployment_id"),
+    Column("last_active_at"),
+    Column("expires_at"),
     Column("created_at"),
 ]
 _ENVIRONMENT_LIST_COLUMNS = [
@@ -125,6 +153,79 @@ _COMPUTE_SPEC_LIST_COLUMNS = [
 ]
 
 
+_AGENT_CLI_PANEL = "Platform agents"
+
+
+@dataclass(frozen=True)
+class _LazyAgentCliEntry:
+    """Metadata-only stand-in for a not-yet-imported agent CLI extension.
+
+    ``help`` is a generic placeholder (entry-point metadata carries no
+    description) — same trade-off the top-level ``nemo`` CLI already makes
+    for lazily-loaded plugin commands (see ``functional_plugin_entry`` in
+    ``nemo_platform_ext.cli.manifest``).
+    """
+
+    import_path: str
+    help: str
+    panel: str = _AGENT_CLI_PANEL
+    hidden: bool = False
+
+
+class _LazyAgentCliGroup(NmpGroup):
+    """Group that defers importing plugin agent-CLI extensions until needed.
+
+    ``discover_agent_cli()`` (``nemo_platform_plugin.discovery``) fully imports
+    every ``nemo.cli.agents`` entry point up front, which makes plain ``nemo
+    agents -h`` pay the import cost of every contributing plugin (e.g. the
+    nemo-insights analyst stack) even though none of them is being invoked.
+    This group instead lists subcommand names from cheap entry-point metadata
+    and only imports/builds a given plugin's Typer app when that specific
+    subcommand name is resolved by Click — including when rendering its own
+    one-line help, which ``NmpGroup.format_commands`` reads from
+    ``_lazy_entries`` instead of calling ``get_command`` for every row.
+    Mirrors ``ManifestBackedNmpGroup`` (top-level lazy loading in
+    ``nemo_platform_ext.cli.core.lazy_load``) one level down.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        callback = getattr(self, "callback", None)
+        self._lazy_entries: dict[str, _LazyAgentCliEntry] = getattr(callback, "__nmp_lazy_agent_cli__", {})
+
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        names = list(self.commands)
+        for name in self._lazy_entries:
+            if name not in self.commands:
+                names.append(name)
+        return names
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        command = super().get_command(ctx, cmd_name)
+        if command is not None:
+            return command
+
+        entry = self._lazy_entries.get(cmd_name)
+        if entry is None:
+            return None
+
+        try:
+            cli_cls = resolve_name(entry.import_path)
+            cli = cli_cls().get_cli()
+        except Exception:
+            logger.warning("Failed to load agent CLI extension %r; skipping", cmd_name, exc_info=True)
+            return None
+
+        loaded = self._patch_command(_typer_get_command(cli))
+        loaded.name = cmd_name
+        loaded.hidden = loaded.hidden or entry.hidden
+        panel = getattr(loaded, "rich_help_panel", None)
+        if panel is None or type(panel).__name__ == "DefaultPlaceholder":
+            loaded.rich_help_panel = entry.panel
+        self.commands[cmd_name] = loaded
+        return loaded
+
+
 class AgentsCLI(NemoCLI):
     """CLI commands for the Agents plugin."""
 
@@ -136,6 +237,7 @@ class AgentsCLI(NemoCLI):
             name="agents",
             help=self.description,
             no_args_is_help=False,
+            cls=_LazyAgentCliGroup,
         )
 
         @app.callback(invoke_without_command=True)
@@ -144,19 +246,23 @@ class AgentsCLI(NemoCLI):
                 typer.echo(ctx.get_help())
                 raise typer.Exit(0)
 
+        # Metadata-only discovery: reads entry-point names without importing
+        # the plugin modules they point at. Actual imports happen lazily in
+        # ``_LazyAgentCliGroup.get_command`` only for the subcommand resolved.
+        agents_callback.__nmp_lazy_agent_cli__ = {
+            name: _LazyAgentCliEntry(
+                import_path=entry_point.value,
+                help=f"Agent CLI commands contributed by the {name!r} plugin.",
+            )
+            for name, entry_point in discover_entry_points(AGENT_CLI_GROUP).items()
+        }
+
         _register_local_commands(app)
         _register_package_command(app)
         _register_platform_commands(app)
         _register_environment_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
-        for name, cli_cls in discover_agent_cli().items():
-            try:
-                cli = cli_cls().get_cli()
-            except Exception:
-                logger.warning("Failed to load agent CLI extension %r; skipping", name, exc_info=True)
-                continue
-            app.add_typer(cli, name=name, rich_help_panel="Platform agents")
         return app
 
     def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
@@ -790,6 +896,150 @@ def _package_render_only(
 def _register_platform_commands(app: typer.Typer) -> None:
     """Register Agent Resources commands (require a running cluster) onto *app*."""
 
+    @app.command(rich_help_panel="Deployed agent interaction (requires running cluster)")
+    def chat(
+        input: Optional[str] = typer.Option(
+            None,
+            "--input",
+            "-i",
+            help="Optional first message to send before prompting for the next turn.",
+        ),
+        agent_deployment: Optional[str] = typer.Option(
+            None,
+            "--agent-deployment",
+            "-d",
+            help="Deployment to start a new persisted session against.",
+        ),
+        session: Optional[str] = typer.Option(
+            None,
+            "--session",
+            "-s",
+            help="Name of an existing persisted session to resume.",
+        ),
+        session_name: Optional[str] = typer.Option(
+            None,
+            "--session-name",
+            help="Name for a new session; valid only with --agent-deployment.",
+        ),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        timeout: float = typer.Option(
+            300,
+            "--timeout",
+            "-t",
+            min=0.001,
+            envvar="NEMO_AGENTS_INVOKE_TIMEOUT",
+            help="Request timeout in seconds for each streamed agent turn.",
+        ),
+    ) -> None:
+        """Chat interactively with a new or existing deployed-agent session."""
+        _validate_session_chat_options(
+            agent_deployment=agent_deployment,
+            session=session,
+            session_name=session_name,
+            input=input,
+        )
+        if not _is_interactive_session_chat():
+            typer.echo(
+                "Error: Agent chat requires an interactive terminal. "
+                "Use `nemo agents invoke` for one-shot or scripted input.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+        _platform_session_chat(
+            base_url=_resolve_base_url(base_url),
+            workspace=workspace,
+            agent_deployment=agent_deployment,
+            session=session,
+            session_name=session_name,
+            input=input,
+            timeout=timeout,
+        )
+
+    sessions_app = typer.Typer(
+        name="sessions",
+        help="Discover and manage persisted deployed-agent sessions.",
+        no_args_is_help=True,
+    )
+    app.add_typer(sessions_app, rich_help_panel="Deployed agent interaction (requires running cluster)")
+
+    @sessions_app.command(name="list")
+    def sessions_list(
+        ctx: typer.Context,
+        agent_deployment: Optional[str] = typer.Option(
+            None,
+            "--agent-deployment",
+            "-d",
+            help="Limit results to sessions bound to this deployment.",
+        ),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        output_format: Optional[_LIST_OUTPUT_FORMAT] = typer.Option(
+            None,
+            "--format",
+            "--output-format",
+            "-o",
+            "-f",
+            help="Output format for the list of sessions.",
+            rich_help_panel="Output Options",
+        ),
+        no_truncate: Optional[bool] = typer.Option(
+            None,
+            "--no-truncate",
+            help="Don't truncate long values in table/markdown/csv output.",
+            rich_help_panel="Output Options",
+        ),
+    ) -> None:
+        """List persisted sessions, newest first."""
+        base_url = _resolve_base_url(base_url)
+        path = f"/apis/agents/v2/workspaces/{workspace}/sessions"
+        if agent_deployment is not None:
+            if not agent_deployment.strip():
+                typer.echo("Error: --agent-deployment must not be empty.", err=True)
+                raise typer.Exit(code=2)
+            deployment = _api_request(
+                "GET",
+                base_url,
+                f"/apis/agents/v2/workspaces/{workspace}/deployments/{agent_deployment}",
+            )
+            deployment_id = _require_deployment_id(deployment, agent_deployment)
+            path += f"?{urlencode({'filter[deployment_id]': deployment_id})}"
+
+        resp = _api_request("GET", base_url, path)
+        _print_list_response(
+            ctx,
+            resp,
+            default_columns=_SESSION_LIST_COLUMNS,
+            output_format=output_format,
+            no_truncate=no_truncate,
+        )
+
+    @sessions_app.command(name="get")
+    def sessions_get(
+        name: str = typer.Argument(..., help="Session name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+    ) -> None:
+        """Get a persisted session by name."""
+        base_url = _resolve_base_url(base_url)
+        resp = _api_request("GET", base_url, f"/apis/agents/v2/workspaces/{workspace}/sessions/{name}")
+        typer.echo(json.dumps(resp, indent=2))
+
+    @sessions_app.command(name="close")
+    def sessions_close(
+        name: str = typer.Argument(..., help="Session name."),
+        workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
+        base_url: BaseUrlOption = None,
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    ) -> None:
+        """Close a session and release its deployed runtime."""
+        base_url = _resolve_base_url(base_url)
+        if not yes:
+            typer.confirm(f"Close session '{name}'? It cannot be resumed after it is closed.", abort=True)
+        _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/sessions/{name}/close")
+        typer.echo(f"Session '{name}' closed.")
+
     @app.command(rich_help_panel="Agent Resources (requires running cluster)")
     def create(
         name: str = typer.Option(..., "--name", "-n", help="Agent name."),
@@ -812,13 +1062,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         config_dict = _load_yaml(agent_config)
         config_format = config_dict.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
-        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
-            config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
-            for line in _spec_package_warning(name, agent_config):
-                typer.echo(line, err=True)
-        elif config_format == NAT_WORKFLOW_CONFIG_FORMAT:
-            # Resolve ${NEMO_DEFAULT_MODEL} client-side — agents service has no
-            # user context at deploy time.
+        if config_format in {NEMO_AGENTS_SPEC_CONFIG_FORMAT, NAT_WORKFLOW_CONFIG_FORMAT}:
+            # Resolve ${NEMO_DEFAULT_MODEL} client-side — the agents service has
+            # no user context at deploy time.
             config_dict = inject_default_model(config_dict)
             if _contains_default_model_placeholder(config_dict):
                 typer.echo(
@@ -828,7 +1074,11 @@ def _register_platform_commands(app: typer.Typer) -> None:
                     err=True,
                 )
                 raise typer.Exit(code=1)
-        else:
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            config_dict = _validate_platform_agent_config_for_cli(config_dict, base_dir=agent_config.parent)
+            for line in _spec_package_warning(name, agent_config):
+                typer.echo(line, err=True)
+        elif config_format != NAT_WORKFLOW_CONFIG_FORMAT:
             typer.echo(f"Error: unsupported config_format {config_format!r}", err=True)
             raise typer.Exit(code=1)
         payload = {
@@ -944,6 +1194,14 @@ def _register_platform_commands(app: typer.Typer) -> None:
             "-i",
             help="Container image for docker/k8s modes (falls back to deployments.default_image).",
         ),
+        use_image_entrypoint: bool = typer.Option(
+            False,
+            "--use-image-entrypoint",
+            help=(
+                "For docker/k8s modes, preserve the image ENTRYPOINT/CMD instead of "
+                "injecting the platform-owned agent server command."
+            ),
+        ),
         environment: Optional[str] = typer.Option(
             None,
             "--environment",
@@ -998,6 +1256,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
         if image and mode == "subprocess":
             typer.echo("--image requires --mode docker or k8s.", err=True)
             raise typer.Exit(code=2)
+        if use_image_entrypoint and mode == "subprocess":
+            typer.echo("--use-image-entrypoint requires --mode docker or k8s.", err=True)
+            raise typer.Exit(code=2)
 
         base_url = _resolve_base_url(base_url)
         if environment is not None and not environment.strip():
@@ -1008,6 +1269,8 @@ def _register_platform_commands(app: typer.Typer) -> None:
             payload["name"] = name
         if image:
             payload["image"] = image
+        if use_image_entrypoint:
+            payload["use_image_entrypoint"] = True
         if environment is not None:
             payload["environment"] = environment
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/deployments", json_body=payload)
@@ -1782,7 +2045,6 @@ def _local_fabric_invoke(config: dict[str, Any], inputs: list[Any], *, base_dir:
     from nemo_agents_plugin.fabric.invocation import invoke_agent_config_once
     from nemo_agents_plugin.fabric.runtime import FabricRuntimeExecutionError
     from nemo_agents_plugin.fabric.translator import FabricTranslationError
-    from pydantic import ValidationError
 
     try:
         agent_config = AgentConfig.model_validate(config)
@@ -1854,9 +2116,308 @@ def _platform_invoke(
             raise typer.Exit(code=1)
 
 
+def _is_interactive_session_chat() -> bool:
+    """Return whether the process can safely run the agent chat TUI."""
+    return is_interactive() and is_tty()
+
+
+def _validate_session_chat_options(
+    *,
+    agent_deployment: str | None,
+    session: str | None,
+    session_name: str | None,
+    input: str | None,
+) -> None:
+    """Validate the mutually exclusive new-session and resume selectors."""
+    if agent_deployment is not None and not agent_deployment.strip():
+        typer.echo("Error: --agent-deployment must not be empty.", err=True)
+        raise typer.Exit(code=2)
+    if session is not None and not session.strip():
+        typer.echo("Error: --session must not be empty.", err=True)
+        raise typer.Exit(code=2)
+    if session_name is not None and not session_name.strip():
+        typer.echo("Error: --session-name must not be empty.", err=True)
+        raise typer.Exit(code=2)
+    if input is not None and not input.strip():
+        typer.echo("Error: --input must not be empty.", err=True)
+        raise typer.Exit(code=2)
+
+    if (agent_deployment is None) == (session is None):
+        typer.echo("Error: Provide exactly one of --agent-deployment or --session.", err=True)
+        raise typer.Exit(code=2)
+    if session_name is not None and agent_deployment is None:
+        typer.echo("Error: --session-name can only be used with --agent-deployment.", err=True)
+        raise typer.Exit(code=2)
+
+
+def _platform_session_chat(
+    *,
+    base_url: str,
+    workspace: str,
+    agent_deployment: str | None,
+    session: str | None,
+    session_name: str | None,
+    input: str | None,
+    timeout: float,
+) -> None:
+    """Resolve a new or existing persisted session, then enter its chat transport."""
+    if agent_deployment is not None:
+        deployment, created_session, session_id = _create_session_for_deployment(
+            base_url=base_url,
+            workspace=workspace,
+            deployment_name=agent_deployment,
+            session_name=session_name,
+        )
+        typer.echo(
+            f"Session '{created_session.name}' created. Resume with:\n"
+            f"  nemo agents chat --session {created_session.name} --workspace {workspace} --base-url {base_url}"
+        )
+        _run_resolved_session_chat(
+            base_url=base_url,
+            workspace=workspace,
+            deployment=deployment,
+            session=created_session,
+            session_id=session_id,
+            input=input,
+            timeout=timeout,
+        )
+        return
+
+    assert session is not None
+    deployment, resolved_session, session_id = _resolve_existing_session(
+        base_url=base_url,
+        workspace=workspace,
+        session_name=session,
+    )
+    typer.echo("Resuming runtime context; prior messages are not redisplayed.")
+    _run_resolved_session_chat(
+        base_url=base_url,
+        workspace=workspace,
+        deployment=deployment,
+        session=resolved_session,
+        session_id=session_id,
+        input=input,
+        timeout=timeout,
+    )
+
+
+def _run_resolved_session_chat(
+    *,
+    base_url: str,
+    workspace: str,
+    deployment: AgentDeployment,
+    session: AgentSession,
+    session_id: str,
+    input: str | None,
+    timeout: float,
+) -> None:
+    """Run the shared TUI for an already-resolved session."""
+    url = (
+        f"{base_url.rstrip('/')}/apis/agents/v2/workspaces/{workspace}"
+        f"/deployments/{deployment.name}/-/v1/chat/completions"
+    )
+    headers = {**_resolve_context_headers(), SESSION_ID_HEADER: session_id}
+    display_info = {
+        "Deployment": deployment.name,
+        "Session": session.name,
+        "Status": session.status.value,
+    }
+    if session.expires_at is not None:
+        display_info["Expires"] = session.expires_at.isoformat()
+
+    try:
+        with httpx.Client(timeout=timeout) as client:
+
+            def send_turn(user_input: str) -> StreamingResponse:
+                request = client.build_request(
+                    "POST",
+                    url,
+                    headers=headers,
+                    json={"messages": [{"role": "user", "content": user_input}], "stream": True},
+                )
+                response = client.send(request, stream=True)
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError:
+                    response.read()
+                    response.close()
+                    raise
+                return cast(StreamingResponse, closing(response))
+
+            run_chat_tui(
+                send_turn=send_turn,
+                display_info=display_info,
+                initial_message=input,
+                exit_action=ExitAction.DETACH,
+            )
+    except httpx.TimeoutException as exc:
+        typer.echo(
+            f"Error: session chat request timed out after {timeout:.0f}s. Use --timeout to increase it.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+    except httpx.HTTPStatusError as exc:
+        print_http_status_error(exc, action="chat with deployed agent")
+        raise typer.Exit(code=1)
+    except httpx.RequestError as exc:
+        print_http_request_error(exc, action="chat with deployed agent")
+        raise typer.Exit(code=1)
+
+
 # ---------------------------------------------------------------------------
 # Platform API helpers
 # ---------------------------------------------------------------------------
+
+
+def _require_deployment_id(response: Any, deployment_name: str) -> str:
+    """Return a valid deployment ID or exit with the standard response error."""
+    try:
+        deployment_id = response["id"]
+        if not isinstance(deployment_id, str) or not deployment_id:
+            raise ValueError
+        return deployment_id
+    except (KeyError, TypeError, ValueError):
+        typer.echo(f"Error: Deployment '{deployment_name}' returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+
+
+def _create_session_for_deployment(
+    *,
+    base_url: str,
+    workspace: str,
+    deployment_name: str,
+    session_name: str | None,
+) -> tuple[AgentDeployment, AgentSession, str]:
+    """Validate a Fabric deployment and create its persisted Platform session."""
+    deployment_response = _api_request(
+        "GET",
+        base_url,
+        f"/apis/agents/v2/workspaces/{workspace}/deployments/{deployment_name}",
+    )
+    deployment_id = _require_deployment_id(deployment_response, deployment_name)
+    try:
+        deployment = AgentDeployment.model_validate(deployment_response)
+    except (KeyError, TypeError, ValueError):
+        typer.echo(f"Error: Deployment '{deployment_name}' returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+
+    config_format = deployment.config.get("config_format")
+    if config_format != NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+        typer.echo(
+            f"Error: Deployment '{deployment.name}' is not Fabric-backed (config_format={config_format!r}).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if not is_deployment_routable(deployment):
+        typer.echo(
+            f"Error: Deployment '{deployment.name}' is not routable "
+            f"(mode='{deployment.deployment_mode}', status='{deployment.status}').",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    payload = {"deployment_id": deployment_id}
+    if session_name is not None:
+        payload["name"] = session_name
+    response = _api_request(
+        "POST",
+        base_url,
+        f"/apis/agents/v2/workspaces/{workspace}/sessions",
+        json_body=payload,
+    )
+    try:
+        session_id = response["id"]
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError
+        created_session = AgentSession.model_validate(response)
+    except (KeyError, TypeError, ValueError):
+        typer.echo("Error: Session creation returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+
+    return deployment, created_session, session_id
+
+
+def _resolve_existing_session(
+    *,
+    base_url: str,
+    workspace: str,
+    session_name: str,
+) -> tuple[AgentDeployment, AgentSession, str]:
+    """Resolve a resumable persisted session and its bound deployment."""
+    response = _api_request(
+        "GET",
+        base_url,
+        f"/apis/agents/v2/workspaces/{workspace}/sessions/{session_name}",
+    )
+    try:
+        session_id = response["id"]
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError
+        resolved_session = AgentSession.model_validate(response)
+    except (KeyError, TypeError, ValueError):
+        typer.echo(f"Error: Session '{session_name}' returned an invalid response.", err=True)
+        raise typer.Exit(code=1)
+    if resolved_session.status is not SessionStatus.ACTIVE:
+        typer.echo(
+            f"Error: Session '{session_name}' is {resolved_session.status.value} and cannot be resumed.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if session_expiration_is_due(resolved_session, at=datetime.now(UTC)):
+        typer.echo(f"Error: Session '{session_name}' is expired and cannot be resumed.", err=True)
+        raise typer.Exit(code=1)
+
+    deployment = _resolve_deployment_by_id(
+        base_url=base_url,
+        workspace=workspace,
+        deployment_id=resolved_session.deployment_id,
+        session_name=session_name,
+    )
+    return deployment, resolved_session, session_id
+
+
+def _resolve_deployment_by_id(
+    *,
+    base_url: str,
+    workspace: str,
+    deployment_id: str,
+    session_name: str,
+) -> AgentDeployment:
+    """Find a session's bound deployment through the paginated list API."""
+    page = 1
+    while True:
+        query = urlencode({"page": page, "page_size": _DEPLOYMENT_RESOLUTION_PAGE_SIZE})
+        response = _api_request(
+            "GET",
+            base_url,
+            f"/apis/agents/v2/workspaces/{workspace}/deployments?{query}",
+        )
+        for candidate in _unwrap_list(response):
+            if candidate.get("id") != deployment_id:
+                continue
+            try:
+                deployment = AgentDeployment.model_validate(candidate)
+            except ValidationError:
+                typer.echo(
+                    f"Error: Deployment ID '{deployment_id}' for session '{session_name}' "
+                    "returned an invalid response.",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+            return deployment
+
+        pagination = response.get("pagination") if isinstance(response, dict) else None
+        total_pages = pagination.get("total_pages") if isinstance(pagination, dict) else None
+        if not isinstance(total_pages, int) or page >= total_pages:
+            break
+        page += 1
+
+    typer.echo(
+        f"Error: Session '{session_name}' references deployment ID '{deployment_id}', "
+        f"but no matching deployment exists in workspace '{workspace}'.",
+        err=True,
+    )
+    raise typer.Exit(code=1)
 
 
 def _unwrap_list(resp: Any) -> list[dict[str, Any]]:
@@ -1948,40 +2509,56 @@ def _api_request(method: str, base_url: str, path: str, *, json_body: dict[str, 
 
 def _platform_sdk(base_url: str) -> Any:
     """Return an auth-aware platform SDK client for fileset upload/delete."""
-    from nemo_platform import NeMoPlatform
-
     headers = _resolve_context_headers()
     if headers:
         return NeMoPlatform(base_url=base_url, default_headers=headers)
     return NeMoPlatform(base_url=base_url)
 
 
-def _check_agent_root_bounds(agent_root: Path) -> None:
-    """Reject an agent root too large to deliver into a container deployment.
+def _collect_text_agent_artifacts(
+    agent_root: Path,
+    *,
+    excluded_paths: set[Path] | None = None,
+    warn_on_binary: bool = False,
+) -> list[tuple[Path, bytes]]:
+    """Return the UTF-8 files that can be delivered as Fabric config files.
 
-    The upload is recursive with no server-side filtering, so an ``agent.yaml``
-    sitting in a source checkout would ship the whole tree and then fail at
-    container start when the ConfigMap/env payload is built. Fail here instead,
-    naming the limit that was exceeded.
+    Container deployments carry agent artifacts as text-only ``ConfigFile``
+    values. Binary neighbors such as ``__pycache__/*.pyc`` and wheels are not
+    agent configuration, so omit them from the fileset instead of making agent
+    creation fail later during container staging.
 
     Symlinks are rejected rather than skipped: the upload enumerates them and
-    ships their target content, so skipping one here would both stage files from
-    outside *agent_root* and let them evade the limits below.
+    would otherwise ship target content from outside *agent_root*.
     """
+    excluded_paths = excluded_paths or set()
     total_bytes = 0
     file_count = 0
-    for path in agent_root.rglob("*"):
+    artifacts: list[tuple[Path, bytes]] = []
+    for path in sorted(agent_root.rglob("*")):
+        relative_path = path.relative_to(agent_root)
         if path.is_symlink():
             raise ValueError(
                 f"agent directory {str(agent_root)!r} contains symlink "
-                f"{path.relative_to(agent_root).as_posix()!r}; the fileset upload follows "
+                f"{relative_path.as_posix()!r}; the fileset upload follows "
                 "symlinks, which would stage content from outside the agent directory. "
                 "Replace it with a regular file or move the target inside the agent directory"
             )
-        if not path.is_file():
+        if not path.is_file() or relative_path in excluded_paths:
+            continue
+        try:
+            content = path.read_bytes()
+            content.decode("utf-8")
+        except UnicodeDecodeError:
+            if warn_on_binary:
+                typer.echo(
+                    f"Warning: skipping non-UTF-8 agent artifact {relative_path.as_posix()!r}; "
+                    "Fabric fileset staging supports text files only.",
+                    err=True,
+                )
             continue
         file_count += 1
-        total_bytes += path.stat().st_size
+        total_bytes += len(content)
         if file_count > MAX_ETHOS_STAGED_FILES:
             raise ValueError(
                 f"agent directory {str(agent_root)!r} holds more than "
@@ -1994,6 +2571,36 @@ def _check_agent_root_bounds(agent_root: Path) -> None:
                 f"{MAX_ETHOS_STAGED_BYTES} byte limit for container config delivery; "
                 "point --agent-config at a directory containing only the agent's own artifacts"
             )
+        artifacts.append((relative_path, content))
+    return artifacts
+
+
+def _clear_existing_ethos_artifacts(
+    *,
+    sdk: NeMoPlatform,
+    fileset: str,
+    workspace: str,
+) -> None:
+    """Remove the previous executable snapshot while preserving durable Ethos."""
+    from nemo_platform import NotFoundError as PlatformNotFoundError
+    from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+
+    preserved = {ETHOS_FILENAME}
+
+    try:
+        existing = sdk.files.list(fileset=fileset, workspace=workspace).data
+    except (FileNotFoundError, PlatformNotFoundError, PluginNotFoundError):
+        return
+
+    for artifact in existing:
+        remote_path = artifact.path
+        if remote_path in preserved:
+            continue
+        try:
+            sdk.files.delete(remote_path=remote_path, fileset=fileset, workspace=workspace)
+        except (FileNotFoundError, PlatformNotFoundError, PluginNotFoundError):
+            # Another client may have removed the same stale file after the list.
+            continue
 
 
 def _spec_package_warning(agent: str, agent_config: Path) -> tuple[str, ...]:
@@ -2020,49 +2627,48 @@ def _upload_ethos_fileset(
     agent_root: Path,
     base_url: str,
 ) -> None:
-    """Upload *agent_root* into the conventional ``{agent}-ethos`` fileset.
+    """Replace the executable snapshot in the conventional Ethos fileset.
 
     *agent_root* is ``agent.yaml``'s parent directory (Fabric ``base_dir``).
-    Agent YAML must live in a dedicated agent root so sibling artifacts
-    (skills, prompts) upload without shipping an unrelated checkout tree.
-    ``AGENT-SPEC.md`` is omitted so a spec package does not land a leftover
+    UTF-8 sibling artifacts such as skills and prompts are uploaded; binary
+    neighbors are skipped because deployment ``ConfigFile`` values are text.
+    Existing runtime artifacts are removed first so recreating an agent cannot
+    reuse a stale bundle. Durable ``ETHOS.md`` is preserved, while
+    ``AGENT-SPEC.md`` is omitted so a spec package does not leave its legacy
     contract in the Ethos fileset.
     """
     from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
 
-    _check_agent_root_bounds(agent_root)
+    excluded_paths = {Path(ETHOS_FILENAME), Path(AGENT_SPEC_FILENAME)}
+    artifacts = _collect_text_agent_artifacts(
+        agent_root,
+        excluded_paths=excluded_paths,
+        warn_on_binary=True,
+    )
     fileset = ethos_fileset_name(agent_name)
     sdk = _platform_sdk(base_url)
-    spec = agent_root / AGENT_SPEC_FILENAME
-    if spec.is_file():
-        from nemo_platform import NotFoundError as PlatformNotFoundError
-        from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+    with tempfile.TemporaryDirectory(prefix=f".{agent_name}-ethos-upload-") as directory:
+        staged = Path(directory) / agent_root.name
+        staged.mkdir()
+        for relative_path, content in artifacts:
+            destination = staged / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(content)
 
-        with tempfile.TemporaryDirectory(prefix=f".{agent_name}-ethos-upload-") as directory:
-            staged = Path(directory) / agent_root.name
-            shutil.copytree(agent_root, staged)
-            (staged / AGENT_SPEC_FILENAME).unlink()
-            upload_to_fileset(
-                staged,
-                fileset=fileset,
-                workspace=workspace,
-                sdk=sdk,
-            )
-        try:
-            sdk.files.delete(
-                remote_path=AGENT_SPEC_FILENAME,
-                fileset=fileset,
-                workspace=workspace,
-            )
-        except (PlatformNotFoundError, PluginNotFoundError):
-            pass
-        return
-    upload_to_fileset(
-        agent_root,
-        fileset=fileset,
-        workspace=workspace,
-        sdk=sdk,
-    )
+        # Validate and stage the complete replacement before touching the remote
+        # fileset. The durable Ethos contract survives even when it is absent
+        # from this executable snapshot.
+        _clear_existing_ethos_artifacts(
+            sdk=sdk,
+            fileset=fileset,
+            workspace=workspace,
+        )
+        upload_to_fileset(
+            staged,
+            fileset=fileset,
+            workspace=workspace,
+            sdk=sdk,
+        )
 
 
 def _delete_agent_entity(*, agent_name: str, workspace: str, base_url: str) -> None:

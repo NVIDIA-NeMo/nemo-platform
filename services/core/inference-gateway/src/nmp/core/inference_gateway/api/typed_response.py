@@ -12,6 +12,8 @@ import anthropic.types as anthropic_types
 import openai.types.chat as openai_chat_types
 from nemo_platform_plugin.inference_middleware import (
     BackendFormat,
+)
+from nemo_platform_plugin.inference_middleware_types import (
     TypedResponse,
     TypedResponseChunk,
 )

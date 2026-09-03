@@ -40,10 +40,6 @@ AVAILABLE_SIDECARS: dict[str, str] = {
     "auth-proxy": "nmp.common.auth.workload_proxy.main:run",
 }
 
-SERVICE_SIDECAR_DEPENDENCIES: dict[str, set[str]] = {
-    "models": {"adapters"},
-}
-
 CORE_SERVICES = [
     "auth",
     "models",
