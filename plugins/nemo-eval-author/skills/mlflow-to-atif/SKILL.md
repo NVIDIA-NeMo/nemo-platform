@@ -67,6 +67,11 @@ python scripts/convert_mlflow_to_atif.py \
   --agent-version <agent-version>
 ```
 
+Live conversion requires HTTPS for remote tracking servers, permits HTTP only
+for loopback hosts, rejects disabled TLS verification, and does not follow HTTP
+redirects. It uses the paginated `MlflowClient.search_traces()` API so it also
+works with MLflow versions that predate the fluent API's `return_type="list"`.
+
 The script refuses to overwrite an existing trajectory unless the user asks to
 replace the same conversion and `--overwrite` is supplied.
 
@@ -98,4 +103,4 @@ that version; do not relabel v1.7 output as v1.8.
   `extra.mlflow_to_atif.loss_codes`.
 
 After conversion, pass one emitted file to the downstream consumer as canonical
-ATIF. Keep restricted originals separate from sanitized output.
+ATIF. Keep restricted originals separate from restricted converted output.

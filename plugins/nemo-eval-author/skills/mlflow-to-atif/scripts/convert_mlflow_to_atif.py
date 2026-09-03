@@ -18,8 +18,10 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from enum import Enum
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 SCHEMA_VERSION = "ATIF-v1.7"
@@ -84,6 +86,14 @@ def _span_id(value: Any) -> str:
 
 def _trace_id(value: Any) -> str:
     return _mlflow_id(value, byte_length=16)
+
+
+def _trace_identity(value: Any) -> str:
+    """Canonicalize IDs for comparison while preserving MLflow's external ``tr-`` ID for output."""
+    trace_id = _trace_id(value)
+    if match := re.fullmatch(r"tr-([0-9a-fA-F]{32})", trace_id):
+        return match.group(1).lower()
+    return trace_id.lower() if re.fullmatch(r"[0-9a-fA-F]{32}", trace_id) else trace_id
 
 
 def _iso_from_nanos(value: Any) -> str:
@@ -161,6 +171,7 @@ def _message_text(value: Any) -> str:
 
 
 def _message_records(value: Any) -> list[dict[str, Any]] | None:
+    """Return a non-empty message list, leaving shape validation to the caller."""
     candidate = value.get("messages") if isinstance(value, dict) else value
     if not isinstance(candidate, list) or not candidate:
         return None
@@ -169,9 +180,21 @@ def _message_records(value: Any) -> list[dict[str, Any]] | None:
     return candidate
 
 
+def _is_chat_shaped(value: Any) -> bool:
+    """Recognize explicit or partially recognizable chat input that must not degrade to opaque JSON."""
+    if isinstance(value, dict):
+        return "messages" in value
+    return isinstance(value, list) and any(
+        isinstance(item, dict) and ("role" in item or "source" in item) for item in value
+    )
+
+
 def _input_steps(value: Any, *, timestamp: str) -> list[dict[str, Any]]:
+    """Project valid chat history or one genuinely non-chat input into ATIF steps."""
     messages = _message_records(value)
     if messages is None:
+        if _is_chat_shaped(value):
+            raise ValueError("MLflow trace input contains an empty or malformed message list")
         return [
             {
                 "step_id": 0,
@@ -367,6 +390,7 @@ def _require_span_fields(span: dict[str, Any], *, trace_index: int, span_index: 
 
 
 def _validate_span_graph(spans: list[dict[str, Any]], *, trace_index: int) -> tuple[list[dict[str, Any]], set[str]]:
+    """Validate parent references and cycles, returning roots and spans that have children."""
     span_ids = {_span_id(span.get("span_id")) for span in spans}
     parent_by_id = {_span_id(span.get("span_id")): _span_id(span.get("parent_span_id")) for span in spans}
     if any(parent_id and parent_id not in span_ids for parent_id in parent_by_id.values()):
@@ -420,6 +444,7 @@ def convert_trace(
     agent_name: str,
     agent_version: str,
 ) -> dict[str, Any]:
+    """Convert one internally consistent MLflow trace into a canonical ATIF trajectory."""
     trace = _object(trace_value, f"trace[{trace_index}]")
     info = _object(trace.get("info") or {}, f"trace[{trace_index}].info")
     data = _object(trace.get("data") or {}, f"trace[{trace_index}].data")
@@ -434,9 +459,15 @@ def convert_trace(
     canonical_span_ids = [_span_id(span.get("span_id")) for span in spans]
     if len(canonical_span_ids) != len(set(canonical_span_ids)):
         raise ValueError(f"trace[{trace_index}] contains duplicate span IDs")
-    native_trace_ids = {_trace_id(span.get("trace_id")) for span in spans if _trace_id(span.get("trace_id"))}
+    native_trace_ids = {
+        _trace_identity(span.get("trace_id")) for span in spans if _trace_identity(span.get("trace_id"))
+    }
     if len(native_trace_ids) > 1:
         raise ValueError(f"trace[{trace_index}] contains spans from different trace IDs")
+    info_trace_id = _trace_id(info.get("trace_id"))
+    info_trace_identity = _trace_identity(info_trace_id)
+    if info_trace_identity and native_trace_ids and native_trace_ids != {info_trace_identity}:
+        raise ValueError(f"trace[{trace_index}] info trace ID does not match its spans")
     spans.sort(key=lambda item: (int(item["start_time_unix_nano"]), _span_id(item.get("span_id"))))
 
     roots, child_ids = _validate_span_graph(spans, trace_index=trace_index)
@@ -446,7 +477,7 @@ def convert_trace(
     if trace_input is None:
         raise ValueError(f"trace[{trace_index}] has no recoverable root input for an ATIF human instruction")
 
-    external_trace_id = _trace_id(info.get("trace_id")) or _trace_id(root.get("trace_id"))
+    external_trace_id = info_trace_id or _trace_id(root.get("trace_id"))
     if not external_trace_id:
         raise ValueError(f"trace[{trace_index}] requires trace_id")
     metadata = _object(info.get("trace_metadata") or {}, "MLflow trace metadata")
@@ -529,6 +560,7 @@ def convert_export(
     agent_name: str,
     agent_version: str,
 ) -> list[dict[str, Any]]:
+    """Convert one trace or a complete trace collection while rejecting ambiguous exports."""
     if isinstance(payload, dict) and "traces" in payload:
         if payload.get("next_page_token") not in (None, ""):
             raise ValueError("MLflow export is incomplete: fetch all pages before conversion")
@@ -563,23 +595,65 @@ def _load_input(path: Path) -> Any:
         return json.load(stream)
 
 
+def _validate_mlflow_transport(tracking_uri: str | None) -> None:
+    """Reject remote cleartext or TLS-bypass configuration before MLflow can send credentials."""
+    if os.environ.get("MLFLOW_TRACKING_INSECURE_TLS", "").strip().lower() == "true":
+        raise ValueError("MLFLOW_TRACKING_INSECURE_TLS=true is not allowed for live conversion")
+    if not tracking_uri:
+        return
+    try:
+        parsed = urlparse(tracking_uri)
+        hostname = parsed.hostname
+    except ValueError as error:
+        raise ValueError("MLflow tracking URI is invalid") from error
+    if parsed.scheme.lower() != "http":
+        if parsed.scheme.lower() == "https" and not hostname:
+            raise ValueError("HTTPS MLflow tracking URI requires a hostname")
+        return
+    if not hostname:
+        raise ValueError("HTTP MLflow tracking URI requires a loopback hostname")
+    try:
+        is_loopback = ip_address(hostname).is_loopback
+    except ValueError:
+        is_loopback = hostname.lower() == "localhost"
+    if not is_loopback:
+        raise ValueError("remote MLflow tracking URI must use HTTPS")
+
+
 def _fetch_mlflow(args: argparse.Namespace) -> dict[str, Any]:
-    if importlib.util.find_spec("mlflow") is None:
-        raise RuntimeError("live conversion requires MLflow in the selected Python environment")
-    mlflow = importlib.import_module("mlflow")
-    if args.tracking_uri:
-        mlflow.set_tracking_uri(args.tracking_uri)
-    lower_ms = int(args.since.timestamp() * 1000)
-    upper_ms = int(args.until.timestamp() * 1000)
-    traces = mlflow.search_traces(
-        experiment_ids=[args.experiment_id],
-        filter_string=f"timestamp_ms >= {lower_ms} AND timestamp_ms < {upper_ms}",
-        return_type="list",
-    )
+    """Fetch every page in the bounded trace query without allowing credential-bearing redirects."""
+    _validate_mlflow_transport(args.tracking_uri)
+    previous_redirect_setting = os.environ.get("MLFLOW_ALLOW_HTTP_REDIRECTS")
+    os.environ["MLFLOW_ALLOW_HTTP_REDIRECTS"] = "false"
+    try:
+        if importlib.util.find_spec("mlflow") is None:
+            raise RuntimeError("live conversion requires MLflow in the selected Python environment")
+        mlflow = importlib.import_module("mlflow")
+        lower_ms = int(args.since.timestamp() * 1000)
+        upper_ms = int(args.until.timestamp() * 1000)
+        client = mlflow.MlflowClient(tracking_uri=args.tracking_uri)
+        traces: list[Any] = []
+        page_token: str | None = None
+        while True:
+            page = client.search_traces(
+                experiment_ids=[args.experiment_id],
+                filter_string=f"timestamp_ms >= {lower_ms} AND timestamp_ms < {upper_ms}",
+                page_token=page_token,
+            )
+            traces.extend(page)
+            page_token = getattr(page, "token", None)
+            if not page_token:
+                break
+    finally:
+        if previous_redirect_setting is None:
+            os.environ.pop("MLFLOW_ALLOW_HTTP_REDIRECTS", None)
+        else:
+            os.environ["MLFLOW_ALLOW_HTTP_REDIRECTS"] = previous_redirect_setting
     return {"traces": [_jsonable(trace) for trace in traces]}
 
 
 def _safe_filename(trajectory_id: str) -> str:
+    """Create a stable restricted filename without trusting an external trace ID as a path."""
     slug = re.sub(r"[^A-Za-z0-9._-]+", "_", trajectory_id).strip("._-")[:80] or "trace"
     digest = hashlib.sha256(trajectory_id.encode()).hexdigest()[:12]
     return f"{slug}-{digest}.atif.json"
@@ -611,6 +685,7 @@ def _validate_with_harbor(trajectories: list[dict[str, Any]]) -> None:
 
 
 def _write_trajectories(trajectories: list[dict[str, Any]], *, output_dir: Path, overwrite: bool) -> list[Path]:
+    """Stage private files and publish them atomically, with no-clobber semantics by default."""
     output_existed = output_dir.exists()
     output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     if output_existed:
@@ -641,7 +716,11 @@ def _write_trajectories(trajectories: list[dict[str, Any]], *, output_dir: Path,
                 temporary.unlink(missing_ok=True)
                 raise
         for temporary, target in staged:
-            temporary.replace(target)
+            if overwrite:
+                temporary.replace(target)
+            else:
+                os.link(temporary, target)
+                temporary.unlink()
     except Exception:
         for temporary, _ in staged:
             temporary.unlink(missing_ok=True)
