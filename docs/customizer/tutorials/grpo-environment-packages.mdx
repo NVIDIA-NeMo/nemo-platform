@@ -78,7 +78,7 @@ You can reference `simple_agent`, `vllm_model`, and `verifiers_agent` without up
 Two layout mistakes fail in ways that are hard to read:
 
 - A custom `{type}/{impl}/` directory **without** `requirements.txt` or `pyproject.toml` is not recognised as a server. If a Gym built-in shares the name, the job runs **the built-in** instead — training against the wrong environment with no error.
-- A `pyproject.toml` at the **package root** makes Gym treat the package as a Gym checkout and install that root as `nemo-gym`. Keep the Gym source-slice layout; do not repackage the environment as a setuptools distribution.
+- A `pyproject.toml` at the **package root** makes Gym treat the package as a Gym checkout and use its editable-install branch, which drops the automatic `nemo-gym==<image version>` pin. If the server's requirements still carry Gym's relative `-e nemo-gym[dev] @ ../../` entry, pip then installs your package root as `nemo-gym`; without that entry the virtualenv simply has no `nemo-gym`. Keep the server's original directory structure from the Gym checkout; do not repackage the environment as a setuptools distribution.
 </Warning>
 
 Include a `policy_model` definition in `config_paths`. Without it, Gym reports `ServerRefNotFoundError` (`Available responses_api_models: (none)`).
@@ -171,6 +171,10 @@ Pin `--hub-version` so the vendored release is reproducible.
 | `--wheels-dir` | Existing `*.whl` files instead of download (directory must be non-empty) |
 | `--validate-only <dir>` | Check package layout |
 | `--upload` | Create both FileSets (`NMP_BASE_URL` required). Default names: `<slug>-env` and `<slug>-env-dataset` |
+
+<Note>
+`pi-to-gym-conversion` vendors wheels for `x86_64` today. On an `arm64` cluster, build the closure yourself with the `pip download` command above and pass it via `--wheels-dir`.
+</Note>
 
 ```text
 ascii-tree-pkg/
@@ -339,10 +343,18 @@ weather-env/
 │       └── requirements.txt
 └── wheels/
     ├── nemo_gym-<image-version>-*.whl
-    └── …                                    # linux x86_64, CPython 3.13; one version per project
+    └── …                                    # match the training nodes' arch; CPython 3.13; one version per project
 ```
 
-Build wheels for the training image, not for the machine you use to package — it is **Python 3.13 on `x86_64` manylinux**. Three versions must match what the Gym host process reports: `nemo-gym`, which Gym pins each virtualenv to, and `ray[default]` / `openai`, which it appends to every install. Gym runs from its own actor virtualenv under `/opt/ray_venvs`, so read them from there:
+Wheels must match the **architecture of the nodes that run GRPO training**, not the machine that builds the package. The training images are published for both `linux/amd64` and `linux/arm64`, so there is no single correct answer — check what your cluster runs and target that:
+
+```bash
+kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.architecture}'   # amd64 or arm64
+ARCH=x86_64        # amd64 nodes
+# ARCH=aarch64     # arm64 nodes
+```
+
+The interpreter is **Python 3.13** on every architecture. A closure resolved for the wrong architecture passes `--validate-only`, which checks layout rather than wheel tags, and then fails on the cluster with `has no wheels with a matching platform tag`. Three versions must match what the Gym host process reports: `nemo-gym`, which Gym pins each virtualenv to, and `ray[default]` / `openai`, which it appends to every install. Gym runs from its own actor virtualenv under `/opt/ray_venvs`, so read them from there:
 
 ```bash
 IMAGE=<training-image>
@@ -354,10 +366,10 @@ mkdir -p weather-env/wheels
 pip download --dest weather-env/wheels \
   --only-binary=:all: \
   --python-version 3.13 \
-  --platform manylinux_2_39_x86_64 \
-  --platform manylinux_2_28_x86_64 \
-  --platform manylinux_2_17_x86_64 \
-  --platform manylinux2014_x86_64 \
+  --platform "manylinux_2_39_$ARCH" \
+  --platform "manylinux_2_28_$ARCH" \
+  --platform "manylinux_2_17_$ARCH" \
+  --platform "manylinux2014_$ARCH" \
   "nemo-gym==$GYM_VERSION" "ray[default]==$RAY_VERSION" "openai==$OPENAI_VERSION" \
   -r resources_servers/weather_verifier/requirements.txt
 uv run --package nmp-rl pi-to-gym-conversion --validate-only ./weather-env

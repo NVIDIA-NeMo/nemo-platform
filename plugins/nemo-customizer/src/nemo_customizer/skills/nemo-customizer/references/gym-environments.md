@@ -94,7 +94,14 @@ Pick the most specific fit; `other` is the catch-all. An empty string, a missing
 
 1. **You may reference an image implementation without uploading its code.** `simple_agent`, `vllm_model` and `verifiers_agent` resolve from the image. Shipping `responses_api_agents/simple_agent/configs/*.yaml` with no `app.py` and no `requirements.txt` is correct and intended — the config comes from your package, the code from the image.
 2. **A custom implementation must ship the install marker.** Without it the directory is skipped, and if a built-in shares the name Gym **silently runs the built-in** — training against the wrong environment with no error. If no built-in shares the name, spin-up fails with `Missing pyproject.toml or requirements.txt for uv venv setup in server dir: …`.
-3. **Never put a `pyproject.toml` at the package root.** `setup_env_command` decides "editable install" by testing `{server_dir}/../../pyproject.toml`, which from `<root>/resources_servers/<impl>/` **is the package root**. If it is there, Gym takes the editable branch and runs the server's `requirements.txt` verbatim — including the `-e nemo-gym[dev] @ ../../` line, which then tries to install *your package root* as `nemo-gym`. Keep the Gym source-slice layout; do not repackage the environment as a setuptools distribution.
+3. **Never put a `pyproject.toml` at the package root.** `setup_env_command` decides "editable install" by testing `{server_dir}/../../pyproject.toml`, which from `<root>/resources_servers/<impl>/` **is the package root**. Present, Gym takes the editable branch — and that branch is the one that does *not* prepend `nemo-gym=={image version}`. Two ways that bites, depending on the server's requirements:
+
+   | Server's `requirements.txt` | Result |
+   |---|---|
+   | Keeps Gym's `-e nemo-gym[dev] @ ../../` | `uv pip install -r requirements.txt` runs verbatim, so pip installs **your package root** as `nemo-gym` |
+   | Does not keep it | Nothing installs `nemo-gym` at all — only the non-editable branch adds the pin — so the server fails on its first import |
+
+   A server-level `pyproject.toml` behaves the same way (`uv pip install -e .`, no `nemo-gym` pin). Keep the server's original directory structure from the Gym checkout; do not repackage the environment as a setuptools distribution.
 
 `requirements.txt` and `pyproject.toml` are **mutually exclusive** in one server directory — shipping both raises at spin-up.
 
@@ -181,6 +188,36 @@ metadata:
 | No symlinks, and no path escaping the package root | `validate_package_layout` |
 | **No `.jsonl` anywhere in the package** | `validate_manifest_against_listing` |
 | `wheels/` non-empty and `*.whl`-only (wheels formats) | `offline_wheel_install_required` |
+
+## Example scripts
+
+Before hand-building anything, check whether an example already covers the case.
+`scripts/grpo-examples/` ships two, and they are **examples** — nothing in the platform calls
+them, and the supported contract is the FileSet layout itself.
+
+```bash
+# Any Gym server -> an environment package
+uv run scripts/grpo-examples/gym_to_env_package.py \
+  --gym-root ~/workspace/Gym --server resources_servers/math_with_judge \
+  --format wheels-v1 --arch x86_64 --out-dir /tmp/mwj-env
+
+# math_with_judge rollout rows (adds agent_ref and expected_answer)
+uv run --with datasets scripts/grpo-examples/prepare_math_with_judge.py \
+  --out-dir /tmp/mwj-data --train-size 512
+```
+
+Upload both, then submit one of `plugins/nemo-rl/tests/fixtures/minimal_grpo*.json`, which
+reference `default/math-with-judge-env` and `default/math-with-judge-gym-data`. Full walkthrough:
+`scripts/grpo-examples/README.md`.
+
+**NeMo Gym is not vendored in nemo-platform** and is not a platform dependency, so the two
+Gym-source formats need a checkout you provide:
+
+```bash
+git clone https://github.com/NVIDIA-NeMo/Gym ~/workspace/Gym
+```
+
+Everything below is the hand-built path, for an environment the examples do not cover.
 
 ## Path A — an environment already in Gym (`native-v1`)
 
@@ -355,6 +392,8 @@ ascii-tree-data/
   validation.jsonl                ← only with --validation-fraction > 0
 ```
 
+**`pi-to-gym-conversion` vendors `x86_64` wheels today.** On an `arm64` cluster, build the closure separately and pass `--wheels-dir`.
+
 **`adapter.agent` must be on the image allowlist.** The package ships config and wheels; the agent harness itself comes from the training image. Today the allowlist is exactly one entry — `verifiers_agent` (`IMAGE_ADAPTER_ALLOWLIST`). Anything else is rejected at validation, so a user who wants a different harness needs `wheels-v1` or `native-v1`.
 
 **Why two configs — and this is not adapter-only.** `verifiers_agent.yaml` references a model server named `policy_model`; nothing defines that server unless a second config supplies it, and Gym resolves every ref when it merges configs, failing with `ServerRefNotFoundError: ... Available responses_api_models: (none)`. `policy_model.yaml` supplies it, interpolating `${policy_base_url}` / `${policy_api_key}` / `${policy_model_name}` against the config NeMo-RL injects at spin-up — which is what points Gym at the vLLM engine the job is already running instead of starting its own.
@@ -426,7 +465,7 @@ Two consumers, per § **Dependency installation**: Gym's venv build reaches the 
 
 Resolve it from the **`nemo-gym` wheel plus the server's requirements**, not from the requirements alone: the sub-venv starts at `uv venv --seed`, so everything `nemo_gym` itself imports has to be present too.
 
-**Wheels must target the training image, not the build host.** The image is **Python 3.13 on `x86_64` manylinux**. A closure downloaded on macOS or arm64 passes `--validate-only` — which checks layout, never wheel tags — and then fails on the cluster with `has no wheels with a matching platform tag`. Match what the converter does (`TARGET_PYTHON_VERSION`, `TARGET_WHEEL_PLATFORMS` in `convert.py`):
+**Wheels must target the architecture of the training nodes, not the build host.** The training images are published for both `linux/amd64` and `linux/arm64`, so confirm which the cluster runs (`kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.architecture}'`) and set `ARCH` to `x86_64` or `aarch64` accordingly. The interpreter is **Python 3.13** either way. A closure built for the wrong architecture passes `--validate-only` — which checks layout, never wheel tags — and then fails on the cluster with `has no wheels with a matching platform tag`.
 
 Three versions must match what the **Gym host process** reports, because that is what Gym stamps into every sub-venv install: `nemo-gym` (the sub-venv pin) and `ray[default]` / `openai` (the head-server deps, read as `ray.__version__` / `openai.__version__` in `global_config.py`). Gym runs from its own actor venv under `/opt/ray_venvs`, not the image's default interpreter, so read them from there rather than assuming the base venv agrees:
 
@@ -442,10 +481,10 @@ mkdir -p my-env/wheels
 pip download --dest my-env/wheels \
   --only-binary=:all: \
   --python-version 3.13 \
-  --platform manylinux_2_39_x86_64 \
-  --platform manylinux_2_28_x86_64 \
-  --platform manylinux_2_17_x86_64 \
-  --platform manylinux2014_x86_64 \
+  --platform "manylinux_2_39_$ARCH" \
+  --platform "manylinux_2_28_$ARCH" \
+  --platform "manylinux_2_17_$ARCH" \
+  --platform "manylinux2014_$ARCH" \
   "nemo-gym==$GYM_VERSION" "ray[default]==$RAY_VERSION" "openai==$OPENAI_VERSION" \
   -r resources_servers/my_env/requirements.txt
 uv run --package nmp-rl pi-to-gym-conversion --validate-only ./my-env
@@ -519,7 +558,7 @@ nemo files filesets create "$DATA" --workspace default --purpose dataset --exist
 nemo files upload ./ascii-tree-data/ "$DATA" --workspace default
 ```
 
-The **trailing slash** on the local path is load-bearing (fsspec): it selects the directory's contents rather than the directory itself. The CLI preserves the raw argument specifically so this works. Omit it and everything nests one level deeper under the directory's basename — which the dataset FileSet catches at submit (`must contain training.jsonl`) but the environment FileSet catches only as `Missing nemo-environment.yaml at environment root`. Confirm with `nemo files list` before submitting.
+The **trailing slash** on the local path changes the result (fsspec): it selects the directory's contents rather than the directory itself. The CLI preserves the raw argument specifically so this works. Omit it and everything nests one level deeper under the directory's basename — which the dataset FileSet catches at submit (`must contain training.jsonl`) but the environment FileSet catches only as `Missing nemo-environment.yaml at environment root`. Confirm with `nemo files list` before submitting.
 
 Relative paths must be preserved: `config_paths` is matched against the FileSet listing, so a package flattened during upload fails with `config_paths reference files that are not in the package`.
 
