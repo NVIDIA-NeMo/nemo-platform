@@ -1602,7 +1602,7 @@ def _register_environment_commands(app: typer.Typer) -> None:
         sdk = _agents_sdk(base_url, workspace)
         resp = _run_sdk(
             "POST agent API",
-            lambda: sdk.environment_specs.create(name=body.pop("name"), workspace=workspace, **body),
+            lambda: sdk.environment_specs.create(name=body.pop("name"), workspace=workspace, spec=body),
         )
         typer.echo(json.dumps(resp, indent=2))
 
@@ -1781,7 +1781,7 @@ def _register_environment_commands(app: typer.Typer) -> None:
         sdk = _agents_sdk(base_url, workspace)
         resp = _run_sdk(
             "POST agent API",
-            lambda: sdk.compute_specs.create(name=body.pop("name"), workspace=workspace, **body),
+            lambda: sdk.compute_specs.create(name=body.pop("name"), workspace=workspace, spec=body),
         )
         typer.echo(json.dumps(resp, indent=2))
 

@@ -1171,10 +1171,10 @@ def test_environment_spec_create_routes_through_sdk() -> None:
 
     captured: dict[str, Any] = {}
 
-    def _spy(self, *, name, workspace=None, spec=None, **spec_kwargs):
+    def _spy(self, *, name, workspace=None, spec=None):
         captured["name"] = name
         captured["workspace"] = workspace
-        captured["spec_kwargs"] = spec_kwargs
+        captured["spec"] = spec
         return {"name": name}
 
     app = AgentsCLI().get_cli()
@@ -1197,7 +1197,7 @@ def test_environment_spec_create_routes_through_sdk() -> None:
     assert result.exit_code == 0, result.stderr
     assert captured["name"] == "ben"
     assert captured["workspace"] == "team-a"
-    assert captured["spec_kwargs"]["env"] == {"LOG_LEVEL": "debug"}
+    assert captured["spec"] == {"env": {"LOG_LEVEL": "debug"}}
 
 
 def test_compute_spec_create_via_sdk_translates_http_error() -> None:

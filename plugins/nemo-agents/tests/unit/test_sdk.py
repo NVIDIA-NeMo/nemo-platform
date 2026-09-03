@@ -200,7 +200,9 @@ def test_environment_specs_create_posts_inline_fields() -> None:
 
     client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
     with _install_mock_transport(handler):
-        result = client.environment_specs.create(name="ben", env={"LOG_LEVEL": "debug"}, secrets={"TOK": "default/tok"})
+        result = client.environment_specs.create(
+            name="ben", spec={"env": {"LOG_LEVEL": "debug"}, "secrets": {"TOK": "default/tok"}}
+        )
 
     assert result == {"name": "ben"}
     assert captured["path"] == "/apis/agents/v2/workspaces/team-a/environment-specs"
@@ -449,25 +451,6 @@ def test_environment_specs_create_name_arg_is_authoritative() -> None:
         client.environment_specs.create(name="wanted", spec={"name": "sneaky", "provider": "local"})
 
     assert captured["body"]["name"] == "wanted"
-
-
-def test_environment_specs_create_kwargs_still_work() -> None:
-    """Back-compat: loose ``**spec_kwargs`` are still accepted and override ``spec``."""
-    captured: dict[str, Any] = {}
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        captured["body"] = json.loads(req.read())
-        return httpx.Response(201, json={"name": "ben"})
-
-    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
-    with _install_mock_transport(handler):
-        client.environment_specs.create(
-            name="ben",
-            spec=EnvironmentSpecInline(env={"A": "1"}),
-            env={"A": "2"},  # kwarg wins over the typed model
-        )
-
-    assert captured["body"] == {"name": "ben", "env": {"A": "2"}}
 
 
 def test_compute_specs_create_accepts_typed_model() -> None:

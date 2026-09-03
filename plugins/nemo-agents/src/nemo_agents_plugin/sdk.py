@@ -428,7 +428,6 @@ class _EnvironmentSpecResource:
         name: str,
         spec: EnvironmentSpecInline | dict[str, Any] | None = None,
         workspace: str | None = None,
-        **spec_kwargs: Any,
     ) -> dict[str, Any]:
         """Create an environment spec.
 
@@ -438,16 +437,11 @@ class _EnvironmentSpecResource:
                 model (the typed, discoverable path) or a plain dict. Only the
                 fields explicitly set on the model are sent.
             workspace: Target workspace.
-            **spec_kwargs: Back-compat loose EnvironmentSpecInline fields (``env``,
-                ``secrets``, ``mcp``, ``provider``, ``model_provider_override``,
-                ``workspace_path``, ``artifacts_path``, ``connection``,
-                ``metadata``, ``settings``, ...). Merged over ``spec`` when both
-                are given. Prefer the typed ``spec=`` argument.
 
         Returns:
             The created AgentEnvironmentSpec as a dict.
         """
-        payload: dict[str, Any] = {**_spec_to_dict(spec), **spec_kwargs, "name": name}
+        payload: dict[str, Any] = {**_spec_to_dict(spec), "name": name}
         return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/environment-specs", payload)
 
     def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
@@ -544,7 +538,6 @@ class _ComputeSpecResource:
         name: str,
         spec: ComputeSpecInline | dict[str, Any] | None = None,
         workspace: str | None = None,
-        **spec_kwargs: Any,
     ) -> dict[str, Any]:
         """Create a compute spec.
 
@@ -554,14 +547,11 @@ class _ComputeSpecResource:
                 (the typed, discoverable path) or a plain dict. Only the fields
                 explicitly set on the model are sent.
             workspace: Target workspace.
-            **spec_kwargs: Back-compat loose ComputeSpecInline fields
-                (``resources``, ``description``). Merged over ``spec`` when both
-                are given. Prefer the typed ``spec=`` argument.
 
         Returns:
             The created AgentComputeSpec as a dict.
         """
-        payload: dict[str, Any] = {**_spec_to_dict(spec), **spec_kwargs, "name": name}
+        payload: dict[str, Any] = {**_spec_to_dict(spec), "name": name}
         return self._parent._post(f"/v2/workspaces/{self._parent._workspace(workspace)}/compute-specs", payload)
 
     def list(self, workspace: str | None = None) -> List[dict[str, Any]]:
