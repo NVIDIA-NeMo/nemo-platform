@@ -65,6 +65,10 @@ async def create_analysis_run(
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> AnalysisRunResponse:
     """Create an Insights analysis run backed by the generic ``agents.execute`` job."""
+    # Resolve before recording anything: a bogus ref would otherwise persist a
+    # run and submit a job that cannot start, and the request carries the only
+    # copy of the operator's intent.
+    request = await _resolve_model_refs(sdk, request, workspace=workspace)
     run = AnalysisRun(
         name=mint_analysis_run_name(),
         workspace=workspace,
@@ -177,6 +181,60 @@ async def _backing_job(sdk: AsyncNeMoPlatform, *, workspace: str, name: str) -> 
         if exc.status_code == 404:
             return None
         raise
+
+
+async def _resolve_model_refs(
+    sdk: AsyncNeMoPlatform,
+    request: CreateAnalysisRunRequest,
+    *,
+    workspace: str,
+) -> CreateAnalysisRunRequest:
+    """Normalize the model pair to ``workspace/name`` and confirm both exist.
+
+    A bare name resolves against the run's own workspace. A qualified ref is
+    looked up in the workspace it names, so a run may use a model from another
+    workspace the caller can read; the entity store's own authorization decides
+    that, and a denial surfaces with the status it returned. The normalized form
+    is what gets stored and put in the job spec, because the Analyst only accepts
+    qualified refs.
+    """
+    resolved = {
+        field: await _resolve_model_ref(sdk, getattr(request, field), field=field, workspace=workspace)
+        for field in ("default_model", "fast_model")
+    }
+    return request.model_copy(update=resolved)
+
+
+async def _resolve_model_ref(sdk: AsyncNeMoPlatform, ref: str, *, field: str, workspace: str) -> str:
+    """Return ``<workspace>/<name>`` for an existing Model Entity, or raise 422."""
+    match ref.split("/"):
+        case [name]:
+            model_workspace = workspace
+        case [model_workspace, name] if model_workspace and name:
+            pass
+        case _:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{field} must be a Model Entity name or '<workspace>/<name>' ref, got {ref!r}.",
+            )
+
+    try:
+        await sdk.models.retrieve(name, workspace=model_workspace)
+    except APIStatusError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{field} '{model_workspace}/{name}' is not a known Model Entity.",
+            ) from exc
+        raise HTTPException(status_code=exc.status_code, detail=_error_detail(exc)) from exc
+    except APIConnectionError as exc:
+        # Same reasoning as the submit path: an unreachable dependency is not
+        # the caller's bad request, and nothing has been recorded yet.
+        logger.warning("Could not reach the Models service to validate %s %r: %s", field, ref, exc)
+        raise HTTPException(
+            status_code=503, detail="Could not reach the Models service to validate the model refs."
+        ) from exc
+    return f"{model_workspace}/{name}"
 
 
 def build_execute_agent_job_config(

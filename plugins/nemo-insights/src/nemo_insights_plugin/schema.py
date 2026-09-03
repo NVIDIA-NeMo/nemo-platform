@@ -94,17 +94,18 @@ class CreateAnalysisRunRequest(BaseModel):
     """Client-facing request to run the Insights Analyst through ``agents.execute``."""
 
     agent: NonBlankString = Field(description="Agent whose telemetry should be analyzed.")
-    default_model: str = Field(
+    default_model: NonBlankString = Field(
         description=(
-            "Workspace-qualified Model Entity ref ('<workspace>/<name>') the Analyst uses for "
-            "analysis work. Required: the model pair is the operator's choice and is not "
+            "Model Entity the Analyst uses for analysis work, as a name or a "
+            "'<workspace>/<name>' ref; a bare name resolves in the run's workspace and is "
+            "stored qualified. Required: the model pair is the operator's choice and is not "
             "persisted anywhere the Platform process can read it."
         ),
     )
-    fast_model: str = Field(
+    fast_model: NonBlankString = Field(
         description=(
-            "Workspace-qualified Model Entity ref used for context summarization. Required for "
-            "the same reason as default_model."
+            "Model Entity used for context summarization, in the same form as default_model. "
+            "Required for the same reason."
         ),
     )
     ethos: NonBlankString | None = Field(

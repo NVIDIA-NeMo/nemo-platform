@@ -31,6 +31,7 @@ from nemo_insights_plugin.service import InsightsService
 from nmp.core.entities.service import EntitiesService
 from nmp.core.files.service import FilesService
 from nmp.core.jobs.service import JobsService
+from nmp.core.models.service import ModelsService
 from nmp.platform_runner.plugin_adapter import NemoServiceAdapter
 from nmp.testing import ClientContext, create_test_client, subprocess_job_executor_patch
 from pydantic import ValidationError
@@ -55,8 +56,8 @@ class _TestAgentsService(NemoServiceAdapter):
 
 
 @contextmanager
-def _platform() -> Iterator[ClientContext]:
-    """Insights in front of the Agents and Jobs services it actually calls."""
+def _platform(*, workspaces: list[str] | None = None, workspace: str = WORKSPACE) -> Iterator[ClientContext]:
+    """Insights in front of the Agents, Jobs and Models services it actually calls."""
     with (
         subprocess_job_executor_patch(),
         create_test_client(
@@ -65,10 +66,17 @@ def _platform() -> Iterator[ClientContext]:
             EntitiesService,
             JobsService,
             FilesService,
+            ModelsService,
             client_type=ClientContext,
-            workspace=WORKSPACE,
+            workspaces=workspaces or [workspace],
+            workspace=workspace,
         ) as ctx,
     ):
+        # The create path resolves the model pair before recording a run, so
+        # the referenced entities have to exist.
+        if workspace == WORKSPACE:
+            for ref in (DEFAULT_MODEL, FAST_MODEL):
+                ctx.sdk.models.create(workspace=WORKSPACE, name=ref.split("/", 1)[1], backend_format="OPENAI_CHAT")
         yield ctx
 
 
@@ -77,8 +85,8 @@ def _create(ctx: ClientContext, **overrides: Any) -> Any:
     return ctx.sdk.insights.analysis_runs.create(
         workspace=WORKSPACE,
         agent=overrides.pop("agent", "demo-agent"),
-        default_model=DEFAULT_MODEL,
-        fast_model=FAST_MODEL,
+        default_model=overrides.pop("default_model", DEFAULT_MODEL),
+        fast_model=overrides.pop("fast_model", FAST_MODEL),
         **overrides,
     )
 
@@ -128,6 +136,55 @@ def test_the_sdk_serializes_a_since_bound_the_route_accepts() -> None:
         assert spec["agent"]["config"]["harnesses"]["insights"]["settings"]["since"] == "2026-08-01T00:00:00+00:00"
         # The step config preserves the original request alongside the resolved agent.
         assert spec["request"]["timeout_seconds"] == 30.0
+
+
+def test_a_bare_model_name_resolves_in_the_run_workspace_and_is_stored_qualified() -> None:
+    """The Analyst only accepts qualified refs, so normalization has to happen before storage."""
+    with _platform() as ctx:
+        created = _create(ctx, default_model="analyst-default", fast_model="analyst-fast")
+
+        assert created.run.default_model == DEFAULT_MODEL
+        assert created.run.fast_model == FAST_MODEL
+        models = _backing_job(ctx, created.run.name)["spec"]["agent"]["config"]["models"]
+        assert models["default"]["model"] == DEFAULT_MODEL
+        assert models["fast"]["model"] == FAST_MODEL
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "does-not-exist",
+        f"{WORKSPACE}/does-not-exist",
+        "too/many/slashes",
+    ],
+)
+def test_a_model_ref_that_does_not_resolve_is_rejected_before_anything_is_recorded(ref: str) -> None:
+    """A bogus ref used to 201, persisting a run behind a job that could never start."""
+    with _platform() as ctx:
+        with pytest.raises(httpx.HTTPStatusError) as excinfo:
+            _create(ctx, default_model=ref)
+
+        assert excinfo.value.response.status_code == 422, excinfo.value.response.text
+        assert ctx.sdk.insights.analysis_runs.list_runs(workspace=WORKSPACE).data == []
+
+
+def test_a_qualified_ref_may_name_a_model_in_another_workspace() -> None:
+    """A run is not confined to its own workspace's models, only to what the caller can read."""
+    with _platform(workspaces=["workspace-a", "workspace-b"], workspace="workspace-a") as ctx:
+        for name in ("foo", "bar"):
+            ctx.sdk.models.create(workspace="workspace-b", name=name, backend_format="OPENAI_CHAT")
+
+        created = ctx.sdk.insights.analysis_runs.create(
+            workspace="workspace-a",
+            agent="borrowing-agent",
+            default_model="workspace-b/foo",
+            fast_model="workspace-b/bar",
+        )
+
+        assert created.run.workspace == "workspace-a"
+        assert created.run.default_model == "workspace-b/foo"
+        job = ctx.sdk.agents.jobs.execute.get(created.run.name, workspace="workspace-a")
+        assert job["spec"]["agent"]["config"]["models"]["default"]["model"] == "workspace-b/foo"
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +252,7 @@ def test_getting_an_unknown_run_is_a_404() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("field", ["agent", "evaluation_id", "ethos"])
+@pytest.mark.parametrize("field", ["agent", "evaluation_id", "ethos", "default_model", "fast_model"])
 def test_the_sdk_rejects_a_blank_setting_without_a_round_trip(field: str) -> None:
     """``_build_create_body`` builds the request model, so the SDK fails before sending."""
     with _platform() as ctx:
@@ -203,7 +260,7 @@ def test_the_sdk_rejects_a_blank_setting_without_a_round_trip(field: str) -> Non
             _create(ctx, **{field: "   "})
 
 
-@pytest.mark.parametrize("field", ["agent", "evaluation_id", "ethos"])
+@pytest.mark.parametrize("field", ["agent", "evaluation_id", "ethos", "default_model", "fast_model"])
 def test_the_route_rejects_a_blank_setting_on_the_wire(field: str) -> None:
     """A caller that is not the SDK still gets a 422 rather than a run that fails later."""
     with _platform() as ctx:

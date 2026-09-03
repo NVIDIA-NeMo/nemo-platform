@@ -73,11 +73,26 @@ class _StubExecuteJobs:
         return self._response
 
 
+class _StubModels:
+    """Model Entity lookups the create path makes before recording a run."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self.retrieved: list[tuple[str, str]] = []
+        self._error = error
+
+    async def retrieve(self, name: str, *, workspace: str) -> object:
+        self.retrieved.append((workspace, name))
+        if self._error is not None:
+            raise self._error
+        return object()
+
+
 class _StubSdk:
     """Minimal stand-in for the request-scoped ``AsyncNeMoPlatform``."""
 
-    def __init__(self, jobs: _StubExecuteJobs) -> None:
+    def __init__(self, jobs: _StubExecuteJobs, models: _StubModels | None = None) -> None:
         self.agents = type("_Agents", (), {"jobs": type("_Jobs", (), {"execute": jobs})()})()
+        self.models = models or _StubModels()
 
 
 class _StubEntities:
@@ -114,9 +129,9 @@ class _StubEntities:
         )
 
 
-def _sdk(jobs: _StubExecuteJobs) -> AsyncNeMoPlatform:
-    """The route only touches ``sdk.agents.jobs.execute``; cast past the concrete type."""
-    return cast(AsyncNeMoPlatform, _StubSdk(jobs))
+def _sdk(jobs: _StubExecuteJobs, models: _StubModels | None = None) -> AsyncNeMoPlatform:
+    """The route touches ``sdk.agents.jobs.execute`` and ``sdk.models``; cast past the concrete type."""
+    return cast(AsyncNeMoPlatform, _StubSdk(jobs, models))
 
 
 def _entities(stub: _StubEntities) -> NemoEntitiesClient:
@@ -241,7 +256,7 @@ def test_ethos_is_omitted_when_unset() -> None:
     assert "ethos" not in config.agent.config["harnesses"]["insights"]["settings"]
 
 
-@pytest.mark.parametrize("field", ["agent", "evaluation_id", "ethos"])
+@pytest.mark.parametrize("field", ["agent", "evaluation_id", "ethos", "default_model", "fast_model"])
 @pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
 def test_blank_settings_are_rejected(field: str, blank: str) -> None:
     """These reach the adapter verbatim, which rejects a blank only once the job is running."""
@@ -322,6 +337,51 @@ async def test_the_run_captures_the_request_scope() -> None:
     assert response.run.evaluation_id == "eval-123"
     assert response.run.default_model == DEFAULT_MODEL
     assert response.run.fast_model == FAST_MODEL
+
+
+async def test_a_bare_model_name_is_looked_up_in_the_run_workspace() -> None:
+    models = _StubModels()
+
+    await create_analysis_run(
+        "team-a",
+        _request(default_model="big", fast_model="small"),
+        _sdk(_StubExecuteJobs(), models),
+        _entities(_StubEntities()),
+    )
+
+    assert models.retrieved == [("team-a", "big"), ("team-a", "small")]
+
+
+async def test_a_denied_model_lookup_keeps_the_status_the_store_returned() -> None:
+    """A cross-workspace ref the caller cannot read is a 403, not a malformed request."""
+    denied = _api_status_error(403, {"detail": "no access to workspace-b"})
+    entities = _StubEntities()
+
+    with pytest.raises(HTTPException) as excinfo:
+        await create_analysis_run(
+            "workspace-a",
+            _request(default_model="workspace-b/foo"),
+            _sdk(_StubExecuteJobs(), _StubModels(error=denied)),
+            _entities(entities),
+        )
+
+    assert excinfo.value.status_code == 403
+    assert excinfo.value.detail == "no access to workspace-b"
+    assert entities.created == []
+
+
+async def test_an_unreachable_models_service_is_not_reported_as_a_bad_request() -> None:
+    """Nothing is recorded yet, so this is a 503 rather than a 422 blaming the caller."""
+    unreachable = APIConnectionError(request=httpx.Request("GET", "http://platform/models"))
+    entities = _StubEntities()
+
+    with pytest.raises(HTTPException) as excinfo:
+        await create_analysis_run(
+            "default", _request(), _sdk(_StubExecuteJobs(), _StubModels(error=unreachable)), _entities(entities)
+        )
+
+    assert excinfo.value.status_code == 503
+    assert entities.created == []
 
 
 async def test_nothing_is_submitted_when_the_run_cannot_be_recorded() -> None:
