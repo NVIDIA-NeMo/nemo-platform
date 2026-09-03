@@ -183,6 +183,15 @@ paths:
                 $ref: '#/components/schemas/AgentStatus'
         '404':
           description: Agent not found
+        '500':
+          description: Failed to list deployments for the agent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
         '422':
           description: Validation Error
           content:
@@ -6011,7 +6020,7 @@ components:
         error:
           type: string
           title: Error
-          description: Error message or stderr snippet when the server failed to start.
+          description: Short, generic error message when the server failed to start.
           default: ''
         tools:
           items:

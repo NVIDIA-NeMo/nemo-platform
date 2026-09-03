@@ -159,7 +159,15 @@ async def _get_agent_or_404(workspace: str, name: str, entity_client: NemoEntiti
     "/agents/{name}/status",
     response_model=AgentStatus,
     tags=["Agents"],
-    responses={404: {"description": "Agent not found"}},
+    responses={
+        404: {"description": "Agent not found"},
+        500: {
+            "description": "Failed to list deployments for the agent",
+            "content": {
+                "application/json": {"schema": {"type": "object", "properties": {"detail": {"type": "string"}}}}
+            },
+        },
+    },
 )
 @scope.read
 @path_rule(
