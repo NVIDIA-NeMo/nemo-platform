@@ -435,16 +435,6 @@ export const GrpoParametersSection = () => {
                     step={0.01}
                     disabled={disabled}
                   />
-                  <ControlledSwitch
-                    useControllerProps={{ name: 'grpo.normalize_rewards', control }}
-                    formFieldProps={{
-                      slotLabel: 'Normalize Rewards',
-                      labelPosition: 'left',
-                      slotInfo:
-                        'Normalize rewards within each prompt group before computing advantages.',
-                    }}
-                    disabled={disabled}
-                  />
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'rl.training.max_grad_norm', control }}
                     formFieldProps={{
