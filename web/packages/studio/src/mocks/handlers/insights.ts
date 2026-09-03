@@ -11,6 +11,18 @@ import { http, HttpResponse } from 'msw';
  * `/apis/insights/v2/workspaces/{workspace}/insights` contract.
  */
 const INSIGHTS_URL = `${PLATFORM_BASE_URL}/apis/insights/v2/workspaces/:workspace/insights`;
+const ANALYSIS_CONFIG_URL = `${PLATFORM_BASE_URL}/apis/insights/v2/workspaces/:workspace/analysis-configs/:agent`;
+
+/** Stored per-agent analysis config, as the Details tab's Insights analysis panel reads it. */
+export const mockAnalysisConfig = {
+  id: 'insights-analysis-config-1',
+  name: 'react-agent',
+  agent: 'react-agent',
+  enabled: true,
+  default_model: 'default/nvidia-nemotron-mini-4b-instruct',
+  fast_model: 'default/nvidia-nemotron-mini-4b-instruct',
+  updated_at: '2026-08-14T09:00:00Z',
+};
 
 export const mockInsights: InsightListItem[] = [
   {
@@ -44,6 +56,10 @@ export const mockInsights: InsightListItem[] = [
 ];
 
 export const insightsHandlers = [
+  http.get(ANALYSIS_CONFIG_URL, ({ params }) =>
+    HttpResponse.json({ ...mockAnalysisConfig, name: params.agent, agent: params.agent })
+  ),
+
   http.get(INSIGHTS_URL, ({ request }) => {
     const params = new URL(request.url).searchParams;
     const agent = params.get('agent');
