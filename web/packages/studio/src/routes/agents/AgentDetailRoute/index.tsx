@@ -18,6 +18,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
+import { ImportTracesModal } from '@studio/components/ImportTracesModal';
 import { AGENT_OVERVIEW_ENABLED, INTAKE_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -37,7 +38,7 @@ import {
   isAgentWalkthroughPending,
 } from '@studio/routes/agents/AgentDetailRoute/walkthroughStorage';
 import { getAgentsListRoute, getIntakeTracesRoute } from '@studio/routes/utils';
-import { ClipboardCheck, Dot, ListTree, Rocket } from 'lucide-react';
+import { ClipboardCheck, Dot, ListTree, Rocket, Upload } from 'lucide-react';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 
@@ -61,6 +62,7 @@ export const AgentDetailRoute: FC = () => {
   const [logsDeploymentName, setLogsDeploymentName] = useState<string | undefined>();
   const [createDeploymentOpen, setCreateDeploymentOpen] = useState(false);
   const [submitEvalOpen, setSubmitEvalOpen] = useState(false);
+  const [importTracesOpen, setImportTracesOpen] = useState(false);
   const [deleteDeploymentTarget, setDeleteDeploymentTarget] = useState<AgentDeployment | null>(
     null
   );
@@ -173,10 +175,23 @@ export const AgentDetailRoute: FC = () => {
           slotActions={
             <Flex gap="2" wrap="wrap" justify="end">
               {INTAKE_ENABLED && (
-                <Button kind="secondary" onClick={() => navigate(getIntakeTracesRoute(workspace))}>
-                  <ListTree className="size-4" aria-hidden />
-                  Open traces
-                </Button>
+                <>
+                  <Button
+                    kind="secondary"
+                    onClick={() => setImportTracesOpen(true)}
+                    disabled={!agentName}
+                  >
+                    <Upload className="size-4" aria-hidden />
+                    Import traces
+                  </Button>
+                  <Button
+                    kind="secondary"
+                    onClick={() => navigate(getIntakeTracesRoute(workspace))}
+                  >
+                    <ListTree className="size-4" aria-hidden />
+                    Open traces
+                  </Button>
+                </>
               )}
               <Button
                 kind="secondary"
@@ -290,6 +305,14 @@ export const AgentDetailRoute: FC = () => {
         workspace={workspace}
         agent={agentName}
       />
+      {agentName && (
+        <ImportTracesModal
+          open={importTracesOpen}
+          onClose={() => setImportTracesOpen(false)}
+          workspace={workspace}
+          agent={agentName}
+        />
+      )}
       {createDeploymentOpen && (
         <CreateDeploymentModal
           open
