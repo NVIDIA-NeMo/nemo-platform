@@ -24,6 +24,8 @@ class AnalysisConfigPerms(PermissionSet, namespace="insights.analysis-configs"):
 
 class AnalysisRunPerms(PermissionSet, namespace="insights.analysis-runs"):
     CREATE = perm("Submit an insights analysis run")
+    LIST = perm("List insights analysis runs")
+    READ = perm("Read an insights analysis run")
 
 
 class AnalysisRunStatusPerms(PermissionSet, namespace="insights.analysis-run-statuses"):
