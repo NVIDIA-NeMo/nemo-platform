@@ -7,6 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 
 Vendors the scaled-evals control plane into NeMo Platform as an ephemeral plugin so Harbor/Gym scaled evaluation keeps working end-to-end while substrate plugins (builder/registry/sandbox) and the nemo-evaluator API merge land later.
 
+Portable behavior is reconciled through standalone scaled-evals `1.13.0`
+(`c64f23e71dc829414ab9279483973a84a17eea8d`). This remains a platform-adapted
+fork: hosted deployment, identity-provider, and private corpus surfaces are not
+vendored.
+
 ## Install (ephemeral — not in `enabled-plugins` yet)
 
 ```bash
