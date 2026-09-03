@@ -93,6 +93,14 @@ class Settings(BaseSettings):
     harbor_viewer_upload_token: str = ""
     harbor_viewer_upload_timeout_seconds: float = 30.0
     harbor_viewer_upload_overwrite: bool = True
+    harbor_dataset_image_prepare_timeout_seconds: float = 7200.0
+    harbor_dataset_image_poll_interval_seconds: float = 5.0
+    # Public registries from which dataset-only Harbor tasks may import base
+    # images. This is independent of the destination task-image allowlist.
+    harbor_dataset_upstream_allowed_registries: str = Field(
+        default="docker.io,ghcr.io",
+        validation_alias="HARBOR_DATASET_UPSTREAM_ALLOWED_REGISTRIES",
+    )
     # Disable when the deployment target cannot run the BuildKit daemon. This
     # makes readiness honest and prevents finalize from wedging revisions.
     buildkit_enabled: bool = True

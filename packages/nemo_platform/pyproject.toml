@@ -794,6 +794,7 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 insights = "nemo_insights_plugin.skills:skills_dir"
 deployments = "nemo_deployments_plugin.skills:skills_dir"
 customizer = "nemo_customizer.skills:get_skills_path"
+
 [tool.uv.sources]
 nemo-platform-sdk = { workspace = true }
 nemo-platform-ext = { workspace = true }

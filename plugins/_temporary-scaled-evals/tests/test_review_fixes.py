@@ -22,6 +22,7 @@ try:
     from nemo_scaled_evals_plugin import migrations
     from scaled_evals.api.build import buildkit
     from scaled_evals.api.build.errors import BuildError
+    from scaled_evals.api.repositories.build_repository import TaskBuildRepository
     from scaled_evals.api.repositories.runtime_resource_repository import (
         RuntimeResourceRepository,
     )
@@ -56,6 +57,22 @@ class _MigrationConnection:
 
     def rollback(self) -> None:
         self.rollbacks += 1
+
+
+def test_build_success_only_advances_a_transitioned_revision() -> None:
+    connection = MagicMock()
+    connection.transaction.return_value = nullcontext()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    repository = TaskBuildRepository(connection)
+
+    cursor.rowcount = 0
+    repository.record_success("task", 2, image_ref="image:2", image_digest="sha256:" + "a" * 64)
+    assert cursor.execute.call_count == 1
+
+    cursor.reset_mock()
+    cursor.rowcount = 1
+    repository.record_success("task", 2, image_ref="image:2", image_digest="sha256:" + "a" * 64)
+    assert cursor.execute.call_count == 2
 
 
 def test_fresh_schema_is_atomic(monkeypatch: pytest.MonkeyPatch) -> None:
