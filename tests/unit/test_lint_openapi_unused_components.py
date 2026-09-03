@@ -40,6 +40,31 @@ def test_find_unused_components_keeps_schema_referenced_directly_from_response()
     assert find_unused_components(spec) == []
 
 
+def test_find_unused_components_decodes_percent_encoded_component_ref() -> None:
+    spec = {
+        "openapi": "3.1.0",
+        "paths": {
+            "/apis/widgets/v2/widgets": {
+                "get": {
+                    "responses": {
+                        "200": {
+                            "description": "OK",
+                            "content": {"application/json": {"schema": _ref("schemas", "Widget%20Config")}},
+                        }
+                    }
+                }
+            }
+        },
+        "components": {
+            "schemas": {
+                "Widget Config": {"type": "object"},
+            }
+        },
+    }
+
+    assert find_unused_components(spec) == []
+
+
 def test_find_unused_components_keeps_nested_schema_dependencies() -> None:
     spec = {
         "openapi": "3.1.0",

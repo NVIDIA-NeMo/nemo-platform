@@ -10,6 +10,7 @@ from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import unquote
 
 import yaml
 
@@ -142,7 +143,7 @@ def _resolve_internal_ref(spec: Mapping[str, object], ref: str) -> object | None
 
 
 def _decode_pointer_token(token: str) -> str:
-    return token.replace("~1", "/").replace("~0", "~")
+    return unquote(token).replace("~1", "/").replace("~0", "~")
 
 
 def _string_key_dict(value: object) -> dict[str, object]:
