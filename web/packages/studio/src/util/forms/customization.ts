@@ -10,7 +10,6 @@ import {
   type RlGRPOTraining,
   type RlJobInput,
   type RlJobsJobRequest,
-  type RlLoRAParams,
   type UnslothJobInput,
   type UnslothJobsJobRequest,
 } from '@nemo/sdk/generated/customizer/schema';
@@ -33,78 +32,23 @@ import {
 import { z } from 'zod';
 
 /**
- * The LoRA knobs the GRPO form exposes. `target_modules`/`exclude_modules` are left
- * to the backend, and the rest are required here because every control is always
- * rendered with a value.
- */
-/** All optional: each value is a spec default, and the spec need not declare one. */
-export type GrpoLoraFields = Pick<
-  RlLoRAParams,
-  'rank' | 'alpha' | 'dropout' | 'use_triton' | 'target_modules' | 'exclude_modules'
->;
-
-/**
  * GRPO-only hyperparameters, kept in their own namespace because `rl.training` holds
  * a single object shared with the DPO form. Derived from `RlGRPOTraining` so the form
  * cannot drift from the API — field docs come from the generated schema.
  */
-export interface GrpoFormFields extends Pick<
-  RlGRPOTraining,
-  | 'num_generations_per_prompt'
-  | 'num_prompts_per_step'
-  | 'max_rollout_turns'
-  | 'normalize_rewards'
-  | 'ratio_clip_min'
-  | 'ratio_clip_max'
-  | 'finetuning_type'
-  | 'temperature'
-  | 'val_at_start'
-  | 'overlong_filtering'
-  | 'use_dynamic_sampling'
-  | 'batch_multiplier'
-  | 'dynamic_sampling_max_gen_batches'
-  | 'use_leave_one_out_baseline'
-  | 'use_importance_sampling_correction'
-  | 'use_on_policy_kl_approximation'
-  | 'policy_backend'
-  | 'batching_strategy'
-  | 'sequence_length_round'
-  | 'vllm_gpu_memory_utilization'
-> {
+/**
+ * GRPO-only form state: the spec's GRPO arm plus the two fields that exist only in the UI.
+ *
+ * Extends `RlGRPOTraining` wholesale rather than naming its fields. Listing them meant three
+ * copies of the same set — a type union, a runtime key array and a per-field restatement —
+ * which is the duplication this module exists to remove, just moved from values to names.
+ * A field the form has no control for is inert: `formToRlCreate` picks what it sends.
+ */
+export interface GrpoFormFields extends RlGRPOTraining {
   /** 'grpo' shows the GRPO form sections; 'dpo' shows DPO sections. Maps to training.type on submit. */
   trainingType: RlDPOTraining['type'] | RlGRPOTraining['type'];
   /** Fileset reference for the NeMo Gym reward environment. */
   environmentFileset: string;
-  /**
-   * Seeded to match the default `max_seq_length`, which is what the backend would
-   * derive it from anyway. It has to carry a value because its slider needs a reset
-   * target, and a reset target that differs from the form default is a control whose
-   * ↺ silently changes the request. Raising Max Sequence Length does NOT raise this —
-   * the two are set independently, and the backend rejects this exceeding that.
-   */
-  max_new_tokens: RlGRPOTraining['max_new_tokens'];
-  /** LoRA hyperparameters; only sent when finetuning_type is 'lora'. */
-  lora: GrpoLoraFields;
-  /**
-   * Fields the backend leaves unset by default. They stay optional here so an untouched
-   * control sends nothing and the backend keeps its own behaviour, rather than the form
-   * switching a feature on with a value the user never chose.
-   */
-  ratio_clip_c: RlGRPOTraining['ratio_clip_c'];
-  advantage_clip_low: RlGRPOTraining['advantage_clip_low'];
-  advantage_clip_high: RlGRPOTraining['advantage_clip_high'];
-  truncated_importance_sampling_type: RlGRPOTraining['truncated_importance_sampling_type'];
-  truncated_importance_sampling_ratio: RlGRPOTraining['truncated_importance_sampling_ratio'];
-  truncated_importance_sampling_ratio_min: RlGRPOTraining['truncated_importance_sampling_ratio_min'];
-  top_k: RlGRPOTraining['top_k'];
-  train_mb_tokens: RlGRPOTraining['train_mb_tokens'];
-  router_aux_loss_coef: RlGRPOTraining['router_aux_loss_coef'];
-  vllm_tensor_parallel_size: RlGRPOTraining['vllm_tensor_parallel_size'];
-  reward_scaling: RlGRPOTraining['reward_scaling'];
-  reward_shaping: RlGRPOTraining['reward_shaping'];
-  /** Free-form passthrough dicts, edited via ControlledJsonInput. */
-  hf_config_overrides: RlGRPOTraining['hf_config_overrides'];
-  automodel_kwargs: RlGRPOTraining['automodel_kwargs'];
 }
 
 export interface CustomizationFormFields {
@@ -166,52 +110,6 @@ export const resolveTrainingType = (
  */
 export const RL_DPO_TRAINING_DEFAULTS = RL_DPO_DEFAULT_SPEC.training;
 
-/**
- * The GRPO arm's fields, lifted into the form's own namespace. Listed rather than spread so
- * the form carries exactly the controls it renders, and so a new field in the spec does not
- * silently appear in form state without a control behind it.
- */
-const GRPO_FORM_KEYS = [
-  'num_generations_per_prompt',
-  'num_prompts_per_step',
-  'max_rollout_turns',
-  'normalize_rewards',
-  'ratio_clip_min',
-  'ratio_clip_max',
-  'finetuning_type',
-  'temperature',
-  'val_at_start',
-  'overlong_filtering',
-  'use_dynamic_sampling',
-  'batch_multiplier',
-  'dynamic_sampling_max_gen_batches',
-  'use_leave_one_out_baseline',
-  'use_importance_sampling_correction',
-  'use_on_policy_kl_approximation',
-  'policy_backend',
-  'batching_strategy',
-  'sequence_length_round',
-  'vllm_gpu_memory_utilization',
-  'max_new_tokens',
-  'lora',
-  // The spec gives these no default, so they parse to `undefined` and their controls reset
-  // to empty. The backend reads absence as "feature off"; seeding a number would switch it on.
-  'ratio_clip_c',
-  'advantage_clip_low',
-  'advantage_clip_high',
-  'truncated_importance_sampling_type',
-  'truncated_importance_sampling_ratio',
-  'truncated_importance_sampling_ratio_min',
-  'top_k',
-  'train_mb_tokens',
-  'router_aux_loss_coef',
-  'vllm_tensor_parallel_size',
-  'reward_scaling',
-  'reward_shaping',
-  'hf_config_overrides',
-  'automodel_kwargs',
-] as const satisfies readonly (keyof RlGRPOTraining)[];
-
 const grpoTraining = RL_GRPO_DEFAULT_SPEC.training as RlGRPOTraining;
 
 /**
@@ -232,10 +130,7 @@ export const FORM_DEFAULTS: CustomizationFormFields = {
     /** 'grpo' shows the GRPO sections; 'dpo' shows DPO. Maps to training.type on submit. */
     trainingType: 'dpo',
     environmentFileset: '',
-    ...(Object.fromEntries(GRPO_FORM_KEYS.map((k) => [k, grpoTraining[k]])) as Pick<
-      GrpoFormFields,
-      (typeof GRPO_FORM_KEYS)[number]
-    >),
+    ...grpoTraining,
   },
 };
 
@@ -448,8 +343,8 @@ export const formToRlCreate = (f: CustomizationFormFields): RlJobsJobRequest => 
           lora: isLora
             ? {
                 ...f.grpo.lora,
-                target_modules: emptyToUndefined(f.grpo.lora.target_modules),
-                exclude_modules: emptyToUndefined(f.grpo.lora.exclude_modules),
+                target_modules: emptyToUndefined(f.grpo.lora?.target_modules),
+                exclude_modules: emptyToUndefined(f.grpo.lora?.exclude_modules),
               }
             : undefined,
           num_generations_per_prompt: f.grpo.num_generations_per_prompt,
