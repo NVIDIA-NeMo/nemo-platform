@@ -43,12 +43,7 @@ def _validate_url(url: str, *, purpose: str, allow_local_http: bool = True) -> N
         parsed.port
     except ValueError as exc:
         raise click.ClickException(f"{purpose} URL is invalid") from exc
-    if (
-        not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.fragment
-    ):
+    if not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.fragment:
         raise click.ClickException(f"{purpose} URL is invalid")
     if parsed.scheme.lower() == "https":
         return
@@ -257,9 +252,11 @@ def download_presigned(client: httpx.Client, download: dict[str, Any], dest: Pat
     url = download.get("url")
     if not url:
         raise click.ClickException("response has no download url")
-    _validate_url(str(url), purpose="download")
+    parsed_url = httpx.URL(str(url))
+    if parsed_url.is_absolute_url:
+        _validate_url(str(url), purpose="download")
     req = client.build_request(download.get("method", "GET"), url)
-    if httpx.URL(url).is_absolute_url:
+    if parsed_url.is_absolute_url:
         req.headers.pop("authorization", None)
     try:
         resp = client.send(req, stream=True)

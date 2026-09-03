@@ -1065,7 +1065,7 @@ def test_switchyard_resource_teardown_recovers_terminal_provisioned_leaks() -> N
     assert "r.status = 'provisioned'" in sql
     assert "e.status IN ('succeeded', 'failed', 'cancelled')" in sql
     assert "INTERVAL '5 minutes'" in sql
-    assert params == (30, "worker-a")
+    assert params == (30, 30, "worker-a")
 
 
 def test_evaluation_evidence_claim_waits_for_campaign_evidence() -> None:

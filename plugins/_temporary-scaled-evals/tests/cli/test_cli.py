@@ -30,6 +30,7 @@ def runner_with(monkeypatch, handler) -> CliRunner:
     The real make_client still runs (preserving /v1 prefix and auth header
     resolution); only the transport is swapped.
     """
+    monkeypatch.setenv("SCALED_EVALS_BASE_URL", "https://api.example.com")
     real = client_module.make_client
 
     def patched(base_url, token, transport=None, **kwargs):
