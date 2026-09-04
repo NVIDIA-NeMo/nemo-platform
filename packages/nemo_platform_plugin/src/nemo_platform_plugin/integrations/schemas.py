@@ -8,8 +8,9 @@ from __future__ import annotations
 import warnings
 from typing import Self
 
-from nemo_platform_plugin.schema import SecretRef
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from nemo_platform_plugin.schema import SecretRef
 
 
 class WandbIntegration(BaseModel):

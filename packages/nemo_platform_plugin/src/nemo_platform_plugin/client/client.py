@@ -443,6 +443,17 @@ class BaseNemoClient:
     def workspace(self) -> str | None:
         return self._workspace
 
+    def resolve_workspace(self, workspace: str | None = None) -> str:
+        """Return the explicit workspace, client default, or platform default."""
+        return workspace or self._workspace or "default"
+
+    def require_workspace(self, workspace: str | None = None) -> str:
+        """Return the explicit workspace or client default, raising if neither is set."""
+        resolved_workspace = workspace or self._workspace
+        if resolved_workspace is None:
+            raise ValueError("workspace must be provided when the client has no default workspace")
+        return resolved_workspace
+
     @property
     def retry(self) -> RetryPolicy | None:
         return self._retry
@@ -606,6 +617,12 @@ class BaseNemoClient:
         from nemo_platform_plugin.projects.client import AsyncProjectsClient, ProjectsClient
 
         return self._resource_client(ProjectsClient, AsyncProjectsClient)
+
+    @property
+    def intake(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.intake.client import AsyncIntakeClient, IntakeClient
+
+        return self._resource_client(IntakeClient, AsyncIntakeClient)
 
     @property
     def data_designer(self) -> NemoClient | AsyncNemoClient:
@@ -955,6 +972,20 @@ class AsyncNemoClient(BaseNemoClient):
             http_client=client._http,
             url_resolver=client._url_resolver,
         )
+
+    def with_http_client(self, http_client: httpx.AsyncClient) -> Self:
+        """Return a copy of this client using a different async transport."""
+        transport_owner = AsyncNemoClient(
+            base_url=self.base_url,
+            workspace=self.workspace,
+            auth=self._auth,
+            default_headers=self._default_headers or None,
+            timeout=self._timeout,
+            retry=self._retry,
+            http_client=http_client,
+            url_resolver=self._url_resolver,
+        )
+        return type(self).from_client(transport_owner)
 
     @overload
     async def send(

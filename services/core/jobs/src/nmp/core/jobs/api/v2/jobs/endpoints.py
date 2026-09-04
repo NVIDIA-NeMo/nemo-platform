@@ -31,7 +31,7 @@ from nmp.common.jobs.schemas import (
     PlatformJobStatusResponse,
 )
 from nmp.common.observability import scoped_app_ctx
-from nmp.common.sdk_factory import get_async_platform_sdk
+from nmp.common.sdk_factory import with_options_preserving_request_router
 from nmp.common.service.dependencies import get_sdk_client
 from nmp.core.jobs.api.dependencies import dep_dispatcher
 from nmp.core.jobs.api.v2.jobs.schemas import (
@@ -679,6 +679,7 @@ async def download_job_result(
     workspace: str,
     background_tasks: BackgroundTasks,
     dispatcher: JobDispatcher = Depends(dep_dispatcher),
+    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
 ) -> FileResponse:
     """Download a job result file."""
     with scoped_app_ctx(JobContext(id=job, result_name=name)):
@@ -692,9 +693,8 @@ async def download_job_result(
         filename, tmp_dir_path = await download_from_result_info(
             result_name=name,
             job_name=job,
-            workspace=workspace,
             artifact_url=result.artifact_url,
-            files_sdk=get_async_platform_sdk(),
+            sdk=with_options_preserving_request_router(sdk, workspace=workspace),
         )
         background_tasks.add_task(lambda: tmp_dir_path.cleanup_tmp_dir())
         return FileResponse(path=tmp_dir_path.path, filename=filename, background=background_tasks)

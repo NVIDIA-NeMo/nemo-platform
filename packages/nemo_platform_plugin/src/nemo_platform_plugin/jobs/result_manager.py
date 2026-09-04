@@ -4,23 +4,17 @@
 import logging
 import os
 import tarfile
-from abc import ABC
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Generic, Literal, Type, TypeVar, overload
+from typing import Literal, overload
 
-from filesets import parse_fileset_ref
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from filesets import FilesetFileSystem, parse_fileset_ref
 from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
 from nemo_platform_plugin.client.errors import NemoClientError
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
 from nemo_platform_plugin.jobs.constants import NEMO_JOB_WORKSPACE_ENVVAR
-from nemo_platform_plugin.jobs.file_manager import (
-    AsyncFilesetFileManager,
-    FilesetFileManager,
-    TmpDirPath,
-)
+from nemo_platform_plugin.jobs.file_manager import AsyncFilesetFileManager, FilesetFileManager, TmpDirPath
 from nemo_platform_plugin.jobs.schemas import PlatformJobResultCreateRequest, PlatformJobResultResponse
 from nemo_platform_plugin.jobs.types import job_artifact_base_path
 
@@ -33,12 +27,7 @@ class CreateJobResultError(Exception): ...
 class FileDoesNotExist(Exception): ...
 
 
-FileManagerClsT = TypeVar("FileManagerClsT", Type["FilesetFileManager"], Type["AsyncFilesetFileManager"])
-PlatformSDKT = TypeVar("PlatformSDKT", "NeMoPlatform", "AsyncNeMoPlatform")
-
-
-@dataclass
-class BaseResultManager(Generic[FileManagerClsT, PlatformSDKT], ABC):
+class BaseResultManager:
     """
     Base class for sync and async versions of the ResultManager. If there is any common code that can be used across
     both versions of the ResultManager, try to lift it up into this class to reduce duplication.
@@ -46,10 +35,7 @@ class BaseResultManager(Generic[FileManagerClsT, PlatformSDKT], ABC):
 
     job_name: str
     workspace: str
-    file_manager_cls: FileManagerClsT
-    files_sdk: PlatformSDKT
-    jobs_sdk: PlatformSDKT
-    attempt_id: str | None = field(default=None)
+    attempt_id: str | None
 
     def _validate_local_path(self, artifact_local_path: str | Path) -> Path:
         if isinstance(artifact_local_path, str):
@@ -67,20 +53,25 @@ class BaseResultManager(Generic[FileManagerClsT, PlatformSDKT], ABC):
 
 
 @dataclass
-class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
+class ResultManager(BaseResultManager):
+    job_name: str
+    workspace: str
+    files_client: FilesClient
+    jobs_client: JobsClient
+    attempt_id: str | None = field(default=None)
+
     def _fetch_job_metadata(self) -> tuple[str, str, str | None]:
         """Fetch job and return (attempt_id, fileset_name, output_location)."""
-        jobs = client_from_platform(self.jobs_sdk, JobsClient)
-        job = jobs.get_job(name=self.job_name, workspace=self.workspace).data()
+        job = self.jobs_client.get_job(name=self.job_name, workspace=self.workspace).data()
         attempt_id = self.attempt_id if self.attempt_id is not None else job.attempt_id
         return attempt_id, job.fileset, job.output_location
 
     def _create_file_manager(self, fileset_name: str) -> FilesetFileManager:
         """Create a file manager for the given fileset."""
-        return self.file_manager_cls(
+        return FilesetFileManager(
             workspace=self.workspace,
             fileset_name=fileset_name,
-            sdk=self.files_sdk,
+            filesystem=FilesetFileSystem(client=self.files_client),
         )
 
     def create_result(
@@ -99,9 +90,8 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
         artifact_url = file_manager.upload(
             local_path=artifact_local_path, remote_path=remote_path, ignore_patterns=ignore_patterns
         )
-        jobs = client_from_platform(self.jobs_sdk, JobsClient)
         try:
-            job_result = jobs.create_job_result(
+            job_result = self.jobs_client.create_job_result(
                 name=result_name,
                 job=self.job_name,
                 workspace=self.workspace,
@@ -113,7 +103,7 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
         except ClientConflictError:
             # Result already exists - fetch and return the existing one
             # This supports the use case of saving partial results across multiple batches
-            job_result = jobs.get_job_result(
+            job_result = self.jobs_client.get_job_result(
                 name=result_name,
                 job=self.job_name,
                 workspace=self.workspace,
@@ -134,20 +124,25 @@ class ResultManager(BaseResultManager[Type[FilesetFileManager], NeMoPlatform]):
 
 
 @dataclass
-class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncNeMoPlatform]):
+class AsyncResultManager(BaseResultManager):
+    job_name: str
+    workspace: str
+    files_client: AsyncFilesClient
+    jobs_client: AsyncJobsClient
+    attempt_id: str | None = field(default=None)
+
     async def _fetch_job_metadata(self) -> tuple[str, str, str | None]:
         """Fetch job and return (attempt_id, fileset_name, output_location)."""
-        jobs = client_from_platform(self.jobs_sdk, AsyncJobsClient)
-        job = (await jobs.get_job(name=self.job_name, workspace=self.workspace)).data()
+        job = (await self.jobs_client.get_job(name=self.job_name, workspace=self.workspace)).data()
         attempt_id = self.attempt_id if self.attempt_id is not None else job.attempt_id
         return attempt_id, job.fileset, job.output_location
 
     def _create_file_manager(self, fileset_name: str) -> AsyncFilesetFileManager:
         """Create a file manager for the given fileset."""
-        return self.file_manager_cls(
+        return AsyncFilesetFileManager(
             workspace=self.workspace,
             fileset_name=fileset_name,
-            sdk=self.files_sdk,
+            filesystem=FilesetFileSystem(client=self.files_client),
         )
 
     async def create_result(
@@ -166,10 +161,9 @@ class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncN
         artifact_url = await file_manager.upload(
             local_path=artifact_local_path, remote_path=remote_path, ignore_patterns=ignore_patterns
         )
-        jobs = client_from_platform(self.jobs_sdk, AsyncJobsClient)
         try:
             job_result = (
-                await jobs.create_job_result(
+                await self.jobs_client.create_job_result(
                     name=result_name,
                     job=self.job_name,
                     workspace=self.workspace,
@@ -183,7 +177,7 @@ class AsyncResultManager(BaseResultManager[Type[AsyncFilesetFileManager], AsyncN
             # Result already exists - fetch and return the existing one
             # This supports the use case of saving partial results across multiple batches
             job_result = (
-                await jobs.get_job_result(
+                await self.jobs_client.get_job_result(
                     name=result_name,
                     job=self.job_name,
                     workspace=self.workspace,
@@ -210,8 +204,8 @@ def result_manager_factory(
     *,
     attempt_id: str | None = None,
     workspace: str | None = None,
-    files_sdk: AsyncNeMoPlatform,
-    jobs_sdk: AsyncNeMoPlatform | None = None,
+    files_client: AsyncFilesClient,
+    jobs_client: AsyncJobsClient | None = None,
     is_async: Literal[True] = True,
 ) -> AsyncResultManager: ...
 
@@ -222,8 +216,8 @@ def result_manager_factory(
     *,
     attempt_id: str | None = None,
     workspace: str | None = None,
-    files_sdk: NeMoPlatform,
-    jobs_sdk: NeMoPlatform | None = None,
+    files_client: FilesClient,
+    jobs_client: JobsClient | None = None,
     is_async: Literal[False],
 ) -> ResultManager: ...
 
@@ -233,8 +227,8 @@ def result_manager_factory(
     *,
     attempt_id: str | None = None,
     workspace: str | None = None,
-    files_sdk: NeMoPlatform | AsyncNeMoPlatform,
-    jobs_sdk: NeMoPlatform | AsyncNeMoPlatform | None = None,
+    files_client: FilesClient | AsyncFilesClient,
+    jobs_client: JobsClient | AsyncJobsClient | None = None,
     is_async: bool = True,
 ) -> ResultManager | AsyncResultManager:
     """Create a ResultManager for uploading job results.
@@ -243,8 +237,9 @@ def result_manager_factory(
         job_name: Name of the job to create results for.
         attempt_id: Optional attempt ID for the job.
         workspace: Job workspace. If not provided, reads from NEMO_JOB_WORKSPACE env var.
-        files_sdk: SDK instance for file operations (required).
-        jobs_sdk: SDK instance for job operations. If not provided, uses files_sdk.
+        files_client: Files service client.
+        jobs_client: Jobs service client. If not provided, one is created from
+            files_client's shared transport.
         is_async: Whether to create an async result manager.
 
     Returns:
@@ -254,18 +249,37 @@ def result_manager_factory(
     if workspace is None:
         workspace = _get_job_workspace()
 
-    if jobs_sdk is None:
-        jobs_sdk = files_sdk
+    if is_async:
+        if not isinstance(files_client, AsyncFilesClient):
+            raise TypeError("AsyncResultManager requires AsyncFilesClient")
+        if jobs_client is None:
+            async_jobs_client = AsyncJobsClient.from_client(files_client)
+        elif isinstance(jobs_client, AsyncJobsClient):
+            async_jobs_client = jobs_client
+        else:
+            raise TypeError("AsyncResultManager requires AsyncJobsClient")
+        return AsyncResultManager(
+            job_name=job_name,
+            workspace=workspace,
+            attempt_id=attempt_id,
+            files_client=files_client,
+            jobs_client=async_jobs_client,
+        )
 
-    file_manager_cls = AsyncFilesetFileManager if is_async else FilesetFileManager
-    result_manager_cls = AsyncResultManager if is_async else ResultManager
-    return result_manager_cls(
+    if not isinstance(files_client, FilesClient):
+        raise TypeError("ResultManager requires FilesClient")
+    if jobs_client is None:
+        sync_jobs_client = JobsClient.from_client(files_client)
+    elif isinstance(jobs_client, JobsClient):
+        sync_jobs_client = jobs_client
+    else:
+        raise TypeError("ResultManager requires JobsClient")
+    return ResultManager(
         job_name=job_name,
         workspace=workspace,
         attempt_id=attempt_id,
-        file_manager_cls=file_manager_cls,
-        files_sdk=files_sdk,
-        jobs_sdk=jobs_sdk,
+        files_client=files_client,
+        jobs_client=sync_jobs_client,
     )
 
 
@@ -282,7 +296,7 @@ async def download_from_result_info(
     *,
     artifact_url: str,
     workspace: str | None = None,
-    files_sdk: AsyncNeMoPlatform,
+    files_client: AsyncFilesClient,
 ) -> tuple[str, TmpDirPath]:
     """
     This is a helper composition function that creates a result_manager
@@ -296,7 +310,7 @@ async def download_from_result_info(
     result_manager = result_manager_factory(
         job_name=job_name,
         workspace=workspace,
-        files_sdk=files_sdk,
+        files_client=files_client,
     )
 
     tmp_dir_path = await result_manager.download_artifact(artifact_url=artifact_url)

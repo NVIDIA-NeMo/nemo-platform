@@ -46,6 +46,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
@@ -107,7 +108,7 @@ def run_task(
             )
             return 2
         try:
-            ctx = _build_ctx_from_env(sdk)
+            ctx = build_ctx_from_env(sdk)
         except Exception:
             logger.exception("Failed to build JobContext from environment")
             return 2
@@ -186,7 +187,7 @@ def _read_step_config() -> dict:
     return data
 
 
-def _build_ctx_from_env(sdk: Any) -> JobContext:
+def build_ctx_from_env(sdk: NeMoPlatform) -> JobContext:
     """Build a :class:`JobContext` from the platform-injected ``NEMO_JOB_*`` env.
 
     Wires :attr:`JobContext.results` to :class:`PlatformJobResults` so results
@@ -224,4 +225,4 @@ def _build_ctx_from_env(sdk: Any) -> JobContext:
     )
 
 
-__all__ = ["run_task"]
+__all__ = ["build_ctx_from_env", "run_task"]

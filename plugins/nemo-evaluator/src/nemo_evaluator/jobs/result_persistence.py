@@ -8,8 +8,9 @@ Both evaluator jobs persist the *full* result bundle (rows/trials) to the job's 
 **result entity** (aggregated scores + traits to filter on), with ``bundle_ref`` pointing back at the
 fileset bundle. The entity is the evaluator's source of truth.
 
-``run`` is synchronous but the entity-store client is async, so the job is injected an async task SDK
-(``get_async_task_sdk``) alongside the sync one; we drive the entity write with ``run_sync``. A
+``run`` is synchronous but the entity-store client is async, so the job is injected an async task
+client (``get_async_task_nemo_client``) alongside the sync one; we drive the entity write with
+``run_sync``. A
 platformless local run (no async SDK) simply skips persistence.
 """
 
@@ -28,13 +29,12 @@ from nemo_evaluator.jobs.agent_spec import (
     ModelTarget,
     Target,
 )
-from nemo_evaluator.jobs.utils import run_with_isolated_async_sdk
+from nemo_evaluator.jobs.utils import run_with_isolated_async_client
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.values import Agent, AgentBase, Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin import AsyncNemoClient
 from nemo_platform_plugin.entities import EntityBase, EntityClient
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.job_context import JobContext
@@ -42,14 +42,14 @@ from nemo_platform_plugin.job_context import JobContext
 logger = logging.getLogger(__name__)
 
 
-def _entity_client(async_sdk: AsyncNeMoPlatform | None) -> EntityClient | None:
+def _entity_client(async_client: AsyncNemoClient | None) -> EntityClient | None:
     """The standard async ``EntityClient`` for the job's async task SDK, or ``None`` if absent.
 
     ``None`` means a platformless local run (no async SDK injected) — persistence is skipped.
     """
-    if async_sdk is None:
+    if async_client is None:
         return None
-    return EntityClient(client_from_platform(async_sdk, AsyncEntitiesClient))
+    return EntityClient(AsyncEntitiesClient.from_client(async_client))
 
 
 #: Query-parameter keys whose values are redacted before a target URL is persisted/returned.
@@ -106,8 +106,8 @@ def _row_target_fields(target: Model | Agent | None) -> tuple[str | None, str | 
     return None, None, None
 
 
-def _persist(entity: EntityBase, *, async_sdk: AsyncNeMoPlatform | None) -> None:
-    if async_sdk is None:
+def _persist(entity: EntityBase, *, async_client: AsyncNemoClient | None) -> None:
+    if async_client is None:
         logger.info("No async task SDK injected; skipping result-entity persistence (platformless local run).")
         return
     # Best-effort: the eval has already succeeded and the full bundle is saved, so a transient
@@ -115,12 +115,12 @@ def _persist(entity: EntityBase, *, async_sdk: AsyncNeMoPlatform | None) -> None
     # loudly and move on. (`save` is create-or-update, so a re-run of the same job id is idempotent.)
     try:
 
-        async def _save(sdk: AsyncNeMoPlatform) -> EntityBase:
-            client = _entity_client(sdk)
-            assert client is not None
-            return await client.save(entity)
+        async def _save(client: AsyncNemoClient) -> EntityBase:
+            entity_client = _entity_client(client)
+            assert entity_client is not None
+            return await entity_client.save(entity)
 
-        run_with_isolated_async_sdk(async_sdk, _save)
+        run_with_isolated_async_client(async_client, _save)
     except Exception:
         logger.exception(
             "Failed to persist result entity %r in workspace %r; the result bundle is still saved",
@@ -135,7 +135,7 @@ def persist_agent_eval_result(
     target: Target | None,
     ctx: JobContext,
     bundle_ref: str,
-    async_sdk: AsyncNeMoPlatform | None,
+    async_sdk: AsyncNemoClient | None,
 ) -> None:
     """Persist an ``AgentEvalJob`` run as an :class:`AgentEvalResultEntity` (aggregate scores rollup)."""
     if ctx.job_id is None:
@@ -152,7 +152,7 @@ def persist_agent_eval_result(
         scores=result.summary.scores,
         bundle_ref=bundle_ref,
     )
-    _persist(entity, async_sdk=async_sdk)
+    _persist(entity, async_client=async_sdk)
 
 
 def persist_evaluate_result(
@@ -163,7 +163,7 @@ def persist_evaluate_result(
     metric_types: list[str],
     ctx: JobContext,
     bundle_ref: str,
-    async_sdk: AsyncNeMoPlatform | None,
+    async_sdk: AsyncNemoClient | None,
 ) -> None:
     """Persist an ``EvaluateJob`` (row-eval) run as an :class:`EvaluateResultEntity` (aggregates)."""
     if ctx.job_id is None:
@@ -182,4 +182,4 @@ def persist_evaluate_result(
         dataset_ref=dataset_ref,
         metric_types=metric_types,
     )
-    _persist(entity, async_sdk=async_sdk)
+    _persist(entity, async_client=async_sdk)

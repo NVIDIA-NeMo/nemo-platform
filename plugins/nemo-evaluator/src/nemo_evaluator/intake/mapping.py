@@ -13,8 +13,8 @@ Design constraints (see AALGO-289):
 
 * **Pure.** Every function reads SDK types and returns request params. No HTTP,
   no platform client, no imports from the Intake *service* (``nmp.intake.*``).
-* **Typed at the boundary.** The returned values are the generated platform
-  SDK's ``TypedDict`` params (``AtifCreateParams`` / ``EvaluatorResultCreateParams``).
+* **Typed at the boundary.** The returned values are typed-client
+  ``TypedDict`` params (``AtifCreateParams`` / ``EvaluatorResultCreateParams``).
   At runtime they are plain dicts the adapter splats into the client
   (``client.intake.ingest.atif.create(**body)``); statically, ``ty`` checks our
   field names, literals, and nested shapes against the real generated schema, so
@@ -47,14 +47,16 @@ from nemo_evaluator_sdk.values.otlp import (
     set_root_span_error,
     set_span_attributes,
 )
-from nemo_platform.types.intake.evaluation_context_param import EvaluationContextParam
-from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
-from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
-from nemo_platform.types.intake.ingest.atif_agent_param import AtifAgentParam
-from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
-from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
-from nemo_platform.types.intake.ingest.atif_step_agent_param import AtifStepAgentParam
-from nemo_platform.types.intake.ingest.atif_step_param import AtifStepParam
+from nemo_platform_plugin.intake.types import (
+    AtifAgentParam,
+    AtifCreateParams,
+    AtifFinalMetricsParam,
+    AtifStepAgentParam,
+    AtifStepParam,
+    EvaluationContextParam,
+    EvaluatorResultCreateParams,
+    EvaluatorResultDataType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -257,12 +259,13 @@ def trial_to_atif_ingest(
                 "end_timestamp": ended_at.timestamp(),
             }
         }
+    step_payload: list[AtifStepParam] = list(steps) if steps else [cast(AtifStepParam, step)]
 
     body: AtifCreateParams = {
         "schema_version": ATIF_SCHEMA_VERSION,
         "session_id": session_id_for(run_id, trial.id),
         "agent": agent,
-        "steps": list(steps) if steps else [step],
+        "steps": step_payload,
         "evaluation_context": run_task_to_evaluation_context(trial, evaluation_name=evaluation_name),
     }
     if trial.error is not None:

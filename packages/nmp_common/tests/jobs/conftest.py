@@ -70,10 +70,7 @@ def mock_fileset_fs():
 
 @pytest.fixture
 def mock_sdk():
-    """Mock NeMoPlatform SDK for FilesetFileManager.
-
-    FilesetFileManager uses the FilesetFileSystem exposed by the SDK files resource.
-    """
+    """Mock NeMoPlatform SDK for legacy jobs tests."""
 
     from nemo_platform import NeMoPlatform
 
@@ -82,7 +79,6 @@ def mock_sdk():
     sdk._custom_headers = None
     sdk._client = MagicMock()
     sdk.files = MagicMock()
-    sdk.files.fsspec = MagicMock()
     sdk.files.upload_content = MagicMock()
 
     # Mock list to return ListFilesResponse with empty data by default
@@ -97,16 +93,15 @@ def mock_sdk():
 
 
 @pytest.fixture
-def fileset_manager(mock_sdk, mock_fileset_fs) -> FilesetFileManager:
+def fileset_manager(mock_fileset_fs) -> FilesetFileManager:
     """Create FilesetFileManager with mocked FilesetFileSystem.
 
-    The FilesetFileManager uses sdk.files.fsspec, so inject our filesystem mock there.
+    The FilesetFileManager only needs the concrete filesystem.
     """
-    mock_sdk.files.fsspec = mock_fileset_fs
     return FilesetFileManager(
         workspace=DEFAULT_WORKSPACE,
         fileset_name="job-results-jobid-123",
-        sdk=mock_sdk,
+        filesystem=mock_fileset_fs,
     )
 
 

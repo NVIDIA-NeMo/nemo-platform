@@ -9,7 +9,7 @@ new endpoint/client infrastructure internally.
 
 Usage::
 
-    from nemo_platform_plugin.client.adapter import client_from_platform
+    from nemo_platform_plugin import client_from_platform
 
     def make_sync_resource(platform: NeMoPlatform) -> NemoClient:
         return client_from_platform(platform, NemoClient)
@@ -47,7 +47,7 @@ def client_from_platform(
     platform: NeMoPlatform | AsyncNeMoPlatform,
     client_cls: type[NemoClient] | type[AsyncNemoClient],
 ) -> NemoClient | AsyncNemoClient:
-    """Create a :class:`NemoClient` or :class:`AsyncNemoClient` from a :class:`NeMoPlatform` instance.
+    """Create a typed client sharing a generated platform SDK's transport.
 
     The overloads ensure callers get the correct concrete return type.
     """

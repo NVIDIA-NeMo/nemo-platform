@@ -102,12 +102,11 @@ class TestFilterFilesByPatterns:
 
 def test_fileset_url():
     """Test URL generation for fileset storage."""
-    sdk = MagicMock()
-    sdk.files.fsspec = MagicMock()
+    filesystem = MagicMock()
     mgr = FilesetFileManager(
         workspace="my-workspace",
         fileset_name="my-fileset",
-        sdk=sdk,
+        filesystem=filesystem,
     )
     assert mgr.url() == "my-workspace/my-fileset"
     assert mgr.url("path/to/file") == "my-workspace/my-fileset#path/to/file"
@@ -115,12 +114,11 @@ def test_fileset_url():
 
 def test_fileset_storage_type():
     """Test storage type returns FILESET."""
-    sdk = MagicMock()
-    sdk.files.fsspec = MagicMock()
+    filesystem = MagicMock()
     mgr = FilesetFileManager(
         workspace="my-workspace",
         fileset_name="my-fileset",
-        sdk=sdk,
+        filesystem=filesystem,
     )
     assert mgr.storage_type() == FileStorageType.FILESET
 
@@ -248,7 +246,7 @@ def test_fileset_file_manager_multiple_sequential_operations(tmp_path, fileset_m
     assert mock_fileset_fs._get_file.called
 
 
-async def test_fileset_upload_directory_with_ignore_patterns(tmp_path, mock_sdk, mock_fileset_fs):
+async def test_fileset_upload_directory_with_ignore_patterns(tmp_path, mock_fileset_fs):
     """Test async uploading a directory with ignore_patterns filters files."""
     from nmp.common.entities import DEFAULT_WORKSPACE
     from nmp.common.jobs.file_manager import AsyncFilesetFileManager
@@ -262,11 +260,10 @@ async def test_fileset_upload_directory_with_ignore_patterns(tmp_path, mock_sdk,
     (subdir / "nested.txt").write_text("keep nested")
     (subdir / "nested.pyc").write_text("skip nested")
 
-    mock_sdk.files.fsspec = mock_fileset_fs
     async_manager = AsyncFilesetFileManager(
         workspace=DEFAULT_WORKSPACE,
         fileset_name="job-results-jobid-123",
-        sdk=mock_sdk,
+        filesystem=mock_fileset_fs,
     )
 
     await async_manager.upload(test_dir, "remote/mydir", ignore_patterns="*.pyc")

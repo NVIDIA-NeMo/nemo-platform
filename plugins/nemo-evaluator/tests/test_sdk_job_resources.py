@@ -13,7 +13,7 @@ from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import httpx
 import pytest
@@ -39,6 +39,8 @@ from nemo_evaluator_sdk.values.results import (
     MetricOutput,
     RowScore,
 )
+from nemo_platform_plugin.client.errors import InternalServerError
+from nemo_platform_plugin.evaluator.client import AsyncEvaluatorClient, EvaluatorClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus, PlatformJobStatusResponse
 from pydantic import BaseModel
 from pytest_mock import MockerFixture
@@ -56,6 +58,16 @@ _JOB_PAYLOAD = {
         "dataset": [{"expected": "a", "output": "a"}],
     },
 }
+_STATUS_URL = "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/status"
+_AGGREGATE_URL = (
+    "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/aggregate-scores/download"
+)
+_ROW_SCORES_URL = (
+    "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/row-scores/download"
+)
+_ARTIFACTS_URL = (
+    "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/artifacts/download"
+)
 
 
 @pytest.fixture
@@ -83,25 +95,40 @@ def job() -> EvaluatorJob:
 @pytest.fixture
 def job_resource(http_client: Mock, job: EvaluatorJob) -> EvaluatorJobResource:
     """Return a sync evaluator job resource."""
-    return EvaluatorJobResource(
-        job=job,
-        http_client=cast(httpx.Client, http_client),
+    client = EvaluatorClient(
         base_url="https://nmp.test",
         workspace="client-ws",
-        headers={"Authorization": "Bearer platform-token"},
+        default_headers={"Authorization": "Bearer platform-token"},
+        http_client=cast(httpx.Client, http_client),
+    )
+    return EvaluatorJobResource(
+        job=job,
+        client=client,
+        workspace="client-ws",
     )
 
 
 @pytest.fixture
 async def async_job_resource(async_http_client: httpx.AsyncClient, job: EvaluatorJob) -> AsyncEvaluatorJobResource:
     """Return an async evaluator job resource."""
-    return AsyncEvaluatorJobResource(
-        job=job,
-        http_client=async_http_client,
+    client = AsyncEvaluatorClient(
         base_url="https://nmp.test",
         workspace="client-ws",
-        headers={"Authorization": "Bearer platform-token"},
+        default_headers={"Authorization": "Bearer platform-token"},
+        http_client=async_http_client,
     )
+    return AsyncEvaluatorJobResource(
+        job=job,
+        client=client,
+        workspace="client-ws",
+    )
+
+
+def _stream_response(response: httpx.Response) -> MagicMock:
+    context = MagicMock()
+    context.__enter__.return_value = response
+    context.__exit__.return_value = None
+    return context
 
 
 def _status_response(
@@ -217,19 +244,19 @@ def test_get_job_status_delegates_to_metric_jobs_resource(
 ) -> None:
     """Status checks should call the evaluator plugin status route over HTTP."""
     status = _status_response("active")
-    http_client.get.return_value = httpx.Response(
+    http_client.request.return_value = httpx.Response(
         200,
-        request=httpx.Request(
-            "GET",
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/status",
-        ),
+        request=httpx.Request("GET", _STATUS_URL),
         json=status.model_dump(mode="json"),
     )
 
     assert job_resource.get_job_status() == status
-    http_client.get.assert_called_once_with(
-        "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/status",
+    http_client.request.assert_called_once_with(
+        "GET",
+        _STATUS_URL,
+        content=None,
         headers={"Authorization": "Bearer platform-token"},
+        params=None,
     )
 
 
@@ -241,12 +268,9 @@ def test_get_job_status_accepts_nullable_detail_fields(
     status = _status_response("active")
     payload = status.model_dump(mode="json")
     payload["error_details"] = None
-    http_client.get.return_value = httpx.Response(
+    http_client.request.return_value = httpx.Response(
         200,
-        request=httpx.Request(
-            "GET",
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/status",
-        ),
+        request=httpx.Request("GET", _STATUS_URL),
         json=payload,
     )
 
@@ -421,35 +445,31 @@ def test_get_result_returns_evaluation_result(
 ) -> None:
     """Result downloads should combine plugin aggregate JSON and row-score JSONL artifacts."""
     aggregate_scores, row_scores = _evaluation_result_parts()
-    http_client.get.side_effect = [
-        httpx.Response(
-            200,
-            request=httpx.Request(
-                "GET",
-                "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/aggregate-scores/download",
-            ),
-            json=aggregate_scores.model_dump(mode="json"),
+    http_client.stream.side_effect = [
+        _stream_response(
+            httpx.Response(
+                200,
+                request=httpx.Request("GET", _AGGREGATE_URL),
+                json=aggregate_scores.model_dump(mode="json"),
+            )
         ),
-        httpx.Response(
-            200,
-            request=httpx.Request(
-                "GET",
-                "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/row-scores/download",
-            ),
-            text="\n".join(json.dumps(row_score.model_dump(mode="json")) for row_score in row_scores) + "\n",
+        _stream_response(
+            httpx.Response(
+                200,
+                request=httpx.Request("GET", _ROW_SCORES_URL),
+                text="\n".join(json.dumps(row_score.model_dump(mode="json")) for row_score in row_scores) + "\n",
+            )
         ),
     ]
 
     assert job_resource.get_result() == EvaluationResult(row_scores=row_scores, aggregate_scores=aggregate_scores)
-    assert [call.args for call in http_client.get.call_args_list] == [
-        (
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/aggregate-scores/download",
-        ),
-        ("https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/row-scores/download",),
+    assert [call.args for call in http_client.stream.call_args_list] == [
+        ("GET", _AGGREGATE_URL),
+        ("GET", _ROW_SCORES_URL),
     ]
-    assert [call.kwargs for call in http_client.get.call_args_list] == [
-        {"headers": {"Authorization": "Bearer platform-token"}},
-        {"headers": {"Authorization": "Bearer platform-token"}},
+    assert [call.kwargs for call in http_client.stream.call_args_list] == [
+        {"content": None, "headers": {"Authorization": "Bearer platform-token"}, "params": None},
+        {"content": None, "headers": {"Authorization": "Bearer platform-token"}, "params": None},
     ]
 
 
@@ -458,30 +478,32 @@ def test_get_result_filters_aggregate_fields(
 ) -> None:
     """Requested aggregate_fields should shape downloaded aggregate scores."""
     job = EvaluatorJob.model_validate(_JOB_PAYLOAD)
-    job_resource = EvaluatorJobResource(
-        job=job,
-        http_client=cast(httpx.Client, http_client),
+    client = EvaluatorClient(
         base_url="https://nmp.test",
         workspace="client-ws",
-        headers={"Authorization": "Bearer platform-token"},
+        default_headers={"Authorization": "Bearer platform-token"},
+        http_client=cast(httpx.Client, http_client),
+    )
+    job_resource = EvaluatorJobResource(
+        job=job,
+        client=client,
+        workspace="client-ws",
     )
     aggregate_scores, row_scores = _evaluation_result_parts()
-    http_client.get.side_effect = [
-        httpx.Response(
-            200,
-            request=httpx.Request(
-                "GET",
-                "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/aggregate-scores/download",
-            ),
-            json=aggregate_scores.model_dump(mode="json"),
+    http_client.stream.side_effect = [
+        _stream_response(
+            httpx.Response(
+                200,
+                request=httpx.Request("GET", _AGGREGATE_URL),
+                json=aggregate_scores.model_dump(mode="json"),
+            )
         ),
-        httpx.Response(
-            200,
-            request=httpx.Request(
-                "GET",
-                "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/row-scores/download",
-            ),
-            text="\n".join(json.dumps(row_score.model_dump(mode="json")) for row_score in row_scores) + "\n",
+        _stream_response(
+            httpx.Response(
+                200,
+                request=httpx.Request("GET", _ROW_SCORES_URL),
+                text="\n".join(json.dumps(row_score.model_dump(mode="json")) for row_score in row_scores) + "\n",
+            )
         ),
     ]
 
@@ -505,22 +527,24 @@ def test_download_artifacts_extracts_artifact_tarball(
     tmp_path: Path,
 ) -> None:
     """Artifact downloads should fetch and extract the full artifacts result tarball."""
-    http_client.get.return_value = httpx.Response(
-        200,
-        request=httpx.Request(
-            "GET",
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/artifacts/download",
-        ),
-        content=_artifact_tar_bytes(),
+    http_client.stream.return_value = _stream_response(
+        httpx.Response(
+            200,
+            request=httpx.Request("GET", _ARTIFACTS_URL),
+            content=_artifact_tar_bytes(),
+        )
     )
 
     artifacts_path = job_resource.download_artifacts(tmp_path)
 
     assert artifacts_path == tmp_path / "job-123"
     assert (artifacts_path / "artifacts" / "report.json").read_text(encoding="utf-8") == '{"ok": true}'
-    http_client.get.assert_called_once_with(
-        "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/artifacts/download",
+    http_client.stream.assert_called_once_with(
+        "GET",
+        _ARTIFACTS_URL,
+        content=None,
         headers={"Authorization": "Bearer platform-token"},
+        params=None,
     )
 
 
@@ -532,13 +556,12 @@ def test_download_artifacts_defaults_to_job_name_directory(
 ) -> None:
     """Artifact downloads should default to a directory named after the evaluator job."""
     monkeypatch.chdir(tmp_path)
-    http_client.get.return_value = httpx.Response(
-        200,
-        request=httpx.Request(
-            "GET",
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/artifacts/download",
-        ),
-        content=_artifact_tar_bytes("other.txt"),
+    http_client.stream.return_value = _stream_response(
+        httpx.Response(
+            200,
+            request=httpx.Request("GET", _ARTIFACTS_URL),
+            content=_artifact_tar_bytes("other.txt"),
+        )
     )
 
     output_path = job_resource.download_artifacts()
@@ -553,15 +576,14 @@ def test_download_artifacts_raises_for_http_errors(
     tmp_path: Path,
 ) -> None:
     """Artifact downloads should surface non-successful HTTP responses."""
-    http_client.get.return_value = httpx.Response(
-        500,
-        request=httpx.Request(
-            "GET",
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/artifacts/download",
-        ),
+    http_client.stream.return_value = _stream_response(
+        httpx.Response(
+            500,
+            request=httpx.Request("GET", _ARTIFACTS_URL),
+        )
     )
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(InternalServerError):
         job_resource.download_artifacts(tmp_path)
 
 
@@ -588,13 +610,12 @@ def test_download_artifacts_rejects_unsafe_tar_members(
     if member_name == "@absolute_escape":
         member_name = str(tmp_path.parent / f"abs_escape_{tmp_path.name}.txt")
 
-    http_client.get.return_value = httpx.Response(
-        200,
-        request=httpx.Request(
-            "GET",
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/artifacts/download",
-        ),
-        content=_artifact_tar_bytes(member_name, member_type=member_type),
+    http_client.stream.return_value = _stream_response(
+        httpx.Response(
+            200,
+            request=httpx.Request("GET", _ARTIFACTS_URL),
+            content=_artifact_tar_bytes(member_name, member_type=member_type),
+        )
     )
 
     with pytest.raises(ValueError, match="unsafe tar member|tar link member|special tar member"):
@@ -612,11 +633,9 @@ def test_as_async_preserves_job_route_configuration(job_resource: EvaluatorJobRe
 
     assert async_resource.name == job_resource.name
     assert async_resource.job is job_resource.job
-    assert async_resource._http_client is http_client
-    assert (
-        async_resource._job_base_url == "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123"
-    )
-    assert async_resource._headers == {"Authorization": "Bearer platform-token"}
+    assert async_resource._client is job_resource._client
+    assert async_resource._workspace == "client-ws"
+    assert async_resource._client._client is http_client
 
 
 @pytest.mark.asyncio
@@ -627,33 +646,26 @@ async def test_async_resource_with_sync_platform_gets_status_in_worker_thread(
 ) -> None:
     """Async resources backed by sync HTTP clients should run status calls in a worker thread."""
     status = _status_response("active")
-    http_client.get.return_value = httpx.Response(
-        200,
-        request=httpx.Request(
-            "GET",
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/status",
-        ),
-        json=status.model_dump(mode="json"),
-    )
     to_thread = mocker.patch(
         "nemo_evaluator.sdk.job_resources.asyncio.to_thread",
-        new=mocker.AsyncMock(return_value=http_client.get.return_value),
+        new=mocker.AsyncMock(return_value=status),
         create=True,
+    )
+    client = EvaluatorClient(
+        base_url="https://nmp.test",
+        workspace="client-ws",
+        default_headers={"Authorization": "Bearer platform-token"},
+        http_client=cast(httpx.Client, http_client),
     )
     resource = AsyncEvaluatorJobResource(
         job=job,
-        http_client=cast(httpx.Client, http_client),
-        base_url="https://nmp.test",
+        client=client,
         workspace="client-ws",
-        headers={"Authorization": "Bearer platform-token"},
     )
 
     assert await resource.get_job_status() == status
-    to_thread.assert_awaited_once_with(
-        http_client.get,
-        "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/status",
-        headers={"Authorization": "Bearer platform-token"},
-    )
+    to_thread.assert_awaited_once()
+    assert callable(to_thread.await_args.args[0])
 
 
 @pytest.mark.asyncio
@@ -682,32 +694,24 @@ async def test_async_resource_with_sync_platform_downloads_result_in_worker_thre
     )
     to_thread = mocker.patch(
         "nemo_evaluator.sdk.job_resources.asyncio.to_thread",
-        new=mocker.AsyncMock(side_effect=[aggregate_response, row_scores_response]),
+        new=mocker.AsyncMock(side_effect=[aggregate_response.content, row_scores_response.content]),
         create=True,
+    )
+    client = EvaluatorClient(
+        base_url="https://nmp.test",
+        workspace="client-ws",
+        default_headers={"Authorization": "Bearer platform-token"},
+        http_client=cast(httpx.Client, http_client),
     )
     resource = AsyncEvaluatorJobResource(
         job=job,
-        http_client=cast(httpx.Client, http_client),
-        base_url="https://nmp.test",
+        client=client,
         workspace="client-ws",
-        headers={"Authorization": "Bearer platform-token"},
     )
 
     assert await resource.get_result() == EvaluationResult(row_scores=row_scores, aggregate_scores=aggregate_scores)
-    assert [call.args for call in to_thread.await_args_list] == [
-        (
-            http_client.get,
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/aggregate-scores/download",
-        ),
-        (
-            http_client.get,
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/row-scores/download",
-        ),
-    ]
-    assert [call.kwargs for call in to_thread.await_args_list] == [
-        {"headers": {"Authorization": "Bearer platform-token"}},
-        {"headers": {"Authorization": "Bearer platform-token"}},
-    ]
+    assert len(to_thread.await_args_list) == 2
+    assert all(callable(call.args[0]) for call in to_thread.await_args_list)
 
 
 @pytest.mark.asyncio
@@ -717,29 +721,35 @@ async def test_async_resource_with_sync_platform_downloads_artifacts(
     tmp_path: Path,
 ) -> None:
     """Async resources backed by sync HTTP clients should download artifacts through the worker bridge."""
-    http_client.get.return_value = httpx.Response(
-        200,
-        request=httpx.Request(
-            "GET",
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/artifacts/download",
-        ),
-        content=_artifact_tar_bytes(),
+    http_client.stream.return_value = _stream_response(
+        httpx.Response(
+            200,
+            request=httpx.Request("GET", _ARTIFACTS_URL),
+            content=_artifact_tar_bytes(),
+        )
+    )
+    client = EvaluatorClient(
+        base_url="https://nmp.test",
+        workspace="client-ws",
+        default_headers={"Authorization": "Bearer platform-token"},
+        http_client=cast(httpx.Client, http_client),
     )
     resource = AsyncEvaluatorJobResource(
         job=job,
-        http_client=cast(httpx.Client, http_client),
-        base_url="https://nmp.test",
+        client=client,
         workspace="client-ws",
-        headers={"Authorization": "Bearer platform-token"},
     )
 
     artifacts_path = await resource.download_artifacts(tmp_path)
 
     assert artifacts_path == tmp_path / "job-123"
     assert (artifacts_path / "artifacts" / "report.json").read_text(encoding="utf-8") == '{"ok": true}'
-    http_client.get.assert_called_once_with(
-        "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/artifacts/download",
+    http_client.stream.assert_called_once_with(
+        "GET",
+        _ARTIFACTS_URL,
+        content=None,
         headers={"Authorization": "Bearer platform-token"},
+        params=None,
     )
 
 
@@ -820,12 +830,16 @@ async def test_async_get_result_filters_aggregate_fields(
 ) -> None:
     """Async requested aggregate_fields should shape downloaded aggregate scores."""
     job = EvaluatorJob.model_validate(_JOB_PAYLOAD)
-    async_job_resource = AsyncEvaluatorJobResource(
-        job=job,
-        http_client=async_http_client,
+    client = AsyncEvaluatorClient(
         base_url="https://nmp.test",
         workspace="client-ws",
-        headers={"Authorization": "Bearer platform-token"},
+        default_headers={"Authorization": "Bearer platform-token"},
+        http_client=async_http_client,
+    )
+    async_job_resource = AsyncEvaluatorJobResource(
+        job=job,
+        client=client,
+        workspace="client-ws",
     )
     aggregate_scores, row_scores = _evaluation_result_parts()
 

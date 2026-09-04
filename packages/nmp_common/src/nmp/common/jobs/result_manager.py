@@ -3,78 +3,59 @@
 
 import os
 import tarfile
-from typing import Literal, overload
 
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.jobs.constants import NEMO_JOB_WORKSPACE_ENVVAR
+from nemo_platform_plugin import client_from_platform
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
+from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
 from nemo_platform_plugin.jobs.file_manager import AsyncFilesetFileManager as AsyncFilesetFileManager
 from nemo_platform_plugin.jobs.file_manager import FilesetFileManager as FilesetFileManager
 from nemo_platform_plugin.jobs.file_manager import TmpDirPath as TmpDirPath
 from nemo_platform_plugin.jobs.result_manager import AsyncResultManager as AsyncResultManager
 from nemo_platform_plugin.jobs.result_manager import ResultManager as ResultManager
-from nmp.common.sdk_factory import get_async_platform_sdk, get_platform_sdk
-
-
-@overload
-def result_manager_factory(
-    job_name: str,
-    *,
-    attempt_id: str | None = None,
-    workspace: str | None = None,
-    files_sdk: AsyncNeMoPlatform | None = None,
-    jobs_sdk: AsyncNeMoPlatform | None = None,
-    is_async: Literal[True] = True,
-) -> AsyncResultManager: ...
-
-
-@overload
-def result_manager_factory(
-    job_name: str,
-    *,
-    attempt_id: str | None = None,
-    workspace: str | None = None,
-    files_sdk: NeMoPlatform | None = None,
-    jobs_sdk: NeMoPlatform | None = None,
-    is_async: Literal[False],
-) -> ResultManager: ...
 
 
 def result_manager_factory(
     job_name: str,
     *,
     attempt_id: str | None = None,
-    workspace: str | None = None,
-    files_sdk: NeMoPlatform | AsyncNeMoPlatform | None = None,
-    jobs_sdk: NeMoPlatform | AsyncNeMoPlatform | None = None,
-    is_async: bool = True,
-) -> ResultManager | AsyncResultManager:
-    """Create a ResultManager for uploading job results.
+    sdk: NeMoPlatform,
+) -> ResultManager:
+    """Create a sync ResultManager for uploading job results.
 
-    Backward-compatible wrapper that auto-creates SDK instances from platform
-    config when not provided. The nemo_platform_plugin version requires SDK params;
-    this wrapper provides the old convenience defaults.
+    The nemo_platform_plugin version requires typed client params; this wrapper
+    keeps the nmp_common entry point SDK-first and derives clients from it.
     """
-    if workspace is None:
-        workspace_env = os.getenv(NEMO_JOB_WORKSPACE_ENVVAR)
-        if not workspace_env:
-            raise ValueError(f"{NEMO_JOB_WORKSPACE_ENVVAR} environment variable is not set")
-        workspace = workspace_env
+    workspace = sdk.workspace
+    if not workspace:
+        raise ValueError("Result manager requires a workspace-scoped NeMoPlatform SDK")
 
-    if files_sdk is None:
-        files_sdk = get_async_platform_sdk() if is_async else get_platform_sdk()
-
-    if jobs_sdk is None:
-        jobs_sdk = get_async_platform_sdk() if is_async else get_platform_sdk()
-
-    file_manager_cls = AsyncFilesetFileManager if is_async else FilesetFileManager
-    result_manager_cls = AsyncResultManager if is_async else ResultManager
-    return result_manager_cls(
+    return ResultManager(
         job_name=job_name,
         workspace=workspace,
         attempt_id=attempt_id,
-        file_manager_cls=file_manager_cls,
-        files_sdk=files_sdk,
-        jobs_sdk=jobs_sdk,
+        files_client=client_from_platform(sdk, FilesClient),
+        jobs_client=client_from_platform(sdk, JobsClient),
+    )
+
+
+def async_result_manager_factory(
+    job_name: str,
+    *,
+    attempt_id: str | None = None,
+    sdk: AsyncNeMoPlatform,
+) -> AsyncResultManager:
+    """Create an async ResultManager for uploading job results."""
+    workspace = sdk.workspace
+    if not workspace:
+        raise ValueError("Async result manager requires a workspace-scoped AsyncNeMoPlatform SDK")
+
+    return AsyncResultManager(
+        job_name=job_name,
+        workspace=workspace,
+        attempt_id=attempt_id,
+        files_client=client_from_platform(sdk, AsyncFilesClient),
+        jobs_client=client_from_platform(sdk, AsyncJobsClient),
     )
 
 
@@ -83,22 +64,17 @@ async def download_from_result_info(
     job_name: str,
     *,
     artifact_url: str,
-    workspace: str | None = None,
-    files_sdk: AsyncNeMoPlatform | None = None,
+    sdk: AsyncNeMoPlatform,
 ) -> tuple[str, TmpDirPath]:
-    """Backward-compatible wrapper that uses the local result_manager_factory.
+    """Backward-compatible wrapper that uses the local async result manager factory.
 
-    This ensures that patching ``nmp.common.jobs.result_manager.result_manager_factory``
+    This ensures that patching ``nmp.common.jobs.result_manager.async_result_manager_factory``
     in tests also affects download_from_result_info, preserving the old monkeypatch
     behavior.
     """
-    if files_sdk is None:
-        files_sdk = get_async_platform_sdk()
-
-    mgr = result_manager_factory(
+    mgr = async_result_manager_factory(
         job_name=job_name,
-        workspace=workspace,
-        files_sdk=files_sdk,
+        sdk=sdk,
     )
 
     tmp_dir_path = await mgr.download_artifact(artifact_url=artifact_url)

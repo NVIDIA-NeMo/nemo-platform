@@ -33,17 +33,20 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from datetime import datetime
 from typing import Protocol
 
+from models import ResolvedModelReference, first_provider_ref, parse_workspace_name_ref
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.client.method import method
 from nemo_platform_plugin.models import endpoints
-from nemo_platform_plugin.models.types import ModelDeployment
+from nemo_platform_plugin.models.types import ModelDeployment, ModelEntity
 
 _INFERENCE_GATEWAY_PREFIX = "/apis/inference-gateway/v2/workspaces"
+_logger = logging.getLogger(__name__)
 
 
 # The OpenAI-route builders only read a couple of attributes, so they accept any
@@ -252,6 +255,32 @@ class _ModelsUrlMixin:
 class ModelsClient(_ModelsMethods, _ModelsUrlMixin, NemoClient):
     """Sync client for the Models service API."""
 
+    def resolve_model_reference(self, ref: str) -> ResolvedModelReference:
+        """Resolve ``workspace/model`` to inference-gateway route details."""
+        workspace, name = parse_workspace_name_ref(ref, label="Model reference", expected_format="workspace/model_name")
+        model_entity = self.get_model(name=name, workspace=workspace).data()
+        return ResolvedModelReference(
+            url=self.get_model_entity_route_openai_url(model_entity),
+            name=name,
+            host_url=self._resolve_model_provider_host_url(model_entity),
+        )
+
+    def _resolve_model_provider_host_url(self, model_entity: ModelEntity) -> str | None:
+        """Resolve the model entity's first provider host URL, if available."""
+        provider_parts = first_provider_ref(model_entity.model_providers)
+        if provider_parts is None:
+            return None
+        provider_ref, provider_workspace, provider_name = provider_parts
+        try:
+            provider = self.get_provider(name=provider_name, workspace=provider_workspace).data()
+        except NotFoundError:
+            _logger.warning("Provider not found during host_url resolution", extra={"provider_ref": provider_ref})
+            return None
+        except Exception:
+            _logger.warning("Failed to resolve provider host_url", extra={"provider_ref": provider_ref}, exc_info=True)
+            return None
+        return provider.host_url
+
     def get_provider_route_openai_url_for_deployment(self, deployment: DeploymentLike) -> str:
         """Fetch a deployment's ModelProvider and return its OpenAI route URL."""
         workspace, name = _split_provider_id(deployment)
@@ -346,6 +375,32 @@ class ModelsClient(_ModelsMethods, _ModelsUrlMixin, NemoClient):
 
 class AsyncModelsClient(_ModelsMethods, _ModelsUrlMixin, AsyncNemoClient):
     """Async client for the Models service API."""
+
+    async def resolve_model_reference(self, ref: str) -> ResolvedModelReference:
+        """Resolve ``workspace/model`` to inference-gateway route details."""
+        workspace, name = parse_workspace_name_ref(ref, label="Model reference", expected_format="workspace/model_name")
+        model_entity = (await self.get_model(name=name, workspace=workspace)).data()
+        return ResolvedModelReference(
+            url=self.get_model_entity_route_openai_url(model_entity),
+            name=name,
+            host_url=await self._resolve_model_provider_host_url(model_entity),
+        )
+
+    async def _resolve_model_provider_host_url(self, model_entity: ModelEntity) -> str | None:
+        """Resolve the model entity's first provider host URL, if available."""
+        provider_parts = first_provider_ref(model_entity.model_providers)
+        if provider_parts is None:
+            return None
+        provider_ref, provider_workspace, provider_name = provider_parts
+        try:
+            provider = (await self.get_provider(name=provider_name, workspace=provider_workspace)).data()
+        except NotFoundError:
+            _logger.warning("Provider not found during host_url resolution", extra={"provider_ref": provider_ref})
+            return None
+        except Exception:
+            _logger.warning("Failed to resolve provider host_url", extra={"provider_ref": provider_ref}, exc_info=True)
+            return None
+        return provider.host_url
 
     async def get_provider_route_openai_url_for_deployment(self, deployment: DeploymentLike) -> str:
         """Fetch a deployment's ModelProvider and return its OpenAI route URL."""

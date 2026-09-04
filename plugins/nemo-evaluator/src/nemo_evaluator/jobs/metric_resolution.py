@@ -13,10 +13,11 @@ through the platform. This module is the one place that logic lives.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
+from models import AsyncModelsResource, parse_workspace_name_ref
 from nemo_evaluator.api.schemas import MetricInline
-from nemo_evaluator.metric_refs import MetricRefOrInline, resolve_metric_specs
-from nemo_evaluator.resolvers import ModelResolverSDK, PlatformModelResolver
+from nemo_evaluator.metric_refs import MetricRef, MetricRefOrInline, resolve_metric_specs
 from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundle,
     bundle_metric,
@@ -24,7 +25,10 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     unbundle_metric,
 )
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithModels
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_evaluator_sdk.resolver_protocols import ModelResolver
+from nemo_evaluator_sdk.values import Model, ModelRef
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform import NotFoundError as SDKNotFoundError
 from nemo_platform_plugin.entities import EntityClient
 
 
@@ -55,12 +59,37 @@ def _bundle_resolved_metric(metric: Metric, source_bundle: MetricBundle) -> Metr
     return resolved_bundle.model_copy(update={"metadata": source_bundle.metadata})
 
 
+def _model_not_found_error(model_ref: ModelRef, workspace: str, name: str) -> ValueError:
+    return ValueError(
+        f"Model reference '{model_ref.root}' not found. "
+        f"Ensure the model entity '{name}' exists in workspace '{workspace}', "
+        "or use an inline model definition instead."
+    )
+
+
+@dataclass(frozen=True)
+class PlatformMetricModelResolver(ModelResolver):
+    """Resolve evaluator metric ``ModelRef`` values through the platform Models resource."""
+
+    models: AsyncModelsResource
+
+    async def resolve_model(self, model_ref: ModelRef) -> Model:
+        workspace, name = parse_workspace_name_ref(
+            model_ref.root, label="ModelRef", expected_format="workspace/model_name"
+        )
+        try:
+            resolved = await self.models.resolve_model_reference(model_ref.root)
+        except SDKNotFoundError as exc:
+            raise _model_not_found_error(model_ref, workspace, name) from exc
+        return Model(url=resolved.url, name=resolved.name, host_url=resolved.host_url)
+
+
 async def resolve_metrics_to_inline(
     metrics: list[MetricRefOrInline],
     *,
     workspace: str,
     entity_client: EntityClient | None,
-    async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
+    async_sdk: AsyncNeMoPlatform | None,
 ) -> list[MetricInline]:
     """Resolve a wire metric list (inline + stored refs) into canonical inline metrics.
 
@@ -68,19 +97,11 @@ async def resolve_metrics_to_inline(
     model references are resolved through the platform. Raises if a model
     reference is present without a usable ``async_sdk`` connection.
 
-    ``async_sdk`` accepts either client because the call sites differ: submit forwards a real
-    ``AsyncNeMoPlatform``, while local execution forwards the *sync* ``NeMoPlatform``. The two
-    resolution concerns then have *different* client requirements:
-
-    * **Stored-ref loading** awaits real platform file I/O (``resolve_metric_ref`` → ``load_bundle``
-      → ``await sdk.files.download_content(...)``), so it needs a genuine ``AsyncNeMoPlatform``. Anything
-      else (``None`` or the sync client) is narrowed to ``None`` and rejected with a clear error when
-      a stored ``MetricRef`` is actually present — never awaited blindly.
-    * **Model-ref resolution** duck-types the client (``PlatformModelResolver`` tolerates sync or
-      async via ``_maybe_await``), so it accepts anything conforming to ``ModelResolverSDK``; a
-      non-conforming or absent client is rejected up front rather than failing deep in resolution.
+    Stored-ref loading awaits real file I/O, so it needs the public SDK's
+    ``files`` surface. Model-ref resolution uses the same public SDK.
     """
-    files_sdk = async_sdk if isinstance(async_sdk, AsyncNeMoPlatform) else None
+    has_metric_ref = any(isinstance(metric, MetricRef) for metric in metrics)
+    files_sdk = async_sdk if has_metric_ref else None
     resolved_bundles = await resolve_metric_specs(
         metrics,
         workspace=workspace,
@@ -91,12 +112,12 @@ async def resolve_metrics_to_inline(
     final_bundles = resolved_bundles
     unresolved = unresolved_model_refs(runtime_metrics)
     if unresolved:
-        if not isinstance(async_sdk, ModelResolverSDK):
+        if async_sdk is None:
             raise ValueError(
                 "ModelRef metrics require a platform connection (models + inference) to resolve: "
                 + ", ".join(unresolved)
             )
-        resolver = PlatformModelResolver(async_sdk)
+        resolver: ModelResolver = PlatformMetricModelResolver(async_sdk.models)
         await asyncio.gather(
             *(metric.resolve_models(resolver) for metric in runtime_metrics if isinstance(metric, MetricWithModels))
         )

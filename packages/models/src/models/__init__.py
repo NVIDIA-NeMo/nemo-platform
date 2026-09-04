@@ -12,3 +12,6 @@ Located at: nemo_platform/models/ (after vendoring)
 
 from .resources import AsyncModelsResource as AsyncModelsResource
 from .resources import ModelsResource as ModelsResource
+from .resources import ResolvedModelReference as ResolvedModelReference
+from .resources import first_provider_ref as first_provider_ref
+from .resources import parse_workspace_name_ref as parse_workspace_name_ref

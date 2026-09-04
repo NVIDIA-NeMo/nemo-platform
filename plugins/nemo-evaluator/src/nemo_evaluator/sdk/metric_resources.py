@@ -11,10 +11,7 @@ sends/receives the metric and its metadata.
 
 from __future__ import annotations
 
-from urllib.parse import quote
-
 from nemo_evaluator.api.schemas import Metric, MetricInline
-from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundle,
     MetricBundlePackager,
@@ -22,15 +19,16 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
 )
 from nemo_evaluator.shared.metric_bundles.defaults import resolve_default_metric_bundle_packager
 from nemo_evaluator_sdk.metrics.protocol import Metric as RuntimeMetric
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.evaluator.client import AsyncEvaluatorClient, EvaluatorClient
+from nemo_platform_plugin.evaluator.types import CreateMetricRequest
 from nemo_platform_plugin.schema import Page
 
 
 def _list_params(
     page: int, page_size: int, sort: str | None, metric_type: str | None, include_derived: bool
-) -> dict[str, str | int | bool]:
+) -> dict[str, str | int | bool | None]:
     """Build the list query string: paging/sort + the route's ``filter[metric_type]`` trait filter."""
-    params: dict[str, str | int | bool] = {"page": page, "page_size": page_size}
+    params: dict[str, str | int | bool | None] = {"page": page, "page_size": page_size}
     if sort is not None:
         params["sort"] = sort
     if metric_type is not None:
@@ -59,22 +57,8 @@ def _metric_inline(
 class EvaluatorMetricsResource:
     """Sync resource mounted as ``client.evaluator.metrics``."""
 
-    def __init__(self, platform: NeMoPlatform) -> None:
-        self._platform = platform
-        self._http_client = platform._client
-
-    def _headers(self) -> dict[str, str]:
-        return http_utils.platform_default_headers(self._platform)
-
-    def _collection_url(self, workspace: str | None) -> str:
-        return http_utils.url(self._platform, "/v2/workspaces/{workspace}/metrics", workspace)
-
-    def _item_url(self, name: str, workspace: str | None) -> str:
-        return http_utils.url(
-            self._platform,
-            f"/v2/workspaces/{{workspace}}/metrics/{quote(name, safe='')}",
-            workspace,
-        )
+    def __init__(self, client: EvaluatorClient) -> None:
+        self._client = client
 
     def create(
         self,
@@ -87,23 +71,18 @@ class EvaluatorMetricsResource:
     ) -> Metric:
         """Store a new metric (addressed by workspace/name), packaging a runtime metric when needed."""
         body = _metric_inline(metric, metric_bundle_packager)
-        response = self._http_client.post(
-            self._item_url(name, workspace),
-            json=body.model_dump(mode="json"),
-            params={"project": project} if project is not None else None,
-            headers=self._headers(),
-            timeout=self._platform.timeout,
+        response = self._client.create_metric(
+            name=name,
+            workspace=workspace,
+            body=CreateMetricRequest(root=body.model_dump(mode="json")),
+            query_params={"project": project} if project is not None else None,
         )
-        response.raise_for_status()
-        return Metric.model_validate(response.json())
+        return Metric.model_validate(response.data().model_dump(mode="json"))
 
     def retrieve(self, name: str, *, workspace: str | None = None) -> Metric:
         """Get a stored metric by name."""
-        response = self._http_client.get(
-            self._item_url(name, workspace), headers=self._headers(), timeout=self._platform.timeout
-        )
-        response.raise_for_status()
-        return Metric.model_validate(response.json())
+        response = self._client.get_metric(name=name, workspace=workspace)
+        return Metric.model_validate(response.data().model_dump(mode="json"))
 
     def list(
         self,
@@ -119,42 +98,30 @@ class EvaluatorMetricsResource:
 
         Derived (task-internal) metrics are hidden unless ``include_derived`` is set.
         """
-        response = self._http_client.get(
-            self._collection_url(workspace),
-            params=_list_params(page, page_size, sort, metric_type, include_derived),
-            headers=self._headers(),
-            timeout=self._platform.timeout,
+        response = self._client.list_metrics(
+            workspace=workspace,
+            query_params=_list_params(page, page_size, sort, metric_type, include_derived),
         )
-        response.raise_for_status()
-        return Page[Metric].model_validate(response.json())
+        page_result = response.page()
+        return Page[Metric].model_validate(
+            {
+                "data": [metric.model_dump(mode="json") for metric in page_result.items],
+                "pagination": page_result.metadata,
+                "sort": sort,
+                "filter": None,
+            }
+        )
 
     def delete(self, name: str, *, workspace: str | None = None) -> None:
         """Delete a stored metric and its backing bundle."""
-        response = self._http_client.delete(
-            self._item_url(name, workspace), headers=self._headers(), timeout=self._platform.timeout
-        )
-        response.raise_for_status()
+        self._client.delete_metric(name=name, workspace=workspace).data()
 
 
 class AsyncEvaluatorMetricsResource:
     """Async resource mounted as ``client.evaluator.metrics``."""
 
-    def __init__(self, platform: AsyncNeMoPlatform) -> None:
-        self._platform = platform
-        self._http_client = platform._client
-
-    def _headers(self) -> dict[str, str]:
-        return http_utils.platform_default_headers(self._platform)
-
-    def _collection_url(self, workspace: str | None) -> str:
-        return http_utils.url(self._platform, "/v2/workspaces/{workspace}/metrics", workspace)
-
-    def _item_url(self, name: str, workspace: str | None) -> str:
-        return http_utils.url(
-            self._platform,
-            f"/v2/workspaces/{{workspace}}/metrics/{quote(name, safe='')}",
-            workspace,
-        )
+    def __init__(self, client: AsyncEvaluatorClient) -> None:
+        self._client = client
 
     async def create(
         self,
@@ -167,23 +134,18 @@ class AsyncEvaluatorMetricsResource:
     ) -> Metric:
         """Store a new metric (addressed by workspace/name), packaging a runtime metric when needed."""
         body = _metric_inline(metric, metric_bundle_packager)
-        response = await self._http_client.post(
-            self._item_url(name, workspace),
-            json=body.model_dump(mode="json"),
-            params={"project": project} if project is not None else None,
-            headers=self._headers(),
-            timeout=self._platform.timeout,
+        response = await self._client.create_metric(
+            name=name,
+            workspace=workspace,
+            body=CreateMetricRequest(root=body.model_dump(mode="json")),
+            query_params={"project": project} if project is not None else None,
         )
-        response.raise_for_status()
-        return Metric.model_validate(response.json())
+        return Metric.model_validate(response.data().model_dump(mode="json"))
 
     async def retrieve(self, name: str, *, workspace: str | None = None) -> Metric:
         """Get a stored metric by name."""
-        response = await self._http_client.get(
-            self._item_url(name, workspace), headers=self._headers(), timeout=self._platform.timeout
-        )
-        response.raise_for_status()
-        return Metric.model_validate(response.json())
+        response = await self._client.get_metric(name=name, workspace=workspace)
+        return Metric.model_validate(response.data().model_dump(mode="json"))
 
     async def list(
         self,
@@ -199,18 +161,21 @@ class AsyncEvaluatorMetricsResource:
 
         Derived (task-internal) metrics are hidden unless ``include_derived`` is set.
         """
-        response = await self._http_client.get(
-            self._collection_url(workspace),
-            params=_list_params(page, page_size, sort, metric_type, include_derived),
-            headers=self._headers(),
-            timeout=self._platform.timeout,
+        response = await self._client.list_metrics(
+            workspace=workspace,
+            query_params=_list_params(page, page_size, sort, metric_type, include_derived),
         )
-        response.raise_for_status()
-        return Page[Metric].model_validate(response.json())
+        page_result = response.page()
+        return Page[Metric].model_validate(
+            {
+                "data": [metric.model_dump(mode="json") for metric in page_result.items],
+                "pagination": page_result.metadata,
+                "sort": sort,
+                "filter": None,
+            }
+        )
 
     async def delete(self, name: str, *, workspace: str | None = None) -> None:
         """Delete a stored metric and its backing bundle."""
-        response = await self._http_client.delete(
-            self._item_url(name, workspace), headers=self._headers(), timeout=self._platform.timeout
-        )
-        response.raise_for_status()
+        response = await self._client.delete_metric(name=name, workspace=workspace)
+        response.data()

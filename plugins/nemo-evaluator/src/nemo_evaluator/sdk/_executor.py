@@ -8,14 +8,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-import httpx
+from models import parse_workspace_name_ref
 from nemo_evaluator.api.schemas import MetricInline, TasksetRef
 from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.agent_spec import AgentEvalInputSpec
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, TargetSpec
 from nemo_evaluator.jobs.runner_targets import runner_to_target
-from nemo_evaluator.resolvers import PlatformModelResolver
-from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk.job_resources import (
     AgentEvaluatorJob,
     AgentEvaluatorJobResource,
@@ -33,7 +31,6 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
 from nemo_evaluator_sdk.agent_eval.trials import AgentTaskRunner
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.config import resolve_params
-from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.execution.utils import is_metric, is_metric_sequence
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
@@ -45,7 +42,11 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
+from nemo_platform_plugin.evaluator.client import AsyncEvaluatorClient, EvaluatorClient
+from nemo_platform_plugin.evaluator.types import SubmitAgentEvalJobRequest, SubmitEvaluateJobRequest
+from nemo_platform_plugin.models.client import AsyncModelsClient, ModelsClient
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 10.0
 _DEFAULT_JOB_TIMEOUT_SECONDS = 3600.0
@@ -57,8 +58,8 @@ SubmitTargetSpec = TargetSpec | ModelRef
 def create_job_payload(spec: EvaluateInputSpec) -> dict[str, dict[str, Any]]:
     """Serialize an evaluator job creation request body.
 
-    Lives here rather than in ``http_utils`` because it is the only thing there that needed
-    ``EvaluateInputSpec``, and that import made ``http_utils`` — and so everything importing it,
+    Lives here rather than in the client adapter because it is the only thing there that needed
+    ``EvaluateInputSpec``, and that import made the adapter — and so everything importing it,
     including ``intake.publish`` — pull in ``jobs.evaluate``, which cycles for any module that
     ``jobs.evaluate`` itself imports.
     """
@@ -86,20 +87,42 @@ def _submit_params(
 
 
 def _resolve_submit_target(
-    platform: NeMoPlatform,
+    models_client: ModelsClient,
     target: SubmitTargetSpec | None,
 ) -> Model | Agent | None:
     if isinstance(target, ModelRef):
-        return run_sync(lambda: PlatformModelResolver(platform).resolve_model(target))
+        workspace, name = parse_workspace_name_ref(
+            target.root, label="ModelRef", expected_format="workspace/model_name"
+        )
+        try:
+            resolved = models_client.resolve_model_reference(target.root)
+        except ClientNotFoundError as exc:
+            raise ValueError(
+                f"Model reference '{target.root}' not found. "
+                f"Ensure the model entity '{name}' exists in workspace '{workspace}', "
+                "or use an inline model definition instead."
+            ) from exc
+        return Model(url=resolved.url, name=resolved.name, host_url=resolved.host_url)
     return target
 
 
 async def _resolve_submit_target_async(
-    platform: AsyncNeMoPlatform,
+    models_client: AsyncModelsClient,
     target: SubmitTargetSpec | None,
 ) -> Model | Agent | None:
     if isinstance(target, ModelRef):
-        return await PlatformModelResolver(platform).resolve_model(target)
+        workspace, name = parse_workspace_name_ref(
+            target.root, label="ModelRef", expected_format="workspace/model_name"
+        )
+        try:
+            resolved = await models_client.resolve_model_reference(target.root)
+        except ClientNotFoundError as exc:
+            raise ValueError(
+                f"Model reference '{target.root}' not found. "
+                f"Ensure the model entity '{name}' exists in workspace '{workspace}', "
+                "or use an inline model definition instead."
+            ) from exc
+        return Model(url=resolved.url, name=resolved.name, host_url=resolved.host_url)
     return target
 
 
@@ -151,15 +174,16 @@ class _SyncEvaluatorPluginExecutor:
     def __init__(
         self,
         *,
-        platform: NeMoPlatform,
+        client: NemoClient,
+        evaluator_client: EvaluatorClient | None = None,
         workspace: str | None = None,
         poll_interval_seconds: float = _DEFAULT_POLL_INTERVAL_SECONDS,
         job_timeout_seconds: float = _DEFAULT_JOB_TIMEOUT_SECONDS,
         pending_timeout_seconds: float = _DEFAULT_PENDING_TIMEOUT_SECONDS,
     ) -> None:
-        """Store the sync platform client used for evaluator execution."""
-        self._platform = platform
-        self._http_client: httpx.Client = platform._client
+        """Store the sync service clients used for evaluator execution."""
+        self._client = evaluator_client or EvaluatorClient.from_client(client)
+        self._models_client = ModelsClient.from_client(client)
         self._workspace = workspace
         self._poll_interval_seconds = poll_interval_seconds
         self._job_timeout_seconds = job_timeout_seconds
@@ -173,23 +197,20 @@ class _SyncEvaluatorPluginExecutor:
         wait_until_done: bool = False,
     ) -> EvaluatorJobResource:
         """Create an evaluator plugin job with a sync platform client."""
-        resolved_workspace = http_utils.resolve_workspace(self._platform, workspace)
-        response = self._http_client.post(
-            http_utils.url(self._platform, "/v2/workspaces/{workspace}/evaluate/jobs", resolved_workspace),
-            json=create_job_payload(spec),
-            headers=http_utils.platform_default_headers(self._platform),
-            timeout=self._platform.timeout,
+        resolved_workspace = self._client.resolve_workspace(workspace)
+        payload = (
+            self._client.submit_evaluate_job(
+                workspace=resolved_workspace,
+                body=SubmitEvaluateJobRequest(spec=spec.model_dump(mode="json")),
+            )
+            .data()
+            .model_dump(mode="json")
         )
-
-        response.raise_for_status()
-        payload = response.json()
 
         job_resource = EvaluatorJobResource(
             job=EvaluatorJob.model_validate(payload),
-            http_client=self._http_client,
-            base_url=http_utils.base_url(str(self._platform.base_url)),
+            client=self._client,
             workspace=resolved_workspace,
-            headers=http_utils.platform_default_headers(self._platform),
         )
 
         if wait_until_done:
@@ -213,22 +234,20 @@ class _SyncEvaluatorPluginExecutor:
         ``evaluate``. The two job kinds share a resource type because a submitted job is a submitted
         job — polling, status, and artifacts do not differ by what produced the trials.
         """
-        resolved_workspace = http_utils.resolve_workspace(self._platform, workspace)
-        response = self._http_client.post(
-            http_utils.url(self._platform, "/v2/workspaces/{workspace}/agent-evaluate/jobs", resolved_workspace),
-            json={"spec": spec.model_dump(mode="json")},
-            headers=http_utils.platform_default_headers(self._platform),
-            timeout=self._platform.timeout,
+        resolved_workspace = self._client.resolve_workspace(workspace)
+        payload = (
+            self._client.submit_agent_eval_job(
+                workspace=resolved_workspace,
+                body=SubmitAgentEvalJobRequest(spec=spec.model_dump(mode="json")),
+            )
+            .data()
+            .model_dump(mode="json")
         )
 
-        response.raise_for_status()
-
         job_resource = AgentEvaluatorJobResource(
-            job=AgentEvaluatorJob.model_validate(response.json()),
-            http_client=self._http_client,
-            base_url=http_utils.base_url(str(self._platform.base_url)),
+            job=AgentEvaluatorJob.model_validate(payload),
+            client=self._client,
             workspace=resolved_workspace,
-            headers=http_utils.platform_default_headers(self._platform),
         )
 
         if wait_until_done:
@@ -253,10 +272,11 @@ class _SyncEvaluatorPluginExecutor:
         job-side, and refuses runners carrying state the wire cannot express, so a submitted job
         cannot silently run something other than what was tested.
         """
+        resolved_workspace = self._client.require_workspace(self._workspace)
         spec = AgentEvalInputSpec(tasks=tasks, target=runner_to_target(target))
         return self.create_agent_eval(
             spec=spec,
-            workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True),
+            workspace=resolved_workspace,
             wait_until_done=wait_until_done,
         )
 
@@ -273,7 +293,7 @@ class _SyncEvaluatorPluginExecutor:
     ) -> EvaluatorJobResource:
         """Submit a remote evaluator plugin metric job and return the job resource."""
         submit_params = _submit_params(params, target)
-        resolved_target = _resolve_submit_target(self._platform, target)
+        resolved_target = _resolve_submit_target(self._models_client, target)
         spec = _build_evaluate_spec(
             metrics=metric,
             dataset=dataset,
@@ -284,9 +304,8 @@ class _SyncEvaluatorPluginExecutor:
             metric_bundle_packager=metric_bundle_packager,
         )
 
-        job = self.create(
-            spec=spec, workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True)
-        )
+        resolved_workspace = self._client.require_workspace(self._workspace)
+        job = self.create(spec=spec, workspace=resolved_workspace)
 
         return job
 
@@ -297,15 +316,16 @@ class _AsyncEvaluatorPluginExecutor:
     def __init__(
         self,
         *,
-        platform: AsyncNeMoPlatform,
+        client: AsyncNemoClient,
+        evaluator_client: AsyncEvaluatorClient | None = None,
         workspace: str | None = None,
         poll_interval_seconds: float = _DEFAULT_POLL_INTERVAL_SECONDS,
         job_timeout_seconds: float = _DEFAULT_JOB_TIMEOUT_SECONDS,
         pending_timeout_seconds: float = _DEFAULT_PENDING_TIMEOUT_SECONDS,
     ) -> None:
-        """Store the async platform client used for evaluator execution."""
-        self._platform = platform
-        self._http_client: httpx.AsyncClient = platform._client
+        """Store the async service clients used for evaluator execution."""
+        self._client = evaluator_client or AsyncEvaluatorClient.from_client(client)
+        self._models_client = AsyncModelsClient.from_client(client)
         self._workspace = workspace
         self._poll_interval_seconds = poll_interval_seconds
         self._job_timeout_seconds = job_timeout_seconds
@@ -319,23 +339,17 @@ class _AsyncEvaluatorPluginExecutor:
         wait_until_done: bool = False,
     ) -> AsyncEvaluatorJobResource:
         """Create an evaluator plugin job and return a high-level async job resource."""
-        resolved_workspace = http_utils.resolve_workspace(self._platform, workspace)
-        response = await self._http_client.post(
-            http_utils.url(self._platform, "/v2/workspaces/{workspace}/evaluate/jobs", resolved_workspace),
-            json=create_job_payload(spec),
-            headers=http_utils.platform_default_headers(self._platform),
-            timeout=self._platform.timeout,
+        resolved_workspace = self._client.resolve_workspace(workspace)
+        response = await self._client.submit_evaluate_job(
+            workspace=resolved_workspace,
+            body=SubmitEvaluateJobRequest(spec=spec.model_dump(mode="json")),
         )
-
-        response.raise_for_status()
-        payload = response.json()
+        payload = response.data().model_dump(mode="json")
 
         job_resource = AsyncEvaluatorJobResource(
             job=EvaluatorJob.model_validate(payload),
-            http_client=self._http_client,
-            base_url=http_utils.base_url(str(self._platform.base_url)),
+            client=self._client,
             workspace=resolved_workspace,
-            headers=http_utils.platform_default_headers(self._platform),
         )
 
         if wait_until_done:
@@ -359,7 +373,7 @@ class _AsyncEvaluatorPluginExecutor:
     ) -> AsyncEvaluatorJobResource:
         """Submit a remote evaluator plugin metric job and return the job resource."""
         submit_params = _submit_params(params, target)
-        resolved_target = await _resolve_submit_target_async(self._platform, target)
+        resolved_target = await _resolve_submit_target_async(self._models_client, target)
         spec = _build_evaluate_spec(
             metrics=metric,
             dataset=dataset,
@@ -370,9 +384,8 @@ class _AsyncEvaluatorPluginExecutor:
             metric_bundle_packager=metric_bundle_packager,
         )
 
-        job = await self.create(
-            spec=spec, workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True)
-        )
+        resolved_workspace = self._client.require_workspace(self._workspace)
+        job = await self.create(spec=spec, workspace=resolved_workspace)
 
         return job
 

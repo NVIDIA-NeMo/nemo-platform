@@ -10,8 +10,9 @@ stubbed (``_entity_client`` patched at its usage site) so no real SDK or event l
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from nemo_evaluator.entities import AgentEvalResultEntity, EvaluateResultEntity
 from nemo_evaluator.jobs import result_persistence
@@ -33,40 +34,29 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSumm
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.values import Agent, GenericAgent, Model
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin import AsyncNemoClient
 from nemo_platform_plugin.entities import EntityBase, EntityClient
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from pytest_mock import MockerFixture
 
-
-# An opaque stand-in for the async task SDK: every test that reaches the save path patches
-# `_entity_client`, so the value is never used as a real client — only its presence matters.
-# ``copy`` returns self so ``run_with_isolated_async_sdk`` can isolate a throwaway httpx client.
-class _FakeAsyncSdk:
-    def __init__(self) -> None:
-        self.copy_calls = 0
-
-    def copy(self, **kwargs: object) -> _FakeAsyncSdk:
-        del kwargs
-        self.copy_calls += 1
-        return self
-
-
-_ASYNC_SDK_FAKE = _FakeAsyncSdk()
-_ASYNC_SDK = cast(AsyncNeMoPlatform, _ASYNC_SDK_FAKE)
+_ASYNC_SDK = AsyncNemoClient(
+    base_url="http://platform.test",
+    workspace="dev",
+    http_client=AsyncMock(spec=httpx.AsyncClient),
+)
 
 
 def test_entity_client_adapts_async_sdk(mocker: MockerFixture) -> None:
-    typed_client = cast(AsyncEntitiesClient, object())
-    wrapped_client = cast(EntityClient, object())
-    adapter = mocker.patch.object(result_persistence, "client_from_platform", return_value=typed_client)
+    wrapped_client = mocker.Mock(spec=EntityClient)
     constructor = mocker.patch.object(result_persistence, "EntityClient", return_value=wrapped_client)
 
     assert result_persistence._entity_client(_ASYNC_SDK) is wrapped_client
-    adapter.assert_called_once_with(_ASYNC_SDK, AsyncEntitiesClient)
-    constructor.assert_called_once_with(typed_client)
+    constructor.assert_called_once()
+    typed_client = constructor.call_args.args[0]
+    assert isinstance(typed_client, AsyncEntitiesClient)
+    assert typed_client._http is _ASYNC_SDK._http
 
 
 def _model() -> Model:
@@ -183,8 +173,7 @@ def _eval_result() -> EvaluationResult:
 
 def test_persist_agent_eval_result_builds_entity_and_saves(tmp_path: Path, mocker: MockerFixture) -> None:
     client = _FakeClient()
-    mocker.patch.object(result_persistence, "_entity_client", return_value=client)
-    _ASYNC_SDK_FAKE.copy_calls = 0
+    entity_client_factory = mocker.patch.object(result_persistence, "_entity_client", return_value=client)
 
     persist_agent_eval_result(
         _agent_result(),
@@ -197,7 +186,10 @@ def test_persist_agent_eval_result_builds_entity_and_saves(tmp_path: Path, mocke
         async_sdk=_ASYNC_SDK,
     )
 
-    assert _ASYNC_SDK_FAKE.copy_calls == 1
+    entity_client_factory.assert_called_once()
+    cloned_sdk = entity_client_factory.call_args.args[0]
+    assert isinstance(cloned_sdk, AsyncNemoClient)
+    assert cloned_sdk is not _ASYNC_SDK
     (entity,) = client.saved
     assert isinstance(entity, AgentEvalResultEntity)
     assert entity.name == "job-1"

@@ -30,8 +30,12 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.jobs.result_manager import result_manager_factory
 from pydantic import BaseModel
+
+from nemo_platform_plugin import NemoClient, client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.result_manager import result_manager_factory
 
 logger = logging.getLogger(__name__)
 
@@ -168,12 +172,27 @@ class PlatformJobResults(JobResults):
         sdk: NeMoPlatform,
         attempt_id: str | None = None,
     ) -> None:
+        self._configure_manager(
+            job_name=job_name,
+            workspace=workspace,
+            client=client_from_platform(sdk, NemoClient),
+            attempt_id=attempt_id,
+        )
+
+    def _configure_manager(
+        self,
+        *,
+        job_name: str,
+        workspace: str,
+        client: NemoClient,
+        attempt_id: str | None,
+    ) -> None:
         self._manager = result_manager_factory(
             job_name=job_name,
             workspace=workspace,
             attempt_id=attempt_id,
-            files_sdk=sdk,
-            jobs_sdk=sdk,
+            files_client=FilesClient.from_client(client),
+            jobs_client=JobsClient.from_client(client),
             is_async=False,
         )
         self._job_name = job_name

@@ -24,10 +24,11 @@ from typing import cast
 
 import pandas as pd
 from datasets import Dataset, DatasetDict, load_dataset
-from filesets import parse_fileset_ref
+from filesets import FilesetFileSystem, parse_fileset_ref
 from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin import client_from_platform
 from nemo_platform_plugin.config import get_platform_config
+from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.constants import (
     DEFAULT_TASK_STORAGE_PATH,
@@ -36,8 +37,8 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
     NEMO_JOB_WORKSPACE_ENVVAR,
 )
-from nemo_platform_plugin.jobs.file_manager import FilesetFileManager
-from nemo_platform_plugin.jobs.schemas import PlatformJobResultCreateRequest
+from nemo_platform_plugin.jobs.file_manager import FilesetFileManager, TmpDirPath
+from nemo_platform_plugin.jobs.schemas import FileStorageType, PlatformJobResultCreateRequest
 from nemo_platform_plugin.sdk_provider import get_platform_sdk
 from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
 from nemo_safe_synthesizer.errors import ParameterError
@@ -70,7 +71,7 @@ def download_from_fileset(fileset_url: str) -> pd.DataFrame:
     file_manager = FilesetFileManager(
         workspace=workspace,
         fileset_name=fileset_name,
-        sdk=sdk,
+        filesystem=FilesetFileSystem(client=client_from_platform(sdk, FilesClient)),
         ensure_fileset_exists=False,
     )
 
@@ -152,7 +153,7 @@ def upload_results(result: SafeSynthesizerResults, adapter_path: Path | None = N
     file_manager = FilesetFileManager(
         workspace=workspace,
         fileset_name=fileset_name,
-        sdk=sdk,
+        filesystem=FilesetFileSystem(client=client_from_platform(sdk, FilesClient)),
         ensure_fileset_exists=True,
     )
     file_manager.validate_storage()
@@ -195,7 +196,7 @@ def _create_job_result(sdk: NeMoPlatform, workspace: str, job_name: str, result_
         name=result_name,
         job=job_name,
         workspace=workspace,
-        body=PlatformJobResultCreateRequest(artifact_url=artifact_url, artifact_storage_type="fileset"),
+        body=PlatformJobResultCreateRequest(artifact_url=artifact_url, artifact_storage_type=FileStorageType.FILESET),
     )
     logger.info("Created job result: %s", result_name)
 
@@ -205,7 +206,7 @@ def _resolve_pretrained_model(
     *,
     workspace: str,
     sdk: NeMoPlatform | None = None,
-) -> tuple[object | None, Path | None]:
+) -> tuple[TmpDirPath | None, Path | None]:
     """Download a prior job's adapter artifact from Files when ``pretrained_model_job`` is set."""
     if not job_config.pretrained_model_job:
         return None, None
@@ -235,7 +236,7 @@ def _resolve_pretrained_model(
     file_manager = FilesetFileManager(
         workspace=fileset_workspace,
         fileset_name=fileset_name,
-        sdk=sdk,
+        filesystem=FilesetFileSystem(client=client_from_platform(sdk, FilesClient)),
         ensure_fileset_exists=False,
     )
     tmp_dir_path = file_manager.download_from_url(adapter_result.artifact_url)
