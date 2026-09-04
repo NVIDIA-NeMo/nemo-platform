@@ -45,17 +45,26 @@ def tasks(tmp_path: Path) -> list:
 class _FakeHost:
     """Records what was posted and answers with rollout records keyed by the caller's own index."""
 
-    def __init__(self, *, status: int = 200, body: Any = None, rewards: dict[int, float] | None = None) -> None:
+    def __init__(
+        self,
+        status: int = 200,
+        body: Any = None,
+        content: bytes | None = None,
+        rewards: dict[int, float] | None = None,
+    ) -> None:
         self.requests: list[httpx.Request] = []
         self.posted: list[dict[str, Any]] = []
         self._status = status
         self._body = body
+        self._content = content
         self._rewards = rewards
 
     def transport(self) -> httpx.MockTransport:
         def handle(request: httpx.Request) -> httpx.Response:
             self.requests.append(request)
             self.posted = json.loads(request.content.decode())["examples"]
+            if self._content is not None:
+                return httpx.Response(self._status, content=self._content)
             if self._body is not None or self._status >= 400:
                 return httpx.Response(self._status, json=self._body if self._body is not None else {"error": "boom"})
             rewards = self._rewards if self._rewards is not None else {}
@@ -73,9 +82,8 @@ class _FakeHost:
         return httpx.MockTransport(handle)
 
 
-def runner_against(host: _FakeHost, monkeypatch: pytest.MonkeyPatch, **overrides: Any) -> SandboxedGymAgentTaskRunner:
-    """A runner whose HTTP client is bound to ``host``."""
-    transport = host.transport()
+def bind_http_transport(monkeypatch: pytest.MonkeyPatch, transport: httpx.MockTransport) -> None:
+    """Point ``httpx.AsyncClient`` at ``transport``. Typed kwargs so ty can check the call."""
     original = httpx.AsyncClient
 
     def bound(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
@@ -83,6 +91,11 @@ def runner_against(host: _FakeHost, monkeypatch: pytest.MonkeyPatch, **overrides
         return original(*args, **kwargs)
 
     monkeypatch.setattr(httpx, "AsyncClient", bound)
+
+
+def runner_against(host: _FakeHost, monkeypatch: pytest.MonkeyPatch, **overrides: Any) -> SandboxedGymAgentTaskRunner:
+    """A runner whose HTTP client is bound to ``host``."""
+    bind_http_transport(monkeypatch, host.transport())
     return SandboxedGymAgentTaskRunner(config=SandboxedGymRuntimeConfig(rollout_url=ROLLOUT_URL, **overrides))
 
 
@@ -166,6 +179,24 @@ async def test_an_error_carried_on_a_200_is_still_a_failure(tasks, tmp_path, mon
     assert ROLLOUT_URL in message
 
 
+async def test_a_heartbeat_only_200_names_the_host_as_the_failure(tasks, tmp_path, monkeypatch) -> None:
+    """OOMKill after the host committed 200 leaves heartbeats and no envelope.
+
+    The orchestrator classifies that as the sandbox dying. This runner is a second client of the
+    same host; it must not surface a JSON decode error that looks like a bug in the evaluator.
+    """
+    host = _FakeHost(content=b"     ")
+    runner = runner_against(host, monkeypatch)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    message = str(excinfo.value)
+    assert ROLLOUT_URL in message
+    assert "JSON" not in message
+    assert "error" in message.lower() or "results" in message.lower()
+
+
 async def test_a_response_without_a_results_list_is_refused(tasks, tmp_path, monkeypatch) -> None:
     # Reaching the parser with nothing collected would surface as "no rollouts", blaming the run
     # for what is a malformed reply.
@@ -186,9 +217,7 @@ async def test_a_task_the_host_never_answered_fails_the_run(tasks, tmp_path, mon
             json={"results": [{NG_TASK_INDEX: example[NG_TASK_INDEX], NG_ROLLOUT_INDEX: 0, "reward": 1.0}]},
         )
 
-    transport = httpx.MockTransport(handle)
-    original = httpx.AsyncClient
-    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: original(*a, **{**k, "transport": transport}))
+    bind_http_transport(monkeypatch, httpx.MockTransport(handle))
     runner = SandboxedGymAgentTaskRunner(config=SandboxedGymRuntimeConfig(rollout_url=ROLLOUT_URL))
 
     with pytest.raises(RuntimeError, match=r"no rollout for 1 of 2 requested task") as excinfo:
