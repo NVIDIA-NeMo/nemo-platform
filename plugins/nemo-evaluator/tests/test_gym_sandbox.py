@@ -170,6 +170,31 @@ def test_serve_config_takes_cluster_facts_from_the_deployment_not_the_job() -> N
     assert payload["gym_global_config"]["config_paths"]
 
 
+def test_sandbox_server_protocol_reaches_the_opensandbox_host_provider() -> None:
+    plan = resolve_sandbox_plan(
+        capable_config(),
+        target(),
+        sandbox_server_protocol="http",
+    )
+
+    assert plan is not None
+    assert plan.host_provider_options == {"connection": {"protocol": "http"}}
+
+
+def test_sandbox_server_protocol_does_not_change_the_docker_host_provider() -> None:
+    plan = resolve_sandbox_plan(
+        capable_config(
+            sandbox_host_provider="docker",
+            sandbox_host_provider_options={"root_dir": "/tmp/gym"},
+        ),
+        target(),
+        sandbox_server_protocol="http",
+    )
+
+    assert plan is not None
+    assert plan.host_provider_options == {"root_dir": "/tmp/gym"}
+
+
 # --------------------------------------------------------------------------------------------
 # Gates
 # --------------------------------------------------------------------------------------------

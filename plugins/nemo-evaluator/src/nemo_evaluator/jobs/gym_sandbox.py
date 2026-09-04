@@ -89,6 +89,7 @@ def gym_global_config(target: GymRunnerTarget) -> dict[str, Any]:
             config[key] = value
 
     if target.environment is not None:
+        # Gym does not read this key. The host uses it to rebuild config_paths.
         config[ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY] = {
             "agent_instance": target.agent_ref_name or target.agent,
             "agent_config": target.agent_config,
@@ -187,7 +188,12 @@ class SandboxPlan(BaseModel):
     approved_images: tuple[str, ...] = ()
 
 
-def resolve_sandbox_plan(config: EvaluatorConfig, target: GymRunnerTarget) -> SandboxPlan | None:
+def resolve_sandbox_plan(
+    config: EvaluatorConfig,
+    target: GymRunnerTarget,
+    *,
+    sandbox_server_protocol: str | None = None,
+) -> SandboxPlan | None:
     """The sandbox settings for this target, or ``None`` when the deployment runs Gym colocated.
 
     Raises rather than falling back: a cluster that cannot sandbox refuses the run instead of
@@ -203,6 +209,13 @@ def resolve_sandbox_plan(config: EvaluatorConfig, target: GymRunnerTarget) -> Sa
     # `require_sandbox_available` has just established that neither is empty.
     assert config.sandbox_runtime_image is not None
     assert config.sandbox_job_storage_pvc_claim is not None
+    host_provider_options = dict(config.sandbox_host_provider_options)
+    # In-cluster OpenSandbox speaks http. If we leave this unset, the host probes the
+    # sandbox over https and the readiness wait times out.
+    if config.sandbox_host_provider == "opensandbox" and sandbox_server_protocol:
+        connection = dict(host_provider_options.get("connection") or {})
+        connection["protocol"] = sandbox_server_protocol
+        host_provider_options["connection"] = connection
     return SandboxPlan(
         host_provider=config.sandbox_host_provider,
         runtime_image=config.sandbox_runtime_image,
@@ -210,7 +223,7 @@ def resolve_sandbox_plan(config: EvaluatorConfig, target: GymRunnerTarget) -> Sa
         environment_sub_path=config.sandbox_environment_sub_path,
         workspace_sub_path=config.sandbox_workspace_sub_path,
         resources=config.sandbox_resources,
-        host_provider_options=dict(config.sandbox_host_provider_options),
+        host_provider_options=host_provider_options,
         egress_allow=tuple(config.sandbox_egress_allow),
         policy_base_urls=tuple(config.sandbox_policy_base_urls),
         episode_backend=config.sandbox_episode_backend,

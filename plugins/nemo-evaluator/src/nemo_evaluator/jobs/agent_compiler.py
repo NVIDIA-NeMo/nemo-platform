@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from nemo_evaluator.config import config
+from nemo_evaluator.config import config, platform_config
 from nemo_evaluator.jobs.agent_spec import AgentEvalSpec, AgentTarget, GymRunnerTarget, ModelTarget
 from nemo_evaluator.jobs.environment_stage import EnvironmentStageSpec
 from nemo_evaluator.jobs.gym_sandbox import GYM_SANDBOX_PLAN_ENVVAR, resolve_sandbox_plan
@@ -116,7 +116,11 @@ def _environment(spec: AgentEvalSpec) -> list[EnvironmentVariable]:
     environment = build_task_environment(_secret_refs(spec))
     if not isinstance(spec.target, GymRunnerTarget):
         return environment
-    plan = resolve_sandbox_plan(config, spec.target)
+    plan = resolve_sandbox_plan(
+        config,
+        spec.target,
+        sandbox_server_protocol=platform_config.sandbox_server_protocol,
+    )
     if plan is None:
         return environment
     environment.append(EnvironmentVariable(name=GYM_SANDBOX_PLAN_ENVVAR, value=plan.model_dump_json()))

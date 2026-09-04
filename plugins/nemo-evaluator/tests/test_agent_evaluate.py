@@ -800,6 +800,31 @@ async def test_compile_gym_environment_adds_staging_step_before_evaluation(mocke
     assert evaluate_config["target"]["environment"] == "dev/custom-gym"
 
 
+async def test_compile_gym_environment_propagates_platform_sandbox_protocol(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        return_value="registry.example/nmp-gym-tasks:test",
+    )
+    _enable_fileset_sandbox(mocker)
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.platform_config.sandbox_server_protocol", "http")
+
+    compiled = await AgentEvalJob.compile(
+        workspace="dev",
+        spec=AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target()),
+        entity_client=object(),
+        job_name=None,
+        async_sdk=None,
+    )
+
+    evaluate = PlatformJobSpec.model_validate(compiled).steps[-1]
+    serialized_plan = next(
+        variable.value for variable in evaluate.environment or [] if variable.name == GYM_SANDBOX_PLAN_ENVVAR
+    )
+    assert serialized_plan is not None
+    plan = json.loads(serialized_plan)
+    assert plan["host_provider_options"] == {"connection": {"protocol": "http"}}
+
+
 async def test_compile_gym_environment_uses_host_commands_for_subprocess_profile(
     mocker: MockerFixture,
 ) -> None:
