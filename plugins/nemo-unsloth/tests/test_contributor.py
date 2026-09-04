@@ -9,8 +9,8 @@ Pin the contract the customization-router hub depends on:
 - ``get_routers`` returns the jobs router under the right prefix, with
   ``@path_rule`` authz stamped on the generated job routes (the platform
   derives the policy from those rules — there is no ``get_authz_contribution``).
-- ``get_cli`` exposes ``run`` / ``submit`` / ``explain`` and the submit
-  group accepts the ``JOB_JSON`` positional. ``run`` hard-fails.
+- ``get_cli`` exposes ``submit`` / ``explain`` and the submit group accepts the
+  ``JOB_JSON`` positional.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 
 import pytest
+from nemo_platform_plugin.customization_contributor import CustomizationContributor
 from typer.testing import CliRunner
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -28,17 +29,17 @@ def _plain(text: str) -> str:
 
 
 @pytest.fixture
-def contributor() -> object:
+def contributor() -> CustomizationContributor:
     from nemo_unsloth_plugin.contributor import UnslothContributor
 
     return UnslothContributor()
 
 
 class TestIdentity:
-    def test_name(self, contributor: object) -> None:
+    def test_name(self, contributor: CustomizationContributor) -> None:
         assert contributor.name == "unsloth"
 
-    def test_dependencies_match_submit_path(self, contributor: object) -> None:
+    def test_dependencies_match_submit_path(self, contributor: CustomizationContributor) -> None:
         # Remote container submit needs the same set of platform services
         # automodel needs: workspace/auth, jobs API, secrets, files + models.
         for required in ("entities", "auth", "jobs", "files", "secrets", "models"):
@@ -46,7 +47,7 @@ class TestIdentity:
 
 
 class TestAuthz:
-    def test_job_routes_carry_unsloth_path_rules(self, contributor: object) -> None:
+    def test_job_routes_carry_unsloth_path_rules(self, contributor: CustomizationContributor) -> None:
         """Authz is derived from ``@path_rule`` on the generated job routes
         (permission namespace ``customization.unsloth.jobs`` from
         ``AuthzScope("customization").child(name, "jobs")``), not a separate
@@ -74,7 +75,7 @@ class TestAuthz:
 
 
 class TestRouters:
-    def test_returns_jobs_router_spec(self, contributor: object) -> None:
+    def test_returns_jobs_router_spec(self, contributor: CustomizationContributor) -> None:
         specs = ()
         try:
             specs = contributor.get_routers()
@@ -91,36 +92,26 @@ class TestRouters:
 
 
 class TestCLI:
-    def test_cli_root_help_lists_three_verbs(self, contributor: object) -> None:
+    def test_cli_root_help_lists_submit_and_explain_only(self, contributor: CustomizationContributor) -> None:
         try:
             cli = contributor.get_cli()
         except ImportError as exc:
             pytest.skip(f"CLI deps unavailable in this env: {exc}")
+        assert cli is not None
         runner = CliRunner()
         result = runner.invoke(cli, ["--help"])
         assert result.exit_code == 0
         plain = _plain(result.output)
-        assert "run" in plain
         assert "submit" in plain
         assert "explain" in plain
+        assert "run" not in plain
 
-    def test_run_hard_fails(self, contributor: object) -> None:
+    def test_submit_help_shows_job_json_positional(self, contributor: CustomizationContributor) -> None:
         try:
             cli = contributor.get_cli()
         except ImportError as exc:
             pytest.skip(f"CLI deps unavailable in this env: {exc}")
-        runner = CliRunner()
-        result = runner.invoke(cli, ["run"])
-        assert result.exit_code == 1
-        plain = _plain(result.output)
-        assert "does not support local run" in plain
-        assert "submit" in plain
-
-    def test_submit_help_shows_job_json_positional(self, contributor: object) -> None:
-        try:
-            cli = contributor.get_cli()
-        except ImportError as exc:
-            pytest.skip(f"CLI deps unavailable in this env: {exc}")
+        assert cli is not None
         runner = CliRunner()
         result = runner.invoke(cli, ["submit", "--help"])
         assert result.exit_code == 0, result.output
@@ -132,7 +123,7 @@ class TestCLI:
 
 
 class TestSDK:
-    def test_exposes_sdk_resources(self, contributor: object) -> None:
+    def test_exposes_sdk_resources(self, contributor: CustomizationContributor) -> None:
         from nemo_unsloth_plugin.sdk.resources import AsyncUnslothCustomization, UnslothCustomization
 
         sdk = contributor.get_sdk_resources()

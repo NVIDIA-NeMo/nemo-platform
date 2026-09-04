@@ -22,12 +22,6 @@ nemo customization automodel submit path/to/job.json -w acme-corp
 nemo customization automodel submit path/to/job.json --cluster my-cluster
 ```
 
-`run` is registered but **always fails** — Automodel training is submit-only (platform API / Docker GPU jobs), not local subprocess execution:
-
-```bash
-nemo customization automodel run path/to/job.json   # exits with error
-```
-
 Other customization backends may still use `nemo customization <backend> jobs submit ...`.
 
 Job JSON uses the simplified `AutomodelJobInput` schema (see `nemo_automodel_plugin/schema.py`). Submit posts to `/apis/customization/v2/workspaces/{workspace}/automodel/jobs`.

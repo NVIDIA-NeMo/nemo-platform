@@ -64,7 +64,7 @@ allowed-tools: [Bash, Read, Grep]
 
 # NeMo Customizer
 
-End-to-end **SFT + LoRA** (automodel/unsloth), **DPO**, and **GRPO** (rl) on NeMo Platform. Three backend plugins ship in this repo — all are **`submit`-only** (local `run` is hard-disabled on each):
+End-to-end **SFT + LoRA** (automodel/unsloth), **DPO**, and **GRPO** (rl) on NeMo Platform. Three backend plugins ship in this repo — all are **`submit`-only** and expose no local `run` verb:
 
 | Backend | Verb | Trains | Where it runs | Pick when |
 |---------|------|--------|---------------|-----------|
@@ -155,8 +155,8 @@ For **`automodel`/`unsloth`**, training never runs inside the `nemo` CLI process
     ```
 
     Poll until healthy (`curl -sf http://127.0.0.1:8080/health/ready` or retry `nemo jobs list-execution-profiles -f json`), then continue the workflow. Do not start services without asking.
-    - ⚠️ **This default start is a DOCKER-runtime platform — fine for single-node `automodel`/`unsloth`.** It is **NOT** valid for **`rl`**: rl needs `platform.runtime: kubernetes` with a `kubernetes_job` execution backend. Starting this default and submitting rl will fail the runtime gate. For rl, configure/point at a Kubernetes-runtime platform instead — see `references/rl-kubernetes-runtime.md`. Never start or reuse a docker-runtime platform for rl.
-- **All backends are `submit` only** — `nemo customization <plugin> run …` hard-fails with a pointer to `submit` (automodel, unsloth, and rl each disable local `run`). Do not improvise verbs or pass `--venv`.
+    - ⚠️ **This default start is a DOCKER-runtime platform — valid for single-node `automodel`/`unsloth` only.** It is **NOT** valid for **`rl`**: rl needs `platform.runtime: kubernetes` with a `kubernetes_job` execution backend. Starting this default and submitting rl will fail the runtime gate. For rl, configure/point at a Kubernetes-runtime platform instead — see `references/rl-kubernetes-runtime.md`. Never start or reuse a docker-runtime platform for rl.
+- **All backends are `submit` only** — use `nemo customization <plugin> submit …`; automodel, unsloth, and rl expose no local `run` verb. Do not improvise verbs or pass `--venv`.
 - **Test fixtures are not the schema.** `tests/fixtures/*.json` are smoke-test inputs: they carry whatever made a test cheap, exercise one path rather than the field set, and nothing fails when the schema gains a field they never set. Read one for where a block sits in the payload — never for which fields exist, what a default is, or what a sensible value looks like, and never conclude a field is unsupported because a fixture omits it. Authoritative, in order: `nemo customization <plugin> explain` (the installed build's live schema), then the schema source files in `references/hyperparameters.md` § **Source of truth**, then this skill. When a fixture and `explain` disagree, the fixture is stale — say so rather than following it.
 - **Never set `max_steps` together with `epochs`** (automodel + unsloth; rl has the same caveat — see **rl (DPO / GRPO) gotchas**). `max_steps` is a global cap and stops mid-epoch. Every fixture in this repo sets it so a smoke test finishes in a minute — the most-copied wrong value here. Unsloth's schema enforces this as a hard mutex; automodel allows both but the result is surprising.
 - **Job done (all backends) = top-level `status`** in `completed` | `error` | `cancelled`. Steps can all be `completed` while the job is still `active` (upload, entity registration). `status_details.phase` may stay `training` with `progress_pct: 100` for a long time — keep polling. `poll_customization_job.sh` works for any job id (`automodel-…`, `unsloth-…`, or `rl-…`); it exits **1** on `error` or `cancelled`.
@@ -372,7 +372,7 @@ bash plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/scripts/
 
 Read `<job-id>` from the `"name"` field in submit stdout (JSON). **Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Optional interval override: append seconds (e.g. `… 30`). Or poll manually: `nemo jobs get-status unsloth-<job-id>` every 30–60s. If submit fails on an unknown profile, re-list execution profiles and pass `--profile <name>` on submit (default is `gpu`).
 
-If you try `nemo customization unsloth run …`, the CLI hard-fails with a pointer to `submit`.
+Use `submit` for Unsloth jobs; the contributor CLI exposes no local `run` verb.
 
 ## Fast path — rl (GRPO)
 
@@ -532,7 +532,7 @@ bash plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/scripts/
 
 **Do not** derive the job id by picking the newest `rl-*` from `nemo jobs list` — a concurrent job or an earlier failed submit selects the wrong one. If `/tmp/rl-submit.json` does not parse, the submit result is unknown: stop and inspect it (re-submitting risks a duplicate job).
 
-**Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Or poll manually: `nemo jobs get-status rl-<job-id>` every 30–60s. If submit fails on an unknown profile, re-list execution profiles and pass `--profile <name>`. `nemo customization rl run …` is disabled (no local execution — it provisions a Ray cluster); `nemo customization rl explain` prints the live schema.
+**Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Or poll manually: `nemo jobs get-status rl-<job-id>` every 30–60s. If submit fails on an unknown profile, re-list execution profiles and pass `--profile <name>`. `nemo customization rl explain` prints the live schema.
 
 ## Defaults
 

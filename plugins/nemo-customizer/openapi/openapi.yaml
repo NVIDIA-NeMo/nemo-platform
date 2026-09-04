@@ -3407,7 +3407,7 @@ components:
       - model
       - dataset
       title: UnslothJobInput
-      description: POST body / CLI JSON for ``nemo customization unsloth run``.
+      description: POST body / CLI JSON for ``nemo customization unsloth submit``.
     UnslothJobOutput:
       properties:
         name:
