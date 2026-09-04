@@ -76,8 +76,18 @@ jobs:
           # step only (no credentials left behind for later steps).
           auth_header="AUTHORIZATION: basic $(printf '%s' "x-access-token:${GH_TOKEN}" | base64 | tr -d '\n')"
           for branch in $(node -e "for (const b of Object.keys(require('./release-branches.json'))) console.log(b)"); do
-            git -c http.https://github.com/.extraheader="${auth_header}" fetch origin "${branch}:refs/remotes/origin/${branch}" \
-              || echo "::warning::Could not fetch pre-release branch ${branch} (release-branches.json)"
+            if git -c http.https://github.com/.extraheader="${auth_header}" \
+              ls-remote --exit-code --heads origin "${branch}" >/dev/null; then
+              git -c http.https://github.com/.extraheader="${auth_header}" \
+                fetch origin "${branch}:refs/remotes/origin/${branch}"
+            else
+              status=$?
+              if [ "${status}" -eq 2 ]; then
+                echo "::warning::Pre-release branch ${branch} does not exist (release-branches.json)"
+              else
+                exit "${status}"
+              fi
+            fi
           done
 
       - name: Materialize release versions
