@@ -189,6 +189,7 @@ overrides:
   fast-uri@<3.1.4: ^3.1.4
   js-yaml@>=4.0.0 <4.3.0: ^4.3.0
   linkify-it@<5.0.2: ^5.0.2
+  nanoid@>=5.0.0 <6.0.1: ^6.0.1
   postcss@<8.5.18: ^8.5.18
   shell-quote@1.8.4: 1.9.0
   undici@>=7.0.0 <7.29.0: ^7.29.0
@@ -6614,9 +6615,9 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
-  nanoid@5.1.9:
-    resolution: {integrity: sha512-ZUvP7KeBLe3OZ1ypw6dI/TzYJuvHP77IM4Ry73waSQTLn8/g8rpdjfyVAh7t1/+FjBtG4lCP42MEbDxOsRpBMw==}
-    engines: {node: ^18 || >=20}
+  nanoid@6.0.1:
+    resolution: {integrity: sha512-3wVS3i51pE2pi1k5FFL/95BGfVS0kSsvDVuGXHOtxox/TywUmtgq+3qiTOTbs9J7KfHaXPiN171k/A6dBnaXFw==}
+    engines: {node: ^22 || ^24 || >=26}
     hasBin: true
 
   napi-postinstall@0.3.4:
@@ -8162,7 +8163,7 @@ snapshots:
       '@assistant-ui/store': 0.2.9(@assistant-ui/tap@0.5.10(@types/react@19.2.14)(react@19.2.7))(@types/react@19.2.14)(react@19.2.7)
       '@assistant-ui/tap': 0.5.10(@types/react@19.2.14)(react@19.2.7)
       assistant-stream: 0.3.12
-      nanoid: 5.1.9
+      nanoid: 6.0.1
     optionalDependencies:
       '@types/react': 19.2.14
       assistant-cloud: 0.1.27
@@ -8182,7 +8183,7 @@ snapshots:
       '@radix-ui/react-use-escape-keydown': 1.1.1(@types/react@19.2.14)(react@19.2.7)
       assistant-cloud: 0.1.27
       assistant-stream: 0.3.12
-      nanoid: 5.1.9
+      nanoid: 6.0.1
       radix-ui: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
@@ -12000,7 +12001,7 @@ snapshots:
   assistant-stream@0.3.12:
     dependencies:
       '@standard-schema/spec': 1.1.0
-      nanoid: 5.1.9
+      nanoid: 6.0.1
       secure-json-parse: 4.1.0
 
   ast-types-flow@0.0.8: {}
@@ -14213,7 +14214,7 @@ snapshots:
 
   nanoid@3.3.17: {}
 
-  nanoid@5.1.9: {}
+  nanoid@6.0.1: {}
 
   napi-postinstall@0.3.4: {}
 
