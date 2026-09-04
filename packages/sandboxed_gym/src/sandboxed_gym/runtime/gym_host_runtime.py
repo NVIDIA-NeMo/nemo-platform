@@ -270,6 +270,15 @@ def bootstrap_gym_host() -> tuple[Any, Any, Any]:
 #: ``_ng_task_index`` and assigns ``_ng_rollout_index`` itself per attempt.
 NG_TASK_INDEX = "_ng_task_index"
 NG_ROLLOUT_INDEX = "_ng_rollout_index"
+#: Identifies one entry of a request's ``examples``. Opaque, owned by the caller, never read by
+#: Gym, and scoped to the request rather than durable. Gym's own indices cannot stand in for it:
+#: ``_ng_task_index`` identifies a task, so a caller running several rollouts per task has no
+#: per-example value in it, and overwriting it is not open either -- Gym groups reward-profile
+#: metrics and builds model-call capture ids by task. ``_ng_rollout_index`` would complete the
+#: pair, but Gym assigns it, so a caller cannot stamp it on the way out.
+SG_EXAMPLE_ID = "_sg_example_id"
+
+_ROW_IDENTITY_KEYS = (NG_TASK_INDEX, NG_ROLLOUT_INDEX, SG_EXAMPLE_ID)
 
 
 def _with_row_identity(result: Any, row: Any) -> Any:
@@ -283,11 +292,12 @@ def _with_row_identity(result: Any, row: Any) -> Any:
     property of this host rather than of Gym's copy rules.
 
     Additive: a value Gym returned is never overwritten, so a result that already carries its own
-    index is untouched and existing consumers see exactly the fields they saw before.
+    index is untouched and existing consumers see exactly the fields they saw before. A caller that
+    stamps no ``SG_EXAMPLE_ID`` gets results without one.
     """
     if not isinstance(result, dict) or not isinstance(row, dict):
         return result
-    missing = {key: row[key] for key in (NG_TASK_INDEX, NG_ROLLOUT_INDEX) if key in row and result.get(key) is None}
+    missing = {key: row[key] for key in _ROW_IDENTITY_KEYS if key in row and result.get(key) is None}
     return {**result, **missing} if missing else result
 
 
