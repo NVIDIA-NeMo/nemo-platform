@@ -385,7 +385,6 @@ def _component_selection(*, agent_config):
 )
 def test_environment_config_composes_custom_components_with_builtin_fallbacks(
     tmp_path,
-    monkeypatch,
     agents,
     resources_servers,
     agent_config,
@@ -393,9 +392,9 @@ def test_environment_config_composes_custom_components_with_builtin_fallbacks(
 ):
     package = _load_composition_package(tmp_path, agents=agents, resources_servers=resources_servers)
     global_config = _component_selection(agent_config=agent_config)
-    monkeypatch.setenv(runtime.NEMO_GYM_EXTRA_ROOTS_ENV_KEY, "/operator/root")
+    original_config = dict(global_config)
 
-    runtime._configure_environment_package(global_config, package)
+    configured = runtime._compose_gym_config_with_environment_package(global_config, package)
 
     package_paths = [str(path) for path in package.config_paths]
     model_config = "responses_api_models/inference_provider/configs/inference_provider.yaml"
@@ -405,22 +404,34 @@ def test_environment_config_composes_custom_components_with_builtin_fallbacks(
         model_config,
         *(path for path in expected_fallbacks if path.startswith("resources_servers/")),
     ]
-    assert global_config["config_paths"] == expected
-    assert runtime.ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY not in global_config
-    assert runtime.os.environ[runtime.NEMO_GYM_EXTRA_ROOTS_ENV_KEY] == f"{tmp_path.resolve()}:/operator/root"
+    assert configured["config_paths"] == expected
+    assert runtime.ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY not in configured
+    assert configured is not global_config
+    assert global_config == original_config
 
 
 def test_environment_config_requires_agent_fallback_when_selected_agent_is_absent(tmp_path):
     package = _load_composition_package(tmp_path, agents=("other_agent",), resources_servers=("selected_resources",))
     global_config = _component_selection(agent_config=None)
+    original_config = dict(global_config)
 
     with pytest.raises(RuntimeError, match="no built-in agent_config fallback"):
-        runtime._configure_environment_package(global_config, package)
+        runtime._compose_gym_config_with_environment_package(global_config, package)
+    assert global_config == original_config
 
 
 def test_no_manifest_is_a_no_op(tmp_path, monkeypatch):
     # Image-provided environments have no manifest and must retain the existing startup behavior.
     assert runtime._load_runtime_environment_package(str(tmp_path), required=False) is None
+
+
+def test_compose_without_package_returns_a_copy():
+    global_config = {"config_paths": ["image-owned.yaml"]}
+
+    configured = runtime._compose_gym_config_with_environment_package(global_config, None)
+
+    assert configured == global_config
+    assert configured is not global_config
 
 
 def test_no_environment_path_is_a_no_op(monkeypatch):
@@ -617,7 +628,7 @@ def test_bootstrap_installs_wheels_before_starting_gym(monkeypatch):
     monkeypatch.setattr(runtime, "_apply_uv_dirs", lambda config: None)
     monkeypatch.setattr(runtime, "_allocate_head_server_port", lambda config: 5000)
     monkeypatch.setattr(runtime, "_create_rollout_helper", lambda: "rollout-helper")
-    package = object()
+    package = MagicMock(root="/job/environment")
     monkeypatch.setattr(
         runtime,
         "_load_runtime_environment_package",
@@ -625,8 +636,20 @@ def test_bootstrap_installs_wheels_before_starting_gym(monkeypatch):
     )
     monkeypatch.setattr(
         runtime,
-        "_configure_environment_package",
-        lambda config, loaded_package: events.append("environment-composed") if loaded_package is package else None,
+        "_compose_gym_config_with_environment_package",
+        lambda config, loaded_package: (
+            (
+                events.append("environment-composed"),
+                config,
+            )[1]
+            if loaded_package is package
+            else config
+        ),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_prepend_environment_search_root",
+        lambda environment_root: events.append("environment-root-prepended"),
     )
     monkeypatch.setattr(
         runtime,
@@ -640,7 +663,13 @@ def test_bootstrap_installs_wheels_before_starting_gym(monkeypatch):
     _, head_server_config, rollout_helper = runtime.bootstrap_gym_host()
 
     # Dependencies must be ready before RunHelper starts any Gym servers.
-    assert events == ["environment-validated", "environment-composed", "wheels-installed", "gym-started"]
+    assert events == [
+        "environment-validated",
+        "environment-composed",
+        "environment-root-prepended",
+        "wheels-installed",
+        "gym-started",
+    ]
     assert head_server_config.host == "127.0.0.1"
     assert head_server_config.port == 5000
     assert rollout_helper == "rollout-helper"

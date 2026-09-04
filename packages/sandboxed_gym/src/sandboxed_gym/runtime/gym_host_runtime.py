@@ -246,16 +246,18 @@ def _prepend_environment_search_root(environment_root: str) -> None:
     instead, and the job scores the wrong environment. Any extra roots already set
     stay after the package so they still work as backups.
     """
+    # Preserve operator-provided roots as fallbacks; changing their relative order could
+    # select a different image-bundled component.
     existing = [root for root in os.environ.get(NEMO_GYM_EXTRA_ROOTS_ENV_KEY, "").split(os.pathsep) if root]
     roots = [environment_root, *existing]
     deduplicated = list(dict.fromkeys(roots))
     os.environ[NEMO_GYM_EXTRA_ROOTS_ENV_KEY] = os.pathsep.join(deduplicated)
 
 
-def _configure_environment_package(
+def _compose_gym_config_with_environment_package(
     global_config: dict[str, Any],
     package: EnvironmentPackage | None,
-) -> None:
+) -> dict[str, Any]:
     """Build Gym's ``config_paths`` from the mounted package plus any built-in fallbacks.
 
     The eval job records which agent, resources server, and model to run in a temporary
@@ -269,11 +271,17 @@ def _configure_environment_package(
     A package that uses the same name for both an agent and a resources server is
     rejected here, before Gym starts and hits that collision itself.
     """
-    selection = global_config.pop(ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY, None)
+    # Build the Gym-ready config on a copy, leaving the Evaluator payload unchanged.
+    gym_config = dict(global_config)
+    # This key is an Evaluator-to-host handoff, not part of Gym's schema. Remove it
+    # before the completed dictionary is passed to Gym's config parser.
+    selection = gym_config.pop(ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY, None)
     if package is None:
+        # Manifest-free image environments follow the existing path and need no
+        # Evaluator selection metadata.
         if selection is not None:
             raise RuntimeError("Gym component selection was supplied without an environment package")
-        return
+        return gym_config
     if not isinstance(selection, dict):
         raise RuntimeError("A mounted environment package requires Gym component selection metadata")
 
@@ -286,11 +294,15 @@ def _configure_environment_package(
     for field in required_string_fields:
         if not isinstance(selection.get(field), str) or not selection[field]:
             raise RuntimeError(f"Gym component selection requires a non-empty {field!r}")
-    # Optional: leave this unset when the package already ships the agent.
+
+    # Optional image-bundled fallback, required only when the package does not
+    # declare the selected agent instance.
     agent_config = selection.get("agent_config")
     if agent_config is not None and (not isinstance(agent_config, str) or not agent_config):
         raise RuntimeError("Gym component selection agent_config must be a non-empty string or null")
 
+    # Inspect YAML without importing customer modules. This catches ambiguous names
+    # before changing Gym's search path or starting any package code.
     try:
         components = inspect_environment_components(package)
         package_namespaces = inspect_environment_namespaces(package, components=components)
@@ -298,9 +310,10 @@ def _configure_environment_package(
     except EnvironmentPackageError as exc:
         raise RuntimeError(f"Invalid Gym environment components: {exc}") from exc
 
-    _prepend_environment_search_root(str(package.root))
     config_paths = [str(path) for path in package.config_paths]
     agent_instance = str(selection["agent_instance"])
+    # A package-owned agent wins. Add the image config only when the selected
+    # instance is absent from the package, avoiding duplicate Gym definitions.
     if agent_instance not in components.agents:
         if agent_config is None:
             raise RuntimeError(
@@ -312,10 +325,16 @@ def _configure_environment_package(
     # Custom models are not allowed. Always load the image's model YAML.
     config_paths.append(str(selection["model_config"]))
     resources_server_instance = str(selection["resources_server_instance"])
+
+    # Resources servers use the same package-first fallback rule as agents.
     if resources_server_instance not in components.resources_servers:
         config_paths.append(str(selection["resources_server_config"]))
 
-    global_config["config_paths"] = list(dict.fromkeys(config_paths))
+    # Preserve package-first ordering while removing a fallback already named by
+    # the manifest. Gym uses the first matching config.
+    gym_config["config_paths"] = list(dict.fromkeys(config_paths))
+
+    return gym_config
 
 
 def bootstrap_gym_host() -> tuple[Any, Any, Any]:
@@ -328,12 +347,19 @@ def bootstrap_gym_host() -> tuple[Any, Any, Any]:
     dependencies.
     """
     global_config = _load_global_config_dict()
+    # Apply writable uv locations before Gym creates per-component environments.
     _apply_uv_dirs(global_config)
     environment_package = _load_runtime_environment_package(
         os.environ.get("NMP_ENVIRONMENT_PATH", ""),
         required=_environment_package_required(),
     )
-    _configure_environment_package(global_config, environment_package)
+    # Compose config paths before dependency installation or Gym imports can execute
+    # anything from the mounted package.
+    global_config = _compose_gym_config_with_environment_package(global_config, environment_package)
+    if environment_package is not None:
+        # Put the mounted source ahead of image roots so Gym imports the components
+        # described by this package rather than same-named built-ins.
+        _prepend_environment_search_root(str(environment_package.root))
     _install_wheels_v1_dependencies(
         environment_package,
         os.environ.get("NMP_WORK_PATH", "/job/work"),
