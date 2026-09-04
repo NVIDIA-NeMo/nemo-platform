@@ -84,6 +84,26 @@ Ethos with them now. Ask the user whether they want you to:
 2. let them create the Ethos themselves from the documentation, then rerun the
    audit command with `--ethos <path>`.
 
+Use this user-facing message shape for that skills-present path:
+
+```text
+Missing Ethos
+
+Eval Author needs a source of truth for how the agent is supposed to behave before it can generate an audit coverage report.
+
+I could not find `ETHOS.md` at the repository root or a Platform-managed Ethos at `agents/<name>-ethos/ETHOS.md`.
+
+ETHOS.md records intended behavior, mission, constraints, success and failure criteria, and what may change.
+
+Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos
+
+`nemo-explore` and `nemo-ethos` are available here, so I can generate a real Ethos first and then resume audit coverage, or you can create/provide one yourself.
+
+How would you like to move forward?
+1. Generate the Ethos for me with `nemo-explore` and `nemo-ethos`.
+2. I'll create or provide an Ethos path myself.
+```
+
 Only offer automatic generation when both required skills are present and usable.
 If those skills are absent, unavailable, or live outside the current assistant
 environment, do not offer to generate it. Link the docs and tell the user to
