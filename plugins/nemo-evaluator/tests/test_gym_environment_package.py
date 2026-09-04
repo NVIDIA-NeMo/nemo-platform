@@ -73,7 +73,7 @@ def test_invalid_manifests_are_rejected(raw_manifest: str) -> None:
                 "resources_servers/custom/configs/custom.yaml",
                 "wheels/requirements.txt",
             ],
-            "Non-wheel files",
+            "non-wheel files",
         ),
         (
             [
@@ -84,7 +84,7 @@ def test_invalid_manifests_are_rejected(raw_manifest: str) -> None:
             ],
             "model configuration is operator-owned",
         ),
-        (["nemo-environment.yaml"], "field references files that are not in the package"),
+        (["nemo-environment.yaml"], "config_paths reference files that are not in the package"),
         (
             [
                 "nemo-environment.yaml",
@@ -92,7 +92,7 @@ def test_invalid_manifests_are_rejected(raw_manifest: str) -> None:
                 "training.jsonl",
                 "wheels/custom_dependency-1.0-py3-none-any.whl",
             ],
-            "Prompt JSONL",
+            "prompt JSONL",
         ),
     ],
 )

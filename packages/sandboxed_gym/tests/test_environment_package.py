@@ -257,7 +257,7 @@ def test_listing_rejects_prompt_jsonl() -> None:
     [
         ([], "non-empty wheels/ directory"),
         (["wheels/nested/dependency-1.0-py3-none-any.whl"], "must be flat"),
-        (["wheels/requirements.txt"], "Non-wheel files"),
+        (["wheels/requirements.txt"], "non-wheel files"),
     ],
 )
 def test_listing_rejects_invalid_wheelhouse_entries(wheel_entries: list[str], error: str) -> None:
