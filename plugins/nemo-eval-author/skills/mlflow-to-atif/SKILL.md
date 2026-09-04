@@ -94,7 +94,10 @@ that version; do not relabel v1.7 output as v1.8.
   agent steps with paired tool calls and observations.
 - Flatten the span tree into timestamp order while retaining native IDs, parent
   IDs, attributes, events, status, and assessments under namespaced `mlflow`
-  metadata.
+  metadata. When an event's parent-span bounds prove that its nominal
+  `time_unix_nano` value is actually in microseconds, normalize that value to
+  nanoseconds and record the correction under
+  `extra.mlflow_to_atif.normalization_codes`.
 - Reject unresolved parents, cycles, and exported search pages with a non-empty
   `next_page_token`; collect the complete export before conversion.
 - Distinguish missing, explicit null, and populated tool outputs in each result's
