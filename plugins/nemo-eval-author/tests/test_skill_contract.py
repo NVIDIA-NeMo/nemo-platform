@@ -1098,6 +1098,11 @@ def test_audit_skill_routes_missing_ethos_to_platform_skills() -> None:
     assert "I'll create or provide an Ethos path myself" in preflight
     assert "Only offer automatic generation when both required skills are present and usable" in normalized_preflight
     assert "do not offer to generate it" in normalized_preflight
+    assert "Use this user-facing message shape for that skills-unavailable path" in normalized_preflight
+    assert "I do not have access to both required Ethos creation skills" in normalized_preflight
+    assert "so I cannot generate one automatically here" in normalized_preflight
+    assert "Create or provide an Ethos path" in normalized_preflight
+    assert "rerun the audit flow with `--ethos <path>`" in normalized_preflight
     assert "nemo-explore" in preflight
     assert "nemo-ethos" in preflight
     assert "agents/<name>-ethos/ETHOS.md" in preflight
