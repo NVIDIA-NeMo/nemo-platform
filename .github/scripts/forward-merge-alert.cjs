@@ -231,6 +231,10 @@ async function sendForwardMergeAlert({
   fetchImpl,
   workspace,
 }) {
+  if (!env.SLACK_ALERTS_WEBHOOK) {
+    throw new Error("SLACK_ALERTS_WEBHOOK is not set");
+  }
+
   const { owner, repo } = context.repo;
   const issue = context.payload.issue;
   let source;

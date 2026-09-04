@@ -242,4 +242,19 @@ test("falls back to the basic alert when PR metadata fails", async () => {
   assert.match(result.text, /Source: unavailable/);
   assert.match(result.text, /Conflict metadata unavailable/);
   assert.match(warnings[0], /Unable to read forward-merge PR/);
+
+  await assert.rejects(
+    sendForwardMergeAlert({
+      github,
+      context,
+      core,
+      env: {
+        RUN_URL:
+          "https://github.com/NVIDIA-NeMo/nemo-platform/actions/runs/1234",
+      },
+      fetchImpl: async () => assert.fail("fetch should not be called"),
+      workspace: ".",
+    }),
+    /SLACK_ALERTS_WEBHOOK is not set/,
+  );
 });
