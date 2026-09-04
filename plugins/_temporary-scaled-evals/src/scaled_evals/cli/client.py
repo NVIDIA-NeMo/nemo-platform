@@ -16,14 +16,40 @@ import json
 import os
 import tempfile
 from collections.abc import Iterator
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import click
 import httpx
 
 DEFAULT_BASE_URL = "http://localhost:8080"
 TIMEOUT = 30.0
+
+
+def _is_loopback(hostname: str | None) -> bool:
+    if hostname == "localhost":
+        return True
+    try:
+        return bool(hostname and ip_address(hostname).is_loopback)
+    except ValueError:
+        return False
+
+
+def _validate_url(url: str, *, purpose: str, allow_local_http: bool = True) -> None:
+    try:
+        parsed = urlsplit(url)
+        parsed.port
+    except ValueError as exc:
+        raise click.ClickException(f"{purpose} URL is invalid") from exc
+    if not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.fragment:
+        raise click.ClickException(f"{purpose} URL is invalid")
+    if parsed.scheme.lower() == "https":
+        return
+    if allow_local_http and parsed.scheme.lower() == "http" and _is_loopback(parsed.hostname):
+        return
+    raise click.ClickException(f"{purpose} URL must use HTTPS")
 
 
 class ApiError(click.ClickException):
@@ -65,6 +91,8 @@ def make_client(
     URLs, where a stray ``Authorization`` can clash with the URL's own
     signature. The presigned helpers below each pop it back off for that reason.
     """
+    if token:
+        _validate_url(base_url, purpose="API", allow_local_http=False)
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     # Redirects are not followed (httpx's default), which is what lets download_artifact
     # strip auth before following one itself. Every status check below therefore tests for
@@ -126,6 +154,7 @@ def upload_file(client: httpx.Client, upload: dict[str, Any], path: Path) -> Non
     url = upload.get("url")
     if not url:
         raise click.ClickException("response has no upload url")
+    _validate_url(str(url), purpose="upload")
     size_bytes = path.stat().st_size
     headers = dict(upload.get("headers", {}))
     if upload.get("mode") == "gcs_resumable":
@@ -156,6 +185,7 @@ def upload_multipart_archive(
     path: Path,
 ) -> dict[str, Any]:
     """Upload an archive to an external multipart endpoint without API auth."""
+    _validate_url(upload_url, purpose="upload")
     try:
         with path.open("rb") as source:
             request_ = client.build_request(
@@ -189,6 +219,7 @@ def download_artifact(client: httpx.Client, api_path: str, dest: Path) -> None:
             response.close()
             if not location:
                 raise click.ClickException("artifact redirect carried no location")
+            _validate_url(location, purpose="artifact redirect")
             request_ = client.build_request("GET", location)
             request_.headers.pop("authorization", None)
             response = client.send(request_, stream=True)
@@ -205,6 +236,7 @@ def fetch_artifact(client: httpx.Client, api_path: str) -> bytes:
             location = resp.headers.get("location")
             if not location:
                 raise click.ClickException("artifact redirect carried no location")
+            _validate_url(location, purpose="artifact redirect")
             req = client.build_request("GET", location)
             req.headers.pop("authorization", None)
             resp = client.send(req)
@@ -220,8 +252,11 @@ def download_presigned(client: httpx.Client, download: dict[str, Any], dest: Pat
     url = download.get("url")
     if not url:
         raise click.ClickException("response has no download url")
+    parsed_url = httpx.URL(str(url))
+    if parsed_url.is_absolute_url:
+        _validate_url(str(url), purpose="download")
     req = client.build_request(download.get("method", "GET"), url)
-    if httpx.URL(url).is_absolute_url:
+    if parsed_url.is_absolute_url:
         req.headers.pop("authorization", None)
     try:
         resp = client.send(req, stream=True)

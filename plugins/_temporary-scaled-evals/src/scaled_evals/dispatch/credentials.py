@@ -10,6 +10,7 @@ map to runtime backends. API read paths continue to return metadata only.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,8 +46,10 @@ def _env_file_value(value: str) -> str:
 def write_env_file(path: Path, env: Mapping[str, str]) -> None:
     """Write an env file from already-materialized values."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(f"{key}={_env_file_value(value)}\n" for key, value in env.items()))
-    path.chmod(0o600)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write("".join(f"{key}={_env_file_value(value)}\n" for key, value in env.items()))
 
 
 def credential_env_from_rows(rows: list[Mapping[str, object]]) -> dict[str, str]:
