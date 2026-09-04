@@ -13611,7 +13611,7 @@ var bg = class t extends e.Component {
 	justify: "between",
 	align: "start",
 	gap: "density-md",
-	className: "py-2",
+	className: "min-w-0 py-2",
 	children: [/* @__PURE__ */ m(F, {
 		gap: "density-xxs",
 		className: "min-w-0",
@@ -13639,7 +13639,7 @@ var bg = class t extends e.Component {
 	justify: "between",
 	align: "start",
 	gap: "density-md",
-	className: "py-2",
+	className: "min-w-0 py-2",
 	children: [/* @__PURE__ */ m(F, {
 		gap: "density-xxs",
 		className: "min-w-0",
