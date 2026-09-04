@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -26,7 +27,7 @@ from urllib.parse import urlparse
 import httpx
 import typer
 import yaml as _yaml
-from nemo_platform import NeMoPlatform
+from nemo_platform import APIConnectionError, APIStatusError, APITimeoutError, NeMoPlatform
 from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.secrets.client import SecretsClient
@@ -249,6 +250,15 @@ _KEY_VALIDATION_TIMEOUT = 10.0
 _KEY_REJECTED_STATUS_CODES = (401, 403)
 _TERMINAL_PROBE_STATUS_CODES = (404, 405, 410)
 _KEY_REJECTED_MESSAGE = "API key validation failed. The provider rejected the credentials."
+
+# Catalog listing is not entitlement-scoped; only a successful chat request counts.
+_MODEL_PROBE_TIMEOUT = 20.0
+_MODEL_PROBE_MAX_ATTEMPTS = 8
+_MODEL_PROBE_BUDGET_SECONDS = 90.0
+# Gateway 404s until the model's VirtualModel exists; retries are shared and capped.
+_MODEL_ROUTE_READY_SECONDS = 10.0
+_MODEL_ROUTE_RETRY_INTERVAL = 1.0
+_MODEL_ROUTE_MAX_RETRIES = 10
 
 _MODEL_DISCOVERY_ROUND_SECONDS = 30
 _MODEL_DISCOVERY_MAX_ROUNDS = 2
@@ -810,7 +820,16 @@ def _get_all_model_entity_ids(
     return sorted(set(entity_ids))
 
 
-_NON_CHAT_MODEL_MARKERS = ("embed", "embedding", "vision", "guard", "rerank", "fuyu")
+_NON_CHAT_MODEL_MARKERS = (
+    "embed",
+    "embedding",
+    "vision",
+    "guard",
+    "rerank",
+    "fuyu",
+    "reward",
+    "translate",
+)
 
 
 def _is_usable_chat_model_entity(entity_id: str) -> bool:
@@ -828,6 +847,117 @@ def _pick_default_chat_entity(entity_ids: list[str]) -> str | None:
         if _is_usable_chat_model_entity(entity_id):
             return entity_id
     return None
+
+
+_MODEL_SIZE_PATTERN = re.compile(r"(?<![a-z0-9.])(\d+(?:\.\d+)?)b(?![a-z0-9])")
+
+
+def _model_parameter_size(entity_id: str) -> float | None:
+    """Return the largest ``Nb`` parameter count parsed from an entity name."""
+    name = _display_model_name(entity_id).lower().replace("_", "-")
+    sizes = [float(match) for match in _MODEL_SIZE_PATTERN.findall(name)]
+    return max(sizes) if sizes else None
+
+
+def _is_preferred_vendor(entity_id: str) -> bool:
+    """Return whether the entity name identifies an NVIDIA-published model."""
+    name = _display_model_name(entity_id).lower().replace("_", "-")
+    return name.startswith(("nvidia-", "nvidia/", "nv-", "nv/")) or "nemotron" in name
+
+
+def _order_candidates_by_size(entity_ids: list[str], *, largest_first: bool) -> list[str]:
+    """Order NVIDIA models first, then by parsed size; unnamed sizes sort last."""
+
+    def sort_key(entity_id: str) -> tuple[bool, bool, float, str]:
+        size = _model_parameter_size(entity_id)
+        ranked = 0.0 if size is None else (-size if largest_first else size)
+        return (not _is_preferred_vendor(entity_id), size is None, ranked, entity_id)
+
+    return sorted(entity_ids, key=sort_key)
+
+
+def _probe_model_entity(client: NeMoPlatform, workspace: str, entity_id: str) -> bool:
+    """Return True when a short chat request against *entity_id* succeeds.
+
+    Retries route 404s; timeouts skip; connection errors raise.
+    """
+    route_ready_deadline = time.monotonic() + _MODEL_ROUTE_READY_SECONDS
+    retries = 0
+    while True:
+        try:
+            client.inference.gateway.openai.post(
+                "v1/chat/completions",
+                workspace=workspace,
+                body={
+                    "model": entity_id,
+                    "messages": [{"role": "user", "content": "Respond with 'OK'"}],
+                    "max_tokens": 16,
+                },
+            )
+        except APITimeoutError:
+            logger.debug("Model probe for '%s' timed out", entity_id, exc_info=True)
+            console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} (timed out)")
+            return False
+        except APIConnectionError:
+            raise
+        except APIStatusError as exc:
+            detail = str(exc.body or exc.response.text or exc)
+            entitlement_miss = "not found for account" in detail.lower()
+            if (
+                exc.status_code == 404
+                and not entitlement_miss
+                and retries < _MODEL_ROUTE_MAX_RETRIES
+                and time.monotonic() < route_ready_deadline
+            ):
+                retries += 1
+                _pause(_MODEL_ROUTE_RETRY_INTERVAL)
+                continue
+            console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} (HTTP {exc.status_code})")
+            return False
+        except Exception as exc:
+            logger.debug("Model probe for '%s' failed", entity_id, exc_info=True)
+            console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} ({exc})")
+            return False
+        return True
+
+
+def _select_usable_model_pair(client: NeMoPlatform, workspace: str, entity_ids: list[str]) -> ModelPair | None:
+    """Choose the largest and smallest models that answer a chat request.
+
+    Returns ``None`` when nothing answers, including when the gateway is
+    unreachable, so setup does not persist an unusable default.
+    """
+    candidates = [entity_id for entity_id in entity_ids if _is_usable_chat_model_entity(entity_id)]
+    if not candidates:
+        return None
+
+    usable: dict[str, bool] = {}
+    probe_client = client.with_options(max_retries=0, timeout=_MODEL_PROBE_TIMEOUT)
+    started = time.monotonic()
+    deadline = started + _MODEL_PROBE_BUDGET_SECONDS
+
+    def first_usable(ordered: list[str]) -> str | None:
+        attempts = 0
+        for entity_id in ordered:
+            if entity_id not in usable:
+                if attempts >= _MODEL_PROBE_MAX_ATTEMPTS or time.monotonic() >= deadline:
+                    return None
+                attempts += 1
+                usable[entity_id] = _probe_model_entity(probe_client, workspace, entity_id)
+            if usable[entity_id]:
+                return entity_id
+        return None
+
+    console.print("  Verifying models with a short inference request...")
+    try:
+        default_model = first_usable(_order_candidates_by_size(candidates, largest_first=True))
+        if default_model is None:
+            return None
+        fast_model = first_usable(_order_candidates_by_size(candidates, largest_first=False)) or default_model
+    except APIConnectionError as exc:
+        console.print(f"  {WARN} Could not verify models ({exc}).")
+        return None
+    return ModelPair(default=default_model, fast=fast_model)
 
 
 def _get_all_model_choices(
@@ -2040,21 +2170,25 @@ def _select_model_pair(
         console.print(f"  {WARN} No models discovered yet. You can select models later.")
         return None
 
-    suggested = _pick_default_chat_entity([entity_id for entity_id, _ in display_models])
-    if suggested is None:
+    entity_ids = [entity_id for entity_id, _ in display_models]
+    if _pick_default_chat_entity(entity_ids) is None:
         console.print(f"  {WARN} No usable chat models discovered yet. You can select models later.")
         return None
+
+    suggested = _select_usable_model_pair(client, workspace, entity_ids)
+    if suggested is None:
+        console.print(f"  {WARN} None of the discovered models served a test request; choose a model explicitly.")
 
     default_model = prompt_select(
         "Choose your default model (used for quality-critical agent work):",
         choices=display_models,
-        default=suggested,
-        hint="Press Enter to accept the default.",
+        default=suggested.default if suggested else None,
+        hint="Press Enter to accept the default." if suggested else "Choose a model you can access.",
     )
     fast = prompt_select(
         "Choose your fast model (used for latency-sensitive agent work):",
         choices=display_models,
-        default=default_model,
+        default=suggested.fast if suggested else default_model,
         hint="Press Enter to reuse the default model.",
     )
     return ModelPair(default=default_model, fast=fast)
@@ -2445,21 +2579,32 @@ def _run_auto_mode(
         )
     )
 
-    default_model = os.environ.get("NEMO_DEFAULT_MODEL", "").strip()
-    if not default_model and entity_ids:
-        default_model = _pick_default_chat_entity(entity_ids) or ""
-    fast_model = os.environ.get("NEMO_FAST_MODEL", "").strip() or default_model
+    # An explicit NEMO_DEFAULT_MODEL is taken as given; anything auto-selected
+    # has to answer a real inference request first.
+    default_override = os.environ.get("NEMO_DEFAULT_MODEL", "").strip()
+    fast_override = os.environ.get("NEMO_FAST_MODEL", "").strip()
+    if default_override:
+        model_pair = ModelPair(default=default_override, fast=fast_override or default_override)
+    elif entity_ids:
+        selected = _select_usable_model_pair(client, workspace, entity_ids)
+        model_pair = ModelPair(default=selected.default, fast=fast_override or selected.fast) if selected else None
+    else:
+        model_pair = None
 
-    if default_model:
-        model_pair = ModelPair(default=default_model, fast=fast_model)
+    if model_pair:
         _save_model_pair(cli_context, model_pair)
         console.print(f"  {CHECK} Default model: {model_pair.default}")
         console.print(f"  {CHECK} Fast model: {model_pair.fast}")
     else:
-        if fast_model:
+        if fast_override:
             console.print(f"  {WARN} NEMO_FAST_MODEL is ignored until a default model is available")
-        console.print(f"  {WARN} No default model set (no models discovered yet)")
-        console.print("  Run [cyan]nemo setup[/cyan] again after models sync, or set the models via env vars:")
+        if entity_ids:
+            console.print(f"  {WARN} No default model set (none of the discovered models served a test request)")
+            console.print("  The provider advertises models this account cannot run. Check the account's")
+            console.print("  model entitlements, or pick a model yourself:")
+        else:
+            console.print(f"  {WARN} No default model set (no models discovered yet)")
+            console.print("  Run [cyan]nemo setup[/cyan] again after models sync, or set the models via env vars:")
         console.print("    [cyan]export NEMO_DEFAULT_MODEL=<model>[/cyan]")
         console.print("    [cyan]export NEMO_FAST_MODEL=<model>[/cyan]")
 
@@ -2475,7 +2620,7 @@ def _run_auto_mode(
         workspace,
         auto=True,
         deploy_agent=deploy_agent,
-        default_model=default_model,
+        default_model=model_pair.default if model_pair else "",
         headers=_platform_request_headers(cli_context),
         certificate_authority=certificate_authority,
     )
@@ -2483,7 +2628,7 @@ def _run_auto_mode(
     if not _verify_platform_health(base_url, certificate_authority=certificate_authority):
         raise typer.Exit(1)
 
-    if default_model:
+    if model_pair:
         console.print(f"\n{CHECK} [green]Setup complete![/green]")
     else:
         console.print(f"\n{WARN} [yellow]Setup complete with warnings.[/yellow]")
