@@ -227,3 +227,41 @@ def test_a_non_finite_capture_timestamp_costs_the_timestamp_not_the_trace(timest
     llm = [span for span in spans if _kind(span) == "LLM"]
     assert len(llm) == 1
     assert llm[0].start_time_unix_nano == 0
+
+
+def test_a_message_whose_content_is_plain_text_is_still_the_answer() -> None:
+    # The Responses API allows content to be a bare string rather than a list of parts.
+    spans = _spans({"response": {"output": [{"type": "message", "content": "Four."}]}})
+
+    assert _attributes(spans[0])["output.value"] == "Four."
+
+
+def test_an_answer_is_taken_from_the_last_message_that_has_one() -> None:
+    # A trailing item with unusable content must not mask an earlier real answer.
+    record = {"response": {"output": [_message("Four."), {"type": "message", "content": {"unusable": True}}]}}
+
+    assert _attributes(_spans(record)[0])["output.value"] == "Four."
+
+
+def test_a_prompt_falls_back_to_instructions_when_input_is_empty() -> None:
+    # Gym rollouts that carry only a system prompt leave `input` empty rather than absent.
+    record = {"responses_create_params": {"input": [], "instructions": "Answer briefly."}, "response": {}}
+
+    assert _attributes(_spans(record)[0])["input.value"] == "Answer briefly."
+
+
+def test_a_capture_reporting_no_usable_token_counts_omits_them() -> None:
+    # An absent count and a zero count are different claims; only the zero should reach the span.
+    spans = _spans({"response": {}}, model_calls=[_capture(response={"usage": {"something_else": 3}})])
+
+    attributes = _attributes([span for span in spans if _kind(span) == "LLM"][0])
+    assert "gen_ai.usage.input_tokens" not in attributes
+    assert "gen_ai.usage.output_tokens" not in attributes
+
+
+def test_the_answer_is_the_agent_s_last_message_not_its_first() -> None:
+    # A multi-turn rollout ends with the answer; taking the first message would score the agent's
+    # opening move, which is often a plan or a restatement of the question.
+    record = {"response": {"output": [_message("Let me check."), _message("Four.")]}}
+
+    assert _attributes(_spans(record)[0])["output.value"] == "Four."
