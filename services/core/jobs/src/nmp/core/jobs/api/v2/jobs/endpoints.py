@@ -51,6 +51,7 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
 from nmp.core.jobs.app.ctx import JobContext
 from nmp.core.jobs.app.dispatcher import (
     JobAlreadyExistsError,
+    JobDeletionConflictError,
     JobDispatcher,
     JobOutputLocationError,
     JobSecretValidationError,
@@ -452,6 +453,7 @@ async def resume_job(
     responses={
         status.HTTP_204_NO_CONTENT: {"description": "Successful Response"},
         status.HTTP_404_NOT_FOUND: {"description": "Job not Found"},
+        status.HTTP_409_CONFLICT: {"description": "Job is not in a terminal state"},
     },
 )
 async def delete_job(
@@ -461,7 +463,19 @@ async def delete_job(
 ) -> None:
     """Delete a platform job."""
     with scoped_app_ctx(JobContext(id=name)):
-        deleted = await dispatcher.delete_job(name, workspace)
+        try:
+            deleted = await dispatcher.delete_job(name, workspace)
+        except JobDeletionConflictError as exc:
+            logger.info(
+                "Cannot delete job '%s' in workspace '%s'",
+                sanitize_for_log(name),
+                sanitize_for_log(workspace),
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -546,9 +560,9 @@ async def page_job_logs(
             )
 
         try:
-            filters = {
+            filters: dict[str, str] = {
                 "job": name,
-                "job_attempt": attempt_id if attempt_id is not None else job.attempt_id,
+                "job_attempt": str(attempt_id) if attempt_id is not None else job.attempt_id,
             }
             if step_id:
                 filters["job_step"] = step_id

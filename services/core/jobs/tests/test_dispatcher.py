@@ -26,7 +26,7 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobResponse,
     PlatformJobTaskUpdate,
 )
-from nmp.core.jobs.app.dispatcher import JobDispatcher
+from nmp.core.jobs.app.dispatcher import JobDeletionConflictError, JobDispatcher
 from nmp.core.jobs.app.schemas import (
     PlatformJobStepSpec,
 )
@@ -186,6 +186,34 @@ async def test_delete_job_nonexistent_job(mock_dispatcher: JobDispatcher):
     # This should return False when the job doesn't exist
     deleted = await mock_dispatcher.delete_job("nonexistent-job-id", DEFAULT_WORKSPACE)
     assert deleted is False
+
+
+@pytest.mark.asyncio
+async def test_delete_job_non_terminal_job_raises_without_deleting_data(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+    _mock_files_client,
+):
+    """Deleting an active job is refused before metadata or fileset cleanup."""
+    job_id, job_name, attempt_id, step_id, _, _ = await create_test_job_data(mock_store, "active-delete-test-job")
+
+    attempt = await mock_store.get_by_id(PlatformJobAttempt, attempt_id)
+    attempt.status = PlatformJobStatus.ACTIVE
+    await mock_store.update(attempt)
+
+    step = await mock_store.get_by_id(PlatformJobStep, step_id)
+    step.status = PlatformJobStatus.ACTIVE
+    await mock_store.update(step)
+
+    with pytest.raises(JobDeletionConflictError, match="Cancel the job and wait"):
+        await mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE)
+
+    await verify_job_data_exists(mock_store, job_id, should_exist=True)
+    assert await count_entities(mock_store, PlatformJobAttempt, {"job": job_id}) == 1
+    assert await count_entities(mock_store, PlatformJobStep, {"attempt_id": attempt_id}) == 1
+    assert await count_entities(mock_store, PlatformJobTask, {"step_id": step_id}) == 1
+    assert await count_entities(mock_store, PlatformJobResult, {"job": job_id}) == 1
+    _mock_files_client.delete_fileset.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -392,6 +420,10 @@ async def test_create_then_delete_auto_fileset_round_trip(
 
     job = await mock_dispatcher.create_job(sample_platform_job_request, DEFAULT_WORKSPACE)
     assert job.fileset == f"job-fileset-{job.name}"
+
+    cancelled = await mock_dispatcher.cancel_job(job.name, DEFAULT_WORKSPACE)
+    assert cancelled is not None
+    assert cancelled.status == PlatformJobStatus.CANCELLED
 
     deleted = await mock_dispatcher.delete_job(job.name, DEFAULT_WORKSPACE)
 

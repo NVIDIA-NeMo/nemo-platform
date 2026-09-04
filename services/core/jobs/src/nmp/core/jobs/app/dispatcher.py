@@ -62,6 +62,10 @@ class JobAlreadyExistsError(ValueError):
     """Exception raised when creating a job whose name is already in use."""
 
 
+class JobDeletionConflictError(ValueError):
+    """Exception raised when deleting a job that is not safe to hard-delete."""
+
+
 class JobSecretValidationError(ValueError):
     """Exception raised when a job's secret references cannot be validated."""
 
@@ -103,6 +107,12 @@ def create_platform_job_response(job: PlatformJob, attempt: PlatformJobAttempt) 
         ownership=ownership,
         custom_fields=job.custom_fields,
     )
+
+
+def _format_status_for_message(status: PlatformJobStatus | str) -> str:
+    if isinstance(status, PlatformJobStatus):
+        return status.value
+    return str(status)
 
 
 # Status lives on PlatformJobAttempt, not PlatformJob, so it cannot be
@@ -359,7 +369,7 @@ class JobDispatcher:
         except EntityNotFoundError:
             return None
         try:
-            attempt = await self.store.get_by_id(PlatformJobAttempt, job_entity.current_attempt_id)  # type: ignore
+            attempt = await self.store.get_by_id(PlatformJobAttempt, job_entity.current_attempt_id)
         except EntityNotFoundError:
             return None
         return create_platform_job_response(job_entity, attempt)
@@ -447,6 +457,30 @@ class JobDispatcher:
                 page_size=1000,
                 workspace=workspace,
             )
+            steps_by_attempt: dict[str, list[PlatformJobStep]] = {}
+            for attempt in attempts_response.data:
+                if not attempt.status.is_terminal():
+                    raise JobDeletionConflictError(
+                        f"Cannot delete job '{job_entity.name}' while it is "
+                        f"'{_format_status_for_message(attempt.status)}'. Cancel the job and wait for it to reach a "
+                        "terminal state before deleting."
+                    )
+
+                steps_response = await self.store.list(
+                    PlatformJobStep,
+                    filter_obj={"attempt_id": attempt.id},
+                    page_size=1000,
+                    workspace=workspace,
+                )
+                steps_by_attempt[attempt.id] = steps_response.data
+
+                for step in steps_response.data:
+                    if not step.status.is_terminal():
+                        raise JobDeletionConflictError(
+                            f"Cannot delete job '{job_entity.name}' while step '{step.name}' is "
+                            f"'{_format_status_for_message(step.status)}'. Cancel the job and wait for it to reach a "
+                            "terminal state before deleting."
+                        )
 
             # Get all results
             results_response = await self.store.list(
@@ -461,14 +495,7 @@ class JobDispatcher:
 
             # Delete steps and tasks for each attempt
             for attempt in attempts_response.data:
-                steps_response = await self.store.list(
-                    PlatformJobStep,
-                    filter_obj={"attempt_id": attempt.id},
-                    page_size=1000,
-                    workspace=workspace,
-                )
-
-                for step in steps_response.data:
+                for step in steps_by_attempt[attempt.id]:
                     # Delete tasks
                     tasks_response = await self.store.list(
                         PlatformJobTask,
@@ -508,6 +535,9 @@ class JobDispatcher:
             operations_counter.add(1, attributes={"operation": "delete_job"})
             return True
 
+        except JobDeletionConflictError:
+            logger.info("Refusing to delete non-terminal job", extra=extras)
+            raise
         except Exception as e:
             logger.exception("Error deleting job", extra=extras)
             raise e

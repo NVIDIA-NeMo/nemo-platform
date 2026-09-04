@@ -350,6 +350,22 @@ def _delete_nss_job(sdk: NeMoPlatform, workspace: str, name: str, *, verify: boo
         headers=_string_headers(sdk),
         timeout=60.0,
     )
+    if response.status_code == 409:
+        try:
+            _wait_for_status(
+                sdk,
+                workspace,
+                name,
+                timeout_seconds=SMOKE_JOB_TIMEOUT_SECONDS,
+                poll_interval_seconds=2.0,
+            )
+        except Exception:
+            response.raise_for_status()
+        response = sdk._client.delete(
+            _nss_url(sdk, workspace, f"jobs/{name}"),
+            headers=_string_headers(sdk),
+            timeout=60.0,
+        )
     if response.status_code not in {200, 202, 204, 404}:
         response.raise_for_status()
     if verify:
@@ -584,7 +600,15 @@ def nss_job(sdk: NeMoPlatform, workspace: str) -> Iterator[NssJobFactory]:
         yield create
     finally:
         for job_name in reversed(job_names):
-            _cancel_nss_job(sdk, workspace, job_name)
+            cancel_response = _cancel_nss_job(sdk, workspace, job_name)
+            if cancel_response is not None:
+                _wait_for_status(
+                    sdk,
+                    workspace,
+                    job_name,
+                    timeout_seconds=SMOKE_JOB_TIMEOUT_SECONDS,
+                    poll_interval_seconds=2.0,
+                )
             _delete_nss_job(sdk, workspace, job_name)
 
 

@@ -155,6 +155,8 @@ async def test_job_lifecycle_methods_round_trip(
     assert cancelled.status == PlatformJobStatus.CANCELLED
 
     deleted_job = await _create_job(jobs_client, sample_platform_job_request, "typed-delete")
+    delete_ready = (await jobs_client.cancel_job(workspace="default", name=deleted_job.name)).data()
+    assert delete_ready.status == PlatformJobStatus.CANCELLED
     deleted = await jobs_client.delete_job(workspace="default", name=deleted_job.name)
     assert deleted.http_response.status_code == 204
 

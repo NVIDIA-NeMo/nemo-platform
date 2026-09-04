@@ -17,7 +17,30 @@ logger = logging.getLogger(__name__)
 class GPUAllocationError(Exception):
     """Raised when GPU allocation fails due to insufficient resources."""
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        requested: int | None = None,
+        available: int | None = None,
+        total: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.requested = requested
+        self.available = available
+        self.total = total
+
+    @property
+    def is_transient_capacity_exhaustion(self) -> bool:
+        """Whether a retry could succeed after another workload releases GPUs."""
+        return (
+            self.requested is not None
+            and self.available is not None
+            and self.total is not None
+            and self.requested > 0
+            and self.available < self.requested <= self.total
+        )
 
 
 @dataclass
@@ -92,9 +115,13 @@ class DockerGPUPool:
             available_gpus = {gpu for gpu, workload in self.gpu_to_workload_id.items() if workload is None}
 
             if len(available_gpus) < num_requested:
+                available_count = len(available_gpus)
                 raise GPUAllocationError(
                     f"Not enough GPUs available. Requested {num_requested}, "
-                    f"available {len(available_gpus)} out of {self.num_reserved_gpus} total."
+                    f"available {available_count} out of {self.num_reserved_gpus} total.",
+                    requested=num_requested,
+                    available=available_count,
+                    total=self.num_reserved_gpus,
                 )
             gpu_ids = []
             for _ in range(num_requested):

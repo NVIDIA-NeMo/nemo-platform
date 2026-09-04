@@ -51,6 +51,7 @@ from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation
 from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
 from nemo_platform_plugin.authz import AuthzScope, CallerKind, path_rule
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
@@ -1083,6 +1084,10 @@ def job_route_factory(
         @router.delete(
             "/jobs/{name}",
             status_code=status.HTTP_204_NO_CONTENT,
+            responses={
+                status.HTTP_404_NOT_FOUND: {"description": "Job not Found"},
+                status.HTTP_409_CONFLICT: {"description": "Job is not in a terminal state"},
+            },
         )
         async def delete_job(
             workspace: str,
@@ -1090,7 +1095,10 @@ def job_route_factory(
             sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
         ) -> None:
             f"""Delete a job by name for the {service_name} microservice."""
-            await client_from_platform(sdk, AsyncJobsClient).delete_job(name=name, workspace=workspace)
+            try:
+                await client_from_platform(sdk, AsyncJobsClient).delete_job(name=name, workspace=workspace)
+            except NemoHTTPError as exc:
+                raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
             return None
 
         @router.post(

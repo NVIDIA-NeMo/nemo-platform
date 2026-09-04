@@ -2325,6 +2325,8 @@ class GPUDockerJobBackend(DockerJobBackend[GPUExecutionProvider]):
         try:
             gpu_ids = self.gpu_pool.allocate_gpu(container_args["labels"][JOB_STEP_ID_LABEL], num_requested=num_gpus)
         except GPUAllocationError as e:
+            if e.is_transient_capacity_exhaustion:
+                raise SchedulingDeferred(str(e)) from e
             raise ResourceAllocationError(str(e)) from e
 
         container_args["device_requests"] = [
