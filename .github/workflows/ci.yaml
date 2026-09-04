@@ -1166,7 +1166,7 @@ jobs:
   # agent_eval.runtimes.harbor_runtime. Catches undeclared deps (workspace sync hides them)
   # and broken lazy barrels that pull in the metric/execution stack.
   evaluator-sdk-closure-smoke:
-    name: Evaluator SDK dependency-closure smoke (Linux, py3.11)
+    name: Evaluator SDK dependency-closure smoke (Linux, py${{ matrix.python-version }})
     needs: [changes]
     if: >
       !cancelled() &&
@@ -1174,6 +1174,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Must satisfy uv.lock's requires-python (>=3.12,<3.14), which this job syncs against.
+        python-version: ["3.12"]
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -1182,32 +1187,24 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          # The SDK floor is 3.11; the workspace lock and python-unit-test are 3.12. This job
-          # is the only CI that installs the package on 3.11 (no extras/siblings).
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - name: Install nemo-evaluator-sdk with no extras
-        run: |
-          uv venv --python 3.11 .venv
-          uv pip install --python .venv/bin/python --editable packages/nemo_evaluator_sdk
-      # pytest is not an SDK dependency; install the runner only (do not add SDK extras).
+      - name: Install nemo-evaluator-sdk with no extras and no dev group
+        run: uv sync --frozen --package nemo-evaluator-sdk --no-dev
+      # pytest is not in the package-only sync; install the runner only (do not add SDK deps).
       # WHY BOTH THIS JOB AND THE UNIT TEST:
       # - Unit-test CI syncs the whole workspace: a sibling (e.g. nemo-platform-sdk) may already
       #   provide httpx, so an undeclared SDK dep still imports — green here, broken for consumers
       #   who only installed nemo-evaluator-sdk.
-      # - This job installs the SDK package directly (no extras/siblings) so that undeclared-dep
-      #   case fails, then runs test_lazy_public_api (laziness assertions; one source of truth — no
-      #   duplicated heredoc probe). Direct installation also avoids imposing the workspace's 3.12
-      #   floor on the SDK's supported 3.11 environment.
+      # - This job: `uv sync --package nemo-evaluator-sdk --no-dev` (no extras/siblings) so that
+      #   undeclared-dep case fails, then runs test_lazy_public_api (laziness assertions; one source
+      #   of truth — no duplicated heredoc probe).
       - name: Run lazy-import closure unit test under the stripped install
         run: |
           uv pip install --python .venv/bin/python pytest
-          .venv/bin/python -m pytest \
-            packages/nemo_evaluator_sdk/tests/test_lazy_public_api.py::test_agent_eval_import_does_not_pull_the_execution_stack \
-            packages/nemo_evaluator_sdk/tests/test_lazy_public_api.py::test_harbor_adapter_invocation_without_extra_has_actionable_error \
-            packages/nemo_evaluator_sdk/tests/test_lazy_public_api.py::test_harbor_execution_without_extra_has_actionable_error \
-            -v
+          uv run --frozen --no-sync pytest \
+            packages/nemo_evaluator_sdk/tests/test_lazy_public_api.py::test_agent_eval_import_does_not_pull_the_execution_stack -v
 
   python-integration-test:
     name: Python integration tests
