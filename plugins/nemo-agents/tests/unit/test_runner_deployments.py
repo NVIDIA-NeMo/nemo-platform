@@ -237,6 +237,19 @@ def test_k8s_mode_on_a_docker_executor_is_refused(monkeypatch: pytest.MonkeyPatc
         require_executor_matches_mode("default-exec", "k8s")
 
 
+def test_k8s_mode_on_a_non_deployable_backend_omits_the_mode_suggestion(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    # 'openshell' is a deployments-plugin backend but not a DeploymentMode, so
+    # the error must not suggest deploying with a mode that can't validate.
+    cfg = _executors(("default-exec", "openshell"))
+    monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
+
+    with pytest.raises(ValueError, match="runs on 'openshell'") as exc_info:
+        require_executor_matches_mode("default-exec", "k8s")
+    assert "deploy with deployment_mode" not in str(exc_info.value)
+
+
 def test_k8s_mode_accepts_a_k8s_capable_default(monkeypatch: pytest.MonkeyPatch) -> None:
     from nemo_deployments_plugin.config import DeploymentsConfig
 

@@ -363,10 +363,11 @@ def require_executor_matches_mode(executor: str | None, mode: DeploymentMode) ->
     backend = executor_backend(executor)
     if backend is None or backend == mode:
         return
+    alternative = f", or deploy with deployment_mode {backend!r}" if backend in CONTAINER_DEPLOYMENT_MODES else ""
     raise ValueError(
         f"deployment_mode {mode!r} resolved to executor {executor!r}, which runs on "
         f"{backend!r}. Set 'deployments.{mode}_executor' to an executor whose backend "
-        f"is {mode!r}, or deploy with deployment_mode {backend!r}."
+        f"is {mode!r}{alternative}."
     )
 
 
