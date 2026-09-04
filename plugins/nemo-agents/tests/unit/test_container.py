@@ -2709,7 +2709,11 @@ class TestFabricWheelInstall:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_wheel_is_staged_into_the_context_and_removed(
-        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+        self,
+        mock_build: MagicMock,
+        fabric_agent_config: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from nemo_agents_plugin.container.builder import build_fabric_agent_image
 
@@ -2719,6 +2723,17 @@ class TestFabricWheelInstall:
         wheel.write_bytes(b"not really a wheel")
         context = fabric_agent_config.parent
         staged_during_build: dict[str, bool] = {}
+        source_reads = 0
+        original_open = Path.open
+
+        def _count_source_reads(self: Path, *args: Any, **kwargs: Any) -> Any:
+            nonlocal source_reads
+            mode = args[0] if args else kwargs.get("mode", "r")
+            if self == wheel and mode == "rb":
+                source_reads += 1
+            return original_open(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", _count_source_reads)
         mock_build.side_effect = lambda **kwargs: staged_during_build.setdefault(
             "present", (context / wheel.name).exists()
         )
@@ -2726,6 +2741,7 @@ class TestFabricWheelInstall:
         build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
 
         assert staged_during_build["present"], "the wheel must exist while docker build runs"
+        assert source_reads == 1, "staging must hash and copy the source in one pass"
         assert not (context / wheel.name).exists(), "the staged wheel must not outlive the build"
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
@@ -2906,10 +2922,10 @@ class TestFabricWheelInstall:
     def test_a_file_appearing_mid_build_is_not_clobbered(
         self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The pre-render check is not atomic with the copy, so the copy creates
+        """The pre-stage check is not atomic with the copy, so the copy creates
         exclusively — otherwise losing that race overwrites a file and the cleanup
         then deletes it."""
-        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+        import nemo_agents_plugin.container.builder as builder
 
         source = tmp_path / "dist"
         source.mkdir()
@@ -2917,18 +2933,19 @@ class TestFabricWheelInstall:
         wheel.write_bytes(b"wheel")
         collision = fabric_agent_config.parent / wheel.name
 
-        # Simulate another process winning the race after the check, before the copy.
-        original_write = Path.write_text
+        # Simulate another process winning the race after the existence check,
+        # immediately before the exclusive create.
+        original_open = open
 
-        def _plant(self: Path, *args: Any, **kwargs: Any) -> int:
-            if self.name == "Dockerfile.generated":
+        def _plant(file: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            if Path(file) == collision and mode == "xb":
                 collision.write_text("USER OWNED")
-            return original_write(self, *args, **kwargs)
+            return original_open(file, mode, *args, **kwargs)
 
-        monkeypatch.setattr(Path, "write_text", _plant)
+        monkeypatch.setattr(builder, "open", _plant, raising=False)
 
         with pytest.raises(ManagedFileConflictError):
-            build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
+            builder.build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
 
         monkeypatch.undo()
         assert collision.read_text() == "USER OWNED"
@@ -2958,17 +2975,45 @@ class TestFabricWheelInstall:
             "docker_build",
             lambda **kwargs: captured.setdefault("tag", kwargs["tag"]),
         )
+
+        def _capture_render(*args: Any, **kwargs: Any) -> str:
+            captured.setdefault("contract_version", kwargs.get("contract_version"))
+            return real_render(*args, **kwargs)
+
         monkeypatch.setattr(
             template,
             "render_fabric_dockerfile",
-            lambda *a, **kw: (
-                captured.setdefault("contract_version", kw.get("contract_version")) or real_render(*a, **kw)
-            ),
+            _capture_render,
         )
 
         builder.build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
 
         assert captured["contract_version"] == "0.4.0.post176.dev0+abc123"
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_the_image_identity_includes_the_wheel_contents(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        wheel_name = "nemo_platform-0.4.0-py3-none-any.whl"
+        first_source = tmp_path / "first"
+        first_source.mkdir()
+        first_wheel = first_source / wheel_name
+        first_wheel.write_bytes(b"first wheel")
+
+        second_source = tmp_path / "second"
+        second_source.mkdir()
+        second_wheel = second_source / wheel_name
+        second_wheel.write_bytes(b"second wheel")
+
+        build_fabric_agent_image(fabric_agent_config, wheel=first_wheel, skip_validation=True, agent_author="x")
+        first_tag = mock_build.call_args.kwargs["tag"]
+
+        build_fabric_agent_image(fabric_agent_config, wheel=second_wheel, skip_validation=True, agent_author="x")
+        second_tag = mock_build.call_args.kwargs["tag"]
+
+        assert first_tag != second_tag
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_a_supplied_dockerfile_ignores_the_wheel(
@@ -3058,6 +3103,96 @@ class TestFabricWheelInstall:
             build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
 
         assert not seen["present"]
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_exclusive_dockerfile_create_handles_a_race(
+        self, mock_build: MagicMock, fabric_agent_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        generated = fabric_agent_config.parent / "Dockerfile.generated"
+        generated.write_text("USER OWNED\n")
+        original_exists = Path.exists
+
+        def _miss_generated(self: Path) -> bool:
+            if self == generated:
+                return False
+            return original_exists(self)
+
+        monkeypatch.setattr(Path, "exists", _miss_generated)
+
+        with pytest.raises(ManagedFileConflictError):
+            build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+        assert generated.read_text() == "USER OWNED\n"
+        mock_build.assert_not_called()
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_does_not_remove_a_replaced_generated_dockerfile(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        generated = fabric_agent_config.parent / "Dockerfile.generated"
+        replacement = tmp_path / "replacement.Dockerfile"
+        replacement.write_text("USER REPLACEMENT\n")
+
+        def _replace_generated(**kwargs: Any) -> str:
+            os.replace(replacement, generated)
+            return "image-id"
+
+        mock_build.side_effect = _replace_generated
+
+        build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+        assert generated.read_text() == "USER REPLACEMENT\n"
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_refuses_to_clobber_a_scoped_ignore_file(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+        context = fabric_agent_config.parent
+        scoped = context / "Dockerfile.generated.dockerignore"
+        scoped.write_text("USER OWNED\n")
+
+        with pytest.raises(ManagedFileConflictError):
+            build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
+
+        assert scoped.read_text() == "USER OWNED\n"
+        assert not (context / wheel.name).exists()
+        mock_build.assert_not_called()
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_does_not_remove_a_replaced_scoped_ignore_file(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+        context = fabric_agent_config.parent
+        scoped = context / "Dockerfile.generated.dockerignore"
+        replacement = tmp_path / "replacement.ignore"
+        replacement.write_text("REPLACEMENT\n")
+
+        def _replace_scoped_ignore(**kwargs: Any) -> str:
+            os.replace(replacement, scoped)
+            return "image-id"
+
+        mock_build.side_effect = _replace_scoped_ignore
+
+        build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
+
+        assert scoped.read_text() == "REPLACEMENT\n"
+        assert not (context / wheel.name).exists()
 
     def test_refuses_to_clobber_a_file_the_user_owns(self, fabric_agent_config: Path, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.builder import build_fabric_agent_image
