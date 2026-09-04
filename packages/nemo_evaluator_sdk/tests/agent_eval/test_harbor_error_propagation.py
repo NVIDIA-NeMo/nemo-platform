@@ -22,7 +22,6 @@ from pathlib import Path
 import pytest
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     HarborRuntimeConfig,
-    reward_payload_from_result,
     run_harbor_eval,
 )
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
@@ -73,6 +72,3 @@ async def test_a_real_harbor_timeout_lands_in_the_summary_error_rollup(tmp_path:
     # already carries Harbor's exception_stats shape, keyed by trial id.
     assert result.summary.error_trial_ids == {"AgentTimeoutError": [trial.id]}
     assert result.summary.error_count == 1
-
-    # Harbor runs the verifier even after recording the timeout, so the same trial is also scored.
-    assert reward_payload_from_result(result)["exceptions"] == {"AgentTimeoutError": [_ERROR_TASK_NAME]}

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Annotated, Any, Protocol, runtime_checkable
 
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values.agents import Agent
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FINAL_STATE,
@@ -252,6 +253,46 @@ class RunAggregationsProvider(Protocol):
     """
 
     def run_aggregate_scores(self) -> Sequence[AggregateScore]: ...
+
+
+@runtime_checkable
+class TrialAwareMetricsProvider(Protocol):
+    """Optional companion to :class:`AgentTaskRunner`: a runner whose metric outputs
+    are not fully known until trials exist finalizes them here.
+
+    The evaluator calls this once per task after trial generation and before
+    scoring, with only that task's trials. Return the task's full metric list; the
+    evaluator rebuilds the task with these metrics and nothing else, re-validates it
+    (duplicate metric types, views that reference undeclared outputs), and re-groups
+    trials from the final trial list before scoring.
+
+    Do not mutate ``task`` or ``trials``. The evaluator rejects trial ``task_id``
+    reassignment after this hook; other mutation remains a convention for in-process
+    runner code, matching the standing ``run_tasks`` contract.
+
+    Harbor is the in-tree example. The placeholder ``harbor_reward`` metric cannot
+    declare verifier extras until trials exist, because those keys live in
+    ``trial.metadata["reward_details"]``. ``scoring_metrics`` unions the primary
+    reward with keys observed on the task's trials and replaces only the
+    ``harbor_reward`` metric. Two attempts of task A::
+
+        a1: {"reward": 1.0, "format_ok": 1.0}
+        a2: {"reward": 0.0}
+
+    become one spec: required ``reward`` plus optional ``format_ok``. Per-task
+    scoping is structural: the hook never sees another task's trials.
+
+    Runners whose metrics are known before execution simply don't implement this
+    protocol.
+    """
+
+    def scoring_metrics(
+        self,
+        task: AgentEvalTask,
+        trials: Sequence[AgentEvalTrial],
+    ) -> Sequence[Metric]:
+        """Return the metrics to score ``task`` with, given its ``trials``."""
+        ...
 
 
 @runtime_checkable
