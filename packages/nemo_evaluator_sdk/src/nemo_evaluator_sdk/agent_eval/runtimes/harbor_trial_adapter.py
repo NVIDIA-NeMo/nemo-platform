@@ -18,6 +18,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from nemo_evaluator_sdk.agent_eval.reward_keys import (
+    HarborRewardValueRejection,
+    ParsedHarborRewards,
+    RewardKeyRejection,
+    reward_key_rejection,
+)
 from nemo_evaluator_sdk.agent_eval.trials import (
     UNKNOWN_ERROR_TYPE,
     AgentEvalTrial,
@@ -105,7 +111,7 @@ def _trial_from_harbor_result(
 
     metadata: dict[str, Any] = {
         "reward": reward,
-        "reward_details": dict(rewards),
+        **rewards.to_metadata(),
         "harbor_trial_dir": str(trial_dir),
     }
     metadata.update(_trial_measurements(data))
@@ -446,32 +452,57 @@ def _harbor_extension_evidence(
     return descriptors, atif_trace, otlp_trace
 
 
-def _rewards_mapping(data: Mapping[str, Any]) -> dict[str, float]:
+def _rewards_mapping(data: Mapping[str, Any]) -> ParsedHarborRewards:
     """Normalize Harbor verifier rewards into numeric SDK values.
 
     Args:
         data: Parsed Harbor ``result.json`` payload.
 
     Returns:
-        A string-keyed mapping of rewards that can be converted to ``float``.
-        Missing, malformed, and non-numeric reward entries are omitted.
+        Finite numeric values plus sanitized rejection diagnostics. Unusable
+        values and unsafe keys are omitted from the numeric mapping.
     """
     verifier_result = data.get("verifier_result")
     if not isinstance(verifier_result, Mapping):
-        return {}
+        return ParsedHarborRewards()
     rewards = verifier_result.get("rewards")
     if not isinstance(rewards, Mapping):
-        return {}
-    out: dict[str, float] = {}
+        return ParsedHarborRewards()
+    values: dict[str, float] = {}
+    rejected_by_key: dict[str, HarborRewardValueRejection] = {}
+    rejected_entries: list[RewardKeyRejection] = []
     for key, value in rewards.items():
-        try:
-            out[str(key)] = float(value)
-        except (TypeError, ValueError):
+        key_rejection = reward_key_rejection(key)
+        if key_rejection is not None:
+            rejected_entries.append(key_rejection)
             continue
-    return out
+        assert type(key) is str
+        if isinstance(value, bool):
+            rejected_by_key[key] = "boolean"
+            continue
+        if type(value) not in (int, float, str):
+            rejected_by_key[key] = "non_numeric"
+            continue
+        try:
+            parsed = float(value)
+        except OverflowError:  # an int too large to represent
+            rejected_by_key[key] = "non_finite"
+            continue
+        except ValueError:  # a string that is not a number
+            rejected_by_key[key] = "non_numeric"
+            continue
+        if not math.isfinite(parsed):
+            rejected_by_key[key] = "non_finite"
+            continue
+        values[key] = parsed
+    return ParsedHarborRewards(
+        values=values,
+        rejected_by_key=rejected_by_key,
+        rejected_entries=tuple(rejected_entries),
+    )
 
 
-def _primary_reward(rewards: Mapping[str, float], reward_key: str) -> float | None:
+def _primary_reward(rewards: ParsedHarborRewards, reward_key: str) -> float | None:
     """Select the configured primary reward.
 
     Args:
@@ -482,12 +513,18 @@ def _primary_reward(rewards: Mapping[str, float], reward_key: str) -> float | No
         The selected reward, or ``None`` when ``reward_key`` is absent. A warning
         is emitted when other rewards exist but none matches the configured key.
     """
-    if reward_key in rewards:
-        return rewards[reward_key]
-    if rewards:
+    if reward_key in rewards.values:
+        return rewards.values[reward_key]
+    if reason := rewards.rejected_by_key.get(reward_key):
+        logger.warning(
+            "Harbor trial reward_key=%r was emitted but rejected as %s; treating as unusable",
+            reward_key,
+            reason,
+        )
+    elif rewards.values:
         logger.warning(
             "Harbor trial emitted rewards %s but none matches reward_key=%r; treating the trial as having no reward",
-            sorted(rewards),
+            sorted(rewards.values),
             reward_key,
         )
     return None

@@ -268,6 +268,14 @@ job = client.evaluator.submit(
 )
 ```
 
+`bundle_metric` preserves the v1 metric-bundle wire shape while encoding optional outputs:
+
+- `required=True` is the default and is omitted from serialized output entries, preserving existing bundle identity.
+- `required=False` is serialized explicitly on optional output entries.
+- `required` must be a Boolean when supplied.
+
+Let the packager serialize the output contract. Do not add `required=True` to generated bundles by hand.
+
 The CLI cannot package a Python metric object or select
 `metric_bundle_packager`. After Python serializes the bundled metric into a
 complete spec, submit that spec with:

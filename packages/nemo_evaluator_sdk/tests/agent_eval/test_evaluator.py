@@ -38,6 +38,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
 from nemo_evaluator_sdk.agent_inference import AgentInferenceContext, AgentInvocationResult, AgentInvocationStatus
 from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import (
+    Metric,
     MetricDiagnostic,
     MetricInput,
     MetricOutput,
@@ -283,6 +284,170 @@ class _TaskRunner:
             )
             for task in tasks
         ]
+
+
+class _FinalizingTaskRunner(_TaskRunner):
+    def __init__(self, replacement: Any, events: list[str]) -> None:
+        super().__init__()
+        self.replacement = replacement
+        self.events = events
+
+    async def run_tasks(
+        self,
+        tasks: Sequence[AgentEvalTask],
+        config: AgentEvalRunConfig | None = None,
+    ) -> list[AgentEvalTrial]:
+        self.events.append("run_tasks")
+        return await super().run_tasks(tasks, config)
+
+    def scoring_metrics(
+        self,
+        task: AgentEvalTask,
+        trials: Sequence[AgentEvalTrial],
+    ) -> Sequence[Metric]:
+        self.events.append(f"finalize:{len(trials)}")
+        return [self.replacement]
+
+
+class _OrderingMetric(_ConstantMetric):
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+
+    @property
+    def type(self) -> str:
+        return "finalized_metric"
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("finalized_score")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        self.events.append("score")
+        return MetricResult(outputs=[MetricOutput(name="finalized_score", value=0.75)])
+
+
+class _MutableMetadataBox:
+    """Arbitrary mutable metadata leaf with identity-only equality."""
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+
+@pytest.mark.asyncio
+async def test_target_can_finalize_scoring_tasks_after_trials_and_before_scoring() -> None:
+    events: list[str] = []
+    metric = _OrderingMetric(events)
+    box = _MutableMetadataBox("original")
+    task = _task().model_copy(update={"metadata": {"box": box}})
+
+    result = await AgentEvaluator().run(tasks=[task], target=_FinalizingTaskRunner(metric, events))
+
+    assert events == ["run_tasks", "finalize:1", "score"]
+    assert result.tasks[0].metrics == [metric]
+    assert result.tasks[0].metadata["box"] is box
+    assert "finalized_metric.finalized_score" in result.summary.scores.scores_by_name
+    assert "constant_metric.score" not in result.summary.scores.scores_by_name
+
+
+@pytest.mark.asyncio
+async def test_non_provider_target_keeps_original_scoring_tasks() -> None:
+    task = _task()
+
+    result = await AgentEvaluator().run(tasks=[task], target=_TaskRunner())
+
+    assert result.tasks == [task]
+
+
+class _DuplicatingTaskRunner(_TaskRunner):
+    def scoring_metrics(
+        self,
+        task: AgentEvalTask,
+        trials: Sequence[AgentEvalTrial],
+    ) -> Sequence[Metric]:
+        return [_ConstantMetric(), _ConstantMetric()]
+
+
+@pytest.mark.asyncio
+async def test_finalized_tasks_are_revalidated_for_duplicate_metric_types() -> None:
+    with pytest.raises(ValueError, match="duplicate task metric types"):
+        await AgentEvaluator().run(tasks=[_task()], target=_DuplicatingTaskRunner())
+
+
+@pytest.mark.asyncio
+async def test_finalized_tasks_are_revalidated_for_view_references() -> None:
+    events: list[str] = []
+    task = _task().model_copy(
+        update={
+            "views": {
+                "quality": SemanticView(
+                    reducer=SemanticReducer.MEAN,
+                    signals=[ViewSignal(metric="constant_metric", output="score")],
+                )
+            }
+        }
+    )
+
+    # The replacement metric's type is "finalized_metric", so the view's signal no longer resolves.
+    with pytest.raises(ValueError, match="references unknown"):
+        await AgentEvaluator().run(tasks=[task], target=_FinalizingTaskRunner(_OrderingMetric(events), events))
+
+
+class _TrialMovingTaskRunner(_TaskRunner):
+    """Breaks the no-mutation convention by reassigning a trial to another task."""
+
+    def scoring_metrics(
+        self,
+        task: AgentEvalTask,
+        trials: Sequence[AgentEvalTrial],
+    ) -> Sequence[Metric]:
+        if task.id == "a":
+            trials[0].task_id = "b"
+        return list(task.metrics)
+
+
+class _TrialSwappingTaskRunner(_TaskRunner):
+    """Breaks the no-mutation convention while preserving one trial per task."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.trials_by_original_task: dict[str, AgentEvalTrial] = {}
+
+    async def run_tasks(
+        self,
+        tasks: Sequence[AgentEvalTask],
+        config: AgentEvalRunConfig | None = None,
+    ) -> list[AgentEvalTrial]:
+        trials = await super().run_tasks(tasks, config)
+        self.trials_by_original_task = {trial.task_id: trial for trial in trials}
+        return trials
+
+    def scoring_metrics(
+        self,
+        task: AgentEvalTask,
+        trials: Sequence[AgentEvalTrial],
+    ) -> Sequence[Metric]:
+        if task.id == "a":
+            trial_a = self.trials_by_original_task["a"]
+            trial_b = self.trials_by_original_task["b"]
+            trial_a.task_id, trial_b.task_id = trial_b.task_id, trial_a.task_id
+        return list(task.metrics)
+
+
+@pytest.mark.asyncio
+async def test_scoring_rejects_moved_trial_assignment() -> None:
+    with pytest.raises(ValueError, match="scoring_metrics changed trial task assignments"):
+        await AgentEvaluator().run(
+            tasks=[_task(task_id="a"), _task(task_id="b")],
+            target=_TrialMovingTaskRunner(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_scoring_rejects_balanced_trial_assignment_swap() -> None:
+    with pytest.raises(ValueError, match="scoring_metrics changed trial task assignments"):
+        await AgentEvaluator().run(
+            tasks=[_task(task_id="a"), _task(task_id="b")],
+            target=_TrialSwappingTaskRunner(),
+        )
 
 
 def test_run_rejects_trials_and_target_together() -> None:
@@ -824,7 +989,7 @@ def test_agent_evaluator_rejects_direct_inference_and_factory() -> None:
     with pytest.raises(ValueError, match="inference_fn.*agent_inference_fn_factory"):
         # Deliberately bypass the overload contract to verify the runtime guard for
         # dynamically typed callers.
-        AgentEvaluator(**invalid_kwargs)  # ty: ignore[no-matching-overload]
+        AgentEvaluator(**invalid_kwargs)
 
 
 @pytest.mark.asyncio
