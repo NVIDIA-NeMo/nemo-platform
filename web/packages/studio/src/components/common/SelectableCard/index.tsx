@@ -29,6 +29,8 @@ export interface SelectableCardProps {
   leading?: ReactNode;
   /** Primary label. */
   title: string;
+  /** Accessible name when visible card text does not convey the full state. */
+  ariaLabel?: string;
   /** Optional secondary line beneath the title, in the header row beside `leading`. */
   subtitle?: string;
   /** Extra classes for the subtitle — e.g. an accent color or uppercase type label. */
@@ -45,6 +47,8 @@ export interface SelectableCardProps {
   disabledReason?: string;
   /** Activation handler; fired on click and on keyboard Enter/Space. */
   onActivate?: () => void;
+  /** Prevent the activation click from reaching an interactive parent. */
+  stopPropagation?: boolean;
   className?: string;
 }
 
@@ -61,6 +65,7 @@ export interface SelectableCardProps {
 export const SelectableCard: FC<SelectableCardProps> = ({
   leading,
   title,
+  ariaLabel,
   subtitle,
   subtitleClassName,
   description,
@@ -69,13 +74,22 @@ export const SelectableCard: FC<SelectableCardProps> = ({
   disabled = false,
   disabledReason,
   onActivate,
+  stopPropagation = false,
   className,
 }) => (
   <button
     type="button"
-    onClick={disabled ? undefined : onActivate}
+    onClick={
+      disabled
+        ? undefined
+        : (event) => {
+            if (stopPropagation) event.stopPropagation();
+            onActivate?.();
+          }
+    }
     disabled={disabled}
     aria-pressed={selected}
+    aria-label={ariaLabel}
     title={disabled ? disabledReason : undefined}
     className={`flex w-[240px] justify-between flex-col items-start gap-1.5 rounded-md border bg-surface-raised px-2 py-1.5 text-left transition-colors ${
       disabled

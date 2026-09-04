@@ -95,8 +95,6 @@ export function useSessionTrajectories(workspace: string, sessionId: string) {
       spansLoaded: sessionSpansResponse !== undefined,
       spansError: sessionSpansError,
       isSpansFetching: isSessionSpansFetching,
-      spanPageSize: SESSION_TRACES_PAGE_SIZE,
-      spanTotal: sessionSpansResponse?.pagination?.total_results ?? 0,
     }),
     [isSessionSpansFetching, sessionSpansError, sessionSpansResponse, trajectories]
   );

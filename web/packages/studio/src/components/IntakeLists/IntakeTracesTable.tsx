@@ -97,6 +97,8 @@ const SeededIntakeTracesTable: FC<
       dataViewState={dataViewState}
       makeColumns={makeIntakeTraceColumns({
         traceIdFilter: true,
+        sessionIdFilter: true,
+        statusFilter: true,
         startedAtSort: true,
         startedAtFilter: true,
       })}
