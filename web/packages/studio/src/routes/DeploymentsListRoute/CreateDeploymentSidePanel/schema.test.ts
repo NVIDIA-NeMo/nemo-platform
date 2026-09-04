@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { Engine } from '@nemo/sdk/generated/platform/schema';
 import {
   additionalEnvsFormToApi,
   configNameFromWizardBaseName,
   createDeploymentWizardSchema,
   defaultWizardValues,
   deploymentNameFromWizardBaseName,
+  engineRequiresImage,
   WORKSPACE_PICKER_FILESET,
   WORKSPACE_PICKER_MODEL,
   SOURCE_HF,
@@ -66,6 +68,69 @@ describe('defaultWizardValues', () => {
     expect(vals.loraEnabled).toBe(true);
     expect(typeof vals.name).toBe('string');
     expect(vals.name.length).toBeGreaterThan(0);
+  });
+
+  it('defaults the engine to vLLM, which needs no image', () => {
+    expect(defaultWizardValues().engine).toBe(Engine.vllm);
+    expect(engineRequiresImage(Engine.vllm)).toBe(false);
+  });
+});
+
+describe('engine image requirements', () => {
+  const workspaceValues = (overrides: Record<string, unknown>) => ({
+    ...defaultWizardValues(),
+    source: SOURCE_WORKSPACE,
+    name: 'my-deploy',
+    workspacePickerType: WORKSPACE_PICKER_MODEL,
+    modelRef: 'ws/model',
+    ...overrides,
+  });
+
+  it.each([Engine.nim, Engine.generic])('requires an image for the %s engine', (engine) => {
+    expect(engineRequiresImage(engine)).toBe(true);
+
+    const result = createDeploymentWizardSchema.safeParse(
+      workspaceValues({ engine, imageName: '', imageTag: '' })
+    );
+
+    expect(result.success).toBe(false);
+    const paths = result.success ? [] : result.error.issues.map((i) => i.path.join('.'));
+    expect(paths).toContain('imageName');
+    expect(paths).toContain('imageTag');
+  });
+
+  it('accepts a blank image for the vLLM engine', () => {
+    const result = createDeploymentWizardSchema.safeParse(
+      workspaceValues({ engine: Engine.vllm, imageName: '', imageTag: '' })
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts NIM once an image is supplied', () => {
+    const result = createDeploymentWizardSchema.safeParse(
+      workspaceValues({
+        engine: Engine.nim,
+        imageName: 'nvcr.io/nim/meta/llama-3.1-8b-instruct',
+        imageTag: '1.8.5',
+      })
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it('applies the rule to the HuggingFace source too', () => {
+    const result = createDeploymentWizardSchema.safeParse({
+      ...defaultWizardValues(),
+      source: SOURCE_HF,
+      name: 'my-deploy',
+      repoId: 'Qwen/Qwen3-0.6B',
+      engine: Engine.nim,
+      imageName: '',
+      imageTag: '',
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 
