@@ -74,17 +74,21 @@ criteria, and what may change. Link the user to
 [ETHOS.md](https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos)
 for what Ethos is and how to create one.
 
-If the NeMo Platform skills are available in the user's environment, tell them
-the usual creation path:
+If the current assistant environment exposes both required Ethos creation
+skills, `nemo-explore` and `nemo-ethos`, share that Eval Author can generate the
+Ethos with them now. Ask the user whether they want you to:
 
-1. Run `nemo-explore` to inspect the agent and collect the required intent.
-2. Run `nemo-ethos` to write `agents/<name>-ethos/ETHOS.md`.
-3. Resume this audit flow with `--ethos agents/<name>-ethos/ETHOS.md`.
+1. automatically generate the Ethos with `nemo-explore` followed by
+   `nemo-ethos`, then resume this audit flow with
+   `--ethos agents/<name>-ethos/ETHOS.md`; or
+2. let them create the Ethos themselves from the documentation, then rerun the
+   audit command with `--ethos <path>`.
 
-If those skills are not installed or live in another repository, tell the user
-to follow the docs and author `ETHOS.md` by hand or install the NeMo Platform
-skills in their coding-agent environment, then rerun the audit command with the
-path to that file.
+Only offer automatic generation when both required skills are present and usable.
+If those skills are absent, unavailable, or live outside the current assistant
+environment, do not offer to generate it. Link the docs and tell the user to
+create or provide an Ethos path, then rerun the audit command with the path to
+that file.
 
 Do not create a placeholder Ethos inside the audit flow. The audit denominator
 depends on the durable agent contract that `nemo-explore` and `nemo-ethos`
