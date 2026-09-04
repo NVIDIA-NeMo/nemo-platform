@@ -56,6 +56,12 @@ const test = baseTest.extend<TestFixtures>({
 });
 
 test.describe('Model Deployments', () => {
+  test.beforeEach(() => {
+    test.skip(
+      !process.env.RECORD,
+      'Deployments feature-flagged off + needs NGC infra; run via pnpm test:e2e:record'
+    );
+  });
   test.beforeEach(async ({ page }) => disableAuthForTest(page));
 
   test('Creates an NGC deployment, views its details, and deletes it @record', async ({
@@ -63,10 +69,6 @@ test.describe('Model Deployments', () => {
     deploymentsPage,
     trackedDeployments,
   }) => {
-    test.skip(
-      !process.env.RECORD,
-      'Deployments feature-flagged off + needs NGC infra; run via pnpm test:e2e:record'
-    );
     test.slow();
 
     // Base name is what the user types in the wizard. The API resources become:
