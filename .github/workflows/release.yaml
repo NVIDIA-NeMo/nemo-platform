@@ -26,8 +26,8 @@ on:
         required: false
         type: string
         default: ""
-      version:
-        description: "Stable SemVer core release version, for example 1.0.0."
+      release-series:
+        description: "Stable release series in MAJOR.MINOR format, for example 0.5."
         required: false
         type: string
         default: ""
@@ -130,7 +130,7 @@ env:
     ]
   RELEASE_HELM_ID: nemo-platform
   RELEASE_HELM_PATH: k8s/helm
-  RELEASE_HELM_REGISTRY: nvcr.io/0921617854601259/nemo-platform
+  RELEASE_HELM_REGISTRY: nvcr.io/0921617854601259/nemo-platform-dev
   STABLE_IMAGE_REGISTRY: nvcr.io/nvidia/nemo-platform
   RELEASE_PUBLISH_NIGHTLY_WHEELS: "false"
   RELEASE_NIGHTLY_WHEEL_INDEX: https://pypi.nvidia.com
@@ -192,10 +192,25 @@ jobs:
                 });
                 return commit.sha;
               },
+              getTags: async () => {
+                const tags = await github.paginate(github.rest.repos.listTags, {
+                  ...context.repo,
+                  per_page: 100,
+                });
+                return tags.map(({name}) => name);
+              },
+              sourceBelongsToBranch: async (sourceSha, releaseBranch) => {
+                const {data: comparison} = await github.rest.repos.compareCommitsWithBasehead({
+                  ...context.repo,
+                  basehead: `${sourceSha}...${releaseBranch}`,
+                });
+                return comparison.status === "ahead" || comparison.status === "identical";
+              },
             });
             const outputs = {
               release_type: plan.releaseType,
               release_scope: plan.releaseScope,
+              release_branch: plan.releaseBranch,
               source_sha: plan.sourceSha,
               version: plan.version,
               release_label: plan.releaseLabel,
@@ -215,6 +230,28 @@ jobs:
             Object.entries(outputs).forEach(([name, value]) => core.setOutput(name, value));
             core.info(`Planned ${plan.releaseType} release ${plan.releaseLabel} from ${plan.sourceSha}`);
 
+      - name: Verify exact container SHA is release-qualified
+        if: >-
+          steps.plan.outputs.release_type == 'stable' &&
+          steps.plan.outputs.has_containers == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          QUALIFICATION_REPOSITORY: ${{ secrets.CI_DISPATCH_REPO }}
+          SOURCE_SHA: ${{ steps.plan.outputs.source_sha }}
+          RELEASE_BRANCH: ${{ steps.plan.outputs.release_branch }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
+            const { requireReleaseQualification } = require("./.github/scripts/release-qualification.cjs");
+            await requireReleaseQualification({
+              github,
+              repository: process.env.QUALIFICATION_REPOSITORY,
+              sourceSha: process.env.SOURCE_SHA,
+              releaseBranch: process.env.RELEASE_BRANCH,
+              version: process.env.RELEASE_VERSION,
+            });
+
       - name: Checkout selected source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -223,7 +260,8 @@ jobs:
           fetch-tags: true
           persist-credentials: false
 
-      - name: Ensure selected source is an ancestor of this workflow revision
+      - name: Ensure nightly source is an ancestor of this workflow revision
+        if: steps.plan.outputs.release_type != 'stable'
         shell: bash
         env:
           SOURCE_SHA: ${{ steps.plan.outputs.source_sha }}
@@ -445,6 +483,8 @@ jobs:
               client_payload: {
                 version: process.env.RELEASE_VERSION,
                 source_sha: process.env.SOURCE_SHA,
+                source_team: "nemo-platform-dev",
+                container_version: process.env.SOURCE_SHA,
                 source_run_url: process.env.SOURCE_RUN_URL,
                 wheel_ids: JSON.parse(process.env.WHEEL_IDS),
                 container_ids: JSON.parse(process.env.CONTAINER_IDS),
@@ -496,11 +536,12 @@ jobs:
               },
             });
 
-  dispatch-container-stage:
-    name: Dispatch container builds
+  dispatch-nightly-container-builds:
+    name: Dispatch nightly container builds
     needs: plan-release
     if: >-
       needs.plan-release.outputs.has_containers == 'true' &&
+      needs.plan-release.outputs.release_type == 'nightly' &&
       needs.plan-release.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
@@ -694,7 +735,7 @@ jobs:
       - plan-release
       - dispatch-release-registration
       - dispatch-wheel-stage
-      - dispatch-container-stage
+      - dispatch-nightly-container-builds
       - stage-helm
     if: >-
       !cancelled() &&
@@ -832,7 +873,7 @@ jobs:
       - plan-release
       - dispatch-release-registration
       - dispatch-wheel-stage
-      - dispatch-container-stage
+      - dispatch-nightly-container-builds
       - stage-helm
     if: >-
       !cancelled() &&
