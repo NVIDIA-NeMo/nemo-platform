@@ -54,3 +54,12 @@ redirects:
     destination: "/documentation/kubernetes-deployment/:path*"
   - source: "/latest/documentation/self-managed-deployment/:path*"
     destination: "/latest/documentation/kubernetes-deployment/:path*"
+  # NV 6722632: Models and Inference pages are no longer under /tutorials/.
+  - source: "/documentation/models-and-inference/tutorials/run-inference"
+    destination: "/documentation/models-and-inference/run-inference"
+  - source: "/latest/documentation/models-and-inference/tutorials/run-inference"
+    destination: "/latest/documentation/models-and-inference/run-inference"
+  - source: "/documentation/models-and-inference/tutorials/deploy-models"
+    destination: "/documentation/models-and-inference/deploy-models"
+  - source: "/latest/documentation/models-and-inference/tutorials/deploy-models"
+    destination: "/latest/documentation/models-and-inference/deploy-models"
