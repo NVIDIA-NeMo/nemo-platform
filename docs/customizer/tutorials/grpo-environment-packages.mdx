@@ -24,7 +24,7 @@ Do not put `.jsonl` in the environment package. If a Gym config lists `datasets[
 Before packaging an environment, ensure you have:
 
 1. **A NeMo Platform configured with `platform.runtime: kubernetes`** — GRPO provisions a Ray cluster and has no local Docker fallback
-2. **Sandboxed Gym enabled on the cluster** by your platform operator (`sandbox_cluster_capable` and a job-storage PVC claim). Refer to [Cluster prerequisites](/documentation/customizer-reference/grpo-and-reward-environments#cluster-prerequisites); installing OpenSandbox is covered in [OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox)
+2. **Sandboxed Gym enabled on the cluster** by your platform operator (`sandbox_cluster_capable` and a job-storage PVC claim). Refer to [Cluster prerequisites](/documentation/customizer-reference/grpo-and-reward-environments#cluster-prerequisites); installing OpenSandbox is covered in [OpenSandbox](/documentation/kubernetes-deployment/setup/helm/opensandbox)
 3. **The `nemo` CLI on your `PATH`**, or a source checkout where `uv run --package nmp-rl` resolves
 4. **The training image tag** your cluster runs — vendoring a wheel closure requires the `nemo-gym`, `ray`, and `openai` versions it reports
 5. **A machine with internet access** for the packaging step. Training clusters consume uploaded FileSets only. For details on which environment type require internet access too, see details below.
@@ -430,7 +430,7 @@ nemo files upload ./weather-env/ weather-env --workspace default
 nemo files list weather-env --workspace default
 ```
 
-Job JSON: [GRPO and Reward Environments](/documentation/customizer-reference/grpo-and-reward-environments#submit-the-job). Sandboxed Gym is configured on the platform (`NMP_RL_SANDBOXED_GYM_DEFAULT`), not in the job payload. Cluster setup: [OpenSandbox](/documentation/self-managed-deployment/setup/helm/opensandbox).
+Job JSON: [GRPO and Reward Environments](/documentation/customizer-reference/grpo-and-reward-environments#submit-the-job). Sandboxed Gym is configured on the platform (`NMP_RL_SANDBOXED_GYM_DEFAULT`), not in the job payload. Cluster setup: [OpenSandbox](/documentation/kubernetes-deployment/setup/helm/opensandbox).
 
 ## Next Steps
 
