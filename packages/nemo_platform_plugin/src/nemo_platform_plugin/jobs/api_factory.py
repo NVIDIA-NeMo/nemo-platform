@@ -52,6 +52,7 @@ from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
 from nemo_platform_plugin.authz import AuthzScope, CallerKind, path_rule
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError
+from nemo_platform_plugin.client.types import RetryPolicy
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
@@ -1096,7 +1097,8 @@ def job_route_factory(
         ) -> None:
             f"""Delete a job by name for the {service_name} microservice."""
             try:
-                await client_from_platform(sdk, AsyncJobsClient).delete_job(name=name, workspace=workspace)
+                jobs_client = client_from_platform(sdk, AsyncJobsClient).with_retry(RetryPolicy(max_retries=0))
+                await jobs_client.delete_job(name=name, workspace=workspace)
             except NemoHTTPError as exc:
                 raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
             return None

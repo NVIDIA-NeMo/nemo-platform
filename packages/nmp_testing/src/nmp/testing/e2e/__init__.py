@@ -43,7 +43,7 @@ from .config import (
     load_config,
 )
 from .docker import Docker
-from .jobs import wait_for_job_completion, wait_for_job_logs, wait_for_platform_job
+from .jobs import cleanup_platform_job, wait_for_job_completion, wait_for_job_logs, wait_for_platform_job
 from .kubernetes import Kubernetes
 
 __all__ = [
@@ -59,6 +59,7 @@ __all__ = [
     "discover_configs",
     "infer_backend",
     "load_config",
+    "cleanup_platform_job",
     "wait_for_job_completion",
     "wait_for_job_logs",
     "wait_for_platform_job",

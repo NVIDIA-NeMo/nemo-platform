@@ -4,6 +4,7 @@
 import asyncio
 import json
 import logging
+import weakref
 from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
 from nemo_platform import AsyncNeMoPlatform
@@ -66,6 +67,10 @@ class JobDeletionConflictError(ValueError):
     """Exception raised when deleting a job that is not safe to hard-delete."""
 
 
+class JobStatusUpdateSkippedError(Exception):
+    """Raised when a status update loses a race with job deletion."""
+
+
 class JobSecretValidationError(ValueError):
     """Exception raised when a job's secret references cannot be validated."""
 
@@ -82,12 +87,18 @@ operations_counter = create_counter(
 )
 
 _DELETE_PAGE_SIZE = 1000
-_JOB_MUTATION_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
+_JOB_MUTATION_LOCKS: weakref.WeakValueDictionary[tuple[str, str], asyncio.Lock] = weakref.WeakValueDictionary()
 EntityT = TypeVar("EntityT")
 
 
 def _get_job_mutation_lock(job_name: str, workspace: str) -> asyncio.Lock:
-    """Return the process-local lock for operations that can create or delete job records."""
+    """Return the process-local lock for a job's mutable state.
+
+    This serializes delete, rerun, status updates, and same-process associated
+    record writes inside one API worker. It does not coordinate across API
+    replicas; multi-replica deployments need a store-level lease or conditional
+    delete to close that gap durably.
+    """
     key = (workspace, job_name)
     lock = _JOB_MUTATION_LOCKS.get(key)
     if lock is None:
@@ -283,6 +294,20 @@ class JobDispatcher:
         sdk: Optional[AsyncNeMoPlatform] = None,
     ) -> PlatformJobResponse:
         """Create a new job and its first step."""
+        if job_req.name is None:
+            return await self._create_job(job_req, workspace, auth_context=auth_context, sdk=sdk)
+
+        async with _get_job_mutation_lock(job_req.name, workspace):
+            return await self._create_job(job_req, workspace, auth_context=auth_context, sdk=sdk)
+
+    async def _create_job(
+        self,
+        job_req: CreatePlatformJobRequest,
+        workspace: str,
+        auth_context: Optional[AuthContext] = None,
+        sdk: Optional[AsyncNeMoPlatform] = None,
+    ) -> PlatformJobResponse:
+        """Create a new job after the caller has acquired any needed name lock."""
         job_name = job_req.name
         if job_name is not None:
             # Check if a job with the same name already exists
@@ -919,11 +944,11 @@ class JobDispatcher:
         """
         attempt = await self.get_attempt(step.attempt_id)
         if attempt is None:
-            raise Exception(f"Attempt does not exist: {step.attempt_id}")
+            raise JobStatusUpdateSkippedError(f"Attempt does not exist: {step.attempt_id}")
         try:
             job = await self.store.get_by_id(PlatformJob, attempt.job)
         except EntityNotFoundError as exc:
-            raise Exception(f"Job does not exist: {attempt.job}") from exc
+            raise JobStatusUpdateSkippedError(f"Job does not exist: {attempt.job}") from exc
 
         async with _get_job_mutation_lock(job.name, job.workspace):
             return await self._update_job_status_from_step_locked(step, status, status_details, error_details)
@@ -978,7 +1003,7 @@ class JobDispatcher:
         # Update job / attempt status from step
         attempt = await self.get_attempt(saved_step.attempt_id)
         if attempt is None:
-            raise Exception(f"Attempt does not exist: {saved_step.attempt_id}")
+            raise JobStatusUpdateSkippedError(f"Attempt does not exist: {saved_step.attempt_id}")
 
         # Determine new attempt status
         new_attempt_status = attempt.status
@@ -1282,6 +1307,16 @@ class JobDispatcher:
         self, job_name: str, task_name: str, workspace: str, task_update: PlatformJobTaskUpdate, step: PlatformJobStep
     ) -> PlatformJobTask:
         """Create or update a task for a job step."""
+        async with _get_job_mutation_lock(job_name, workspace):
+            return await self._create_or_update_task_locked(job_name, task_name, workspace, task_update, step)
+
+    async def _create_or_update_task_locked(
+        self, job_name: str, task_name: str, workspace: str, task_update: PlatformJobTaskUpdate, step: PlatformJobStep
+    ) -> PlatformJobTask:
+        """Create or update a task while holding the per-job mutation lock."""
+        await self.store.get(PlatformJob, job_name, workspace=workspace)
+        await self.store.get_by_id(PlatformJobStep, step.id)
+
         task = await self.get_task(step.id, task_name, workspace=workspace)
 
         if not task:
@@ -1370,6 +1405,7 @@ class JobDispatcher:
     async def create_result(
         self,
         job_id: str,
+        job_name: str,
         result_name: str,
         artifact_url: str,
         artifact_storage_type: Any,
@@ -1384,14 +1420,18 @@ class JobDispatcher:
             artifact_storage_type: Type of artifact storage
             workspace: Workspace for the result
         """
-        result = PlatformJobResult(
-            name=result_name,
-            workspace=workspace,
-            job=job_id,  # Use entity ID for parent FK
-            artifact_url=artifact_url,
-            artifact_storage_type=artifact_storage_type,
-        )
-        return await self.store.create(result)
+        async with _get_job_mutation_lock(job_name, workspace):
+            job = await self.store.get(PlatformJob, job_name, workspace=workspace)
+            if job.id != job_id:
+                raise EntityNotFoundError(f"Job ID mismatch for {workspace}/{job_name}")
+            result = PlatformJobResult(
+                name=result_name,
+                workspace=workspace,
+                job=job_id,  # Use entity ID for parent FK
+                artifact_url=artifact_url,
+                artifact_storage_type=artifact_storage_type,
+            )
+            return await self.store.create(result)
 
     async def get_result(self, job_name: str, result_name: str, workspace: str) -> Optional[PlatformJobResult]:
         """Get a platform job result."""

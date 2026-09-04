@@ -7,6 +7,7 @@ import threading
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
@@ -26,6 +27,24 @@ logger = logging.getLogger(__name__)
 _TERMINAL_JOB_STATUSES: frozenset[PlatformJobStatus] = frozenset(
     {PlatformJobStatus.COMPLETED, PlatformJobStatus.ERROR, PlatformJobStatus.CANCELLED}
 )
+_JOB_TERMINAL_WAIT_TIMEOUT_SECONDS = 300.0
+_JOB_TERMINAL_WAIT_POLL_SECONDS = 2.0
+
+
+class WorkspaceJobCleanupError(RuntimeError):
+    """Raised when workspace cleanup cannot delete every job."""
+
+
+def _job_status_value(status: object) -> PlatformJobStatus | str:
+    value = getattr(status, "value", status)
+    try:
+        return PlatformJobStatus(str(value))
+    except ValueError:
+        return str(value or "")
+
+
+def _job_status_is_terminal(status: object) -> bool:
+    return _job_status_value(status) in _TERMINAL_JOB_STATUSES
 
 
 class WorkspaceCleanup(HeartbeatMixin, Controller):
@@ -132,31 +151,64 @@ class WorkspaceCleanup(HeartbeatMixin, Controller):
             jobs_client = client_from_platform(self._nmp_sdk, AsyncJobsClient)
             jobs = [job async for job in (await jobs_client.list_jobs(workspace=workspace.name)).items()]
 
+            cleanup_errors: list[Exception] = []
             for job in jobs:
-                if job.status not in _TERMINAL_JOB_STATUSES:
-                    try:
-                        logger.info(f"Cancelling job: {job.name}")
-                        await jobs_client.cancel_job(
-                            name=job.name,
-                            workspace=workspace.name,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to cancel job {job.name}: {e}")
-
                 try:
+                    if not _job_status_is_terminal(job.status):
+                        cancel_succeeded = False
+                        try:
+                            logger.info(f"Cancelling job: {job.name}")
+                            await jobs_client.cancel_job(
+                                name=job.name,
+                                workspace=workspace.name,
+                            )
+                            cancel_succeeded = True
+                        except Exception as e:
+                            logger.warning(f"Failed to cancel job {job.name}: {e}")
+                        if cancel_succeeded:
+                            await self._wait_for_terminal_job(jobs_client, workspace.name, job.name)
+
                     logger.info(f"Deleting job: {job.name}")
                     await jobs_client.delete_job(
                         name=job.name,
                         workspace=workspace.name,
                     )
+                except NotFoundError:
+                    logger.info(f"Job already deleted: {job.name}")
                 except Exception as e:
                     logger.warning(f"Failed to delete job {job.name}: {e}")
+                    cleanup_errors.append(e)
                 finally:
                     self.emit_heartbeat()
 
+            if cleanup_errors:
+                raise WorkspaceJobCleanupError(
+                    f"Failed to delete {len(cleanup_errors)} job(s) while cleaning workspace {workspace.name}"
+                )
+
         except Exception as e:
-            logger.error(f"Failed to list jobs for workspace {workspace.name}: {e}")
+            logger.error(f"Failed to cleanup jobs for workspace {workspace.name}: {e}")
             raise
+
+    async def _wait_for_terminal_job(self, jobs_client: AsyncJobsClient, workspace: str, job_name: str) -> None:
+        """Wait until a cancelled job is terminal before hard deletion."""
+        deadline = asyncio.get_running_loop().time() + _JOB_TERMINAL_WAIT_TIMEOUT_SECONDS
+        last_status: PlatformJobStatus | str = ""
+        while True:
+            try:
+                response = await jobs_client.get_job_status(name=job_name, workspace=workspace)
+            except NotFoundError:
+                return
+            status_info = response.data()
+            last_status = _job_status_value(status_info.status)
+            if last_status in _TERMINAL_JOB_STATUSES:
+                return
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError(
+                    f"Timed out waiting for job {job_name} in workspace {workspace} to reach a terminal status; "
+                    f"last status was {last_status}"
+                )
+            await asyncio.sleep(_JOB_TERMINAL_WAIT_POLL_SECONDS)
 
     @tracer.start_as_current_span("workspace_cleanup/cleanup_deployments")
     async def _cleanup_deployments(self, workspace: Workspace) -> None:

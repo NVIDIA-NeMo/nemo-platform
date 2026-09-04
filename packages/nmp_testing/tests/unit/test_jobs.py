@@ -18,8 +18,10 @@ counted against the main job-execution timeout.
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
-from nmp.testing.e2e.jobs import TERMINAL_STATUSES, wait_for_platform_job
+from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
+from nmp.testing.e2e.jobs import TERMINAL_STATUSES, cleanup_platform_job, wait_for_platform_job
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,6 +40,12 @@ def _resp(data):
     return m
 
 
+def _http_error(error_type, status_code: int, method: str = "GET"):
+    request = httpx.Request(method, "http://localhost/apis/jobs/v2/workspaces/ws/jobs/my-job")
+    response = httpx.Response(status_code, request=request, json={"detail": f"HTTP {status_code}"})
+    return error_type(response)
+
+
 def _make_jobs_client(*statuses: str) -> MagicMock:
     """Return a typed jobs-client mock whose get_job() cycles through *statuses*.
 
@@ -53,6 +61,8 @@ def _make_jobs_client(*statuses: str) -> MagicMock:
         responses.append(_resp(j))
     jobs_client.get_job.side_effect = responses
     jobs_client.get_job_status.return_value = _resp(MagicMock(model_dump=MagicMock(return_value={})))
+    jobs_client.cancel_job.return_value = _resp(None)
+    jobs_client.delete_job.return_value = _resp(None)
     return jobs_client
 
 
@@ -251,3 +261,40 @@ class TestWaitForPlatformJobTimeoutError:
                 wait_for_platform_job(_make_sdk(), "my-job", "ws", timeout=5.0)
 
         assert "Job status details:" in str(exc_info.value)
+
+
+class TestCleanupPlatformJob:
+    def test_cancels_waits_and_deletes_non_terminal_job(self):
+        jobs_client = _make_jobs_client("active", "cancelled")
+        with _patch_client(jobs_client):
+            cleanup_platform_job(_make_sdk(), "my-job", "ws", timeout=5.0, poll_interval=0.0)
+
+        jobs_client.cancel_job.assert_called_once_with(name="my-job", workspace="ws")
+        jobs_client.delete_job.assert_called_once_with(name="my-job", workspace="ws")
+
+    def test_missing_job_is_already_cleaned_up(self):
+        jobs_client = _make_jobs_client()
+        jobs_client.get_job.side_effect = _http_error(NotFoundError, 404)
+
+        with _patch_client(jobs_client):
+            cleanup_platform_job(_make_sdk(), "my-job", "ws", timeout=5.0, poll_interval=0.0)
+
+        jobs_client.cancel_job.assert_not_called()
+        jobs_client.delete_job.assert_not_called()
+
+    def test_retries_delete_conflict_until_success(self):
+        jobs_client = _make_jobs_client("completed")
+        jobs_client.delete_job.side_effect = [_http_error(ConflictError, 409, method="DELETE"), _resp(None)]
+
+        with _patch_client(jobs_client):
+            cleanup_platform_job(_make_sdk(), "my-job", "ws", timeout=5.0, poll_interval=0.0)
+
+        assert jobs_client.delete_job.call_count == 2
+
+    def test_delete_conflict_timeout_raises_timeout(self):
+        jobs_client = _make_jobs_client("completed")
+        jobs_client.delete_job.side_effect = _http_error(ConflictError, 409, method="DELETE")
+
+        with _patch_client(jobs_client):
+            with pytest.raises(TimeoutError, match="could not be deleted"):
+                cleanup_platform_job(_make_sdk(), "my-job", "ws", timeout=0.0, poll_interval=0.0)

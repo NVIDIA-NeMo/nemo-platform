@@ -16,7 +16,7 @@ from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params, parse_deep_object
 from nmp.common.auth import AuthClient, AuthContext, get_auth_client
 from nmp.common.config import get_platform_config
-from nmp.common.entities.client import EntityConflictError, EntityValidationError
+from nmp.common.entities.client import EntityConflictError, EntityNotFoundError, EntityValidationError
 from nmp.common.jobs.docker import validate_gpu_available_for_docker
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.log_client import JobLogsClient, dep_job_logs_client
@@ -55,6 +55,7 @@ from nmp.core.jobs.app.dispatcher import (
     JobDispatcher,
     JobOutputLocationError,
     JobSecretValidationError,
+    JobStatusUpdateSkippedError,
     StateTransitionConflictError,
 )
 from nmp.core.jobs.app.profiles import ExecutionProfileT
@@ -453,7 +454,9 @@ async def resume_job(
     responses={
         status.HTTP_204_NO_CONTENT: {"description": "Successful Response"},
         status.HTTP_404_NOT_FOUND: {"description": "Job not Found"},
-        status.HTTP_409_CONFLICT: {"description": "Job is not in a terminal state"},
+        status.HTTP_409_CONFLICT: {
+            "description": "Job, attempt, or step is not terminal; paused or cancelling jobs must reach a terminal state before deletion."
+        },
     },
 )
 async def delete_job(
@@ -470,7 +473,6 @@ async def delete_job(
                 "Cannot delete job '%s' in workspace '%s'",
                 sanitize_for_log(name),
                 sanitize_for_log(workspace),
-                exc_info=True,
             )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -608,13 +610,20 @@ async def create_job_result(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job '{job}' not found in workspace '{workspace}'.",
             )
-        result = await dispatcher.create_result(
-            job_id=job_entity.id,
-            result_name=name,
-            workspace=workspace,
-            artifact_url=request.artifact_url,
-            artifact_storage_type=request.artifact_storage_type,
-        )
+        try:
+            result = await dispatcher.create_result(
+                job_id=job_entity.id,
+                job_name=job,
+                result_name=name,
+                workspace=workspace,
+                artifact_url=request.artifact_url,
+                artifact_storage_type=request.artifact_storage_type,
+            )
+        except EntityNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{job}' not found in workspace '{workspace}'.",
+            ) from exc
         return result.to_response()
 
 
@@ -844,6 +853,15 @@ async def update_job_step_status(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Conflict updating job step: it was modified by another request. Refresh the step and retry.",
             ) from exc
+        except JobStatusUpdateSkippedError:
+            logger.info(
+                "Skipping job step status update because the job was deleted",
+                extra={
+                    "job": sanitize_for_log(job),
+                    "step": sanitize_for_log(name),
+                    "workspace": sanitize_for_log(workspace),
+                },
+            )
 
         return step_entity
 
@@ -907,13 +925,19 @@ async def update_job_step_task(
                 detail=f"Step '{step}' for job '{job}' not found in workspace '{workspace}'.",
             )
 
-        return await dispatcher.create_or_update_task(
-            job,
-            name,
-            workspace,
-            update,
-            step_entity,
-        )
+        try:
+            return await dispatcher.create_or_update_task(
+                job,
+                name,
+                workspace,
+                update,
+                step_entity,
+            )
+        except EntityNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Step '{step}' for job '{job}' not found in workspace '{workspace}'.",
+            ) from exc
 
 
 @router.get(

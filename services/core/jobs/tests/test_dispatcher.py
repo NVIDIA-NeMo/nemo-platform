@@ -8,6 +8,7 @@ These tests verify that the JobDispatcher correctly manages job lifecycle operat
 """
 
 import asyncio
+import gc
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,7 +28,7 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobResponse,
     PlatformJobTaskUpdate,
 )
-from nmp.core.jobs.app.dispatcher import JobDeletionConflictError, JobDispatcher
+from nmp.core.jobs.app.dispatcher import JobDeletionConflictError, JobDispatcher, JobStatusUpdateSkippedError
 from nmp.core.jobs.app.schemas import (
     PlatformJobStepSpec,
 )
@@ -327,6 +328,131 @@ async def test_delete_job_serializes_with_rerun_job(
                 await asyncio.gather(delete_task, rerun_task, return_exceptions=True)
             else:
                 await asyncio.gather(delete_task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_delete_job_serializes_with_task_creation(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+    mock_nmp_client,
+):
+    """A task update cannot create a late child row after delete cleanup starts."""
+    job_id, job_name, _, step_id, _, _ = await create_test_job_data(mock_store, "delete-task-lock-test-job")
+    step = await mock_store.get_by_id(PlatformJobStep, step_id)
+    other_dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
+
+    delete_started = asyncio.Event()
+    allow_delete = asyncio.Event()
+    original_delete_by_id = mock_store.delete_by_id
+
+    async def blocking_delete_by_id(entity_type, entity_id):
+        if entity_type is PlatformJobResult and not delete_started.is_set():
+            delete_started.set()
+            await allow_delete.wait()
+        return await original_delete_by_id(entity_type, entity_id)
+
+    with patch.object(mock_store, "delete_by_id", side_effect=blocking_delete_by_id):
+        delete_task = asyncio.create_task(mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE))
+        task_create_task = None
+        try:
+            await asyncio.wait_for(delete_started.wait(), timeout=1.0)
+
+            task_create_task = asyncio.create_task(
+                other_dispatcher.create_or_update_task(
+                    job_name,
+                    "late-task",
+                    DEFAULT_WORKSPACE,
+                    PlatformJobTaskUpdate(status=PlatformJobStatus.ACTIVE),
+                    step,
+                )
+            )
+            await asyncio.sleep(0.05)
+            assert not task_create_task.done()
+
+            allow_delete.set()
+            assert await delete_task is True
+            with pytest.raises(EntityNotFoundError):
+                await task_create_task
+        finally:
+            allow_delete.set()
+            if task_create_task is not None:
+                await asyncio.gather(delete_task, task_create_task, return_exceptions=True)
+            else:
+                await asyncio.gather(delete_task, return_exceptions=True)
+
+    await verify_job_data_exists(mock_store, job_id, should_exist=False)
+    assert await count_entities(mock_store, PlatformJobTask, {"step_id": step_id}) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_job_serializes_with_result_creation(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+    mock_nmp_client,
+):
+    """A result create cannot recreate associated data after delete cleanup starts."""
+    job_id, job_name, _, _, _, _ = await create_test_job_data(mock_store, "delete-result-lock-test-job")
+    other_dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
+
+    delete_started = asyncio.Event()
+    allow_delete = asyncio.Event()
+    original_delete_by_id = mock_store.delete_by_id
+
+    async def blocking_delete_by_id(entity_type, entity_id):
+        if entity_type is PlatformJobResult and not delete_started.is_set():
+            delete_started.set()
+            await allow_delete.wait()
+        return await original_delete_by_id(entity_type, entity_id)
+
+    with patch.object(mock_store, "delete_by_id", side_effect=blocking_delete_by_id):
+        delete_task = asyncio.create_task(mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE))
+        result_create_task = None
+        try:
+            await asyncio.wait_for(delete_started.wait(), timeout=1.0)
+
+            result_create_task = asyncio.create_task(
+                other_dispatcher.create_result(
+                    job_id=job_id,
+                    job_name=job_name,
+                    result_name="late-result",
+                    artifact_url="default/test-fileset#late",
+                    artifact_storage_type=FileStorageType.FILESET,
+                    workspace=DEFAULT_WORKSPACE,
+                )
+            )
+            await asyncio.sleep(0.05)
+            assert not result_create_task.done()
+
+            allow_delete.set()
+            assert await delete_task is True
+            with pytest.raises(EntityNotFoundError):
+                await result_create_task
+        finally:
+            allow_delete.set()
+            if result_create_task is not None:
+                await asyncio.gather(delete_task, result_create_task, return_exceptions=True)
+            else:
+                await asyncio.gather(delete_task, return_exceptions=True)
+
+    await verify_job_data_exists(mock_store, job_id, should_exist=False)
+    assert await count_entities(mock_store, PlatformJobResult, {"job": job_id}) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_job_does_not_leave_idle_mutation_lock(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+):
+    """Idle job mutation locks are weakly held and do not grow forever."""
+    from nmp.core.jobs.app import dispatcher as dispatcher_module
+
+    _, job_name, _, _, _, _ = await create_test_job_data(mock_store, "delete-lock-prune-test-job")
+
+    deleted = await mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE)
+
+    assert deleted is True
+    gc.collect()
+    assert (DEFAULT_WORKSPACE, job_name) not in dispatcher_module._JOB_MUTATION_LOCKS
 
 
 @pytest.mark.asyncio
@@ -757,6 +883,20 @@ async def test_update_job_status_from_step_skips_step_store_when_noop(
         )
 
     assert step_update_count == 0
+
+
+@pytest.mark.asyncio
+async def test_update_job_status_from_step_missing_job_raises_typed_skip(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+):
+    """A step status update racing a job delete does not raise a generic Exception."""
+    job_id, _, _, step_id, _, _ = await create_test_job_data(mock_store, "missing-job-status-update")
+    step = await mock_store.get_by_id(PlatformJobStep, step_id)
+    await mock_store.delete_by_id(PlatformJob, job_id)
+
+    with pytest.raises(JobStatusUpdateSkippedError):
+        await mock_dispatcher.update_job_status_from_step(step, PlatformJobStatus.COMPLETED)
 
 
 @pytest.mark.asyncio

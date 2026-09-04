@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nmp.core.entities.controllers.workspace_cleanup import WorkspaceCleanup
+from nmp.core.entities.controllers.workspace_cleanup import WorkspaceCleanup, WorkspaceJobCleanupError
 from nmp.core.entities.entities import Workspace, WorkspaceDeletionStage
 
 
@@ -40,6 +40,18 @@ def _make_mock_files_client(filesets: list | None = None) -> AsyncMock:
     return mock_files
 
 
+def _make_response(data) -> MagicMock:
+    response = MagicMock()
+    response.data.return_value = data
+    return response
+
+
+def _make_job_status(status: str) -> MagicMock:
+    status_response = MagicMock()
+    status_response.status = status
+    return status_response
+
+
 def _make_jobs_client(jobs: list | None = None) -> MagicMock:
     """Build a mock typed AsyncJobsClient.
 
@@ -52,6 +64,7 @@ def _make_jobs_client(jobs: list | None = None) -> MagicMock:
     jobs_client.list_jobs = AsyncMock(return_value=_MockAsyncPaginatedResponse(jobs or []))
     jobs_client.cancel_job = AsyncMock()
     jobs_client.delete_job = AsyncMock()
+    jobs_client.get_job_status = AsyncMock(return_value=_make_response(_make_job_status("cancelled")))
     return jobs_client
 
 
@@ -307,7 +320,7 @@ class TestWorkspaceCleanupJobs:
         jobs_client.delete_job.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_continues_on_individual_job_failure(self):
+    async def test_attempts_remaining_jobs_then_raises_on_job_delete_failure(self):
         workspace = _make_workspace()
         job1 = MagicMock()
         job1.name = "fail-job"
@@ -321,9 +334,27 @@ class TestWorkspaceCleanupJobs:
 
         controller = _make_controller()
         with _patch_jobs_client(jobs_client):
-            await controller._cleanup_jobs(workspace)
+            with pytest.raises(WorkspaceJobCleanupError):
+                await controller._cleanup_jobs(workspace)
 
         assert jobs_client.delete_job.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_non_terminal_job_after_cancel_is_not_treated_as_deleted(self, monkeypatch: pytest.MonkeyPatch):
+        from nmp.core.entities.controllers import workspace_cleanup as workspace_cleanup_module
+
+        monkeypatch.setattr(workspace_cleanup_module, "_JOB_TERMINAL_WAIT_TIMEOUT_SECONDS", 0.0)
+        workspace = _make_workspace()
+        jobs_client = _make_jobs_client([_make_job("still-running-job", status="active")])
+        jobs_client.get_job_status = AsyncMock(return_value=_make_response(_make_job_status("active")))
+
+        controller = _make_controller()
+        with _patch_jobs_client(jobs_client):
+            with pytest.raises(WorkspaceJobCleanupError):
+                await controller._cleanup_jobs(workspace)
+
+        jobs_client.cancel_job.assert_awaited_once_with(name="still-running-job", workspace="test-workspace")
+        jobs_client.delete_job.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_raises_on_list_failure(self):

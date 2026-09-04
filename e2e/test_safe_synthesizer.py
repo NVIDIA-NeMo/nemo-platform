@@ -345,30 +345,21 @@ def _wait_for_job_absent(
 
 
 def _delete_nss_job(sdk: NeMoPlatform, workspace: str, name: str, *, verify: bool = True) -> None:
-    response = sdk._client.delete(
-        _nss_url(sdk, workspace, f"jobs/{name}"),
-        headers=_string_headers(sdk),
-        timeout=60.0,
-    )
-    if response.status_code == 409:
-        try:
-            _wait_for_status(
-                sdk,
-                workspace,
-                name,
-                timeout_seconds=SMOKE_JOB_TIMEOUT_SECONDS,
-                poll_interval_seconds=2.0,
-            )
-        except Exception:
-            response.raise_for_status()
+    deadline = time.monotonic() + DELETE_VERIFY_TIMEOUT_SECONDS
+    while True:
         response = sdk._client.delete(
             _nss_url(sdk, workspace, f"jobs/{name}"),
             headers=_string_headers(sdk),
             timeout=60.0,
         )
-    if response.status_code not in {200, 202, 204, 404}:
-        response.raise_for_status()
-    if verify:
+        if response.status_code in {200, 202, 204, 404}:
+            break
+        if response.status_code != 409:
+            response.raise_for_status()
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Timed out deleting Safe Synthesizer job {name!r}; last response={response.text}")
+        time.sleep(2.0)
+    if verify and response.status_code != 404:
         _wait_for_job_absent(sdk, workspace, name)
 
 
@@ -599,17 +590,42 @@ def nss_job(sdk: NeMoPlatform, workspace: str) -> Iterator[NssJobFactory]:
     try:
         yield create
     finally:
+        cleanup_errors: list[Exception] = []
         for job_name in reversed(job_names):
-            cancel_response = _cancel_nss_job(sdk, workspace, job_name)
-            if cancel_response is not None:
-                _wait_for_status(
+            try:
+                cancel_response = _cancel_nss_job(sdk, workspace, job_name)
+                if cancel_response is not None:
+                    _wait_for_status(
+                        sdk,
+                        workspace,
+                        job_name,
+                        timeout_seconds=SMOKE_JOB_TIMEOUT_SECONDS,
+                        poll_interval_seconds=2.0,
+                    )
+            except Exception as exc:
+                cleanup_errors.append(exc)
+                _capture_nss_debug_artifacts(
                     sdk,
                     workspace,
                     job_name,
-                    timeout_seconds=SMOKE_JOB_TIMEOUT_SECONDS,
-                    poll_interval_seconds=2.0,
+                    "cleanup cancel/wait failed",
+                    history=[],
+                    error=exc,
                 )
-            _delete_nss_job(sdk, workspace, job_name)
+            try:
+                _delete_nss_job(sdk, workspace, job_name)
+            except Exception as exc:
+                cleanup_errors.append(exc)
+                _capture_nss_debug_artifacts(
+                    sdk,
+                    workspace,
+                    job_name,
+                    "cleanup delete failed",
+                    history=[],
+                    error=exc,
+                )
+        if cleanup_errors:
+            raise ExceptionGroup("Safe Synthesizer job cleanup failed", cleanup_errors)
 
 
 def test_safe_synthesizer_api_health(sdk: NeMoPlatform, workspace: str) -> None:

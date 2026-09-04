@@ -65,7 +65,7 @@ def test_does_schedule_job(
     assert test_backend.mock.sync_calls == []
 
 
-def test_scheduling_deferred_leaves_step_created(
+def test_scheduling_deferred_keeps_step_created_with_visible_status_details(
     job_scheduler: JobScheduler,
     mock_nmp_client,
     mock_jobs_client,
@@ -76,7 +76,14 @@ def test_scheduling_deferred_leaves_step_created(
     with patch.object(job_scheduler, "schedule_step", side_effect=SchedulingDeferred("capacity full")):
         job_scheduler.step()
 
-    mock_jobs_client.update_job_step_status.assert_not_called()
+    mock_jobs_client.update_job_step_status.assert_called_once()
+    call = mock_jobs_client.update_job_step_status.call_args
+    assert call.kwargs["name"] == test_step_pending.name
+    assert call.kwargs["workspace"] == test_step_pending.workspace
+    assert call.kwargs["job"] == test_step_pending.job
+    body = call.kwargs["body"]
+    assert body.status == PlatformJobStatus.CREATED
+    assert body.status_details == {"message": "capacity full"}
 
 
 def test_resource_allocation_error_marks_step_as_error(
