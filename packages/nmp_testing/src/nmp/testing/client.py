@@ -445,12 +445,6 @@ def create_test_client(
         services_to_start = [_create_svc(svc, configs) for svc in services_to_create]
         services_to_start = order_services_by_dependencies(services_to_start)
 
-        # Clear any stale SDK client from previous tests BEFORE creating app.
-        # This prevents service startup code from using a previous test's http transport.
-        from nmp.common import sdk_factory as sdk_factory_module
-
-        sdk_factory_module._test_http_client = None
-
         # Create transport and http_client BEFORE the app, so we can inject the client
         # into create_app() for middleware (AuthorizationMiddleware). We set transport.app
         # after app creation - this works because no requests are made until setup completes.
@@ -461,9 +455,7 @@ def create_test_client(
         pdp_timeout = Configuration.get_service_config(AuthConfig).policy_decision_point_request_timeout_seconds
         async_http_client = httpx.AsyncClient(transport=transport, base_url="http://testserver", timeout=pdp_timeout)
 
-        # Both callouts target this in-process ASGI app in tests. Pass them
-        # explicitly so production callers never assume the PDP transport can
-        # also reach the auth-service lifecycle endpoint.
+        # Both auth callouts target this in-process ASGI app in tests.
         app = create_app(
             services_to_start,
             http_client=async_http_client,
@@ -484,15 +476,12 @@ def create_test_client(
             # Store on app.state so tests can access it via test_client.app.state.access_log
             app.state.access_log = access_log_instance
 
-        # Configure module-level http client as FALLBACK for direct callers of
-        # get_async_platform_sdk()/get_platform_sdk() that don't use DependencyProvider.
-        # The primary injection path is through DependencyProvider (see below). These
-        # module-level variables will be removed once all direct callers are migrated.
-        # See architecture/docs/http-client-injection.md for details.
-        sdk_factory_module._test_http_client = async_http_client
-        stack.callback(lambda: setattr(sdk_factory_module, "_test_http_client", None))
+        from nmp.common.sdk_factory import get_async_platform_sdk
 
-        async_sdk = AsyncNeMoPlatform(base_url="http://testserver", http_client=async_http_client, workspace=workspace)
+        async_sdk = get_async_platform_sdk(
+            base_url="http://testserver",
+            http_client=async_http_client,
+        ).copy(workspace=workspace)
 
         # Create the EntityClient (used for DI and optionally yielded)
         entity_client = EntityClient(client_from_platform(async_sdk, AsyncEntitiesClient))

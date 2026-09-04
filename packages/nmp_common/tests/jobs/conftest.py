@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from nemo_platform import AsyncNeMoPlatform
 from nmp.common.entities import DEFAULT_WORKSPACE
 from nmp.common.entities.utils import get_random_bytes
 from nmp.common.jobs.file_manager import FilesetFileManager
@@ -44,7 +45,7 @@ def mock_nmp_sdk():
 @pytest.fixture
 def mock_async_nmp_sdk():
     """Mock async NeMoPlatform SDK for jobs operations."""
-    m = AsyncMock()
+    m = AsyncMock(spec=AsyncNeMoPlatform)
 
     async def _create(**kwargs):
         return SimpleNamespace(id=f"jobresult-{get_random_bytes()}", **kwargs)

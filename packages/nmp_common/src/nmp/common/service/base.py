@@ -16,10 +16,11 @@ from typing import ClassVar, Dict, Generic, List, Optional, Self, Type, TypeVar,
 import httpx
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.openapi.utils import get_openapi
+from fastapi.routing import APIRoute, iter_route_contexts
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient
 from nmp.common.api.utils import register_query_param_schemas
-from nmp.common.config import Configuration, PlatformConfig, ServiceConfig
+from nmp.common.config import Configuration, PlatformConfig, ServiceConfig, get_platform_config
 from nmp.common.controller import Controller
 from nmp.common.entities.client import EntityClient
 from nmp.common.platform_endpoint import resolve_platform_endpoint, resolve_service_endpoint
@@ -157,19 +158,20 @@ class DependencyProvider:
         Uses the cached base SDK and applies per-request headers via .with_options()
         (lightweight — reuses the HTTP connection pool).
         """
-        from nmp.common.sdk_factory import with_options_preserving_request_router
         from nmp.common.service.headers import build_downstream_service_headers
 
         base_sdk = self.get_sdk_client()
         headers = build_downstream_service_headers(self._service_name)
 
-        return with_options_preserving_request_router(base_sdk, set_default_headers=headers)
+        return base_sdk.with_options(set_default_headers=headers)
 
     def get_platform_config(self) -> PlatformConfig:
         """Return the PlatformConfig (lazily initialized)."""
-        if self._platform_config is None:
-            self._platform_config = Configuration.get_platform_config()
-        return self._platform_config
+        platform_config = self._platform_config
+        if platform_config is None:
+            platform_config = get_platform_config()
+            self._platform_config = platform_config
+        return platform_config
 
     def get_request_scoped_sdk(self) -> AsyncNeMoPlatform:
         """Return a request-scoped SDK with current auth and OTEL headers.
@@ -496,9 +498,10 @@ class Service(ABC, Generic[TConfig]):
 
         # Include service-specific routers, tagging any routes that have no tags yet
         for rc in router_configs:
-            for route in rc.router.routes:
-                if hasattr(route, "tags") and not route.tags:
-                    route.tags = [rc.tag]
+            for route_context in iter_route_contexts(rc.router.routes):
+                route = route_context.original_route
+                if isinstance(route, APIRoute) and not route.tags:
+                    route.tags.append(rc.tag)
             app.include_router(rc.router, prefix=rc.prefix)
 
         # Setup custom OpenAPI schema
@@ -508,23 +511,15 @@ class Service(ABC, Generic[TConfig]):
 
     def _setup_custom_openapi(self, app: FastAPI, openapi_tags: List[Dict[str, str]]) -> None:
         """Configure custom OpenAPI schema generation."""
-
-        def custom_openapi():
-            if app.openapi_schema:
-                return app.openapi_schema
-            openapi_schema = get_openapi(
-                title=self.title,
-                version=self.version,
-                summary=f"This is the OpenAPI Schema for the {self.title}.",
-                description="",
-                routes=app.routes,
-                tags=openapi_tags,
-            )
-            openapi_schema = register_query_param_schemas(openapi_schema)
-            app.openapi_schema = openapi_schema
-            return app.openapi_schema
-
-        app.openapi = custom_openapi  # type: ignore[method-assign]
+        openapi_schema = get_openapi(
+            title=self.title,
+            version=self.version,
+            summary=f"This is the OpenAPI Schema for the {self.title}.",
+            description="",
+            routes=app.routes,
+            tags=openapi_tags,
+        )
+        app.openapi_schema = register_query_param_schemas(openapi_schema)
 
     # =========================================================================
     # Startup and readiness
