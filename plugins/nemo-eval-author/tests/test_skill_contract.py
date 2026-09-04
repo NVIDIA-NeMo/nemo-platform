@@ -61,13 +61,29 @@ _AUDIT_DIR = _SKILLS_DIR / "eval-author-audit"
 _TASK_CREATE_DIR = _SKILLS_DIR / "eval-author-task-create"
 _INSPECT_DIR = _SKILLS_DIR / "eval-author-inspect-trace"
 _MLFLOW_TO_ATIF_DIR = _SKILLS_DIR / "mlflow-to-atif"
-_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR, _MLFLOW_TO_ATIF_DIR)
-_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR)
+_TRACE_ENVIRONMENT_DIR = _SKILLS_DIR / "eval-author-trace-environment"
+_SKILL_DIRS = (
+    _CORE_DIR,
+    _DISCOVER_DIR,
+    _AUDIT_DIR,
+    _TASK_CREATE_DIR,
+    _INSPECT_DIR,
+    _MLFLOW_TO_ATIF_DIR,
+    _TRACE_ENVIRONMENT_DIR,
+)
+_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR, _TRACE_ENVIRONMENT_DIR)
 _DISCOVER_SCRIPTS_DIR = _DISCOVER_DIR / "scripts"
 _AUDIT_SPEC_DIR = _AUDIT_DIR / "scripts" / "audit_spec"
 _TASK_CREATE_SCRIPTS_DIR = _TASK_CREATE_DIR / "scripts"
 _MLFLOW_TO_ATIF_SCRIPTS_DIR = _MLFLOW_TO_ATIF_DIR / "scripts"
-_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR, _TASK_CREATE_SCRIPTS_DIR, _MLFLOW_TO_ATIF_SCRIPTS_DIR)
+_TRACE_ENVIRONMENT_SCRIPTS_DIR = _TRACE_ENVIRONMENT_DIR / "scripts"
+_SCRIPT_DIRS = (
+    _DISCOVER_SCRIPTS_DIR,
+    _AUDIT_SPEC_DIR,
+    _TASK_CREATE_SCRIPTS_DIR,
+    _MLFLOW_TO_ATIF_SCRIPTS_DIR,
+    _TRACE_ENVIRONMENT_SCRIPTS_DIR,
+)
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
@@ -83,6 +99,7 @@ _AUDIT_COVERAGE_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.cove
 _AUDIT_COVERAGE_REPORT_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "coverage_report.json"
 _AUDIT_TOOL_CALLS_DETAILS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.details.json"
 _MLFLOW_TO_ATIF = _MLFLOW_TO_ATIF_SCRIPTS_DIR / "convert_mlflow_to_atif.py"
+_TRACE_ENVIRONMENT = _TRACE_ENVIRONMENT_SCRIPTS_DIR / "trace_environment.py"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -520,6 +537,7 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     audit_tools = set(_frontmatter_and_body(_AUDIT_DIR)[0]["allowed-tools"])
     task_create_tools = set(_frontmatter_and_body(_TASK_CREATE_DIR)[0]["allowed-tools"])
     inspect_tools = set(_frontmatter_and_body(_INSPECT_DIR)[0]["allowed-tools"])
+    trace_environment_tools = set(_frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)[0]["allowed-tools"])
 
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
     assert {"Bash", "Write"} <= discover_tools, (
@@ -533,6 +551,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     )
     assert {"Bash", "Write"} <= inspect_tools, (
         f"{_INSPECT_DIR.name} runs provider commands and saves a report; it has {sorted(inspect_tools)}"
+    )
+    assert {"Bash", "Write"} <= trace_environment_tools, (
+        f"{_TRACE_ENVIRONMENT_DIR.name} prepares and verifies task artifacts; it has {sorted(trace_environment_tools)}"
     )
 
 
@@ -649,6 +670,26 @@ def test_mlflow_to_atif_script_the_skill_names_exists() -> None:
     relative = "scripts/convert_mlflow_to_atif.py"
     assert relative in body
     assert (_MLFLOW_TO_ATIF_DIR / relative).is_file()
+
+
+def test_trace_environment_script_the_skill_names_exists() -> None:
+    _, body = _frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)
+    relative = "scripts/trace_environment.py"
+    assert relative in body
+    assert (_TRACE_ENVIRONMENT_DIR / relative).is_file()
+
+
+def test_trace_environment_records_ground_truth_and_software_constraints() -> None:
+    _, body = _frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)
+
+    for phrase in (
+        "ground_truth",
+        "software_requirements",
+        "proprietary",
+        "redistributable",
+        "private/ground-truth/",
+    ):
+        assert phrase in body
 
 
 def test_mlflow_to_atif_converts_export_to_private_v17_trajectory(tmp_path: Path) -> None:

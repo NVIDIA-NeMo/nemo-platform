@@ -4,8 +4,9 @@
 
 name: eval-author
 description: >-
-  Work on evaluation suites in a user's repository or understand an agent run
-  from NeMo Intake. Owns the evidence standard that every Eval Author sub-flow
+  Work on evaluation suites in a user's repository, derive an environment from
+  trace evidence, or understand an agent run from NeMo Intake. Owns the evidence
+  standard that every Eval Author sub-flow
   follows. Use when the user asks "help me with my evals",
   "what's the state of the eval suite here?", "what happened in this trace?", or
   when you need to pick between the Eval Author sub-flows. Routes to a sub-flow
@@ -17,12 +18,14 @@ triggers:
   - I inherited a repo with Harbor tasks in it
   - work on my evaluation suite
   - what happened in this agent trace
+  - create an evaluation environment from a trace
   - which eval author step do I need
 not-for:
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
   - eval-author-audit (use to generate, validate, measure, or aggregate audit.md coverage)
   - eval-author-task-create (use to create and prove one Harbor task from an actionable audit gap)
   - eval-author-inspect-trace (use after this skill selects the trace sub-flow)
+  - eval-author-trace-environment (use to derive a Harbor environment from canonical ATIF evidence)
   - nemo-intake (use to instrument agents, ingest telemetry, or query Intake outside Eval Author)
   - mlflow-to-atif (use to convert MLflow traces into canonical ATIF files)
   - nemo-experimentalist (use to run insight-driven optimization end to end, which drives the Eval Author agent itself)
@@ -60,6 +63,8 @@ The authority depends on the sub-flow:
   correctness; measured ATIF proves whether repeated runs close the selected gap.
 - For trace inspection, Intake establishes what happened. Local source code can
   explain behavior, but it can't replace recorded trace evidence.
+- For trace-derived environments, canonical ATIF establishes the request and
+  Harbor's NOP and Oracle runs prove the generated environment.
 
 No sub-flow reimplements a provider's rules. When evidence can't settle a claim,
 the report marks the claim unproven or uncertain.
@@ -90,6 +95,7 @@ and the boundaries; the sub-flow carries the steps.
 | `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, write per-method coverage/details files for one ATIF trace, then aggregate coverage reports |
 | `eval-author-task-create` | Create one Harbor-native task from one actionable uncovered tool, prove it with Oracle, and accept it only when repeated measured runs close the gap |
 | `eval-author-inspect-trace` | Understand one Intake trace without presuming that the trace contains a failure. Not user-invocable; this skill selects it |
+| `eval-author-trace-environment` | Normalize one trace to ATIF, make a privacy-reviewed candidate decision, and build a private Harbor task when evidence supports it |
 
 `eval-author-audit` works one level above tasks: it generates and validates the
 coverage denominator, measures traces against it, and aggregates deterministic
@@ -108,7 +114,8 @@ user, not to you.
   ignore.
   `eval-author-discover` scripts write nothing; `eval-author-audit` writes only
   requested audit artifacts; `eval-author-task-create` writes only drafts,
-  proposals, job outputs, and measurements there.
+  proposals, job outputs, and measurements there; `eval-author-trace-environment`
+  writes only private, gitignored task workspaces there.
 - **A missing tool is a finding, not a task.** When the provider is not installed,
   say so and stop short of proving anything. Report what you found regardless, and
   do not install the provider into the user's environment.
