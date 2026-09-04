@@ -20,13 +20,13 @@ Select **New experiment** from the Experiments list. In the **Create experiment*
 
 <Note>
 
-The modal also has **NeMo Assistant** and **CLI command** tabs. **CLI command** shows the `nemo exp run` invocation for the equivalent workflow; **NeMo Assistant** is a placeholder for a future guided flow.
+The modal also has **NeMo Assistant** and **CLI command** tabs. **CLI command** shows an equivalent `nemo agents experimentalist run` invocation, with `--train-dataset` and `--validation-dataset` selecting the training and validation data; **NeMo Assistant** is a placeholder for a future guided flow.
 
 </Note>
 
 ## Experiment Detail
 
-Select an experiment to open its detail page, which shows aggregate metrics across its evaluations and a table of the evaluations in the group. Toggle **Pareto view** to plot evaluations by cost against accuracy instead of the table.
+Select an experiment to open its detail page, which shows aggregate metrics across its evaluations and a table of the evaluations in the group. Toggle **Pareto view** to plot evaluations on a chart instead of the table, by default cost against latency. Change either axis to cost, latency, or any evaluator's score (`cost_usd`, `latency_ms`, or `evaluators.<name>`); the selection is saved per experiment.
 
 Select **Edit** to update the experiment's name, description, or default sort order.
 
