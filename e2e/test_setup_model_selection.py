@@ -19,7 +19,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform import APIStatusError, NeMoPlatform
 from nemo_platform_ext.cli.commands import setup as setup_commands
 from nemo_platform_ext.cli.commands.setup import ModelPair
 from nmp.common.config import Configuration
@@ -142,6 +142,18 @@ def test_auto_setup_waits_for_a_late_published_model_route(sdk: NeMoPlatform, wo
     suffix = _unique_suffix()
     entity = f"nvidia-nemotron-nano-9b-{suffix}"
     provider_name = _advertise_models_without_routes(sdk, workspace, f"late-route-{suffix}", [entity])
+
+    with pytest.raises(APIStatusError) as initial_probe:
+        sdk.inference.gateway.openai.post(
+            "v1/chat/completions",
+            workspace=workspace,
+            body={
+                "model": f"{workspace}/{entity}",
+                "messages": [{"role": "user", "content": "Respond with 'OK'"}],
+                "max_tokens": 16,
+            },
+        )
+    assert initial_probe.value.status_code == 404
 
     saved = _run_auto_setup(sdk, workspace, provider_name)
 

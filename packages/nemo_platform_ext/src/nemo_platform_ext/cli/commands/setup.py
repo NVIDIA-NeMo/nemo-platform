@@ -848,7 +848,7 @@ def _model_parameter_size(entity_id: str) -> float | None:
 def _is_preferred_vendor(entity_id: str) -> bool:
     """Return whether the entity name identifies an NVIDIA-published model."""
     name = _display_model_name(entity_id).lower().replace("_", "-")
-    return name.startswith(("nvidia-", "nv-")) or "nemotron" in name
+    return name.startswith(("nvidia-", "nvidia/", "nv-", "nv/")) or "nemotron" in name
 
 
 def _order_candidates_by_size(entity_ids: list[str], *, largest_first: bool) -> list[str]:
@@ -862,13 +862,12 @@ def _order_candidates_by_size(entity_ids: list[str], *, largest_first: bool) -> 
     return sorted(entity_ids, key=sort_key)
 
 
-def _probe_model_entity(
-    client: NeMoPlatform, workspace: str, entity_id: str, route_ready_deadline: float = 0.0
-) -> bool:
+def _probe_model_entity(client: NeMoPlatform, workspace: str, entity_id: str) -> bool:
     """Return True when a short chat request against *entity_id* succeeds.
 
-    Retries 404s until *route_ready_deadline*; timeouts skip; connection errors raise.
+    Retries route 404s; timeouts skip; connection errors raise.
     """
+    route_ready_deadline = time.monotonic() + _MODEL_ROUTE_READY_SECONDS
     retries = 0
     while True:
         try:
@@ -888,8 +887,11 @@ def _probe_model_entity(
         except APIConnectionError:
             raise
         except APIStatusError as exc:
+            detail = str(exc.body or exc.response.text or exc)
+            entitlement_miss = "not found for account" in detail.lower()
             if (
                 exc.status_code == 404
+                and not entitlement_miss
                 and retries < _MODEL_ROUTE_MAX_RETRIES
                 and time.monotonic() < route_ready_deadline
             ):
@@ -919,7 +921,6 @@ def _select_usable_model_pair(client: NeMoPlatform, workspace: str, entity_ids: 
     probe_client = client.with_options(max_retries=0, timeout=_MODEL_PROBE_TIMEOUT)
     started = time.monotonic()
     deadline = started + _MODEL_PROBE_BUDGET_SECONDS
-    route_ready_deadline = started + _MODEL_ROUTE_READY_SECONDS
 
     def first_usable(ordered: list[str]) -> str | None:
         attempts = 0
@@ -928,7 +929,7 @@ def _select_usable_model_pair(client: NeMoPlatform, workspace: str, entity_ids: 
                 if attempts >= _MODEL_PROBE_MAX_ATTEMPTS or time.monotonic() >= deadline:
                     return None
                 attempts += 1
-                usable[entity_id] = _probe_model_entity(probe_client, workspace, entity_id, route_ready_deadline)
+                usable[entity_id] = _probe_model_entity(probe_client, workspace, entity_id)
             if usable[entity_id]:
                 return entity_id
         return None
@@ -2109,13 +2110,13 @@ def _select_model_pair(
 
     suggested = _select_usable_model_pair(client, workspace, entity_ids)
     if suggested is None:
-        console.print(f"  {WARN} None of the discovered models served a test request; suggestions may not work.")
+        console.print(f"  {WARN} None of the discovered models served a test request; choose a model explicitly.")
 
     default_model = prompt_select(
         "Choose your default model (used for quality-critical agent work):",
         choices=display_models,
-        default=suggested.default if suggested else _pick_default_chat_entity(entity_ids),
-        hint="Press Enter to accept the default.",
+        default=suggested.default if suggested else None,
+        hint="Press Enter to accept the default." if suggested else "Choose a model you can access.",
     )
     fast = prompt_select(
         "Choose your fast model (used for latency-sensitive agent work):",
