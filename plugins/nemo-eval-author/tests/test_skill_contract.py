@@ -1093,6 +1093,11 @@ def test_audit_skill_routes_missing_ethos_to_platform_skills() -> None:
     assert "nemo-ethos" in preflight
     assert "agents/<name>-ethos/ETHOS.md" in preflight
     assert "Do not create a placeholder Ethos inside the audit flow" in normalized_preflight
+    assert "do not substitute other repository material for it" in normalized_preflight
+    assert "Contributor docs, operations docs, README files, code, traces, or draft labels" in normalized_preflight
+    assert "not valid source-of-truth replacements for a missing Ethos" in normalized_preflight
+    assert "Do not synthesize an audit denominator from those materials" in normalized_preflight
+    assert "even if the output is marked as draft" in normalized_preflight
 
 
 def test_audit_skill_anchors_tool_names_to_runtime_measurement_surface() -> None:

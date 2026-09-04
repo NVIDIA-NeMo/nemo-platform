@@ -90,9 +90,12 @@ environment, do not offer to generate it. Link the docs and tell the user to
 create or provide an Ethos path, then rerun the audit command with the path to
 that file.
 
-Do not create a placeholder Ethos inside the audit flow. The audit denominator
-depends on the durable agent contract that `nemo-explore` and `nemo-ethos`
-produce.
+Do not create a placeholder Ethos inside the audit flow, and do not substitute
+other repository material for it. Contributor docs, operations docs, README
+files, code, traces, or draft labels are not valid source-of-truth replacements
+for a missing Ethos. Do not synthesize an audit denominator from those materials,
+even if the output is marked as draft. The audit denominator depends on the
+durable agent contract that `nemo-explore` and `nemo-ethos` produce.
 
 ## Scripts
 
