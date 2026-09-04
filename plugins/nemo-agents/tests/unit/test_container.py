@@ -3105,6 +3105,49 @@ class TestFabricWheelInstall:
         assert not seen["present"]
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_exclusive_dockerfile_create_handles_a_race(
+        self, mock_build: MagicMock, fabric_agent_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        generated = fabric_agent_config.parent / "Dockerfile.generated"
+        generated.write_text("USER OWNED\n")
+        original_exists = Path.exists
+
+        def _miss_generated(self: Path) -> bool:
+            if self == generated:
+                return False
+            return original_exists(self)
+
+        monkeypatch.setattr(Path, "exists", _miss_generated)
+
+        with pytest.raises(ManagedFileConflictError):
+            build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+        assert generated.read_text() == "USER OWNED\n"
+        mock_build.assert_not_called()
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_does_not_remove_a_replaced_generated_dockerfile(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        generated = fabric_agent_config.parent / "Dockerfile.generated"
+        replacement = tmp_path / "replacement.Dockerfile"
+        replacement.write_text("USER REPLACEMENT\n")
+
+        def _replace_generated(**kwargs: Any) -> str:
+            os.replace(replacement, generated)
+            return "image-id"
+
+        mock_build.side_effect = _replace_generated
+
+        build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
+
+        assert generated.read_text() == "USER REPLACEMENT\n"
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_refuses_to_clobber_a_scoped_ignore_file(
         self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
     ) -> None:

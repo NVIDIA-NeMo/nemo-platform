@@ -450,8 +450,6 @@ def build_fabric_agent_image(
         )
 
     tmp_dockerfile = context_dir / "Dockerfile.generated"
-    if dockerfile is None and tmp_dockerfile.exists():
-        raise ManagedFileConflictError(tmp_dockerfile)
 
     # Docker can only COPY from inside the context. For an external wheel,
     # compute the identity digest while staging it so the source is read once
@@ -551,8 +549,15 @@ def build_fabric_agent_image(
     ignore_pre_existed = ignore_path.exists()
     scoped_ignore: Path | None = None
     scoped_ignore_identity: tuple[int, int] | None = None
+    tmp_dockerfile_identity: tuple[int, int] | None = None
     try:
-        tmp_dockerfile.write_text(content, encoding="utf-8")
+        try:
+            with tmp_dockerfile.open("x", encoding="utf-8") as tmp_dockerfile_file:
+                created_stat = os.fstat(tmp_dockerfile_file.fileno())
+                tmp_dockerfile_identity = (created_stat.st_dev, created_stat.st_ino)
+                tmp_dockerfile_file.write(content)
+        except FileExistsError as exc:
+            raise ManagedFileConflictError(tmp_dockerfile) from exc
 
         if generate_ignore:
             ignore_file = render_dockerignore(context_dir)
@@ -582,7 +587,14 @@ def build_fabric_agent_image(
             on_progress=on_progress,
         )
     finally:
-        tmp_dockerfile.unlink(missing_ok=True)
+        if tmp_dockerfile_identity is not None:
+            try:
+                current_stat = tmp_dockerfile.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                if (current_stat.st_dev, current_stat.st_ino) == tmp_dockerfile_identity:
+                    tmp_dockerfile.unlink(missing_ok=True)
         if scoped_ignore is not None and scoped_ignore_identity is not None:
             try:
                 current_stat = scoped_ignore.stat(follow_symlinks=False)
