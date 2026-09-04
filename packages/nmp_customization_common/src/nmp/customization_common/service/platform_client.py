@@ -104,7 +104,7 @@ async def fetch_model_entity(
     default_workspace: str,
     sdk: AsyncNeMoPlatform,
 ) -> ModelEntity:
-    """Retrieve a model entity by reference string."""
+    """Retrieve a model entity and verify its weights fileset is accessible."""
     resolved_ref = parse_entity_ref(model_ref, default_workspace)
     models = client_from_platform(sdk, AsyncModelsClient)
     try:
@@ -113,10 +113,19 @@ async def fetch_model_entity(
             workspace=resolved_ref.workspace,
             query_params={"verbose": True},
         )
-        return response.data()
+        model = response.data()
     except PermissionDeniedError:
         raise PermissionError(f"Access denied to model '{resolved_ref.workspace}/{resolved_ref.name}'") from None
     except NotFoundError:
         raise ValueError(
             f"Model entity not found: '{resolved_ref.workspace}/{resolved_ref.name}'. Verify the model entity exists."
         ) from None
+
+    if model.fileset:
+        await check_fileset_access(
+            sdk,
+            model.fileset,
+            resolved_ref.workspace,
+            label=f"weights for model '{resolved_ref.workspace}/{resolved_ref.name}'",
+        )
+    return model

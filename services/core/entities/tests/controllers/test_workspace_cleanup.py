@@ -55,16 +55,23 @@ def _make_jobs_client(jobs: list | None = None) -> MagicMock:
     return jobs_client
 
 
-def _make_models_client(deployments: list | None = None) -> MagicMock:
+def _make_models_client(
+    deployments: list | None = None,
+    models: list | None = None,
+    adapters: list | None = None,
+) -> MagicMock:
     """Build a mock typed AsyncModelsClient.
 
-    Production routes deployment cleanup through ``client_from_platform(sdk,
-    AsyncModelsClient)`` and iterates ``(await models_client.list_deployments(...)).items()``,
-    then calls ``delete_deployment(name=..., workspace=...)`` per deployment.
+    Production routes deployment, model, and adapter cleanup through
+    ``client_from_platform(sdk, AsyncModelsClient)``.
     """
     models_client = MagicMock()
     models_client.list_deployments = AsyncMock(return_value=_MockAsyncPaginatedResponse(deployments or []))
     models_client.delete_deployment = AsyncMock()
+    models_client.list_models = AsyncMock(return_value=_MockAsyncPaginatedResponse(models or []))
+    models_client.delete_model = AsyncMock()
+    models_client.list_adapters = AsyncMock(return_value=_MockAsyncPaginatedResponse(adapters or []))
+    models_client.delete_adapter = AsyncMock()
     return models_client
 
 
@@ -86,10 +93,9 @@ def _patch_jobs_client(jobs_client: MagicMock):
 def _patch_clients(jobs_client: MagicMock, files_client: MagicMock, models_client: MagicMock | None = None):
     """Patch ``client_from_platform`` to dispatch by requested client class.
 
-    ``_async_step`` cleans up jobs, deployments, and filesets, so it calls
-    ``client_from_platform(sdk, AsyncJobsClient)``,
-    ``client_from_platform(sdk, AsyncModelsClient)``, and
-    ``client_from_platform(sdk, AsyncFilesClient)`` — return the matching mock.
+    ``_async_step`` cleans up jobs, deployments, models/adapters, and filesets,
+    so it calls ``client_from_platform`` for ``AsyncJobsClient``,
+    ``AsyncModelsClient``, and ``AsyncFilesClient`` — return the matching mock.
     """
     from nemo_platform_plugin.files.client import AsyncFilesClient
     from nemo_platform_plugin.jobs.client import AsyncJobsClient
@@ -214,6 +220,33 @@ class TestWorkspaceCleanupAsyncStep:
             name="test-workspace",
             deletion_stage=WorkspaceDeletionStage.DELETING,
         )
+        repo.delete_workspace.assert_awaited_once_with(name="test-workspace")
+
+    @pytest.mark.asyncio
+    async def test_deletes_models_and_adapters_before_filesets(self):
+        workspace = _make_workspace()
+        repo = AsyncMock()
+        repo.list_workspaces.return_value = ([workspace], None)
+        repo.mark_workspace_for_deletion.return_value = True
+
+        adapter = MagicMock()
+        adapter.name = "adapter"
+        model = MagicMock()
+        model.name = "model"
+        fileset = MagicMock()
+        fileset.name = "weights"
+        call_order: list[str] = []
+        models_client = _make_models_client(models=[model], adapters=[adapter])
+        models_client.delete_adapter = AsyncMock(side_effect=lambda **_: call_order.append("adapter"))
+        models_client.delete_model = AsyncMock(side_effect=lambda **_: call_order.append("model"))
+        mock_files = _make_mock_files_client([fileset])
+        mock_files.delete_fileset = AsyncMock(side_effect=lambda **_: call_order.append("fileset"))
+        controller = _make_controller(workspace_repo=repo)
+
+        with _patch_clients(_make_jobs_client([]), mock_files, models_client):
+            await controller._async_step()
+
+        assert call_order == ["adapter", "model", "fileset"]
         repo.delete_workspace.assert_awaited_once_with(name="test-workspace")
 
     @pytest.mark.asyncio
@@ -371,6 +404,70 @@ class TestWorkspaceCleanupDeployments:
             await controller._cleanup_deployments(workspace)
 
         assert models_client.delete_deployment.await_count == 2
+
+
+class TestWorkspaceCleanupModelsAndAdapters:
+    @pytest.mark.asyncio
+    async def test_deletes_adapters_before_models(self):
+        workspace = _make_workspace()
+        adapter = MagicMock()
+        adapter.name = "test-adapter"
+        model = MagicMock()
+        model.name = "test-model"
+        models_client = _make_models_client(models=[model], adapters=[adapter])
+        call_order: list[str] = []
+        models_client.delete_adapter = AsyncMock(side_effect=lambda **_: call_order.append("adapter"))
+        models_client.delete_model = AsyncMock(side_effect=lambda **_: call_order.append("model"))
+        controller = _make_controller()
+
+        with patch(_CLIENT_FROM_PLATFORM_PATCH, return_value=models_client):
+            await controller._cleanup_models_and_adapters(workspace)
+
+        assert call_order == ["adapter", "model"]
+        models_client.delete_adapter.assert_awaited_once_with(
+            name="test-adapter",
+            workspace="test-workspace",
+        )
+        models_client.delete_model.assert_awaited_once_with(
+            name="test-model",
+            workspace="test-workspace",
+        )
+
+    @pytest.mark.asyncio
+    async def test_continues_on_individual_model_and_adapter_failure(self):
+        workspace = _make_workspace()
+        adapter1 = MagicMock()
+        adapter1.name = "adapter1"
+        adapter2 = MagicMock()
+        adapter2.name = "adapter2"
+        model1 = MagicMock()
+        model1.name = "model1"
+        model2 = MagicMock()
+        model2.name = "model2"
+        models_client = _make_models_client(
+            models=[model1, model2],
+            adapters=[adapter1, adapter2],
+        )
+        models_client.delete_adapter = AsyncMock(side_effect=[Exception("fail"), None])
+        models_client.delete_model = AsyncMock(side_effect=[Exception("fail"), None])
+        controller = _make_controller()
+
+        with patch(_CLIENT_FROM_PLATFORM_PATCH, return_value=models_client):
+            await controller._cleanup_models_and_adapters(workspace)
+
+        assert models_client.delete_adapter.await_count == 2
+        assert models_client.delete_model.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_raises_on_list_failure(self):
+        workspace = _make_workspace()
+        models_client = _make_models_client()
+        models_client.list_adapters = AsyncMock(side_effect=Exception("unavailable"))
+        controller = _make_controller()
+
+        with pytest.raises(Exception, match="unavailable"):
+            with patch(_CLIENT_FROM_PLATFORM_PATCH, return_value=models_client):
+                await controller._cleanup_models_and_adapters(workspace)
 
 
 class TestWorkspaceCleanupFilesets:
