@@ -8,6 +8,7 @@ import {
   TreeNavLeaf,
   TreeNavList,
   TreeNavRoot,
+  Tooltip,
 } from '@nvidia/foundations-react-core';
 import { getSpanTemplate } from '@studio/components/IntakeDetail/SpanTemplates/registry';
 import { getSpanKindConfig } from '@studio/components/SpanKindBadge/spanKindConfig';
@@ -20,7 +21,7 @@ import {
   type SpanTreeNode,
 } from '@studio/util/intakeTelemetry';
 import { MessagesSquare, TriangleAlert, Workflow } from 'lucide-react';
-import { type FC, type ReactNode } from 'react';
+import { type FC, type ReactNode, useState } from 'react';
 
 interface TraceSpanTreeProps {
   /** Session traces and their summary span trajectories. */
@@ -70,10 +71,25 @@ interface SpanTreeLabelProps {
   errored?: boolean;
 }
 
+const SpanTreeName: FC<{ name: string }> = ({ name }) => {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  return (
+    <Tooltip
+      side="right"
+      align="start"
+      className="max-w-[32rem] break-words"
+      slotContent={tooltipOpen ? name : null}
+      onOpenChange={setTooltipOpen}
+    >
+      <span className="flex-1 min-w-0 truncate">{name}</span>
+    </Tooltip>
+  );
+};
+
 /** Shared label layout: name (truncates) + optional error badge + duration. */
 const SpanTreeLabel: FC<SpanTreeLabelProps> = ({ name, durationMs, errored }) => (
   <span className="flex flex-1 items-center gap-2 min-w-0">
-    <span className="flex-1 min-w-0 truncate">{name}</span>
+    <SpanTreeName name={name} />
     {errored && (
       <TriangleAlert
         role="img"
@@ -117,16 +133,13 @@ const renderSpanNodes = (
 
     if (children.length > 0) {
       return (
-        <TreeNavBranch key={span.span_id} defaultOpen collapsible={false}>
-          {/* Non-collapsible triggers suppress `onClick` in the KUI handler, so
-              bind selection on the capture phase to keep branches always-open
-              yet clickable. */}
+        <TreeNavBranch key={span.span_id} defaultOpen>
           <TreeNavBranchTrigger
             className={ROW_CLASS}
             slotIcon={icon}
             active={active}
             title={title}
-            onClickCapture={() => onSelectSpan(span.span_id, traceId)}
+            onClick={() => onSelectSpan(span.span_id, traceId)}
           >
             {label}
           </TreeNavBranchTrigger>
@@ -170,13 +183,13 @@ const renderTraceNodes = ({
     const nodes = spanTree;
     if (nodes.length > 0) {
       return (
-        <TreeNavBranch key={trace.id} defaultOpen collapsible={false}>
+        <TreeNavBranch key={trace.id} defaultOpen>
           <TreeNavBranchTrigger
             className={ROW_CLASS}
             slotIcon={<Workflow role="img" aria-hidden />}
             active={trace.id === activeTraceId && !sessionActive && activeSpanId === null}
             title="View trace"
-            onClickCapture={() => onSelectTrace?.(trace.id)}
+            onClick={() => onSelectTrace?.(trace.id)}
           >
             <SpanTreeLabel
               name={getTraceDisplayName(trace)}
