@@ -505,6 +505,9 @@ def test_shipped_local_yaml_lora_sidecar_command_is_a_valid_executable(config_re
     assert not command[0].startswith("-"), (
         f"{config_rel_path}: lora_sidecar_command[0] '{command[0]}' looks like a flag, not an executable"
     )
+
+
+def test_lora_sidecar_rewrites_loopback_nmp_base_url_for_docker() -> None:
     """Docker LoRA sidecars must not keep host loopback as NMP_BASE_URL (jobs/auth-proxy pattern)."""
     config = DeploymentsPluginConfig()
     platform = MagicMock()
