@@ -20,7 +20,7 @@
 #       --input "Who invented the telephone? Also what time is it?"
 #
 # Model entity name (auto-created by models controller from nvidia-build discovery):
-#   nvidia/nemotron-3.5-lightning-30b-a3b  →  nvidia-nemotron-3.5-lightning-30b-a3b
+#   nvidia/nemotron-3.5-lightning-30b-a3b  →  nvidia-nemotron-3-5-lightning-30b-a3b
 
 functions:
   wiki:

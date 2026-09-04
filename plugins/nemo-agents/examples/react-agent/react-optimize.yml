@@ -34,7 +34,7 @@ llms:
   # platform, override via --base-url or NEMO_BASE_URL.
   llm:
     _type: openai
-    model_name: nvidia-nemotron-3.5-lightning-30b-a3b
+    model_name: nvidia-nemotron-3-5-lightning-30b-a3b
     temperature: 0.0
     optimizable_params:
       - temperature
