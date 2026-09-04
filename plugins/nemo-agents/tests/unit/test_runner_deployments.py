@@ -219,12 +219,18 @@ def test_executor_for_mode_prefers_mode_specific() -> None:
     assert executor_for_mode(cfg, "k8s") == "k8s-exec"
 
 
-def _executors(*pairs: tuple[str, str]) -> Any:
+def _executors(*pairs: tuple[str, str], default: str | None = None) -> Any:
+    """A standalone DeploymentsConfig.
+
+    Not ``DeploymentsConfig.get()``: that is a cached singleton, and assigning to
+    it outlives the test that did so.
+    """
     from nemo_deployments_plugin.config import DeploymentsConfig, ExecutorConfigEntry
 
-    cfg = DeploymentsConfig.get()
-    cfg.executors = [ExecutorConfigEntry(name=n, backend=b) for n, b in pairs]
-    return cfg
+    return DeploymentsConfig(
+        executors=[ExecutorConfigEntry(name=n, backend=b) for n, b in pairs],
+        default_executor=default,
+    )
 
 
 def test_k8s_mode_on_a_docker_executor_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -268,8 +274,7 @@ def test_k8s_mode_with_no_runner_executors_still_checks_the_plugin_default(
 
     # executor_for_mode returns None here, but ExecutorRegistry.resolve falls back
     # to the plugin's own default — so None is not "nothing will run".
-    cfg = _executors(("plugin-default", "docker"))
-    cfg.default_executor = "plugin-default"
+    cfg = _executors(("plugin-default", "docker"), default="plugin-default")
     monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
 
     with pytest.raises(ValueError, match="runs on 'docker'"):
@@ -282,7 +287,6 @@ def test_no_executor_anywhere_is_left_to_the_deployments_plugin(
     from nemo_deployments_plugin.config import DeploymentsConfig
 
     cfg = _executors()
-    cfg.default_executor = None
     monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
 
     # Nothing to run it on at all is ExecutorNotFoundError's message to give.

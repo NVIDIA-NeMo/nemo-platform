@@ -151,8 +151,9 @@ class TestCreateDeployment:
     def test_create_rejects_a_mode_the_executor_will_not_honour(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from nemo_deployments_plugin.config import DeploymentsConfig, ExecutorConfigEntry
 
-        deployments_cfg = DeploymentsConfig.get()
-        deployments_cfg.executors = [ExecutorConfigEntry(name="default-exec", backend="docker")]
+        # A standalone config: DeploymentsConfig.get() is a cached singleton, and
+        # assigning to it would outlive this test.
+        deployments_cfg = DeploymentsConfig(executors=[ExecutorConfigEntry(name="default-exec", backend="docker")])
         monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: deployments_cfg))
         agents_cfg = AgentsConfig.get()
         monkeypatch.setattr(agents_cfg.deployments, "default_executor", "default-exec")
