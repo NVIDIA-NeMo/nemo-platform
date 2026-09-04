@@ -3125,6 +3125,32 @@ class TestFabricWheelInstall:
         assert not (context / wheel.name).exists()
         mock_build.assert_not_called()
 
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_does_not_remove_a_replaced_scoped_ignore_file(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+        context = fabric_agent_config.parent
+        scoped = context / "Dockerfile.generated.dockerignore"
+        replacement = tmp_path / "replacement.ignore"
+        replacement.write_text("REPLACEMENT\n")
+
+        def _replace_scoped_ignore(**kwargs: Any) -> str:
+            os.replace(replacement, scoped)
+            return "image-id"
+
+        mock_build.side_effect = _replace_scoped_ignore
+
+        build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
+
+        assert scoped.read_text() == "REPLACEMENT\n"
+        assert not (context / wheel.name).exists()
+
     def test_refuses_to_clobber_a_file_the_user_owns(self, fabric_agent_config: Path, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.builder import build_fabric_agent_image
 

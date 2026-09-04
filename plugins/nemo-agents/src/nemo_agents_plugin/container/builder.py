@@ -549,7 +549,8 @@ def build_fabric_agent_image(
     ignore_file: Path | None = None
     ignore_path = context_dir / ".dockerignore"
     ignore_pre_existed = ignore_path.exists()
-    scoped_ignore_written = False
+    scoped_ignore: Path | None = None
+    scoped_ignore_identity: tuple[int, int] | None = None
     try:
         tmp_dockerfile.write_text(content, encoding="utf-8")
 
@@ -565,7 +566,8 @@ def build_fabric_agent_image(
             scoped_ignore = context_dir / f"{tmp_dockerfile.name}.dockerignore"
             try:
                 with scoped_ignore.open("x", encoding="utf-8") as scoped_ignore_file:
-                    scoped_ignore_written = True
+                    created_stat = os.fstat(scoped_ignore_file.fileno())
+                    scoped_ignore_identity = (created_stat.st_dev, created_stat.st_ino)
                     scoped_ignore_file.write(f"{existing.rstrip()}\n!{staged_wheel.name}\n".lstrip())
             except FileExistsError as exc:
                 raise ManagedFileConflictError(scoped_ignore) from exc
@@ -581,8 +583,14 @@ def build_fabric_agent_image(
         )
     finally:
         tmp_dockerfile.unlink(missing_ok=True)
-        if scoped_ignore_written:
-            (context_dir / f"{tmp_dockerfile.name}.dockerignore").unlink(missing_ok=True)
+        if scoped_ignore is not None and scoped_ignore_identity is not None:
+            try:
+                current_stat = scoped_ignore.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                if (current_stat.st_dev, current_stat.st_ino) == scoped_ignore_identity:
+                    scoped_ignore.unlink(missing_ok=True)
         if wheel_was_staged and staged_wheel is not None:
             staged_wheel.unlink(missing_ok=True)
         if ignore_file is not None and not ignore_pre_existed:
