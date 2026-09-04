@@ -250,8 +250,8 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
       open={open}
       onClose={resetAndClose}
       className="w-[720px] max-w-[90vw]"
-      title="Instrument an agent with NeMo Platform"
-      instruction="Integrated agents allow users to evaluate, optimize, and deploy agents."
+      title="Register an agent with NeMo Platform"
+      instruction="Register an agent with NeMo platform to observe, evaluate, and optimize its performance."
       submitButtonText={replaceOrphan ? 'Replace and create' : 'Create'}
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
@@ -267,7 +267,7 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
       }
     >
       <TabsRoot value={tab} onValueChange={(value) => setTab(value as NewAgentTab)}>
-        <TabsList aria-label="Ways to instrument an agent">
+        <TabsList aria-label="Ways to register an agent">
           <TabsTrigger value="integrate-agent">Integrate agent</TabsTrigger>
           <TabsTrigger value="upload">Upload agent</TabsTrigger>
         </TabsList>
