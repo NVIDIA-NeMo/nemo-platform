@@ -6,7 +6,7 @@ import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { formatFileSize } from '@nemo/common/src/components/UploadModal/utils';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { useFilesRetrieveFileset as useGetDataset } from '@nemo/sdk/generated/platform/api';
+import { useFilesRetrieveFileset as useGetDataset } from '@nemo/sdk/generated/platform/files';
 import {
   Button,
   CodeSnippet,

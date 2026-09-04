@@ -66,14 +66,28 @@ def _otlp_trace(tmp_path: Path, span_name: str) -> tuple[ResourceRef, str]:
     return ref, trace_id
 
 
+async def _ensure_evaluation(platform: AsyncNeMoPlatform, name: str) -> None:
+    """Register the Evaluation these spans name, or Intake drops them."""
+    group = await platform.experiments.create(workspace=WORKSPACE, name=name)
+    await platform.evaluations.create(
+        workspace=WORKSPACE,
+        name=name,
+        experiment_ids=[group.id],
+        dataset_name=name,
+        dataset_version="v1",
+    )
+
+
 async def test_persist_trial_uploads_a_local_otlp_trace_and_repoints_it(
     platform: AsyncNeMoPlatform, tmp_path: Path
 ) -> None:
     backend = LocalExperimentalistBackend(client=platform, path=tmp_path / "backend")
     trace, trace_id = _otlp_trace(tmp_path, "it-span")
     trial = TrialResult(id="trial-it", task_id="case-it", status="completed", trace=trace)
+    evaluation_name = f"exp-it-{uuid4().hex}"
+    await _ensure_evaluation(platform, evaluation_name)
 
-    await backend._persist_trial(trial, workspace=WORKSPACE, evaluation_name="exp-it", agent_attrs={})
+    await backend._persist_trial(trial, workspace=WORKSPACE, evaluation_name=evaluation_name, agent_attrs={})
 
     # The span reached ClickHouse through the typed SDK and is readable back through it.
     spans = await platform.intake.spans.list(workspace=WORKSPACE, filter={"trace_id": trace_id})
@@ -93,6 +107,7 @@ async def test_persist_trial_stamps_evaluation_identity_onto_the_uploaded_spans(
     trial = TrialResult(id="trial-attrs", task_id="case-attrs", status="completed", trace=trace)
     # Unique for the same reason the ids are: this is the value the read filters on.
     evaluation_name = f"exp-attrs-{uuid4().hex}"
+    await _ensure_evaluation(platform, evaluation_name)
 
     await backend._persist_trial(trial, workspace=WORKSPACE, evaluation_name=evaluation_name, agent_attrs={})
 

@@ -17,7 +17,7 @@ import {
   getDataDesignerListCreateJobsQueryKey,
   useDataDesignerDeleteCreateJob,
   useDataDesignerListCreateJobs,
-} from '@nemo/sdk/generated/data-designer/api';
+} from '@nemo/sdk/generated/data-designer/data-designer';
 import type {
   CreateJob as DataDesignerJob,
   CreateJobsListFilter as DataDesignerJobsListFilter,

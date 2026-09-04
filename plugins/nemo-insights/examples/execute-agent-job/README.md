@@ -13,8 +13,10 @@ continues to run side-by-side.
   with relative time offsets so it never ages out of Intake's retention window.
 - `seed_intake.py`: expands the spec into spans and annotations, posts them to
   Intake, then reads them back.
-- `submit_analysis_run.py`: submits the run through the Insights analysis-runs
-  API and optionally waits for the job's `analysis-report` result.
+- `submit_analysis_run.py`: submits the run through the analysis-runs SDK
+  (`client.insights.analysis_runs`) and optionally waits for the job's
+  `analysis-report` result. `nemo insights analysis-runs create|list|get` is
+  the same surface from the CLI.
 
 The high-level Insights service route lives in
 `nemo_insights_plugin.analysis_runs.router`. It accepts an Insights-shaped
@@ -127,20 +129,44 @@ entity — the Analyst only matches it against each span's normalized
      --wait
    ```
 
-   The model pair is **required**. It lives only in the operator's local CLI
-   config (`~/.config/nmp/config.yaml`), which the Platform process cannot read,
-   so the request has to carry it.
-
-3. Inspect the created Job's saved results directly if you did not use
-   `--wait`. The durable comparison point is the `analysis-report` result saved
-   by the Insights execute extension:
+   The model pair is **required** on the request. It lives only in the
+   operator's local CLI config (`~/.config/nmp/config.yaml`), which the
+   Platform process cannot read, so the request has to carry it. The CLI fills
+   it in from that config, which is why the equivalent one-liner needs no model
+   flags:
 
    ```bash
-   curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/execute/<job-name>/results"
-   curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/execute/<job-name>/results/analysis-report/download"
+   nemo insights analysis-runs create --agent demo-agent --wait
    ```
 
-   The Insights the run persisted show up under
+   The script and the CLI both go through `client.insights.analysis_runs`;
+   neither speaks raw HTTP.
+
+3. Inspect the run if you did not use `--wait`:
+
+   ```bash
+   nemo insights analysis-runs list --agent demo-agent
+   nemo insights analysis-runs get <run-name>          # joined with its job
+   nemo insights analysis-runs get <run-name> --wait   # poll to a terminal state
+   ```
+
+   A run and its backing job share one name, and `get` returns them together.
+   A `job` of `null` means submission never landed and the run can be
+   resubmitted.
+
+   The durable comparison point is the `analysis-report` result saved by the
+   Insights execute extension. Job results are an Agents/Jobs surface, so they
+   are still fetched from there:
+
+   ```bash
+   curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/execute/<run-name>/results"
+   curl "$NMP_BASE_URL/apis/agents/v2/workspaces/default/jobs/execute/<run-name>/results/analysis-report/download"
+   ```
+
+   The report is what tells you which Insights the run created or updated:
+   insights carry no per-run provenance, by either path. The agent's current
+   insights are read with `client.insights.insights.list_insights(...)`, or
+   from a shell with
    `GET /apis/insights/v2/workspaces/default/insights?agent=demo-agent`.
 
 ## Notes

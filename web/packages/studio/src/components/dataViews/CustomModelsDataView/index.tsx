@@ -19,7 +19,7 @@ import {
   useModelsDeleteModel,
   useModelsDeleteModelAdapter,
   useModelsListModels,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/models';
 import type {
   Adapter,
   DatetimeFilter,
@@ -30,15 +30,13 @@ import type {
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, type DropdownEntry, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
-import { CustomizeModelModal } from '@studio/components/CustomizeModelModal';
 import { FINETUNING_TYPE_FILTER_OPTIONS } from '@studio/components/dataViews/CustomModelsDataView/constants';
 import { DeploymentIndicator } from '@studio/components/dataViews/CustomModelsDataView/DeploymentIndicator';
 import { KindTag } from '@studio/components/dataViews/CustomModelsDataView/KindTag';
 import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
 import type { ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { INTAKE_ENABLED } from '@studio/constants/environment';
-import { getIntakeTracesRoute } from '@studio/routes/utils';
-import { useBoolean } from '@studio/util/hooks/useBoolean';
+import { getIntakeTracesRoute, getNewCustomizationJobRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
@@ -132,7 +130,6 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
   const navigate = useNavigate();
   const { mutateAsync: deleteModel } = useModelsDeleteModel();
   const { mutateAsync: deleteAdapter } = useModelsDeleteModelAdapter();
-  const [isCustomizeModalOpen, openCustomizeModal, closeCustomizeModal] = useBoolean(false);
 
   const dataViewState = useStudioDataViewState({
     defaultSort: [{ id: 'created_at', desc: true }],
@@ -453,7 +450,7 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
                 <EntityEmptyState
                   entity="customModels"
                   variant="first-use"
-                  onCreate={openCustomizeModal}
+                  onCreate={() => navigate(getNewCustomizationJobRoute(workspace))}
                 />
               ),
           },
@@ -472,11 +469,6 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
           simpleConfirm
         />
       )}
-      <CustomizeModelModal
-        open={isCustomizeModalOpen}
-        onClose={closeCustomizeModal}
-        workspace={workspace}
-      />
     </>
   );
 };

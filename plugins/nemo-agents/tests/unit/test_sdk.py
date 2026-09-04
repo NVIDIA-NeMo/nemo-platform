@@ -11,6 +11,12 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from nemo_agents_plugin.entities import (
+    AgentEnvironmentInline,
+    ComputeResources,
+    ComputeSpecInline,
+    EnvironmentSpecInline,
+)
 from nemo_agents_plugin.sdk import AgentsResource, AsyncAgentsResource, agents_sdk_resources
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 
@@ -194,7 +200,9 @@ def test_environment_specs_create_posts_inline_fields() -> None:
 
     client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
     with _install_mock_transport(handler):
-        result = client.environment_specs.create(name="ben", env={"LOG_LEVEL": "debug"}, secrets={"TOK": "default/tok"})
+        result = client.environment_specs.create(
+            name="ben", spec={"env": {"LOG_LEVEL": "debug"}, "secrets": {"TOK": "default/tok"}}
+        )
 
     assert result == {"name": "ben"}
     assert captured["path"] == "/apis/agents/v2/workspaces/team-a/environment-specs"
@@ -390,3 +398,116 @@ async def test_async_execute_job_create_mirrors_sync_shape() -> None:
 def test_agents_sdk_resources_registers_both_sync_and_async() -> None:
     assert agents_sdk_resources.sync_resource is AgentsResource
     assert agents_sdk_resources.async_resource is AsyncAgentsResource
+
+
+def test_environment_specs_create_accepts_typed_model() -> None:
+    """A typed ``EnvironmentSpecInline`` sends only the fields that were set."""
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "ben"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+    spec = EnvironmentSpecInline(env={"LOG_LEVEL": "debug"}, secrets={"TOK": "default/tok"})
+    with _install_mock_transport(handler):
+        client.environment_specs.create(name="ben", spec=spec)
+
+    # exclude_unset: provider/description/etc. are NOT sent because the caller
+    # never set them — matching the old **spec behavior.
+    assert captured["body"] == {"name": "ben", "env": {"LOG_LEVEL": "debug"}, "secrets": {"TOK": "default/tok"}}
+
+
+def test_environment_specs_create_accepts_dict_spec() -> None:
+    """A plain dict passed as ``spec=`` is sent verbatim."""
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "ben"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+    with _install_mock_transport(handler):
+        client.environment_specs.create(name="ben", spec={"provider": "local"})
+
+    assert captured["body"] == {"name": "ben", "provider": "local"}
+
+
+def test_environment_specs_create_name_arg_is_authoritative() -> None:
+    """An explicit ``name=`` wins over a ``name`` key smuggled in via ``spec``.
+
+    Regression guard: the payload must apply ``name`` AFTER the spec/kwargs
+    expansion so a dict spec carrying its own ``name`` cannot silently create the
+    resource under a different name than the caller asked for.
+    """
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "wanted"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+    with _install_mock_transport(handler):
+        client.environment_specs.create(name="wanted", spec={"name": "sneaky", "provider": "local"})
+
+    assert captured["body"]["name"] == "wanted"
+
+
+def test_compute_specs_create_accepts_typed_model() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["path"] = req.url.path
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "big"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="team-a"))
+    spec = ComputeSpecInline(resources=ComputeResources(limits={"cpu": "2"}))
+    with _install_mock_transport(handler):
+        client.compute_specs.create(name="big", spec=spec)
+
+    assert captured["path"] == "/apis/agents/v2/workspaces/team-a/compute-specs"
+    assert captured["body"] == {"name": "big", "resources": {"limits": {"cpu": "2"}}}
+
+
+def test_environments_create_accepts_typed_model() -> None:
+    """A typed ``AgentEnvironmentInline`` sends its set fields; ref args override."""
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(req.read())
+        return httpx.Response(201, json={"name": "env1"})
+
+    client = AgentsResource(SimpleNamespace(base_url="http://test", workspace="default"))
+    spec = AgentEnvironmentInline(environment_spec="default/ben")
+    with _install_mock_transport(handler):
+        client.environments.create(name="env1", spec=spec, compute_spec="default/big")
+
+    assert captured["body"]["name"] == "env1"
+    assert captured["body"]["environment_spec"] == "default/ben"
+    # explicit compute_spec arg is applied on top of the typed spec
+    assert captured["body"]["compute_spec"] == "default/big"
+
+
+def test_default_headers_are_sent_on_every_request() -> None:
+    """``platform.default_headers`` (how the CLI threads its token) reach the wire."""
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured.setdefault("auth", []).append(req.headers.get("authorization"))
+        if req.method == "DELETE":
+            return httpx.Response(204)
+        return httpx.Response(200, json={"name": "big"})
+
+    platform = SimpleNamespace(
+        base_url="http://test",
+        workspace="team-a",
+        default_headers={"Authorization": "Bearer tok-123"},
+    )
+    client = AgentsResource(platform)
+    with _install_mock_transport(handler):
+        client.compute_specs.create(name="big", spec=ComputeSpecInline())
+        client.compute_specs.get("big")
+        client.compute_specs.delete("big")
+
+    assert captured["auth"] == ["Bearer tok-123", "Bearer tok-123", "Bearer tok-123"]

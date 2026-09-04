@@ -5,7 +5,7 @@ import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
-import { useGetEvaluation } from '@nemo/sdk/generated/platform/api';
+import { useGetEvaluation } from '@nemo/sdk/generated/platform/evaluations';
 import { Divider, Flex, Tooltip } from '@nvidia/foundations-react-core';
 import { evalJobDetailRoute } from '@studio/api/evaluation/utils';
 import { ChangesetBadge } from '@studio/components/ChangesetBadge';

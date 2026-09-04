@@ -4,6 +4,7 @@
 import asyncio
 import json
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterable
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceMiddlewareError,
     InferenceResponse,
 )
+from nemo_platform_plugin.refs import ENTITY_REF_PATTERN
 from nemo_platform_plugin.secrets.client import AsyncSecretsClient
 from nmp.common.entities.utils import parse_model_entity_ref
 from nmp.core.inference_gateway.api.backend_format import resolve_backend_format
@@ -57,6 +59,13 @@ ResponseResult = Union[dict[str, Any], AsyncIterator[dict[str, Any]]]
 logger = logging.getLogger(__name__)
 
 DEFAULT_CHUNK_SIZE = 4096
+
+# A model name safe to blind-substring-replace inside an error body: the entity-ref
+# shape (``[\w.-]`` segments with an optional ``/``), which both the entity store
+# (ENTITY_REF_PATTERN) and HuggingFace repo ids conform to. Its character set has no
+# JSON-structural characters, so replacing it can't corrupt a JSON body. See
+# _rewrite_model_field_in_error_body.
+_SAFE_MODEL_NAME = re.compile(ENTITY_REF_PATTERN)
 
 # OpenAPI extra configuration for proxy endpoints that accept arbitrary JSON bodies.
 # This is used to generate proper requestBody schema in OpenAPI spec for POST/PUT/PATCH
@@ -490,6 +499,8 @@ async def _parse_sse_stream(response: aiohttp.ClientResponse) -> AsyncIterator[d
 async def fetch_proxy_response(
     http_client: ClientSession,
     next_request_info: NextRequestInfo,
+    served_model_name: str | None = None,
+    restored_model_id: str | None = None,
 ) -> tuple[ResponseResult, CIMultiDict[str], int]:
     """Execute a proxied HTTP request and return the response as a ``ResponseResult``.
 
@@ -502,6 +513,17 @@ async def fetch_proxy_response(
     path. ``Content-Type: text/event-stream`` responses remain backed by the live
     response, so the iterator **must** be fully consumed or the connection will
     leak. Other responses are buffered and parsed as JSON.
+
+    When *served_model_name* and *restored_model_id* are both supplied, upstream
+    error bodies (a 4xx/5xx *status* response) have the served model name rewritten
+    to the entity ref before the body is placed on the ``HTTPException`` — matching
+    the happy-path rewrite so ``served_model_name`` never leaks in these error cases.
+    See :func:`_rewrite_model_field_in_error_body`. This is best-effort UX scrubbing,
+    not a hard guarantee: an error a provider delivers *inside* an HTTP-200 SSE stream
+    (an error event mid-stream) does not pass through here — such events only have
+    their structured ``model`` fields rewritten by
+    :func:`_rewrite_model_field_in_stream`, so a served name embedded in that event's
+    free-form message string is not scrubbed.
 
     Returns:
         A ``(response_result, headers, status_code)`` tuple.
@@ -531,6 +553,12 @@ async def fetch_proxy_response(
                 next_request_info.url,
                 error_body,
             )
+            # Rewrite the served model name out of the error body so the caller
+            # never sees the upstream's served_model_name for a non-2xx *status*
+            # response, matching the happy-path rewrite. (An error delivered inside
+            # an HTTP-200 SSE stream does not reach here; see the docstring.)
+            if served_model_name is not None and restored_model_id is not None:
+                error_body = _rewrite_model_field_in_error_body(error_body, served_model_name, restored_model_id)
             if response.status in (401, 403, 404):
                 detail = (
                     f"Backend returned {response.status}: {error_body}"
@@ -644,6 +672,51 @@ def _rewrite_model_field(payload: Any, served_model_name: str, restored_model_id
     nested_response = payload.get("response")
     if isinstance(nested_response, dict) and nested_response.get("model") == served_model_name:
         nested_response["model"] = restored_model_id
+
+
+def _rewrite_model_field_in_error_body(
+    error_body: str,
+    served_model_name: str,
+    restored_model_id: str,
+) -> str:
+    """Rewrite ``served_model_name`` -> ``restored_model_id`` inside an upstream error body.
+
+    Error responses never reach :func:`_rewrite_model_field` on the happy path
+    because :func:`fetch_proxy_response` raises before the response body is handed
+    to the middleware pipeline. Without this, the upstream ``served_model_name``
+    leaks in error cases (rate-limit messages, content-policy blocks, "model not
+    found", etc.). This restores parity with the happy-path rewrite.
+
+    This is **best-effort UX scrubbing**, not a guarantee. It does a single
+    substring replacement over the raw body, so it is format-agnostic — it works
+    the same whether the body is a JSON object, plain text, or something we can't
+    parse — and, because it makes exactly one pass over the *original* string, it
+    cannot double-apply the swap (a parse-then-blanket-replace approach mangles
+    ``model-1`` → ``default/model-1`` → ``default/default/model-1`` whenever the
+    restored id contains the served name, which is the common case).
+
+    To keep that blind replacement from corrupting a JSON body, both names must be
+    plain model ids — they are matched against :data:`ENTITY_REF_PATTERN`
+    (``[\\w.-]`` segments with an optional ``/``), the same shape the entity store
+    and HuggingFace both use, whose character set contains no JSON-structural
+    characters (no quotes, braces, brackets, colons, backslashes). If either name
+    falls outside that shape (or is empty), the scrub is skipped entirely and the
+    body is returned untouched — the served name persists rather than risk mangling
+    the response.
+    """
+    if not error_body or not served_model_name:
+        return error_body
+
+    if not (_SAFE_MODEL_NAME.match(served_model_name) and _SAFE_MODEL_NAME.match(restored_model_id)):
+        logger.warning(
+            "Skipping error-body model-name scrub: a model name is not a plain model id "
+            "(served=%r restored=%r); leaving the body untouched to avoid corrupting it.",
+            served_model_name,
+            restored_model_id,
+        )
+        return error_body
+
+    return error_body.replace(served_model_name, restored_model_id)
 
 
 async def _rewrite_model_field_in_stream(
@@ -994,7 +1067,10 @@ async def virtual_model_proxy(
                 request_headers=modified_request.headers,
             )
             proxy_response_result, response_headers, response_status = await fetch_proxy_response(
-                http_client, next_request_info
+                http_client,
+                next_request_info,
+                served_model_name=resolved_served_model_name,
+                restored_model_id=f"{modified_model_ref.workspace}/{modified_model_ref.name}",
             )
             json_body["model"] = f"{modified_model_ref.workspace}/{modified_model_ref.name}"
 

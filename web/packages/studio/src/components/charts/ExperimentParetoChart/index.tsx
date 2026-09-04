@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { getGetExperimentQueryKey, useUpdateExperiment } from '@nemo/sdk/generated/platform/api';
+import {
+  getGetExperimentQueryKey,
+  useUpdateExperiment,
+} from '@nemo/sdk/generated/platform/experiments';
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text } from '@nvidia/foundations-react-core';
 import { ParetoTooltip } from '@studio/components/charts/ExperimentParetoChart/ParetoTooltip';

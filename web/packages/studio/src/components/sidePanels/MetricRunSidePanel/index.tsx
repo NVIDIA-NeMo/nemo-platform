@@ -14,7 +14,7 @@ import type { VariableDef } from '@nemo/common/src/components/form/VariableTextA
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { logger } from '@nemo/common/src/utils/logger';
-import { useEvaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import { useEvaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import type { EvaluateJobRequest, MetricInline, Model } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Button,
@@ -308,7 +308,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
       const job = await createEvaluateJob({ workspace, data: request });
       toast.success('Metric evaluation job created');
       onOpenChange(false);
-      navigate(getEvaluationResultDetailsRoute(workspace, job.name));
+      navigate(getEvaluationResultDetailsRoute(workspace, job.name), { flushSync: true });
     } catch (error) {
       const message = getErrorMessage(error as Error, 'Failed to create metric evaluation job');
       logger.error(`MetricRunSidePanel: ${message}`);

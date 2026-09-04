@@ -10391,6 +10391,7 @@ nemo insights [OPTIONS] COMMAND [ARGS]...
 **Commands:**
 
 * `analysis`: Manage periodic agent analysis opt-in state.
+* `analysis-runs`: Submit and inspect on-demand analysis runs.
 
 *Jobs:*
 
@@ -10471,6 +10472,110 @@ nemo insights analysis status [OPTIONS]
 * `--agent`: Optional agent name. Omit to list all analysis configs.
 * `--workspace`: Workspace to inspect. [default: default]
 * `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo insights analysis-runs
+
+Submit and inspect on-demand analysis runs.
+
+**Usage:**
+
+```shell
+nemo insights analysis-runs [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Submit an analysis run for an agent.
+* `list`: List analysis runs.
+* `get`: Get one analysis run, joined with the live state of its...
+
+##### nemo insights analysis-runs create
+
+Submit an analysis run for an agent.
+
+The run is backed by an agents.execute job that shares its name.
+With --wait, exits non-zero if that job does not complete.
+
+**Usage:**
+
+```shell
+nemo insights analysis-runs create [OPTIONS]
+```
+
+**Options:**
+
+* `--agent`: Name of the agent whose telemetry should be analyzed.
+* `--workspace`: Workspace the agent belongs to. [default: default]
+* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+* `--default-model`: Model Entity ref for analysis work. Default: the configured default model.
+* `--fast-model`: Model Entity ref for context summarization. Default: the configured fast model.
+* `--since`: ISO-8601 lower bound enforced on the analyst's trace/span reads.
+* `--ethos <PATH>`: Path to the agent's Ethos Markdown. Its contents are sent with the run.
+* `--evaluation-id`: Restrict the run to spans from one evaluation.
+* `--timeout-seconds <FLOAT>`: Timeout applied to the backing execute-agent job.
+* `--wait`: Poll the run until its backing job reaches a terminal state.
+* `--poll-timeout <FLOAT>`: How long --wait polls before giving up. [default: 900.0]
+* `--poll-interval <FLOAT>`: Seconds between --wait polls. [default: 5.0]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo insights analysis-runs list
+
+List analysis runs. Job state is not joined — read one run to get it.
+
+**Usage:**
+
+```shell
+nemo insights analysis-runs list [OPTIONS]
+```
+
+**Options:**
+
+* `--agent`: Only list runs that analyzed this agent.
+* `--workspace`: Workspace to inspect. [default: default]
+* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+* `--page <INTEGER>`: Page number (1-indexed). [default: 1]
+* `--page-size <INTEGER>`: Items per page. [default: 20]
+* `--sort`: Sort field; prefix with '-' for descending. [default: -created_at]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo insights analysis-runs get
+
+Get one analysis run, joined with the live state of its backing job.
+
+A null job means submission never landed: no job exists under the
+run's name, and the run can be resubmitted.
+
+**Usage:**
+
+```shell
+nemo insights analysis-runs get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the analysis run.
+
+**Options:**
+
+* `--workspace`: Workspace the run belongs to. [default: default]
+* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+* `--wait`: Poll until the run's backing job reaches a terminal state.
+* `--poll-timeout <FLOAT>`: How long --wait polls before giving up. [default: 900.0]
+* `--poll-interval <FLOAT>`: Seconds between --wait polls. [default: 5.0]
 
 **Help:**
 

@@ -6,10 +6,10 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getAgentsListDeploymentsQueryKey,
   useAgentsDeleteDeployment,
-  useAgentsGetAgent,
   useAgentsListDeployments,
-} from '@nemo/sdk/generated/agents/api';
-import { getEvaluation, useListEvaluations } from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/agents/agent-deployments';
+import { useAgentsGetAgent } from '@nemo/sdk/generated/agents/agents';
+import { getEvaluation, useListEvaluations } from '@nemo/sdk/generated/platform/evaluations';
 import type { EvaluationResponse } from '@nemo/sdk/generated/platform/schema';
 import { fetchEvaluatorJobs } from '@studio/api/evaluation/evaluator-jobs';
 import { fetchExperimentsByIds } from '@studio/api/evaluation/experiments';

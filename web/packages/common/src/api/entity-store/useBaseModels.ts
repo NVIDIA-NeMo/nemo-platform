@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { WithFilterOperators } from '@nemo/common/src/api/filterOperators';
-import { modelsListModels } from '@nemo/sdk/generated/platform/api';
+import { modelsListModels } from '@nemo/sdk/generated/platform/models';
 import {
   ModelEntity,
   ModelEntityFilter,

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { SelectItemOption } from '@nemo/common/src/components/form/ControlledSearchableSelect';
-import { useListEvaluations, useListExperiments } from '@nemo/sdk/generated/platform/api';
+import { useListEvaluations } from '@nemo/sdk/generated/platform/evaluations';
+import { useListExperiments } from '@nemo/sdk/generated/platform/experiments';
 import type { EvaluationResponse, ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { evaluationFilesetName } from '@studio/components/evaluation/experimentEvalConfig';
 import { useMemo } from 'react';

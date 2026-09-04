@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useFilesRetrieveFileset } from '@nemo/sdk/generated/platform/api';
+import { useFilesRetrieveFileset } from '@nemo/sdk/generated/platform/files';
 import { Button, Flex, Spinner, Stack, Table, Text } from '@nvidia/foundations-react-core';
 import { PENDING_FILE_OID } from '@studio/components/filesets/FilesetFileExplorer/constants';
 import { DatasetFileDropzone } from '@studio/components/filesets/FilesetFileExplorer/DatasetFileDropzone';

@@ -9,7 +9,7 @@ import {
   getEntitiesListWorkspaceMembersQueryKey,
   useEntitiesListWorkspaceMembers,
   useEntitiesRemoveWorkspaceMember,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/entity-store';
 import type { WorkspaceMember } from '@nemo/sdk/generated/platform/schema';
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';

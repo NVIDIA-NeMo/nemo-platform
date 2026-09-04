@@ -157,6 +157,52 @@ with open("training.jsonl", "w", encoding="utf-8") as f:
 
 Multi-turn context goes in `input` as additional messages, in order — the same `role`/`content` dicts, ending with the turn the model must respond to.
 
+### Find out which fields YOUR environment scores — do this first
+
+`GymDatasetRow` requires only `responses_create_params` and `agent_ref`. **Everything the
+reward actually depends on rides along under `extra="allow"` and is therefore never
+validated.** A row missing the field the environment grades against is accepted at submit,
+starts a job, allocates GPUs, and only then produces a meaningless reward.
+
+So before converting a single row, read the environment's verify-request model:
+
+```bash
+# The resources server that produces the reward, in the Gym source tree
+grep -n "class .*VerifyRequest" -A 15 resources_servers/<name>/app.py
+```
+
+Every annotated field on that model is a **row** field. Worked example — `math_with_judge`:
+
+```python
+class LibraryJudgeMathVerifyRequest(BaseVerifyRequest):
+    question: str
+    expected_answer: str
+```
+
+So its rows need `question` and **`expected_answer`** — *not* the `answer` field documented
+below. `answer` is a `GymDatasetRow` default that this environment never reads; a row that
+sets `answer` and omits `expected_answer` scores as if every response were wrong.
+
+| Environment | Fields its `verify()` reads |
+|---|---|
+| `math_with_judge` | `question`, `expected_answer` |
+| `verifiers_agent` (any hub env) | `vf_env_id`, `task_idx` |
+| Anything else | Read its `*VerifyRequest` — assume nothing |
+
+**Validate before uploading**, since nothing downstream will:
+
+```bash
+python3 -c '
+import json,sys
+required = {"question","expected_answer"}          # from the VerifyRequest above
+for i, line in enumerate(open(sys.argv[1])):
+    row = json.loads(line)
+    missing = required - row.keys()
+    assert not missing, f"row {i} missing {missing}"
+    assert row["agent_ref"]["name"] == sys.argv[2], f"row {i} wrong agent_ref"
+print("rows OK")' training.jsonl <agent-instance-name>
+```
+
 ### Rows for a non-verifiers environment
 
 `vf_env_id` and `task_idx` are `verifiers_agent`-specific. A `resources_servers` + `simple_agent` environment needs neither — but if its tools are function-calling tools, **each row must declare them**, because `simple_agent` reads the tool list from `responses_create_params`, not from the resources server:
