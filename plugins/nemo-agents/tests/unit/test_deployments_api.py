@@ -9,10 +9,12 @@ from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_agents_plugin.api.v2 import deployments as deployments_router_module
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
+from nemo_agents_plugin.config import AgentsConfig
 from nemo_agents_plugin.entities import (
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     Agent,
@@ -20,6 +22,7 @@ from nemo_agents_plugin.entities import (
     AgentDeployment,
     AgentEnvironment,
     AgentEnvironmentSpec,
+    ComputeResources,
     DeploymentStatus,
 )
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
@@ -145,6 +148,35 @@ class TestCreateDeployment:
         assert created_deployment.image == "hand-built-agent:latest"
         assert created_deployment.use_image_entrypoint is True
 
+    def test_create_rejects_a_mode_the_executor_will_not_honour(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_deployments_plugin.config import DeploymentsConfig, ExecutorConfigEntry
+
+        deployments_cfg = DeploymentsConfig.get()
+        deployments_cfg.executors = [ExecutorConfigEntry(name="default-exec", backend="docker")]
+        monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: deployments_cfg))
+        agents_cfg = AgentsConfig.get()
+        monkeypatch.setattr(agents_cfg.deployments, "default_executor", "default-exec")
+        monkeypatch.setattr(agents_cfg.deployments, "k8s_executor", None)
+        monkeypatch.setattr(AgentsConfig, "get", classmethod(lambda cls: agents_cfg))
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={
+                "agent": "fabric-agent",
+                "name": "fabric-dep",
+                "deployment_mode": "k8s",
+                "image": "registry.example/agent:1.0",
+            },
+        )
+
+        assert resp.status_code == 400
+        assert "runs on 'docker'" in resp.json()["detail"]
+        # The controller would have failed this on reconcile; nothing should persist.
+        mock_entity_client.create.assert_not_called()
+
     def test_create_rejects_image_entrypoint_for_subprocess(self) -> None:
         mock_entity_client = AsyncMock()
         mock_entity_client.get = AsyncMock(return_value=_make_agent())
@@ -173,7 +205,7 @@ class TestCreateDeployment:
             env={"CUSTOM": "from-spec"},
             secrets={"APP_TOKEN": "default/app-token"},
         )
-        cspec = AgentComputeSpec(name="cspec", workspace="default", resources={"limits": {"cpu": "2"}})
+        cspec = AgentComputeSpec(name="cspec", workspace="default", resources=ComputeResources(limits={"cpu": "2"}))
 
         mock_entity_client = AsyncMock()
         # get order: agent (route), then AgentEnvironment, env spec, compute spec (resolver).
