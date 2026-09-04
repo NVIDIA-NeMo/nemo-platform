@@ -637,10 +637,27 @@ def test_apply_manifest_overrides_standard_and_empty_are_noops() -> None:
     assert "overrides" not in manifest  # empty selection = iron-swarm defaults
 
 
-def test_apply_manifest_overrides_drops_guardrails_without_workflow() -> None:
-    manifest = {"agent": {"name": "x"}, "backends": []}  # no workflow → guardrails unavailable
+def test_apply_manifest_overrides_keeps_guardrails_without_a_workflow() -> None:
+    """A workflow-less victim (every BYO one) must still get the guardrails defender.
+
+    It writes Relay plugin config Iron Swarm owns, not a file the agent contains. Gating it on
+    `agent.workflow` made a Studio run that *selected* defenders score 0 blocked, while selecting
+    none — which falls through to iron-swarm's defaults — hardened normally.
+    """
+    manifest = {"agent": {"name": "x"}, "backends": []}
     manifest_mod._apply_manifest_overrides(manifest, {"defenders": ["guardrails"]})
-    assert "overrides" not in manifest
+
+    names = [entry["name"] for entry in manifest["overrides"]["defenders"]]
+    assert names == ["defender-guardrails"]
+
+
+def test_selected_defenders_match_iron_swarms_own_defaults() -> None:
+    """The plugin mirrors iron-swarm's defender list; drifting to a superseded implementation
+    silently downgrades every Studio run that picks defenders."""
+    implementations = {key: entry["implementation"] for key, entry in manifest_mod.DEFENDER_ENTRIES.items()}
+
+    assert implementations["openshell"].startswith("iron_swarm.agents.defenders.openshell_defender_v2")
+    assert implementations["guardrails"].startswith("iron_swarm.agents.defenders.guardrails_defender_v2")
 
 
 def test_apply_manifest_overrides_applies_explicit_port_only() -> None:

@@ -51,7 +51,7 @@ INTENSITY_GARAK: dict[str, dict[str, int]] = {
 DEFENDER_ENTRIES: dict[str, dict[str, Any]] = {
     "openshell": {
         "name": "openshell-policy-defender",
-        "implementation": "iron_swarm.agents.defenders.openshell_defender.openshell_defender_agent:run",
+        "implementation": "iron_swarm.agents.defenders.openshell_defender_v2.openshell_defender_agent:run",
         "timeout_seconds": 300,
         "capabilities": (
             "Mitigates attacks that exploit Linux kernel security controls: network egress, filesystem "
@@ -119,13 +119,11 @@ def _apply_manifest_overrides(manifest: dict[str, Any], data: dict[str, Any]) ->
                 safety_model,
             )
         return
-    # Guardrails only applies when the agent has a workflow (iron-swarm gates it the same way).
-    has_workflow = bool(manifest.get("agent", {}).get("workflow"))
-    entries = [DEFENDER_ENTRIES[key] for key in enabled if key != "guardrails" or has_workflow]
-    if "guardrails" in enabled and not has_workflow:
-        # Without this the defender just vanishes from the run; the safety-model warning below
-        # only fires when a safety model was chosen.
-        logger.warning("guardrails defender skipped: the manifest has no 'agent.workflow' to patch.")
+    # No workflow gate: the guardrail is Relay plugin config Iron Swarm owns, not a file the agent has
+    # to contain, so it applies to every victim. Gating on `agent.workflow` (a NAT-era leftover) meant
+    # selecting defenders in Studio silently dropped this one and scored 0 blocked, while selecting
+    # none — which falls through to iron-swarm's defaults — hardened normally.
+    entries = [DEFENDER_ENTRIES[key] for key in enabled]
     if safety_model:
         if any(entry["name"] == DEFENDER_ENTRIES["guardrails"]["name"] for entry in entries):
             entries = _with_safety_llm(entries, safety_model)
