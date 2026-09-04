@@ -4,7 +4,7 @@
 """Gym rows to Evaluator tasks, and back to a dataset Gym will collect against.
 
 Task identity is the content hash of a row, and attribution is an index this module *assigns*
-rather than infers — see :func:`_materialize_dataset`. Both halves live together because they are
+rather than infers — see :func:`materialize_dataset`. Both halves live together because they are
 two directions of one translation: what breaks one silently breaks the other.
 """
 
@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import (
-    _RUNTIME_KEYS,
     NG_TASK_INDEX,
-    _read_jsonl,
+    RUNTIME_KEYS,
+    read_jsonl,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 
@@ -34,7 +34,7 @@ def _canonical_row_hash(row: Mapping[str, Any]) -> str:
     rollups stay consistent), and a changed row becomes a new task. No
     dataset-revision component — identity is the row content alone.
     """
-    payload = {key: value for key, value in row.items() if key not in _RUNTIME_KEYS}
+    payload = {key: value for key, value in row.items() if key not in RUNTIME_KEYS}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
@@ -138,7 +138,7 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
     seen: set[str] = set()
     duplicates = 0
     promptless = 0
-    for position, row in enumerate(_read_jsonl(dataset), 1):
+    for position, row in enumerate(read_jsonl(dataset), 1):
         params = row.get("responses_create_params")
         if not isinstance(params, Mapping):
             raise ValueError(
@@ -169,7 +169,7 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
                     "gym_row_extras": {
                         key: value
                         for key, value in row.items()
-                        if key != "responses_create_params" and key not in _RUNTIME_KEYS
+                        if key != "responses_create_params" and key not in RUNTIME_KEYS
                     },
                 },
             )
@@ -198,10 +198,10 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
     return tasks
 
 
-def _source_datasets(tasks: Sequence[AgentEvalTask]) -> str:
+def source_datasets(tasks: Sequence[AgentEvalTask]) -> str:
     """Human-readable summary of the dataset(s) the tasks were discovered from, for a log line.
 
-    Purely provenance. Gym reads the dataset :func:`_materialize_dataset` writes from the tasks
+    Purely provenance. Gym reads the dataset :func:`materialize_dataset` writes from the tasks
     themselves, so nothing here gates the run: tasks drawn from two datasets are legitimate (the
     materialized file is their union), and a task with no stamped path runs fine. Never raises —
     a missing or inconsistent label is not a reason to fail an otherwise valid evaluation.
@@ -214,7 +214,7 @@ def _source_datasets(tasks: Sequence[AgentEvalTask]) -> str:
     return ", ".join(sorted(stamped)) if stamped else "<tasks with no stamped dataset path>"
 
 
-def _materialize_dataset(tasks: Sequence[AgentEvalTask], dest: Path) -> dict[int, str]:
+def materialize_dataset(tasks: Sequence[AgentEvalTask], dest: Path) -> dict[int, str]:
     """Write the normalized dataset Gym will read, and return its ``_ng_task_index`` → task-id map.
 
     One line per requested task, in task order, carrying the task's full source row plus an explicitly
@@ -246,7 +246,7 @@ def _materialize_dataset(tasks: Sequence[AgentEvalTask], dest: Path) -> dict[int
                 "attempts come from GymRuntimeConfig.num_repeats"
             )
         seen_task_ids.add(task.id)
-        payload = {key: value for key, value in extras.items() if key not in _RUNTIME_KEYS}
+        payload = {key: value for key, value in extras.items() if key not in RUNTIME_KEYS}
         payload["responses_create_params"] = params
         payload[NG_TASK_INDEX] = index
         lines.append(json.dumps(payload, default=str))
