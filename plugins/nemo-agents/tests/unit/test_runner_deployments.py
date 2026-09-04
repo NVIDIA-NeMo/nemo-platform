@@ -261,6 +261,34 @@ def test_k8s_mode_accepts_a_k8s_capable_default(monkeypatch: pytest.MonkeyPatch)
     require_executor_matches_mode("default-exec", "k8s")
 
 
+def test_k8s_mode_with_no_runner_executors_still_checks_the_plugin_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    # executor_for_mode returns None here, but ExecutorRegistry.resolve falls back
+    # to the plugin's own default — so None is not "nothing will run".
+    cfg = _executors(("plugin-default", "docker"))
+    cfg.default_executor = "plugin-default"
+    monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
+
+    with pytest.raises(ValueError, match="runs on 'docker'"):
+        require_executor_matches_mode(None, "k8s")
+
+
+def test_no_executor_anywhere_is_left_to_the_deployments_plugin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    cfg = _executors()
+    cfg.default_executor = None
+    monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
+
+    # Nothing to run it on at all is ExecutorNotFoundError's message to give.
+    require_executor_matches_mode(None, "k8s")
+
+
 def test_docker_mode_on_a_docker_executor_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
     from nemo_deployments_plugin.config import DeploymentsConfig
 

@@ -340,13 +340,20 @@ def executor_for_mode(config: DeploymentsRunnerConfig, mode: DeploymentMode) -> 
 
 
 def executor_backend(name: str | None) -> str | None:
-    """Return the backend key the deployments plugin would run *name* on."""
-    if not name:
-        return None
+    """Return the backend key the deployments plugin would run *name* on.
+
+    An unset name is not "no executor": ``ExecutorRegistry.resolve`` falls back to
+    the deployments plugin's own ``default_executor``, so resolving it here is what
+    makes the mode check see the executor that will actually run.
+    """
     from nemo_deployments_plugin.config import DeploymentsConfig
 
-    for entry in DeploymentsConfig.get().executors:
-        if entry.name == name:
+    config = DeploymentsConfig.get()
+    resolved = name or config.default_executor
+    if not resolved:
+        return None
+    for entry in config.executors:
+        if entry.name == resolved:
             return entry.backend
     return None
 
