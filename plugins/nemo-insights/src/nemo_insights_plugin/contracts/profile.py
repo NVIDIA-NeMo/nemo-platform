@@ -4,7 +4,7 @@
 """Shared mechanics for optimizer.yaml without a universal profile schema."""
 
 import os
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Callable, Mapping, MutableMapping
 from pathlib import Path
 from typing import TypeVar
 
@@ -106,9 +106,28 @@ def resolve_ethos_path(profile_dir: Path, configured: str | None) -> Path | None
     return None
 
 
-def resolve_base_url(explicit: str | None, env: Mapping[str, str] = os.environ) -> str:
-    """Apply explicit, NMP_BASE_URL, then localhost precedence."""
+def resolve_base_url(
+    explicit: str | None,
+    env: Mapping[str, str] = os.environ,
+    *,
+    fallback: Callable[[], str] | None = None,
+) -> str:
+    """Apply explicit, NMP_BASE_URL, then active-CLI-context precedence.
+
+    This mirrors how the platform CLI resolves its own base URL, so that
+    ``nemo insights`` talks to the same deployment as ``nemo workspaces``
+    without needing NMP_BASE_URL exported alongside a configured context.
+
+    *fallback* defaults to the active CLI context, imported lazily so this
+    module stays free of CLI imports; tests pass their own.
+    """
     if explicit is not None:
         return explicit
     env_url = env.get("NMP_BASE_URL")
-    return env_url if env_url is not None else DEFAULT_BASE_URL
+    if env_url is not None:
+        return env_url
+    if fallback is None:
+        from nemo_insights_plugin.cli_context import active_context_base_url
+
+        fallback = active_context_base_url
+    return fallback()

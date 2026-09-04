@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 from nemo_insights_plugin.contracts.profile import (
-    DEFAULT_BASE_URL,
     EnvFileError,
     ProfileError,
     discover_profile,
@@ -134,7 +133,7 @@ def test_load_env_file_wraps_permission_errors(
     path.write_text("KEY=value\n", encoding="utf-8")
     original_read_text = Path.read_text
 
-    def deny(candidate: Path, *args: object, **kwargs: object) -> str:
+    def deny(candidate: Path, *args: str | None, **kwargs: str | None) -> str:
         if candidate == path:
             raise PermissionError("permission denied")
         return original_read_text(candidate, *args, **kwargs)
@@ -161,10 +160,13 @@ def test_resolve_ethos_uses_configured_then_conventional_precedence(tmp_path: Pa
         resolve_ethos_path(tmp_path, "./missing.md")
 
 
-def test_resolve_base_url_uses_only_explicit_nmp_and_default() -> None:
+def test_resolve_base_url_uses_only_explicit_nmp_and_context() -> None:
     env = {"NMP_BASE_URL": "http://nmp", "NEMO_BASE_URL": "http://ignored"}
 
-    assert resolve_base_url("http://flag", env) == "http://flag"
-    assert resolve_base_url(None, env) == "http://nmp"
-    assert resolve_base_url(None, {"NEMO_BASE_URL": "http://ignored"}) == DEFAULT_BASE_URL
-    assert resolve_base_url("", env) == ""  # explicit empty string is not silently replaced
+    def context() -> str:
+        return "http://context"
+
+    assert resolve_base_url("http://flag", env, fallback=context) == "http://flag"
+    assert resolve_base_url(None, env, fallback=context) == "http://nmp"
+    assert resolve_base_url(None, {"NEMO_BASE_URL": "http://ignored"}, fallback=context) == "http://context"
+    assert resolve_base_url("", env, fallback=context) == ""  # explicit empty string is not silently replaced
