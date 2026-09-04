@@ -162,6 +162,22 @@ class JobScheduler(HeartbeatMixin, Controller):
                             "reason": e.message,
                         },
                     )
+                    try:
+                        self._update_step_status_with_timing(
+                            step=step,
+                            phase="scheduling_deferred",
+                            status=PlatformJobStatus(step.status),
+                            status_details={"message": e.message},
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Could not persist scheduling deferral details",
+                            extra={
+                                "job": step.job,
+                                "step": step.name,
+                                "workspace": step.workspace,
+                            },
+                        )
                 except Exception as e:
                     logger.exception("Could not schedule job step", exc_info=True)
                     log_job_diagnostics_if_debug(

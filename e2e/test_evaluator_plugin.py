@@ -49,7 +49,7 @@ from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
 from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
 from nmp.testing import add_mock_provider, short_unique_name, wait_for_model_entity
-from nmp.testing.e2e import wait_for_platform_job
+from nmp.testing.e2e import cleanup_platform_job, wait_for_platform_job
 from nmp.testing.utils import ensure_passthrough_virtual_model
 
 pytestmark = [
@@ -286,10 +286,13 @@ def _create_ready_mock_model(
 
 
 def _cleanup_evaluator_job(sdk: NeMoPlatform, job_name: str) -> None:
-    with suppress(Exception):
-        sdk.jobs.cancel(name=job_name, workspace=sdk.workspace)
-    with suppress(Exception):
-        sdk.jobs.delete(name=job_name, workspace=sdk.workspace)
+    cleanup_platform_job(
+        sdk,
+        job_name,
+        str(sdk.workspace),
+        timeout=EVALUATOR_JOB_TIMEOUT_SECONDS,
+        poll_interval=EVALUATOR_POLL_INTERVAL_SECONDS,
+    )
 
 
 def _wait_for_evaluator_job(job: EvaluatorJobResource) -> None:

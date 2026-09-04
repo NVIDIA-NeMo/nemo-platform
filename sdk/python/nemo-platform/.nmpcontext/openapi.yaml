@@ -5742,6 +5742,9 @@ paths:
           description: Successful Response
         '404':
           description: Job not Found
+        '409':
+          description: Job, attempt, or step is not terminal; paused or cancelling
+            jobs must reach a terminal state before deletion.
         '422':
           description: Validation Error
           content:
