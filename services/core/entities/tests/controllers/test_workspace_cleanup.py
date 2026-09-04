@@ -357,6 +357,33 @@ class TestWorkspaceCleanupJobs:
         jobs_client.delete_job.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_wait_for_terminal_job_emits_heartbeat_between_polls(self, monkeypatch: pytest.MonkeyPatch):
+        from nmp.core.entities.controllers import workspace_cleanup as workspace_cleanup_module
+
+        monkeypatch.setattr(workspace_cleanup_module, "_JOB_TERMINAL_WAIT_TIMEOUT_SECONDS", 60.0)
+        monkeypatch.setattr(workspace_cleanup_module, "_JOB_TERMINAL_WAIT_POLL_SECONDS", 1.0)
+        jobs_client = _make_jobs_client([])
+        jobs_client.get_job_status = AsyncMock(
+            side_effect=[
+                _make_response(_make_job_status("active")),
+                _make_response(_make_job_status("cancelled")),
+            ]
+        )
+        controller = _make_controller()
+
+        async def _mark_sleep(_delay: float) -> None:
+            return None
+
+        with (
+            patch.object(controller, "emit_heartbeat") as emit_heartbeat,
+            patch("nmp.core.entities.controllers.workspace_cleanup.asyncio.sleep", side_effect=_mark_sleep),
+        ):
+            await controller._wait_for_terminal_job(jobs_client, "test-workspace", "active-job")
+
+        emit_heartbeat.assert_called_once()
+        assert jobs_client.get_job_status.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_raises_on_list_failure(self):
         workspace = _make_workspace()
         jobs_client = MagicMock()

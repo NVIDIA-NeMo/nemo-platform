@@ -208,6 +208,7 @@ class WorkspaceCleanup(HeartbeatMixin, Controller):
                     f"Timed out waiting for job {job_name} in workspace {workspace} to reach a terminal status; "
                     f"last status was {last_status}"
                 )
+            self.emit_heartbeat()
             await asyncio.sleep(_JOB_TERMINAL_WAIT_POLL_SECONDS)
 
     @tracer.start_as_current_span("workspace_cleanup/cleanup_deployments")
