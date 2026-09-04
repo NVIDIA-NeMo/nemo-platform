@@ -1073,7 +1073,7 @@ class JobsResource:
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | Timeout | None | NotGiven = not_given,
-    ) -> object:
+    ) -> None:
         _required(name, "name")
         request_body = JobStatusDetailsUpdate.model_validate(_merge_body(dict(body), extra_body))
         request = _apply_request_options(
@@ -1752,7 +1752,7 @@ class AsyncJobsResource:
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | Timeout | None | NotGiven = not_given,
-    ) -> object:
+    ) -> None:
         _required(name, "name")
         request_body = JobStatusDetailsUpdate.model_validate(_merge_body(dict(body), extra_body))
         request = _apply_request_options(
