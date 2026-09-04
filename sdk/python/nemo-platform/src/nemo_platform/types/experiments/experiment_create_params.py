@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Dict
 from typing_extensions import Required, TypedDict
 
+from .column_layout_param import ColumnLayoutParam
 from .pareto_config_param import ParetoConfigParam
 
 __all__ = ["ExperimentCreateParams"]
@@ -30,6 +31,20 @@ class ExperimentCreateParams(TypedDict, total=False):
 
     name: Required[str]
     """Workspace-unique experiment name."""
+
+    column_layout: ColumnLayoutParam
+    """
+    A saved table layout for a group's evaluations list: column order and which
+    columns are hidden.
+
+    Column ids are Studio's and cannot be enumerated here — the table builds a
+    column per evaluator and metadata key found in the rows — so ids are stored and
+    echoed back unvalidated.
+
+    Visibility is stored as the _hidden_ ids rather than a map over every column, so
+    a column that appears later (a new evaluator, a new metadata key) shows up by
+    default.
+    """
 
     default_sort: str
     """
