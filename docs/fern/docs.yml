@@ -63,3 +63,8 @@ redirects:
     destination: "/documentation/models-and-inference/deploy-models"
   - source: "/latest/documentation/models-and-inference/tutorials/deploy-models"
     destination: "/latest/documentation/models-and-inference/deploy-models"
+  # NV 6722634: Plugin UIs title otherwise kebab-cases to plugin-u-is.
+  - source: "/documentation/studio/plugin-u-is"
+    destination: "/documentation/studio/plugins"
+  - source: "/latest/documentation/studio/plugin-u-is"
+    destination: "/latest/documentation/studio/plugins"
