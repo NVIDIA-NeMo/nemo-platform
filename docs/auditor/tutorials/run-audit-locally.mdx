@@ -95,8 +95,8 @@ First, list the providers registered in your deployment so you can pick one that
 
 ```python
 providers = client.inference.providers.list(workspace="default")
-for provider in providers["data"]:
-    print(provider["name"], provider.get("host_url"))
+for provider in providers.data:
+    print(provider.name, provider.host_url)
 ```
 
 Use a `provider` name from this output in the target below. The model identifier format depends on the provider — check the provider's API documentation or served-model list if unsure.
