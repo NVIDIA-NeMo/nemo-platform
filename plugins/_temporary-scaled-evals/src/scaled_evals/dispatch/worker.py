@@ -49,7 +49,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, contextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -79,6 +79,11 @@ from scaled_evals.api.repositories.switchyard_campaign_repository import (
 )
 from scaled_evals.api.settings import settings
 from scaled_evals.dispatch.credentials import materialize_credential_envs
+from scaled_evals.dispatch.harbor_dataset_images import (
+    dataset_configs,
+    effective_image_mode,
+    prepare_dataset_images,
+)
 from scaled_evals.dispatch.registry import get_backend, get_backend_capabilities
 from scaled_evals.dispatch.runtime_backend import (
     LaunchHandle,
@@ -1732,6 +1737,20 @@ class Dispatcher:
                     self._renew_inline_claim(evaluation_id)
                     if agent_floor is not None:
                         assert_lifecycle_covers_agent_floor(row, agent_floor)
+                    if (
+                        spec.framework == "harbor"
+                        and spec.harbor_config.get("dataset_only") is True
+                        and effective_image_mode(spec.harbor_config) == "managed"
+                    ):
+                        imports = prepare_dataset_images(
+                            conn,
+                            datasets=dataset_configs(spec.harbor_config),
+                            harbor_dir=str(spec.harbor_dir or settings.harbor_dir),
+                            renew=lambda: self._renew_inline_claim(evaluation_id),
+                        )
+                        spec = spec.model_copy(
+                            update={"harbor_dataset_image_imports": [asdict(item) for item in imports]}
+                        )
                     should_launch = True
                     if shared_campaign_id is not None:
                         should_launch = self._wait_for_campaign_permit(

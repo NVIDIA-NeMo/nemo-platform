@@ -10,7 +10,10 @@ import {
   TreeNavRoot,
 } from '@nvidia/foundations-react-core';
 import { getSpanTemplate } from '@studio/components/IntakeDetail/SpanTemplates/registry';
-import { getSpanKindConfig } from '@studio/components/SpanKindBadge/spanKindConfig';
+import {
+  getSpanKindColorClass,
+  getSpanKindConfig,
+} from '@studio/components/SpanKindBadge/spanKindConfig';
 import {
   formatDurationMs,
   getTraceDisplayName,
@@ -43,18 +46,6 @@ interface TraceSpanTreeProps {
   sessionActive?: boolean;
 }
 
-// Match the kind badge's accent color on the tree icon. KUI sets the icon color
-// via `.nv-tree-nav-root svg` in Tailwind's `base` layer, so a utility class
-// (the later `utilities` layer) wins without !important. Gray kinds (chain,
-// unknown) have no accent and inherit KUI's default icon color.
-const KIND_ICON_COLOR_CLASS: Record<string, string> = {
-  teal: 'text-[color:var(--text-color-accent-teal)]',
-  purple: 'text-[color:var(--text-color-accent-purple)]',
-  blue: 'text-[color:var(--text-color-accent-blue)]',
-  green: 'text-[color:var(--text-color-accent-green)]',
-  yellow: 'text-[color:var(--text-color-accent-yellow)]',
-};
-
 // Tree rows: round the row highlight and add the vertical padding KUI omits.
 const ROW_CLASS = 'rounded-[var(--radius-md)] py-[2px]';
 
@@ -80,10 +71,10 @@ const SpanTreeLabel: FC<SpanTreeLabelProps> = ({ name, durationMs, errored }) =>
         aria-label="Error"
         fill="currentColor"
         // size-3.5 (14px) + accent-red as utilities, which win over KUI's base-layer svg rule.
-        className="size-3.5 text-[color:var(--text-color-accent-red)]"
+        className="size-3.5 text-(--text-color-accent-red)"
       />
     )}
-    <span className="shrink-0 font-mono text-[length:var(--text-12)] tabular-nums text-[color:var(--text-color-secondary)]">
+    <span className="shrink-0 font-mono text-(length:--text-12) tabular-nums text-(--text-color-secondary)">
       {formatDurationMs(durationMs)}
     </span>
   </span>
@@ -99,9 +90,7 @@ const renderSpanNodes = (
     const { span, children } = node;
     const kindConfig = getSpanKindConfig(span.kind);
     const Icon = kindConfig.icon;
-    const icon = (
-      <Icon role="img" aria-hidden className={KIND_ICON_COLOR_CLASS[kindConfig.color]} />
-    );
+    const icon = <Icon role="img" aria-hidden className={getSpanKindColorClass(span.kind)} />;
     const active = activeSpanId === span.span_id;
     const title = hierarchyTitle(node);
     // Mirror the accordion/row header: a template may elevate a kind-specific

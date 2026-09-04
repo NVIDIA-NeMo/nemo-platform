@@ -1855,7 +1855,9 @@ paths:
       description: 'Delete Fileset.
 
 
-        Permanently deletes a fileset from the platform.
+        Permanently deletes an unreferenced fileset from the platform.
+
+        Referencing model or adapter entities must be relinked or deleted first.
 
         Returns metadata about the deleted fileset.
 
@@ -1881,6 +1883,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FilesetOutput'
+        '409':
+          description: Fileset is referenced by a model or adapter entity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+        '503':
+          description: Fileset references could not be verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
         '422':
           description: Validation Error
           content:
@@ -15819,11 +15839,22 @@ components:
           title: Is Chat
           description: Whether this is a chat model
           type: boolean
+        head_type:
+          type: string
+          enum:
+          - causal_lm
+          - embedding
+          - cross_encoder
+          - unknown
+          title: Head Type
+          description: Task-specific head persisted in the checkpoint.
+          default: unknown
         is_embedding_model:
           type: boolean
           title: Is Embedding Model
-          description: Whether this is an embedding model
+          description: Deprecated compatibility alias for head_type == 'embedding'.
           default: false
+          deprecated: true
         checkpoint_model_name:
           type: string
           title: Checkpoint Model Name

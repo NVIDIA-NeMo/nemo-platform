@@ -14,7 +14,6 @@ import {
   getNewDataDesignerJobRoute,
   getNewFilesetRoute,
   getNewSafeSynthesizerRoute,
-  getPromptTuningFormRoute,
   getSecretsRoute,
   getWorkspaceBaseModelsRoute,
   getWorkspaceDeploymentsRoute,
@@ -138,14 +137,6 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
       /\b(add|create|manage|store|update) (an? )?(api key|credential|credentials|token) (secret|secrets|in (the )?workspace|for (this )?workspace)\b/i,
       /\bworkspace (api key|credential|credentials|token|secret|secrets)\b/i,
     ],
-  },
-  {
-    id: 'prompt-tuning',
-    title: 'Open Prompt Tuning',
-    description: 'Studio has a UI for creating prompt-tuned models.',
-    getHref: getPromptTuningFormRoute,
-    requiredFeatureFlags: ['customizerEnabled'],
-    patterns: [/\bprompt[-\s]?tun(e|ing)\b/i],
   },
   {
     id: 'model-playground',

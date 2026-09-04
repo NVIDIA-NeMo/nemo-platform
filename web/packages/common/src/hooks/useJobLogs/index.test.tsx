@@ -270,7 +270,7 @@ describe('useJobLogs', () => {
         await tick();
       });
 
-      expect(result.current.isLoading).toBe(false);
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
       expect(result.current.loadProgress).toEqual({ loaded: 4, total: 4 });
     });
 

@@ -361,6 +361,8 @@ navigation:
         contents:
           - page: Agents
             path: ../../studio/agents.mdx
+          - page: Custom Models
+            path: ../../studio/customization.mdx
           - page: Data Designer
             path: ../../studio/data-designer-build.mdx
           - page: Experiments
@@ -403,6 +405,7 @@ navigation:
                   - page: Volcano
                     path: ../../set-up/helm/volcano.mdx
                   - page: OpenSandbox
+                    slug: opensandbox
                     path: ../../set-up/helm/opensandbox.mdx
                   - page: OpenSandbox with Kata
                     slug: opensandbox-kata
@@ -494,6 +497,9 @@ navigation:
             contents:
               - page: Current Release
                 path: ../../about/release-notes/current-release.mdx
+              - page: v0.4.0
+                slug: release-0-4-0
+                path: ../../about/release-notes/release-0-4-0.mdx
               - page: v0.3.0
                 slug: release-0-3-0
                 path: ../../about/release-notes/release-0-3-0.mdx

@@ -353,9 +353,6 @@ importers:
       date-fns:
         specifier: 'catalog:'
         version: 4.1.0
-      handlebars:
-        specifier: 'catalog:'
-        version: 4.7.9
       html-entities:
         specifier: ^2.5.2
         version: 2.6.0

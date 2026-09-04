@@ -120,13 +120,53 @@ class TestLoadPlatformSkills:
             assert not unknown, f"{name} has unknown preconditions: {sorted(unknown)}"
         assert skills_with_preconditions
 
-    def test_build_agent_templates_are_packaged(self):
+    def test_build_agent_references_are_packaged(self):
         skill = load_skills()["nemo-build-agent"]
         assert skill.source_dir is not None
+        assert (skill.source_dir / "references" / "fabric-deep-agents.md").is_file()
+        assert (skill.source_dir / "references" / "testing-and-signoff.md").is_file()
+        assert (skill.source_dir / "references" / "packaging.md").is_file()
 
-        templates_dir = skill.source_dir / "references" / "templates"
-        assert (templates_dir / "agent.yml").is_file()
-        assert (templates_dir / "eval-job.json").is_file()
+    def test_build_agent_uses_agents_plugin_harness_dependency(self):
+        skill = load_skills()["nemo-build-agent"]
+        assert "optional NeMo Agents plugin supplies the selected harness adapter" in skill.content
+        assert "Do not add a separate Deep Agents version constraint" in skill.content
+        assert "If the NeMo Agents plugin and Deep Agents harness are already available" in skill.content
+        assert 'uv pip install "nemo-platform[nemo-agents-plugin]"' in skill.content
+        assert "uv pip install -e plugins/nemo-agents/" in skill.content
+
+    def test_build_agent_covers_plugin_dependency_failure_paths(self):
+        skill = load_skills()["nemo-build-agent"]
+        assert "If the plugin is absent" in skill.content
+        assert "ask for approval before" in skill.content
+        assert "If the plugin is present" in skill.content
+        assert "its Deep Agents adapter or runtime is absent" in skill.content
+        assert "Do not install the harness independently" in skill.content
+
+    def test_build_agent_defers_registration_until_after_local_gates(self):
+        content = load_skills()["nemo-build-agent"].content
+        normalized = " ".join(content.split())
+
+        assert "do not run its `nemo agents create` registration step" in normalized
+        assert "This build workflow owns registration after every pre-registration gate has passed" in normalized
+        assert "do not run it earlier solely to validate the config" in normalized
+        assert content.index("## Test before registration") < content.index("## Register and deploy")
+
+    def test_build_agent_registration_uses_confirmed_workspace_and_environment(self):
+        skill = load_skills()["nemo-build-agent"]
+        assert skill.source_dir is not None
+        packaging = (skill.source_dir / "references" / "packaging.md").read_text()
+        create_command, deployments = packaging.split(".venv/bin/nemo agents deploy", maxsplit=1)
+        selected_environment, no_environment = deployments.split("If no AgentEnvironment was selected", maxsplit=1)
+
+        assert packaging.count(".venv/bin/nemo agents deploy") == 2
+        assert "If an AgentEnvironment was selected" in packaging
+        assert '--workspace "$WORKSPACE"' in create_command
+        assert '--workspace "$WORKSPACE"' in selected_environment
+        assert '--environment "$AGENT_ENVIRONMENT"' in selected_environment
+        assert "AGENT_ENVIRONMENT=" not in no_environment
+        assert "--environment" not in no_environment
+        assert '--workspace "$WORKSPACE"' in no_environment
 
     def test_model_selection_benchmark_cache_is_packaged(self):
         skill = load_skills()["nemo-model-selection"]

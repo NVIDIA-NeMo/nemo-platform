@@ -25,7 +25,8 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { WebStorageStateStore } from 'oidc-client-ts';
 import { StrictMode } from 'react';
 import { AuthProvider } from 'react-oidc-context';
-import { createBrowserRouter, RouterProvider } from 'react-router';
+import { createBrowserRouter } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 
 /**
  * Expand OAuth scopes by prepending scope_prefix to custom scopes.

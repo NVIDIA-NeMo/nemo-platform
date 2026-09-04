@@ -59,11 +59,14 @@ async def transform_input_to_output(
         await check_environment_package(sdk, input_spec.environment, workspace)
         await check_gym_dataset_layout(sdk, input_spec.dataset, workspace)
 
-    is_embedding = bool(model_entity.spec and getattr(model_entity.spec, "is_embedding_model", False))
-    if is_embedding:
+    model_spec = model_entity.spec
+    head_type = getattr(model_spec, "head_type", None) if model_spec else None
+    is_encoder = head_type in {"embedding", "cross_encoder"} or bool(
+        model_spec and getattr(model_spec, "is_embedding_model", False)
+    )
+    if is_encoder:
         raise ValueError(
-            f"{training_type.value.upper()} is not supported for embedding models. "
-            "Use a causal LM model entity instead.",
+            f"{training_type.value.upper()} is not supported for encoder models. Use a causal LM model entity instead.",
         )
 
     output_request = input_spec.output or OutputRequest()

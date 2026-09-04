@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from scaled_evals.api.repositories.agent_bundle_repository import AgentBundleRepository
+from scaled_evals.api.repositories.benchmark_import_repository import BenchmarkImportRepository
 from scaled_evals.api.repositories.benchmark_repository import BenchmarkRepository
 from scaled_evals.api.repositories.benchmark_run_repository import BenchmarkRunRepository
 from scaled_evals.api.repositories.build_repository import TaskBuildRepository
@@ -28,6 +29,7 @@ __all__ = [
     "TaskRepository",
     "UserRepository",
     "BenchmarkRepository",
+    "BenchmarkImportRepository",
     "BenchmarkRunRepository",
     "TaskBuildRepository",
     "ConfigProfileRepository",
