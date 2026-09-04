@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.entities import (
     Agent,
     AgentComputeSpec,
@@ -40,6 +41,7 @@ from nemo_agents_plugin.jobs.execute import (
     ExecuteAgentStepConfig,
     ResolvedAgentConfig,
     _log_agent_stderr,
+    _configure_intake_telemetry,
 )
 from nemo_agents_plugin.tasks.execute.workdir import (
     AgentWorkdir,
@@ -48,6 +50,7 @@ from nemo_agents_plugin.tasks.execute.workdir import (
     materialize_agent_workdir,
     validate_agent_workdir,
 )
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job_context import JobContext
@@ -1236,6 +1239,7 @@ def test_execute_job_create_route_stores_canonical_step_config() -> None:
         "environment": None,
         "workdir": {"base_workdir": "source#project", "artifact_mounts": []},
         "timeout_seconds": DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
+        "telemetry": True,
         "extension": None,
     }
     assert body.spec["workdir"] == {"base_workdir": "default/source#project/", "artifact_mounts": []}
@@ -1789,3 +1793,104 @@ def test_log_agent_stderr_refuses_to_follow_a_symlink(tmp_path: Path, caplog: py
 
     assert "Could not read agent stderr" in caplog.text
     assert "some diagnostics" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Intake telemetry auto-configuration
+# ---------------------------------------------------------------------------
+
+
+def _fabric_agent_config(**overrides: Any) -> dict[str, Any]:
+    return {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "demo-agent",
+        "default_harness": "h",
+        "harnesses": {"h": {"kind": "hermes"}},
+        "models": {"default": {"provider": "platform", "model": "default/m"}},
+        "environment": {"provider": "local"},
+        **overrides,
+    }
+
+
+def test_telemetry_is_pointed_at_the_workspace_intake_ingest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only the task knows the platform URL reachable from its own pod."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    config = _fabric_agent_config()
+
+    _configure_intake_telemetry(config, workspace="team-a", sdk=None)
+
+    telemetry = config["telemetry"]
+    assert telemetry["enabled"] is True
+    assert telemetry["provider"] == "relay"
+    assert telemetry["agent_name"] == "demo-agent"
+    storage = telemetry["atif"]["storage"][0]
+    assert storage["type"] == "http"
+    assert storage["endpoint"] == "http://nemo-platform-api:8080/apis/intake/v2/workspaces/team-a/ingest/atif"
+    # The wired config still has to be a valid agent config.
+    assert AgentConfig.model_validate(config).telemetry.enabled is True
+
+
+def test_telemetry_credentials_go_to_the_environment_not_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fabric writes the config into artifacts that are uploaded as a job result."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    sdk = cast(NeMoPlatform, SimpleNamespace(_custom_headers={"X-NMP-Principal-Id": "service:agents"}))
+    config = _fabric_agent_config()
+
+    _configure_intake_telemetry(config, workspace="default", sdk=sdk)
+
+    storage = config["telemetry"]["atif"]["storage"][0]
+    assert storage["header_env"] == {"X-NMP-Principal-Id": "NMP_AGENT_TELEMETRY_HEADER_X_NMP_PRINCIPAL_ID"}
+    assert "headers" not in storage, "an inline header would land in a downloadable artifact"
+    assert os.environ["NMP_AGENT_TELEMETRY_HEADER_X_NMP_PRINCIPAL_ID"] == "service:agents"
+
+
+def test_an_agent_that_names_its_own_destination_keeps_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An explicit export destination beats an inferred one."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    mine = {"type": "http", "endpoint": "https://elsewhere.example/ingest"}
+    config = _fabric_agent_config(telemetry={"enabled": True, "atif": {"enabled": True, "storage": [mine]}})
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert config["telemetry"]["atif"]["storage"] == [mine]
+
+
+def test_telemetry_disabled_on_the_agent_is_an_opt_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """False means no, as distinct from a config that never mentioned telemetry."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    config = _fabric_agent_config(telemetry={"enabled": False})
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert config["telemetry"] == {"enabled": False}
+
+
+def test_an_agent_that_only_names_itself_is_still_wired(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The point of the tri-state: naming yourself is not configuring an export."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    config = _fabric_agent_config(telemetry={"agent_name": "my-agent-name"})
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert config["telemetry"]["enabled"] is True
+    assert config["telemetry"]["agent_name"] == "my-agent-name"
+
+
+def test_telemetry_is_skipped_when_no_platform_url_is_reachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A run untraced beats a run that fails over its own tracing."""
+    monkeypatch.delenv("NMP_BASE_URL", raising=False)
+    config = _fabric_agent_config()
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert "telemetry" not in config
+
+
+def test_an_unrecognized_telemetry_section_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deployments never model-validate, so a stray key must not fail the whole config."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    config = _fabric_agent_config(telemetry={"enabled": True, "not_a_real_field": 1})
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert config["telemetry"] == {"enabled": True, "not_a_real_field": 1}

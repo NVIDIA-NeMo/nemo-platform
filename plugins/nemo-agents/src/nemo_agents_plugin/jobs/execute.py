@@ -48,6 +48,7 @@ from nemo_agents_plugin.tasks.execute.workdir import (
     materialize_agent_workdir,
     validate_agent_workdir,
 )
+from nemo_agents_plugin.telemetry.intake_export import configure_intake_atif_export
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job import NemoJob
@@ -80,6 +81,7 @@ from nemo_platform_plugin.jobs.constants import (
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, parse_entity_ref
+from nemo_platform_plugin.sdk_provider import get_forwarding_headers
 from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
@@ -89,6 +91,8 @@ FABRIC_BASE_DIR_NAME = "fabric"
 INPUT_WORKDIR_RESULT_NAME = "input_workdir"
 OUTPUT_WORKDIR_RESULT_NAME = "output_workdir"
 OUTPUT_ARTIFACTS_RESULT_NAME = "output_artifacts"
+NMP_BASE_URL_ENVVAR = "NMP_BASE_URL"
+HEADER_ENVVAR_PREFIX = "NMP_AGENT_TELEMETRY_HEADER_"
 FABRIC_RUN_RESULT_NAME = "fabric_run_result"
 FABRIC_ERROR_RESULT_NAME = "fabric_error"
 FABRIC_RUN_RESULT_FILENAME = "fabric_run_result.json"
@@ -189,6 +193,13 @@ class ExecuteAgentJobConfig(BaseModel):
         default=DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
         gt=0,
         description="Maximum time to wait for Fabric to return an execution result.",
+    )
+    telemetry: bool = Field(
+        default=True,
+        description=(
+            "Export the agent's trajectory to Intake. Set false to run untraced, or configure "
+            "'telemetry' on the agent yourself — an agent that already declares it is left alone."
+        ),
     )
     extension: ExecuteAgentExtensionConfig | None = Field(
         default=None,
@@ -392,6 +403,8 @@ class ExecuteAgentJob(NemoJob):
         logger.info("Executing agent %s (timeout %gs).", agent_ref, step_config.request.timeout_seconds)
 
         _validate_agent_config_format(step_config.agent.config_format)
+        if step_config.request.telemetry:
+            _configure_intake_telemetry(step_config.agent.config, workspace=ctx.workspace, sdk=sdk)
         agent_config = _validate_agent_config(step_config.agent.config)
 
         fabric_dirs = FabricDirectories.create(agent_config, ctx.storage.ephemeral)
@@ -781,6 +794,47 @@ def _validate_agent_config_format(config_format: str) -> None:
             f"Config format {config_format!r} is not supported; "
             f"agents.execute jobs only support {FABRIC_AGENT_CONFIG_FORMAT!r}."
         )
+
+
+def _configure_intake_telemetry(
+    agent_config: dict[str, Any],
+    *,
+    workspace: str,
+    sdk: NeMoPlatform | None,
+) -> None:
+    """Wire the agent's trajectory export to Intake for this job.
+
+    Runs here rather than at create time because only the task knows both
+    halves: ``NMP_BASE_URL`` is the platform URL reachable from *this* pod (the
+    Jobs service rewrites it per runtime), and the task's own SDK carries the
+    identity the platform gave this job -- the same ``service:agents`` principal
+    and on-behalf-of delegation a deployment gets from its auth-proxy sidecar.
+
+    Credentials go in the process environment and the config names them.
+    Fabric writes the resolved agent config into the run's artifacts, and those
+    are uploaded as a job result, so an inline header would be a downloadable
+    one.
+    """
+    base_url = os.environ.get(NMP_BASE_URL_ENVVAR)
+    if not base_url:
+        logger.warning("%s is not set; the agent will run untraced.", NMP_BASE_URL_ENVVAR)
+        return
+
+    headers = get_forwarding_headers(sdk) if sdk is not None else {}
+    for name, value in headers.items():
+        os.environ[_header_envvar(name)] = value
+
+    configure_intake_atif_export(
+        agent_config,
+        workspace=workspace,
+        base_url=base_url,
+        header_env={name: _header_envvar(name) for name in headers},
+    )
+
+
+def _header_envvar(header_name: str) -> str:
+    """Environment variable the exporter reads one outbound header value from."""
+    return f"{HEADER_ENVVAR_PREFIX}{header_name.upper().replace('-', '_')}"
 
 
 def _validate_agent_config(config: dict) -> AgentConfig:
