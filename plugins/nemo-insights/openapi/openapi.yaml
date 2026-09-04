@@ -1,0 +1,2417 @@
+openapi: 3.1.0
+info:
+  title: insights (plugin)
+  version: 0.0.0
+paths:
+  /apis/insights/v2/workspaces/{workspace}/analysis-configs:
+    get:
+      tags:
+      - Insights Analysis Configs
+      summary: List Analysis Configs
+      description: List periodic analysis opt-in records.
+      operationId: list_analysis_configs_apis_insights_v2_workspaces__workspace__analysis_configs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number (1-indexed).
+          default: 1
+          title: Page
+        description: Page number (1-indexed).
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: Items per page.
+          default: 20
+          title: Page Size
+        description: Items per page.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Sort field.
+          default: -created_at
+          title: Sort
+        description: Sort field.
+      - name: enabled
+        in: query
+        required: false
+        schema:
+          description: Filter by enabled state.
+          title: Enabled
+          type: boolean
+        description: Filter by enabled state.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_AnalysisConfig_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/analysis-configs/{agent}:
+    get:
+      tags:
+      - Insights Analysis Configs
+      summary: Get Analysis Config
+      description: Get periodic analysis opt-in state for one agent.
+      operationId: get_analysis_config_apis_insights_v2_workspaces__workspace__analysis_configs__agent__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: agent
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisConfig'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Insights Analysis Configs
+      summary: Update Analysis Config
+      description: Partially update periodic analysis state for one agent.
+      operationId: update_analysis_config_apis_insights_v2_workspaces__workspace__analysis_configs__agent__patch
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: agent
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAnalysisConfigRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisConfig'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/analysis-configs/{agent}/disable:
+    post:
+      tags:
+      - Insights Analysis Configs
+      summary: Disable Analysis Config
+      description: Disable periodic insights analysis for one agent.
+      operationId: disable_analysis_config_apis_insights_v2_workspaces__workspace__analysis_configs__agent__disable_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: agent
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisConfig'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/analysis-configs/{agent}/enable:
+    post:
+      tags:
+      - Insights Analysis Configs
+      summary: Enable Analysis Config
+      description: Enable periodic insights analysis for one agent.
+      operationId: enable_analysis_config_apis_insights_v2_workspaces__workspace__analysis_configs__agent__enable_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: agent
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableAnalysisConfigRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisConfig'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/analysis-run-statuses:
+    get:
+      tags:
+      - Insights Analysis Run Statuses
+      summary: List Analysis Run Statuses
+      description: List machine-written periodic analysis run status records.
+      operationId: list_analysis_run_statuses_apis_insights_v2_workspaces__workspace__analysis_run_statuses_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number (1-indexed).
+          default: 1
+          title: Page
+        description: Page number (1-indexed).
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: Items per page.
+          default: 20
+          title: Page Size
+        description: Items per page.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Sort field.
+          default: -updated_at
+          title: Sort
+        description: Sort field.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_AnalysisRunStatus_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/analysis-run-statuses/{agent}:
+    get:
+      tags:
+      - Insights Analysis Run Statuses
+      summary: Get Analysis Run Status
+      description: Get machine-written periodic analysis run status for one agent.
+      operationId: get_analysis_run_status_apis_insights_v2_workspaces__workspace__analysis_run_statuses__agent__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: agent
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisRunStatus'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Insights Analysis Run Statuses
+      summary: Update Analysis Run Status
+      description: Create or partially update periodic analysis run status for one
+        agent.
+      operationId: update_analysis_run_status_apis_insights_v2_workspaces__workspace__analysis_run_statuses__agent__patch
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: agent
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAnalysisRunStatusRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisRunStatus'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/analysis-runs:
+    post:
+      tags:
+      - Insights Analysis Runs
+      summary: Create Analysis Run
+      description: Create an Insights analysis run backed by the generic ``agents.execute``
+        job.
+      operationId: create_analysis_run_apis_insights_v2_workspaces__workspace__analysis_runs_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAnalysisRunRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisRunResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Insights Analysis Runs
+      summary: List Analysis Runs
+      description: "List analysis runs. Job state is not joined here \u2014 read a\
+        \ run to get it."
+      operationId: list_analysis_runs_apis_insights_v2_workspaces__workspace__analysis_runs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number (1-indexed).
+          default: 1
+          title: Page
+        description: Page number (1-indexed).
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: Items per page.
+          default: 20
+          title: Page Size
+        description: Items per page.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Sort field.
+          default: -created_at
+          title: Sort
+        description: Sort field.
+      - name: agent
+        in: query
+        required: false
+        schema:
+          description: Filter by the agent that was analyzed.
+          title: Agent
+          type: string
+        description: Filter by the agent that was analyzed.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_AnalysisRun_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/analysis-runs/{name}:
+    get:
+      tags:
+      - Insights Analysis Runs
+      summary: Get Analysis Run
+      description: Get one analysis run, joined with the live state of its backing
+        job.
+      operationId: get_analysis_run_apis_insights_v2_workspaces__workspace__analysis_runs__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisRunResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/insights:
+    post:
+      tags:
+      - Insights Insights
+      summary: Create Insight
+      description: Create a new Insight. The store auto-generates the slug name.
+      operationId: create_insight_apis_insights_v2_workspaces__workspace__insights_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInsightRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Insight'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Insights Insights
+      summary: List Insights
+      description: List Insights with pagination, sort, and basic filters.
+      operationId: list_insights_apis_insights_v2_workspaces__workspace__insights_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number (1-indexed).
+          default: 1
+          title: Page
+        description: Page number (1-indexed).
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: Items per page.
+          default: 20
+          title: Page Size
+        description: Items per page.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Sort field. Prefix with '-' for descending (e.g. '-created_at').
+          default: -created_at
+          title: Sort
+        description: Sort field. Prefix with '-' for descending (e.g. '-created_at').
+      - name: agent
+        in: query
+        required: false
+        schema:
+          description: Filter by agent name.
+          title: Agent
+          type: string
+        description: Filter by agent name.
+      - name: status
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/InsightStatus'
+          description: Filter by lifecycle status.
+          title: Status
+        description: Filter by lifecycle status.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NemoListResponse_InsightListItem_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/insights/{insight_id}:
+    get:
+      tags:
+      - Insights Insights
+      summary: Get Insight
+      description: Get a single Insight by its store-assigned id.
+      operationId: get_insight_apis_insights_v2_workspaces__workspace__insights__insight_id__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: insight_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Insight Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Insight'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Insights Insights
+      summary: Update Insight
+      description: Partially update an Insight by id. Omitted fields are unchanged.
+      operationId: update_insight_apis_insights_v2_workspaces__workspace__insights__insight_id__patch
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: insight_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Insight Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInsightRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Insight'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Insights Insights
+      summary: Delete Insight
+      description: Delete an Insight by its store-assigned id. Returns 204 on success.
+      operationId: delete_insight_apis_insights_v2_workspaces__workspace__insights__insight_id__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: insight_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Insight Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/jobs/analyze-job:
+    post:
+      tags:
+      - Insights Analysis Jobs
+      summary: Create Job
+      operationId: create_job_apis_insights_v2_workspaces__workspace__jobs_analyze_job_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeJobJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeJobJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Insights Analysis Jobs
+      summary: List Jobs
+      operationId: list_jobs_apis_insights_v2_workspaces__workspace__jobs_analyze_job_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/AnalyzeJobJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/AnalyzeJobJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeJobJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/jobs/analyze-job/{job}/results/{name}:
+    get:
+      tags:
+      - Insights Analysis Jobs
+      summary: Get Job Result
+      operationId: get_job_result_apis_insights_v2_workspaces__workspace__jobs_analyze_job__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/jobs/analyze-job/{job}/results/{name}/download:
+    get:
+      tags:
+      - Insights Analysis Jobs
+      summary: Download Job Result
+      operationId: download_job_result_apis_insights_v2_workspaces__workspace__jobs_analyze_job__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/jobs/analyze-job/{name}:
+    get:
+      tags:
+      - Insights Analysis Jobs
+      summary: Get Job
+      operationId: get_job_apis_insights_v2_workspaces__workspace__jobs_analyze_job__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeJobJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Insights Analysis Jobs
+      summary: Delete Job
+      operationId: delete_job_apis_insights_v2_workspaces__workspace__jobs_analyze_job__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/jobs/analyze-job/{name}/cancel:
+    post:
+      tags:
+      - Insights Analysis Jobs
+      summary: Cancel Job
+      operationId: cancel_job_apis_insights_v2_workspaces__workspace__jobs_analyze_job__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeJobJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/jobs/analyze-job/{name}/logs:
+    get:
+      tags:
+      - Insights Analysis Jobs
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_insights_v2_workspaces__workspace__jobs_analyze_job__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/jobs/analyze-job/{name}/results:
+    get:
+      tags:
+      - Insights Analysis Jobs
+      summary: List Job Results
+      operationId: list_job_results_apis_insights_v2_workspaces__workspace__jobs_analyze_job__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/insights/v2/workspaces/{workspace}/jobs/analyze-job/{name}/status:
+    get:
+      tags:
+      - Insights Analysis Jobs
+      summary: Get Job Status
+      operationId: get_job_status_apis_insights_v2_workspaces__workspace__jobs_analyze_job__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AnalysisConfig:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        agent:
+          type: string
+          title: Agent
+          description: Name of the agent this analysis config targets.
+        enabled:
+          type: boolean
+          title: Enabled
+          description: Whether the periodic insights controller should analyze this
+            agent.
+          default: true
+        default_model:
+          type: string
+          title: Default Model
+          description: Workspace-qualified Model Entity used for quality-critical
+            analysis work.
+          default: ''
+        fast_model:
+          type: string
+          title: Fast Model
+          description: Workspace-qualified Model Entity used for latency-sensitive
+            analysis work.
+          default: ''
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
+      type: object
+      required:
+      - workspace
+      - agent
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      - db_version
+      title: AnalysisConfig
+      description: 'Per-agent opt-in state for framework-managed periodic analysis.
+
+
+        The cadence is intentionally global insights configuration. The model pair
+
+        is captured when analysis is enabled because the controller runs in the
+
+        Platform process and cannot read the operator''s local CLI configuration.
+
+        Machine-written run state lives on :class:`AnalysisRunStatus` so the
+
+        controller never races the running job.'
+    AnalysisConfigStatus:
+      type: string
+      enum:
+      - idle
+      - running
+      - error
+      title: AnalysisConfigStatus
+      description: Lifecycle state for periodic insights analysis of one agent.
+    AnalysisRun:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        agent:
+          type: string
+          title: Agent
+          description: Agent whose telemetry this run analyzed.
+        since:
+          title: Since
+          description: Lower bound the run enforced on trace/span reads.
+          type: string
+          format: date-time
+        evaluation_id:
+          type: string
+          title: Evaluation Id
+          description: Run scope AND-pinned onto every span read, when one was requested.
+          default: ''
+        default_model:
+          type: string
+          title: Default Model
+          description: Workspace-qualified Model Entity the run used for analysis
+            work.
+          default: ''
+        fast_model:
+          type: string
+          title: Fast Model
+          description: Workspace-qualified Model Entity the run used for context summarization.
+          default: ''
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
+      type: object
+      required:
+      - workspace
+      - agent
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      - db_version
+      title: AnalysisRun
+      description: "One on-demand Insights analysis run \u2014 what was asked for,\
+        \ not how it went.\n\nThe record's ``name`` is also the name of the backing\
+        \ ``agents.execute``\njob. Insights mints that name before submitting, so\
+        \ the link between a run\nand its job is *derivable* rather than written back\
+        \ after the fact. That\nremoves the dual write, and with it the failure mode\
+        \ where a job exists\nthat no run points at: a run whose job name 404s simply\
+        \ never landed. There\nis no resubmit-under-an-existing-name route yet, so\
+        \ such a run is a read\ntoday, not something a caller can drive back to completion.\n\
+        \nProgress is deliberately absent. Status, logs, and results belong to the\n\
+        Job and are read from it; mirroring them here would go stale immediately.\n\
+        Insights owns only what no lower layer knows: that this job was an analysis\n\
+        run, over which agent and scope."
+    AnalysisRunResponse:
+      properties:
+        run:
+          $ref: '#/components/schemas/AnalysisRun'
+        job:
+          title: Job
+          description: "The backing execute-agent job, or null when no job exists\
+            \ under the run's name \u2014 meaning submission never landed and the\
+            \ run can be resubmitted."
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - run
+      title: AnalysisRunResponse
+      description: An analysis run plus the live state of the job backing it.
+    AnalysisRunStatus:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        agent:
+          type: string
+          title: Agent
+          description: Name of the agent this run status targets.
+        status:
+          allOf:
+          - $ref: '#/components/schemas/AnalysisConfigStatus'
+          description: Last known periodic analysis state for this agent.
+          default: idle
+        last_successful_run_at:
+          title: Last Successful Run At
+          description: Cursor for incremental analysis. Scheduled runs only consider
+            telemetry at or after this timestamp.
+          type: string
+          format: date-time
+        last_attempted_at:
+          title: Last Attempted At
+          description: When the controller or job last attempted analysis.
+          type: string
+          format: date-time
+        last_completed_at:
+          title: Last Completed At
+          description: When the last analysis attempt reached a terminal state.
+          type: string
+          format: date-time
+        last_submitted_job:
+          type: string
+          title: Last Submitted Job
+          description: Most recent platform job name submitted for this agent.
+          default: ''
+        last_error:
+          type: string
+          title: Last Error
+          description: Most recent error or skip reason from scheduled analysis.
+          default: ''
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
+      type: object
+      required:
+      - workspace
+      - agent
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      - db_version
+      title: AnalysisRunStatus
+      description: Machine-written run state for periodic analysis of one agent.
+    AnalyzeJobJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/AnalyzeSpec'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: AnalyzeJobJob
+    AnalyzeJobJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/AnalyzeSpec'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+        output_location:
+          title: Output Location
+          type: string
+      type: object
+      required:
+      - spec
+      title: AnalyzeJobJobRequest
+    AnalyzeJobJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: AnalyzeJobJobsListFilter
+      type: object
+    AnalyzeJobJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AnalyzeJobJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: AnalyzeJobJobsPage
+    AnalyzeJobJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: AnalyzeJobJobsSortField
+    AnalyzeSpec:
+      properties:
+        agent:
+          type: string
+          title: Agent
+          description: Agent under test.
+        ethos:
+          title: Ethos
+          description: Optional Ethos Markdown for the agent under test.
+          type: string
+        base_url:
+          title: Base Url
+          description: Optional platform base URL. Unset uses the active platform
+            context.
+          type: string
+        insights_output:
+          title: Insights Output
+          description: Optional local YAML path mirroring the Insights the platform
+            stored. Container-local unless it points at mounted storage.
+          type: string
+        since:
+          title: Since
+          description: Optional lower bound for incremental trace/span analysis.
+          type: string
+          format: date-time
+        update_analysis_config:
+          type: boolean
+          title: Update Analysis Config
+          description: Update the matching AnalysisRunStatus with run metadata.
+          default: true
+        default_model:
+          type: string
+          title: Default Model
+          description: Workspace-qualified default Model Entity ID selected during
+            setup.
+        fast_model:
+          type: string
+          title: Fast Model
+          description: Workspace-qualified fast Model Entity ID selected during setup.
+      additionalProperties: false
+      type: object
+      required:
+      - agent
+      - default_model
+      - fast_model
+      title: AnalyzeSpec
+      description: Canonical input for one insights analyst run.
+    CreateAnalysisRunRequest:
+      properties:
+        agent:
+          type: string
+          minLength: 1
+          title: Agent
+          description: Agent whose telemetry should be analyzed.
+        default_model:
+          type: string
+          minLength: 1
+          title: Default Model
+          description: 'Model Entity the Analyst uses for analysis work, as a name
+            or a ''<workspace>/<name>'' ref; a bare name resolves in the run''s workspace
+            and is stored qualified. Required: the model pair is the operator''s choice
+            and is not persisted anywhere the Platform process can read it.'
+        fast_model:
+          type: string
+          minLength: 1
+          title: Fast Model
+          description: Model Entity used for context summarization, in the same form
+            as default_model. Required for the same reason.
+        ethos:
+          title: Ethos
+          description: 'Optional Ethos Markdown for the agent under test. Sent inline
+            rather than as a reference: the execute job''s Fabric adapter has no Files
+            access.'
+          type: string
+          minLength: 1
+        since:
+          title: Since
+          description: Optional lower bound enforced on the Analyst's trace/span reads.
+          type: string
+          format: date-time
+        evaluation_id:
+          title: Evaluation Id
+          description: Optional run scope AND-pinned onto every span read.
+          type: string
+          minLength: 1
+        timeout_seconds:
+          title: Timeout Seconds
+          description: Optional execute job timeout.
+          type: number
+          exclusiveMinimum: 0.0
+      type: object
+      required:
+      - agent
+      - default_model
+      - fast_model
+      title: CreateAnalysisRunRequest
+      description: Client-facing request to run the Insights Analyst through ``agents.execute``.
+    CreateInsightRequest:
+      properties:
+        title:
+          type: string
+          title: Title
+          description: A short, human-readable sentence naming the core issue. The
+            full problem statement goes in 'description'. The store's slug name is
+            auto-generated, so no name is supplied here.
+        agent:
+          type: string
+          title: Agent
+          description: Name of the registered agent this insight is about.
+        description:
+          type: string
+          title: Description
+          description: 'The problem statement: specific enough to act on. This is
+            editable by the developer.'
+        status:
+          allOf:
+          - $ref: '#/components/schemas/InsightStatus'
+          default: open
+        trace_refs:
+          items:
+            type: string
+          type: array
+          title: Trace Refs
+      type: object
+      required:
+      - title
+      - agent
+      - description
+      title: CreateInsightRequest
+      description: 'Body for ``POST /insights``.
+
+
+        ``status`` defaults to :attr:`InsightStatus.OPEN`; callers that want to
+
+        mint an insight already in another lifecycle state set it explicitly.'
+    DatetimeFilter:
+      additionalProperties: false
+      properties:
+        $gte:
+          description: Filter for results greater than or equal to this datetime.
+          title: $Gte
+          format: date-time
+          type: string
+        $lte:
+          description: Filter for results less than or equal to this datetime.
+          title: $Lte
+          format: date-time
+          type: string
+      title: DatetimeFilter
+      type: object
+    EnableAnalysisConfigRequest:
+      properties:
+        default_model:
+          type: string
+          minLength: 1
+          title: Default Model
+        fast_model:
+          type: string
+          minLength: 1
+          title: Fast Model
+      type: object
+      required:
+      - default_model
+      - fast_model
+      title: EnableAnalysisConfigRequest
+      description: Model selection captured when periodic analysis is enabled.
+    FileStorageType:
+      type: string
+      enum:
+      - fileset
+      title: FileStorageType
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    Insight:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        title:
+          type: string
+          title: Title
+          description: A short, human-readable sentence naming the core issue common
+            to the linked traces. Editable by the developer.
+        description:
+          type: string
+          title: Description
+          description: 'The problem statement: specific enough to act on. Editable
+            by the developer. A paragraph or two with detail on what exactly is going
+            wrong, general enough to apply to many traces rather than to a single
+            problematic instance.'
+        agent:
+          type: string
+          title: Agent
+          description: Name of the registered agent this insight is about, or a local
+            filesystem path (as a string) to the agent directory when running offline.
+        status:
+          allOf:
+          - $ref: '#/components/schemas/InsightStatus'
+          description: An insight starts as open. It can be resolved if the developer
+            thinks the issue has been fixed. It can be deleted if the developer thinks
+            the issue is not actually a problem or if it is not a good insight for
+            their domain.
+          default: open
+        trace_refs:
+          items:
+            type: string
+          type: array
+          title: Trace Refs
+          description: Intake trace ids the analyst identified as evidence for this
+            insight. This is used as evidence for the insight UI to communicate to
+            the developer what traces triggered the issue, and can also be used to
+            identify other similar traces that might experience the same issue.
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
+      type: object
+      required:
+      - workspace
+      - title
+      - description
+      - agent
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      - db_version
+      title: Insight
+      description: A persistent problem, theme, or category of issues in the agent
+        under test.
+    InsightListItem:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Entity name within the workspace
+          default: ''
+        workspace:
+          type: string
+          pattern: ^[\w\-\+.@:]+$
+          title: Workspace
+          description: Workspace identifier
+        project:
+          title: Project
+          description: The name of the project associated with this entity.
+          type: string
+        title:
+          type: string
+          title: Title
+          description: A short, human-readable sentence naming the core issue common
+            to the linked traces. Editable by the developer.
+        description:
+          type: string
+          title: Description
+          description: 'The problem statement: specific enough to act on. Editable
+            by the developer. A paragraph or two with detail on what exactly is going
+            wrong, general enough to apply to many traces rather than to a single
+            problematic instance.'
+        agent:
+          type: string
+          title: Agent
+          description: Name of the registered agent this insight is about, or a local
+            filesystem path (as a string) to the agent directory when running offline.
+        status:
+          allOf:
+          - $ref: '#/components/schemas/InsightStatus'
+          description: An insight starts as open. It can be resolved if the developer
+            thinks the issue has been fixed. It can be deleted if the developer thinks
+            the issue is not actually a problem or if it is not a good insight for
+            their domain.
+          default: open
+        trace_refs:
+          items:
+            type: string
+          type: array
+          title: Trace Refs
+          description: Intake trace ids the analyst identified as evidence for this
+            insight. This is used as evidence for the insight UI to communicate to
+            the developer what traces triggered the issue, and can also be used to
+            identify other similar traces that might experience the same issue.
+        experiment_group_count:
+          title: Experiment Group Count
+          description: Number of live experiment groups linked to this insight.
+          type: integer
+        last_seen_at:
+          title: Last Seen At
+          description: Newest start timestamp among the insight's currently referenced
+            traces.
+          type: string
+          format: date-time
+        id:
+          type: string
+          title: Id
+          readOnly: true
+        created_at:
+          title: Created At
+          readOnly: true
+          type: string
+          format: date-time
+        created_by:
+          title: Created By
+          readOnly: true
+          nullable: true
+          type: string
+        updated_at:
+          title: Updated At
+          readOnly: true
+          type: string
+          format: date-time
+        updated_by:
+          title: Updated By
+          readOnly: true
+          nullable: true
+          type: string
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Alias for id for backwards compatibility.
+          readOnly: true
+        parent:
+          title: Parent
+          description: Parent entity ID for nested entities.
+          readOnly: true
+          type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
+      type: object
+      required:
+      - workspace
+      - title
+      - description
+      - agent
+      - id
+      - created_at
+      - created_by
+      - updated_at
+      - updated_by
+      - entity_id
+      - parent
+      - db_version
+      title: InsightListItem
+      description: Insight representation used only in the paginated list response.
+    InsightStatus:
+      type: string
+      enum:
+      - open
+      - resolved
+      - deleted
+      title: InsightStatus
+    NemoListResponse_AnalysisConfig_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AnalysisConfig'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_AnalysisConfig_
+    NemoListResponse_AnalysisRunStatus_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AnalysisRunStatus'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_AnalysisRunStatus_
+    NemoListResponse_AnalysisRun_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AnalysisRun'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_AnalysisRun_
+    NemoListResponse_InsightListItem_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/InsightListItem'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: "Pagination metadata \u2014 page, page_size, total_results,\
+            \ etc."
+        sort:
+          title: Sort
+          description: Sort field applied to this result set (e.g. '-created_at').
+          type: string
+        filter:
+          title: Filter
+          description: Filter criteria echoed back from the request.
+      type: object
+      required:
+      - data
+      title: NemoListResponse_InsightListItem_
+    PaginationData:
+      properties:
+        page:
+          type: integer
+          title: Page
+          description: The current page number.
+        page_size:
+          type: integer
+          title: Page Size
+          description: The page size used for the query.
+        current_page_size:
+          type: integer
+          title: Current Page Size
+          description: The size for the current page.
+        total_pages:
+          type: integer
+          title: Total Pages
+          description: The total number of pages.
+        total_results:
+          type: integer
+          title: Total Results
+          description: The total number of results.
+      type: object
+      required:
+      - page
+      - page_size
+      - current_page_size
+      - total_pages
+      - total_results
+      title: PaginationData
+    PlatformJobListResultResponse:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/PlatformJobResultResponse'
+          type: array
+          title: Data
+      type: object
+      required:
+      - data
+      title: PlatformJobListResultResponse
+    PlatformJobLog:
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          title: Timestamp
+        job:
+          type: string
+          title: Job
+        job_step:
+          type: string
+          title: Job Step
+        job_task:
+          type: string
+          title: Job Task
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - timestamp
+      - job
+      - job_step
+      - job_task
+      - message
+      title: PlatformJobLog
+    PlatformJobLogPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/PlatformJobLog'
+          type: array
+          title: Data
+        total:
+          type: integer
+          title: Total
+        next_page:
+          title: Next Page
+          type: string
+        prev_page:
+          title: Prev Page
+          type: string
+      type: object
+      required:
+      - data
+      - total
+      - next_page
+      - prev_page
+      title: PlatformJobLogPage
+    PlatformJobResultResponse:
+      properties:
+        name:
+          type: string
+          title: Name
+        job:
+          type: string
+          title: Job
+        workspace:
+          type: string
+          title: Workspace
+        project:
+          title: Project
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        artifact_url:
+          type: string
+          title: Artifact Url
+        artifact_storage_type:
+          $ref: '#/components/schemas/FileStorageType'
+        download_url:
+          title: Download Url
+          type: string
+      type: object
+      required:
+      - name
+      - job
+      - workspace
+      - artifact_url
+      - artifact_storage_type
+      title: PlatformJobResultResponse
+    PlatformJobStatus:
+      type: string
+      enum:
+      - created
+      - pending
+      - active
+      - cancelled
+      - cancelling
+      - error
+      - completed
+      - paused
+      - pausing
+      - resuming
+      title: PlatformJobStatus
+      description: 'Enumeration of possible job statuses.
+
+
+        This enum represents the various states a job can be in during its lifecycle,
+
+        from creation to a terminal state.'
+    PlatformJobStatusResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          additionalProperties: true
+          type: object
+          title: Status Details
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        steps:
+          items:
+            $ref: '#/components/schemas/PlatformJobStepStatusResponse'
+          type: array
+          title: Steps
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - status_details
+      - error_details
+      - steps
+      - created_at
+      - updated_at
+      title: PlatformJobStatusResponse
+    PlatformJobStepStatusResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          additionalProperties: true
+          type: object
+          title: Status Details
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        tasks:
+          items:
+            $ref: '#/components/schemas/PlatformJobTaskStatusResponse'
+          type: array
+          title: Tasks
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - status_details
+      - error_details
+      - tasks
+      - created_at
+      - updated_at
+      title: PlatformJobStepStatusResponse
+    PlatformJobTaskStatusResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          additionalProperties: true
+          type: object
+          title: Status Details
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        error_stack:
+          title: Error Stack
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - status_details
+      - error_details
+      - error_stack
+      - created_at
+      - updated_at
+      title: PlatformJobTaskStatusResponse
+    StringFilter:
+      additionalProperties: false
+      properties:
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: string
+        $like:
+          description: Filter for results matching this pattern.
+          title: $Like
+          type: string
+        $in:
+          description: Filter for results in this list of values.
+          title: $In
+          items:
+            type: string
+          type: array
+        $nin:
+          description: Filter for results not in this list of values.
+          title: $Nin
+          items:
+            type: string
+          type: array
+      title: StringFilter
+      type: object
+    UpdateAnalysisConfigRequest:
+      properties:
+        enabled:
+          title: Enabled
+          type: boolean
+      type: object
+      title: UpdateAnalysisConfigRequest
+      description: Body for ``PATCH /analysis-configs/{agent}``.
+    UpdateAnalysisRunStatusRequest:
+      properties:
+        status:
+          $ref: '#/components/schemas/AnalysisConfigStatus'
+        last_successful_run_at:
+          title: Last Successful Run At
+          type: string
+          format: date-time
+        last_attempted_at:
+          title: Last Attempted At
+          type: string
+          format: date-time
+        last_completed_at:
+          title: Last Completed At
+          type: string
+          format: date-time
+        last_submitted_job:
+          title: Last Submitted Job
+          type: string
+        last_error:
+          title: Last Error
+          type: string
+      type: object
+      title: UpdateAnalysisRunStatusRequest
+      description: Body for ``PATCH /analysis-run-statuses/{agent}``.
+    UpdateInsightRequest:
+      properties:
+        title:
+          title: Title
+          type: string
+        agent:
+          title: Agent
+          type: string
+        description:
+          title: Description
+          type: string
+        status:
+          $ref: '#/components/schemas/InsightStatus'
+        trace_refs:
+          title: Trace Refs
+          items:
+            type: string
+          type: array
+      type: object
+      title: UpdateInsightRequest
+      description: Body for ``PATCH /insights/{insight_id}``. Omitted fields are unchanged.
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+          additionalProperties: true
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

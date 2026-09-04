@@ -46,6 +46,8 @@ insights = "nemo_insights_plugin.sdk:insights_sdk_resources"
 [project.entry-points."nemo.skills"]
 insights = "nemo_insights_plugin.skills:skills_dir"
 
+[tool.nemo.openapi]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
