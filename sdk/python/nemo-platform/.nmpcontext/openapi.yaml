@@ -15842,11 +15842,22 @@ components:
           title: Is Chat
           description: Whether this is a chat model
           type: boolean
+        head_type:
+          type: string
+          enum:
+          - causal_lm
+          - embedding
+          - cross_encoder
+          - unknown
+          title: Head Type
+          description: Task-specific head persisted in the checkpoint.
+          default: unknown
         is_embedding_model:
           type: boolean
           title: Is Embedding Model
-          description: Whether this is an embedding model
+          description: Deprecated compatibility alias for head_type == 'embedding'.
           default: false
+          deprecated: true
         checkpoint_model_name:
           type: string
           title: Checkpoint Model Name
