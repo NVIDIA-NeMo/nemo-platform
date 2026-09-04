@@ -33,12 +33,28 @@ const DROP_LINE =
   /^Documentation can be found at: https:\/\/docs\.nvidia\.com\/nemo-platform\.\s*$/;
 
 const DEPLOYMENT_LINK =
-  /For deployment instructions, see https:\/\/docs\.nvidia\.com\/nemo-platform\/documentation\/self-managed-deployment\/setup\./;
+  /For deployment instructions, see https:\/\/docs\.nvidia\.com\/nemo-platform\/(?:latest\/)?documentation\/(?:self-managed-deployment|kubernetes-deployment)\/setup\.?/;
 
 const DEPLOYMENT_LINK_REPLACEMENT =
   "For deployment guide, see " +
-  "[Self-Managed Deployment](/documentation/self-managed-deployment/setup) " +
+  "[Kubernetes Deployment](/documentation/kubernetes-deployment/setup) " +
   "in the NeMo Platform documentation.";
+
+const EXAMPLES_OVERLAY_LINK = /\[examples\/opensandbox\]\(examples\/opensandbox\)/;
+const EXAMPLES_OVERLAY_REPLACEMENT =
+  "[k8s/helm/examples/opensandbox](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/k8s/helm/examples/opensandbox)";
+
+function rewritePublishedDocsUrls(text) {
+  return text
+    .replace(
+      /\/documentation\/self-managed-deployment\//g,
+      "/documentation/kubernetes-deployment/",
+    )
+    .replace(
+      /(\/documentation\/kubernetes-deployment\/setup\/helm\/)opensandbox(?!-kata)/g,
+      "$1open-sandbox",
+    );
+}
 
 function stripLeadingSpdxComments(markdown) {
   const lines = markdown.split("\n");
@@ -68,7 +84,13 @@ function extractIntro(readme) {
 
     if (DROP_LINE.test(line)) continue;
 
-    out.push(line.replace(DEPLOYMENT_LINK, DEPLOYMENT_LINK_REPLACEMENT));
+    out.push(
+      rewritePublishedDocsUrls(
+        line
+          .replace(DEPLOYMENT_LINK, DEPLOYMENT_LINK_REPLACEMENT)
+          .replace(EXAMPLES_OVERLAY_LINK, EXAMPLES_OVERLAY_REPLACEMENT),
+      ),
+    );
   }
 
   while (out.length && !out[out.length - 1].trim()) out.pop();
