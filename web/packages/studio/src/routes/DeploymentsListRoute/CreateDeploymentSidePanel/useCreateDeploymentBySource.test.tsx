@@ -5,12 +5,13 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { filesCreateFileset } from '@nemo/sdk/generated/platform/files';
 import { modelsCreateDeploymentConfig } from '@nemo/sdk/generated/platform/model-deployment-configs';
 import { modelsCreateDeployment } from '@nemo/sdk/generated/platform/model-deployments';
-import { modelsCreateModel } from '@nemo/sdk/generated/platform/models';
+import { modelsCreateModel, modelsGetModel } from '@nemo/sdk/generated/platform/models';
 import { Engine } from '@nemo/sdk/generated/platform/schema';
 import {
   defaultWizardValues,
   WORKSPACE_PICKER_FILESET,
   WORKSPACE_PICKER_MODEL,
+  SOURCE_HF,
   SOURCE_WORKSPACE,
   type WizardFormValues,
 } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
@@ -28,6 +29,7 @@ vi.mock('@nemo/sdk/generated/platform/models');
 const mockUseToast = vi.mocked(useToast);
 const mockFilesCreateFileset = vi.mocked(filesCreateFileset);
 const mockModelsCreateModel = vi.mocked(modelsCreateModel);
+const mockModelsGetModel = vi.mocked(modelsGetModel);
 const mockModelsCreateDeploymentConfig = vi.mocked(modelsCreateDeploymentConfig);
 const mockModelsCreateDeployment = vi.mocked(modelsCreateDeployment);
 
@@ -216,5 +218,66 @@ describe('useCreateDeploymentBySource — workspace source', () => {
 
     expect(onSuccess).not.toHaveBeenCalled();
     expect(result.current.submitError).toBeTruthy();
+  });
+});
+
+describe('useCreateDeploymentBySource — huggingface name collisions', () => {
+  function huggingFaceValues(overrides: Partial<WizardFormValues> = {}): WizardFormValues {
+    return {
+      ...defaultWizardValues(),
+      source: SOURCE_HF,
+      name: 'qwen-qwen2.5-7b-instruct',
+      repoId: 'Qwen/Qwen2.5-7B-Instruct',
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseToast.mockReturnValue({
+      success: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warning: vi.fn(),
+      workingWithId: vi.fn(),
+      dismissToast: vi.fn(),
+    } as unknown as ReturnType<typeof useToast>);
+
+    mockFilesCreateFileset.mockResolvedValue(undefined as never);
+    mockModelsCreateModel.mockResolvedValue(undefined as never);
+    mockModelsCreateDeploymentConfig.mockResolvedValue(undefined as never);
+    mockModelsCreateDeployment.mockResolvedValue(undefined as never);
+    // Default: the name is free. `modelsGetModel` rejects with 404 in that case.
+    mockModelsGetModel.mockRejectedValue(new Error('not found'));
+  });
+
+  it('fails before creating anything when the model name is taken', async () => {
+    mockModelsGetModel.mockResolvedValue({ name: 'qwen-qwen2.5-7b-instruct' } as never);
+
+    const { result } = renderHook(() => useCreateDeploymentBySource(workspace), { wrapper });
+    const onSuccess = vi.fn();
+
+    await act(async () => {
+      await result.current.createDeploymentFromWizard(huggingFaceValues(), onSuccess);
+    });
+
+    // No fileset is created, so nothing is left orphaned.
+    expect(mockFilesCreateFileset).not.toHaveBeenCalled();
+    expect(mockModelsCreateModel).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(result.current.submitError).toContain('qwen-qwen2.5-7b-instruct');
+    expect(result.current.submitError).toContain('already exists');
+  });
+
+  it('proceeds normally when the name is free', async () => {
+    const { result } = renderHook(() => useCreateDeploymentBySource(workspace), { wrapper });
+
+    await act(async () => {
+      await result.current.createDeploymentFromWizard(huggingFaceValues(), vi.fn());
+    });
+
+    expect(mockFilesCreateFileset).toHaveBeenCalledTimes(1);
+    expect(mockModelsCreateModel).toHaveBeenCalledTimes(1);
+    expect(result.current.submitError).toBeNull();
   });
 });
