@@ -134,7 +134,7 @@ describe('NewAgentModal coding agent prompt tab', () => {
     renderModal();
     const dialog = await screen.findByRole('dialog');
 
-    expect(within(dialog).getByRole('tab', { name: 'Coding agent prompt' })).toHaveAttribute(
+    expect(within(dialog).getByRole('tab', { name: 'Integrate agent' })).toHaveAttribute(
       'aria-selected',
       'true'
     );
@@ -182,7 +182,7 @@ describe('NewAgentModal coding agent prompt tab', () => {
     await submit(dialog, user);
     expect(await within(dialog).findByText(/already owns the fileset/)).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole('tab', { name: 'Coding agent prompt' }));
+    await user.click(within(dialog).getByRole('tab', { name: 'Integrate agent' }));
 
     await waitFor(() =>
       expect(within(dialog).queryByText(/already owns the fileset/)).not.toBeInTheDocument()

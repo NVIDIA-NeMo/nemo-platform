@@ -12,11 +12,11 @@ import { type FC } from 'react';
 export const EXPERIMENT_FLAGS = {
   show_evaluations_over_time: {
     label: 'Evaluate over time',
-    hint: 'Graphed evaluations over time. Note: All evaluations should be run against the same dataset and evaluators.',
+    hint: 'Graphs evaluations over time. Evaluations should be run against the same evaluation set.',
   },
   is_favorite: {
     label: 'Favorite',
-    hint: 'Favorited experiments are displayed in critical areas of the application such as the agent page and dashboard.',
+    hint: 'Displayed in critical areas of the application such as the agent page and dashboard.',
   },
 } as const;
 

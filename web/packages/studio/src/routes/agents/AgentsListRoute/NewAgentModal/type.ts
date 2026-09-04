@@ -20,7 +20,7 @@ export interface UploadAgentEntry {
 }
 
 /** Which route into a new agent the modal is showing: a prompt to hand off, or a directory to upload. */
-export type NewAgentTab = 'coding-agent-prompt' | 'upload';
+export type NewAgentTab = 'integrate-agent' | 'upload';
 
 export interface NewAgentModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   workspace: string;

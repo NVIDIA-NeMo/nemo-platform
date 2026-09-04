@@ -103,7 +103,7 @@ describe('SubmitEvaluationModal', () => {
     // Neither path's fields are on screen until the choice is made.
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('radio', { name: /Create a new experiment/ }));
+    await user.click(screen.getByRole('radio', { name: /Create a new experiment and evaluation/ }));
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     // The experiment step is the Experiments page's own form: name plus every setting.
@@ -129,7 +129,9 @@ describe('SubmitEvaluationModal', () => {
     await waitFor(() => expect(seeded).toHaveValue('nemotron-super-3-temp-point5'));
 
     await user.click(screen.getByRole('button', { name: 'Back' }));
-    await user.click(await screen.findByRole('radio', { name: /Create a new experiment/ }));
+    await user.click(
+      await screen.findByRole('radio', { name: /Create a new experiment and evaluation/ })
+    );
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     await user.type(await screen.findByLabelText('Name'), 'model-update-tests');
@@ -145,7 +147,9 @@ describe('SubmitEvaluationModal', () => {
     const user = userEvent.setup();
     renderModal();
 
-    await user.click(await screen.findByRole('radio', { name: /Create a new experiment/ }));
+    await user.click(
+      await screen.findByRole('radio', { name: /Create a new experiment and evaluation/ })
+    );
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     await screen.findByLabelText('Name');
@@ -165,7 +169,7 @@ describe('SubmitEvaluationModal', () => {
     expect(screen.getByText('Create evaluation')).toBeInTheDocument();
     expect(screen.queryByText('Create experiment')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('radio', { name: /Create a new experiment/ }));
+    await user.click(screen.getByRole('radio', { name: /Create a new experiment and evaluation/ }));
 
     // The new-experiment path gains its own step, and all three are named up front.
     expect(await screen.findByText('Create experiment')).toBeInTheDocument();

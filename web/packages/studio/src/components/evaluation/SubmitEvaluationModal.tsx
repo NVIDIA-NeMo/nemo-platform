@@ -118,8 +118,7 @@ const startItems = (rerunDisabled: boolean) => [
           )}
         </Flex>
         <Text kind="body/regular/sm" color="secondary">
-          Reuses the eval config saved on a previous run. The new run joins that run&apos;s
-          experiment, so the two sit side by side on its leaderboard.
+          Reuses the evaluation configuration and experiment from a previous evaluation.
         </Text>
       </Stack>
     ),
@@ -128,10 +127,9 @@ const startItems = (rerunDisabled: boolean) => [
     value: MODE_DEFAULT,
     children: (
       <Stack gap="density-xs">
-        <Text kind="label/bold/md">Create a new experiment</Text>
+        <Text kind="label/bold/md">Create a new experiment and evaluation</Text>
         <Text kind="body/regular/sm" color="secondary">
-          Sets up a fresh experiment to group runs under, then takes a dataset and an eval config to
-          measure them with.
+          Creates a new experiment and evaluation from a dataset and an eval config.
         </Text>
       </Stack>
     ),
@@ -572,9 +570,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     preview: recordPreview,
     status: recordNameStatus,
     schemaError: errors.evaluationRecordName?.message,
-    describe: isCreateMode
-      ? 'Names this run within the experiment. Results publish under it.'
-      : 'Names this run alongside the one it re-runs — say what changed, e.g. a new temperature.',
+    describe: 'Name should describe the change being evaluated.',
   });
 
   // Only a conflict blocks here. The schema's own errors already stop handleSubmit; a conflict
@@ -1085,12 +1081,6 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                 </>
               )}
             </>
-          )}
-
-          {blocker && step !== 'start' && (
-            <Text kind="body/regular/sm" color="secondary">
-              {blocker}
-            </Text>
           )}
 
           {errorMessage && (
