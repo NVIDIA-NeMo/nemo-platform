@@ -37,7 +37,7 @@ export const CustomizationJobListRoute: FC = () => {
         <PageHeader
           className="p-0"
           slotHeading="Custom Models"
-          slotDescription="Create, manage, and deploy custom AI models with fine-tuning and prompt tuning."
+          slotDescription="Create, manage, and deploy custom AI models with fine-tuning."
           slotActions={<CustomizeModelButton workspace={workspace} />}
         />
         <CustomModelsDataView

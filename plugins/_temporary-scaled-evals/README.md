@@ -7,6 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 
 Vendors the scaled-evals control plane into NeMo Platform as an ephemeral plugin so Harbor/Gym scaled evaluation keeps working end-to-end while substrate plugins (builder/registry/sandbox) and the nemo-evaluator API merge land later.
 
+Portable behavior is reconciled through standalone scaled-evals `1.13.0`
+(`c64f23e71dc829414ab9279483973a84a17eea8d`). This remains a platform-adapted
+fork: hosted deployment, identity-provider, and private corpus surfaces are not
+vendored.
+
 ## Install (ephemeral — not in `enabled-plugins` yet)
 
 ```bash
@@ -25,6 +30,7 @@ Restart `nemo services run` after install.
 | `SCALED_EVALS_DATABASE_SCHEMA` | Default `scaled_evals`. Every table lives here. Redundant in a dedicated database, but it keeps the vendored SQL safe to point at a shared one. |
 | `CREDENTIALS_ENCRYPTION_KEY` | Fernet key for BYOK credentials. |
 | `SCALED_EVALS_RUN_MIGRATIONS` | Default `true`. Set `false` where an external Job owns schema rollout. |
+| `HARBOR_DATASET_UPSTREAM_ALLOWED_REGISTRIES` | Comma-separated registries allowed as public source images for dataset-only Harbor imports. Defaults to `docker.io,ghcr.io`; this is separate from the managed destination-image allowlist. |
 
 Settings resolve lazily, so the plugin still loads when these are unset; the failure
 surfaces on the first request that needs them rather than making the plugin vanish
@@ -88,6 +94,19 @@ uv run scaled-evals-migrate --dsn ...  # or an explicit target
 | `GET /apis/scaled-evals/healthz` | Plugin liveness stub — static, does not check Postgres |
 | `/apis/scaled-evals/v1/{healthz,readyz,metrics}` | Vendored ops probes; `readyz` checks dependencies |
 | `/apis/scaled-evals/v1/*` | scaled-evals `/v1` semantics (tasks, evaluations, …) |
+
+Benchmark-run creation accepts `member_framework_profile_ids`, a task ID to
+framework profile ID map whose entries override the run-level
+`framework_profile_id` for matching members. The CLI exposes the map as
+repeatable `--member-framework-profile TASK_ID=PROFILE_ID` options. Overrides
+are rejected unless both references are valid and the task belongs to the
+selected benchmark revision. Dataset-only checks cover both the run-level and
+member-level profiles.
+
+Dataset-only image imports perform unauthenticated registry reads and reject
+registries outside `HARBOR_DATASET_UPSTREAM_ALLOWED_REGISTRIES` before network
+I/O. Bearer-token challenges must remain on the registry host; Docker Hub may
+also use `auth.docker.io`.
 
 **Not mounted:** Switchyard lease/publish (`/v1/switchyard/*`). Switchyard modules remain in-tree for dispatch import compatibility but are out of Phase 1 product surface.
 

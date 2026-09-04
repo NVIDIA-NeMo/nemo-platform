@@ -385,14 +385,6 @@ export const getEvaluationSessionTraceDetailRoute = (
   return `${path}?${searchParams.toString()}`;
 };
 
-export const getPromptTuningFormRoute = (workspace: string, options?: { model?: string }) => {
-  const basePath = generatePath(ROUTES.workspace.promptTuningForm, { workspace });
-  if (options?.model) {
-    return `${basePath}?model=${encodeURIComponent(options.model)}`;
-  }
-  return basePath;
-};
-
 export const getNewCustomizationJobRoute = (workspace: string, options?: { model?: string }) => {
   const basePath = generatePath(ROUTES.workspace.newCustomizationJob, { workspace });
   if (options?.model) {

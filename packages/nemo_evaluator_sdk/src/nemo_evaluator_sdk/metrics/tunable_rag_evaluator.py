@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from typing import Any, Literal
 
@@ -167,6 +168,13 @@ class TunableRagEvaluatorMetric(HooksBase, TunableRagEvaluator):
             except (KeyError, TypeError, ValueError):
                 return self._failed_result("Missing or invalid keys in default scoring judge response.")
 
+            try:
+                coverage = _unit_score("coverage_score", coverage)
+                correctness = _unit_score("correctness_score", correctness)
+                relevance = _unit_score("relevance_score", relevance)
+            except ValueError as error:
+                return self._failed_result(f"Judge returned an unusable score: {error}")
+
             coverage_w, correctness_w, relevance_w = normalize_score_weights(self.default_score_weights)
             average = coverage_w * coverage + correctness_w * correctness + relevance_w * relevance
             return MetricResult(
@@ -208,6 +216,26 @@ class TunableRagEvaluatorMetric(HooksBase, TunableRagEvaluator):
                 MetricOutput(name="reasoning", value=reasoning),
             ]
         )
+
+
+def _unit_score(name: str, value: float) -> float:
+    """Hold a default-rubric sub-score to the 0.0-1.0 scale the rubric asks for.
+
+    Judges sometimes answer on a 0-10 or 0-100 scale anyway, and an unbounded score would
+    dominate every other row once these are averaged or optimized over.
+    """
+    if not math.isfinite(value):
+        raise ValueError(f"{name}={value!r} is not a finite number")
+    if value < 0.0 or value > 1.0:
+        clamped = min(max(value, 0.0), 1.0)
+        _logger.warning(
+            "Judge returned %s=%s outside the 0.0-1.0 rubric scale; clamping to %s",
+            name,
+            value,
+            clamped,
+        )
+        return clamped
+    return value
 
 
 def _extract_eval_fields(metric_input: MetricInput) -> tuple[str, str, str]:
