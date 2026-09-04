@@ -348,6 +348,16 @@ class SandboxedGymSession:
         for attempt in range(1, self._max_attempts + 1):
             try:
                 async with semaphore:
+                    # Logged before the POST and inside the semaphore, so the line appears when the
+                    # chunk actually goes out. The completion log below is reached only by a chunk
+                    # that came back, which leaves a stalled batch -- the failure this transport
+                    # exists to survive -- with nothing in the log at all.
+                    LOGGER.info(
+                        "rollout %s: POST %d example(s)%s",
+                        label,
+                        len(chunk),
+                        "" if attempt == 1 else f" (attempt {attempt}/{self._max_attempts})",
+                    )
                     started = time.monotonic()
                     results = await asyncio.to_thread(self._post_chunk, chunk)
             except RolloutTransportError as exc:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import threading
 import time
 import urllib.error
@@ -122,6 +123,56 @@ def test_concurrency_is_bounded_by_max_in_flight(monkeypatch: pytest.MonkeyPatch
     _session(rollout_chunk_size=1, rollout_max_in_flight=2).run_rollouts([{"id": i} for i in range(8)])
 
     assert peak == 2
+
+
+# --------------------------------------------------------------------------------------------
+# What a running batch says about itself
+# --------------------------------------------------------------------------------------------
+
+
+def test_a_chunk_announces_itself_before_it_goes_out(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A chunk that never comes back is the case worth logging, and only a line written
+    before the POST can cover it.
+
+    Asserted through a chunk that fails rather than one that hangs, because both reach the
+    completion log the same way -- they don't. A test that let the POST succeed would pass
+    against a log line written afterwards.
+    """
+
+    def _post(self: SandboxedGymSession, chunk: list[dict]) -> list[Any]:
+        raise RolloutTransportError("host is gone", retryable=False, origin="sandbox")
+
+    monkeypatch.setattr(SandboxedGymSession, "_post_chunk", _post)
+    caplog.set_level(logging.INFO, logger="sandboxed_gym.orchestrator")
+
+    with pytest.raises(RolloutTransportError):
+        _session(rollout_chunk_size=2).run_rollouts([{"id": i} for i in range(2)])
+
+    assert "rollout chunk 1/1: POST 2 example(s)" in caplog.text
+    # The chunk never returned, so nothing should claim it did.
+    assert "result(s) in" not in caplog.text
+
+
+def test_a_retried_chunk_names_the_attempt(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """Two identical POST lines for one chunk would read as two chunks."""
+    attempts = 0
+
+    def _post(self: SandboxedGymSession, chunk: list[dict]) -> list[Any]:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RolloutTransportError("dropped", retryable=True, origin="proxy")
+        return [{"reward": 1.0}]
+
+    monkeypatch.setattr(SandboxedGymSession, "_post_chunk", _post)
+    caplog.set_level(logging.INFO, logger="sandboxed_gym.orchestrator")
+
+    _session(rollout_chunk_size=1, rollout_max_attempts=2).run_rollouts([{"id": 0}])
+
+    assert "rollout chunk 1/1: POST 1 example(s)\n" in caplog.text + "\n"
+    assert "(attempt 2/2)" in caplog.text
 
 
 # --------------------------------------------------------------------------------------------
