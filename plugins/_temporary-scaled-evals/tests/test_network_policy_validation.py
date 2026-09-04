@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.api.schemas.benchmark_runs import CreateBenchmarkRunRequest
 from scaled_evals.api.schemas.evaluations import CreateEvaluationRequest
 

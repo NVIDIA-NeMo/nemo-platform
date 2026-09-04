@@ -4,6 +4,9 @@
 """Harbor config-profile validation tests."""
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.models.harbor_profile import validate_harbor_profile_config
 
 

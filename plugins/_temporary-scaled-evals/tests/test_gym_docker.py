@@ -10,6 +10,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.dispatch.gym.docker import (
     harness_run_and_collect_entrypoint,
     host_env_file_path,

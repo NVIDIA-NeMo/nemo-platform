@@ -6,6 +6,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("scaled_evals")
 import scaled_evals.dispatch.gym.process as gym_process
 from scaled_evals.dispatch.gym.process import (
     make_gym_process_status_reader,

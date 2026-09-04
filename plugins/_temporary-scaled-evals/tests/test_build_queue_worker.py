@@ -7,6 +7,9 @@ from contextlib import contextmanager
 from unittest.mock import MagicMock
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 import scaled_evals.api.build.queue_worker as queue_worker
 from scaled_evals.api.build.queue_worker import TaskBuildWorker
 from scaled_evals.api.repositories.build_repository import TaskBuildJob

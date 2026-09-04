@@ -6,6 +6,9 @@ import json
 
 import httpx
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.api.build.task_image_identity import (
     TaskImageIdentityError,
     parse_task_image_ref,

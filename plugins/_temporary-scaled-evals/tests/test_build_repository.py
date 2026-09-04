@@ -6,6 +6,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.api.repositories.build_repository import TaskBuildRepository
 
 

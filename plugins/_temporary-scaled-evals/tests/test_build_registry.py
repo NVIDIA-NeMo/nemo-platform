@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import httpx
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.api.build import registry
 from scaled_evals.api.settings import settings
 

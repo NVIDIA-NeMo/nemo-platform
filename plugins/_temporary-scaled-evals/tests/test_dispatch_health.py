@@ -6,6 +6,9 @@
 from __future__ import annotations
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.api import dispatch_health
 from scaled_evals.api.settings import settings
 

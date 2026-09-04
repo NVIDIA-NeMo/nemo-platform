@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("scaled_evals")
 import scaled_evals.dispatch.gym.common as gym_common
 from scaled_evals.dispatch.gym.common import resolve_env_file_path
 

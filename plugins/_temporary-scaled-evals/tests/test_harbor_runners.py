@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.harbor_runners import (
     UnsupportedHarborVersion,
     candidate_harbor_versions,

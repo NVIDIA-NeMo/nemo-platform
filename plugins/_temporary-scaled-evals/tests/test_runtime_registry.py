@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.api.settings import settings
 from scaled_evals.dispatch.gym.daytona import GymDaytonaBackend
 from scaled_evals.dispatch.gym.sandbox_daytona import GymSandboxDaytonaBackend

@@ -4,6 +4,9 @@
 import argparse
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.sandbox_egress_qualification import Qualification, _parse_endpoint
 
 

@@ -7,6 +7,9 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.api.build import cloud_build
 from scaled_evals.api.settings import settings
 

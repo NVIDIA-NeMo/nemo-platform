@@ -9,6 +9,9 @@ import json
 from pathlib import Path
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.api.build import buildkit
 from scaled_evals.api.settings import settings
 

@@ -8,6 +8,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
+pytest.importorskip("scaled_evals")
+
 from scaled_evals.dispatch.gym.common import make_gym_submitter
 from scaled_evals.dispatch.gym.profile import gym_profile_env, validate_gym_profile_config
 from scaled_evals.models.gym_identity import gym_run_identity

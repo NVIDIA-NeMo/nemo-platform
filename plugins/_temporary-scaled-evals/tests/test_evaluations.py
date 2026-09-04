@@ -424,8 +424,9 @@ def test_create_rejects_task_image_from_unapproved_registry(
     assert response.status_code == 422
     error = response.json()["detail"]["error"]
     assert error["code"] == "invalid_task_image"
-    assert "artifactory.nvidia.com" in error["message"]
-    assert "us-central1-docker.pkg.dev" in error["message"]
+    assert error["message"] == (
+        "task image registry 'artifactory.nvidia.com' is not approved; allowed registries: us-central1-docker.pkg.dev"
+    )
     assert not any(
         "INSERT INTO evaluations" in call.args[0]
         for call in conn.cursor.return_value.__enter__.return_value.execute.call_args_list
