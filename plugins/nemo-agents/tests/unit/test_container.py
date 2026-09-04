@@ -2709,7 +2709,11 @@ class TestFabricWheelInstall:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_wheel_is_staged_into_the_context_and_removed(
-        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+        self,
+        mock_build: MagicMock,
+        fabric_agent_config: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from nemo_agents_plugin.container.builder import build_fabric_agent_image
 
@@ -2719,6 +2723,17 @@ class TestFabricWheelInstall:
         wheel.write_bytes(b"not really a wheel")
         context = fabric_agent_config.parent
         staged_during_build: dict[str, bool] = {}
+        source_reads = 0
+        original_open = Path.open
+
+        def _count_source_reads(self: Path, *args: Any, **kwargs: Any) -> Any:
+            nonlocal source_reads
+            mode = args[0] if args else kwargs.get("mode", "r")
+            if self == wheel and mode == "rb":
+                source_reads += 1
+            return original_open(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", _count_source_reads)
         mock_build.side_effect = lambda **kwargs: staged_during_build.setdefault(
             "present", (context / wheel.name).exists()
         )
@@ -2726,6 +2741,7 @@ class TestFabricWheelInstall:
         build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
 
         assert staged_during_build["present"], "the wheel must exist while docker build runs"
+        assert source_reads == 1, "staging must hash and copy the source in one pass"
         assert not (context / wheel.name).exists(), "the staged wheel must not outlive the build"
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
@@ -2906,10 +2922,10 @@ class TestFabricWheelInstall:
     def test_a_file_appearing_mid_build_is_not_clobbered(
         self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The pre-render check is not atomic with the copy, so the copy creates
+        """The pre-stage check is not atomic with the copy, so the copy creates
         exclusively — otherwise losing that race overwrites a file and the cleanup
         then deletes it."""
-        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+        import nemo_agents_plugin.container.builder as builder
 
         source = tmp_path / "dist"
         source.mkdir()
@@ -2917,18 +2933,19 @@ class TestFabricWheelInstall:
         wheel.write_bytes(b"wheel")
         collision = fabric_agent_config.parent / wheel.name
 
-        # Simulate another process winning the race after the check, before the copy.
-        original_write = Path.write_text
+        # Simulate another process winning the race after the existence check,
+        # immediately before the exclusive create.
+        original_open = open
 
-        def _plant(self: Path, *args: Any, **kwargs: Any) -> int:
-            if self.name == "Dockerfile.generated":
+        def _plant(file: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            if Path(file) == collision and mode == "xb":
                 collision.write_text("USER OWNED")
-            return original_write(self, *args, **kwargs)
+            return original_open(file, mode, *args, **kwargs)
 
-        monkeypatch.setattr(Path, "write_text", _plant)
+        monkeypatch.setattr(builder, "open", _plant, raising=False)
 
         with pytest.raises(ManagedFileConflictError):
-            build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
+            builder.build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
 
         monkeypatch.undo()
         assert collision.read_text() == "USER OWNED"
