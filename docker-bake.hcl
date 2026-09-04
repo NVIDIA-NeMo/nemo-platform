@@ -718,6 +718,7 @@ target "nmp-gym-tasks-docker" {
   contexts = {
     nmp-python-base = "target:nmp-python-base"
     nmp-cpu-tasks   = "target:nmp-cpu-tasks-docker"
+    nmp-workspace   = "target:nmp-workspace"
   }
   cache-to   = maybe_registry_cache_to("nmp-gym-tasks")
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
@@ -734,6 +735,7 @@ target "nmp-gym-tasks-smoke-test" {
   contexts = {
     nmp-python-base = "target:nmp-python-base"
     nmp-cpu-tasks   = "target:nmp-cpu-tasks-docker"
+    nmp-workspace   = "target:nmp-workspace"
   }
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
   output     = ["type=cacheonly"]

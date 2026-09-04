@@ -7,8 +7,7 @@ This intentionally mirrors ``sandboxed_gym.environment_package`` without importi
 Evaluator needs these checks in the service process, while the complete filesystem validator
 belongs to the sandbox runtime. Extract the shared contract once both consumers are stable.
 
-``wheels-v1`` is accepted. ``native-v1`` is parseable so the FileSet shape stays stable, but
-submit refuses it with an explicit unsupported-format error.
+Submit accepts ``native-v1`` and ``wheels-v1``. Listing validation does not import customer code.
 """
 
 from __future__ import annotations
@@ -31,7 +30,6 @@ CUSTOM_AGENT_SUBDIR = "responses_api_agents"
 CUSTOM_RESOURCES_SERVER_SUBDIR = "resources_servers"
 #: Operator-owned Gym model configs. A customer FileSet that ships this tree is rejected.
 OPERATOR_MODEL_SUBDIR = "responses_api_models"
-NATIVE_V1_UNSUPPORTED_MESSAGE = "native-v1 environment packages are not supported; submit a wheels-v1 package"
 
 
 class GymEnvironmentPackageError(ValueError):
@@ -91,7 +89,7 @@ class _ManifestBase(BaseModel):
 
 
 class NativeV1Manifest(_ManifestBase):
-    """A complete environment whose dependencies resolve through a package index. Submit rejects it."""
+    """A complete environment whose dependencies resolve through a package index."""
 
     format: Literal[EnvironmentFormat.NATIVE_V1] = EnvironmentFormat.NATIVE_V1
 
@@ -132,12 +130,6 @@ def parse_environment_manifest(raw_yaml: bytes | str) -> EnvironmentManifest:
         raise GymEnvironmentPackageError(f"{ENVIRONMENT_MANIFEST_FILENAME} is invalid: {exc}") from exc
 
 
-def require_supported_environment_format(manifest: EnvironmentManifest) -> None:
-    """Reject formats that are parseable but not executable on this branch."""
-    if isinstance(manifest, NativeV1Manifest):
-        raise GymEnvironmentPackageError(NATIVE_V1_UNSUPPORTED_MESSAGE)
-
-
 def validate_environment_manifest_against_listing(
     manifest: EnvironmentManifest,
     paths: Iterable[str],
@@ -146,7 +138,7 @@ def validate_environment_manifest_against_listing(
     entries = {path.removeprefix("./") for path in paths}
 
     # Model YAML is operator-owned (image + VirtualModel). A customer copy would silently
-    # shadow it once FileSet composition lands, so refuse it at submit.
+    # shadow it through Gym extra-root discovery, so refuse it at submit.
     customer_model_files = sorted(path for path in entries if path.startswith(f"{OPERATOR_MODEL_SUBDIR}/"))
     if customer_model_files:
         raise GymEnvironmentPackageError(

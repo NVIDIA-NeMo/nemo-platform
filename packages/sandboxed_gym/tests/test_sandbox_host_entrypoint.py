@@ -15,6 +15,7 @@ from sandboxed_gym.host.entrypoint import (
     gym_host_script_path,
     packaged_gym_host_script,
 )
+from sandboxed_gym.host.models import GymHostSpec, GymHostVolumeMount
 from sandboxed_gym.runtime import gym_host_runtime as runtime
 
 #: These two tests instantiate the host provider, which drives the OpenSandbox SDK directly. The
@@ -85,13 +86,59 @@ def test_opensandbox_host_provider_honors_explicit_skip_health_check():
     assert provider._create_options["skip_health_check"] is False
 
 
+@requires_opensandbox
+def test_opensandbox_host_provider_uses_configured_protocol_for_bare_endpoints():
+    from sandboxed_gym.host.opensandbox import OpenSandboxGymHostProvider
+
+    provider = OpenSandboxGymHostProvider(connection={"protocol": "http"})
+
+    assert provider._absolute_url("10.244.6.40:8080") == "http://10.244.6.40:8080"
+
+
+def _gym_host_spec(*, entrypoint: tuple[str, ...] | None = None) -> GymHostSpec:
+    return GymHostSpec(
+        job_id="job-1",
+        runtime_image="nmp-gym-host:dev",
+        environment_mount=GymHostVolumeMount(
+            pvc_claim="job-storage",
+            sub_path="environment",
+            mount_path="/job/environment",
+            read_only=True,
+        ),
+        workspace_mount=GymHostVolumeMount(
+            pvc_claim="job-storage",
+            sub_path="work",
+            mount_path="/job/work",
+        ),
+        entrypoint=entrypoint,
+    )
+
+
+@requires_opensandbox
+def test_opensandbox_host_provider_supplies_runtime_entrypoint_when_omitted():
+    from sandboxed_gym.host.opensandbox import OpenSandboxGymHostProvider
+
+    provider = OpenSandboxGymHostProvider(connection={"domain": "x", "api_key": "k"})
+    sandbox_spec = provider._to_sandbox_spec(_gym_host_spec())
+
+    assert sandbox_spec.entrypoint == ["python", "-m", "sandboxed_gym.runtime.gym_host_runtime"]
+
+
+@requires_opensandbox
+def test_opensandbox_host_provider_preserves_configured_entrypoint():
+    from sandboxed_gym.host.opensandbox import OpenSandboxGymHostProvider
+
+    provider = OpenSandboxGymHostProvider(connection={"domain": "x", "api_key": "k"})
+    sandbox_spec = provider._to_sandbox_spec(_gym_host_spec(entrypoint=("custom-runtime", "--serve")))
+
+    assert sandbox_spec.entrypoint == ["custom-runtime", "--serve"]
+
+
 # --------------------------------------------------------------------------------------------
 # gym_host.sh — the copy that stages Gym into a writable tree
 #
-# Only the OpenSandbox path runs this script: `build_gym_host_spec` falls back to
-# `default_gym_host_entrypoint()` when the sandbox config names no entrypoint, while the Docker
-# provider uses its image's own CMD. That is why a restart bug here survived — the path it is on
-# has never been executed.
+# A caller can configure this explicit bootstrap for a compatible runtime image. The standard
+# platform image instead starts the installed runtime module directly.
 # --------------------------------------------------------------------------------------------
 
 
