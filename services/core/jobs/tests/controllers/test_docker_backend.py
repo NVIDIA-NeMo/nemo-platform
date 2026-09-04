@@ -2240,10 +2240,8 @@ def test_cleanup_steps_by_ttl(docker_job, docker_client_mock, test_job_step, cle
     # Make an older timestamp (120 minutes ago) so TTL-based cleanup does trigger
     older_time = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=120)).isoformat()
 
-    # Mock the check_step_is_terminal and check_job_is_terminal methods to return True for all containers
-    # This allows the cleanup to proceed
+    # Mock the step terminal check to allow container cleanup to proceed.
     docker_job.check_step_is_terminal = MagicMock(return_value=True)
-    docker_job.check_job_is_terminal = MagicMock(return_value=True)
 
     # Create mock container that exited normally (exit code 0)
     mock_container_success = MagicMock()
@@ -3089,8 +3087,8 @@ def test_docker_job_schedule_with_auth_context_sdk_model_none_groups(
     assert principal_data["groups"] == []  # Default factory kicks in, not None
 
 
-def test_cleanup_single_container_checks_job_terminal_before_persistent_storage_cleanup(docker_job, docker_client_mock):
-    """Test that cleanup_single_container only cleans up persistent storage when the job is terminal."""
+def test_cleanup_single_container_checks_storage_cleanup_allowed(docker_job, docker_client_mock):
+    """Test that cleanup_single_container only cleans up persistent storage when cleanup is allowed."""
     # Create a mock container with persistent storage label that exited successfully
     mock_container = MagicMock()
     mock_container.name = "test-container-success"
@@ -3101,6 +3099,7 @@ def test_cleanup_single_container_checks_job_terminal_before_persistent_storage_
     mock_container.labels = {
         JOB_WORKSPACE_ID_LABEL: "default",
         JOB_ID_LABEL: "test-job-id",
+        JOB_STEP_NAME_LABEL: "test-step",
         JOB_TASK_ID_LABEL: "task-success",
         JOB_USES_PERSISTENT_STORAGE_LABEL: "true",
         JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER,
@@ -3111,8 +3110,8 @@ def test_cleanup_single_container_checks_job_terminal_before_persistent_storage_
     mock_volume = MagicMock()
     docker_client_mock.volumes.get.return_value = mock_volume
 
-    # Test Case 1: Job is NOT in terminal state - should skip persistent storage cleanup
-    docker_job.check_job_is_terminal = MagicMock(return_value=False)
+    # Test Case 1: cleanup is NOT allowed - should skip persistent storage cleanup
+    docker_job.check_job_persistent_storage_cleanup_allowed = MagicMock(return_value=False)
     docker_job.cleanup_job_persistent_storage = MagicMock()
 
     docker_job.cleanup_single_container(mock_container)
@@ -3124,17 +3123,19 @@ def test_cleanup_single_container_checks_job_terminal_before_persistent_storage_
     # Verify persistent storage cleanup was NOT called
     docker_job.cleanup_job_persistent_storage.assert_not_called()
 
-    # Verify check_job_is_terminal was called
-    docker_job.check_job_is_terminal.assert_called_once_with(job="test-job-id", workspace="default")
+    # Verify persistent storage cleanup eligibility was checked
+    docker_job.check_job_persistent_storage_cleanup_allowed.assert_called_once_with(
+        job="test-job-id", step_name="test-step", workspace="default"
+    )
 
     # Reset mocks
     mock_container.remove.reset_mock()
     docker_client_mock.volumes.get.reset_mock()
     docker_job.cleanup_job_persistent_storage.reset_mock()
-    docker_job.check_job_is_terminal.reset_mock()
+    docker_job.check_job_persistent_storage_cleanup_allowed.reset_mock()
 
-    # Test Case 2: Job IS in terminal state - should proceed with persistent storage cleanup
-    docker_job.check_job_is_terminal = MagicMock(return_value=True)
+    # Test Case 2: cleanup is allowed - should proceed with persistent storage cleanup
+    docker_job.check_job_persistent_storage_cleanup_allowed = MagicMock(return_value=True)
 
     docker_job.cleanup_single_container(mock_container)
 
@@ -3145,8 +3146,56 @@ def test_cleanup_single_container_checks_job_terminal_before_persistent_storage_
     # Verify persistent storage cleanup WAS called
     docker_job.cleanup_job_persistent_storage.assert_called_once_with("default", "test-job-id")
 
-    # Verify check_job_is_terminal was called
-    docker_job.check_job_is_terminal.assert_called_once_with(job="test-job-id", workspace="default")
+    # Verify persistent storage cleanup eligibility was checked
+    docker_job.check_job_persistent_storage_cleanup_allowed.assert_called_once_with(
+        job="test-job-id", step_name="test-step", workspace="default"
+    )
+
+
+def test_persistent_storage_cleanup_rejects_non_final_step_when_job_is_terminal(docker_job):
+    """Keep shared job storage when a completed container belongs to an intermediate step."""
+    docker_job._jobs.get_job.return_value = data_response(
+        SimpleNamespace(
+            status=PlatformJobStatus.COMPLETED,
+            platform_spec=SimpleNamespace(
+                steps=[
+                    SimpleNamespace(name="download"),
+                    SimpleNamespace(name="training"),
+                ]
+            ),
+        )
+    )
+    docker_job._jobs.get_job_step.return_value = data_response(
+        SimpleNamespace(name="download-1", config={"_step_spec_name": "download"})
+    )
+
+    assert (
+        docker_job.check_job_persistent_storage_cleanup_allowed(
+            job="customizer-job", step_name="download-1", workspace="default"
+        )
+        is False
+    )
+
+
+def test_persistent_storage_cleanup_allows_final_step_when_job_is_terminal(docker_job):
+    docker_job._jobs.get_job.return_value = data_response(
+        SimpleNamespace(
+            status=PlatformJobStatus.COMPLETED,
+            platform_spec=SimpleNamespace(
+                steps=[
+                    SimpleNamespace(name="download"),
+                    SimpleNamespace(name="training"),
+                ]
+            ),
+        )
+    )
+    docker_job._jobs.get_job_step.return_value = data_response(
+        SimpleNamespace(name="training-1", config={"_step_spec_name": "training"})
+    )
+
+    assert docker_job.check_job_persistent_storage_cleanup_allowed(
+        job="customizer-job", step_name="training-1", workspace="default"
+    )
 
 
 def test_cleanup_single_container_without_persistent_storage_label(docker_job, docker_client_mock):
@@ -3171,7 +3220,7 @@ def test_cleanup_single_container_without_persistent_storage_label(docker_job, d
     mock_volume = MagicMock()
     docker_client_mock.volumes.get.return_value = mock_volume
 
-    docker_job.check_job_is_terminal = MagicMock()
+    docker_job.check_job_persistent_storage_cleanup_allowed = MagicMock()
     docker_job.cleanup_job_persistent_storage = MagicMock()
 
     docker_job.cleanup_single_container(mock_container)
@@ -3180,8 +3229,8 @@ def test_cleanup_single_container_without_persistent_storage_label(docker_job, d
     assert mock_container.remove.call_count == 1
     assert docker_client_mock.volumes.get.call_count == 3  # task storage + config + workload identity volumes
 
-    # Verify job terminal check was NOT called (no persistent storage to cleanup)
-    docker_job.check_job_is_terminal.assert_not_called()
+    # Verify persistent storage cleanup eligibility was NOT checked (no persistent storage to cleanup)
+    docker_job.check_job_persistent_storage_cleanup_allowed.assert_not_called()
 
     # Verify persistent storage cleanup was NOT called
     docker_job.cleanup_job_persistent_storage.assert_not_called()
@@ -3253,8 +3302,8 @@ def test_cleanup_single_container_step_terminal_but_job_has_more_steps(docker_jo
     # Mock check_step_is_terminal to return True (step 1 is complete)
     docker_job.check_step_is_terminal = MagicMock(return_value=True)
 
-    # Mock check_job_is_terminal to return False (job is not terminal - step 2 still needs to run)
-    docker_job.check_job_is_terminal = MagicMock(return_value=False)
+    # Mock persistent storage cleanup eligibility to return False (step 2 still needs to run)
+    docker_job.check_job_persistent_storage_cleanup_allowed = MagicMock(return_value=False)
 
     docker_job.cleanup_job_persistent_storage = MagicMock()
 
@@ -3265,8 +3314,10 @@ def test_cleanup_single_container_step_terminal_but_job_has_more_steps(docker_jo
     assert mock_container.remove.call_count == 1
     assert docker_client_mock.volumes.get.call_count == 3  # task storage + config + workload identity volumes
 
-    # Verify job terminal check WAS called (since container uses persistent storage)
-    docker_job.check_job_is_terminal.assert_called_once_with(job="multi-step-job", workspace="default")
+    # Verify persistent storage cleanup eligibility was checked
+    docker_job.check_job_persistent_storage_cleanup_allowed.assert_called_once_with(
+        job="multi-step-job", step_name="step1", workspace="default"
+    )
 
     # Verify persistent storage cleanup was NOT called (job is not terminal yet)
     docker_job.cleanup_job_persistent_storage.assert_not_called()
@@ -3296,8 +3347,8 @@ def test_cleanup_steps_with_multi_step_job_only_first_step_complete(docker_job, 
 
     docker_job.check_step_is_terminal = MagicMock(side_effect=check_step_side_effect)
 
-    # Mock check_job_is_terminal to return False (job is not terminal - has more steps)
-    docker_job.check_job_is_terminal = MagicMock(return_value=False)
+    # Mock persistent storage cleanup eligibility to return False (job has more steps)
+    docker_job.check_job_persistent_storage_cleanup_allowed = MagicMock(return_value=False)
 
     # Create mock container for step 1 that exited successfully
     mock_container_step1 = MagicMock()
@@ -3369,8 +3420,10 @@ def test_cleanup_steps_with_multi_step_job_only_first_step_complete(docker_job, 
     docker_client_mock.volumes.get.assert_any_call("task-config-default-multi-step-job-task-step1")
     docker_client_mock.volumes.get.assert_any_call("task-workload-identity-default-multi-step-job-task-step1")
 
-    # Verify job terminal check was called for step 1
-    docker_job.check_job_is_terminal.assert_called_once_with(job="multi-step-job", workspace="default")
+    # Verify persistent storage cleanup eligibility was checked for step 1
+    docker_job.check_job_persistent_storage_cleanup_allowed.assert_called_once_with(
+        job="multi-step-job", step_name="step1", workspace="default"
+    )
 
     # Verify persistent storage cleanup was NOT called
     # because the job is not terminal yet (step 2 still running)

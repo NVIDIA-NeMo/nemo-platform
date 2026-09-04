@@ -421,6 +421,58 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
         except Exception as e:
             raise RuntimeError(f"Failed to fetch job '{workspace}/{job}' to check if terminal") from e
 
+    def check_job_persistent_storage_cleanup_allowed(self, job: str, step_name: str, workspace: str) -> bool:
+        """Return whether a completed step may delete persistent job storage.
+
+        Task resources are per-step and can be removed after each terminal step. Persistent job storage is shared
+        across all steps in an attempt, so it must survive successful intermediate steps even if the aggregate job
+        status is already terminal or temporarily stale.
+        """
+        try:
+            job_response = self._jobs.get_job(name=job, workspace=workspace).data()
+        except ClientNotFoundError:
+            # If the job entity is gone (e.g. workspace deletion), allow backend cleanup to reclaim storage.
+            return True
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch job '{workspace}/{job}' to check storage cleanup eligibility") from e
+
+        job_status = getattr(job_response.status, "value", job_response.status)
+        if job_status not in ("cancelled", "error", "completed"):
+            return False
+
+        try:
+            step = self.get_step(job=job, step_name=step_name, workspace=workspace)
+        except ClientNotFoundError:
+            return True
+        except Exception as e:
+            raise RuntimeError(
+                f"Could not fetch job step '{job}/{step_name}' to check storage cleanup eligibility"
+            ) from e
+
+        step_config = step.config if isinstance(step.config, dict) else {}
+        step_spec_name = step_config.get("_step_spec_name") or getattr(step, "name", None) or step_name
+
+        platform_spec = getattr(job_response, "platform_spec", None)
+        steps = getattr(platform_spec, "steps", None) or []
+        if not steps:
+            return True
+
+        final_step_name = getattr(steps[-1], "name", None)
+        if final_step_name is None or step_spec_name == final_step_name:
+            return True
+
+        logger.debug(
+            "Skipping persistent storage cleanup because completed step is not the final job step",
+            extra={
+                "workspace": workspace,
+                "job": job,
+                "step": step_name,
+                "step_spec_name": step_spec_name,
+                "final_step_name": final_step_name,
+            },
+        )
+        return False
+
     def check_step_ttl(self, step: PlatformJobStepWithContext, ttl_seconds: int) -> bool:
         # Ensure created_at is timezone-aware (assume UTC if naive)
         if step.created_at is None:

@@ -263,3 +263,15 @@ async def test_platform_job_config_compiler_sft_lora(mock_sdk, monkeypatch):
     assert _step_image(steps[1]) == get_training_image()
     assert _step_image(steps[2]) == get_tasks_image()
     assert _step_image(steps[3]) == get_tasks_image()
+
+
+@pytest.mark.asyncio
+async def test_platform_job_config_compiler_applies_profile_to_task_steps(mock_sdk, monkeypatch):
+    monkeypatch.setattr(
+        "nmp.automodel.app.jobs.compiler.fetch_model_entity",
+        AsyncMock(return_value=_make_mock_model_entity()),
+    )
+
+    spec = await platform_job_config_compiler(_make_job_output(), "default", mock_sdk, profile="custom-gpu")
+
+    assert [step.executor.profile for step in spec.steps] == ["custom-gpu"] * 4
