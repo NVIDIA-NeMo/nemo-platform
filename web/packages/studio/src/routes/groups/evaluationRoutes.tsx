@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { EVALUATOR_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -10,7 +11,6 @@ import {
   gateEvaluationRoutes,
   getEvaluationResultsRoute,
 } from '@studio/routes/utils';
-import { ChartBar } from 'lucide-react';
 import { lazy } from 'react';
 import { Navigate, type RouteObject } from 'react-router';
 
@@ -66,12 +66,14 @@ export const evaluationRoutes: RouteObject[] = gateEvaluationRoutes([
   },
 ]);
 
+const NavIcon = ENTITY_ICONS.evaluationResults;
+
 export const getEvaluationSideNavItems = (workspace: string) =>
   EVALUATOR_ENABLED
     ? [
         {
           id: 'evaluation-results',
-          slotIcon: <ChartBar className={iconColorClass} />,
+          slotIcon: <NavIcon className={iconColorClass} />,
           // Qualified: the rail hoists this out of Models, next to the agent evaluations link.
           slotLabel: 'Model Evaluations',
           href: getEvaluationResultsRoute(workspace),

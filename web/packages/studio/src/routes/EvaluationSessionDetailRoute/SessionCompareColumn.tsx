@@ -4,7 +4,7 @@
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
-import { useListAnnotations } from '@nemo/sdk/generated/platform/api';
+import { useListAnnotations } from '@nemo/sdk/generated/platform/annotations';
 import {
   AnnotationSortField,
   type EvaluationSessionResponse,

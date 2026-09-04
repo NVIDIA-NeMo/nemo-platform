@@ -16,7 +16,6 @@ export const FINETUNING_TYPE_OPTIONS = [
   { value: FinetuningType.adalora, children: 'AdaLoRA' },
   { value: FinetuningType.dora, children: 'DoRA' },
   { value: FinetuningType.lora_plus, children: 'LoRA+' },
-  { value: FinetuningType.prompt_tuning, children: 'Prompt Tuning' },
   { value: FinetuningType.prefix_tuning, children: 'Prefix Tuning' },
   { value: FinetuningType.p_tuning, children: 'P-Tuning' },
   { value: FinetuningType.p_tuning_v2, children: 'P-Tuning v2' },

@@ -86,6 +86,21 @@ uv run nemo insights analysis status
 uv run nemo insights analysis disable --agent research-agent
 ```
 
+`nemo agents analyst run` runs the Analyst locally, in your shell. To have the
+platform run it as a job instead, submit an *analysis run*:
+
+```bash
+uv run nemo insights analysis-runs create --agent research-agent --wait
+uv run nemo insights analysis-runs list --agent research-agent
+uv run nemo insights analysis-runs get <run-name>
+```
+
+A run and the `agents.execute` job backing it share one name, so `get` returns
+both together. `--wait` polls to a terminal job state and exits non-zero unless
+the job completed. `create` fills the default/fast model pair from your CLI
+config unless you pass `--default-model` / `--fast-model`; the request must
+carry it because the Platform process cannot read that file.
+
 `analysis enable` stores the effective default/fast pair in the server-side
 analysis config so scheduled jobs do not depend on the operator's local CLI
 file. Re-run `enable` after changing the pair with `nemo setup`. Existing
@@ -105,6 +120,8 @@ The plugin SDK is available as `client.insights`, including:
 
 - `client.insights.insights`
 - `client.insights.analysis_configs`
+- `client.insights.analysis_runs` — `create`, `list_runs`, `get`, and `wait`
+  (polls a run until its backing job is terminal)
 - `client.insights.analysis_run_statuses`
 
 ## Configuration

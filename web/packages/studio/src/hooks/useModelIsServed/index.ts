@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
-import { getModelsGetProviderQueryKey, modelsGetProvider } from '@nemo/sdk/generated/platform/api';
+import {
+  getModelsGetProviderQueryKey,
+  modelsGetProvider,
+} from '@nemo/sdk/generated/platform/model-providers';
 import type { ModelEntity, ModelProvider } from '@nemo/sdk/generated/platform/schema';
 import { useQueries } from '@tanstack/react-query';
 import { useMemo } from 'react';

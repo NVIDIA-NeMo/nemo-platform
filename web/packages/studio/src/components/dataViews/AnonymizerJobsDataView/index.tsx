@@ -17,7 +17,7 @@ import {
   getAnonymizerListRunJobsQueryKey,
   useAnonymizerDeleteRunJob,
   useAnonymizerListRunJobs,
-} from '@nemo/sdk/generated/anonymizer/api';
+} from '@nemo/sdk/generated/anonymizer/anonymizer';
 import type {
   RunJob as AnonymizerJob,
   RunJobsListFilter as AnonymizerJobsListFilter,

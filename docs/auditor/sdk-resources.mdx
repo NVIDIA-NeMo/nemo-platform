@@ -95,7 +95,7 @@ The object returned by `submit()`. Use it to poll status, stream logs, and downl
 # Submit the job using persisted entity name strings.
 job = auditor.submit(
     config="quick-scan",
-    target="nemotron-3-nano-30b",
+    target="nemotron-3.5-lightning-30b",
     workspace="default",
 )
 print(f"Job submitted: {job.name}")
@@ -169,9 +169,9 @@ config = auditor.configs.create(
 # Persist a target.
 target = auditor.targets.create(
     workspace="default",
-    name="nemotron-3-nano-30b",
+    name="nemotron-3.5-lightning-30b",
     type="nim.NVOpenAIChat",
-    model="nvidia/nvidia/nemotron-3-nano-30b-a3b",
+    model="nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
     options={
         "nim": {
             "nmp_uri_spec": {
@@ -182,7 +182,7 @@ target = auditor.targets.create(
 )
 
 # Run locally — name strings resolve via the entity store.
-result = auditor.run(config="quick-scan", target="nemotron-3-nano-30b", workspace="default")
+result = auditor.run(config="quick-scan", target="nemotron-3.5-lightning-30b", workspace="default")
 
 print(f"Audit status: {result['status']}")
 if result["status"] == "failed":
@@ -235,7 +235,7 @@ async def main() -> None:
     # Submit and wait.
     job = await auditor.submit(
         config="quick-scan",
-        target="nemotron-3-nano-30b",
+        target="nemotron-3.5-lightning-30b",
         workspace="default",
     )
     await job.wait_until_done()
@@ -245,7 +245,7 @@ async def main() -> None:
     # Or run locally (no jobs-service submission).
     result = await auditor.run(
         config="quick-scan",
-        target="nemotron-3-nano-30b",
+        target="nemotron-3.5-lightning-30b",
         workspace="default",
     )
     for name, ref in result["results"].items():

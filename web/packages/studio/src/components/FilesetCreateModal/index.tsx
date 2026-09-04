@@ -12,7 +12,7 @@ import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import {
   getFilesListFilesetsQueryKey,
   useFilesCreateFileset,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/files';
 import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import {

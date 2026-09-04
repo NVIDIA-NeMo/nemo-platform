@@ -6,7 +6,7 @@ import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTim
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { CJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
-import { useModelsGetModel } from '@nemo/sdk/generated/platform/api';
+import { useModelsGetModel } from '@nemo/sdk/generated/platform/models';
 import {
   Flex,
   PageHeader,

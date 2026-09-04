@@ -349,7 +349,7 @@ The output type is inferred from this field; `output` carries only `name`.
 | `dropout` | `0.0` | Dropout applied after the adapter |
 | `target_modules` | `null` | Module names to adapt |
 | `exclude_modules` | `null` | Module name patterns to skip |
-| `use_triton` | `true` | Triton kernels; disabled automatically when `tensor_parallel_size` exceeds 1 |
+| `use_triton` | unset, compiler picks default at runtime | Triton LoRA kernels: `true` at `tensor_parallel_size` 1, `false` for greater than 1. Leave unset; an explicit `true` with `tensor_parallel_size` above 1 is rejected at submit |
 
 <Note>
 

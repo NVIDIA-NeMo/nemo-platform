@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
+import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/files';
 import { datasetFileContentQueryOptions } from '@studio/api/datasets/useDatasetFileContent';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { parse as parseYaml } from 'yaml';

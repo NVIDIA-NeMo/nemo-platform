@@ -12,7 +12,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
-import { useJobsListJobs } from '@nemo/sdk/generated/platform/api';
+import { useJobsListJobs } from '@nemo/sdk/generated/platform/jobs';
 import type {
   PlatformJobListSortField,
   PlatformJobResponse,
