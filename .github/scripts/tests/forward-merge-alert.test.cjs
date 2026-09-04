@@ -14,6 +14,7 @@ const {
   resolveSource,
   selectSourcePullRequest,
   sendForwardMergeAlert,
+  slackUserGroupMention,
 } = require("../forward-merge-alert.cjs");
 
 function git(workspace, ...args) {
@@ -169,6 +170,26 @@ test("shows only ten conflict files and links the remainder", () => {
   assert.match(message, /\+2 more/);
 });
 
+test("tags the configured Slack user group", () => {
+  const message = buildSlackMessage(
+    messageFixture({ userGroupId: "S0123456789" }),
+  );
+
+  assert.match(
+    message,
+    /^<!subteam\^S0123456789> :warning: \*Forward merge needs attention\*/,
+  );
+});
+
+test("omits a missing or invalid Slack user group", () => {
+  assert.equal(slackUserGroupMention(), "");
+  assert.equal(slackUserGroupMention("not-a-slack-group"), "");
+  assert.match(
+    buildSlackMessage(messageFixture()),
+    /^:warning: \*Forward merge needs attention\*/,
+  );
+});
+
 test("escapes untrusted Slack labels", () => {
   const message = buildSlackMessage(
     messageFixture({
@@ -229,6 +250,7 @@ test("falls back to the basic alert when PR metadata fails", async () => {
     env: {
       RUN_URL: "https://github.com/NVIDIA-NeMo/nemo-platform/actions/runs/1234",
       SLACK_ALERTS_WEBHOOK: "https://hooks.slack.test/example",
+      SLACK_ALERT_USERGROUP_ID: "S0123456789",
     },
     fetchImpl: async (url, options) => {
       requests.push({ url, options });
@@ -239,6 +261,10 @@ test("falls back to the basic alert when PR metadata fails", async () => {
 
   assert.equal(requests.length, 1);
   assert.equal(requests[0].options.redirect, "error");
+  assert.match(
+    JSON.parse(requests[0].options.body).text,
+    /^<!subteam\^S0123456789>/,
+  );
   assert.match(result.text, /Source: unavailable/);
   assert.match(result.text, /Conflict metadata unavailable/);
   assert.match(warnings[0], /Unable to read forward-merge PR/);
