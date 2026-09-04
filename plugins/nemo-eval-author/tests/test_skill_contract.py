@@ -1087,6 +1087,15 @@ def test_audit_skill_routes_missing_ethos_to_platform_skills() -> None:
     assert "Ask the user whether they want you to" in normalized_preflight
     assert "automatically generate the Ethos" in normalized_preflight
     assert "let them create the Ethos themselves from the documentation" in normalized_preflight
+    assert "Use this user-facing message shape for that skills-present path" in normalized_preflight
+    assert "Missing Ethos" in preflight
+    assert "before it can generate an audit coverage report" in normalized_preflight
+    assert "I could not find `ETHOS.md` at the repository root" in normalized_preflight
+    assert "Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in preflight
+    assert "are available here, so I can generate a real Ethos first" in normalized_preflight
+    assert "How would you like to move forward?" in preflight
+    assert "Generate the Ethos for me with `nemo-explore` and `nemo-ethos`" in preflight
+    assert "I'll create or provide an Ethos path myself" in preflight
     assert "Only offer automatic generation when both required skills are present and usable" in normalized_preflight
     assert "do not offer to generate it" in normalized_preflight
     assert "nemo-explore" in preflight
