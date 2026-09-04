@@ -57,6 +57,18 @@ class _ExplodingProvider:
         raise RuntimeError("provider is broken")
 
 
+class _PartiallyApplyingProvider:
+    """Attaches a handler, then fails before setting a usable level.
+
+    The shape that makes a naive "did it leave any handler?" check wrong: the
+    root logger looks configured but drops every record the task emits.
+    """
+
+    def configure_logging(self, *, level: str, log_format: str) -> None:
+        logging.getLogger().addHandler(logging.NullHandler())
+        raise RuntimeError("failed after attaching a handler")
+
+
 def test_configure_task_logging_makes_info_records_reachable() -> None:
     """The regression this exists for: INFO must survive in a task container.
 
@@ -208,3 +220,32 @@ def test_resolve_log_config_falls_back_when_settings_cannot_be_read(
     monkeypatch.setattr(plugin_config, "CommonServiceConfig", _explode)
 
     assert logging_setup._resolve_log_config() == ("INFO", "plain")
+
+
+def test_a_partially_applied_provider_is_discarded_not_trusted(caplog: pytest.LogCaptureFixture) -> None:
+    """A handler left behind by a failed call is not a working configuration."""
+    set_task_logging_provider(_PartiallyApplyingProvider())
+    _strip_root_handlers()
+
+    configure_task_logging()
+
+    root = logging.getLogger()
+    assert not any(isinstance(handler, logging.NullHandler) for handler in root.handlers), (
+        "the failed provider's handler survived"
+    )
+    assert any(getattr(h.formatter, "_fmt", None) == FALLBACK_LOG_FORMAT for h in root.handlers)
+    # The point of the cleanup: task INFO records must reach the fallback.
+    assert logging.getLogger("some.task.module").isEnabledFor(logging.INFO)
+
+
+def test_provider_failure_is_reported_through_the_fallback(capsys: pytest.CaptureFixture[str]) -> None:
+    """Reporting the failure before the fallback exists would emit it into the
+    broken configuration being replaced."""
+    set_task_logging_provider(_PartiallyApplyingProvider())
+    _strip_root_handlers()
+
+    configure_task_logging()
+
+    stderr = capsys.readouterr().err
+    assert "Task logging provider failed" in stderr
+    assert "failed after attaching a handler" in stderr

@@ -8,11 +8,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
+import stat
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, NamedTuple, cast
 
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.agent_config_formats import resolve_agent_config_for_deployment
@@ -555,41 +557,67 @@ def _log_agent_stderr(artifacts_dir: Path) -> None:
         paths = paths[:_MAX_LOGGED_STDERR_FILES]
     for path in paths:
         try:
-            text, omitted = _read_stderr_tail(path)
+            tail = _read_stderr_tail(path)
         except OSError as error:
             logger.warning("Could not read agent stderr at %s: %s", path, error)
             continue
-        if not text.strip():
+        if not tail.text.strip():
             logger.warning("Agent stderr at %s was empty.", path)
             continue
-        if omitted:
+        if tail.omitted_bytes:
             logger.error(
                 "Agent stderr (%s, last %d bytes; %d earlier bytes omitted - the saved artifact has "
                 "the whole stream):\n%s",
                 path,
-                len(text),
-                omitted,
-                text,
+                tail.read_bytes,
+                tail.omitted_bytes,
+                tail.text,
             )
         else:
-            logger.error("Agent stderr (%s):\n%s", path, text)
+            logger.error("Agent stderr (%s):\n%s", path, tail.text)
 
 
-def _read_stderr_tail(path: Path) -> tuple[str, int]:
+class _StderrTail(NamedTuple):
+    """What was read from an agent stderr file, in bytes rather than characters."""
+
+    text: str
+    read_bytes: int
+    omitted_bytes: int
+
+
+def _read_stderr_tail(path: Path) -> _StderrTail:
     """Return *path*'s contents and how many leading bytes were dropped.
 
     Takes the tail rather than the head when a stream exceeds the cap: a file
     that large means the agent ran a long while before failing, so the failure
     is at the end. A run that fails early writes little and is never truncated,
     which is where the beginning would have mattered.
+
+    The file type is not taken on trust, because the artifacts directory is
+    agent-writable and a size check alone is not a bound: a ``stderr.txt``
+    symlinked to ``/dev/zero`` reports ``st_size`` 0, passes any cap, and then
+    reads forever, and a FIFO of that name would block this task indefinitely
+    while it is trying to report a failure. ``O_NOFOLLOW`` refuses a symlinked
+    final component, ``O_NONBLOCK`` keeps a FIFO from blocking the open, and
+    the ``fstat`` below rejects anything that is not a regular file - checked
+    on the open descriptor so the answer cannot change underneath us.
     """
-    size = path.stat().st_size
-    if size <= _MAX_LOGGED_STDERR_BYTES:
-        return path.read_text(encoding="utf-8", errors="replace"), 0
-    with path.open("rb") as handle:
-        handle.seek(size - _MAX_LOGGED_STDERR_BYTES)
-        chunk = handle.read()
-    return chunk.decode("utf-8", errors="replace"), size - len(chunk)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    with os.fdopen(os.open(path, flags), "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError(f"{path} is not a regular file")
+        size = info.st_size
+        if size > _MAX_LOGGED_STDERR_BYTES:
+            handle.seek(size - _MAX_LOGGED_STDERR_BYTES)
+        # Bounded by the cap regardless of what ``st_size`` claimed, so a file
+        # that lied about its size or grew mid-read still cannot run away.
+        chunk = handle.read(_MAX_LOGGED_STDERR_BYTES)
+    return _StderrTail(
+        text=chunk.decode("utf-8", errors="replace"),
+        read_bytes=len(chunk),
+        omitted_bytes=max(0, size - len(chunk)),
+    )
 
 
 class _AgentSource(BaseModel):

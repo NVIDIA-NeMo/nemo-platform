@@ -113,9 +113,19 @@ def configure_task_logging() -> None:
     try:
         provider.configure_logging(level=level, log_format=log_format)
     except Exception:
-        logger.warning("Task logging provider failed; falling back to the default.", exc_info=True)
-        if not logging.getLogger().handlers:
-            DefaultTaskLoggingProvider().configure_logging(level=level, log_format=log_format)
+        # A provider that raised part-way through can leave a configuration that
+        # looks present but does not work - a handler attached before it got to
+        # setting the root level, say, which would strand the task at WARNING.
+        # The early return above guarantees the root logger was bare when we
+        # called it, so anything here now came from the failed call: discard it
+        # rather than trust half of it.
+        root = logging.getLogger()
+        for handler in root.handlers[:]:
+            root.removeHandler(handler)
+        DefaultTaskLoggingProvider().configure_logging(level=level, log_format=log_format)
+        # Logged only once the fallback is in place. Reporting the failure
+        # first would emit it into the broken configuration we are replacing.
+        logger.warning("Task logging provider failed; using the default.", exc_info=True)
 
 
 def _resolve_log_config() -> tuple[LogLevel, LogFormat]:

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -1745,3 +1746,46 @@ def test_log_agent_stderr_does_not_flag_truncation_when_it_fits(
 
     assert "short and complete" in caplog.text
     assert "omitted" not in caplog.text
+
+
+def test_log_agent_stderr_reports_byte_counts_not_character_counts(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cap is a byte budget, so the notice has to be in bytes: multibyte
+    UTF-8 would otherwise under-report by up to 4x."""
+    monkeypatch.setattr("nemo_agents_plugin.jobs.execute._MAX_LOGGED_STDERR_BYTES", 400)
+    # 2 bytes per character, so a character count would read as half of this.
+    (tmp_path / "stderr.txt").write_text("é" * 1000, encoding="utf-8")
+
+    with caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "last 400 bytes" in caplog.text
+    assert "1600 earlier bytes omitted" in caplog.text
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="mkfifo is not available on this platform")
+def test_log_agent_stderr_rejects_a_fifo_without_blocking(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A FIFO with no writer would block this task forever - while it is trying
+    to report a failure. The artifacts dir is agent-writable, so the file type
+    is not ours to trust."""
+    os.mkfifo(tmp_path / "stderr.txt")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "is not a regular file" in caplog.text
+
+
+def test_log_agent_stderr_refuses_to_follow_a_symlink(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """``st_size`` on a symlinked character device reads as 0, so it would pass
+    any size cap and then read without bound (``/dev/zero`` being the obvious
+    case). Refusing the symlink outright is what closes that."""
+    (tmp_path / "real.txt").write_text("some diagnostics\n")
+    (tmp_path / "stderr.txt").symlink_to(tmp_path / "real.txt")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "Could not read agent stderr" in caplog.text
+    assert "some diagnostics" not in caplog.text
