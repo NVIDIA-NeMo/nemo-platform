@@ -4,8 +4,10 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi import HTTPException
+from nemo_platform_plugin.client.errors import InternalServerError, NemoTransportError
 from nmp.common.entities import EntityStoreError
 from nmp.core.files.api.v2.filesets.endpoints import (
     _count_entity_fileset_references,
@@ -14,6 +16,15 @@ from nmp.core.files.api.v2.filesets.endpoints import (
     delete_fileset,
 )
 from nmp.core.files.entities import Fileset
+
+
+def _internal_server_error() -> InternalServerError:
+    request = httpx.Request("GET", "http://entities.test/list")
+    return InternalServerError(httpx.Response(500, request=request))
+
+
+def _transport_error() -> NemoTransportError:
+    return NemoTransportError(httpx.ConnectError("connection refused"))
 
 
 async def test_count_fileset_references_uses_total_results() -> None:
@@ -99,11 +110,15 @@ async def test_delete_fileset_rejects_references_before_deleting_storage() -> No
     "reference_results",
     [
         [EntityStoreError("model reference lookup failed")],
+        [_internal_server_error()],
+        [_transport_error()],
         [0, EntityStoreError("adapter reference lookup failed")],
+        [0, _internal_server_error()],
+        [0, _transport_error()],
     ],
 )
 async def test_delete_fileset_fails_closed_when_references_cannot_be_checked(
-    reference_results: list[int | EntityStoreError],
+    reference_results: list[int | Exception],
 ) -> None:
     entity_store = MagicMock()
     entity_store.delete = AsyncMock()

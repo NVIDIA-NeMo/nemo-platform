@@ -18,6 +18,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.errors import NemoClientError
 from nmp.common.api.common import GenericSortField, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
@@ -486,7 +487,9 @@ async def delete_fileset(
             workspace,
             name,
         )
-    except EntityStoreError as exc:
+    except (EntityStoreError, NemoClientError) as exc:
+        # EntityClient.list() raises NemoHTTPError / NemoTransportError (both
+        # NemoClientError). EntityStoreError is reserved for grouped-count parsing.
         logger.error(
             "Cannot verify dependents for fileset '%s/%s': %s",
             _sanitize_for_log(workspace),
