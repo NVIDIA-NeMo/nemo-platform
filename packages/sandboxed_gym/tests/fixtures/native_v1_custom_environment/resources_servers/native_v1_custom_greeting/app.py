@@ -3,8 +3,8 @@
 
 from typing import Any
 
-import emoji
-from nemo_gym.base_resources_server import (
+import emoji  # ty: ignore[unresolved-import] - installed from this environment fixture's requirements
+from nemo_gym.base_resources_server import (  # ty: ignore[unresolved-import] - available in the Gym runtime
     BaseResourcesServerConfig,
     BaseVerifyRequest,
     BaseVerifyResponse,
