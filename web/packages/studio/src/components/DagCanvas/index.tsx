@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CardNode, type CardNodeType } from '@studio/components/DagCanvas/CardNode';
+import { CenterNodeController } from '@studio/components/DagCanvas/CenterNodeController';
+import { FitGraphController } from '@studio/components/DagCanvas/FitGraphController';
+import { FitNodesController } from '@studio/components/DagCanvas/FitNodesController';
+import { FocusController } from '@studio/components/DagCanvas/FocusController';
 import { layoutGraph } from '@studio/components/DagCanvas/layout';
-import { getGraphMotionDuration } from '@studio/components/DagCanvas/motion';
 import type {
   DagDirection,
   DagEdge,
@@ -11,6 +14,7 @@ import type {
   DagNodeData,
 } from '@studio/components/DagCanvas/types';
 import { useNvColorMode } from '@studio/components/DagCanvas/useNvColorMode';
+import { MIN_GRAPH_ZOOM, readViewport } from '@studio/components/DagCanvas/viewport';
 import {
   Background,
   type ColorMode,
@@ -21,154 +25,16 @@ import {
   ReactFlow,
   type Viewport,
   useEdgesState,
-  useNodes,
-  useNodesInitialized,
   useNodesState,
-  useReactFlow,
 } from '@xyflow/react';
 import '@studio/components/DagCanvas/DagCanvas.css';
 import '@xyflow/react/dist/style.css';
 import { type FC, useCallback, useEffect, useMemo, useRef } from 'react';
 
 const NODE_TYPES = { card: CardNode };
-const MIN_GRAPH_ZOOM = 0.001;
 
 /** Stable id for an edge; falls back to a source/target pair when none is given. */
 const edgeId = (edge: DagEdge): string => edge.id ?? `${edge.source}->${edge.target}`;
-/**
- * Pans/zooms the viewport to center `focusNodeId` whenever it changes to a node present
- * on the canvas. Rendered inside `ReactFlow` so it can use the flow hooks. Tracks the
- * last-focused id so live edits to a focused node don't re-center it, and defers focus
- * until a just-added node has actually landed in the store.
- */
-const FocusController: FC<{ focusNodeId?: string | null }> = ({ focusNodeId }) => {
-  const { fitView } = useReactFlow();
-  const nodes = useNodes();
-  const lastFocused = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!focusNodeId || focusNodeId === lastFocused.current) return;
-    if (!nodes.some((node) => node.id === focusNodeId)) return;
-    lastFocused.current = focusNodeId;
-    fitView({
-      nodes: [{ id: focusNodeId }],
-      duration: getGraphMotionDuration(),
-      padding: 0.4,
-      maxZoom: 1.2,
-    });
-  }, [focusNodeId, nodes, fitView]);
-
-  return null;
-};
-
-const CenterNodeController: FC<{
-  centerNodeId?: string | null;
-  requestNonce?: number;
-}> = ({ centerNodeId, requestNonce }) => {
-  const { getNodesBounds, getZoom, setCenter } = useReactFlow();
-  const nodes = useNodes();
-  const lastRequest = useRef('');
-
-  useEffect(() => {
-    if (!centerNodeId || requestNonce === undefined) return;
-    const request = `${centerNodeId}:${requestNonce}`;
-    if (request === lastRequest.current || !nodes.some(({ id }) => id === centerNodeId)) return;
-    const bounds = getNodesBounds([centerNodeId]);
-    const zoom = getZoom();
-    if (
-      ![bounds.x, bounds.y, bounds.width, bounds.height, zoom].every(Number.isFinite) ||
-      bounds.width <= 0 ||
-      bounds.height <= 0
-    ) {
-      return;
-    }
-    lastRequest.current = request;
-    setCenter(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, {
-      zoom,
-      duration: getGraphMotionDuration(),
-    });
-  }, [centerNodeId, getNodesBounds, getZoom, nodes, requestNonce, setCenter]);
-
-  return null;
-};
-
-const readViewport = (key: string): Viewport | null => {
-  try {
-    const viewport = JSON.parse(sessionStorage.getItem(key) ?? '') as Partial<Viewport>;
-    return typeof viewport.x === 'number' &&
-      typeof viewport.y === 'number' &&
-      typeof viewport.zoom === 'number'
-      ? (viewport as Viewport)
-      : null;
-  } catch {
-    return null;
-  }
-};
-
-const FitGraphController: FC<{
-  viewportStorageKey?: string;
-  selectedNodeId?: string | null;
-}> = ({ viewportStorageKey, selectedNodeId }) => {
-  const { fitView } = useReactFlow();
-  const nodes = useNodes();
-  const nodesInitialized = useNodesInitialized();
-  const graphId = nodes.map((node) => node.id).join('|');
-  const lastFittedGraph = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!nodesInitialized || !graphId) return;
-    if (lastFittedGraph.current === null) {
-      lastFittedGraph.current = graphId;
-      return;
-    }
-    if (graphId === lastFittedGraph.current) return;
-    lastFittedGraph.current = graphId;
-    requestAnimationFrame(() => {
-      const savedViewport = viewportStorageKey ? readViewport(viewportStorageKey) : null;
-      const savedZoom = savedViewport
-        ? Math.min(Math.max(savedViewport.zoom, MIN_GRAPH_ZOOM), 2)
-        : null;
-      const selectedNode = selectedNodeId && nodes.some(({ id }) => id === selectedNodeId);
-      fitView({
-        nodes: selectedNode ? [{ id: selectedNodeId }] : undefined,
-        padding: 0.12,
-        minZoom: savedZoom ?? MIN_GRAPH_ZOOM,
-        maxZoom: savedZoom ?? 1,
-      });
-    });
-  }, [fitView, graphId, nodes, nodesInitialized, selectedNodeId, viewportStorageKey]);
-
-  return null;
-};
-
-const FitNodesController: FC<{ nodeIds?: readonly string[] }> = ({ nodeIds }) => {
-  const { fitView } = useReactFlow();
-  const nodes = useNodes();
-  const fitKey = nodeIds?.join('|') ?? '';
-  const lastFitKey = useRef('');
-
-  useEffect(() => {
-    if (!fitKey) {
-      lastFitKey.current = '';
-      return;
-    }
-    if (fitKey === lastFitKey.current) return;
-    const visibleNodes = nodes.filter(({ id }) => nodeIds?.includes(id));
-    if (visibleNodes.length !== nodeIds?.length) return;
-    lastFitKey.current = fitKey;
-    requestAnimationFrame(() => {
-      fitView({
-        nodes: visibleNodes.map(({ id }) => ({ id })),
-        duration: getGraphMotionDuration(),
-        padding: 0.18,
-        minZoom: MIN_GRAPH_ZOOM,
-        maxZoom: 1,
-      });
-    });
-  }, [fitKey, fitView, nodeIds, nodes]);
-
-  return null;
-};
 
 export interface DagCanvasProps {
   /** Graph nodes; positions are computed automatically. */

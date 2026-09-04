@@ -57,8 +57,7 @@ export const CardNode: FC<NodeProps<CardNodeType>> = ({
     hasOutgoing = true,
     stopPropagation = false,
   } = data;
-  const iconClassName =
-    status === 'idle' && colorClassName ? colorClassName : STATUS_ICON_CLASS[status];
+  const iconClassName = colorClassName ?? STATUS_ICON_CLASS[status];
   const subtitle = [type, status === 'idle' ? null : status].filter(Boolean).join(' · ');
   const emphasisClassName = selected
     ? 'border-brand ring-1 ring-(--color-brand,#76b900)'
@@ -90,7 +89,7 @@ export const CardNode: FC<NodeProps<CardNodeType>> = ({
         stopPropagation={stopPropagation}
         leading={
           <CardIconBadge>
-            <Icon size={16} className={iconClassName} aria-hidden />
+            <Icon size={16} className={iconClassName} role="img" aria-hidden />
           </CardIconBadge>
         }
       />

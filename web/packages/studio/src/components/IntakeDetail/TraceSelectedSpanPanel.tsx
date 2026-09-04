@@ -47,10 +47,10 @@ export const TraceSelectedSpanPanel: FC<TraceSelectedSpanPanelProps> = ({
             gap="density-lg"
             className="border-b border-base px-density-lg py-density-md min-w-0"
           >
-            <span className="flex min-w-0 flex-1 items-center gap-density-sm">
+            <Flex align="center" gap="density-sm" className="min-w-0 flex-1">
               <SpanTriggerLabel span={selectedSpan} showHierarchy={false} />
-            </span>
-            <span className="flex shrink-0 items-center gap-density-lg">
+            </Flex>
+            <Flex align="center" gap="density-lg" className="shrink-0">
               <SpanTriggerMeta span={selectedSpan} />
               <SpanFeedbackControls
                 workspace={workspace}
@@ -60,7 +60,7 @@ export const TraceSelectedSpanPanel: FC<TraceSelectedSpanPanelProps> = ({
                 hasNotes={hasNotes}
                 onAddNote={onAddNote}
               />
-            </span>
+            </Flex>
           </Flex>
           <div className="p-density-lg">
             <TraceSpanAccordionContent

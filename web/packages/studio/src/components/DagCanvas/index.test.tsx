@@ -13,6 +13,7 @@ import type { DagNode } from '@studio/components/DagCanvas/types';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type Edge, type Node, type NodeProps, Position } from '@xyflow/react';
+import { Sparkles } from 'lucide-react';
 
 // React Flow reads from an internal store/context that only exists inside a fully
 // measured <ReactFlow> (needs ResizeObserver + real layout, absent in jsdom). Stub
@@ -219,6 +220,20 @@ describe('CardNode', () => {
 
     expect(screen.getByRole('button', { name: 'Retrieve context, TOOL, error' })).toBeVisible();
     expect(screen.getByText('TOOL · error')).toBeVisible();
+  });
+
+  it('keeps the type accent on the icon when the status is not idle', () => {
+    renderCard({
+      title: 'Summarize',
+      type: 'LLM',
+      status: 'error',
+      icon: Sparkles,
+      colorClassName: 'text-[color:var(--text-color-accent-purple)]',
+    });
+
+    expect(screen.getByRole('img', { hidden: true })).toHaveClass(
+      'text-[color:var(--text-color-accent-purple)]'
+    );
   });
 
   it('announces longest-path membership and keeps selection visually distinct', () => {

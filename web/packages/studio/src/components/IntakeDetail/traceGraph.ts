@@ -8,7 +8,10 @@ import type {
   DagNodeData,
   DagNodeStatus,
 } from '@studio/components/DagCanvas/types';
-import { getSpanKindConfig } from '@studio/components/SpanKindBadge/spanKindConfig';
+import {
+  getSpanKindColorClass,
+  getSpanKindConfig,
+} from '@studio/components/SpanKindBadge/spanKindConfig';
 import {
   compareSpansByStartedAt,
   formatDurationMs,
@@ -30,14 +33,6 @@ export interface TraceGraphModel {
 interface BuildTraceGraphOptions {
   highlightLongestPath?: boolean;
 }
-
-const COLOR_CLASS: Record<string, string> = {
-  teal: 'text-[color:var(--text-color-accent-teal)]',
-  purple: 'text-[color:var(--text-color-accent-purple)]',
-  blue: 'text-[color:var(--text-color-accent-blue)]',
-  green: 'text-[color:var(--text-color-accent-green)]',
-  yellow: 'text-[color:var(--text-color-accent-yellow)]',
-};
 
 const graphStatus = (spans: SpanTableRow[]): DagNodeStatus => {
   if (spans.some((span) => span.status === SpanStatus.error)) return 'error';
@@ -84,7 +79,7 @@ const nodeData = (spans: SpanTableRow[], grouped: boolean): DagNodeData => {
     tags: tokens > 0 ? [`${formatInteger(tokens)} tokens`] : undefined,
     icon: kind.icon,
     status: graphStatus(spans),
-    colorClassName: COLOR_CLASS[kind.color],
+    colorClassName: getSpanKindColorClass(representative.kind),
   };
 };
 

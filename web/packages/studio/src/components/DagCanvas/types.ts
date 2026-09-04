@@ -29,8 +29,8 @@ export interface DagNodeData {
   status?: DagNodeStatus;
   /**
    * Accent classes applied to the icon (when idle) and subtitle, e.g.
-   * `text-[color:var(--text-color-accent-purple)]`. Non-idle statuses keep their
-   * semantic feedback color on the icon regardless of this prop.
+   * `text-[color:var(--text-color-accent-purple)]`. When set, it wins over the
+   * status color on the icon; otherwise the icon uses the status feedback color.
    */
   colorClassName?: string;
   /** Draws attention to this node as part of a selected or computed path. */
