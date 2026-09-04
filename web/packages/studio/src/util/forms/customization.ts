@@ -39,10 +39,7 @@ import { z } from 'zod';
 /**
  * GRPO-only form state: the spec's GRPO arm plus the two fields that exist only in the UI.
  *
- * Extends `RlGRPOTraining` wholesale rather than naming its fields. Listing them meant three
- * copies of the same set — a type union, a runtime key array and a per-field restatement —
- * which is the duplication this module exists to remove, just moved from values to names.
- * A field the form has no control for is inert: `formToRlCreate` picks what it sends.
+ * A field the form has no control for is inert — `formToRlCreate` picks what it sends.
  */
 export interface GrpoFormFields extends RlGRPOTraining {
   /** 'grpo' shows the GRPO form sections; 'dpo' shows DPO sections. Maps to training.type on submit. */

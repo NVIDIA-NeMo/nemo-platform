@@ -44,7 +44,6 @@ describe('specDefaults', () => {
     expect(booleanDefault(GRPO_SPEC_DEFAULTS, 'use_leave_one_out_baseline')).toBe(true);
     expect(booleanDefault(GRPO_SPEC_DEFAULTS, 'use_dynamic_sampling')).toBe(false);
     expect(booleanDefault(GRPO_SPEC_DEFAULTS, 'normalize_rewards')).toBe(true);
-    expect(stringDefault(GRPO_SPEC_DEFAULTS, 'policy_backend')).toBe('automodel');
     expect(stringDefault(GRPO_SPEC_DEFAULTS, 'batching_strategy')).toBe('dynamic');
   });
 
@@ -60,7 +59,15 @@ describe('specDefaults', () => {
   });
 
   it('reports undefined for fields the spec leaves without a default', () => {
-    for (const field of ['seed', 'max_steps', 'val_check_interval', 'min_learning_rate']) {
+    // `policy_backend` is here rather than asserted as 'automodel': the backend derives it
+    // from finetuning_type now, so the spec declares no default.
+    for (const field of [
+      'seed',
+      'max_steps',
+      'val_check_interval',
+      'min_learning_rate',
+      'policy_backend',
+    ]) {
       expect(numberDefault(GRPO_SPEC_DEFAULTS, field)).toBeUndefined();
     }
   });

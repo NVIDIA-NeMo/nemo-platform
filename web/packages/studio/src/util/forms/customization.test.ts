@@ -11,7 +11,12 @@ import {
   formToUnslothCreate,
   type CustomizationFormFields,
 } from '@studio/util/forms/customization';
-import { GRPO_SPEC_DEFAULTS, numberDefault } from '@studio/util/forms/specDefaults';
+import {
+  AUTOMODEL_SPEC_DEFAULTS,
+  GRPO_SPEC_DEFAULTS,
+  numberDefault,
+  stringDefault,
+} from '@studio/util/forms/specDefaults';
 
 // Deep-clone the defaults so per-test mutations (e.g. flipping finetuning_type)
 // never leak through shared nested references into FORM_DEFAULTS or other tests.
@@ -181,11 +186,18 @@ describe('formToAutomodelCreate', () => {
     expect(spec.training.lora?.use_triton).toBe(true);
   });
 
-  it('seeds the backend-default enum knobs so the UI matches the backend', () => {
+  /** Read from the spec, so the test does not go stale the next time a default changes. */
+  it('seeds the enum knobs from the spec so the UI matches the backend', () => {
     const spec = formToAutomodelCreate(validAutomodel()).spec;
-    expect(spec.training.attn_implementation).toBe('sdpa');
-    expect(spec.optimizer?.optimizer).toBe('Adam');
-    expect(spec.optimizer?.lr_decay_style).toBe('cosine');
+    expect(spec.training.attn_implementation).toBe(
+      stringDefault(AUTOMODEL_SPEC_DEFAULTS, 'training_attn_implementation')
+    );
+    expect(spec.optimizer?.optimizer).toBe(
+      stringDefault(AUTOMODEL_SPEC_DEFAULTS, 'optimizer_optimizer')
+    );
+    expect(spec.optimizer?.lr_decay_style).toBe(
+      stringDefault(AUTOMODEL_SPEC_DEFAULTS, 'optimizer_lr_decay_style')
+    );
   });
 
   it('passes through advanced automodel fields set on the form', () => {
@@ -274,12 +286,6 @@ describe('formToUnslothCreate', () => {
 });
 
 describe('GRPO defaults', () => {
-  /**
-   * Defaults come from the OpenAPI spec, so these assert what the backend declares rather
-   * than a value the form picked. #1501 previously overrode four of them here; those were
-   * removed deliberately — where the spec disagrees with what RL needs, the fix belongs in
-   * the backend so every client gets it, not in this form.
-   */
   const training = RL_GRPO_TRAINING_DEFAULTS as unknown as Record<string, unknown>;
 
   it('takes every value from the GRPO arm of the spec', () => {
@@ -295,12 +301,6 @@ describe('GRPO defaults', () => {
     ).toBe(0.05);
   });
 
-  /**
-   * The spec declares no default for these, so the form leaves them unset and the backend
-   * decides. num_prompts_per_step in particular used to be seeded at 8, which is what made
-   * the rollout batch a multiple of the global batch size by construction; that invariant
-   * is now the submitting user's to satisfy and the backend's to enforce.
-   */
   it.each(['val_check_interval', 'max_steps', 'seed', 'min_learning_rate'])(
     'leaves %s unset because the spec declares no default',
     (field) => {
