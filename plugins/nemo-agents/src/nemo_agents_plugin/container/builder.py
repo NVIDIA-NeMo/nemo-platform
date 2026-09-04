@@ -13,6 +13,7 @@ for Docker operations so callers never need to shell out manually.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -457,6 +458,9 @@ def build_fabric_agent_image(
         "python_version": resolved_python,
         "uv_version": resolved_uv,
     }
+    if wheel is not None:
+        with wheel.open("rb") as wheel_file:
+            build_env_for_id["wheel_sha256"] = hashlib.file_digest(wheel_file, "sha256").hexdigest()
     meta = extract_agent_metadata(
         agent_config,
         pyproject,
@@ -552,8 +556,12 @@ def build_fabric_agent_image(
             # detecting that it would not and reimplementing Docker's matcher.
             existing = ignore_path.read_text(encoding="utf-8") if ignore_path.exists() else ""
             scoped_ignore = context_dir / f"{tmp_dockerfile.name}.dockerignore"
-            scoped_ignore.write_text(f"{existing.rstrip()}\n!{staged_wheel.name}\n".lstrip(), encoding="utf-8")
-            scoped_ignore_written = True
+            try:
+                with scoped_ignore.open("x", encoding="utf-8") as scoped_ignore_file:
+                    scoped_ignore_written = True
+                    scoped_ignore_file.write(f"{existing.rstrip()}\n!{staged_wheel.name}\n".lstrip())
+            except FileExistsError as exc:
+                raise ManagedFileConflictError(scoped_ignore) from exc
 
         return docker_build(
             context_dir=context_dir,

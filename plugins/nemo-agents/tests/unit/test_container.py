@@ -2958,17 +2958,45 @@ class TestFabricWheelInstall:
             "docker_build",
             lambda **kwargs: captured.setdefault("tag", kwargs["tag"]),
         )
+
+        def _capture_render(*args: Any, **kwargs: Any) -> str:
+            captured.setdefault("contract_version", kwargs.get("contract_version"))
+            return real_render(*args, **kwargs)
+
         monkeypatch.setattr(
             template,
             "render_fabric_dockerfile",
-            lambda *a, **kw: (
-                captured.setdefault("contract_version", kw.get("contract_version")) or real_render(*a, **kw)
-            ),
+            _capture_render,
         )
 
         builder.build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
 
         assert captured["contract_version"] == "0.4.0.post176.dev0+abc123"
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_the_image_identity_includes_the_wheel_contents(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        wheel_name = "nemo_platform-0.4.0-py3-none-any.whl"
+        first_source = tmp_path / "first"
+        first_source.mkdir()
+        first_wheel = first_source / wheel_name
+        first_wheel.write_bytes(b"first wheel")
+
+        second_source = tmp_path / "second"
+        second_source.mkdir()
+        second_wheel = second_source / wheel_name
+        second_wheel.write_bytes(b"second wheel")
+
+        build_fabric_agent_image(fabric_agent_config, wheel=first_wheel, skip_validation=True, agent_author="x")
+        first_tag = mock_build.call_args.kwargs["tag"]
+
+        build_fabric_agent_image(fabric_agent_config, wheel=second_wheel, skip_validation=True, agent_author="x")
+        second_tag = mock_build.call_args.kwargs["tag"]
+
+        assert first_tag != second_tag
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_a_supplied_dockerfile_ignores_the_wheel(
@@ -3058,6 +3086,27 @@ class TestFabricWheelInstall:
             build_fabric_agent_image(fabric_agent_config, skip_validation=True, agent_author="x")
 
         assert not seen["present"]
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_refuses_to_clobber_a_scoped_ignore_file(
+        self, mock_build: MagicMock, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image
+
+        source = tmp_path / "dist"
+        source.mkdir()
+        wheel = source / "nemo_platform-0.4.0-py3-none-any.whl"
+        wheel.write_bytes(b"wheel")
+        context = fabric_agent_config.parent
+        scoped = context / "Dockerfile.generated.dockerignore"
+        scoped.write_text("USER OWNED\n")
+
+        with pytest.raises(ManagedFileConflictError):
+            build_fabric_agent_image(fabric_agent_config, wheel=wheel, skip_validation=True, agent_author="x")
+
+        assert scoped.read_text() == "USER OWNED\n"
+        assert not (context / wheel.name).exists()
+        mock_build.assert_not_called()
 
     def test_refuses_to_clobber_a_file_the_user_owns(self, fabric_agent_config: Path, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.builder import build_fabric_agent_image
