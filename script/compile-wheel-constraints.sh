@@ -27,8 +27,8 @@ WHEEL_DIR="${1:?usage: script/compile-wheel-constraints.sh <dir-with-built-wheel
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${REPO_ROOT}/.github/wheel-constraints"
 
-# uv accepts a pre-release version only for packages named in a first-party requirement or
-# constraint, and our pre-release deps (Fabric) reach the wheel transitively. Feed the
+# uv accepts a pre-release version only for a package named in a first-party requirement or
+# constraint, and a pre-release dependency can reach the wheel transitively. Feed the
 # pre-releases uv.lock already resolved in as constraints, and pin them in the output too, so
 # neither the snapshot below nor CI's install has to fall back to a global --prerelease=allow
 # (which would also drag in pre-releases of unrelated transitives).
