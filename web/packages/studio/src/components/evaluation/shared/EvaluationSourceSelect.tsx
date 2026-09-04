@@ -61,7 +61,7 @@ export const EvaluationSourceSelect = <T extends FieldValues>({
             </Text>
           </>
         ) : (
-          'Select a past run to evaluate your changes by the same configuration.'
+          'Select a past run to evaluate your changes with the same configuration.'
         ),
         slotError,
         status: slotError ? 'error' : undefined,
