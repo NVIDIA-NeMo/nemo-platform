@@ -191,7 +191,7 @@ function discoverBranchReleases() {
       continue;
     }
 
-    if (gitOk(["cat-file", "-e", `${tag}:docs/fern/versions/latest.yml`])) {
+    if (gitOk(["rev-parse", "--verify", "--quiet", `refs/tags/${tag}`])) {
       console.log(`Skipping branch ${branch}: tag ${tag} already exists`);
       continue;
     }
