@@ -24,7 +24,7 @@ Select **Customize a Model** from the Custom Models list, or open a base model's
 | ------- | ------------------- |
 | Training Backend | **Automodel** (multi-GPU), **Unsloth** (single-GPU, 4-bit quantized), or **RL**. |
 | Model | Base model, output model name, and description. |
-| Training Method | Backend-specific method, for example SFT, distillation, DPO, or GRPO. |
+| Training Method | For Automodel and Unsloth: fine-tuning type (**LoRA**, **LoRA (Merged)**, or **Full Weights**), plus, for Automodel, training type (**SFT** or **Distillation**, with a teacher model field for distillation). For RL: **DPO** or **GRPO**. |
 | Reward Environment | Shown for GRPO jobs. Selects the reward environment used during training. |
 | Dataset | The training fileset, selected from filesets available in the workspace. |
 | Parameters | General hyperparameters, or GRPO-specific parameters when the training method is GRPO. |
@@ -52,9 +52,19 @@ Select a job to open its detail page, which shows the job name, status badge, an
 
 | Tab | Shows |
 | --- | ----- |
-| Overview | Job configuration, training progress, and the source dataset's fileset details. |
+| Overview | Training progress, run configuration, and the source dataset's fileset details. |
 | Logs | Job execution logs. |
 | Chat with your Model | A chat playground against the resulting model, shown once the job completes. |
+
+The Overview tab's training progress panel differs by training method:
+
+| Training method | Panel | Shows |
+| ---------------- | ----- | ----- |
+| SFT, distillation, DPO | Training Loss | Train and validation loss per step, plus loss and progress stat tiles. |
+| GRPO | Reward | Training and validation reward per step (loss isn't meaningful for GRPO's policy-gradient objective), plus reward and progress stat tiles. |
+| GRPO | Training Health | Collapsed by default. Diagnostic charts from NeMo RL, such as KL divergence and clip fraction, that can flag a run diverging before reward does. |
+
+Below the training panel, **Run Configuration** summarizes the customization ID, output model, base model, and other run metadata, with a **View Job Configuration** action that opens the full job spec.
 
 From the detail page header, select **Evaluate** to start an evaluation against the resulting model once the job is launchable, or open the actions menu (**⋯**) for **Clone** and, while the job is active or pending, **Cancel Job**.
 
