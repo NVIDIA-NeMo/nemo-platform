@@ -86,11 +86,6 @@ export const RL_GRPO_DEFAULT_SPEC = specOf<RlJobInput>(
  * Flattened `snake_case` view of a parsed spec, e.g. `optimizer_learning_rate`. The slider
  * and placeholder helpers look values up by field path rather than by object traversal, so
  * a control names the field once.
- *
- * The keys are real paths off the parsed object, which is why this no longer has to guess
- * at the generator's naming. Orval numbers a nullable object's branch in the constant name
- * (`LoraOneRank` for `lora`, declared `anyOf: [LoRAParams, null]`); parsing sidesteps that
- * entirely.
  */
 const flatten = (
   value: unknown,

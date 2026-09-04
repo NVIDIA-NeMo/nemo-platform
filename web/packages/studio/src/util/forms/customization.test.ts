@@ -274,12 +274,6 @@ describe('formToUnslothCreate', () => {
 });
 
 describe('GRPO defaults', () => {
-  /**
-   * Defaults come from the OpenAPI spec, so these assert what the backend declares rather
-   * than a value the form picked. #1501 previously overrode four of them here; those were
-   * removed deliberately — where the spec disagrees with what RL needs, the fix belongs in
-   * the backend so every client gets it, not in this form.
-   */
   const training = RL_GRPO_TRAINING_DEFAULTS as unknown as Record<string, unknown>;
 
   it('takes every value from the GRPO arm of the spec', () => {
@@ -295,12 +289,6 @@ describe('GRPO defaults', () => {
     ).toBe(0.05);
   });
 
-  /**
-   * The spec declares no default for these, so the form leaves them unset and the backend
-   * decides. num_prompts_per_step in particular used to be seeded at 8, which is what made
-   * the rollout batch a multiple of the global batch size by construction; that invariant
-   * is now the submitting user's to satisfy and the backend's to enforce.
-   */
   it.each(['val_check_interval', 'max_steps', 'seed', 'min_learning_rate'])(
     'leaves %s unset because the spec declares no default',
     (field) => {
