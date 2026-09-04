@@ -35,15 +35,15 @@ NeMo CLI:
 nemo auditor configs create quick-scan -w default -f ./quick-scan.json
 
 # Create a target inline
-nemo auditor targets create nemotron-3-nano-30b -w default -d '{
-  "type": "nim",
-  "model": "nvidia/nemotron-3-nano-30b-a3b",
+nemo auditor targets create nemotron-3.5-lightning-30b -w default -d '{
+  "type": "nim.NVOpenAIChat",
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
   "options": {"uri": "http://localhost:9000/v1"}
 }'
 
 # List, get, update, delete are all available
 nemo auditor configs list -w default
-nemo auditor targets get nemotron-3-nano-30b -w default
+nemo auditor targets get nemotron-3.5-lightning-30b -w default
 nemo auditor configs delete quick-scan -w default
 ```
 
@@ -78,16 +78,16 @@ cfg = client.auditor.configs.create(
 # Persist a target
 tgt = client.auditor.targets.create(
     workspace="default",
-    name="nemotron-3-nano-30b",
-    type="nim",
-    model="nvidia/nemotron-3-nano-30b-a3b",
+    name="nemotron-3.5-lightning-30b",
+    type="nim.NVOpenAIChat",
+    model="nvidia/nemotron-3.5-lightning-30b-a3b",
     options={"uri": "http://localhost:9000/v1"},
 )
 
 # Submit a K8s audit job and wait for it to finish.
 job = client.auditor.submit(
     config="quick-scan",
-    target="nemotron-3-nano-30b",
+    target="nemotron-3.5-lightning-30b",
     workspace="default",
 )
 print(f"Job submitted: {job.name}")
@@ -98,7 +98,7 @@ print(f"Reports: {artifacts_dir}")
 # Or run an audit locally (no jobs-service submission).
 result = client.auditor.run(
     config="quick-scan",       # workspace-qualified name strings ("ws/name") also work
-    target="nemotron-3-nano-30b",
+    target="nemotron-3.5-lightning-30b",
     workspace="default",
 )
 print(result["status"], result["returncode"])

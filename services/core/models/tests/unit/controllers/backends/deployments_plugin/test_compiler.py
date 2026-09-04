@@ -12,6 +12,7 @@ from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.compiler import _busybox_image, compile_model_deployment
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
+from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import pod_security_context_for_engine
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
 from nmp.core.models.controllers.backends.vllm_compiler import MODEL_STORE_PATH
 
@@ -54,6 +55,51 @@ def test_docker_weights_volume_requests_init_chmod() -> None:
     assert docker_cfg.init_image == _busybox_image(config)
 
 
+def test_docker_weighted_server_fixes_pulled_weight_permissions() -> None:
+    # The volume init chmod runs on an empty volume, so it cannot reach the 0600
+    # HF tree manifest the puller writes later. A server init container fixes the
+    # pulled contents before the non-root serving image checksums them.
+    config = DeploymentsPluginConfig()
+    compiled = compile_model_deployment(_resolved("nim", runtime=Runtime.DOCKER), config)
+    init = compiled.server_config.init_containers[0]
+    assert init.name == "weights-permissions-init"
+    assert init.image == _busybox_image(config)
+    assert init.command == ["sh", "-c", "chmod -R a+rX /model-store"]
+    # The server mounts the weights read-only; the fixup needs write access.
+    assert [(mount.name, mount.read_only) for mount in init.volume_mounts] == [(compiled.names.volume, False)]
+
+
+@pytest.mark.parametrize("engine", ["nim", "vllm"])
+def test_k8s_weighted_server_has_no_weights_permissions_init(engine: str) -> None:
+    # A pod securityContext pins one uid for both the puller Job and the server, so
+    # the manifest is already owned by the serving uid. Chmod-ing there would also
+    # fail, since the mount root is owned by the fs_group rather than run_as_user.
+    compiled = compile_model_deployment(_resolved(engine, runtime=Runtime.KUBERNETES), DeploymentsPluginConfig())
+    assert "weights-permissions-init" not in [init.name for init in compiled.server_config.init_containers]
+
+
+def test_k8s_generic_engine_fixes_pulled_weight_permissions() -> None:
+    # The generic engine defaults to the image's own user, so no pod securityContext
+    # is emitted and the root puller's 0600 manifest is unreadable by a non-root
+    # serving image -- the same split docker has.
+    config = DeploymentsPluginConfig()
+    resolved = _resolved("generic", runtime=Runtime.KUBERNETES)
+    resolved.view.image_name = "custom/server"
+    assert pod_security_context_for_engine("generic", resolved.view, config) is None
+    compiled = compile_model_deployment(resolved, config)
+    assert compiled.server_config.init_containers[0].name == "weights-permissions-init"
+
+
+def test_k8s_generic_engine_with_run_as_user_skips_permissions_init() -> None:
+    # An explicit run_as_user restores the shared-uid guarantee.
+    config = DeploymentsPluginConfig()
+    resolved = _resolved("generic", runtime=Runtime.KUBERNETES)
+    resolved.view.image_name = "custom/server"
+    resolved.view.run_as_user = 1000
+    compiled = compile_model_deployment(resolved, config)
+    assert "weights-permissions-init" not in [init.name for init in compiled.server_config.init_containers]
+
+
 def test_k8s_weights_volume_has_no_docker_init_chmod() -> None:
     # On k8s, pod securityContext/fs_group handles volume ownership, so no docker
     # init-chmod is emitted.
@@ -89,6 +135,8 @@ def test_vllm_server_command_image_args_and_gpu() -> None:
     puller_env = {item.name: item.value for item in puller.env}
     assert puller_env["HF_ENDPOINT"] == resolved.files_hf_url
     assert puller_env["HF_TOKEN"] == "service:models"
+    assert puller.command == ["hf"]
+    assert puller.args == ["download", "org/model", "--local-dir", "/model-store"]
     assert "nvidia.com/gpu" not in puller.resources.limits
 
 
