@@ -2441,22 +2441,30 @@ class TestUsableModelPairSelection:
         small = "default/nvidia-model-8b-instruct"
         client = MagicMock()
         attempts = {large: 0, small: 0}
+        clock = {"now": 0.0}
 
         def post(trailing_uri: str, *, workspace: str, body: dict) -> object:
             entity_id = str(body["model"])
             attempts[entity_id] += 1
-            if entity_id == large or attempts[entity_id] == 1:
+            if entity_id == large:
+                if attempts[large] == setup_commands._MODEL_ROUTE_MAX_RETRIES + 1:
+                    clock["now"] = setup_commands._MODEL_ROUTE_READY_SECONDS + 1
+                raise _probe_error(404)
+            if attempts[entity_id] == 1:
                 raise _probe_error(404)
             return MagicMock()
 
         client.with_options.return_value.inference.gateway.openai.post.side_effect = post
 
-        assert _select_usable_model_pair(client, "default", [large, small]) == ModelPair(
-            default=small,
-            fast=small,
-        )
+        with patch(f"{SETUP_MOD}.time.monotonic", side_effect=lambda: clock["now"]):
+            assert _select_usable_model_pair(client, "default", [large, small]) == ModelPair(
+                default=small,
+                fast=small,
+            )
+
         assert attempts[large] == setup_commands._MODEL_ROUTE_MAX_RETRIES + 1
         assert attempts[small] == 2
+        assert clock["now"] > setup_commands._MODEL_ROUTE_READY_SECONDS
 
     def test_stops_probing_after_the_time_budget(self):
         entity_ids = [f"default/model-{index}b-instruct" for index in range(1, 6)]
