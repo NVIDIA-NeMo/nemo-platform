@@ -101,6 +101,23 @@ router = APIRouter()
 _REFERENCE_COUNT_PAGE_SIZE = 1
 
 
+def _sanitize_for_log(value: object) -> str:
+    """Strip line breaks from a value before logging."""
+    return str(value).replace("\r", "").replace("\n", "")
+
+
+_HTTP_EXCEPTION_DETAIL = {
+    "content": {
+        "application/json": {
+            "schema": {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            }
+        }
+    }
+}
+
+
 class _ModelFilesetReference(EntityBase):
     """Minimal model projection used for fileset reference checks."""
 
@@ -424,8 +441,14 @@ async def retrieve_fileset(
     summary="Delete Fileset",
     status_code=HTTP_200_OK,
     responses={
-        HTTP_409_CONFLICT: {"description": "Fileset is referenced by a model or adapter entity"},
-        HTTP_503_SERVICE_UNAVAILABLE: {"description": "Fileset references could not be verified"},
+        HTTP_409_CONFLICT: {
+            "description": "Fileset is referenced by a model or adapter entity",
+            **_HTTP_EXCEPTION_DETAIL,
+        },
+        HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "Fileset references could not be verified",
+            **_HTTP_EXCEPTION_DETAIL,
+        },
     },
 )
 async def delete_fileset(
@@ -464,7 +487,12 @@ async def delete_fileset(
             name,
         )
     except EntityStoreError as exc:
-        logger.error("Cannot verify dependents for fileset '%s/%s': %s", workspace, name, exc)
+        logger.error(
+            "Cannot verify dependents for fileset '%s/%s': %s",
+            _sanitize_for_log(workspace),
+            _sanitize_for_log(name),
+            exc,
+        )
         raise HTTPException(
             HTTP_503_SERVICE_UNAVAILABLE,
             f"Cannot delete fileset '{workspace}/{name}' because its model and adapter references "
