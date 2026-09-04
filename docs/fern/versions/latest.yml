@@ -390,6 +390,7 @@ navigation:
                   - page: Volcano
                     path: ../../set-up/helm/volcano.mdx
                   - page: OpenSandbox
+                    slug: opensandbox
                     path: ../../set-up/helm/opensandbox.mdx
                   - page: OpenSandbox with Kata
                     slug: opensandbox-kata
