@@ -1839,7 +1839,9 @@ paths:
       description: 'Delete Fileset.
 
 
-        Permanently deletes a fileset from the platform.
+        Permanently deletes an unreferenced fileset from the platform.
+
+        Referencing model or adapter entities must be relinked or deleted first.
 
         Returns metadata about the deleted fileset.
 
@@ -1865,6 +1867,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FilesetOutput'
+        '409':
+          description: Fileset is referenced by a model or adapter entity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+        '503':
+          description: Fileset references could not be verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
         '422':
           description: Validation Error
           content:
