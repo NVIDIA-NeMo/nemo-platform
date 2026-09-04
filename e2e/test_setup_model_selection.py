@@ -4,16 +4,16 @@
 """E2E coverage for automatic model selection in ``nemo setup --auto``.
 
 Selection has to hold up on a cold start against a real platform: a provider is
-created, its models are discovered, their passthrough VirtualModels are
-published a moment later, and only a model that answers a live inference
-request may be persisted as the default.
+created, its models are discovered, the gateway 404s them until the controller
+publishes their routes, and only a model that answers a live inference request
+may be persisted as the default.
 
 Provider registration from environment credentials and writing the CLI config
 are the only stubbed steps; discovery, routing and probing go through the
 platform.
 """
 
-import threading
+import json
 import uuid
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -22,6 +22,9 @@ import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_ext.cli.commands import setup as setup_commands
 from nemo_platform_ext.cli.commands.setup import ModelPair
+from nmp.common.config import Configuration
+from nmp.core.inference_gateway.api.mock_provider import MOCK_RESPONSE_HEADER, MOCK_SERVED_MODELS_HEADER
+from nmp.core.inference_gateway.config import InferenceGatewayConfig
 from nmp.testing import MockProviderResponse, add_mock_provider
 
 pytestmark = [pytest.mark.timeout(300)]
@@ -48,29 +51,32 @@ def _chat_response(content: str) -> dict[str, Any]:
     }
 
 
-def _publish_route(sdk: NeMoPlatform, workspace: str, entity: str) -> None:
-    """Create the passthrough VirtualModel the gateway routes *entity* through."""
-    sdk.inference.virtual_models.create(
-        workspace=workspace,
-        name=entity,
-        default_model_entity=f"{workspace}/{entity}",
-        autoprovisioned=False,
-    )
+def _advertise_models_without_routes(sdk: NeMoPlatform, workspace: str, name: str, entities: list[str]) -> str:
+    """Create a mock provider that serves *entities* before their routes exist.
 
-
-def _serve_model_without_a_route(sdk: NeMoPlatform, workspace: str, provider: str, entities: list[str]) -> None:
-    """Advertise *entities* on *provider* without creating their VirtualModels.
-
-    This is the state discovery sees on a cold start: a provider reports the
-    models it serves before their passthrough routes are reconciled.
+    This is ``add_mock_provider`` without the passthrough VirtualModels it
+    creates on the caller's behalf, leaving them to the controller as in
+    production. ``MOCK_SERVED_MODELS_HEADER`` keeps the entities in the
+    provider's discovery response, so the reconciler preserves them.
     """
+    provider_name = f"{Configuration.get_service_config(InferenceGatewayConfig).mock_provider_prefix}{name}"
+    sdk.inference.providers.create(
+        workspace=workspace,
+        name=provider_name,
+        host_url="http://mock.local",
+        default_extra_headers={
+            MOCK_RESPONSE_HEADER: json.dumps(_chat_response("OK")),
+            MOCK_SERVED_MODELS_HEADER: json.dumps(entities),
+        },
+    )
     sdk.inference.providers.update_status(
-        name=provider,
+        name=provider_name,
         workspace=workspace,
         served_models=[
             {"model_entity_id": f"{workspace}/{entity}", "served_model_name": entity} for entity in entities
         ],
     )
+    return provider_name
 
 
 def _run_auto_setup(sdk: NeMoPlatform, workspace: str, provider_name: str) -> ModelPair | None:
@@ -128,29 +134,16 @@ def test_auto_setup_persists_a_default_the_account_can_serve(sdk: NeMoPlatform, 
 
 
 def test_auto_setup_waits_for_a_late_published_model_route(sdk: NeMoPlatform, workspace: str):
-    """A discovered model the gateway 404s becomes the default once its route exists."""
+    """Cold start: discovery reports a model before its route is published.
+
+    The gateway 404s the model until the controller creates its passthrough
+    VirtualModel, so probing has to retry before a default can be persisted.
+    """
     suffix = _unique_suffix()
     entity = f"nvidia-nemotron-nano-9b-{suffix}"
-    # Only the embedding model has a route up front, and it is filtered out of
-    # the candidates, so selection has to wait for the chat model's route.
-    embedding = f"nvidia-nv-embedqa-e5-{suffix}"
+    provider_name = _advertise_models_without_routes(sdk, workspace, f"late-route-{suffix}", [entity])
 
-    provider = add_mock_provider(
-        sdk,
-        workspace=workspace,
-        name=f"late-route-{suffix}",
-        mock_response_body=_chat_response("OK"),
-        served_models={embedding: embedding},
-        should_autoprovision_virtual_model=False,
-    )
-    _serve_model_without_a_route(sdk, workspace, provider.name, [embedding, entity])
-
-    publish_route = threading.Timer(2.0, _publish_route, args=(sdk, workspace, entity))
-    publish_route.start()
-    try:
-        saved = _run_auto_setup(sdk, workspace, provider.name)
-    finally:
-        publish_route.cancel()
+    saved = _run_auto_setup(sdk, workspace, provider_name)
 
     assert saved == ModelPair(default=f"{workspace}/{entity}", fast=f"{workspace}/{entity}")
 
