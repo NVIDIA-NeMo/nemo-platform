@@ -17,7 +17,7 @@ import {
   useSanityCheckResult,
   useSubmitSanityCheck,
 } from '@iron-swarm/components/useSanityCheck';
-import { useIronSwarmApplyMitigation } from '@iron-swarm/generated/api';
+import { useIronSwarmApplyMitigation, useIronSwarmGetManifest } from '@iron-swarm/generated/api';
 import { useNotify, useToast } from '@iron-swarm/host';
 import { ACCENT, tint } from '@iron-swarm/theme';
 import { AccordionSection, ConfirmationModal, getJobRefetchInterval } from '@nemo/common';
@@ -204,6 +204,12 @@ export const HardenPanel: FC<HardenPanelProps> = ({
   const [preview, setPreview] = useState<{ guardrails?: string }>();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const applyMitigation = useIronSwarmApplyMitigation();
+  // A bring-your-own manifest has no registry entity to adopt onto: its run carries the *manifest*
+  // name in `agent`, so an apply would target whatever agent happens to share that name.
+  const manifestQuery = useIronSwarmGetManifest(workspace, manifestId ?? '', {
+    query: { enabled: Boolean(manifestId) },
+  });
+  const isProjectSource = manifestQuery.data?.source_type === 'project';
 
   if (isLoading) {
     return (
@@ -319,10 +325,7 @@ export const HardenPanel: FC<HardenPanelProps> = ({
             sanity-check the selection, then apply to the agent.
           </Text>
           {/* Segmented coverage meter: one cell per defense, filled for the selected count. */}
-          <div
-            className="flex h-2 w-full gap-0.5"
-            aria-label={`${coverage}% of defenses selected`}
-          >
+          <div className="flex h-2 w-full gap-0.5" aria-label={`${coverage}% of defenses selected`}>
             {defenses.map((d, i) => (
               <div
                 key={d.id}
@@ -412,7 +415,11 @@ export const HardenPanel: FC<HardenPanelProps> = ({
       {preview?.guardrails && mitigations?.guardrails ? (
         <AccordionRoot multiple defaultValue={['preview']}>
           <AccordionSection value="preview" title="Composed guardrails (your selection)">
-            <ConfigDiff before={mitigations.guardrails.before} after={preview.guardrails} language="toml" />
+            <ConfigDiff
+              before={mitigations.guardrails.before}
+              after={preview.guardrails}
+              language="toml"
+            />
           </AccordionSection>
         </AccordionRoot>
       ) : null}
@@ -423,12 +430,18 @@ export const HardenPanel: FC<HardenPanelProps> = ({
           {report ? (
             <>
               <SanityCheckReport report={report} />
-              <Flex justify="end">
+              <Flex justify="end" align="center" gap="density-sm" className="min-w-0">
+                {isProjectSource ? (
+                  <Text kind="body/regular/sm" className="text-subtle">
+                    This manifest brings its own image, so there is no registered agent to update —
+                    copy the guardrails into your project instead.
+                  </Text>
+                ) : null}
                 <Button
                   kind="primary"
                   size="small"
                   onClick={() => setConfirmOpen(true)}
-                  disabled={!effectiveComposedGuardrails}
+                  disabled={!effectiveComposedGuardrails || isProjectSource}
                 >
                   Apply to Agent
                 </Button>

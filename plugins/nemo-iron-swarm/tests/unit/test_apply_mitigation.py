@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from nemo_agents_plugin.entities import Agent
 from nemo_iron_swarm_plugin.agent_resolver import strip_gateway_url
 from nemo_iron_swarm_plugin.api.v2 import runs as runs_module
-from nemo_iron_swarm_plugin.entities import IronSwarmRun
+from nemo_iron_swarm_plugin.entities import IronSwarmManifest, IronSwarmRun
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError, get_entity_client
 
 PREFIX = "/apis/iron-swarm/v2/workspaces/{workspace}"
@@ -122,3 +122,19 @@ def test_apply_mitigation_run_without_agent_is_409(client: TestClient, mock_enti
         json={"guardrails_toml": HARDENED_GUARDRAILS},
     )
     assert resp.status_code == 409, resp.text
+
+
+def test_apply_mitigation_byo_manifest_is_409(client: TestClient, mock_entity_client: AsyncMock) -> None:
+    # A project run stores its *manifest* name in `agent`, so the empty-agent guard passes and the
+    # lookup would otherwise adopt onto an unrelated agent that happens to share the name.
+    run = IronSwarmRun(name="run-1", workspace="default", agent="lc1", manifest_id="lc1")
+    manifest = IronSwarmManifest(name="lc1", workspace="default", source_type="project")
+    mock_entity_client.get = AsyncMock(side_effect=[run, manifest])
+
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/runs/run-1/apply-mitigation",
+        json={"guardrails_toml": HARDENED_GUARDRAILS},
+    )
+
+    assert resp.status_code == 409, resp.text
+    mock_entity_client.update.assert_not_called()
