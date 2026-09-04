@@ -178,3 +178,137 @@ export const useOptimizerUpdateInsight = <
     },
     queryClient
   );
+
+/**
+ * Insights analysis configs and analysis jobs.
+ *
+ * A run is triggered by creating an `analyze-job`, whose spec requires the
+ * default/fast Model Entity pair. That pair is only resolvable from the
+ * operator's CLI config, so it is captured on the agent's AnalysisConfig by
+ * `nemo insights analysis enable --agent <name>`. Studio therefore reads the
+ * stored config rather than trying to resolve models itself, and an agent with
+ * no config cannot be analyzed from the UI.
+ */
+
+export interface AnalysisConfig {
+  id?: string;
+  name: string;
+  agent: string;
+  enabled: boolean;
+  default_model: string;
+  fast_model: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface AnalyzeJobSpec {
+  agent: string;
+  default_model: string;
+  fast_model: string;
+  ethos?: string;
+  base_url?: string;
+  since?: string;
+  update_analysis_config?: boolean;
+}
+
+export interface CreateAnalysisJobRequest {
+  name?: string;
+  description?: string;
+  spec: AnalyzeJobSpec;
+}
+
+export interface AnalysisJob {
+  id?: string;
+  name: string;
+  workspace?: string;
+  spec: AnalyzeJobSpec;
+  status?: string;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+const insightsPath = (workspace: string, path: string) =>
+  `/apis/insights/v2/workspaces/${encodeURIComponent(String(workspace))}${path}`;
+
+export const insightsGetAnalysisConfig = (workspace: string, agent: string, signal?: AbortSignal) =>
+  customFetch<AnalysisConfig>({
+    url: insightsPath(workspace, `/analysis-configs/${encodeURIComponent(agent)}`),
+    method: 'GET',
+    signal,
+  });
+
+export const getInsightsGetAnalysisConfigQueryKey = (workspace: string, agent: string) =>
+  [insightsPath(workspace, `/analysis-configs/${encodeURIComponent(agent)}`)] as const;
+
+export const useInsightsGetAnalysisConfig = <TError = ErrorType<HTTPValidationError>>(
+  workspace: string,
+  agent: string,
+  options?: QueryOptions<Awaited<ReturnType<typeof insightsGetAnalysisConfig>>, TError>,
+  queryClient?: QueryClient
+): UseQueryResult<Awaited<ReturnType<typeof insightsGetAnalysisConfig>>, TError> =>
+  useQuery(
+    {
+      queryKey: getInsightsGetAnalysisConfigQueryKey(workspace, agent),
+      queryFn: ({ signal }) => insightsGetAnalysisConfig(workspace, agent, signal),
+      enabled: !!workspace && !!agent,
+      ...options?.query,
+    },
+    queryClient
+  );
+
+/**
+ * Enable periodic analysis and stamp the model pair onto the config, creating it if absent.
+ *
+ * This is the only write that can set the models — `PATCH` carries `enabled` alone — and it
+ * always forces `enabled: true`, so a save that leaves an agent disabled must follow it with
+ * {@link insightsDisableAnalysisConfig}.
+ */
+export const insightsEnableAnalysisConfig = (
+  workspace: string,
+  agent: string,
+  data: { default_model: string; fast_model: string }
+) =>
+  customFetch<AnalysisConfig>({
+    url: insightsPath(workspace, `/analysis-configs/${encodeURIComponent(agent)}/enable`),
+    method: 'POST',
+    data,
+  });
+
+export const insightsDisableAnalysisConfig = (workspace: string, agent: string) =>
+  customFetch<AnalysisConfig>({
+    url: insightsPath(workspace, `/analysis-configs/${encodeURIComponent(agent)}/disable`),
+    method: 'POST',
+  });
+
+export const insightsCreateAnalysisJob = (workspace: string, data: CreateAnalysisJobRequest) =>
+  customFetch<AnalysisJob>({
+    url: insightsPath(workspace, '/jobs/analyze-job'),
+    method: 'POST',
+    data,
+  });
+
+export const useInsightsCreateAnalysisJob = <
+  TError = ErrorType<HTTPValidationError>,
+  TContext = unknown,
+>(
+  options?: MutationOptions<
+    Awaited<ReturnType<typeof insightsCreateAnalysisJob>>,
+    { workspace: string; data: CreateAnalysisJobRequest },
+    TError,
+    TContext
+  >,
+  queryClient?: QueryClient
+): UseMutationResult<
+  Awaited<ReturnType<typeof insightsCreateAnalysisJob>>,
+  TError,
+  { workspace: string; data: CreateAnalysisJobRequest },
+  TContext
+> =>
+  useMutation(
+    {
+      mutationKey: ['insightsCreateAnalysisJob'],
+      mutationFn: ({ workspace, data }) => insightsCreateAnalysisJob(workspace, data),
+      ...options?.mutation,
+    },
+    queryClient
+  );
