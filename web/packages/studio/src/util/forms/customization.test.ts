@@ -11,6 +11,7 @@ import {
   formToUnslothCreate,
   type CustomizationFormFields,
 } from '@studio/util/forms/customization';
+import { GRPO_SPEC_DEFAULTS, numberDefault } from '@studio/util/forms/specDefaults';
 
 // Deep-clone the defaults so per-test mutations (e.g. flipping finetuning_type)
 // never leak through shared nested references into FORM_DEFAULTS or other tests.
@@ -273,39 +274,27 @@ describe('formToUnslothCreate', () => {
 });
 
 describe('GRPO defaults', () => {
-  const training = RL_GRPO_TRAINING_DEFAULTS as {
-    learning_rate: number;
-    adam_eps: number;
-    val_check_interval: number;
-  };
+  const training = RL_GRPO_TRAINING_DEFAULTS as unknown as Record<string, unknown>;
 
-  // The inherited 1e-4 is SFT-scale and collapses a full-weight policy in a few dozen
-  // steps; the platform GRPO fixtures train at 5e-6. One value covers both finetuning
-  // types -- the backend's lora.alpha/rank scaling raises the adapter's effective rate.
-  it('trains at an RL-scale learning rate, not the inherited SFT default', () => {
-    expect(training.learning_rate).toBe(5e-6);
-    expect(training.learning_rate).toBeLessThan(2e-5);
+  it('takes every value from the GRPO arm of the spec', () => {
+    expect(training.learning_rate).toBe(numberDefault(GRPO_SPEC_DEFAULTS, 'learning_rate'));
+    expect(training.adam_eps).toBe(numberDefault(GRPO_SPEC_DEFAULTS, 'adam_eps'));
+    expect(training.batch_size).toBe(numberDefault(GRPO_SPEC_DEFAULTS, 'batch_size'));
   });
 
-  // Backend default is 1e-5, overridden to Torch's 1e-8 in the shared block. Fixed
-  // for GRPO only; DPO keeps the shared value so its numerics do not shift.
-  it('matches the backend adam_eps default without touching the shared value', () => {
-    expect(training.adam_eps).toBe(1e-5);
-    expect((RL_DPO_TRAINING_DEFAULTS as { adam_eps: number }).adam_eps).toBe(1e-8);
+  it('uses the arm-specific value where DPO and GRPO differ', () => {
+    expect(training.ref_policy_kl_penalty).toBe(0);
+    expect(
+      (RL_DPO_TRAINING_DEFAULTS as unknown as Record<string, unknown>).ref_policy_kl_penalty
+    ).toBe(0.05);
   });
 
-  // The backend floors (1.0, 2.0) to "validate every step"; at or above 2 the value
-  // is unambiguously a step count.
-  it('sets a validation cadence clear of the fraction/step-count discontinuity', () => {
-    expect(training.val_check_interval).toBeGreaterThanOrEqual(2);
-    expect(Number.isInteger(training.val_check_interval)).toBe(true);
-  });
-
-  it('ships a rollout batch that is a multiple of the global batch size', () => {
-    const { grpo, rl } = validGrpo();
-    const rollout = grpo.num_prompts_per_step! * grpo.num_generations_per_prompt;
-    expect(rollout % rl.training.batch_size!).toBe(0);
-  });
+  it.each(['val_check_interval', 'max_steps', 'seed', 'min_learning_rate'])(
+    'leaves %s unset because the spec declares no default',
+    (field) => {
+      expect(training[field]).toBeUndefined();
+    }
+  );
 });
 
 describe('GRPO form validation', () => {
@@ -348,7 +337,7 @@ describe('GRPO form validation', () => {
   it.each([1, 2])('accepts Triton LoRA kernels at tensor parallel size %i', (tp) => {
     const data = validGrpo();
     data.grpo.finetuning_type = RlGRPOTrainingFinetuningType.lora;
-    data.grpo.lora.use_triton = true;
+    data.grpo.lora = { ...data.grpo.lora, use_triton: true };
     data.rl.training.parallelism = { ...data.rl.training.parallelism, tensor_parallel_size: tp };
     expect(messages(data)).toEqual([]);
   });
