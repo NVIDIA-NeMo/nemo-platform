@@ -10430,8 +10430,8 @@ nemo insights analysis enable [OPTIONS]
 **Options:**
 
 * `--agent`: Name of the agent to opt in to periodic analysis.
-* `--workspace`: Workspace the agent belongs to. [default: default]
-* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+* `--workspace`: Workspace to operate in. Resolution order: (1) this --workspace flag or NMP_WORKSPACE; (2) the active CLI context, including a global `nemo --context` and `nemo config set --workspace`; (3) the 'default' workspace. [env: NMP_WORKSPACE=]
+* `--base-url`: Base URL of the running NMP instance. Resolution order: (1) this --base-url flag or NMP_BASE_URL; (2) the active CLI context, including a global `nemo --base-url` / `--context` and `nemo config set --base-url`; (3) http://localhost:8080. [env: NMP_BASE_URL=]
 
 **Help:**
 
@@ -10450,8 +10450,8 @@ nemo insights analysis disable [OPTIONS]
 **Options:**
 
 * `--agent`: Name of the agent to opt out of periodic analysis.
-* `--workspace`: Workspace the agent belongs to. [default: default]
-* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+* `--workspace`: Workspace to operate in. Resolution order: (1) this --workspace flag or NMP_WORKSPACE; (2) the active CLI context, including a global `nemo --context` and `nemo config set --workspace`; (3) the 'default' workspace. [env: NMP_WORKSPACE=]
+* `--base-url`: Base URL of the running NMP instance. Resolution order: (1) this --base-url flag or NMP_BASE_URL; (2) the active CLI context, including a global `nemo --base-url` / `--context` and `nemo config set --base-url`; (3) http://localhost:8080. [env: NMP_BASE_URL=]
 
 **Help:**
 
@@ -10470,8 +10470,8 @@ nemo insights analysis status [OPTIONS]
 **Options:**
 
 * `--agent`: Optional agent name. Omit to list all analysis configs.
-* `--workspace`: Workspace to inspect. [default: default]
-* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+* `--workspace`: Workspace to operate in. Resolution order: (1) this --workspace flag or NMP_WORKSPACE; (2) the active CLI context, including a global `nemo --context` and `nemo config set --workspace`; (3) the 'default' workspace. [env: NMP_WORKSPACE=]
+* `--base-url`: Base URL of the running NMP instance. Resolution order: (1) this --base-url flag or NMP_BASE_URL; (2) the active CLI context, including a global `nemo --base-url` / `--context` and `nemo config set --base-url`; (3) http://localhost:8080. [env: NMP_BASE_URL=]
 
 **Help:**
 
@@ -10513,8 +10513,8 @@ nemo insights analysis-runs create [OPTIONS]
 **Options:**
 
 * `--agent`: Name of the agent whose telemetry should be analyzed.
-* `--workspace`: Workspace the agent belongs to. [default: default]
-* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+* `--workspace`: Workspace to operate in. Resolution order: (1) this --workspace flag or NMP_WORKSPACE; (2) the active CLI context, including a global `nemo --context` and `nemo config set --workspace`; (3) the 'default' workspace. [env: NMP_WORKSPACE=]
+* `--base-url`: Base URL of the running NMP instance. Resolution order: (1) this --base-url flag or NMP_BASE_URL; (2) the active CLI context, including a global `nemo --base-url` / `--context` and `nemo config set --base-url`; (3) http://localhost:8080. [env: NMP_BASE_URL=]
 * `--default-model`: Model Entity ref for analysis work. Default: the configured default model.
 * `--fast-model`: Model Entity ref for context summarization. Default: the configured fast model.
 * `--since`: ISO-8601 lower bound enforced on the analyst's trace/span reads.
@@ -10542,8 +10542,8 @@ nemo insights analysis-runs list [OPTIONS]
 **Options:**
 
 * `--agent`: Only list runs that analyzed this agent.
-* `--workspace`: Workspace to inspect. [default: default]
-* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+* `--workspace`: Workspace to operate in. Resolution order: (1) this --workspace flag or NMP_WORKSPACE; (2) the active CLI context, including a global `nemo --context` and `nemo config set --workspace`; (3) the 'default' workspace. [env: NMP_WORKSPACE=]
+* `--base-url`: Base URL of the running NMP instance. Resolution order: (1) this --base-url flag or NMP_BASE_URL; (2) the active CLI context, including a global `nemo --base-url` / `--context` and `nemo config set --base-url`; (3) http://localhost:8080. [env: NMP_BASE_URL=]
 * `--page <INTEGER>`: Page number (1-indexed). [default: 1]
 * `--page-size <INTEGER>`: Items per page. [default: 20]
 * `--sort`: Sort field; prefix with '-' for descending. [default: -created_at]
@@ -10571,8 +10571,8 @@ nemo insights analysis-runs get [OPTIONS] NAME
 
 **Options:**
 
-* `--workspace`: Workspace the run belongs to. [default: default]
-* `--base-url`: Base URL of the running NMP instance. [default: http://localhost:8080] [env: NMP_BASE_URL=]
+* `--workspace`: Workspace to operate in. Resolution order: (1) this --workspace flag or NMP_WORKSPACE; (2) the active CLI context, including a global `nemo --context` and `nemo config set --workspace`; (3) the 'default' workspace. [env: NMP_WORKSPACE=]
+* `--base-url`: Base URL of the running NMP instance. Resolution order: (1) this --base-url flag or NMP_BASE_URL; (2) the active CLI context, including a global `nemo --base-url` / `--context` and `nemo config set --base-url`; (3) http://localhost:8080. [env: NMP_BASE_URL=]
 * `--wait`: Poll until the run's backing job reaches a terminal state.
 * `--poll-timeout <FLOAT>`: How long --wait polls before giving up. [default: 900.0]
 * `--poll-interval <FLOAT>`: Seconds between --wait polls. [default: 5.0]
