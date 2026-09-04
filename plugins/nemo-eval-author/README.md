@@ -3,8 +3,9 @@
 
 # NeMo Eval Author
 
-Four skills that an agent reads to work on the evaluation suites in a user's own
-repository and to understand traces from NeMo Intake. This directory provides no
+Skills that an agent reads to work on the evaluation suites in a user's own
+repository, derive private environments from trace evidence, and understand
+traces from NeMo Intake. This directory provides no
 installed public package or service, so a customer points their agent at
 `skills/` and nothing gets installed.
 
@@ -34,6 +35,9 @@ group.
 | [`eval-author-discover`](skills/eval-author-discover/SKILL.md) | Sub-flow. Records whether a repository's Harbor evals are ready to run. |
 | [`eval-author-audit`](skills/eval-author-audit/SKILL.md) | Sub-flow. Validates an existing finite `audit.md` coverage denominator. |
 | [`eval-author-inspect-trace`](skills/eval-author-inspect-trace/SKILL.md) | Sub-flow. Not user-invocable. Explains one Intake trace after `eval-author` selects it. |
+| [`eval-author-task-create`](skills/eval-author-task-create/SKILL.md) | Sub-flow. Creates and proves one Harbor task from an actionable audit gap. |
+| [`eval-author-trace-environment`](skills/eval-author-trace-environment/SKILL.md) | Sub-flow. Converts one canonicalized trace into a private candidate, inventories ground truth and software constraints, and builds a reproducible Harbor task environment when supported. |
+| [`mlflow-to-atif`](skills/mlflow-to-atif/SKILL.md) | Utility. Normalizes bounded MLflow exports to canonical ATIF. |
 
 ## Where findings go
 
@@ -46,8 +50,14 @@ visible and worth committing: a teammate who reads it skips the discovery pass.
 exact read commands. Findings use `behavior`, `issue`, `recovery`, and
 `uncertainty` categories.
 
-The bundled scripts write no files. They report to stdout, and the skill tells
-the agent where to save. Trace inspection contains instructions only.
+`eval-author-trace-environment` creates one owner-private, gitignored workspace
+per task under `.eval-author/trace-environments/`. Each finalized workspace has
+a `candidate` or `no_candidate` summary and keeps restricted source evidence
+separate from its text-only scrubbed ATIF copy.
+
+Discovery scripts write no files and trace inspection contains instructions
+only. The authoring helpers report to stdout and write only their documented
+artifacts under `.eval-author/`.
 
 ## Why skills instead of an agent
 
@@ -80,3 +90,5 @@ contexts, authentication, transport, filters, pagination, and errors.
 - After `eval-author` selects it, follow
   [`eval-author-inspect-trace`](skills/eval-author-inspect-trace/SKILL.md) to
   explain one Intake trace.
+- Use [`eval-author-trace-environment`](skills/eval-author-trace-environment/SKILL.md)
+  to derive a private, evidence-backed environment from one trace.
