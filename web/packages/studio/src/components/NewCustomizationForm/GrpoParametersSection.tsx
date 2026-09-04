@@ -103,7 +103,7 @@ export const GrpoParametersSection = () => {
               slotLabel: 'Max Rollout Turns',
               slotInfo: 'Maximum agent turns per rollout. Single-turn environments use 1.',
             }}
-            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'overlong_filtering')}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'max_rollout_turns')}
             min={1}
             max={20}
             step={1}
@@ -167,7 +167,7 @@ export const GrpoParametersSection = () => {
                   slotInfo:
                     'Over-generate each step by this factor so dynamic sampling has candidates to filter. Only settable while dynamic sampling is on.',
                 }}
-                {...specSliderProps(GRPO_SPEC_DEFAULTS, 'use_dynamic_sampling')}
+                {...specSliderProps(GRPO_SPEC_DEFAULTS, 'batch_multiplier')}
                 min={1}
                 max={8}
                 step={0.1}
@@ -482,7 +482,7 @@ export const GrpoParametersSection = () => {
                       slotLabel: 'Min Learning Rate',
                       slotInfo: 'Floor the cosine schedule decays to. Keep it below the peak LR.',
                     }}
-                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'optimizer_type')}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'min_learning_rate')}
                     min={0}
                     max={1e-4}
                     step={1e-7}
@@ -491,7 +491,7 @@ export const GrpoParametersSection = () => {
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'rl.training.adam_beta1', control }}
                     formFieldProps={{ slotLabel: 'Adam β₁' }}
-                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'seed')}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'adam_beta1')}
                     min={0}
                     max={0.999}
                     step={0.001}
@@ -558,7 +558,7 @@ export const GrpoParametersSection = () => {
                       slotInfo:
                         'Number of best checkpoints to retain, ranked by mean validation reward — higher is better. Falls back to the latest checkpoint when the dataset ships no validation split.',
                     }}
-                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'val_at_end')}
+                    {...specSliderProps(GRPO_SPEC_DEFAULTS, 'keep_top_k')}
                     min={1}
                     max={10}
                     step={1}

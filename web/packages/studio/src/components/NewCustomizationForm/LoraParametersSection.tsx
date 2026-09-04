@@ -161,7 +161,7 @@ export const LoraParametersSection = () => {
         <ControlledSliderWithTextInput
           useControllerProps={{ name: 'unsloth.training.lora.alpha', control }}
           formFieldProps={{ slotLabel: 'Alpha' }}
-          {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'training_lora_use_triton')}
+          {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'training_lora_alpha')}
           min={1}
           max={512}
           step={1}

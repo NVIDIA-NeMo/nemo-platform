@@ -239,7 +239,7 @@ export const GrpoAdvancedSection = () => {
               slotLabel: 'Sequence Length Round',
               slotInfo: 'Round bucketed micro-batch sequence lengths up to a multiple of this.',
             }}
-            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'batching_strategy')}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'sequence_length_round')}
             min={1}
             max={1024}
             step={1}
@@ -277,7 +277,7 @@ export const GrpoAdvancedSection = () => {
               slotLabel: 'vLLM GPU Memory Utilization',
               slotInfo: 'Fraction of each GPU vLLM reserves for weights plus KV cache.',
             }}
-            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'vllm_tensor_parallel_size')}
+            {...specSliderProps(GRPO_SPEC_DEFAULTS, 'vllm_gpu_memory_utilization')}
             min={0.05}
             max={1}
             step={0.05}
