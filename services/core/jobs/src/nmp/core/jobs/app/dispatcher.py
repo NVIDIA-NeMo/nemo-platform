@@ -4,7 +4,7 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -80,6 +80,20 @@ operations_counter = create_counter(
     name="dispatch.operations.total",
     description="Total number of job dispatcher operations performed",
 )
+
+_DELETE_PAGE_SIZE = 1000
+_JOB_MUTATION_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
+EntityT = TypeVar("EntityT")
+
+
+def _get_job_mutation_lock(job_name: str, workspace: str) -> asyncio.Lock:
+    """Return the process-local lock for operations that can create or delete job records."""
+    key = (workspace, job_name)
+    lock = _JOB_MUTATION_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _JOB_MUTATION_LOCKS[key] = lock
+    return lock
 
 
 def create_platform_job_response(job: PlatformJob, attempt: PlatformJobAttempt) -> PlatformJobResponse:
@@ -442,6 +456,11 @@ class JobDispatcher:
         Returns:
             True if job was deleted, False if job was not found.
         """
+        async with _get_job_mutation_lock(job_name, workspace):
+            return await self._delete_job_locked(job_name, workspace)
+
+    async def _delete_job_locked(self, job_name: str, workspace: str) -> bool:
+        """Delete a terminal job while holding the per-job mutation lock."""
         try:
             job_entity = await self.store.get(PlatformJob, job_name, workspace=workspace)
         except EntityNotFoundError:
@@ -451,14 +470,13 @@ class JobDispatcher:
 
         try:
             # Get all attempts
-            attempts_response = await self.store.list(
+            attempts = await self._list_all_entities(
                 PlatformJobAttempt,
                 filter_obj={"job": job_entity.id},
-                page_size=1000,
                 workspace=workspace,
             )
             steps_by_attempt: dict[str, list[PlatformJobStep]] = {}
-            for attempt in attempts_response.data:
+            for attempt in attempts:
                 if not attempt.status.is_terminal():
                     raise JobDeletionConflictError(
                         f"Cannot delete job '{job_entity.name}' while it is "
@@ -466,15 +484,14 @@ class JobDispatcher:
                         "terminal state before deleting."
                     )
 
-                steps_response = await self.store.list(
+                steps = await self._list_all_entities(
                     PlatformJobStep,
                     filter_obj={"attempt_id": attempt.id},
-                    page_size=1000,
                     workspace=workspace,
                 )
-                steps_by_attempt[attempt.id] = steps_response.data
+                steps_by_attempt[attempt.id] = steps
 
-                for step in steps_response.data:
+                for step in steps:
                     if not step.status.is_terminal():
                         raise JobDeletionConflictError(
                             f"Cannot delete job '{job_entity.name}' while step '{step.name}' is "
@@ -483,27 +500,25 @@ class JobDispatcher:
                         )
 
             # Get all results
-            results_response = await self.store.list(
+            results = await self._list_all_entities(
                 PlatformJobResult,
                 filter_obj={"job": job_entity.id},
-                page_size=1000,
                 workspace=workspace,
             )
 
-            for result in results_response.data:
+            for result in results:
                 await self.store.delete_by_id(PlatformJobResult, result.id)
 
             # Delete steps and tasks for each attempt
-            for attempt in attempts_response.data:
+            for attempt in attempts:
                 for step in steps_by_attempt[attempt.id]:
                     # Delete tasks
-                    tasks_response = await self.store.list(
+                    tasks = await self._list_all_entities(
                         PlatformJobTask,
                         filter_obj={"step_id": step.id},
-                        page_size=1000,
                         workspace=workspace,
                     )
-                    for task in tasks_response.data:
+                    for task in tasks:
                         await self.store.delete_by_id(PlatformJobTask, task.id)
 
                     # Delete step
@@ -541,6 +556,29 @@ class JobDispatcher:
         except Exception as e:
             logger.exception("Error deleting job", extra=extras)
             raise e
+
+    async def _list_all_entities(
+        self,
+        entity_type: type[EntityT],
+        *,
+        filter_obj: dict[str, Any],
+        workspace: str,
+    ) -> list[EntityT]:
+        """Return every page for a filtered entity query."""
+        page = 1
+        entities: list[EntityT] = []
+        while True:
+            response = await self.store.list(
+                entity_type,
+                filter_obj=filter_obj,
+                page=page,
+                page_size=_DELETE_PAGE_SIZE,
+                workspace=workspace,
+            )
+            entities.extend(response.data)
+            if response.pagination.page >= response.pagination.total_pages:
+                return entities
+            page = response.pagination.page + 1
 
     # =========================================================================
     # Attempt Operations
@@ -879,6 +917,25 @@ class JobDispatcher:
         On EntityConflictError (e.g. reconciler updated the step concurrently), refetches
         the step and retries once if the requested transition is still valid.
         """
+        attempt = await self.get_attempt(step.attempt_id)
+        if attempt is None:
+            raise Exception(f"Attempt does not exist: {step.attempt_id}")
+        try:
+            job = await self.store.get_by_id(PlatformJob, attempt.job)
+        except EntityNotFoundError as exc:
+            raise Exception(f"Job does not exist: {attempt.job}") from exc
+
+        async with _get_job_mutation_lock(job.name, job.workspace):
+            return await self._update_job_status_from_step_locked(step, status, status_details, error_details)
+
+    async def _update_job_status_from_step_locked(
+        self,
+        step: PlatformJobStep,
+        status: PlatformJobStatus,
+        status_details: Optional[Dict[str, Any]] = None,
+        error_details: Optional[Dict[str, Any]] = None,
+    ) -> tuple[PlatformJobStep, PlatformJobAttempt]:
+        """Update a job from a step while holding the per-job mutation lock."""
         step_to_save = step
         saved_step: PlatformJobStep | None = None
         for attempt in range(2):
@@ -1104,7 +1161,11 @@ class JobDispatcher:
 
     async def rerun_job(self, job_name: str, workspace: str) -> PlatformJobResponse | None:
         """Re-run a job."""
+        async with _get_job_mutation_lock(job_name, workspace):
+            return await self._rerun_job_locked(job_name, workspace)
 
+    async def _rerun_job_locked(self, job_name: str, workspace: str) -> PlatformJobResponse | None:
+        """Re-run a terminal job while holding the per-job mutation lock."""
         try:
             job_entity = await self.store.get(PlatformJob, job_name, workspace=workspace)
         except EntityNotFoundError:

@@ -7,6 +7,7 @@ These tests verify that the JobDispatcher correctly manages job lifecycle operat
 (create, cancel, pause, resume, rerun, delete) using the EntityStore pattern.
 """
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,7 +21,7 @@ from nmp.common.entities import (
     EntityConflictError,
     EntityNotFoundError,
 )
-from nmp.common.jobs.schemas import PlatformJobStatus
+from nmp.common.jobs.schemas import FileStorageType, PlatformJobStatus
 from nmp.core.jobs.api.v2.jobs.schemas import (
     CreatePlatformJobRequest,
     PlatformJobResponse,
@@ -113,7 +114,7 @@ async def create_test_job_data(
         workspace=DEFAULT_WORKSPACE,
         job=saved_job.id,
         artifact_url="default/test-fileset#artifact",
-        artifact_storage_type="fileset",
+        artifact_storage_type=FileStorageType.FILESET,
     )
     saved_result = await store.add(result)
 
@@ -214,6 +215,118 @@ async def test_delete_job_non_terminal_job_raises_without_deleting_data(
     assert await count_entities(mock_store, PlatformJobTask, {"step_id": step_id}) == 1
     assert await count_entities(mock_store, PlatformJobResult, {"job": job_id}) == 1
     _mock_files_client.delete_fileset.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_job_deletes_related_entities_across_all_pages(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Deleting a terminal job visits every attempt, step, task, and result page."""
+    from nmp.core.jobs.app import dispatcher as dispatcher_module
+
+    monkeypatch.setattr(dispatcher_module, "_DELETE_PAGE_SIZE", 1)
+
+    job_id, job_name, attempt_id, step_id, task_id, result_id = await create_test_job_data(
+        mock_store, "paginated-delete-test-job"
+    )
+    job = await mock_store.get_by_id(PlatformJob, job_id)
+
+    second_attempt = await mock_store.add(
+        PlatformJobAttempt(
+            name="attempt-2",
+            workspace=DEFAULT_WORKSPACE,
+            job=job.id,
+            seq=2,
+            status=PlatformJobStatus.COMPLETED,
+            spec={},
+            platform_spec=job.platform_spec,
+        )
+    )
+    second_step = await mock_store.add(
+        PlatformJobStep(
+            name="step-2",
+            workspace=DEFAULT_WORKSPACE,
+            attempt_id=second_attempt.id,
+            status=PlatformJobStatus.COMPLETED,
+        )
+    )
+    second_task = await mock_store.add(
+        PlatformJobTask(
+            name="task-2",
+            workspace=DEFAULT_WORKSPACE,
+            step_id=second_step.id,
+            status=PlatformJobStatus.COMPLETED,
+        )
+    )
+    second_result = await mock_store.add(
+        PlatformJobResult(
+            name="result-2",
+            workspace=DEFAULT_WORKSPACE,
+            job=job.id,
+            artifact_url="default/test-fileset#artifact-2",
+            artifact_storage_type=FileStorageType.FILESET,
+        )
+    )
+
+    deleted = await mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE)
+
+    assert deleted is True
+    for entity_type, entity_id in (
+        (PlatformJob, job_id),
+        (PlatformJobAttempt, attempt_id),
+        (PlatformJobAttempt, second_attempt.id),
+        (PlatformJobStep, step_id),
+        (PlatformJobStep, second_step.id),
+        (PlatformJobTask, task_id),
+        (PlatformJobTask, second_task.id),
+        (PlatformJobResult, result_id),
+        (PlatformJobResult, second_result.id),
+    ):
+        with pytest.raises(EntityNotFoundError):
+            await mock_store.get_by_id(entity_type, entity_id)
+
+
+@pytest.mark.asyncio
+async def test_delete_job_serializes_with_rerun_job(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+    mock_nmp_client,
+):
+    """A rerun request cannot create a new attempt while deletion is cleaning up."""
+    _, job_name, _, _, _, _ = await create_test_job_data(mock_store, "delete-rerun-lock-test-job")
+    other_dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
+
+    delete_started = asyncio.Event()
+    allow_delete = asyncio.Event()
+    original_delete_by_id = mock_store.delete_by_id
+
+    async def blocking_delete_by_id(entity_type, entity_id):
+        if entity_type is PlatformJobResult and not delete_started.is_set():
+            delete_started.set()
+            await allow_delete.wait()
+        return await original_delete_by_id(entity_type, entity_id)
+
+    with patch.object(mock_store, "delete_by_id", side_effect=blocking_delete_by_id):
+        delete_task = asyncio.create_task(mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE))
+        rerun_task = None
+        try:
+            await asyncio.wait_for(delete_started.wait(), timeout=1.0)
+
+            rerun_task = asyncio.create_task(other_dispatcher.rerun_job(job_name, DEFAULT_WORKSPACE))
+            await asyncio.sleep(0.05)
+            assert not rerun_task.done()
+
+            allow_delete.set()
+            assert await delete_task is True
+            assert await rerun_task is None
+        finally:
+            allow_delete.set()
+            if rerun_task is not None:
+                await asyncio.gather(delete_task, rerun_task, return_exceptions=True)
+            else:
+                await asyncio.gather(delete_task, return_exceptions=True)
 
 
 @pytest.mark.asyncio
