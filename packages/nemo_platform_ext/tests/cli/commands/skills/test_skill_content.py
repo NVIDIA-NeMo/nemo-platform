@@ -156,13 +156,17 @@ class TestLoadPlatformSkills:
         skill = load_skills()["nemo-build-agent"]
         assert skill.source_dir is not None
         packaging = (skill.source_dir / "references" / "packaging.md").read_text()
-        create_command, deploy_command = packaging.split(".venv/bin/nemo agents deploy", maxsplit=1)
+        create_command, deployments = packaging.split(".venv/bin/nemo agents deploy", maxsplit=1)
+        selected_environment, no_environment = deployments.split("If no AgentEnvironment was selected", maxsplit=1)
 
+        assert packaging.count(".venv/bin/nemo agents deploy") == 2
         assert "If an AgentEnvironment was selected" in packaging
-        assert "otherwise omit both that variable and option" in packaging
         assert '--workspace "$WORKSPACE"' in create_command
-        assert '--workspace "$WORKSPACE"' in deploy_command
-        assert '--environment "$AGENT_ENVIRONMENT"' in deploy_command
+        assert '--workspace "$WORKSPACE"' in selected_environment
+        assert '--environment "$AGENT_ENVIRONMENT"' in selected_environment
+        assert "AGENT_ENVIRONMENT=" not in no_environment
+        assert "--environment" not in no_environment
+        assert '--workspace "$WORKSPACE"' in no_environment
 
     def test_model_selection_benchmark_cache_is_packaged(self):
         skill = load_skills()["nemo-model-selection"]
