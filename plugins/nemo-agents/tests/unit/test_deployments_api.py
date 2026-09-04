@@ -119,7 +119,7 @@ class TestCreateDeployment:
         assert "functions" not in created_deployment.config
         assert "workflow" not in created_deployment.config
 
-    def test_create_snapshots_image_entrypoint_mode(self) -> None:
+    def test_create_snapshots_image_entrypoint_mode(self, container_deployments_enabled: None) -> None:
         mock_entity_client = AsyncMock()
         mock_entity_client.get = AsyncMock(return_value=_make_agent())
 
@@ -148,7 +148,9 @@ class TestCreateDeployment:
         assert created_deployment.image == "hand-built-agent:latest"
         assert created_deployment.use_image_entrypoint is True
 
-    def test_create_rejects_a_mode_the_executor_will_not_honour(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_create_rejects_a_mode_the_executor_will_not_honour(
+        self, monkeypatch: pytest.MonkeyPatch, container_deployments_enabled: None
+    ) -> None:
         from nemo_deployments_plugin.config import DeploymentsConfig, ExecutorConfigEntry
 
         # A standalone config: DeploymentsConfig.get() is a cached singleton, and
@@ -177,6 +179,45 @@ class TestCreateDeployment:
         assert "runs on 'docker'" in resp.json()["detail"]
         # The controller would have failed this on reconcile; nothing should persist.
         mock_entity_client.create.assert_not_called()
+
+    def test_create_refuses_container_modes_when_the_platform_disables_them(self) -> None:
+        # No container_deployments_enabled fixture: this is the default.
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={
+                "agent": "fabric-agent",
+                "name": "fabric-dep",
+                "deployment_mode": "docker",
+                "image": "registry.example/agent:1.0",
+            },
+        )
+
+        assert resp.status_code == 400
+        assert "container_deployments_enabled" in resp.json()["detail"]
+        mock_entity_client.create.assert_not_called()
+
+    def test_create_still_allows_subprocess_when_container_modes_are_disabled(self) -> None:
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={"agent": "fabric-agent", "name": "fabric-dep", "deployment_mode": "subprocess"},
+        )
+
+        assert resp.status_code == 201
 
     def test_create_rejects_image_entrypoint_for_subprocess(self) -> None:
         mock_entity_client = AsyncMock()
