@@ -186,6 +186,40 @@ set NEMO_AGENTS_ALLOW_UNPUBLISHED_CONTRACT_VERSION=1 if your index serves this
 version.
 ```
 
+To package from a checkout, build a wheel and point `NEMO_AGENTS_WHEEL` at it.
+The image installs that wheel instead of resolving the pin, so the version never
+has to be one an index can serve:
+
+```bash
+uv build --package nemo-platform --wheel --out-dir dist && \
+NEMO_AGENTS_WHEEL=LATEST nemo agents package \
+  --agent plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml \
+  --tag calculator-agent:local
+```
+
+`LATEST` resolves to the newest wheel in the checkout's `dist`, so the variable
+survives the rebuild each commit forces — the version carries the commit, so a
+wheel built before your last commit no longer describes your tree. An absolute
+path still works and takes precedence, so a file actually named `LATEST` is
+never mistaken for the sentinel. If the wheel's version differs from the one
+this host runs, the build says so and continues: the wheel is installed instead
+of the pin, so the pin never has to resolve.
+
+It is an environment variable rather than a flag because packaging also runs as
+a platform job, and a flag would only ever reach the CLI. The subprocess job
+inherits it, so exporting it before `nemo services run` covers Studio-triggered
+builds too:
+
+```bash
+export NEMO_AGENTS_WHEEL=LATEST
+uv run nemo services run --service-group all --controllers jobs --port 8080
+```
+
+Packaging copies the wheel into the build context for the duration of the build
+and removes it afterward. It does not overwrite an existing file with that name.
+It applies to Fabric packaging only — NAT images install the packaged project
+itself.
+
 Supplying your own `--template` also skips the check, since a custom template
 need not pin the contract version at all.
 
