@@ -225,9 +225,9 @@ class GymRunnerTarget(BaseModel):
         try:
             _, _, file_path = parse_fileset_ref(value.root, workspace_fallback="_validation")
         except FilesetPathError as exc:
-            raise ValueError(f"Invalid environment FileSet reference: {value.root!r}") from exc
+            raise ValueError(f"invalid environment FileSet reference: {value.root!r}") from exc
         if file_path:
-            raise ValueError("Environment FileSet references must not include a file fragment")
+            raise ValueError("environment FileSet references must not include a file fragment")
         return value
 
     @model_validator(mode="after")

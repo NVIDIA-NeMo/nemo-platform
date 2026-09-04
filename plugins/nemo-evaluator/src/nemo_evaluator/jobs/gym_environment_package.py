@@ -58,14 +58,14 @@ class EnvironmentMetadata(BaseModel):
 def _validate_relative_config_path(value: str) -> str:
     """Reject absolute, escaped, or traversing config paths before any filesystem access."""
     if not value or value != value.strip():
-        raise ValueError("Config paths must be non-empty and cannot have surrounding whitespace")
+        raise ValueError("config paths must be non-empty and cannot have surrounding whitespace")
     if "\\" in value:
-        raise ValueError("Config paths must use POSIX '/' separators")
+        raise ValueError("config paths must use POSIX '/' separators")
     path = PurePosixPath(value)
     if path.is_absolute():
-        raise ValueError("Config paths must be relative to the environment root")
+        raise ValueError("config paths must be relative to the environment root")
     if path == PurePosixPath(".") or ".." in path.parts:
-        raise ValueError("Config paths cannot contain '.' or '..' traversal")
+        raise ValueError("config paths cannot contain '.' or '..' traversal")
 
     return value
 
@@ -84,7 +84,7 @@ class _ManifestBase(BaseModel):
         """Normalize relative config paths and reject duplicates."""
         validated = tuple(_validate_relative_config_path(value) for value in values)
         if len(set(validated)) != len(validated):
-            raise ValueError("The `config_paths` field cannot contain duplicates")
+            raise ValueError("config_paths cannot contain duplicates")
         return validated
 
 
@@ -100,7 +100,7 @@ class NativeV1Manifest(_ManifestBase):
         allowed = (f"{CUSTOM_AGENT_SUBDIR}/", f"{CUSTOM_RESOURCES_SERVER_SUBDIR}/")
         for value in values:
             if not value.startswith(allowed):
-                raise ValueError(f"Native-v1 config_paths must be under {allowed}: {value!r}")
+                raise ValueError(f"native-v1 config_paths must be under {allowed}: {value!r}")
         return values
 
 
@@ -142,7 +142,7 @@ def validate_environment_manifest_against_listing(
     customer_model_files = sorted(path for path in entries if path.startswith(f"{OPERATOR_MODEL_SUBDIR}/"))
     if customer_model_files:
         raise GymEnvironmentPackageError(
-            f"Customer-provided {OPERATOR_MODEL_SUBDIR} are not supported; model configuration is operator-owned: "
+            f"customer-provided {OPERATOR_MODEL_SUBDIR} are not supported; model configuration is operator-owned: "
             f"{', '.join(customer_model_files)}"
         )
 
@@ -151,7 +151,7 @@ def validate_environment_manifest_against_listing(
     prompt_files = sorted(path for path in entries if path.endswith(".jsonl"))
     if prompt_files:
         raise GymEnvironmentPackageError(
-            "Prompt JSONL must not live in an environment package: "
+            "prompt JSONL must not live in an environment package: "
             f"{', '.join(prompt_files)}; use a separate dataset FileSet"
         )
 
@@ -159,7 +159,7 @@ def validate_environment_manifest_against_listing(
     missing_configs = sorted(path for path in manifest.config_paths if path not in entries)
     if missing_configs:
         raise GymEnvironmentPackageError(
-            f"The `config_paths` field references files that are not in the package: {', '.join(missing_configs)}"
+            f"config_paths reference files that are not in the package: {', '.join(missing_configs)}"
         )
 
     if not isinstance(manifest, WheelsV1Manifest):
@@ -171,15 +171,14 @@ def validate_environment_manifest_against_listing(
     nested_entries = [path for path in wheel_entries if "/" in path.removeprefix(f"{WHEELS_V1_SUBDIR}/")]
     if nested_entries:
         raise GymEnvironmentPackageError(
-            f"The {WHEELS_V1_SUBDIR}/ directory must be flat; nested entries are not supported: "
-            f"{', '.join(nested_entries)}"
+            f"{WHEELS_V1_SUBDIR}/ must be flat; nested entries are not supported: {', '.join(nested_entries)}"
         )
     if not wheel_entries:
         raise GymEnvironmentPackageError(
-            f"A {EnvironmentFormat.WHEELS_V1.value} package installs environment dependencies from a non-empty "
+            f"{EnvironmentFormat.WHEELS_V1.value} installs environment dependencies from a non-empty "
             f"{WHEELS_V1_SUBDIR}/ directory"
         )
 
     non_wheels = [path for path in wheel_entries if not path.endswith(".whl")]
     if non_wheels:
-        raise GymEnvironmentPackageError(f"Non-wheel files in {WHEELS_V1_SUBDIR}/: {', '.join(non_wheels)}")
+        raise GymEnvironmentPackageError(f"non-wheel files in {WHEELS_V1_SUBDIR}/: {', '.join(non_wheels)}")

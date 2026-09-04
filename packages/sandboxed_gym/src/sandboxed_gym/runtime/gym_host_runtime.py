@@ -165,7 +165,7 @@ def _load_runtime_environment_package(
     """Load a mounted package while preserving manifest-free bundled environments."""
     if not environment_path:
         if required:
-            raise RuntimeError("A Gym environment package is required, but NMP_ENVIRONMENT_PATH is empty")
+            raise RuntimeError("a Gym environment package is required, but NMP_ENVIRONMENT_PATH is empty")
         return None
 
     manifest_path = os.path.join(environment_path, ENVIRONMENT_MANIFEST_FILENAME)
@@ -177,7 +177,7 @@ def _load_runtime_environment_package(
     try:
         package = load_environment_package(environment_path)
     except EnvironmentPackageError as exc:
-        raise RuntimeError(f"Invalid Gym environment package at {environment_path}: {exc}") from exc
+        raise RuntimeError(f"invalid Gym environment package at {environment_path}: {exc}") from exc
     return package
 
 

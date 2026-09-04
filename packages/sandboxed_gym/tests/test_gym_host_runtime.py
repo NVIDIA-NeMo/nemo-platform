@@ -6,6 +6,7 @@ import socket
 import threading
 from http.server import HTTPServer
 from types import ModuleType
+from typing import Any, cast
 from unittest.mock import MagicMock
 from urllib.parse import urlsplit
 
@@ -451,7 +452,7 @@ def test_wheels_v1_with_no_wheels_directory_raises(tmp_path):
     # Declaring wheels-v1 without its required wheelhouse indicates an incomplete bundle.
     _write_manifest(tmp_path, format="wheels-v1")
 
-    with pytest.raises(RuntimeError, match="Invalid Gym environment package"):
+    with pytest.raises(RuntimeError, match="invalid Gym environment package"):
         runtime._load_runtime_environment_package(str(tmp_path), required=True)
 
 
@@ -571,7 +572,8 @@ def test_bootstrap_composes_a_wheels_package_like_native_v1(tmp_path, monkeypatc
 
     runtime.bootstrap_gym_host()
 
-    composed = captured["config"]["initial_global_config_dict"]
+    config = cast(dict[str, Any], captured["config"])
+    composed = cast(dict[str, Any], config["initial_global_config_dict"])
     assert composed["config_paths"] == [
         *[str(path) for path in package.config_paths],
         model_config,

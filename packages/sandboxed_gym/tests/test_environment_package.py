@@ -170,7 +170,7 @@ def test_rejects_native_config_symlink_escape(tmp_path: Path) -> None:
     config.symlink_to(outside)
     _write_manifest(tmp_path, _complete_manifest("native-v1", config_path))
 
-    with pytest.raises(EnvironmentPackageError, match="Config symlinks are not allowed"):
+    with pytest.raises(EnvironmentPackageError, match="config symlinks are not allowed"):
         load_environment_package(tmp_path)
 
 
@@ -182,7 +182,7 @@ def test_rejects_native_config_symlink_within_root(tmp_path: Path) -> None:
     (tmp_path / alias_path).symlink_to(target)
     _write_manifest(tmp_path, _complete_manifest("native-v1", alias_path))
 
-    with pytest.raises(EnvironmentPackageError, match="Config symlinks are not allowed"):
+    with pytest.raises(EnvironmentPackageError, match="config symlinks are not allowed"):
         load_environment_package(tmp_path)
 
 
@@ -195,7 +195,7 @@ def test_rejects_wheelhouse_symlink_escape(tmp_path: Path) -> None:
     _write_config(tmp_path, config_path)
     _write_manifest(tmp_path, _complete_manifest("wheels-v1", config_path))
 
-    with pytest.raises(EnvironmentPackageError, match="Wheelhouse symlinks are not allowed"):
+    with pytest.raises(EnvironmentPackageError, match="wheelhouse symlinks are not allowed"):
         load_environment_package(tmp_path)
 
 
@@ -209,7 +209,7 @@ def test_rejects_wheel_file_symlink(tmp_path: Path) -> None:
     outside.write_bytes(b"fixture")
     (wheels / "dependency-1.0-py3-none-any.whl").symlink_to(outside)
 
-    with pytest.raises(EnvironmentPackageError, match="Wheel symlinks are not allowed"):
+    with pytest.raises(EnvironmentPackageError, match="wheel symlinks are not allowed"):
         load_environment_package(tmp_path)
 
 
