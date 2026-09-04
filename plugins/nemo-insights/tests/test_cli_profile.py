@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -48,36 +48,6 @@ def restore_profile_env() -> Iterator[None]:
             value = original[key]
             if value is not None:
                 os.environ[key] = value
-
-
-def write_nmp_config(path: Path, base_url: str | None) -> Path:
-    """Write a config file with one context, or none when base_url is None."""
-    if base_url is None:
-        path.write_text("{}\n", encoding="utf-8")
-        return path
-    path.write_text(
-        "current_context: test\n"
-        "contexts:\n"
-        "  - name: test\n    cluster: test-cluster\n    user: test-user\n    workspace: default\n"
-        "clusters:\n"
-        f"  - name: test-cluster\n    base_url: {base_url}\n"
-        "users:\n"
-        "  - name: test-user\n    type: oauth\n    token: test-token\n",
-        encoding="utf-8",
-    )
-    return path
-
-
-@pytest.fixture(autouse=True)
-def context_free_nmp_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Resolve base URLs against a context-free config by default.
-
-    Base-URL resolution falls back to the active ``nemo config`` context, so
-    without this the developer's own ``~/.config/nmp/config.yaml`` would decide
-    what every no-URL-given case here sees.
-    """
-    config = write_nmp_config(tmp_path_factory.mktemp("nmp-config") / "config.yaml", None)
-    monkeypatch.setenv("NMP_CONFIG_FILE", str(config))
 
 
 @pytest.fixture(autouse=True)
@@ -362,7 +332,7 @@ def test_doctor_resolves_base_url_after_profile_env_loading(
 def test_doctor_falls_back_to_the_active_context_not_localhost(
     app: typer.Typer,
     profile_tree: Path,
-    tmp_path: Path,
+    use_nmp_config: Callable[..., Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With no flag and no NMP_BASE_URL, follow the same context `nemo` does.
@@ -383,9 +353,7 @@ def test_doctor_falls_back_to_the_active_context_not_localhost(
             workspace_ok=record_workspace_probe,
         ),
     )
-    config = write_nmp_config(tmp_path / "config.yaml", "https://cluster.example")
-    monkeypatch.setenv("NMP_CONFIG_FILE", str(config))
-    monkeypatch.delenv("NMP_BASE_URL", raising=False)
+    use_nmp_config(base_url="https://cluster.example")
     monkeypatch.chdir(profile_tree)
 
     result = runner.invoke(app, ["doctor"])
