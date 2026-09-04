@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 import httpx
 import typer
 import yaml as _yaml
-from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
+from nemo_platform import APIConnectionError, APIStatusError, APITimeoutError, NeMoPlatform
 from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.secrets.client import SecretsClient
@@ -249,11 +249,14 @@ _KEY_REJECTED_STATUS_CODES = (401, 403)
 _TERMINAL_PROBE_STATUS_CODES = (404, 405, 410)
 _KEY_REJECTED_MESSAGE = "API key validation failed. The provider rejected the credentials."
 
-# Catalog listing is not entitlement-scoped, so a candidate is only trusted
-# after a real chat request. The largest names are often gated, so the budget
-# has to absorb a run of 404s at the head of the list.
+# Catalog listing is not entitlement-scoped; only a successful chat request counts.
 _MODEL_PROBE_TIMEOUT = 20.0
 _MODEL_PROBE_MAX_ATTEMPTS = 8
+_MODEL_PROBE_BUDGET_SECONDS = 90.0
+# Gateway 404s until the model's VirtualModel exists; retries are shared and capped.
+_MODEL_ROUTE_READY_SECONDS = 10.0
+_MODEL_ROUTE_RETRY_INTERVAL = 1.0
+_MODEL_ROUTE_MAX_RETRIES = 10
 
 _MODEL_DISCOVERY_ROUND_SECONDS = 30
 _MODEL_DISCOVERY_MAX_ROUNDS = 2
@@ -859,32 +862,47 @@ def _order_candidates_by_size(entity_ids: list[str], *, largest_first: bool) -> 
     return sorted(entity_ids, key=sort_key)
 
 
-def _probe_model_entity(client: NeMoPlatform, workspace: str, entity_id: str) -> bool:
+def _probe_model_entity(
+    client: NeMoPlatform, workspace: str, entity_id: str, route_ready_deadline: float = 0.0
+) -> bool:
     """Return True when a short chat request against *entity_id* succeeds.
 
-    Non-2xx responses (including wrapped upstream 404s) skip the candidate.
-    Connection failures are re-raised so the caller can stop probing.
+    Retries 404s until *route_ready_deadline*; timeouts skip; connection errors raise.
     """
-    try:
-        client.inference.gateway.openai.post(
-            "v1/chat/completions",
-            workspace=workspace,
-            body={
-                "model": entity_id,
-                "messages": [{"role": "user", "content": "Respond with 'OK'"}],
-                "max_tokens": 16,
-            },
-        )
-    except APIConnectionError:
-        raise
-    except APIStatusError as exc:
-        console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} (HTTP {exc.status_code})")
-        return False
-    except Exception as exc:
-        logger.debug("Model probe for '%s' failed", entity_id, exc_info=True)
-        console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} ({exc})")
-        return False
-    return True
+    retries = 0
+    while True:
+        try:
+            client.inference.gateway.openai.post(
+                "v1/chat/completions",
+                workspace=workspace,
+                body={
+                    "model": entity_id,
+                    "messages": [{"role": "user", "content": "Respond with 'OK'"}],
+                    "max_tokens": 16,
+                },
+            )
+        except APITimeoutError:
+            logger.debug("Model probe for '%s' timed out", entity_id, exc_info=True)
+            console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} (timed out)")
+            return False
+        except APIConnectionError:
+            raise
+        except APIStatusError as exc:
+            if (
+                exc.status_code == 404
+                and retries < _MODEL_ROUTE_MAX_RETRIES
+                and time.monotonic() < route_ready_deadline
+            ):
+                retries += 1
+                _pause(_MODEL_ROUTE_RETRY_INTERVAL)
+                continue
+            console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} (HTTP {exc.status_code})")
+            return False
+        except Exception as exc:
+            logger.debug("Model probe for '%s' failed", entity_id, exc_info=True)
+            console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} ({exc})")
+            return False
+        return True
 
 
 def _select_usable_model_pair(client: NeMoPlatform, workspace: str, entity_ids: list[str]) -> ModelPair | None:
@@ -899,15 +917,18 @@ def _select_usable_model_pair(client: NeMoPlatform, workspace: str, entity_ids: 
 
     usable: dict[str, bool] = {}
     probe_client = client.with_options(max_retries=0, timeout=_MODEL_PROBE_TIMEOUT)
+    started = time.monotonic()
+    deadline = started + _MODEL_PROBE_BUDGET_SECONDS
+    route_ready_deadline = started + _MODEL_ROUTE_READY_SECONDS
 
     def first_usable(ordered: list[str]) -> str | None:
         attempts = 0
         for entity_id in ordered:
             if entity_id not in usable:
-                if attempts >= _MODEL_PROBE_MAX_ATTEMPTS:
+                if attempts >= _MODEL_PROBE_MAX_ATTEMPTS or time.monotonic() >= deadline:
                     return None
                 attempts += 1
-                usable[entity_id] = _probe_model_entity(probe_client, workspace, entity_id)
+                usable[entity_id] = _probe_model_entity(probe_client, workspace, entity_id, route_ready_deadline)
             if usable[entity_id]:
                 return entity_id
         return None

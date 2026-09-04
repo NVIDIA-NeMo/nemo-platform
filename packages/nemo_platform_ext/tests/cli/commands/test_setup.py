@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
@@ -18,7 +19,7 @@ import pytest
 import typer
 from click.core import ParameterSource
 from click.exceptions import Exit as ClickExit
-from nemo_platform import APIConnectionError, APIStatusError
+from nemo_platform import APIConnectionError, APIStatusError, APITimeoutError
 from nemo_platform.resources.inference.providers import ProvidersResource
 from nemo_platform_ext.cli.commands.setup import (
     _AGENT_API_READINESS_POLL_INTERVAL,
@@ -2269,6 +2270,31 @@ class TestModelProbe:
 
         assert _probe_model_entity(client.with_options(), "default", "default/model") is expected
 
+    def test_retries_a_404_until_the_route_is_published(self):
+        """The gateway 404s a discovered model until its VirtualModel exists."""
+        client = MagicMock()
+        client.inference.gateway.openai.post.side_effect = [_probe_error(404), _probe_error(404), MagicMock()]
+
+        with patch(f"{SETUP_MOD}._pause"):
+            usable = _probe_model_entity(client, "default", "default/model", time.monotonic() + 30)
+
+        assert usable is True
+        assert client.inference.gateway.openai.post.call_count == 3
+
+    def test_does_not_retry_a_404_past_the_route_deadline(self):
+        client = MagicMock()
+        client.inference.gateway.openai.post.side_effect = _probe_error(404)
+
+        assert _probe_model_entity(client, "default", "default/model", 0.0) is False
+        assert client.inference.gateway.openai.post.call_count == 1
+
+    def test_skips_timeouts_so_later_candidates_can_be_tried(self):
+        client = _client_answering(
+            {"default/model": APITimeoutError(request=httpx.Request("POST", "http://localhost:8080"))}
+        )
+
+        assert _probe_model_entity(client.with_options(), "default", "default/model") is False
+
     def test_reraises_when_the_gateway_is_unreachable(self):
         client = _client_answering(
             {"default/model": APIConnectionError(request=httpx.Request("POST", "http://localhost:8080"))}
@@ -2291,6 +2317,12 @@ class TestModelProbe:
 
 
 class TestUsableModelPairSelection:
+    @pytest.fixture(autouse=True)
+    def _no_sleep(self) -> Iterator[None]:
+        """Probes pause between 404 retries; selection tests should not sleep."""
+        with patch(f"{SETUP_MOD}._pause"):
+            yield
+
     def test_picks_largest_usable_as_default_and_smallest_as_fast(self):
         entity_ids = [
             "default/nvidia-nemotron-3.5-lightning-30b-a3b",
@@ -2334,7 +2366,51 @@ class TestUsableModelPairSelection:
 
         assert _select_usable_model_pair(client, "default", entity_ids) is None
         post = client.with_options.return_value.inference.gateway.openai.post
-        assert post.call_count == setup_commands._MODEL_PROBE_MAX_ATTEMPTS
+        probed = {str(probe.kwargs["body"]["model"]) for probe in post.call_args_list}
+        assert len(probed) == setup_commands._MODEL_PROBE_MAX_ATTEMPTS
+
+    def test_skips_a_timed_out_candidate_and_keeps_probing(self):
+        entity_ids = [
+            "default/nvidia-nemotron-3-ultra-550b-a55b",
+            "default/nvidia-nemotron-nano-9b-v2",
+        ]
+        timeout = APITimeoutError(request=httpx.Request("POST", "http://localhost:8080"))
+        client = _client_answering(
+            {
+                "default/nvidia-nemotron-3-ultra-550b-a55b": timeout,
+                "default/nvidia-nemotron-nano-9b-v2": MagicMock(),
+            }
+        )
+
+        assert _select_usable_model_pair(client, "default", entity_ids) == ModelPair(
+            default="default/nvidia-nemotron-nano-9b-v2",
+            fast="default/nvidia-nemotron-nano-9b-v2",
+        )
+
+    def test_waits_out_the_reconcile_lag_before_rejecting_candidates(self):
+        """Cold start: the first probe 404s because the model has no route yet."""
+        entity_ids = ["default/nvidia-nemotron-nano-9b-v2"]
+        client = MagicMock()
+        client.with_options.return_value.inference.gateway.openai.post.side_effect = [
+            _probe_error(404),
+            MagicMock(),
+        ]
+
+        assert _select_usable_model_pair(client, "default", entity_ids) == ModelPair(
+            default="default/nvidia-nemotron-nano-9b-v2",
+            fast="default/nvidia-nemotron-nano-9b-v2",
+        )
+
+    def test_stops_probing_after_the_time_budget(self):
+        entity_ids = [f"default/model-{index}b-instruct" for index in range(1, 6)]
+        client = _client_answering({entity_id: _probe_error(404) for entity_id in entity_ids})
+        clock = iter([0.0, 0.0, 91.0, 91.0, 91.0, 91.0])
+
+        with patch(f"{SETUP_MOD}.time.monotonic", side_effect=lambda: next(clock)):
+            assert _select_usable_model_pair(client, "default", entity_ids) is None
+
+        post = client.with_options.return_value.inference.gateway.openai.post
+        assert post.call_count == 1
 
     def test_saves_nothing_when_the_gateway_is_unreachable(self):
         entity_ids = ["default/nvidia-nemotron-nano-9b-v2", "default/meta-llama-3-3-70b-instruct"]
