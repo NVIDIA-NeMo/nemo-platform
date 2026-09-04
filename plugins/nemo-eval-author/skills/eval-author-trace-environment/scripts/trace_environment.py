@@ -353,7 +353,7 @@ def _validate_trajectory(payload: Any, *, location: str = "trajectory", depth: i
         observation = step.get("observation")
         if observation is not None:
             if not isinstance(observation, dict):
-                raise ContractError(f"{step_location}.observation.results must be a list")
+                raise ContractError(f"{step_location}.observation must be an object")
             results = observation.get("results", [])
             if not isinstance(results, list):
                 raise ContractError(f"{step_location}.observation.results must be a list")

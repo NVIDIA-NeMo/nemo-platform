@@ -79,6 +79,11 @@ third-party validators.
 Trace inspection uses read-only `nemo intake` commands. The CLI handles its
 contexts, authentication, transport, filters, pagination, and errors.
 
+The standalone trace-environment helper requires Python 3.11 or newer. Proving
+a candidate requires Harbor and Docker for the `harbor run -a nop` and
+`harbor run -a oracle` checks; without them, the environment remains unproven.
+The flow does not require model or provider configuration.
+
 ## Next Steps
 
 - Start with [`eval-author`](skills/eval-author/SKILL.md) to select the right

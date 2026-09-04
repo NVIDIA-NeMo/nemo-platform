@@ -236,6 +236,30 @@ def test_prepare_preserves_original_and_writes_text_only_redacted_atif(tmp_path:
     assert summary["source"]["safe_sha256"] == f"sha256:{hashlib.sha256(safe.read_bytes()).hexdigest()}"
 
 
+def test_prepare_reports_non_object_observation(tmp_path: Path) -> None:
+    root = tmp_path / ".eval-author" / "trace-environments"
+    code, result = _run("init", "--root", str(root), "--task-id", "repair-fixture")
+    assert code == 0, result
+    task_dir = Path(result["task_dir"])
+    source = tmp_path / "source.atif.json"
+    payload = _atif()
+    payload["steps"][1]["observation"] = "not-an-object"
+    _write_json(source, payload)
+
+    code, result = _run(
+        "prepare",
+        "--task-dir",
+        str(task_dir),
+        "--atif",
+        str(source),
+        "--source-kind",
+        "atif",
+    )
+
+    assert code == 1
+    assert result["error"] == "trajectory.steps[1].observation must be an object"
+
+
 def test_image_only_instruction_blocks_candidate_but_can_be_no_candidate(tmp_path: Path) -> None:
     task_dir, _ = _workspace(tmp_path, image_only=True)
     _candidate(task_dir)
