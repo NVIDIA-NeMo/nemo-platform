@@ -13,10 +13,10 @@ for Docker operations so callers never need to shell out manually.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
-import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -133,6 +133,7 @@ def resolve_image_id(tag: str) -> str:
 
 #: Distribution a supplied wheel must be, normalized per PEP 503.
 _WHEEL_DISTRIBUTION = "nemo-platform"
+_WHEEL_COPY_CHUNK_SIZE = 1024 * 1024
 
 
 def wheel_contract_version(wheel: Path) -> str:
@@ -448,6 +449,39 @@ def build_fabric_agent_image(
             f"warning: {wheel.name} builds {contract_version}, but this host runs {get_contract_version()}",
         )
 
+    tmp_dockerfile = context_dir / "Dockerfile.generated"
+
+    # Docker can only COPY from inside the context. For an external wheel,
+    # compute the identity digest while staging it so the source is read once
+    # and the digest describes the exact bytes placed in the build context.
+    staged_wheel: Path | None = None
+    wheel_was_staged = False
+    wheel_sha256: str | None = None
+    if wheel is not None:
+        staged_wheel = context_dir / wheel.name
+        if staged_wheel.exists():
+            if not staged_wheel.samefile(wheel):
+                raise ManagedFileConflictError(staged_wheel)
+            with wheel.open("rb") as wheel_file:
+                wheel_sha256 = hashlib.file_digest(wheel_file, "sha256").hexdigest()
+        else:
+            try:
+                destination = open(staged_wheel, "xb")
+            except FileExistsError as exc:
+                raise ManagedFileConflictError(staged_wheel) from exc
+            wheel_was_staged = True
+            digest = hashlib.sha256()
+            try:
+                with destination, wheel.open("rb") as source:
+                    while chunk := source.read(_WHEEL_COPY_CHUNK_SIZE):
+                        destination.write(chunk)
+                        digest.update(chunk)
+            except BaseException:
+                staged_wheel.unlink(missing_ok=True)
+                raise
+            wheel_sha256 = digest.hexdigest()
+            emit_progress(on_progress, f"Staged {wheel.name} into the build context")
+
     build_env_for_id = {
         "agent_framework": NEMO_PLATFORM_AGENT_FRAMEWORK,
         "contract_version": contract_version,
@@ -457,90 +491,73 @@ def build_fabric_agent_image(
         "python_version": resolved_python,
         "uv_version": resolved_uv,
     }
-    meta = extract_agent_metadata(
-        agent_config,
-        pyproject,
-        agent_version=agent_version,
-        agent_author=agent_author,
-        build_env=build_env_for_id,
-    )
-    if tag is None:
-        tag = _default_tag_from_meta(meta)
-    if tag_namespace:
-        tag = f"{tag_namespace}/{tag}"
-
-    build_args = {
-        "BASE_IMAGE_URL": resolved_base_url,
-        "BASE_IMAGE_TAG": resolved_base_tag,
-        "PYTHON_VERSION": resolved_python,
-    }
-
-    if dockerfile is not None:
-        return docker_build(
-            context_dir=context_dir,
-            dockerfile=dockerfile,
-            tag=tag,
-            build_args=build_args,
-            platforms=platforms,
-            push=push,
-            on_progress=on_progress,
+    if wheel_sha256 is not None:
+        build_env_for_id["wheel_sha256"] = wheel_sha256
+    try:
+        meta = extract_agent_metadata(
+            agent_config,
+            pyproject,
+            agent_version=agent_version,
+            agent_author=agent_author,
+            build_env=build_env_for_id,
         )
+        if tag is None:
+            tag = _default_tag_from_meta(meta)
+        if tag_namespace:
+            tag = f"{tag_namespace}/{tag}"
 
-    # Docker can only COPY from inside the context, so the wheel is staged there
-    # and removed again on the way out.
-    staged_wheel: Path | None = None
-    wheel_already_in_context = False
-    if wheel is not None:
-        staged_wheel = context_dir / wheel.name
-        if staged_wheel.exists():
-            if not staged_wheel.samefile(wheel):
-                raise ManagedFileConflictError(staged_wheel)
-            # Already the wheel we would copy, so there is nothing to stage.
-            wheel_already_in_context = True
+        build_args = {
+            "BASE_IMAGE_URL": resolved_base_url,
+            "BASE_IMAGE_TAG": resolved_base_tag,
+            "PYTHON_VERSION": resolved_python,
+        }
 
-    content = render_fabric_dockerfile(
-        agent_config,
-        pyproject,
-        base_image_url=resolved_base_url,
-        base_image_tag=resolved_base_tag,
-        python_version=resolved_python,
-        uv_version=resolved_uv,
-        allow_root=allow_root,
-        sandbox_runtime=sandbox_runtime,
-        agent_version=agent_version,
-        agent_author=agent_author,
-        template_path=template_path,
-        metadata=meta,
-        wheel_filename=staged_wheel.name if staged_wheel else "",
-        contract_version=contract_version,
-    )
+        if dockerfile is not None:
+            return docker_build(
+                context_dir=context_dir,
+                dockerfile=dockerfile,
+                tag=tag,
+                build_args=build_args,
+                platforms=platforms,
+                push=push,
+                on_progress=on_progress,
+            )
 
-    tmp_dockerfile = context_dir / "Dockerfile.generated"
-    if tmp_dockerfile.exists():
-        raise ManagedFileConflictError(tmp_dockerfile)
+        content = render_fabric_dockerfile(
+            agent_config,
+            pyproject,
+            base_image_url=resolved_base_url,
+            base_image_tag=resolved_base_tag,
+            python_version=resolved_python,
+            uv_version=resolved_uv,
+            allow_root=allow_root,
+            sandbox_runtime=sandbox_runtime,
+            agent_version=agent_version,
+            agent_author=agent_author,
+            template_path=template_path,
+            metadata=meta,
+            wheel_filename=staged_wheel.name if staged_wheel else "",
+            contract_version=contract_version,
+        )
+    except BaseException:
+        if wheel_was_staged and staged_wheel is not None:
+            staged_wheel.unlink(missing_ok=True)
+        raise
 
     ignore_file: Path | None = None
     ignore_path = context_dir / ".dockerignore"
     ignore_pre_existed = ignore_path.exists()
-    wheel_was_staged = False
-    scoped_ignore_written = False
+    scoped_ignore: Path | None = None
+    scoped_ignore_identity: tuple[int, int] | None = None
+    tmp_dockerfile_identity: tuple[int, int] | None = None
     try:
-        tmp_dockerfile.write_text(content, encoding="utf-8")
-
-        if staged_wheel is not None and wheel is not None and not wheel_already_in_context:
-            # Create exclusively rather than re-checking existence: the check above
-            # is not atomic with the copy, and losing that race would overwrite
-            # someone's file and then delete it during cleanup.
-            try:
-                dest = open(staged_wheel, "xb")
-            except FileExistsError as exc:
-                raise ManagedFileConflictError(staged_wheel) from exc
-            # Owned from the moment it exists: a failure mid-copy would otherwise
-            # strand a partial wheel that fails every later build as a conflict.
-            wheel_was_staged = True
-            with dest, wheel.open("rb") as src:
-                shutil.copyfileobj(src, dest)
-            emit_progress(on_progress, f"Staged {wheel.name} into the build context")
+        try:
+            with tmp_dockerfile.open("x", encoding="utf-8") as tmp_dockerfile_file:
+                created_stat = os.fstat(tmp_dockerfile_file.fileno())
+                tmp_dockerfile_identity = (created_stat.st_dev, created_stat.st_ino)
+                tmp_dockerfile_file.write(content)
+        except FileExistsError as exc:
+            raise ManagedFileConflictError(tmp_dockerfile) from exc
 
         if generate_ignore:
             ignore_file = render_dockerignore(context_dir)
@@ -552,8 +569,13 @@ def build_fabric_agent_image(
             # detecting that it would not and reimplementing Docker's matcher.
             existing = ignore_path.read_text(encoding="utf-8") if ignore_path.exists() else ""
             scoped_ignore = context_dir / f"{tmp_dockerfile.name}.dockerignore"
-            scoped_ignore.write_text(f"{existing.rstrip()}\n!{staged_wheel.name}\n".lstrip(), encoding="utf-8")
-            scoped_ignore_written = True
+            try:
+                with scoped_ignore.open("x", encoding="utf-8") as scoped_ignore_file:
+                    created_stat = os.fstat(scoped_ignore_file.fileno())
+                    scoped_ignore_identity = (created_stat.st_dev, created_stat.st_ino)
+                    scoped_ignore_file.write(f"{existing.rstrip()}\n!{staged_wheel.name}\n".lstrip())
+            except FileExistsError as exc:
+                raise ManagedFileConflictError(scoped_ignore) from exc
 
         return docker_build(
             context_dir=context_dir,
@@ -565,9 +587,22 @@ def build_fabric_agent_image(
             on_progress=on_progress,
         )
     finally:
-        tmp_dockerfile.unlink(missing_ok=True)
-        if scoped_ignore_written:
-            (context_dir / f"{tmp_dockerfile.name}.dockerignore").unlink(missing_ok=True)
+        if tmp_dockerfile_identity is not None:
+            try:
+                current_stat = tmp_dockerfile.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                if (current_stat.st_dev, current_stat.st_ino) == tmp_dockerfile_identity:
+                    tmp_dockerfile.unlink(missing_ok=True)
+        if scoped_ignore is not None and scoped_ignore_identity is not None:
+            try:
+                current_stat = scoped_ignore.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                if (current_stat.st_dev, current_stat.st_ino) == scoped_ignore_identity:
+                    scoped_ignore.unlink(missing_ok=True)
         if wheel_was_staged and staged_wheel is not None:
             staged_wheel.unlink(missing_ok=True)
         if ignore_file is not None and not ignore_pre_existed:
