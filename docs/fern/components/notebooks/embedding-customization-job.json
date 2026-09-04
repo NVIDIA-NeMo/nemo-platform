@@ -27,10 +27,9 @@
       "source_html": "<h3>2. Establish Baseline Performance</h3>\n<p>Before fine-tuning, establish baseline performance with the pretrained model. Deploy it, run a test query, and observe where it struggles. Following fine-tuning, compare the results.</p>\n<p><strong>Scenario:</strong> Searching scientific papers by meaning, not keywords.</p>\n<p><strong>Demo setup:</strong></p>\n<ul>\n<li><strong>Query:</strong> &quot;Conditional Random Fields&quot; (CRFs) - a method for sequence labeling in NLP</li>\n<li><strong>Trap:</strong> &quot;Random Forests&quot; shares the word &quot;random&quot; but is an unrelated tree-based algorithm</li>\n<li><strong>Goal:</strong> The model should distinguish between them.</li>\n</ul>\n"
     },
     {
-      "type": "code",
-      "source": "# Install required packages for dataset preparation\n%pip install -q datasets huggingface_hub",
-      "language": "python",
-      "source_html": "<span style=\"--shiki-light: #6A737D; --shiki-dark: #8b949e; color: var(--shiki-light); font-style: italic\"># Install required packages for dataset preparation</span>\n<span style=\"--shiki-light: #D73A49; --shiki-dark: #ff7b72; color: var(--shiki-light)\">%</span><span style=\"--shiki-light: #24292E; --shiki-dark: #e6edf3; color: var(--shiki-light)\">pip</span> <span style=\"--shiki-light: #24292E; --shiki-dark: #e6edf3; color: var(--shiki-light)\">install</span> <span style=\"--shiki-light: #D73A49; --shiki-dark: #ff7b72; color: var(--shiki-light)\">-</span><span style=\"--shiki-light: #24292E; --shiki-dark: #e6edf3; color: var(--shiki-light)\">q</span> <span style=\"--shiki-light: #24292E; --shiki-dark: #e6edf3; color: var(--shiki-light)\">datasets</span> <span style=\"--shiki-light: #24292E; --shiki-dark: #e6edf3; color: var(--shiki-light)\">huggingface_hub</span>\n"
+      "type": "markdown",
+      "source": "Install required packages for dataset preparation if they are not installed in your Python environment:\n\n```sh\npip install datasets huggingface_hub\n```",
+      "source_html": "<p>Install required packages for dataset preparation if they are not installed in your Python environment:</p>\n<pre><code class=\"language-sh\">pip install datasets huggingface_hub\n</code></pre>\n"
     },
     {
       "type": "code",

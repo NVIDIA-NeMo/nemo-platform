@@ -1,7 +1,6 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-
 title: "Knowledge Distillation Customization"
 description: ""
 ---
@@ -127,16 +126,19 @@ train_ds = split['train'].select(range(min(TRAINING_SIZE, len(split['train']))))
 val_ds = split['test'].select(range(min(VALIDATION_SIZE, len(split['test']))))
 test_ds = split['test'].select(range(VALIDATION_SIZE, min(VALIDATION_SIZE + TEST_SIZE, len(split['test']))))
 
+
 def convert_squad(example):
     """Convert SQuAD format to prompt/completion format."""
     prompt = f"Context: {example['context']} Question: {example['question']} Answer:"
     completion = example["answers"]["text"][0]
     return {"prompt": prompt, "completion": completion}
 
+
 def write_jsonl(dataset, path):
     with open(path, "w", encoding="utf-8") as f:
         for example in dataset:
             f.write(json.dumps(convert_squad(example)) + "\n")
+
 
 def write_test_jsonl(dataset, path):
     """Save test split with raw context/question for chat-style evaluation."""
@@ -147,6 +149,7 @@ def write_test_jsonl(dataset, path):
                 "question": example["question"],
                 "completion": example["answers"]["text"][0],
             }) + "\n")
+
 
 write_jsonl(train_ds, f"{DATASET_PATH}/training.jsonl")
 write_jsonl(val_ds, f"{DATASET_PATH}/validation.jsonl")
@@ -204,6 +207,7 @@ Both models share the same tokenizer/vocabulary (required for knowledge distilla
 ```python
 HF_TOKEN = os.getenv("HF_TOKEN")
 
+
 def create_or_get_secret(name: str, value: str | None, label: str):
     if not value:
         raise ValueError(f"{label} is not set")
@@ -218,6 +222,7 @@ def create_or_get_secret(name: str, value: str | None, label: str):
     except ConflictError:
         print(f"Secret '{name}' already exists, continuing...")
         return client.secrets.retrieve(name=name, workspace="default")
+
 
 hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN")
 print("HF_TOKEN secret:")
@@ -236,6 +241,7 @@ Using the Instruct variants ensures the output model includes a chat template, w
 from nemo_platform.types.files import HuggingfaceStorageConfigParam
 
 SPEC_TIMEOUT_SECONDS = 120
+
 
 def create_model(hf_repo: str, model_name: str, description: str):
     """Create a fileset + model entity and wait for ModelSpec."""
@@ -279,6 +285,7 @@ def create_model(hf_repo: str, model_name: str, description: str):
         model = client.models.retrieve(workspace="default", name=model_name)
     print(f"ModelSpec populated: {model.spec}")
     return model
+
 
 student_model = create_model(
     hf_repo="meta-llama/Llama-3.2-1B-Instruct",
@@ -341,6 +348,7 @@ print(f"Output teacher model: {TRAINED_TEACHER_NAME}")
 ```python
 from IPython.display import clear_output
 
+
 def wait_for_job(job_name: str):
     """Poll job status until completion."""
     while True:
@@ -368,6 +376,7 @@ def wait_for_job(job_name: str):
             return status
 
         time.sleep(10)
+
 
 teacher_status = wait_for_job(TEACHER_JOB_NAME)
 assert teacher_status.status == "completed"
@@ -444,6 +453,7 @@ def wait_for_deployment(deployment_name: str, timeout_minutes: int = 30):
             raise TimeoutError(f"Deployment timeout after {timeout_minutes} minutes")
         time.sleep(15)
 
+
 try:
     dep_status = wait_for_deployment(BASELINE_DEPLOYMENT_NAME)
     assert dep_status.status == "READY"
@@ -511,6 +521,7 @@ def generate_completions(
         )
         completions.append(response["choices"][0]["message"]["content"])
     return completions
+
 
 print("Generating baseline (base student) predictions...")
 baseline_completions = generate_completions(BASELINE_DEPLOYMENT_NAME, student_model.name, contexts, questions)
@@ -738,8 +749,11 @@ KD loads both models, so OOM is more likely than with SFT:
 
 **Deployment fails:**
 - Verify output model exists: `client.models.retrieve(name=DISTILLED_STUDENT_NAME, workspace="default")`
-- Check deployment logs: `client.inference.deployments.get_logs(name=deployment.name, workspace="default")`
+- Check job logs: `client.jobs.get_logs(name=kd_job.job.name, workspace="default")`
+- Check student deployment status: `client.inference.deployments.retrieve(name=student_deployment.name, workspace="default")`
+- Check baseline deployment status: `client.inference.deployments.retrieve(name=baseline_deployment.name, workspace="default")`
 - The distilled model has the same size as the student, so GPU requirements match the student model
+
 
 ## Next Steps
 

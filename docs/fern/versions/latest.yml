@@ -213,6 +213,9 @@ navigation:
               - page: SFT Customization Job
                 path: ../../customizer/tutorials/sft-customization-job.mdx
                 slug: sft-customization-job
+              - page: DPO Customization Job
+                path: ../../customizer/tutorials/dpo-customization-job.mdx
+                slug: dpo-customization-job
               - page: LoRA Customization Job
                 path: ../../customizer/tutorials/lora-customization-job.mdx
                 slug: lora-customization-job
