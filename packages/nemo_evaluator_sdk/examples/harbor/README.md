@@ -24,17 +24,17 @@ result = await run_harbor_eval(config, "hello_world_dataset")  # loads tasks, ru
 
 `run_harbor_eval` discovers the tasks, builds and runs Harbor's `JobConfig`, and
 scores each task with `HarborRewardMetric` — the caller never imports `harbor` or
-assembles a job. `harbor` is imported lazily inside the runtime, so importing the
-SDK never requires it.
+assembles a job. `harbor` is imported lazily: the base SDK does not require it,
+but Harbor execution and existing-result adaptation do.
 
 ## Install
 
-Harbor is imported lazily and is **not** in the SDK's locked dependencies (it
-requires Python ≥ 3.12 while the workspace supports ≥ 3.11, like `nemo_fabric`).
-Install it separately into the environment that runs the example:
+The base SDK supports Python ≥ 3.11, while Harbor-backed execution and result
+adaptation require Python ≥ 3.12. Install the optional extra into the environment
+that runs the example:
 
 ```bash
-uv pip install "harbor>=0.16.1"
+uv add "nemo-evaluator-sdk[harbor]"
 ```
 
 ## The dataset directory (how Harbor tasks are found)
@@ -74,8 +74,10 @@ The runtime is [`harbor_runtime.py`](../../src/nemo_evaluator_sdk/agent_eval/run
 ### Re-running and caching
 
 In native mode the `job_dir` doubles as a cache: if every requested task already
-has `n_attempts` completed (non-errored) results there, the Harbor run is skipped
-and the results are re-adapted instead. This only engages when you **pin a stable
+has `n_attempts` Harbor-valid results there, the Harbor run is skipped
+and the results are re-adapted instead. Valid errored results count because Harbor
+also treats them as completed attempts; their SDK trials remain `PARTIAL` and
+scoreable. This only engages when you **pin a stable
 `job_name`** on the config — the default `job_name` is a timestamp, so each run
 writes a fresh dir and never hits the cache. Set `force_rerun=True` to delete the
 job dir and re-run unconditionally.

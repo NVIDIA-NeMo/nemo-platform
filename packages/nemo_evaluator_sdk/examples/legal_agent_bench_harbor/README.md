@@ -71,8 +71,8 @@ view.legal_quality:              mean=0.60   # MEAN(reward, criteria_pass_rate)
 
 ## Prerequisites, seams & caveats
 
-- **Not zero-dependency**: Python ≥ 3.12, Docker, and `harbor` installed separately
-  (`uv pip install "harbor>=0.16.1"`). Harbor native runtime is early-access.
+- **Not zero-dependency**: Python ≥ 3.12, Docker, and the Harbor extra
+  (`uv add "nemo-evaluator-sdk[harbor]"`). Harbor native runtime is early-access.
 - **Reproducing LAB's official reference-agent number** additionally requires wiring **LAB's reference
   agent** (as an `--agent-import-path` adapter) and
   LAB's **exact** `rubric_criterion` judge prompt into `lab_verify.py`. Out of the box this generates a

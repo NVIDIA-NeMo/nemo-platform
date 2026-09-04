@@ -4,19 +4,21 @@
 """Adapt one Harbor result directory into an SDK :class:`AgentEvalTrial`.
 
 This module owns the complete Harbor trial-data seam: identity, reward and error
-normalization, measurements, and collision-safe evidence discovery. Harbor job
-execution and result-file discovery remain in :mod:`harbor_runtime`.
+normalization, measurements, Harbor-valid result-file discovery, and
+collision-safe evidence discovery. Harbor job execution and cache orchestration
+remain in :mod:`harbor_runtime`.
 """
 
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import math
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from nemo_evaluator_sdk.agent_eval.reward_keys import (
     HarborRewardValueRejection,
@@ -49,6 +51,7 @@ from nemo_evaluator_sdk.values.otlp import (
     resource_spans_from_text,
 )
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +87,31 @@ _TRIAL_LOG_DESCRIPTIONS = {
     "verifier/test-stdout.txt": "Verifier stdout captured while Harbor runs the task tests from the /tests directory.",
 }
 _MAX_TRACEBACK_CHARS = 8192
+_HARBOR_EXTRA_REQUIRED_MESSAGE = (
+    "Harbor execution and result adaptation require the optional `harbor` extra on Python >=3.12. "
+    'Install it with: uv add "nemo-evaluator-sdk[harbor]"'
+)
+
+
+def _iter_harbor_trial_results(job_dir: Path) -> Iterator[tuple[Path, Mapping[str, Any]]]:
+    """Yield Harbor-valid result mappings in deterministic path order.
+
+    Harbor remains a lazy import. The yielded mapping stays uncoerced because the
+    SDK intentionally applies stricter reward rules than Harbor's Pydantic model.
+    """
+    try:
+        from harbor.models.trial.result import TrialResult  # ty: ignore[unresolved-import,unused-ignore-comment]
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(_HARBOR_EXTRA_REQUIRED_MESSAGE) from exc
+
+    for result_path in sorted(job_dir.glob("*/result.json")):
+        try:
+            result_data = json.loads(result_path.read_bytes())
+            TrialResult.model_validate(result_data)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValidationError) as exc:
+            logger.warning("Skipping invalid Harbor trial result %s: %s", result_path, exc)
+            continue
+        yield result_path.parent, cast(dict[str, Any], result_data)
 
 
 def _trial_from_harbor_result(
@@ -116,9 +144,8 @@ def _trial_from_harbor_result(
     }
     metadata.update(_trial_measurements(data))
 
-    # An errored trial (or one with no reward) stays PARTIAL so it is still scored
-    # as 0 and counted in the summary; FAILED would exclude it from scoring.
-    status = AgentEvalTrialStatus.COMPLETED if error is None and reward is not None else AgentEvalTrialStatus.PARTIAL
+    is_complete = error is None and reward is not None
+    status = AgentEvalTrialStatus.COMPLETED if is_complete else AgentEvalTrialStatus.PARTIAL
 
     extension_descriptors, atif_trace, otlp_trace = _harbor_extension_evidence(trial_dir)
     descriptors = standard_evidence_descriptors(

@@ -25,8 +25,9 @@ Two ways to drive it:
 * **Injected / offline** — pass a ``job_dir`` (and optionally a ``run_job``
   callback) to adapt an already-completed job dir or to run a caller-built job.
 
-Trial *adaptation* only ever reads Harbor's on-disk ``result.json`` files, so
-that half stays dependency-free regardless of how the job was produced.
+Trial adaptation validates Harbor's on-disk ``result.json`` files with Harbor's
+own model. The import remains lazy, but invoking native execution or offline
+adaptation requires the optional Harbor extra and Python >=3.12.
 """
 
 from __future__ import annotations
@@ -55,7 +56,11 @@ from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.reward_keys import ParsedHarborRewards, validate_reward_key
-from nemo_evaluator_sdk.agent_eval.runtimes.harbor_trial_adapter import _trial_from_harbor_result
+from nemo_evaluator_sdk.agent_eval.runtimes.harbor_trial_adapter import (
+    _HARBOR_EXTRA_REQUIRED_MESSAGE,
+    _iter_harbor_trial_results,
+    _trial_from_harbor_result,
+)
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask, AgentEvalTaskset
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
 from nemo_evaluator_sdk.enums import MetricType
@@ -194,8 +199,8 @@ class HarborAgentTaskRunner:
       :func:`discover_harbor_tasks`), or from an explicit ``dataset_path``
       override, so it isn't repeated. ``task_names`` optionally restricts the run
       to a subset of tasks, and the ``config``'s ``job_dir`` doubles as a cache:
-      an existing run whose results already cover every requested task (with
-      ``n_attempts`` completed, non-errored trials each) is re-adapted instead of
+      an existing run whose Harbor-valid results cover every requested task (with
+      ``n_attempts`` attempts each) is re-adapted instead of
       re-run (unless ``force_rerun`` is set). Caching only takes effect when a
       stable ``job_name`` is set on the config — the default timestamped
       ``job_name`` writes a fresh dir per run and never hits the cache.
@@ -265,16 +270,16 @@ class HarborAgentTaskRunner:
         :func:`discover_harbor_tasks`) unless a ``dataset_path`` override was given,
         so callers don't repeat it.
 
-        ``job_dir`` doubles as a cache. Results are served straight off it, without
-        importing Harbor at all, only when **both** hold: every requested task already
-        has ``n_attempts`` completed, non-errored results there, *and* the directory
+        ``job_dir`` doubles as a cache. Results are served straight off it only when
+        **both** hold: every requested task already has ``n_attempts`` Harbor-valid
+        results there, *and* the directory
         carries a cache stamp matching this run's inputs (agent contents, task
         contents, result-affecting options).
 
         Otherwise Harbor runs, and what happens to the directory depends on *which*
         check failed. A **stamp mismatch** discards it first: those results came from
         different inputs, so there is nothing safe to resume onto. A directory that
-        merely lacks **coverage** — stamp matches, but not enough completed results —
+        merely lacks **coverage** — stamp matches, but not enough valid results —
         is handed to Harbor intact so its per-trial resume keeps the finished trials
         and runs only what is missing. Harbor may still refuse a directory on its own
         (stricter) terms; :func:`_build_native_job` then discards it and re-runs.
@@ -417,28 +422,21 @@ def _harbor_folder_names(tasks: Sequence[AgentEvalTask]) -> list[str] | None:
 
 
 def _all_tasks_cached(job_dir: Path, tasks: Sequence[AgentEvalTask], *, n_attempts: int) -> bool:
-    """Return True when every requested task already has ``n_attempts`` completed results.
+    """Return True when each requested task has ``n_attempts`` Harbor-valid results.
 
-    Lets ``job_dir`` act as a cache so a native run whose results are all present
-    is re-adapted instead of re-run. The cache is **success-aware**: only trials
-    that finished without an ``exception_info`` count, and a task must have at
-    least ``n_attempts`` of them, so an interrupted, errored, or under-sampled run
-    is re-run rather than silently served from a partial cache. Caching only takes
-    effect when a stable ``job_name`` is set on the config; with the default
-    timestamped ``job_name`` every run writes a fresh dir and never hits the cache.
+    Every valid result counts, including one with ``exception_info``;
+    Harbor itself treats such a result as an existing completed attempt. Missing,
+    unreadable, and schema-invalid results do not count. Caching only takes effect
+    when a stable ``job_name`` is set on the config; with the default timestamped
+    name every run writes a fresh directory and never hits the cache.
     """
     if not job_dir.is_dir():
         return False
+    requested_task_ids = {task.id for task in tasks}
     counts: dict[str, int] = {}
-    for result_path in job_dir.glob("*/result.json"):
-        try:
-            data = json.loads(result_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            continue
-        if data.get("exception_info") is not None:
-            continue
+    for _trial_dir, data in _iter_harbor_trial_results(job_dir):
         name = data.get("task_name")
-        if isinstance(name, str):
+        if name in requested_task_ids:
             counts[name] = counts.get(name, 0) + 1
     return all(counts.get(task.id, 0) >= n_attempts for task in tasks)
 
@@ -840,10 +838,7 @@ def _build_native_job(
                 VerifierConfig,
             )
         except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError(
-                "the native Harbor runtime needs `harbor`, which is not an SDK dependency "
-                '(it requires Python >=3.12). Install it separately: uv pip install "harbor>=0.16.1"'
-            ) from exc
+            raise ModuleNotFoundError(_HARBOR_EXTRA_REQUIRED_MESSAGE) from exc
 
         if effective_force_rerun and job_dir.exists():
             shutil.rmtree(job_dir)
@@ -1157,19 +1152,14 @@ def build_trials_from_job_dir(
     job_path = Path(job_dir)
     known_task_ids = {task.id for task in tasks}
     trials: list[AgentEvalTrial] = []
-    for result_path in sorted(job_path.glob("*/result.json")):
-        try:
-            data = json.loads(result_path.read_text())
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Skipping unreadable Harbor trial result %s: %s", result_path, exc)
-            continue
+    for trial_dir, data in _iter_harbor_trial_results(job_path):
         task_id = data.get("task_name")
         if task_id not in known_task_ids:
             # Trial for a task we weren't asked to score (e.g. a wider dataset run).
             continue
         trials.append(
             _trial_from_harbor_result(
-                result_path.parent,
+                trial_dir,
                 data,
                 reward_key=reward_key,
             )
