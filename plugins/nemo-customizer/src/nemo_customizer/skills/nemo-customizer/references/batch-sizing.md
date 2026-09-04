@@ -111,6 +111,79 @@ Higher rank uses more VRAM. If OOM at rank 16, drop to rank 8 before lowering ba
 
 Field glossary, distillation/KD, and schema pointers: `references/hyperparameters.md` (batch/multi-GPU → **this file**, not hyperparameters).
 
+## Batch sizing — rl / GRPO
+
+GRPO has an extra axis the SFT backends do not: every prompt is rolled out
+`num_generations_per_prompt` times *before* any training happens, so the generation cost —
+not the gradient step — usually sets the ceiling.
+
+### Derive the numbers, do not copy them
+
+Work in this order. Each step depends only on facts you can read off the model, the dataset
+and the cluster.
+
+| # | Decide | From | Rule |
+|---|---|---|---|
+| 1 | `parallelism` | GPUs available; model size | Start 1 node × N GPUs, `tensor_parallel_size` 1. Raise TP only when weights do not fit — TP is a memory tool, not a speed one |
+| 2 | `policy_backend` | GPU generation | `automodel` (default) needs Hopper+. Pre-Hopper → `dtensor`, which forfeits LoRA and expert parallelism |
+| 3 | `max_seq_length` | prompt + expected answer length in the dataset | Measure it: tokenize a sample and take ~p99, round up. Over-provisioning here costs generation time on every rollout |
+| 4 | `num_generations_per_prompt` | how noisy the reward is | `8` is the standard start. Below `4` the group advantage is too noisy to learn from; above `16` you pay linearly in rollouts for diminishing signal |
+| 5 | `batch_size` | steps 1 and 4 | Must satisfy **both** divisibility rules below |
+| 6 | `micro_batch_size` | VRAM | Start `1`. This is the OOM knob, and it does not change the math of step 5 |
+
+### The two rules the compiler enforces
+
+Both are checked at submit (`validate_for_training`), so getting them wrong costs a
+round-trip, not a job:
+
+```text
+data_parallel_size = (num_nodes × num_gpus_per_node)
+                     ÷ (tensor_parallel × pipeline_parallel × context_parallel × expert_parallel)
+
+1.  batch_size % (micro_batch_size × data_parallel_size) == 0
+2.  (num_prompts_per_step × num_generations_per_prompt) % batch_size == 0
+```
+
+`num_prompts_per_step` defaults to `batch_size // num_generations_per_prompt`, and that
+**floor division is the trap**: `batch_size 32` with `num_generations_per_prompt 5` derives
+`6`, giving a rollout batch of `30` against a train batch of `32`. Rule 2 catches it, but the
+fix is to pick a `num_generations_per_prompt` that *divides* `batch_size`.
+
+Safe pairings on 1 node:
+
+| GPUs | `batch_size` | `num_generations_per_prompt` | Rollouts per step |
+|---|---|---|---|
+| 1 | 8 | 4 | 32 |
+| 1 | 32 | 8 | 256 |
+| 2 | 32 | 8 | 256 |
+| 4 | 32 | 8 | 256 |
+| 8 | 64 | 8 | 512 |
+
+### Memory, in the order to reach for it
+
+GRPO holds the policy *and* a vLLM engine on the same GPUs, so the split matters as much as
+the batch:
+
+1. `activation_checkpointing: true` — first, always.
+2. `vllm_gpu_memory_utilization` (default `0.5`) — the fraction vLLM reserves for weights plus
+   KV cache. Raise toward `0.7` for a large model that cannot load; lower it when training
+   OOMs but generation is fine.
+3. `micro_batch_size` down to `1` if it is not already.
+4. `max_seq_length` down — cheapest real win, since it bounds every rollout.
+5. `tensor_parallel_size` up — last, and remember `lora.use_triton` must then be unset or `false`.
+
+`batching_strategy` defaults to `dynamic`, which already packs short rollouts together; leave
+it unless the model is VLM/multimodal or context-parallel, where `sequence_packing` is rejected.
+
+### Dataset size
+
+Rollouts per epoch = `rows × num_generations_per_prompt`. A 17k-row dataset at `8` generations
+is 136k rollouts per epoch — hours on one GPU. For a smoke run, cap rows at prep time rather
+than setting `max_steps`, so the epoch means something.
+
+Validation runs **one** rollout per `validation.jsonl` row (there is no validation counterpart
+to `num_generations_per_prompt`), so validation cost is just the row count.
+
 ## Batch sizing — unsloth (single GPU)
 
 Unsloth is single-GPU by design. The effective batch is the **product** of two fields, not a global/micro split:
