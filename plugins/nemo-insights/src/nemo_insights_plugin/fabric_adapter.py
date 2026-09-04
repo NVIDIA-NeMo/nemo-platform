@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import os
-import traceback
 from datetime import datetime
 from typing import Any
 
@@ -51,17 +50,7 @@ class InsightsAnalystRuntime:
             logger.exception("Insights analyst run failed.")
             return contract.AgentRunResult(
                 status=contract.AgentRunStatus.FAILED,
-                # ``AgentRunError`` carries only code/message/retryable, so the
-                # diagnostic detail rides on ``output``, which the adapter owns.
-                # This is what puts it in ``fabric_run_result`` - the artifact
-                # someone debugging a failed run reaches for first, and which
-                # otherwise holds only ``str(error)``. The extension that reads
-                # ``output`` runs on success only, so these keys cannot confuse it.
-                output={
-                    "response": str(error),
-                    "error_type": type(error).__name__,
-                    "traceback": _format_traceback(error),
-                },
+                output={"response": str(error)},
                 error=contract.AgentRunError(
                     code="insights_analyst_failed",
                     message=str(error),
@@ -119,19 +108,6 @@ class InsightsAnalystRuntime:
 
     async def stop(self) -> None:
         self.__init__()
-
-
-def _format_traceback(error: BaseException) -> str:
-    """Render *error* with its whole cause chain.
-
-    Rendered in full: it lands in a saved artifact rather than on a job record,
-    and both ends of a chain carry the diagnosis. ``format_exception`` renders
-    oldest-first, so the *originating* exception is at the head while the one
-    actually raised is at the tail - an LLM error raised after retries reads
-    identically at the tail whatever provoked it, and only the head names the
-    endpoint that 404'd.
-    """
-    return "".join(traceback.format_exception(type(error), error, error.__traceback__))
 
 
 def _string_setting(settings: dict[str, Any], key: str) -> str | None:
