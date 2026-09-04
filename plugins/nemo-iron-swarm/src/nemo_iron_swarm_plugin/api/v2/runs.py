@@ -29,7 +29,7 @@ from nemo_iron_swarm_plugin.api.v2.schemas import (
     RunFilter,
 )
 from nemo_iron_swarm_plugin.authz import scope
-from nemo_iron_swarm_plugin.entities import IronSwarmRun
+from nemo_iron_swarm_plugin.entities import IronSwarmManifest, IronSwarmRun
 from nemo_iron_swarm_plugin.jobs.defenses import compose_defense
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import (
@@ -152,6 +152,9 @@ async def apply_mitigation(
 
     if not run.agent:
         raise HTTPException(status_code=409, detail=f"Run '{name}' has no target agent to update.")
+    # A project run carries its *manifest* name in `agent`, so the guard above passes and the lookup
+    # below would target whatever agent happens to share that name.
+    await _reject_project_source(entity_client, workspace, run.manifest_id, name)
     agent_ws, agent_name = parse_agent_ref(run.agent, workspace)
 
     try:
@@ -180,6 +183,26 @@ async def apply_mitigation(
             "war-game the agent as it was before this change."
         )
     return ApplyMitigationResponse(applied=True, agent=agent_name, detail=detail)
+
+
+async def _reject_project_source(
+    entity_client: NemoEntitiesClient, workspace: str, manifest_id: str, run_name: str
+) -> None:
+    """Refuse adoption for a bring-your-own manifest, which has no agent entity to adopt onto."""
+    if not manifest_id:
+        return
+    try:
+        manifest = await entity_client.get(IronSwarmManifest, name=manifest_id, workspace=workspace)
+    except NemoEntityNotFoundError:
+        return
+    if manifest.source_type == "project":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Run '{run_name}' targets the bring-your-own manifest '{manifest_id}', which has no "
+                "registered agent to update. Apply the hardened guardrails to your own image instead."
+            ),
+        )
 
 
 def _relay_components(guardrails: dict[str, Any]) -> list[dict[str, Any]]:

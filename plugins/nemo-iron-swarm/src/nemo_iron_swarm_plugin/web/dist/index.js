@@ -17901,7 +17901,7 @@ var Ob = "mitigations", kb = (e) => {
 	let C = Bb(r, i), { submit: w, isPending: T } = Vb(r), E = Wb(r, i), D = l ?? E, { useJobsGetJob: ee } = ya(), { data: te } = ee(r, D ?? "", { query: {
 		enabled: !!D,
 		refetchInterval: (e) => re(e.state.data?.status)
-	} }), O = te?.status, { report: k, isLoading: A, missingReport: j } = Hb(r, D, O), ne = Ub(r, D, O), ie = h ?? ne, [ae, M] = d(), [oe, le] = d(!1), de = Oo();
+	} }), O = te?.status, { report: k, isLoading: A, missingReport: j } = Hb(r, D, O), ne = Ub(r, D, O), ie = h ?? ne, [ae, M] = d(), [oe, le] = d(!1), de = Oo(), fe = Za(r, o ?? "", { query: { enabled: !!o } }).data?.source_type === "project";
 	if (n) return /* @__PURE__ */ m(P, {
 		align: "center",
 		gap: "density-sm",
@@ -17923,30 +17923,30 @@ var Ob = "mitigations", kb = (e) => {
 			children: "No mitigations were produced for this run."
 		})
 	});
-	let fe = [...x], pe = t.length, me = Gb(t), he = (e) => S((t) => {
+	let pe = [...x], me = t.length, he = Gb(t), ge = (e) => S((t) => {
 		let n = new Set(t);
 		return n.has(e) ? n.delete(e) : n.add(e), n;
-	}), ge = (e) => S((t) => {
+	}), _e = (e) => S((t) => {
 		let n = new Set(t), r = e.every((e) => n.has(e.id));
 		for (let t of e) r ? n.delete(t.id) : n.add(t.id);
 		return n;
-	}), _e = async () => {
+	}), ve = async () => {
 		if (!e) return null;
 		try {
 			return await C.mutateAsync({
 				mitigations: e,
-				selectedDefenseIds: fe
+				selectedDefenseIds: pe
 			});
 		} catch {
 			return v.error("Failed to compose the selected defenses."), null;
 		}
-	}, ve = async () => {
-		let e = await _e();
-		e && M({ guardrails: e.guardrails_toml ?? void 0 });
 	}, ye = async () => {
+		let e = await ve();
+		e && M({ guardrails: e.guardrails_toml ?? void 0 });
+	}, be = async () => {
 		if (!c) return v.error("This run has no recorded attacks to replay.");
 		if (!o) return v.error("This run has no manifest to validate against.");
-		let e = await _e();
+		let e = await ve();
 		if (e) {
 			_(e.guardrails_toml ?? void 0);
 			try {
@@ -17963,7 +17963,7 @@ var Ob = "mitigations", kb = (e) => {
 				v.error("Failed to start the sanity check.");
 			}
 		}
-	}, be = async () => {
+	}, xe = async () => {
 		if (!ie) return !1;
 		try {
 			return await de.mutateAsync({
@@ -17974,7 +17974,7 @@ var Ob = "mitigations", kb = (e) => {
 		} catch {
 			return !1;
 		}
-	}, xe = C.isPending || T, Se = pe ? Math.round(fe.length / pe * 100) : 0;
+	}, Se = C.isPending || T, Te = me ? Math.round(pe.length / me * 100) : 0;
 	return /* @__PURE__ */ m(F, {
 		gap: "density-xl",
 		children: [
@@ -17991,22 +17991,22 @@ var Ob = "mitigations", kb = (e) => {
 							kind: "body/regular/sm",
 							className: "text-subtle",
 							children: [
-								pe,
+								me,
 								" defense",
-								pe === 1 ? "" : "s",
+								me === 1 ? "" : "s",
 								" generated across ",
-								me.length,
+								he.length,
 								" tool",
-								me.length === 1 ? "" : "s",
+								he.length === 1 ? "" : "s",
 								" from this run's attacks. Keep the ones you want, sanity-check the selection, then apply to the agent."
 							]
 						}),
 						/* @__PURE__ */ p("div", {
 							className: "flex h-2 w-full gap-0.5",
-							"aria-label": `${Se}% of defenses selected`,
+							"aria-label": `${Te}% of defenses selected`,
 							children: t.map((e, t) => /* @__PURE__ */ p("div", {
 								className: "flex-1 rounded-sm bg-surface-raised transition-colors",
-								style: t < fe.length ? { backgroundColor: fa.green } : void 0
+								style: t < pe.length ? { backgroundColor: fa.green } : void 0
 							}, e.id))
 						}),
 						/* @__PURE__ */ m(P, {
@@ -18016,9 +18016,9 @@ var Ob = "mitigations", kb = (e) => {
 								kind: "body/regular/sm",
 								className: "text-primary",
 								children: [
-									fe.length,
+									pe.length,
 									" of ",
-									pe,
+									me,
 									" selected"
 								]
 							}), /* @__PURE__ */ m(P, {
@@ -18041,7 +18041,7 @@ var Ob = "mitigations", kb = (e) => {
 			}),
 			/* @__PURE__ */ p(ue, {
 				className: "p-0",
-				children: me.map((e, t) => {
+				children: he.map((e, t) => {
 					let n = e.items.every((e) => x.has(e.id));
 					return /* @__PURE__ */ m("div", {
 						className: t > 0 ? "border-t border-base" : "",
@@ -18062,13 +18062,13 @@ var Ob = "mitigations", kb = (e) => {
 								})]
 							}), /* @__PURE__ */ p(we, {
 								checked: n,
-								onCheckedChange: () => ge(e.items),
+								onCheckedChange: () => _e(e.items),
 								"aria-label": `Toggle all ${e.tool}`
 							})]
 						}), /* @__PURE__ */ p("div", { children: e.items.map((e) => /* @__PURE__ */ p(Kb, {
 							defense: e,
 							checked: x.has(e.id),
-							onToggle: () => he(e.id)
+							onToggle: () => ge(e.id)
 						}, e.id)) })]
 					}, e.tool);
 				})
@@ -18081,9 +18081,9 @@ var Ob = "mitigations", kb = (e) => {
 					kind: "body/regular/sm",
 					className: "text-primary",
 					children: [
-						fe.length,
+						pe.length,
 						" of ",
-						pe,
+						me,
 						" selected"
 					]
 				}), /* @__PURE__ */ m(P, {
@@ -18097,14 +18097,14 @@ var Ob = "mitigations", kb = (e) => {
 						}),
 						/* @__PURE__ */ p(N, {
 							kind: "secondary",
-							onClick: ve,
-							disabled: xe,
+							onClick: ye,
+							disabled: Se,
 							children: "Preview composed"
 						}),
 						/* @__PURE__ */ p(N, {
 							kind: "primary",
-							onClick: ye,
-							disabled: xe || !c,
+							onClick: be,
+							disabled: Se || !c,
 							children: "▶ Run sanity check"
 						})
 					]
@@ -18128,15 +18128,22 @@ var Ob = "mitigations", kb = (e) => {
 				children: [/* @__PURE__ */ p(I, {
 					kind: "body/semibold/lg",
 					children: "Sanity check"
-				}), k ? /* @__PURE__ */ m(f, { children: [/* @__PURE__ */ p(Ng, { report: k }), /* @__PURE__ */ p(P, {
+				}), k ? /* @__PURE__ */ m(f, { children: [/* @__PURE__ */ p(Ng, { report: k }), /* @__PURE__ */ m(P, {
 					justify: "end",
-					children: /* @__PURE__ */ p(N, {
+					align: "center",
+					gap: "density-sm",
+					className: "min-w-0",
+					children: [fe ? /* @__PURE__ */ p(I, {
+						kind: "body/regular/sm",
+						className: "text-subtle",
+						children: "This manifest brings its own image, so there is no registered agent to update — copy the guardrails into your project instead."
+					}) : null, /* @__PURE__ */ p(N, {
 						kind: "primary",
 						size: "small",
 						onClick: () => le(!0),
-						disabled: !ie,
+						disabled: !ie || fe,
 						children: "Apply to Agent"
-					})
+					})]
 				})] }) : j ? /* @__PURE__ */ p(P, {
 					align: "center",
 					gap: "density-sm",
@@ -18164,7 +18171,7 @@ var Ob = "mitigations", kb = (e) => {
 				onNotify: b,
 				open: oe,
 				onClose: () => le(!1),
-				onConfirm: be,
+				onConfirm: xe,
 				title: a ? `Apply selected defenses to ${a}?` : "Apply selected defenses?",
 				description: "This records your selected guardrails on the agent as Relay components. Redeploy the agent afterward to activate them.",
 				submitButtonText: "Apply",
