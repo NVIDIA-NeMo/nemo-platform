@@ -67,18 +67,27 @@ not silently weaken validation.
 
 ## Deploy the packaged image
 
-After the user approves registration and deployment:
+After the user approves registration and deployment, use the workspace confirmed
+earlier. If an AgentEnvironment was selected, set `AGENT_ENVIRONMENT` to its
+workspace-qualified reference and include the shown `--environment` option;
+otherwise omit both that variable and option.
 
 ```bash
+WORKSPACE="<confirmed-workspace>"
+AGENT_ENVIRONMENT="$WORKSPACE/<confirmed-environment>"
+
 .venv/bin/nemo agents create \
   --name "$AGENT_NAME" \
-  --agent-config "agents/$AGENT_NAME-ethos/agent.yaml"
+  --agent-config "agents/$AGENT_NAME-ethos/agent.yaml" \
+  --workspace "$WORKSPACE"
 
 .venv/bin/nemo agents deploy \
   --agent "$AGENT_NAME" \
   --name "$AGENT_NAME-deployment" \
   --mode docker \
   --image "$IMAGE_TAG" \
+  --workspace "$WORKSPACE" \
+  --environment "$AGENT_ENVIRONMENT" \
   --timeout 300
 ```
 

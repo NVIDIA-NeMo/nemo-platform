@@ -202,9 +202,12 @@ explicit approval immediately before the state change.
 Show the exact create and deploy commands and ask for approval immediately
 before running them. `nemo agents create` is both the final Fabric plan and
 doctor gate and the registration step; do not run it earlier solely to validate
-the config. Verify registration by reading the Agent back. Verify deployment
-through the blocking command result and deployment status. On failure, inspect
-status and logs once, report the root error and stop.
+the config. Pass the confirmed workspace to both commands. If an
+AgentEnvironment was selected, pass its workspace-qualified reference to
+deployment. Verify registration by reading the Agent back in the same
+workspace. Verify deployment through the blocking command result and deployment
+status. On failure, inspect status and logs once, report the root error and
+stop.
 
 ## Verify onboarding
 

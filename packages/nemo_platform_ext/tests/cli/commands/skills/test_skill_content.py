@@ -152,6 +152,18 @@ class TestLoadPlatformSkills:
         assert "do not run it earlier solely to validate the config" in normalized
         assert content.index("## Test before registration") < content.index("## Register and deploy")
 
+    def test_build_agent_registration_uses_confirmed_workspace_and_environment(self):
+        skill = load_skills()["nemo-build-agent"]
+        assert skill.source_dir is not None
+        packaging = (skill.source_dir / "references" / "packaging.md").read_text()
+        create_command, deploy_command = packaging.split(".venv/bin/nemo agents deploy", maxsplit=1)
+
+        assert "If an AgentEnvironment was selected" in packaging
+        assert "otherwise omit both that variable and option" in packaging
+        assert '--workspace "$WORKSPACE"' in create_command
+        assert '--workspace "$WORKSPACE"' in deploy_command
+        assert '--environment "$AGENT_ENVIRONMENT"' in deploy_command
+
     def test_model_selection_benchmark_cache_is_packaged(self):
         skill = load_skills()["nemo-model-selection"]
         assert skill.source_dir is not None
