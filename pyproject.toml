@@ -79,7 +79,7 @@ experimentalist = [
   "nemo-experimentalist-plugin ; python_full_version < '3.14'",
   "nemo-eval-author-plugin ; python_full_version < '3.14'",
 ]
-typecheck = ["transformers>=5.16.1,<5.17.0"]
+typecheck = ["transformers>=5.5.0,<5.9.0"]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
