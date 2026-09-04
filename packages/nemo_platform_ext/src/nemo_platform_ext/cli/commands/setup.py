@@ -198,21 +198,10 @@ class ProbeConfig:
     body: dict | None = None
 
 
-# NVIDIA's gateway routes by model name before checking auth, so a fake model
-# returns 404 without ever validating the key. We use a supported model so the
-# gateway reaches the auth layer and returns 401/403 for bad credentials.
-_NVIDIA_BUILD_PROBE_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
-
+# Probe nvidia-build via GET /v1/models so a retired or unentitled chat model
+# cannot abort setup or look like a bad API key.
 _PROBE_CONFIGS: dict[str, ProbeConfig] = {
-    "nvidia-build": ProbeConfig(
-        "POST",
-        "v1/chat/completions",
-        {
-            "model": _NVIDIA_BUILD_PROBE_MODEL,
-            "messages": [{"role": "user", "content": "Respond with 'OK'"}],
-            "max_tokens": 1,
-        },
-    ),
+    "nvidia-build": ProbeConfig("GET", "v1/models"),
     "openai": ProbeConfig("GET", "models"),
     "anthropic": ProbeConfig("GET", "v1/models"),
     "google-gemini": ProbeConfig("GET", "models"),
@@ -246,8 +235,8 @@ _AUTO_ENV_VARS: tuple[tuple[str, str], ...] = (
 
 _KEY_VALIDATION_TIMEOUT = 10.0
 _KEY_REJECTED_STATUS_CODES = (401, 403)
-_TERMINAL_PROBE_STATUS_CODES = (404, 405, 410)
 _KEY_REJECTED_MESSAGE = "API key validation failed. The provider rejected the credentials."
+_PROBE_DETAIL_MAX_CHARS = 200
 
 # Catalog listing is not entitlement-scoped; only a successful chat request counts.
 _MODEL_PROBE_TIMEOUT = 20.0
@@ -2020,6 +2009,30 @@ def _register_provider_interactive(
         console.print(f"  {CHECK} Registered provider '{provider_name}' ({host_url})")
 
 
+def _probe_response_detail(resp: httpx.Response) -> str:
+    """Return a short upstream error string from a probe response, if present."""
+    try:
+        parsed = resp.json()
+    except Exception:
+        parsed = None
+    if isinstance(parsed, dict):
+        for key in ("detail", "title", "message"):
+            value = parsed.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()[:_PROBE_DETAIL_MAX_CHARS]
+    text = getattr(resp, "text", None)
+    if isinstance(text, str) and text.strip():
+        return text.strip()[:_PROBE_DETAIL_MAX_CHARS]
+    return ""
+
+
+def _with_probe_detail(message: str, resp: httpx.Response) -> str:
+    detail = _probe_response_detail(resp)
+    if not detail or detail in message:
+        return message
+    return f"{message} {detail}"
+
+
 def _validate_api_key(
     provider_name: str,
     host_url: str,
@@ -2032,10 +2045,10 @@ def _validate_api_key(
     """Probe the provider with the API key to detect auth failures early.
 
     Makes a single lightweight request to an auth-required endpoint.
-    Returns ``passed=False`` on a definitive credential rejection or when the
-    configured probe target is unavailable. Network errors and unknown
-    providers are treated as *passed* to avoid blocking setup during transient
-    failures.
+    Returns ``passed=False`` only on a definitive 401/403 credential rejection.
+    Unavailable probe targets, other HTTP statuses, network errors, and unknown
+    providers are treated as *passed* (with a warning message) so setup can
+    still register the provider.
     """
     if not api_key:
         return KeyValidationResult(passed=True, message="")
@@ -2068,20 +2081,15 @@ def _validate_api_key(
             timeout=timeout,
         )
         if resp.status_code in _KEY_REJECTED_STATUS_CODES:
-            return KeyValidationResult(passed=False, message=_KEY_REJECTED_MESSAGE)
-        if resp.status_code in _TERMINAL_PROBE_STATUS_CODES:
-            return KeyValidationResult(
-                passed=False,
-                message=(
-                    f"Provider validation failed (HTTP {resp.status_code}). "
-                    "The configured probe endpoint or model is unavailable."
-                ),
-            )
+            return KeyValidationResult(passed=False, message=_with_probe_detail(_KEY_REJECTED_MESSAGE, resp))
         if 200 <= resp.status_code < 300:
             return KeyValidationResult(passed=True, message="")
         return KeyValidationResult(
             passed=True,
-            message=f"Could not validate API key (received HTTP {resp.status_code}).",
+            message=_with_probe_detail(
+                f"Could not validate API key (received HTTP {resp.status_code}).",
+                resp,
+            ),
         )
     except httpx.TimeoutException:
         logger.debug("API key validation timed out for '%s'", provider_name)

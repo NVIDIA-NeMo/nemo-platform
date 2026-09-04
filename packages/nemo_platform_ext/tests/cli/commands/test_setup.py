@@ -2807,6 +2807,18 @@ class TestAutoModelPairSelection:
 # ---------------------------------------------------------------------------
 
 
+def _http_response(status_code: int, json_body: dict | None = None, text: str = "") -> MagicMock:
+    """Build a mock httpx response with explicit JSON/text, not MagicMock defaults."""
+    mock_resp = MagicMock(status_code=status_code)
+    if json_body is None:
+        mock_resp.json.side_effect = ValueError("no json")
+        mock_resp.text = text
+    else:
+        mock_resp.json.return_value = json_body
+        mock_resp.text = text
+    return mock_resp
+
+
 class TestValidateApiKey:
     """Tests for _validate_api_key — probes provider to detect bad credentials."""
 
@@ -2830,29 +2842,46 @@ class TestValidateApiKey:
             result = _validate_api_key(provider_name, host_url, "test-key")
         assert result.passed is expected_passed
 
-    def test_nvidia_build_uses_supported_nemotron_probe_model(self):
+    def test_nvidia_build_probes_model_catalog(self):
         mock_resp = MagicMock(status_code=200)
         with patch(f"{self._MOD}.httpx.request", return_value=mock_resp) as mock_req:
             _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "test-key")
 
-        assert mock_req.call_args.kwargs["json"]["model"] == "nvidia/nemotron-3.5-lightning-30b-a3b"
+        args, kwargs = mock_req.call_args
+        assert args[0] == "GET"
+        assert args[1] == "https://integrate.api.nvidia.com/v1/models"
+        assert kwargs.get("json") in (None, {})
 
-    @pytest.mark.parametrize("status_code", [429, 500, 502])
+    def test_rejected_key_does_not_blame_probe_target(self):
+        mock_resp = _http_response(401, {"detail": "Invalid API key"}, text='{"detail":"Invalid API key"}')
+        with patch(f"{self._MOD}.httpx.request", return_value=mock_resp):
+            result = _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "bad-key")
+        assert result.passed is False
+        assert "credentials" in result.message.lower()
+        assert "Invalid API key" in result.message
+        assert "unavailable" not in result.message
+
+    @pytest.mark.parametrize("status_code", [404, 405, 410, 429, 500, 502])
     def test_non_2xx_non_rejection_returns_warning(self, status_code):
-        mock_resp = MagicMock(status_code=status_code)
+        mock_resp = _http_response(status_code)
         with patch(f"{self._MOD}.httpx.request", return_value=mock_resp):
             result = _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "test-key")
         assert result.passed is True
         assert f"HTTP {status_code}" in result.message
+        assert "credentials" not in result.message.lower()
 
-    @pytest.mark.parametrize("status_code", [404, 405, 410])
-    def test_terminal_probe_response_fails_validation(self, status_code):
-        mock_resp = MagicMock(status_code=status_code)
+    def test_gone_probe_includes_upstream_detail_and_does_not_fail(self):
+        detail = (
+            "The model 'nvidia/nemotron-3-nano-30b-a3b' has reached its end of life "
+            "on 2026-09-01T09:00:00Z and is no longer available."
+        )
+        mock_resp = _http_response(410, {"title": "Gone", "status": 410, "detail": detail})
         with patch(f"{self._MOD}.httpx.request", return_value=mock_resp):
             result = _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "test-key")
-        assert result.passed is False
-        assert f"HTTP {status_code}" in result.message
-        assert "unavailable" in result.message
+        assert result.passed is True
+        assert "HTTP 410" in result.message
+        assert "end of life" in result.message
+        assert "credentials" not in result.message.lower()
 
     @pytest.mark.parametrize(
         "provider_name,api_key,side_effect,expected_passed",
@@ -2947,6 +2976,44 @@ class TestValidateApiKeyIntegration:
         ):
             _auto_setup(client, "default")
         assert exc_info.value.exit_code == 1
+
+    def test_auto_gone_probe_still_registers_provider(self):
+        """HTTP 410 on the probe must not abort provider registration or blame the key."""
+        client = _make_mock_client()
+        mock_resp = _http_response(
+            410,
+            {
+                "title": "Gone",
+                "status": 410,
+                "detail": "The model 'nvidia/nemotron-3-nano-30b-a3b' has reached its end of life.",
+            },
+        )
+        with (
+            patch.dict("os.environ", {"NVIDIA_API_KEY": "nvapi-good"}, clear=True),
+            patch(f"{self._MOD}.httpx.request", return_value=mock_resp),
+            patch(f"{self._MOD}.console.print") as print_message,
+        ):
+            result = _auto_setup(client, "default")
+        assert result == "nvidia-build"
+        client.inference.providers.create.assert_called_once()
+        printed = " ".join(str(call) for call in print_message.call_args_list)
+        assert "Check the value of $NVIDIA_API_KEY" not in printed
+        assert "end of life" in printed
+
+    def test_auto_rejected_key_still_points_at_env_var(self):
+        client = _make_mock_client()
+        mock_resp = _http_response(401, {"detail": "Unauthorized"})
+        with (
+            patch.dict("os.environ", {"NVIDIA_API_KEY": "bad-key"}, clear=True),
+            patch(f"{self._MOD}.httpx.request", return_value=mock_resp),
+            patch(f"{self._MOD}.console.print") as print_message,
+            pytest.raises(ClickExit) as exc_info,
+        ):
+            _auto_setup(client, "default")
+        assert exc_info.value.exit_code == 1
+        client.inference.providers.create.assert_not_called()
+        printed = " ".join(str(call) for call in print_message.call_args_list)
+        assert "Check the value of $NVIDIA_API_KEY" in printed
 
 
 # ---------------------------------------------------------------------------
