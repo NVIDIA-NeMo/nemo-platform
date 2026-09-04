@@ -1484,7 +1484,22 @@ class EvaluationRepository:
                         retry_after_cleanup
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (evaluation_id, execution_number) DO NOTHING
+                    ON CONFLICT (evaluation_id, execution_number) DO UPDATE
+                    SET runtime = EXCLUDED.runtime,
+                        backend_handle = EXCLUDED.backend_handle,
+                        dispatch_job_name = EXCLUDED.dispatch_job_name,
+                        failure_code = EXCLUDED.failure_code,
+                        failure_detail = EXCLUDED.failure_detail,
+                        retry_after_cleanup = EXCLUDED.retry_after_cleanup,
+                        status = 'pending',
+                        teardown_claimed_at = NULL,
+                        teardown_claimed_by = NULL,
+                        teardown_attempts = 0,
+                        delete_error = NULL,
+                        next_attempt_at = NOW(),
+                        deleted_at = NULL,
+                        updated_at = NOW()
+                    WHERE evaluation_execution_cleanups.status = 'deleted'
                     RETURNING id
                     """,
                     (

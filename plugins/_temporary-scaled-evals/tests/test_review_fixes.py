@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
+import os
 import subprocess
 import tarfile
 from contextlib import nullcontext
@@ -19,20 +21,29 @@ import pytest
 try:
     import click
     import httpx
+    from botocore.exceptions import ClientError
     from nemo_scaled_evals_plugin import migrations
+    from scaled_evals.api import s3
     from scaled_evals.api.build import buildkit
     from scaled_evals.api.build.errors import BuildError
+    from scaled_evals.api.build.image_builder_service import _post_resolve
     from scaled_evals.api.repositories.build_repository import TaskBuildRepository
+    from scaled_evals.api.repositories.evaluation_repository import EvaluationRepository
     from scaled_evals.api.repositories.runtime_resource_repository import (
         RuntimeResourceRepository,
     )
     from scaled_evals.api.repositories.switchyard_campaign_repository import (
         SwitchyardCampaignRepository,
     )
+    from scaled_evals.api.repositories.task_repository import TaskRepository
     from scaled_evals.api.routers import evaluations as evaluations_router
-    from scaled_evals.cli.client import make_client, request
+    from scaled_evals.cli.client import download_artifact, make_client, request, upload_file
+    from scaled_evals.dispatch import detached_runner
     from scaled_evals.dispatch import worker as worker_module
+    from scaled_evals.dispatch.credentials import write_env_file
+    from scaled_evals.dispatch.gym.docker import make_gym_docker_submitter
     from scaled_evals.dispatch.kubectl import execute_kubectl
+    from scaled_evals.dispatch.runtime_backend import LaunchSpec
     from scaled_evals.dispatch.worker import Dispatcher
 except ImportError as exc:
     pytest.skip(f"scaled-evals plugin not installed: {exc}", allow_module_level=True)
@@ -284,3 +295,171 @@ async def test_buildkit_timeout_terminates_and_reaps_process(tmp_path: Path, mon
         )
     assert process.terminated is True
     assert process.communicate_calls == 2
+
+
+def test_repair_and_cleanup_sql_preserve_recoverability() -> None:
+    connection = MagicMock()
+    connection.transaction.return_value = nullcontext()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.rowcount = 1
+
+    assert TaskRepository(connection).mark_task_pack_missing(
+        owner_id="owner",
+        task_id="task",
+        revision=3,
+        object_key="tasks/task/rev/3.tar.gz",
+        previous_status="ready",
+    )
+    repair_sql = cursor.execute.call_args_list[1].args[0]
+    assert "latest.revision IS NOT NULL" in repair_sql
+
+    cursor.reset_mock()
+    cursor.fetchone.side_effect = [
+        {
+            "id": "ev",
+            "status": "running",
+            "runtime": "sandbox_k8s",
+            "backend_handle": {"external_id": "old"},
+            "benchmark_run_id": None,
+            "infrastructure_retries": 0,
+            "max_infrastructure_retries": 1,
+        },
+        {"benchmark_available": True},
+        {"id": 7},
+    ]
+    result = EvaluationRepository(connection).record_dispatch_job_infrastructure_failure(
+        "ev",
+        execution_number=2,
+        dispatch_job_name="job",
+        reconcile_worker_id="worker",
+        failure_code="JobFailed",
+        detail="failed",
+        retry_delay_seconds=1,
+    )
+    insert_sql = next(
+        call.args[0]
+        for call in cursor.execute.call_args_list
+        if "INSERT INTO evaluation_execution_cleanups" in call.args[0]
+    )
+    assert result == {"action": "cleanup", "retry": True}
+    assert "WHERE evaluation_execution_cleanups.status = 'deleted'" in insert_sql
+    assert "status = 'pending'" in insert_sql
+
+
+def test_expired_runtime_claim_and_worker_namespace_are_portable() -> None:
+    connection = MagicMock()
+    connection.transaction.return_value = nullcontext()
+    cursor = connection.cursor.return_value.__enter__.return_value
+
+    RuntimeResourceRepository(connection).claim_due_switchyard_teardown(
+        claim_timeout=30,
+        worker_id="worker",
+    )
+    sql, params = cursor.execute.call_args.args
+    assert "r.status = 'deleting'" in sql
+    assert "r.drain_until IS NULL" in sql
+    assert params == (30, 30, "worker")
+
+    workers = (Path(__file__).parents[1] / "deploy/k8s/workers.yaml").read_text()
+    assert 'namespace="$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)"' in workers
+    assert "namespace: ${namespace}" in workers
+    assert "namespace: nemo-platform-scaled-evals" not in workers
+
+
+def test_detached_spawn_failure_is_terminal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pid_path = tmp_path / "runner.pid"
+    exit_path = tmp_path / "runner.exit.json"
+    token = "token"
+    pid_path.write_text(json.dumps({"pid": os.getpid(), "token": token}))
+
+    def fail_spawn(*_args: Any, **_kwargs: Any) -> None:
+        raise FileNotFoundError("runner missing")
+
+    monkeypatch.setattr(detached_runner.subprocess, "run", fail_spawn)
+
+    assert detached_runner.run(pid_path, exit_path, token, ["missing"]) == 127
+    assert not pid_path.exists()
+    terminal = json.loads(exit_path.read_text())
+    assert terminal["exit_code"] == 127
+    assert "runner missing" in terminal["error"]
+
+
+def test_streamed_gcs_errors_are_read_before_classification() -> None:
+    response = httpx.Response(
+        404,
+        stream=httpx.ByteStream(b'{"error":{"message":"missing"}}'),
+    )
+
+    with pytest.raises(ClientError) as raised:
+        s3._raise_for_gcs("DownloadObject", response)
+
+    assert response.is_stream_consumed
+    assert "missing" in str(raised.value)
+
+
+def test_cleartext_and_external_targets_are_rejected(tmp_path: Path) -> None:
+    with pytest.raises(BuildError, match="must use HTTPS"):
+        _post_resolve(
+            data={},
+            files={"context": ("context.tar.gz", b"x", "application/gzip")},
+            oc_token="secret",
+            service_url="http://builder.example.test",
+        )
+    with pytest.raises(click.ClickException, match="must use HTTPS"):
+        make_client("http://localhost:8080", "secret")
+    with make_client("http://localhost:8080", None) as client:
+        assert client.base_url == httpx.URL("http://localhost:8080/v1/")
+
+    def redirect(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            307,
+            headers={"location": "http://storage.example.test/archive"},
+        )
+
+    source = tmp_path / "archive.tar.gz"
+    source.write_bytes(b"archive")
+    with make_client(
+        "https://api.example.test",
+        "secret",
+        transport=httpx.MockTransport(redirect),
+    ) as client:
+        with pytest.raises(click.ClickException, match="must use HTTPS"):
+            upload_file(client, {"url": "http://storage.example.test/archive"}, source)
+        with pytest.raises(click.ClickException, match="must use HTTPS"):
+            download_artifact(client, "/artifacts/archive", tmp_path / "download")
+
+
+def test_gym_paths_are_created_exclusively(tmp_path: Path) -> None:
+    target = tmp_path / "target.env"
+    target.write_text("attacker-controlled")
+    with pytest.raises(FileExistsError):
+        write_env_file(target, {"TOKEN": "secret"})
+    target.unlink()
+    target.symlink_to(tmp_path / "captured")
+    with pytest.raises(FileExistsError):
+        write_env_file(target, {"TOKEN": "secret"})
+    assert not (tmp_path / "captured").exists()
+
+    env_file = tmp_path / "daytona.env"
+    env_file.write_text("GYM_AGENT_NAME=test\n")
+    work = tmp_path / "work"
+    (work / "ev-x2").mkdir(parents=True)
+    submit = make_gym_docker_submitter(
+        backend_name="gym_sandbox_daytona",
+        image=None,
+        env_file=str(env_file),
+        work_dir=str(work),
+        work_volume="gym-work",
+        runner=lambda *_args: None,
+    )
+    with pytest.raises(FileExistsError):
+        submit(
+            LaunchSpec(
+                evaluation_id="ev-x2",
+                name="test",
+                framework="nemo_gym",
+                runner_image_ref="registry.example/gym:frozen",
+                image_ref="task:tag",
+                parallelism=1,
+            )
+        )
