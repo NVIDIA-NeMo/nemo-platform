@@ -146,8 +146,10 @@ Give tools narrow schemas, bounded output, explicit permissions, capped retries
 for transient failures and redacted errors. Never write credentials, customer
 data or production traces into source, YAML, fixtures or logs.
 
-Invoke `nemo-agent-config` to create and validate the canonical
-`agents/<agent-name>-ethos/agent.yaml`. Require:
+Use `nemo-agent-config` to author the canonical
+`agents/<agent-name>-ethos/agent.yaml`, but do not run its `nemo agents create`
+registration step. This build workflow owns registration after every
+pre-registration gate has passed. Require:
 
 ```yaml
 config_format: nemo-agents-spec-v1
@@ -198,9 +200,11 @@ exists, offer reuse, rename or replace. Never overwrite or delete it without
 explicit approval immediately before the state change.
 
 Show the exact create and deploy commands and ask for approval immediately
-before running them. Verify registration by reading the Agent back. Verify
-deployment through the blocking command result and deployment status. On
-failure, inspect status and logs once, report the root error and stop.
+before running them. `nemo agents create` is both the final Fabric plan and
+doctor gate and the registration step; do not run it earlier solely to validate
+the config. Verify registration by reading the Agent back. Verify deployment
+through the blocking command result and deployment status. On failure, inspect
+status and logs once, report the root error and stop.
 
 ## Verify onboarding
 

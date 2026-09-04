@@ -143,6 +143,15 @@ class TestLoadPlatformSkills:
         assert "its Deep Agents adapter or runtime is absent" in skill.content
         assert "Do not install the harness independently" in skill.content
 
+    def test_build_agent_defers_registration_until_after_local_gates(self):
+        content = load_skills()["nemo-build-agent"].content
+        normalized = " ".join(content.split())
+
+        assert "do not run its `nemo agents create` registration step" in normalized
+        assert "This build workflow owns registration after every pre-registration gate has passed" in normalized
+        assert "do not run it earlier solely to validate the config" in normalized
+        assert content.index("## Test before registration") < content.index("## Register and deploy")
+
     def test_model_selection_benchmark_cache_is_packaged(self):
         skill = load_skills()["nemo-model-selection"]
         assert skill.source_dir is not None
