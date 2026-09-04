@@ -109,6 +109,20 @@ This means early `0.1.x` tags that were cut before the Fern migration cannot app
 
 To preview the release selector locally, run `npm run materialize:versions` from `docs/fern/`, then `npm run dev`. The generated snapshots and generated version YAMLs are gitignored; restore `docs/fern/docs.yml` afterward if you only needed a local preview.
 
+### Pre-release branches
+
+`docs/fern/release-branches.json` is an optional map from a release branch to the tag it will eventually become, for example:
+
+```json
+{
+  "release/0.6": "0.6.0"
+}
+```
+
+If the tag (`0.6.0`) doesn't exist yet but the branch (`release/0.6`) does and contains `docs/fern/versions/latest.yml`, `materialize-release-versions.mjs` builds that version's docs from the branch instead, under the same version path the real tag will use, and marks it `availability: preview` in `docs.yml` (Fern's version-selector schema has no literal "pre-release" value; `preview` is the closest fit and still renders a badge). Once the real tag is pushed, it takes over automatically — the branch entry is skipped as soon as the tag exists.
+
+The map is not read by Fern itself, so it isn't subject to `docs.yml`'s schema (which is `additionalProperties: false`). It's optional: an absent or empty file is a no-op. `publish-fern-docs.yaml` fetches the listed branches before materializing, tolerating branches that don't exist on the remote.
+
 ## Gated (unready) features
 
 Some features are not shipped yet and must be **fully excluded from the build** — not just hidden from the sidebar. Fern's `hidden: true` still builds and serves the page (reachable by direct URL and indexable), so it is **not** used for this. Instead, the gated pages are simply **left out of `versions/latest.yml`**: Fern only builds pages referenced in the navigation, so an omitted page is never built (it 404s and is not indexed). This matches the old MkDocs `hide_unready_docs` hook, which dropped the same files from the build.
