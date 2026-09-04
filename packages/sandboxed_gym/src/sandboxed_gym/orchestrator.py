@@ -473,7 +473,16 @@ class SandboxedGymSession:
         )
 
     def _decode_results(self, payload: bytes) -> list[Any]:
-        body = payload.decode("utf-8")
+        try:
+            # Strict, and caught rather than avoided: errors="replace" would let a body with one
+            # corrupt byte still parse, handing the caller U+FFFD where the host wrote data.
+            body = payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise RolloutTransportError(
+                f"the sandboxed Gym host returned a body that is not UTF-8 ({exc})",
+                retryable=False,
+                origin="sandbox",
+            ) from exc
         if not body.strip():
             # Heartbeats and nothing else: the host committed its 200, padded the connection while
             # it worked, and then went away without ever writing the envelope -- an OOMKill or an
@@ -489,9 +498,11 @@ class SandboxedGymSession:
         try:
             # The host heartbeats leading whitespace while a batch runs; json tolerates it.
             decoded = json.loads(body)
-        except json.JSONDecodeError as exc:
-            # Narrow on purpose: a *non-empty* malformed body is a broken response contract, not a
-            # transport blip, so it must not be retried into looking like one.
+        except (ValueError, RecursionError) as exc:
+            # A *non-empty* malformed body is a broken response contract, not a transport blip, so
+            # it must not be retried into looking like one. Wider than JSONDecodeError because json
+            # also refuses input outright -- the integer-digit limit, deep nesting -- and narrowing
+            # this back lets those leave unclassified.
             raise RolloutTransportError(
                 f"the sandboxed Gym host returned a body that is not JSON ({exc}); first 200 bytes: {body[:200]!r}",
                 retryable=False,
@@ -506,13 +517,20 @@ class SandboxedGymSession:
                 origin="sandbox",
             )
         if isinstance(decoded, dict) and "results" in decoded:
-            return list(decoded["results"])
+            results = decoded["results"]
+            if not isinstance(results, list):
+                raise RolloutTransportError(
+                    f"unexpected rollout response shape: 'results' is {type(results).__name__}, not a list",
+                    retryable=False,
+                    origin="sandbox",
+                )
+            return results
         if isinstance(decoded, list):
             return decoded
         raise RolloutTransportError(
             f"unexpected rollout response shape: {type(decoded).__name__}",
             retryable=False,
-            origin="client",
+            origin="sandbox",
         )
 
     def shutdown(self) -> None:

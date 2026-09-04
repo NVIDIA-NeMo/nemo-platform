@@ -408,6 +408,62 @@ def test_a_malformed_non_empty_body_is_a_contract_failure() -> None:
     assert "not JSON" in str(excinfo.value)
 
 
+def test_a_non_utf8_body_is_a_contract_failure_not_a_decode_crash() -> None:
+    """An uncaught decode raises UnicodeDecodeError, which is not a RolloutTransportError.
+
+    ``_post_chunk_with_retries`` only catches RolloutTransportError, so anything else reaches
+    ``_post_all_chunks`` and is re-raised as a bug in this process -- losing the chunk label and
+    the sandbox attribution for a failure the host produced.
+    """
+    session = _session()
+
+    with pytest.raises(RolloutTransportError) as excinfo:
+        session._decode_results(b'{"results": ["\xff"]}')
+
+    assert excinfo.value.origin == "sandbox"
+    assert not excinfo.value.retryable
+    assert "not UTF-8" in str(excinfo.value)
+
+
+def test_a_json_refusal_that_is_not_a_decode_error_is_a_contract_failure() -> None:
+    """``json`` has refusals that are not ``JSONDecodeError``, and they escape a narrow catch.
+
+    Both bodies below are well within ``max_response_bytes``, so nothing upstream stops them.
+    """
+    session = _session()
+
+    for payload in (b"1" * 5000, b"[" * 100_000 + b"]" * 100_000):
+        with pytest.raises(RolloutTransportError) as excinfo:
+            session._decode_results(payload)
+
+        assert excinfo.value.origin == "sandbox"
+        assert not excinfo.value.retryable
+
+
+def test_a_non_list_results_field_is_a_contract_failure() -> None:
+    """``{"results": null}`` would raise TypeError from ``list(None)`` and escape the same way."""
+    session = _session()
+
+    with pytest.raises(RolloutTransportError) as excinfo:
+        session._decode_results(b'{"results": null}')
+
+    assert excinfo.value.origin == "sandbox"
+    assert not excinfo.value.retryable
+    assert "not a list" in str(excinfo.value)
+
+
+def test_a_top_level_scalar_response_is_a_contract_failure() -> None:
+    """The host produced it, so it is attributed to the sandbox like every other bad envelope."""
+    session = _session()
+
+    with pytest.raises(RolloutTransportError) as excinfo:
+        session._decode_results(b"42")
+
+    assert excinfo.value.origin == "sandbox"
+    assert not excinfo.value.retryable
+    assert "unexpected rollout response shape" in str(excinfo.value)
+
+
 def test_a_bug_in_this_process_is_not_disguised_as_a_transport_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
