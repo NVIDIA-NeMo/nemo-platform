@@ -550,7 +550,7 @@ from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 # Force JSON-only judge output. RAGAS parses the judge's topic extraction and
@@ -591,7 +591,7 @@ from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 # Force JSON-only judge output so RAGAS can parse the judge responses; verbose
@@ -716,7 +716,7 @@ from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AgentGoalAccuracyMetric(use_reference=True, judge_model=judge_model)
@@ -756,7 +756,7 @@ from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AgentGoalAccuracyMetric(use_reference=True, judge_model=judge_model)
@@ -865,7 +865,7 @@ from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AgentGoalAccuracyMetric(use_reference=False, judge_model=judge_model)
@@ -913,7 +913,7 @@ from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AgentGoalAccuracyMetric(use_reference=False, judge_model=judge_model)
@@ -982,7 +982,7 @@ from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AnswerAccuracyMetric(judge_model=judge_model)
@@ -1011,7 +1011,7 @@ from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AnswerAccuracyMetric(judge_model=judge_model)
@@ -1041,12 +1041,12 @@ from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 target_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="nvidia/llama-3.3-nemotron-super-49b-v1",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 metric = AnswerAccuracyMetric(judge_model=judge_model)
@@ -1133,7 +1133,7 @@ Each data entry must follow the [NeMo Agent Toolkit](https://docs.nvidia.com/nem
     {
       "payload": {
         "event_type": "LLM_END",
-        "name": "nvidia/llama-3.3-nemotron-super-49b-v1",
+        "name": "nvidia/nemotron-3.5-lightning-30b-a3b",
         "data": {
           "input": "\nPrevious conversation history:\n\n\nQuestion: What are LLMs\n",
           "output": "Thought: I need to find information about LLMs to answer this question.\n\nAction: wikipedia_search\nAction Input: {'question': 'LLMs'}\n\n"
@@ -1153,7 +1153,7 @@ Each data entry must follow the [NeMo Agent Toolkit](https://docs.nvidia.com/nem
     {
       "payload": {
         "event_type": "LLM_END",
-        "name": "meta/llama-3.1-70b-instruct",
+        "name": "nvidia/nemotron-3.5-lightning-30b-a3b",
         "data": {
           "input": "...",
           "output": "Thought: I now know the final answer\n\nFinal Answer: LLMs, or Large Language Models, are a type of artificial intelligence..."
@@ -1183,7 +1183,7 @@ from nemo_evaluator_sdk import Model, SecretRef
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 ```
@@ -1195,14 +1195,14 @@ judge_model = Model(
 </Note>
 ### Using Reasoning Models
 
-For models that support extended reasoning, such as `nvidia/llama-3.3-nemotron-super-49b-v1`, add system prompt and reasoning parameters to online model generation:
+For models that support extended reasoning, such as `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`, add system prompt and reasoning parameters to online model generation:
 
 ```python
 from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model, ReasoningParams, SecretRef
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="nvidia/llama-3.3-nemotron-super-49b-v1",
+    name="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 
@@ -1224,7 +1224,7 @@ client.secrets.create(name="nvidia-api-key", value="nvapi-YOUR_API_KEY_HERE")
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name="meta/llama-3.1-70b-instruct",
+    name="nvidia/nemotron-3.5-lightning-30b-a3b",
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 ```
