@@ -18,7 +18,7 @@ This tutorial uses the `rl` customization backend (powered by [NVIDIA NeMo-RL](h
 Before starting this tutorial, ensure you have:
 
 1. **Completed the [Quickstart](/documentation/get-started)** to install the NeMo Platform and Python SDK.
-2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all]"`; source checkout: run `make bootstrap` from the repository root).
+2. **Installed the Python SDK** (PyPI wrapper: `pip install "nemo-platform[all,nemo-rl-plugin]"` so `RlJobInput` is available; source checkout: run `make bootstrap` from the repository root). `nemo-platform[all]` does not include the RL plugin.
 3. **Installed the `datasets` package**: `pip install datasets`.
 4. **A platform configured with `platform.runtime: kubernetes`.** The `rl` (DPO) backend provisions a Ray cluster and has **no local Docker fallback** — `submit` fails fast on a Docker-runtime platform. Multi-node jobs (`parallelism.num_nodes > 1`) additionally require the platform-side `NMP_RL_MULTINODE_SHARED_STORAGE_PATH`.
 5. **A Hugging Face token** with access to the gated base model (this tutorial uses `meta-llama/Llama-3.2-1B-Instruct`). Export it as `HF_TOKEN`.

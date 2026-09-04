@@ -692,7 +692,7 @@ For detailed information on all available hyperparameters, recommended values, a
 
 **Deployment fails:**
 - Verify output model exists: `client.models.retrieve(name=OUTPUT_NAME, workspace="default")`
-- Check job logs: `client.jobs.get_logs(name=job.name, workspace="default")`
+- Check job logs: `client.jobs.get_logs(name=job.job.name, workspace="default")`
 - Check deployment status: `client.inference.deployments.retrieve(name=deployment.name, workspace="default")`
 - Ensure sufficient GPU resources for `executor_config={"gpu": 1, ...}`
 - Verify the deployment config matches this tutorial: `engine="vllm"` with `vllm/vllm-openai:v0.22.1`
