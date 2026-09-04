@@ -25,21 +25,21 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym import (
     GymRuntimeConfig,
     discover_gym_tasks,
 )
-from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import _flatten_overrides, _hydra_scalar, _selection_args
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import _flatten_overrides, hydra_scalar, selection_args
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import (
     _canonical_row_hash,
     _content_text,
-    _materialize_dataset,
     _render_instruction,
-    _source_datasets,
+    materialize_dataset,
+    source_datasets,
 )
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.process import (
-    _LOG_TAIL_LINES,
-    _drain_pumps,
-    _gym_executable,
-    _gym_invocation_env,
-    _pending_servers,
-    _pump_stream,
+    LOG_TAIL_LINES,
+    drain_pumps,
+    gym_executable,
+    gym_invocation_env,
+    pending_servers,
+    pump_stream,
 )
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import NG_ROLLOUT_INDEX, NG_TASK_INDEX
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import (
@@ -47,10 +47,10 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import (
     _TOKEN_USAGE_KEYS,
     _agent_never_ran,
     _aggregate_metrics_path_for,
-    _ensure_fresh_output,
-    _read_run_aggregations,
-    _require_full_coverage,
-    _trials_from_rollouts,
+    ensure_fresh_output,
+    read_run_aggregations,
+    require_full_coverage,
+    trials_from_rollouts,
 )
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
 from nemo_evaluator_sdk.metrics.protocol import CandidateOutput, DatasetRow, MetricInput
@@ -66,7 +66,7 @@ def _rows(path: Path) -> list[dict]:
 
 def _index_map(tasks: list, tmp_path: Path) -> tuple[list[str], dict[int, str]]:
     """Materialize ``tasks`` the way the runner does, returning (task ids in order, index->id map)."""
-    index_map = _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+    index_map = materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
     return [task.id for task in tasks], index_map
 
 
@@ -143,7 +143,7 @@ def test_promptless_rows_still_hash_distinctly(tmp_path: Path) -> None:
     tasks = discover_gym_tasks(dataset)
     assert len({task.id for task in tasks}) == 5
     # and they re-materialize into the five rows Gym will read, each with its own index
-    index_map = _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+    index_map = materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
     rows = _rows(tmp_path / "gym_input.jsonl")
     assert [row["task_idx"] for row in rows] == [0, 1, 2, 3, 4]
     assert index_map == {index: task.id for index, task in enumerate(tasks)}
@@ -193,7 +193,7 @@ def test_materialize_dataset_stamps_task_index_and_returns_total_map(tmp_path: P
     # stamped with its own index, and the returned map covers all of them.
     tasks = discover_gym_tasks(EXAMPLE)
     dest = tmp_path / "gym_input.jsonl"
-    index_map = _materialize_dataset(tasks, dest)
+    index_map = materialize_dataset(tasks, dest)
     rows = _rows(dest)
     assert len(rows) == len(tasks)
     assert [row[NG_TASK_INDEX] for row in rows] == list(range(len(tasks)))
@@ -209,7 +209,7 @@ def test_materialize_dataset_subsets_to_requested_tasks(tmp_path: Path) -> None:
     # whose trials we would then discard.
     tasks = discover_gym_tasks(EXAMPLE)
     subset = [tasks[3], tasks[1]]
-    index_map = _materialize_dataset(subset, tmp_path / "gym_input.jsonl")
+    index_map = materialize_dataset(subset, tmp_path / "gym_input.jsonl")
     assert index_map == {0: tasks[3].id, 1: tasks[1].id}
     assert len(_rows(tmp_path / "gym_input.jsonl")) == 2
 
@@ -227,7 +227,7 @@ def test_materialize_dataset_overrides_preassigned_task_index(tmp_path: Path) ->
         encoding="utf-8",
     )
     tasks = discover_gym_tasks(dataset)
-    index_map = _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+    index_map = materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
     rows = _rows(tmp_path / "gym_input.jsonl")
     assert [row[NG_TASK_INDEX] for row in rows] == [0, 1]  # source values discarded
     # index 0 is the math row (first in file order), index 1 the capital row
@@ -243,7 +243,7 @@ def test_materialize_dataset_overrides_preassigned_task_index(tmp_path: Path) ->
         + "\n",
         encoding="utf-8",
     )
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
     responses = {trial.task_id: (trial.output.response if trial.output else None) for trial in trials}
     rewards = {trial.task_id: trial.metadata["reward"] for trial in trials}
     assert responses[tasks[0].id] == "4"  # the math task got the math answer, not the capital task's
@@ -263,7 +263,7 @@ def test_serialization_variant_rows_collapse_without_index_drift(tmp_path: Path)
     )
     tasks = discover_gym_tasks(dataset)
     assert len(tasks) == 1  # same content -> same task
-    index_map = _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+    index_map = materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
     assert index_map == {0: tasks[0].id}
     assert len(_rows(tmp_path / "gym_input.jsonl")) == 1  # Gym is handed one row, so it emits one index
 
@@ -284,13 +284,13 @@ def test_discover_gym_tasks_warns_on_duplicate_rows(tmp_path: Path, caplog) -> N
 def test_materialize_dataset_reports_empty_task_list(tmp_path: Path) -> None:
     # The empty case used to surface as a confusing "needs a dataset path" from the provenance helper.
     with pytest.raises(ValueError, match="no tasks to run"):
-        _materialize_dataset([], tmp_path / "gym_input.jsonl")
+        materialize_dataset([], tmp_path / "gym_input.jsonl")
 
 
 def test_materialize_dataset_rejects_duplicate_tasks(tmp_path: Path) -> None:
     tasks = discover_gym_tasks(EXAMPLE)
     with pytest.raises(ValueError, match="more than once"):
-        _materialize_dataset([tasks[0], tasks[0]], tmp_path / "gym_input.jsonl")
+        materialize_dataset([tasks[0], tasks[0]], tmp_path / "gym_input.jsonl")
 
 
 def test_materialize_dataset_requires_source_rows(tmp_path: Path) -> None:
@@ -298,11 +298,11 @@ def test_materialize_dataset_requires_source_rows(tmp_path: Path) -> None:
     tasks = discover_gym_tasks(EXAMPLE)
     no_extras = tasks[0].model_copy(update={"metadata": {"gym_dataset_path": str(EXAMPLE)}})
     with pytest.raises(ValueError, match="gym_row_extras"):
-        _materialize_dataset([no_extras], tmp_path / "gym_input.jsonl")
+        materialize_dataset([no_extras], tmp_path / "gym_input.jsonl")
     # the other half of the split is equally required
     no_params = tasks[0].model_copy(update={"inputs": {k: v for k, v in tasks[0].inputs.items() if k != "gym_row"}})
     with pytest.raises(ValueError, match="gym_row"):
-        _materialize_dataset([no_params], tmp_path / "gym_input.jsonl")
+        materialize_dataset([no_params], tmp_path / "gym_input.jsonl")
 
 
 def test_content_text_warns_on_unsupported_shape(caplog) -> None:
@@ -329,7 +329,7 @@ def test_trials_fan_out_one_per_attempt(tmp_path: Path) -> None:
     bundle = tmp_path / "rollouts.jsonl"
     bundle.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
 
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
     assert len(trials) == 4  # 2 tasks x 2 attempts
     assert len({trial.id for trial in trials}) == 4  # distinct trial ids
     assert {trial.task_id for trial in trials} == {ordered[0], ordered[1]}  # attributed via _ng_task_index
@@ -345,7 +345,7 @@ def test_trials_raise_on_unstamped_task_index(tmp_path: Path) -> None:
     bundle = tmp_path / "rollouts.jsonl"
     bundle.write_text(json.dumps({NG_TASK_INDEX: 999, "reward": 1.0}) + "\n", encoding="utf-8")  # out of range
     with pytest.raises(ValueError):
-        _trials_from_rollouts(bundle, tasks, index_map)
+        trials_from_rollouts(bundle, tasks, index_map)
 
 
 def test_failures_sidecar_yields_failed_trials(tmp_path: Path) -> None:
@@ -357,7 +357,7 @@ def test_failures_sidecar_yields_failed_trials(tmp_path: Path) -> None:
     bundle.write_text(json.dumps({NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 0, "reward": 1.0}) + "\n", encoding="utf-8")
     failures = tmp_path / "rollouts_failures.jsonl"
     failures.write_text(json.dumps({NG_TASK_INDEX: 1, NG_ROLLOUT_INDEX: 0, "error": "boom"}) + "\n", encoding="utf-8")
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
     by_status = {trial.task_id: trial.status for trial in trials}
     assert by_status[ordered[0]] == AgentEvalTrialStatus.COMPLETED
     assert by_status[ordered[1]] == AgentEvalTrialStatus.FAILED
@@ -372,11 +372,11 @@ def test_ensure_fresh_output_rejects_reused_dir(tmp_path: Path) -> None:
     rollouts = tmp_path / "rollouts.jsonl"
     (tmp_path / "rollouts_failures.jsonl").write_text("{}\n", encoding="utf-8")
     with pytest.raises(FileExistsError):
-        _ensure_fresh_output(rollouts)
+        ensure_fresh_output(rollouts)
 
 
 def test_ensure_fresh_output_allows_clean_dir(tmp_path: Path) -> None:
-    _ensure_fresh_output(tmp_path / "rollouts.jsonl")  # no prior artifacts -> no raise
+    ensure_fresh_output(tmp_path / "rollouts.jsonl")  # no prior artifacts -> no raise
 
 
 def test_source_datasets_is_provenance_only_and_never_raises() -> None:
@@ -384,15 +384,15 @@ def test_source_datasets_is_provenance_only_and_never_raises() -> None:
     # tasks themselves. So mixing datasets in one run is now legitimate (the materialized dataset is
     # the union) and this summary must not gate the run; it only labels a log line.
     tasks = discover_gym_tasks(EXAMPLE)
-    assert "gym_mcqa_example.jsonl" in _source_datasets(tasks)
+    assert "gym_mcqa_example.jsonl" in source_datasets(tasks)
     other = tasks[0].model_copy(update={"metadata": {**tasks[0].metadata, "gym_dataset_path": "/other/ds.jsonl"}})
-    summary = _source_datasets([*tasks, other])  # must not raise
+    summary = source_datasets([*tasks, other])  # must not raise
     assert "gym_mcqa_example.jsonl" in summary and "/other/ds.jsonl" in summary
     # tasks with no stamped path at all are fine too — the run does not depend on it
     unstamped = tasks[0].model_copy(
         update={"metadata": {k: v for k, v in tasks[0].metadata.items() if k != "gym_dataset_path"}}
     )
-    assert _source_datasets([unstamped])
+    assert source_datasets([unstamped])
 
 
 def test_materialize_dataset_reassembles_row_without_storing_params_twice(tmp_path: Path) -> None:
@@ -402,7 +402,7 @@ def test_materialize_dataset_reassembles_row_without_storing_params_twice(tmp_pa
     extras = tasks[0].metadata["gym_row_extras"]
     assert "responses_create_params" not in extras  # not duplicated
     # ...yet materialization still reconstructs the complete source row Gym's verifier needs
-    _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+    materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
     row = _rows(tmp_path / "gym_input.jsonl")[0]
     source = _rows(EXAMPLE)[0]
     assert {k: v for k, v in row.items() if k != NG_TASK_INDEX} == source
@@ -418,7 +418,7 @@ async def test_a_rollout_carries_an_otlp_trace_the_sdk_can_read(tmp_path: Path) 
     dataset = tmp_path / "dataset.jsonl"
     dataset.write_text(json.dumps({"responses_create_params": {"input": "What is 2 + 2?"}}) + "\n", encoding="utf-8")
     tasks = discover_gym_tasks(dataset)
-    index_map = _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+    index_map = materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
     bundle = tmp_path / "rollouts.jsonl"
     bundle.write_text(
         json.dumps(
@@ -441,7 +441,7 @@ async def test_a_rollout_carries_an_otlp_trace_the_sdk_can_read(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    trial = _trials_from_rollouts(bundle, tasks, index_map)[0]
+    trial = trials_from_rollouts(bundle, tasks, index_map)[0]
 
     assert trial.evidence is not None
     handle = await trial.evidence.trace(EVIDENCE_TRACE, format=EVIDENCE_FORMAT_OTLP)
@@ -469,7 +469,7 @@ def test_success_records_without_rollout_index_get_distinct_ids(tmp_path: Path) 
         json.dumps({NG_TASK_INDEX: 0, "reward": 1.0}) + "\n" + json.dumps({NG_TASK_INDEX: 0, "reward": 0.0}) + "\n",
         encoding="utf-8",
     )
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
     assert len(trials) == 2
     assert len({trial.id for trial in trials}) == 2  # distinct ids despite missing rollout index
     assert all(trial.task_id == ordered[0] for trial in trials)
@@ -491,7 +491,7 @@ async def test_indexless_rollouts_of_one_task_get_distinct_trace_ids(tmp_path: P
         encoding="utf-8",
     )
 
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
 
     roots = []
     for trial in trials:
@@ -518,7 +518,7 @@ def test_indexless_failures_get_distinct_trial_ids(tmp_path: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
     assert len(trials) == 2
     assert len({trial.id for trial in trials}) == 2  # distinct ids despite missing rollout index
     assert all(trial.status == AgentEvalTrialStatus.FAILED for trial in trials)
@@ -535,7 +535,7 @@ def test_malformed_line_in_failures_sidecar_is_skipped(tmp_path: Path) -> None:
     failures.write_text(
         json.dumps({NG_TASK_INDEX: 1, NG_ROLLOUT_INDEX: 0, "error": "boom"}) + "\n{ truncated\n", encoding="utf-8"
     )
-    trials = _trials_from_rollouts(bundle, tasks, index_map)  # must not raise
+    trials = trials_from_rollouts(bundle, tasks, index_map)  # must not raise
     statuses = Counter(trial.status for trial in trials)
     assert statuses[AgentEvalTrialStatus.COMPLETED] == 1
     assert statuses[AgentEvalTrialStatus.FAILED] == 1  # the valid failure survived; the bad line was skipped
@@ -549,7 +549,7 @@ def test_malformed_reward_is_recorded_unscored_not_crashing(tmp_path: Path) -> N
     bundle.write_text(
         json.dumps({NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 0, "reward": "not-a-number"}) + "\n", encoding="utf-8"
     )
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
     assert len(trials) == 1
     assert trials[0].status == AgentEvalTrialStatus.PARTIAL
     assert trials[0].metadata["reward"] is None
@@ -559,7 +559,7 @@ def test_trials_from_real_captured_bundle(tmp_path: Path) -> None:
     # End-to-end join against the real mcqa rollout bundle (--limit 2 --num-repeats 2 → 4 records).
     tasks = discover_gym_tasks(EXAMPLE)
     _ordered, index_map = _index_map(tasks, tmp_path)
-    trials = _trials_from_rollouts(ROLLOUTS, tasks, index_map)
+    trials = trials_from_rollouts(ROLLOUTS, tasks, index_map)
     records = _rows(ROLLOUTS)
     assert len(trials) == len(records)  # one trial per rollout record
     assert set(Counter(trial.task_id for trial in trials).values()) == {2}  # 2 attempts per task
@@ -579,7 +579,7 @@ async def test_pump_stream_writes_file_and_mirrors_to_logger(tmp_path: Path, cap
     log_path = tmp_path / "gym_eval.stdout.log"
     tails: dict[str, deque] = {}
     with caplog.at_level(logging.DEBUG, logger="nemo_evaluator_sdk.agent_eval.runtimes.gym.process"):
-        await _pump_stream(stream, log_path, label="gym eval", tails=tails, key="stdout")
+        await pump_stream(stream, log_path, label="gym eval", tails=tails, key="stdout")
     assert log_path.read_text(encoding="utf-8") == "first line\nsecond line\nno trailing newline"
     assert list(tails["stdout"]) == ["first line", "second line", "no trailing newline"]
     assert "second line" in caplog.text  # mirrored at DEBUG, not printed unconditionally
@@ -590,27 +590,27 @@ async def test_pump_stream_tail_is_bounded(tmp_path: Path) -> None:
     # The in-memory tail exists only to enrich a failure message; the file is the complete record, so
     # a long collection must not accumulate its whole transcript in memory.
     stream = asyncio.StreamReader()
-    stream.feed_data(b"".join(f"line {n}\n".encode() for n in range(_LOG_TAIL_LINES * 3)))
+    stream.feed_data(b"".join(f"line {n}\n".encode() for n in range(LOG_TAIL_LINES * 3)))
     stream.feed_eof()
     tails: dict[str, deque] = {}
-    await _pump_stream(stream, tmp_path / "out.log", label="gym eval", tails=tails, key="stdout")
-    assert len(tails["stdout"]) == _LOG_TAIL_LINES
-    assert tails["stdout"][-1] == f"line {_LOG_TAIL_LINES * 3 - 1}"  # kept the *last* lines
-    assert len((tmp_path / "out.log").read_text(encoding="utf-8").splitlines()) == _LOG_TAIL_LINES * 3
+    await pump_stream(stream, tmp_path / "out.log", label="gym eval", tails=tails, key="stdout")
+    assert len(tails["stdout"]) == LOG_TAIL_LINES
+    assert tails["stdout"][-1] == f"line {LOG_TAIL_LINES * 3 - 1}"  # kept the *last* lines
+    assert len((tmp_path / "out.log").read_text(encoding="utf-8").splitlines()) == LOG_TAIL_LINES * 3
 
 
 @pytest.mark.asyncio
 async def test_drain_pumps_returns_when_pipe_never_reaches_eof(tmp_path: Path, caplog) -> None:
     # A pump ends only at pipe EOF, which needs every inheritor of the write end to close it. Ray
-    # daemonizes gcs_server outside our process group (see _terminate), so a survivor can hold the fd
+    # daemonizes gcs_server outside our process group (see terminate), so a survivor can hold the fd
     # open forever. Draining must therefore be bounded: teardown cannot block on a leaked grandchild.
     stream = asyncio.StreamReader()
     stream.feed_data(b"partial output\n")  # data, but deliberately no feed_eof()
-    pump = asyncio.create_task(_pump_stream(stream, tmp_path / "stuck.log", label="gym env start"))
+    pump = asyncio.create_task(pump_stream(stream, tmp_path / "stuck.log", label="gym env start"))
     await asyncio.sleep(0)  # let the pump consume what's buffered and block on the next read
 
     with caplog.at_level(logging.WARNING):
-        await asyncio.wait_for(_drain_pumps([pump], grace_s=0.05, what="gym env start"), timeout=5)
+        await asyncio.wait_for(drain_pumps([pump], grace_s=0.05, what="gym env start"), timeout=5)
 
     assert pump.cancelled() or pump.done()  # abandoned, not awaited forever
     assert "did not finish" in caplog.text  # and the truncation is reported, not silent
@@ -626,9 +626,9 @@ async def test_drain_pumps_awaits_normal_completion(tmp_path: Path, caplog) -> N
     stream.feed_data(b"all of it\n")
     stream.feed_eof()
     tails: dict[str, deque] = {}
-    pump = asyncio.create_task(_pump_stream(stream, tmp_path / "done.log", label="gym eval", tails=tails))
+    pump = asyncio.create_task(pump_stream(stream, tmp_path / "done.log", label="gym eval", tails=tails))
     with caplog.at_level(logging.WARNING):
-        await _drain_pumps([pump], grace_s=5, what="gym eval")
+        await drain_pumps([pump], grace_s=5, what="gym eval")
     assert pump.done() and not pump.cancelled()
     assert list(tails["stdout"]) == ["all of it"]
     assert "did not finish" not in caplog.text
@@ -643,12 +643,12 @@ def test_trials_reject_index_map_disagreeing_with_tasks(tmp_path: Path) -> None:
     bundle = tmp_path / "rollouts.jsonl"
     bundle.write_text(json.dumps({NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 0, "reward": 1.0}) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="does not match"):
-        _trials_from_rollouts(bundle, tasks[1:], index_map)  # map covers a task not in the list
+        trials_from_rollouts(bundle, tasks[1:], index_map)  # map covers a task not in the list
 
 
 def test_success_record_without_usable_index_is_counted_not_silently_dropped(tmp_path: Path, caplog) -> None:
     # A success record with no usable _ng_task_index can't be attributed, but dropping it silently is
-    # the dangerous case: with num_repeats > 1 the task keeps its other trials, so _require_full_coverage
+    # the dangerous case: with num_repeats > 1 the task keeps its other trials, so require_full_coverage
     # won't fire and the task is simply scored on fewer attempts than were actually run. Count + warn,
     # matching what the failures loop already does.
     tasks = discover_gym_tasks(EXAMPLE)
@@ -662,7 +662,7 @@ def test_success_record_without_usable_index_is_counted_not_silently_dropped(tmp
         encoding="utf-8",
     )
     with caplog.at_level(logging.WARNING):
-        trials = _trials_from_rollouts(bundle, tasks, index_map)
+        trials = trials_from_rollouts(bundle, tasks, index_map)
     assert len(trials) == 1  # the unattributable record is still skipped
     assert "1 Gym rollout record(s)" in caplog.text  # ...but reported, with the count
     assert NG_TASK_INDEX in caplog.text
@@ -673,7 +673,7 @@ def test_odd_sidecar_index_is_counted_not_fatal(tmp_path: Path) -> None:
     # The failures sidecar is read tolerantly on purpose: it is written during abnormal termination,
     # so one odd record must not discard every already-parsed success. An unknown index there is
     # unattributable, not evidence of a bad join — and it cannot inflate a score, since failures carry
-    # no reward and any task left with no trial still trips _require_full_coverage.
+    # no reward and any task left with no trial still trips require_full_coverage.
     tasks = discover_gym_tasks(EXAMPLE)
     _ordered, index_map = _index_map(tasks, tmp_path)
     bundle = tmp_path / "rollouts.jsonl"
@@ -681,7 +681,7 @@ def test_odd_sidecar_index_is_counted_not_fatal(tmp_path: Path) -> None:
     failures = tmp_path / "rollouts_failures.jsonl"
     failures.write_text(json.dumps({NG_TASK_INDEX: 999, "error": "boom"}) + "\n", encoding="utf-8")
 
-    trials = _trials_from_rollouts(bundle, tasks, index_map)  # must not raise
+    trials = trials_from_rollouts(bundle, tasks, index_map)  # must not raise
     assert len(trials) == 1  # the good success survived
     assert trials[0].task_id == tasks[0].id
 
@@ -694,7 +694,7 @@ def test_odd_success_index_still_raises(tmp_path: Path) -> None:
     bundle = tmp_path / "rollouts.jsonl"
     bundle.write_text(json.dumps({NG_TASK_INDEX: 999, NG_ROLLOUT_INDEX: 0, "reward": 1.0}) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="not one of"):
-        _trials_from_rollouts(bundle, tasks, index_map)
+        trials_from_rollouts(bundle, tasks, index_map)
 
 
 def test_incomplete_collection_raises_with_pointers_to_the_evidence(tmp_path: Path) -> None:
@@ -707,7 +707,7 @@ def test_incomplete_collection_raises_with_pointers_to_the_evidence(tmp_path: Pa
     rollouts = tmp_path / "rollouts.jsonl"
     covered = [trial_task_id for trial_task_id in [tasks[0].id]]
     with pytest.raises(RuntimeError) as excinfo:
-        _require_full_coverage(tasks, covered_task_ids=set(covered), rollouts_path=rollouts)
+        require_full_coverage(tasks, covered_task_ids=set(covered), rollouts_path=rollouts)
     message = str(excinfo.value)
     assert str(rollouts) in message  # points at the bundle
     assert "rollouts_failures.jsonl" in message  # ...and the sidecar
@@ -717,7 +717,7 @@ def test_incomplete_collection_raises_with_pointers_to_the_evidence(tmp_path: Pa
 
 def test_full_coverage_passes_silently(tmp_path: Path) -> None:
     tasks = discover_gym_tasks(EXAMPLE)
-    _require_full_coverage(tasks, covered_task_ids={t.id for t in tasks}, rollouts_path=tmp_path / "rollouts.jsonl")
+    require_full_coverage(tasks, covered_task_ids={t.id for t in tasks}, rollouts_path=tmp_path / "rollouts.jsonl")
 
 
 def test_reward_metric_shape() -> None:
@@ -753,7 +753,7 @@ def test_aggregate_metrics_sidecar_with_invalid_utf8_is_skipped_not_raised(tmp_p
     rollouts_path = tmp_path / "rollouts.jsonl"
     _aggregate_metrics_path_for(rollouts_path).write_bytes(b'[{"agent_ref": {"name": "a"}, "x": \xff}]')
 
-    assert _read_run_aggregations(rollouts_path) is None
+    assert read_run_aggregations(rollouts_path) is None
 
 
 # ---------------------------------------------------------------------------
@@ -764,47 +764,47 @@ def test_aggregate_metrics_sidecar_with_invalid_utf8_is_skipped_not_raised(tmp_p
 def test_hydra_scalars_use_hydra_spellings_not_python_ones() -> None:
     # `str(None)` is "None" and `str(True)` is "True" — both of which Hydra reads back as *strings*,
     # silently setting the literal text instead of a null or a boolean.
-    assert _hydra_scalar(None) == "null"
-    assert _hydra_scalar(True) == "true"
-    assert _hydra_scalar(False) == "false"
-    assert _hydra_scalar([1, None]) == "[1,null]"
-    assert _hydra_scalar(0.7) == "0.7"
+    assert hydra_scalar(None) == "null"
+    assert hydra_scalar(True) == "true"
+    assert hydra_scalar(False) == "false"
+    assert hydra_scalar([1, None]) == "[1,null]"
+    assert hydra_scalar(0.7) == "0.7"
 
 
 def test_hydra_strings_are_quoted_so_the_grammar_cannot_retype_them() -> None:
     # Hydra's grammar is typed: unquoted, "true" parses as a bool, "null" as None, "1.5" as a float,
     # and "a,b" as a *sweep* — so a string override would silently become something else.
-    assert _hydra_scalar("true") == "'true'"
-    assert _hydra_scalar("null") == "'null'"
-    assert _hydra_scalar("1.5") == "'1.5'"
-    assert _hydra_scalar("a,b") == "'a,b'"
-    assert _hydra_scalar("A[B") == "'A[B'"  # unquoted this does not parse at all
-    assert _hydra_scalar("") == "''"
+    assert hydra_scalar("true") == "'true'"
+    assert hydra_scalar("null") == "'null'"
+    assert hydra_scalar("1.5") == "'1.5'"
+    assert hydra_scalar("a,b") == "'a,b'"
+    assert hydra_scalar("A[B") == "'A[B'"  # unquoted this does not parse at all
+    assert hydra_scalar("") == "''"
     # Only the quote is escaped: Hydra does not decode `\\` inside a quoted value, so escaping
     # backslashes would double them.
-    assert _hydra_scalar("he'llo") == "'he\\'llo'"
-    assert _hydra_scalar("back\\slash") == "'back\\slash'"
+    assert hydra_scalar("he'llo") == "'he\\'llo'"
+    assert hydra_scalar("back\\slash") == "'back\\slash'"
     # Interpolation survives quoting — the override sets the text, OmegaConf resolves it on read.
-    assert _hydra_scalar("${policy_base_url}") == "'${policy_base_url}'"
+    assert hydra_scalar("${policy_base_url}") == "'${policy_base_url}'"
 
 
 def test_hydra_rejects_a_value_it_cannot_express() -> None:
     # A trailing backslash escapes the closing quote and leaves the value unterminated; there is no
     # spelling that avoids it, so say so rather than emit something unparseable.
     with pytest.raises(ValueError, match="ends with a backslash"):
-        _hydra_scalar("ends\\")
+        hydra_scalar("ends\\")
 
 
 def test_hydra_dicts_nested_in_a_list_use_the_grammars_bare_keys() -> None:
     # A mapping reached through a list has no dotted path to flatten onto, so it has to be spelled
     # inline. `str()` would emit Python's repr — `{'b': 1}` — whose quoted keys Hydra's `dictKey`
     # rule has no form for and rejects outright.
-    assert _hydra_scalar({"b": 1}) == "{b:1}"
-    assert _hydra_scalar([{"b": 1}, {"c": "true"}]) == "[{b:1},{c:'true'}]"
+    assert hydra_scalar({"b": 1}) == "{b:1}"
+    assert hydra_scalar([{"b": 1}, {"c": "true"}]) == "[{b:1},{c:'true'}]"
     # The typed spellings hold at depth: values recurse through the same function.
-    assert _hydra_scalar({"b": None, "c": True, "d": "a,b"}) == "{b:null,c:true,d:'a,b'}"
-    assert _hydra_scalar({"b": {"c": [1, "x"]}}) == "{b:{c:[1,'x']}}"
-    assert _hydra_scalar({}) == "{}"
+    assert hydra_scalar({"b": None, "c": True, "d": "a,b"}) == "{b:null,c:true,d:'a,b'}"
+    assert hydra_scalar({"b": {"c": [1, "x"]}}) == "{b:{c:[1,'x']}}"
+    assert hydra_scalar({}) == "{}"
 
 
 @pytest.mark.parametrize("key", ["true", "NULL", "1.5", "inf", "b:c", "b,c", "b}c", "b'c", "", 1])
@@ -813,7 +813,7 @@ def test_hydra_rejects_dict_keys_it_would_retype_or_fail_to_parse(key: object) -
     # of the lexer: `{true:1}` keys on the boolean True and `{b:c:1}` does not parse. Neither is what
     # the caller wrote, and the second is not even loud, so refuse both.
     with pytest.raises(ValueError, match="dict key"):
-        _hydra_scalar([{key: 1}])
+        hydra_scalar([{key: 1}])
 
 
 def test_flatten_overrides_produces_forcing_dotted_paths() -> None:
@@ -839,7 +839,7 @@ def _config(**kwargs: object) -> GymRuntimeConfig:
 
 
 def test_selection_binds_the_resources_server_by_default(tmp_path: Path) -> None:
-    selection = _selection_args(_config(), tmp_path)
+    selection = selection_args(_config(), tmp_path)
     assert "--resources-server" in selection and "mcqa" in selection
     assert "+simple_agent.responses_api_agents.simple_agent.resources_server.name=mcqa" in selection
 
@@ -847,7 +847,7 @@ def test_selection_binds_the_resources_server_by_default(tmp_path: Path) -> None
 def test_selection_omits_the_binding_when_the_caller_binds_it_themselves(tmp_path: Path) -> None:
     # gdpval registers its server as `gdpval_resources_server`, so the automatic binding is wrong for
     # it and the caller supplies their own. Emitting both would leave the config ambiguous.
-    selection = _selection_args(
+    selection = selection_args(
         _config(
             bind_resources_server=False,
             hydra_params={
@@ -872,19 +872,19 @@ def test_selection_quotes_a_work_dir_containing_hydra_grammar(tmp_path: Path, aw
     # Raised by review on #1295. `hydra.run.dir` is a path, and Hydra's grammar reads `,` as a sweep
     # separator and `[` as a list opener. Checked against Hydra's own parser: unquoted, `/tmp/a,b`
     # comes back as a ChoiceSweep and `/tmp/x[1]` raises OverrideParseException. Quoting round-trips
-    # all three, so the value has to go through _hydra_scalar like every other override.
+    # all three, so the value has to go through hydra_scalar like every other override.
     work_dir = tmp_path / awkward
-    arg = next(a for a in _selection_args(_config(), work_dir) if a.startswith("hydra.run.dir="))
+    arg = next(a for a in selection_args(_config(), work_dir) if a.startswith("hydra.run.dir="))
     value = arg.removeprefix("hydra.run.dir=")
-    assert value == _hydra_scalar(str(work_dir / "gym_hydra"))
+    assert value == hydra_scalar(str(work_dir / "gym_hydra"))
     assert value.startswith("'") and value.endswith("'")
 
 
 def test_selection_redirects_hydra_output_under_the_run_work_dir(tmp_path: Path) -> None:
     # Gym writes `outputs/<date>/<time>/` relative to cwd, and the subprocesses inherit ours so Gym
     # can find env.yaml — so without this every run litters the caller's directory.
-    selection = _selection_args(_config(), tmp_path)
-    assert f"hydra.run.dir={_hydra_scalar(str(tmp_path / 'gym_hydra'))}" in selection
+    selection = selection_args(_config(), tmp_path)
+    assert f"hydra.run.dir={hydra_scalar(str(tmp_path / 'gym_hydra'))}" in selection
 
 
 def _stub_gym(tmp_path: Path, *, exit_code: int, message: str) -> str:
@@ -933,34 +933,34 @@ def test_invocation_env_inherits_the_process_environment(monkeypatch: pytest.Mon
     # Gym honours ordinary variables a caller expects to carry over — proxies, HF_TOKEN — so the
     # parent environment is the base layer rather than being replaced.
     monkeypatch.setenv("A485_INHERITED", "from-parent")
-    assert _gym_invocation_env(_config())["A485_INHERITED"] == "from-parent"
+    assert gym_invocation_env(_config())["A485_INHERITED"] == "from-parent"
 
 
 def test_invocation_env_disables_rays_uv_hook_by_default() -> None:
     # Gym launches each server from its own subdir with its own .venv; Ray's uv-project replication
     # asserts the driver's cwd holds the pyproject and aborts startup.
-    assert _gym_invocation_env(_config())["RAY_ENABLE_UV_RUN_RUNTIME_ENV"] == "0"
+    assert gym_invocation_env(_config())["RAY_ENABLE_UV_RUN_RUNTIME_ENV"] == "0"
 
 
 def test_env_vars_win_over_the_inherited_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     # The point of the field: naming a variable in the run config makes it a property of the
     # environment being run, not of whoever launched the runner.
     monkeypatch.setenv("WMT_TRANSLATION_COMET_PY_CACHE", "/whatever-the-launcher-had")
-    env = _gym_invocation_env(_config(env_vars={"WMT_TRANSLATION_COMET_PY_CACHE": "/from-the-run-config"}))
+    env = gym_invocation_env(_config(env_vars={"WMT_TRANSLATION_COMET_PY_CACHE": "/from-the-run-config"}))
     assert env["WMT_TRANSLATION_COMET_PY_CACHE"] == "/from-the-run-config"
 
 
 def test_env_vars_can_restore_rays_uv_hook() -> None:
     # The Ray default exists to make Gym work, not as an invariant — someone debugging that hook
     # needs a way to put it back, so an explicit value has to outrank it.
-    env = _gym_invocation_env(_config(env_vars={"RAY_ENABLE_UV_RUN_RUNTIME_ENV": "1"}))
+    env = gym_invocation_env(_config(env_vars={"RAY_ENABLE_UV_RUN_RUNTIME_ENV": "1"}))
     assert env["RAY_ENABLE_UV_RUN_RUNTIME_ENV"] == "1"
 
 
 def test_gym_executable_reports_how_to_install_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(shutil, "which", lambda _: None)
     with pytest.raises(RuntimeError, match="own environment"):
-        _gym_executable()
+        gym_executable()
 
 
 #: Verbatim from a real `legal_agent_bench` startup timeout (AALGO-485 coverage sweep). Gym polls
@@ -1004,7 +1004,7 @@ def _two_tasks_and_map(tmp_path: Path):
         encoding="utf-8",
     )
     tasks = discover_gym_tasks(dataset)
-    return tasks, _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+    return tasks, materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
 
 
 def test_token_usage_keys_match_the_openai_schemas_they_mirror() -> None:
@@ -1098,7 +1098,7 @@ def test_agent_never_ran_is_false_without_usage_to_corroborate() -> None:
 
 
 def test_missing_results_file_names_the_logs_instead_of_raising_filenotfound(tmp_path: Path) -> None:
-    # Raised by review on #1295. `_ensure_fresh_output` deletes any stale file before the run and
+    # Raised by review on #1295. `ensure_fresh_output` deletes any stale file before the run and
     # `_collect_rollouts` already raised on a non-zero exit, so an absent file here means Gym
     # reported success and wrote nothing. Opening it regardless gives a bare FileNotFoundError
     # naming a path the reader has no reason to recognise.
@@ -1107,7 +1107,7 @@ def test_missing_results_file_names_the_logs_instead_of_raising_filenotfound(tmp
     assert not missing.exists()
 
     with pytest.raises(RuntimeError) as excinfo:
-        _trials_from_rollouts(missing, tasks, index_map)
+        trials_from_rollouts(missing, tasks, index_map)
 
     message = str(excinfo.value)
     assert "wrote no results" in message
@@ -1132,7 +1132,7 @@ def test_all_rollouts_empty_fails_the_run_instead_of_reporting_zeros(tmp_path: P
     )
 
     with pytest.raises(RuntimeError) as excinfo:
-        _trials_from_rollouts(bundle, tasks, index_map)
+        trials_from_rollouts(bundle, tasks, index_map)
 
     message = str(excinfo.value)
     assert "never called" in message
@@ -1165,7 +1165,7 @@ def test_an_unattributed_failure_prevents_the_all_empty_raise(tmp_path: Path) ->
         json.dumps({"error": "agent OOM-killed mid-episode"}) + "\n", encoding="utf-8"
     )
 
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
 
     assert [trial.status for trial in trials] == [AgentEvalTrialStatus.FAILED]
 
@@ -1185,7 +1185,7 @@ def test_an_unattributed_rollout_prevents_the_all_empty_raise(tmp_path: Path) ->
         encoding="utf-8",
     )
 
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
 
     assert [trial.status for trial in trials] == [AgentEvalTrialStatus.FAILED]
 
@@ -1216,7 +1216,7 @@ def test_empty_rollouts_alongside_a_sidecar_failure_do_not_raise(tmp_path: Path)
         encoding="utf-8",
     )
 
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
 
     assert {trial.task_id for trial in trials} == {tasks[0].id, tasks[1].id}
     assert all(trial.status is AgentEvalTrialStatus.FAILED for trial in trials)
@@ -1237,7 +1237,7 @@ def test_some_rollouts_empty_fails_only_those_trials(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    trials = _trials_from_rollouts(bundle, tasks, index_map)
+    trials = trials_from_rollouts(bundle, tasks, index_map)
 
     by_task = {trial.task_id: trial for trial in trials}
     empty = by_task[tasks[0].id]
@@ -1252,13 +1252,13 @@ def test_some_rollouts_empty_fails_only_those_trials(tmp_path: Path) -> None:
 
 
 def test_pending_servers_reports_the_last_poll_not_the_first() -> None:
-    assert _pending_servers(_REAL_ENV_LOG) == (3, 4, ("legal_agent_bench",))
+    assert pending_servers(_REAL_ENV_LOG) == (3, 4, ("legal_agent_bench",))
 
 
 def test_pending_servers_is_none_when_gym_never_reported_readiness() -> None:
     # Gym died during composition or dependency install; there is no pending set to report, which
     # must not be confused with "nothing pending".
-    assert _pending_servers("NeMo Gym is starting a new Ray cluster...\nerror: No solution found\n") is None
+    assert pending_servers("NeMo Gym is starting a new Ray cluster...\nerror: No solution found\n") is None
 
 
 def test_startup_timeout_names_the_server_that_did_not_come_up(tmp_path: Path) -> None:
@@ -1309,7 +1309,7 @@ async def test_collection_failure_points_at_the_server_log_too(tmp_path: Path) -
 
 @pytest.mark.asyncio
 async def test_collection_redirects_hydra_output_under_the_run_work_dir(tmp_path: Path) -> None:
-    # `gym eval run` does not go through _selection_args, so it needs its own redirect — without it
+    # `gym eval run` does not go through selection_args, so it needs its own redirect — without it
     # every collection drops an `outputs/<date>/<time>/` into the caller's cwd.
     runner = GymAgentTaskRunner(config=_config())
     gym = _stub_gym(tmp_path, exit_code=0, message="done")
@@ -1317,4 +1317,4 @@ async def test_collection_redirects_hydra_output_under_the_run_work_dir(tmp_path
     await runner._collect_rollouts(gym, tmp_path / "in.jsonl", tmp_path / "out.jsonl", tmp_path, {})
 
     argv = (tmp_path / "argv.txt").read_text().splitlines()
-    assert f"hydra.run.dir={_hydra_scalar(str(tmp_path / 'gym_hydra'))}" in argv
+    assert f"hydra.run.dir={hydra_scalar(str(tmp_path / 'gym_hydra'))}" in argv

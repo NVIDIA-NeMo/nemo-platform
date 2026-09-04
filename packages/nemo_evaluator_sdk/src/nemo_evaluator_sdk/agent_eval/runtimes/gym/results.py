@@ -20,11 +20,11 @@ from typing import Any
 from google.protobuf.json_format import MessageToDict
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import DEFAULT_REWARD_KEY
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import (
-    _ENV_LOG_NAME,
+    ENV_LOG_NAME,
     NG_ATTEMPT_INDEX,
     NG_ROLLOUT_INDEX,
     NG_TASK_INDEX,
-    _read_jsonl,
+    read_jsonl,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
@@ -103,7 +103,7 @@ def _agent_never_ran(record: Mapping[str, Any]) -> bool:
     return bool(input_side) and all(value == 0 for value in input_side)
 
 
-def _require_full_coverage(tasks: Sequence[AgentEvalTask], *, covered_task_ids: set[str], rollouts_path: Path) -> None:
+def require_full_coverage(tasks: Sequence[AgentEvalTask], *, covered_task_ids: set[str], rollouts_path: Path) -> None:
     """Fail the run when Gym produced no trial at all for some requested task.
 
     :class:`AgentEvaluator` already refuses to score a task with no trial
@@ -223,7 +223,7 @@ def _read_model_calls(capture_path: Path | None, *, trial_id: str) -> list[dict[
     if capture_path is None:
         return []
     try:
-        return _read_jsonl(capture_path, tolerant=True)
+        return read_jsonl(capture_path, tolerant=True)
     except OSError as error:
         logger.warning("Could not read the model-call capture for trial %s: %s", trial_id, error)
         return []
@@ -239,7 +239,7 @@ def _aggregate_metrics_path_for(rollouts_path: Path) -> Path:
     return rollouts_path.with_name(rollouts_path.stem + "_aggregate_metrics.json")
 
 
-def _read_run_aggregations(rollouts_path: Path) -> dict[str, Any] | None:
+def read_run_aggregations(rollouts_path: Path) -> dict[str, Any] | None:
     """Parse Gym's ``rollouts_aggregate_metrics.json``, or ``None`` when absent/unparseable.
 
     Gym's file is a list with one entry per agent (``agent_ref`` / ``agent_metrics`` / ``key_metrics`` /
@@ -286,7 +286,7 @@ _GYM_STAT_FAMILY = ("mean", "max", "min", "median", "std")
 _GYM_REDUNDANT_METRICS = frozenset({"reward"})
 
 
-def _aggregate_scores_from_gym(aggregations: Mapping[str, Any] | None) -> list[AggregateScore]:
+def aggregate_scores_from_gym(aggregations: Mapping[str, Any] | None) -> list[AggregateScore]:
     """Map Gym's run-level ``agent_metrics`` onto typed aggregate scores named ``runner.gym.<metric>``.
 
     Reads ``agent_metrics``, not ``key_metrics``: ``key_metrics`` is a *subset* of it chosen by the
@@ -372,7 +372,7 @@ def _as_float(value: Any) -> float | None:
     return float(value) if math.isfinite(value) else None
 
 
-def _ensure_fresh_output(rollouts_path: Path) -> None:
+def ensure_fresh_output(rollouts_path: Path) -> None:
     """Enforce one Gym run per output dir (the AgentEvaluator convention).
 
     Gym appends to the failures sidecar (``open("ab")``) and doesn't clear it between runs, so reusing
@@ -409,13 +409,13 @@ def _resolve_task_id(
     Returns None when the record carries no usable index (kill-shaped failures can lack one).
 
     An index we never stamped is handled by ``strict``. In the **successes** file (``strict=True``)
-    it is fatal: every row Gym read came from :func:`_materialize_dataset`, so an unknown index means
+    it is fatal: every row Gym read came from :func:`materialize_dataset`, so an unknown index means
     Gym reindexed the dataset rather than honoring our stamp, and every reward attribution is
     therefore suspect. In the **failures sidecar** (``strict=False``) it is merely unattributable and
     is counted instead — that file is written during abnormal termination and read tolerantly by
     design, so one odd record must not discard the successes already parsed. That relaxation cannot
     inflate a result: failure records carry no reward, and a task left with no trial still trips
-    :func:`_require_full_coverage`.
+    :func:`require_full_coverage`.
     """
     index = record.get(NG_TASK_INDEX)
     if not isinstance(index, int) or isinstance(index, bool):
@@ -447,7 +447,7 @@ def _rollout_trial_id(task_id: str, raw_rollout_index: Any, synth_seq: dict[str,
     return f"{task_id}:{missing_label}{seq}"
 
 
-def _trials_from_rollouts(
+def trials_from_rollouts(
     rollouts_path: Path,
     tasks: Sequence[AgentEvalTask],
     index_to_task_id: Mapping[int, str],
@@ -460,10 +460,10 @@ def _trials_from_rollouts(
     Reads *both* Gym output files: successes from ``rollouts.jsonl`` (COMPLETED, carrying the reward)
     and failures from the ``*_failures.jsonl`` sidecar (FAILED — so a failed attempt is counted and
     diagnosed rather than silently dropped). Every record is attributed to its task by
-    ``_ng_task_index`` → ``index_to_task_id``, the map we stamped in :func:`_materialize_dataset`.
+    ``_ng_task_index`` → ``index_to_task_id``, the map we stamped in :func:`materialize_dataset`.
     """
     if not rollouts_path.exists():
-        # `_ensure_fresh_output` removed any stale file before the run, and `_collect_rollouts`
+        # `ensure_fresh_output` removed any stale file before the run, and `_collect_rollouts`
         # already raised on a non-zero exit — so reaching here means Gym reported success and wrote
         # nothing. Opening the path regardless would surface that as a bare FileNotFoundError
         # naming a file the reader has no reason to know about, which is the same illegibility the
@@ -472,7 +472,7 @@ def _trials_from_rollouts(
             f"`gym eval run` reported success but wrote no results to {rollouts_path}, so there is "
             "nothing to score. This usually means collection stopped before any attempt completed.\n"
             f"See {rollouts_path.parent / 'gym_eval.stdout.log'} for what collection did, and "
-            f"{rollouts_path.parent / _ENV_LOG_NAME} for a traceback from the environment's own "
+            f"{rollouts_path.parent / ENV_LOG_NAME} for a traceback from the environment's own "
             "servers."
         )
     known_task_ids = {task.id for task in tasks}
@@ -498,11 +498,11 @@ def _trials_from_rollouts(
     #: Tasks with at least one trial where the agent never ran. Tracked separately from trial
     #: status, since the failures sidecar also produces FAILED trials for unrelated reasons.
     empty_output_task_ids: set[str] = set()
-    for record in _read_jsonl(rollouts_path):
+    for record in read_jsonl(rollouts_path):
         task_id = _resolve_task_id(record, index_to_task_id)
         if task_id is None:
             # No usable index (an unknown one raises). Skipping is right, but silence is not: with
-            # num_repeats > 1 the task keeps its other trials, so _require_full_coverage won't fire and
+            # num_repeats > 1 the task keeps its other trials, so require_full_coverage won't fire and
             # the task would simply be scored on fewer attempts than were actually run.
             unattributed_successes += 1
             continue
@@ -557,7 +557,7 @@ def _trials_from_rollouts(
             }
         )
         # tolerant: a truncated line in the abnormal-termination sidecar must not sink the good trials.
-        for record in _read_jsonl(failures_path, tolerant=True):
+        for record in read_jsonl(failures_path, tolerant=True):
             # strict=False to match this loop's tolerant read: an odd record is counted, not fatal.
             task_id = _resolve_task_id(record, index_to_task_id, strict=False)
             if task_id is None:
@@ -607,7 +607,7 @@ def _trials_from_rollouts(
                 "and nothing was measured. The scores reported for them describe an agent that did "
                 "not run.\n"
                 "This is normally the environment failing to start its agent rather than a bad "
-                f"model: check the per-server startup output in {rollouts_path.parent / _ENV_LOG_NAME} "
+                f"model: check the per-server startup output in {rollouts_path.parent / ENV_LOG_NAME} "
                 "for a traceback from the environment's own agent server.\n"
                 f"Results as collected: {rollouts_path}"
             )
@@ -635,7 +635,7 @@ def _trials_from_rollouts(
             NG_TASK_INDEX,
         )
 
-    # Reported here, enforced by _require_full_coverage in run_tasks (which knows the run's log paths).
+    # Reported here, enforced by require_full_coverage in run_tasks (which knows the run's log paths).
     missing = known_task_ids - {trial.task_id for trial in trials}
     if missing:
         logger.warning("No Gym rollout produced a trial for %d requested task(s): %s", len(missing), sorted(missing))

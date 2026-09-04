@@ -38,13 +38,13 @@ from typing import Any
 
 import httpx
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import DEFAULT_REWARD_KEY
-from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import _materialize_dataset, _source_datasets
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import materialize_dataset, source_datasets
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import (
-    _aggregate_scores_from_gym,
-    _ensure_fresh_output,
-    _read_run_aggregations,
-    _require_full_coverage,
-    _trials_from_rollouts,
+    aggregate_scores_from_gym,
+    ensure_fresh_output,
+    read_run_aggregations,
+    require_full_coverage,
+    trials_from_rollouts,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
@@ -104,7 +104,7 @@ class SandboxedGymAgentTaskRunner:
         returns rollout records writes no such file. Implemented anyway so this runner satisfies the
         same protocol as the CLI one and starts reporting if the host grows the sidecar.
         """
-        return _aggregate_scores_from_gym(self._run_aggregations)
+        return aggregate_scores_from_gym(self._run_aggregations)
 
     def runner_info(self) -> RunnerInfo:
         """Identify the runner and the host it collected from.
@@ -170,12 +170,12 @@ class SandboxedGymAgentTaskRunner:
         work_dir.mkdir(parents=True, exist_ok=True)
 
         rollouts_path = work_dir / "rollouts.jsonl"
-        _ensure_fresh_output(rollouts_path)
+        ensure_fresh_output(rollouts_path)
 
         # Same materialization the CLI runner uses, so the rows the host sees are the rows Gym
         # would have read, and `_ng_task_index` is stamped by the same code.
         input_path = work_dir / "gym_input.jsonl"
-        index_to_task_id = _materialize_dataset(tasks, input_path)
+        index_to_task_id = materialize_dataset(tasks, input_path)
         examples = [json.loads(line) for line in input_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         if cfg.agent_ref_name:
             # Only where the row is silent: a dataset that names its own agent per row keeps doing so,
@@ -185,7 +185,7 @@ class SandboxedGymAgentTaskRunner:
         logger.info(
             "Collecting %d example(s) from %s via sandboxed Gym host %s.",
             len(examples),
-            _source_datasets(tasks),
+            source_datasets(tasks),
             cfg.rollout_url,
         )
 
@@ -198,13 +198,13 @@ class SandboxedGymAgentTaskRunner:
             encoding="utf-8",
         )
 
-        self._run_aggregations = _read_run_aggregations(rollouts_path)
+        self._run_aggregations = read_run_aggregations(rollouts_path)
         # No capture_dir yet (AALGO-593): the host does not switch Gym's model-call capture on, so
         # its captures never leave the sandbox and traces from this runner carry no per-call timing.
         # Unimplemented rather than impossible -- the host drives Gym through its Python API, whose
         # global config takes the same observability keys the CLI runtime sets.
-        trials = _trials_from_rollouts(
+        trials = trials_from_rollouts(
             rollouts_path, tasks, index_to_task_id, reward_key=cfg.reward_key, capture_dir=None
         )
-        _require_full_coverage(tasks, covered_task_ids={trial.task_id for trial in trials}, rollouts_path=rollouts_path)
+        require_full_coverage(tasks, covered_task_ids={trial.task_id for trial in trials}, rollouts_path=rollouts_path)
         return trials
