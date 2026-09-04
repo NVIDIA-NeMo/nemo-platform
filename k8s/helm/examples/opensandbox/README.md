@@ -17,8 +17,8 @@ sandbox pods must be isolated from the host kernel. The documented example is
 Kata QEMU because it runs each sandbox in a VM with its own guest kernel; other
 isolated runtimes may work but have not been tested.
 
-Full procedure: [OpenSandbox](https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox)
-and [OpenSandbox with Kata](https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox-kata)
+Full procedure: [OpenSandbox](https://docs.nvidia.com/nemo-platform/latest/documentation/kubernetes-deployment/setup/helm/open-sandbox)
+and [OpenSandbox with Kata](https://docs.nvidia.com/nemo-platform/latest/documentation/kubernetes-deployment/setup/helm/opensandbox-kata)
 in the NeMo Platform documentation. `helm show readme` of this chart points at
 those pages.
 
