@@ -371,11 +371,11 @@ def compile_model_deployment(
         if engine == ENGINE_NIM:
             apply_k8s_nim_operator_container_overrides(server, readiness_probe, resolved.view)
         if resolved.runtime == Runtime.DOCKER:
-            # Docker v1 is single-container today; emit a second container so the
-            # shape matches the locked design for when the plugin docker backend
-            # accepts multi-container DeploymentConfigs. In practice the backend
-            # fails fast on docker + LoRA before reaching create (see
-            # DeploymentsPluginServiceBackend.create_model_deployment).
+            # Docker emits the sidecar as a second container in the server
+            # DeploymentConfig (rather than a k8s-style native/init sidecar).
+            # The docker backend starts it sharing the server's network
+            # namespace and volumes; its command/args must be a valid
+            # executable (see lora_sidecar_command in config).
             server_config_containers = [server, lora]
         else:
             server_config_containers = [server]
