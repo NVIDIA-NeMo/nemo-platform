@@ -1118,7 +1118,7 @@ async def test_resolve_gym_environment_rejects_manifest_listing_mismatch(mocker:
     files.download_file = mocker.AsyncMock(return_value=manifest)
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=files)
 
-    with pytest.raises(ValueError, match="field references files that are not in the package"):
+    with pytest.raises(ValueError, match="config_paths reference files that are not in the package"):
         await _resolve_gym_environment(
             _gym_environment_target(),
             workspace="dev",
