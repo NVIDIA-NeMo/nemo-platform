@@ -99,6 +99,15 @@ DEFAULT_AGENT_EXECUTION_IMAGE_NAME = "nmp-api"
 # runtime/invocation directory Fabric names itself, so it is found by search
 # rather than opened by path.
 _AGENT_STDERR_FILENAME = "stderr.txt"
+# Bounds on what a failing agent can make this task read into memory. The
+# artifacts directory is agent-writable, so neither the size nor the number of
+# these files is ours to trust, and a runaway agent could otherwise exhaust the
+# task's memory while it reports the failure - destroying the diagnostics this
+# exists to produce. Sized never to fire on real output (a genuine failed run's
+# stderr measured ~2 KiB), so it bounds the pathological case without
+# truncating the ordinary one.
+_MAX_LOGGED_STDERR_BYTES = 4 * 1024 * 1024
+_MAX_LOGGED_STDERR_FILES = 5
 
 # k8s resource key carrying the GPU count. The agents ``ComputeResources`` maps
 # express GPUs the Kubernetes way (a ``nvidia.com/gpu`` entry in ``limits``);
@@ -530,20 +539,57 @@ def _log_agent_stderr(artifacts_dir: Path) -> None:
     error that got us here.
     """
     try:
+        # Safe to run over an agent-writable tree: pathlib's ``**`` does not
+        # follow symlinks, so a symlink loop cannot make this hang.
         paths = sorted(artifacts_dir.rglob(_AGENT_STDERR_FILENAME))
     except OSError as error:
         logger.warning("Could not search %s for agent stderr: %s", artifacts_dir, error)
         return
+    if len(paths) > _MAX_LOGGED_STDERR_FILES:
+        logger.warning(
+            "Found %d agent stderr files under %s; logging the first %d.",
+            len(paths),
+            artifacts_dir,
+            _MAX_LOGGED_STDERR_FILES,
+        )
+        paths = paths[:_MAX_LOGGED_STDERR_FILES]
     for path in paths:
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            text, omitted = _read_stderr_tail(path)
         except OSError as error:
             logger.warning("Could not read agent stderr at %s: %s", path, error)
             continue
         if not text.strip():
             logger.warning("Agent stderr at %s was empty.", path)
             continue
-        logger.error("Agent stderr (%s):\n%s", path, text)
+        if omitted:
+            logger.error(
+                "Agent stderr (%s, last %d bytes; %d earlier bytes omitted - the saved artifact has "
+                "the whole stream):\n%s",
+                path,
+                len(text),
+                omitted,
+                text,
+            )
+        else:
+            logger.error("Agent stderr (%s):\n%s", path, text)
+
+
+def _read_stderr_tail(path: Path) -> tuple[str, int]:
+    """Return *path*'s contents and how many leading bytes were dropped.
+
+    Takes the tail rather than the head when a stream exceeds the cap: a file
+    that large means the agent ran a long while before failing, so the failure
+    is at the end. A run that fails early writes little and is never truncated,
+    which is where the beginning would have mattered.
+    """
+    size = path.stat().st_size
+    if size <= _MAX_LOGGED_STDERR_BYTES:
+        return path.read_text(encoding="utf-8", errors="replace"), 0
+    with path.open("rb") as handle:
+        handle.seek(size - _MAX_LOGGED_STDERR_BYTES)
+        chunk = handle.read()
+    return chunk.decode("utf-8", errors="replace"), size - len(chunk)
 
 
 class _AgentSource(BaseModel):

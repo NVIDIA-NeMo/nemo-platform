@@ -1556,8 +1556,11 @@ def test_run_ignores_the_agent_stdout_file(ctx: JobContext, caplog: pytest.LogCa
     assert "the protocol payload" not in caplog.text
 
 
-def test_run_logs_the_whole_agent_stderr_without_truncating(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
-    """Read only on failure, so there is no reason to cut it short."""
+def test_run_logs_the_whole_agent_stderr_for_realistic_output(
+    ctx: JobContext, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The byte cap exists for the pathological case only; ordinary output,
+    however long, must arrive complete."""
     spec = ExecuteAgentStepConfig(
         request=ExecuteAgentJobConfig(agent="calc", input="hello"),
         agent=_resolved_agent(),
@@ -1693,3 +1696,52 @@ def test_run_logs_elapsed_time_when_fabric_raises(ctx: JobContext, caplog: pytes
         ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
 
     assert "Fabric invocation failed for agent default/calc after" in caplog.text
+
+
+def test_log_agent_stderr_tails_a_stream_over_the_cap(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The artifacts dir is agent-writable, so an unbounded read here could
+    exhaust the task's memory while it reports a failure - destroying the very
+    diagnostics this produces."""
+    monkeypatch.setattr("nemo_agents_plugin.jobs.execute._MAX_LOGGED_STDERR_BYTES", 200)
+    (tmp_path / "stderr.txt").write_text("A" * 5000 + "\nthe failure is at the end\n")
+
+    with caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "the failure is at the end" in caplog.text, "the tail is what matters for a long run"
+    assert "earlier bytes omitted" in caplog.text
+    assert "A" * 1000 not in caplog.text, "the whole file was read despite the cap"
+
+
+def test_log_agent_stderr_caps_the_number_of_files(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An agent can write as many of these as it likes into its artifacts dir."""
+    monkeypatch.setattr("nemo_agents_plugin.jobs.execute._MAX_LOGGED_STDERR_FILES", 2)
+    for n in range(5):
+        run_dir = tmp_path / f"run-{n}"
+        run_dir.mkdir()
+        (run_dir / "stderr.txt").write_text(f"stream {n}\n")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "Found 5 agent stderr files" in caplog.text
+    assert "stream 0" in caplog.text
+    assert "stream 1" in caplog.text
+    assert "stream 4" not in caplog.text
+
+
+def test_log_agent_stderr_does_not_flag_truncation_when_it_fits(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A run under the cap must read as complete, with no misleading notice."""
+    (tmp_path / "stderr.txt").write_text("short and complete\n")
+
+    with caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "short and complete" in caplog.text
+    assert "omitted" not in caplog.text
