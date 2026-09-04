@@ -40,19 +40,21 @@ async def test_retrieval_preview_uses_preview_generation(tmp_path) -> None:
     frames = []
     with (
         patch(
-            "nemo_data_designer_plugin.functions.retrieval_preview.create_data_designer_context",
+            "nemo_data_designer_plugin.functions.retrieval_preview.create_validation_context",
             return_value=dd_ctx,
         ),
         patch(
             "nemo_data_designer_plugin.retrieval.generation.execute_generation",
             return_value=preview_result,
         ) as execute,
-        patch(
-            "nemo_data_designer_plugin.functions.retrieval_preview.async_to_sync_sdk",
-            return_value=Mock(),
-        ),
     ):
-        async for frame in RetrievalPreviewFunction().run(spec, ctx=ctx, async_sdk=AsyncMock(), is_local=True):
+        async for frame in RetrievalPreviewFunction().run(
+            spec,
+            ctx=ctx,
+            sdk=Mock(),
+            async_sdk=AsyncMock(),
+            is_local=True,
+        ):
             frames.append(frame)
     execute.assert_called_once()
     assert execute.call_args.kwargs["preview"] is True
@@ -72,16 +74,12 @@ async def test_retrieval_preview_returns_error_frame_for_worker_failure(tmp_path
 
     with (
         patch(
-            "nemo_data_designer_plugin.functions.retrieval_preview.create_data_designer_context",
+            "nemo_data_designer_plugin.functions.retrieval_preview.create_validation_context",
             return_value=dd_ctx,
         ),
         patch(
             "nemo_data_designer_plugin.functions.retrieval_preview.materialize_corpus",
             side_effect=ValueError("bad corpus"),
-        ),
-        patch(
-            "nemo_data_designer_plugin.functions.retrieval_preview.async_to_sync_sdk",
-            return_value=Mock(),
         ),
     ):
         frames = [
@@ -89,6 +87,7 @@ async def test_retrieval_preview_returns_error_frame_for_worker_failure(tmp_path
             async for frame in RetrievalPreviewFunction().run(
                 spec,
                 ctx=ctx,
+                sdk=Mock(),
                 async_sdk=AsyncMock(),
                 is_local=True,
             )

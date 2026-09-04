@@ -21,7 +21,6 @@ import zipfile
 from fnmatch import fnmatch
 from pathlib import Path
 
-import fsspec.asyn
 from filesets import FilesetFileSystem
 from nemo_agents_plugin.container.template import DOCKERIGNORE_TEMPLATE
 from nemo_platform import NeMoPlatform
@@ -57,7 +56,7 @@ def download_fileset(sdk: NeMoPlatform, ref: str, dest: Path) -> Path:
     fs = FilesetFileSystem(client=client_from_platform(sdk, FilesClient))
     dest.mkdir(parents=True, exist_ok=True)
     source = ref.rstrip("/") + "/"
-    fsspec.asyn.sync(fs.loop, fs._get, source, str(dest), True)
+    fs.get(source, str(dest), recursive=True)
     return dest
 
 

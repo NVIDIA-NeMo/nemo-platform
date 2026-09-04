@@ -72,7 +72,11 @@ from abc import ABC
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, AsyncIterator, Protocol, TypeAlias, Union, runtime_checkable
+from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol, TypeAlias, Union, runtime_checkable
+
+if TYPE_CHECKING:
+    # Keep this public base import-light; importing the generated SDK loads pydantic.
+    from nemo_platform import AsyncNeMoPlatform
 
 
 class BackendFormat(str, Enum):
@@ -747,6 +751,7 @@ class NemoInferenceMiddleware(ABC):
 
     def __init__(self) -> None:
         self._cache: InferenceMiddlewareCacheAccessor | None = None
+        self._platform_sdk: AsyncNeMoPlatform | None = None
 
     # ------------------------------------------------------------------
     # IGW-called injection point (not part of the plugin author API)
@@ -758,6 +763,21 @@ class NemoInferenceMiddleware(ABC):
         Plugin authors must not call this method directly.
         """
         self._cache = cache
+
+    def _inject_platform_sdk(self, sdk: AsyncNeMoPlatform) -> None:
+        """Called by IGW to inject a caller-owned SDK before on_startup().
+
+        Plugin authors must not call or close this SDK directly.
+        """
+        self._platform_sdk = sdk
+
+    def _get_platform_sdk(self, method_name: str) -> AsyncNeMoPlatform:
+        if self._platform_sdk is None:
+            raise RuntimeError(
+                f"{method_name}() is not available before IGW injects the platform SDK. "
+                f"Call {method_name}() from on_startup() or later."
+            )
+        return self._platform_sdk
 
     def _get_cache(self, method_name: str) -> InferenceMiddlewareCacheAccessor:
         if self._cache is None:

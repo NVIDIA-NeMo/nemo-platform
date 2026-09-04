@@ -9,8 +9,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import ClassVar, Literal
 
-from data_designer_nemo.context import create_data_designer_context
-from data_designer_nemo.sdk_translation import async_to_sync_sdk
+from data_designer_nemo.context import create_validation_context
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalPreviewSpec
 from nemo_data_designer_plugin.retrieval.corpus import materialize_corpus
 from nemo_data_designer_plugin.retrieval.providers import build_retrieval_model_configs, resolve_retrieval_providers
@@ -37,11 +36,12 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
         self,
         spec: RetrievalPreviewSpec,
         ctx: FunctionContext,
+        sdk: NeMoPlatform,
         async_sdk: AsyncNeMoPlatform,
         is_local: bool = False,
     ) -> AsyncIterator[BaseModel]:
         job = spec.generate
-        dd_ctx = create_data_designer_context(async_sdk, ctx.workspace)
+        validation_ctx = create_validation_context(async_sdk, ctx.workspace)
         model_configs = build_retrieval_model_configs(
             provider=job.provider,
             chat_provider=job.chat_provider,
@@ -52,7 +52,7 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
             embed_model=job.embed_model,
         )
         try:
-            model_providers = await resolve_retrieval_providers(dd_ctx, model_configs)
+            model_providers = await resolve_retrieval_providers(validation_ctx, model_configs)
         except Exception as exc:
             yield Error(message=str(exc), details={"type": type(exc).__name__})
             return
@@ -63,7 +63,6 @@ class RetrievalPreviewFunction(NemoFunction[RetrievalPreviewSpec]):
                 execute_generation,
             )
 
-            sdk = async_sdk if isinstance(async_sdk, NeMoPlatform) else async_to_sync_sdk(async_sdk)
             with tempfile.TemporaryDirectory() as tmp:
                 tmp_path = Path(tmp)
                 corpus_dir = materialize_corpus(
