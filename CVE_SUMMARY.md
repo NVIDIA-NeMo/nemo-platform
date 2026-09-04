@@ -19,8 +19,8 @@
   - `/tmp/nemo-address-cves-20260904/pulse-container-scan-nmp-unsloth-training-33862649918.zip`
 
 The container artifacts scanned image tag `580978986bc500a3d1aa5d72972f76c551f84d7b`.
-This worktree is newer at `1fa27f98ef048392165c6fc8c442868017de57ce`, so some
-container rows are stale relative to current source and need a rebuild/rescan to confirm.
+This branch is newer than that scanned tag, so some container rows are stale relative
+to current source and need a rebuild/rescan to confirm.
 
 ## Counts Before Remediation
 
