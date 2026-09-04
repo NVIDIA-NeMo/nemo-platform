@@ -36,6 +36,15 @@ redirects:
   # Sphinx page URLs (foo.html); must follow all :path*/index.html rules above
   - source: "/:path*.html"
     destination: "/:path*"
+  # NV 6722631: OpenSandbox how-to live slug is open-sandbox.
+  - source: "/documentation/self-managed-deployment/setup/helm/opensandbox"
+    destination: "/documentation/kubernetes-deployment/setup/helm/open-sandbox"
+  - source: "/latest/documentation/self-managed-deployment/setup/helm/opensandbox"
+    destination: "/latest/documentation/kubernetes-deployment/setup/helm/open-sandbox"
+  - source: "/documentation/kubernetes-deployment/setup/helm/opensandbox"
+    destination: "/documentation/kubernetes-deployment/setup/helm/open-sandbox"
+  - source: "/latest/documentation/kubernetes-deployment/setup/helm/opensandbox"
+    destination: "/latest/documentation/kubernetes-deployment/setup/helm/open-sandbox"
   # NV 6722623: published hrefs still use the old self-managed-deployment nav slug.
   - source: "/documentation/self-managed-deployment/helm"
     destination: "/documentation/kubernetes-deployment/setup/helm"
