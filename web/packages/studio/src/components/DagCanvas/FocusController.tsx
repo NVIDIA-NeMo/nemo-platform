@@ -11,7 +11,11 @@ import { type FC, useEffect, useRef } from 'react';
  * last-focused id so live edits to a focused node don't re-center it, and defers focus
  * until a just-added node has actually landed in the store.
  */
-export const FocusController: FC<{ focusNodeId?: string | null }> = ({ focusNodeId }) => {
+interface FocusControllerProps {
+  readonly focusNodeId?: string | null;
+}
+
+export const FocusController: FC<FocusControllerProps> = ({ focusNodeId }) => {
   const { fitView } = useReactFlow();
   const nodes = useNodes();
   const lastFocused = useRef<string | null>(null);

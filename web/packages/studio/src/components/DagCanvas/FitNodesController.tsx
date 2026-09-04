@@ -6,7 +6,11 @@ import { MIN_GRAPH_ZOOM } from '@studio/components/DagCanvas/viewport';
 import { useNodes, useReactFlow } from '@xyflow/react';
 import { type FC, useEffect, useRef } from 'react';
 
-export const FitNodesController: FC<{ nodeIds?: readonly string[] }> = ({ nodeIds }) => {
+interface FitNodesControllerProps {
+  readonly nodeIds?: readonly string[];
+}
+
+export const FitNodesController: FC<FitNodesControllerProps> = ({ nodeIds }) => {
   const { fitView } = useReactFlow();
   const nodes = useNodes();
   const fitKey = nodeIds?.join('|') ?? '';

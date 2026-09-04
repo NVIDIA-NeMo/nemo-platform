@@ -5,10 +5,15 @@ import { MIN_GRAPH_ZOOM, readViewport } from '@studio/components/DagCanvas/viewp
 import { useNodes, useNodesInitialized, useReactFlow } from '@xyflow/react';
 import { type FC, useEffect, useRef } from 'react';
 
-export const FitGraphController: FC<{
-  viewportStorageKey?: string;
-  selectedNodeId?: string | null;
-}> = ({ viewportStorageKey, selectedNodeId }) => {
+interface FitGraphControllerProps {
+  readonly viewportStorageKey?: string;
+  readonly selectedNodeId?: string | null;
+}
+
+export const FitGraphController: FC<FitGraphControllerProps> = ({
+  viewportStorageKey,
+  selectedNodeId,
+}) => {
   const { fitView } = useReactFlow();
   const nodes = useNodes();
   const nodesInitialized = useNodesInitialized();
