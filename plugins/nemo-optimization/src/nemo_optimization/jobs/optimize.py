@@ -51,7 +51,7 @@ from pydantic import BaseModel
 from nemo_optimization.agents import resolve_agent_config
 from nemo_optimization.preflight import preflight_validate_llm_models
 from nemo_optimization.router import OptimizeRouter
-from nemo_optimization.schemas.optimize import OptimizeSpec
+from nemo_optimization.schemas.optimize import FILESET_REQUIRED, OptimizeSpec, OptimizeSubmitSpec
 
 logger = logging.getLogger(__name__)
 
@@ -65,14 +65,6 @@ OPTIMIZE_COMMAND = [OPTIMIZE_TASK_MODULE]
 #: the ``cpu-tasks`` dependency group so ``python -m nemo_optimization.tasks.optimize`` imports there.
 OPTIMIZE_TASK_IMAGE = "nmp-cpu-tasks"
 
-_FILESET_REQUIRED = (
-    "optimize_config_fileset is required when submitting an optimize study: the job runs on the "
-    "platform and cannot read the submitting client's filesystem.  Stage the bundle first with "
-    "`nemo agents optimize prepare-fileset --source <dir> --optimize-config <file> --fileset <name>`, "
-    "then submit with the fileset ref it prints.  (Absolute-path configs remain available for "
-    "co-located `nemo agents optimize run`.)"
-)
-
 
 class OptimizeJob(NemoJob):
     """Run a Fabric-native numeric optimize study via the Agents optimize job."""
@@ -81,7 +73,24 @@ class OptimizeJob(NemoJob):
     description: ClassVar[str] = "Optimize a Fabric agent workflow (numeric HPO)."
     container: ClassVar[str] = "cpu-tasks"
     job_collection_path: ClassVar[str | None] = None
+    generate_legacy_verbs: ClassVar[bool] = False
     spec_schema: ClassVar[type[BaseModel]] = OptimizeSpec
+    input_spec_schema: ClassVar[type[BaseModel]] = OptimizeSubmitSpec
+
+    @classmethod
+    async def to_spec(  # ty: ignore[invalid-method-override]
+        cls,
+        input_spec: OptimizeSubmitSpec,
+        *,
+        workspace: str,
+        entity_client: object,
+        async_sdk: AsyncNeMoPlatform,
+        is_local: bool,
+    ) -> OptimizeSpec:
+        del entity_client, async_sdk
+        payload = input_spec.model_dump(mode="json")
+        payload["workspace"] = workspace
+        return OptimizeSpec.model_validate(payload, context={"is_local": is_local})
 
     @classmethod
     async def compile(  # ty: ignore[invalid-method-override]
@@ -104,10 +113,10 @@ class OptimizeJob(NemoJob):
             PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
         )
 
-        # ``compile`` is the submit path only — ``NemoJobScheduler.run_local`` goes straight to
-        # ``run`` — so requiring the fileset here is exactly the "submit is remote-safe" rule.
+        # ``compile`` is the remote submission path only — ``NemoJobScheduler.run_local`` goes
+        # straight to ``run`` — so requiring the fileset here keeps platform execution remote-safe.
         if spec.optimize_config_fileset is None:
-            raise PlatformJobCompilationError(_FILESET_REQUIRED)
+            raise PlatformJobCompilationError(FILESET_REQUIRED)
 
         spec_dict = spec.model_dump(mode="json")
         spec_dict["workspace"] = workspace

@@ -53,6 +53,7 @@ Full template:
   },
   "training": {
     "training_type": "sft",
+    "recipe": "auto",
     "finetuning_type": "lora",
     "lora": {
       "rank": 16,
@@ -87,7 +88,7 @@ Full template:
     "adam_beta1": 0.9,
     "adam_beta2": 0.999,
     "adam_eps": 1e-8,
-    "optimizer": "Adam",
+    "optimizer": "auto",
     "lr_decay_style": "cosine",
     "warmup_steps": 0
   },
@@ -114,6 +115,7 @@ Full template:
 | Field | Default | Notes |
 |-------|---------|-------|
 | `training_type` | `sft` | `distillation` requires `teacher_model` (entity ref) |
+| `recipe` | `auto` | `auto` uses the checkpoint head; `sft`, `bi_encoder`, or `cross_encoder` explicitly selects the recipe. Explicit encoder recipes can wrap a causal-LM checkpoint. Unset batch/LR/warmup fields are rewritten for encoder recipes — see **Retrieval recipe defaults** below. |
 | `finetuning_type` | `lora` | `all_weights` (full fine-tune), `lora_merged` (merge adapter into base) |
 | `lora.rank` | `16` | Higher → more capacity, more VRAM. Typical training range 8–32; **cap at 32** if the adapter will be served with default NIM / vLLM (rank > 32 may not load) |
 | `lora.alpha` | `32` | Scaling; common rule of thumb **alpha ≈ 2× rank** |
@@ -148,8 +150,8 @@ LoRA block is auto-created when `finetuning_type` is `lora` or `lora_merged`.
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `global_batch_size` | `8` (schema) | Effective batch across all GPUs; **≥48 GB LoRA tables → `batch-sizing.md`** |
-| `micro_batch_size` | `1` (schema) | **Per GPU**; same SKILL tables for single- and multi-GPU (TP=1) |
+| `global_batch_size` | `8` (schema) | Encoder recipes rewrite unset values to **128**. Effective batch across all GPUs; **≥48 GB LoRA tables → `batch-sizing.md`** |
+| `micro_batch_size` | `1` (schema) | Encoder recipes rewrite unset values to **4**. **Per GPU**; same SKILL tables for single- and multi-GPU (TP=1) |
 | `sequence_packing` | `false` | Pack short sequences for throughput (needs compatible data) |
 | `sequence_packing_max_samples` | `1000` | Samples analyzed to estimate the optimal pack size (only when packing) |
 
@@ -163,15 +165,28 @@ Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `learning_rate` | `5e-6` (schema) | Skill uses **5e-5** for small LoRA SFT; see tuning below |
+| `learning_rate` | `5e-6` (schema) | Encoder recipes rewrite unset values (`1e-5` bi-encoder, `3e-6` cross-encoder). Skill uses **5e-5** for small LoRA SFT; see tuning below |
 | `min_learning_rate` | `null` | Floor for the cosine LR decay; null lets it decay toward 0 |
 | `weight_decay` | `0.01` | L2-style regularization |
 | `adam_beta1` | `0.9` | Adam optimizer beta1 |
 | `adam_beta2` | `0.999` | Adam optimizer beta2 |
 | `adam_eps` | `1e-8` | Adam/AdamW epsilon for numerical stability |
-| `optimizer` | `Adam` | `Adam` \| `AdamW` |
+| `optimizer` | `auto` | `auto` \| `Adam` \| `AdamW` \| `FusedAdam`; `auto` picks FusedAdam for retrieval recipes, Adam for SFT |
 | `lr_decay_style` | `cosine` | `cosine` \| `linear` \| `constant` |
-| `warmup_steps` | `0` | Linear warmup; try ~10% of total steps for long runs |
+| `warmup_steps` | `0` | Encoder recipes rewrite unset values (`5` bi-encoder, `100` cross-encoder). Linear warmup; try ~10% of total steps for long SFT runs |
+
+### Retrieval recipe defaults
+
+When the resolved recipe is `bi_encoder` or `cross_encoder` (explicit, or `auto` after the checkpoint head is known), unset batch and optimizer fields are filled with Nemotron retrieval values. Fields you set in the job JSON are left alone. `sft` keeps the schema defaults above.
+
+| Field | Schema default | `bi_encoder` | `cross_encoder` |
+|-------|----------------|--------------|-----------------|
+| `batch.global_batch_size` | `8` | `128` | `128` |
+| `batch.micro_batch_size` | `1` | `4` | `4` |
+| `optimizer.learning_rate` | `5e-6` | `1e-5` | `3e-6` |
+| `optimizer.warmup_steps` | `0` | `5` | `100` |
+
+`optimizer.optimizer: auto` still selects FusedAdam for these recipes and Adam for SFT.
 
 ### `parallelism`
 

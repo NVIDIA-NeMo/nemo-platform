@@ -1185,6 +1185,45 @@ components:
       required:
       - training
       title: AutomodelDatasetSpec
+    AutomodelEmbeddingSpec:
+      properties:
+        train_n_passages:
+          type: integer
+          minimum: 2.0
+          title: Train N Passages
+          default: 5
+        eval_negative_size:
+          title: Eval Negative Size
+          type: integer
+          minimum: 1.0
+        do_gradient_checkpointing:
+          type: boolean
+          title: Do Gradient Checkpointing
+          default: false
+        query_max_length:
+          type: integer
+          minimum: 1.0
+          title: Query Max Length
+          default: 512
+        passage_max_length:
+          type: integer
+          minimum: 1.0
+          title: Passage Max Length
+          default: 512
+        query_prefix:
+          type: string
+          title: Query Prefix
+          description: Collator-side prefix; BiEncoderCollator adds a space.
+          default: 'query:'
+        passage_prefix:
+          type: string
+          title: Passage Prefix
+          description: Collator-side prefix; BiEncoderCollator adds a space.
+          default: 'passage:'
+      additionalProperties: false
+      type: object
+      title: AutomodelEmbeddingSpec
+      description: Collator and dataset knobs for bi_encoder / cross_encoder recipes.
     AutomodelJobInput:
       properties:
         name:
@@ -1489,11 +1528,14 @@ components:
         optimizer:
           type: string
           enum:
+          - auto
           - Adam
           - AdamW
+          - FusedAdam
           title: Optimizer
-          description: Optimizer algorithm.
-          default: Adam
+          description: Optimizer algorithm. 'auto' selects Transformer Engine FusedAdam
+            for retrieval recipes and torch Adam for SFT.
+          default: auto
         lr_decay_style:
           type: string
           enum:
@@ -1613,6 +1655,17 @@ components:
           - distillation
           title: Training Type
           default: sft
+        recipe:
+          type: string
+          enum:
+          - auto
+          - sft
+          - bi_encoder
+          - cross_encoder
+          title: Recipe
+          description: Training recipe. 'auto' uses the model checkpoint head; explicit
+            encoder recipes can wrap a causal-LM backbone for retrieval training.
+          default: auto
         finetuning_type:
           type: string
           enum:
@@ -1678,6 +1731,11 @@ components:
           type: boolean
           title: Offload Teacher
           default: false
+        embedding:
+          allOf:
+          - $ref: '#/components/schemas/AutomodelEmbeddingSpec'
+          description: Retrieval collator/dataset knobs. Used when recipe is bi_encoder
+            or cross_encoder.
       additionalProperties: false
       type: object
       title: AutomodelTrainingSpec

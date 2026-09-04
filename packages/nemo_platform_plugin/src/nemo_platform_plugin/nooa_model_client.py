@@ -76,7 +76,29 @@ def configured_model_refs() -> ConfiguredModelRefs:
         raise ValueError("No default model is configured. Run `nemo setup` and select agent models.")
     if not fast:
         raise ValueError("No fast model is configured. Run `nemo setup` and select agent models.")
+    _validate_configured_ref(default, "NEMO_DEFAULT_MODEL")
+    _validate_configured_ref(fast, "NEMO_FAST_MODEL")
     return ConfiguredModelRefs(default=default, fast=fast)
+
+
+def _validate_configured_ref(model_ref: str, env_var: str) -> None:
+    """Reject an unqualified model ref where the operator can still act on it.
+
+    Model Entity IDs discovered by ``nemo setup`` are always ``workspace/name``, but
+    the ``NEMO_DEFAULT_MODEL`` / ``NEMO_FAST_MODEL`` overrides are read verbatim. An
+    unqualified value used to survive every layer and only fail inside a running job,
+    long after the job was created, so the operator saw a stack trace instead of the
+    one-line fix.
+    """
+    try:
+        _parse_model_ref(model_ref)
+    except ValueError:
+        raise ValueError(
+            f"Model reference {model_ref!r} must use workspace/name format "
+            f"(for example 'default/{model_ref}'). "
+            f"Set {env_var} to a workspace-qualified Model Entity ID, or unset it and "
+            f"re-run `nemo setup` to select one."
+        ) from None
 
 
 def _parse_model_ref(model_ref: str) -> tuple[str, str]:

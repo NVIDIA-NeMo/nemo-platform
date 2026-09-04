@@ -27,6 +27,7 @@ from sandboxed_gym.opensandbox_policy import create_options_with_policy
 LOGGER = logging.getLogger(__name__)
 
 _HEALTH_POLL_S = 2.0
+_DEFAULT_RUNTIME_ENTRYPOINT = ("python", "-m", "sandboxed_gym.runtime.gym_host_runtime")
 
 
 class _HostRoutes(NamedTuple):
@@ -131,6 +132,10 @@ class OpenSandboxGymHostProvider:
                     resource_kwargs["memory_mib"] = int(memory_s)
             resources = SandboxResources.from_mapping(resource_kwargs)
 
+        # OpenSandbox treats an omitted entrypoint as a request for its persistent-sandbox
+        # keepalive (`tail -f /dev/null`), rather than preserving the image CMD. Start the standard
+        # Gym host explicitly while still allowing runtime images to configure their own command.
+        entrypoint = spec.entrypoint or _DEFAULT_RUNTIME_ENTRYPOINT
         return SandboxSpec(
             image=spec.runtime_image,
             ttl_s=spec.ttl_s,
@@ -138,7 +143,7 @@ class OpenSandboxGymHostProvider:
             env=dict(spec.bootstrap_env),
             metadata=metadata,
             resources=resources,
-            entrypoint=list(spec.entrypoint) if spec.entrypoint is not None else None,
+            entrypoint=list(entrypoint),
             provider_options={"volumes": volumes},
         )
 
@@ -152,10 +157,11 @@ class OpenSandboxGymHostProvider:
         )
 
     def _absolute_url(self, endpoint: str) -> str:
-        """Give an endpoint a scheme.
+        """Add http or https to a bare host:port returned by the SDK.
 
-        The SDK returns a bare ``host:port/path`` authority, which ``urlopen``
-        rejects outright, so the connection protocol has to be reattached here.
+        ``urlopen`` needs a scheme. We default to https because that is what the SDK
+        assumes. In-cluster OpenSandbox is http, so the caller must set
+        ``connection.protocol`` or the health check will hang until it times out.
         """
         if "://" in endpoint:
             return endpoint
@@ -194,7 +200,7 @@ class OpenSandboxGymHostProvider:
                 last_error = exc
             await asyncio.sleep(_HEALTH_POLL_S)
         raise TimeoutError(
-            f"job host {handle.host_id} did not become ready within {timeout_s:g}s"
+            f"job host {handle.host_id} at {handle.health_url} did not become ready within {timeout_s:g}s"
             + (f": {last_error}" if last_error is not None else "")
         )
 

@@ -39,6 +39,7 @@ from ...types.experiments import (
     experiment_create_params,
     experiment_update_params,
 )
+from ...types.experiments.column_layout_param import ColumnLayoutParam
 from ...types.experiments.experiment_response import ExperimentResponse
 from ...types.experiments.pareto_config_param import ParetoConfigParam
 from ...types.experiments.experiment_filter_param import ExperimentFilterParam
@@ -72,6 +73,7 @@ class ExperimentsResource(SyncAPIResource):
         *,
         workspace: str | None = None,
         name: str,
+        column_layout: ColumnLayoutParam | Omit = omit,
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
@@ -93,6 +95,17 @@ class ExperimentsResource(SyncAPIResource):
 
         Args:
           name: Workspace-unique experiment name.
+
+          column_layout: A saved table layout for a group's evaluations list: column order and which
+              columns are hidden.
+
+              Column ids are Studio's and cannot be enumerated here — the table builds a
+              column per evaluator and metadata key found in the rows — so ids are stored and
+              echoed back unvalidated.
+
+              Visibility is stored as the _hidden_ ids rather than a map over every column, so
+              a column that appears later (a new evaluator, a new metadata key) shows up by
+              default.
 
           default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
@@ -144,6 +157,7 @@ class ExperimentsResource(SyncAPIResource):
                 body=maybe_transform(
                     {
                         "name": name,
+                        "column_layout": column_layout,
                         "default_sort": default_sort,
                         "description": description,
                         "insight_id": insight_id,
@@ -210,6 +224,7 @@ class ExperimentsResource(SyncAPIResource):
         workspace: str | None = None,
         body_name: str,
         baseline_evaluation_name: Optional[str] | Omit = omit,
+        column_layout: ColumnLayoutParam | Omit = omit,
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
@@ -233,6 +248,17 @@ class ExperimentsResource(SyncAPIResource):
 
           baseline_evaluation_name: Name of this Experiment's baseline Evaluation. The Evaluation must already be a
               live member of the Experiment. Set null to clear the selected baseline.
+
+          column_layout: A saved table layout for a group's evaluations list: column order and which
+              columns are hidden.
+
+              Column ids are Studio's and cannot be enumerated here — the table builds a
+              column per evaluator and metadata key found in the rows — so ids are stored and
+              echoed back unvalidated.
+
+              Visibility is stored as the _hidden_ ids rather than a map over every column, so
+              a column that appears later (a new evaluator, a new metadata key) shows up by
+              default.
 
           default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
@@ -286,6 +312,7 @@ class ExperimentsResource(SyncAPIResource):
                 {
                     "body_name": body_name,
                     "baseline_evaluation_name": baseline_evaluation_name,
+                    "column_layout": column_layout,
                     "default_sort": default_sort,
                     "description": description,
                     "insight_id": insight_id,
@@ -431,6 +458,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
         *,
         workspace: str | None = None,
         name: str,
+        column_layout: ColumnLayoutParam | Omit = omit,
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
@@ -452,6 +480,17 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
         Args:
           name: Workspace-unique experiment name.
+
+          column_layout: A saved table layout for a group's evaluations list: column order and which
+              columns are hidden.
+
+              Column ids are Studio's and cannot be enumerated here — the table builds a
+              column per evaluator and metadata key found in the rows — so ids are stored and
+              echoed back unvalidated.
+
+              Visibility is stored as the _hidden_ ids rather than a map over every column, so
+              a column that appears later (a new evaluator, a new metadata key) shows up by
+              default.
 
           default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
@@ -503,6 +542,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
                 body=await async_maybe_transform(
                     {
                         "name": name,
+                        "column_layout": column_layout,
                         "default_sort": default_sort,
                         "description": description,
                         "insight_id": insight_id,
@@ -569,6 +609,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
         workspace: str | None = None,
         body_name: str,
         baseline_evaluation_name: Optional[str] | Omit = omit,
+        column_layout: ColumnLayoutParam | Omit = omit,
         default_sort: str | Omit = omit,
         description: str | Omit = omit,
         insight_id: str | Omit = omit,
@@ -592,6 +633,17 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           baseline_evaluation_name: Name of this Experiment's baseline Evaluation. The Evaluation must already be a
               live member of the Experiment. Set null to clear the selected baseline.
+
+          column_layout: A saved table layout for a group's evaluations list: column order and which
+              columns are hidden.
+
+              Column ids are Studio's and cannot be enumerated here — the table builds a
+              column per evaluator and metadata key found in the rows — so ids are stored and
+              echoed back unvalidated.
+
+              Visibility is stored as the _hidden_ ids rather than a map over every column, so
+              a column that appears later (a new evaluator, a new metadata key) shows up by
+              default.
 
           default_sort: Default sort for this experiment's evaluations list, as a `sort`-param string: a
               comma-separated, ordered list of fields where the first is the primary sort and
@@ -645,6 +697,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
                 {
                     "body_name": body_name,
                     "baseline_evaluation_name": baseline_evaluation_name,
+                    "column_layout": column_layout,
                     "default_sort": default_sort,
                     "description": description,
                     "insight_id": insight_id,

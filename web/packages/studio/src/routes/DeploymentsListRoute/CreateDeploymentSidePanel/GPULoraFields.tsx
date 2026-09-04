@@ -23,7 +23,7 @@ export const GPULoraFields = ({
           label="GPUs"
           type="number"
           formFieldProps={{
-            slotInfo: 'GPU count for this NIM (TP×PP for multi-LLM NIM; see docs).',
+            slotInfo: 'GPU count for this deployment (TP×PP where the engine supports it).',
             slotError: errors.gpu?.message,
           }}
         />
@@ -34,7 +34,8 @@ export const GPULoraFields = ({
           attributes={{ Flex: { justify: 'start' } }}
           formFieldProps={{
             slotLabel: 'LoRA Enabled',
-            slotInfo: 'Enable when serving LoRA adapters on this base image.',
+            slotInfo:
+              'Serve LoRA adapters alongside this base model. Adapters trained against it are picked up automatically and addressed as “workspace--adapter-name”.',
           }}
         />
       </Flex>

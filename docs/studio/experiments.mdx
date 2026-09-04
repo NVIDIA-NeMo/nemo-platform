@@ -3,161 +3,49 @@
 # SPDX-License-Identifier: Apache-2.0
 
 title: "NeMo Studio Experiments"
-description: ""
+description: "Group evaluations into experiments, drill into results, and compare runs side by side."
 ---
 
-{/* OUTLINE ONLY — headings and the sample config are in place; copy is not written yet.
-    Keep this page thin. It covers what the Studio UI does and nothing else; concepts,
-    the data model, and every CLI/SDK workflow belong to
-    /documentation/evaluate-models/experiments. Delete a heading rather than pad it. */}
+Use **Evaluations > Experiments** in the NeMo Studio workspace sidebar to group evaluations for comparison, and to drill into evaluation results and individual runs.
 
 <Note>
 
-Experiments is still in early development. Many features are missing or should be expected to change.
+Experiments is enabled by default. An administrator can disable it by setting `studio.feature_flags.experiment: false` in the platform configuration and restarting Studio.
 
 </Note>
 
-Use NeMo Studio Experiments is a comprehensive evaluation comparison solution that helps users compare the results of evaluations produced by NeMo Evaluator and other runners such as Harbor or Gym. 
-For concepts, the data model, and the CLI and SDK workflows, see [Experiments](/documentation/evaluate-models/experiments). This page covers only what you can do from the Agents evaluation tab. 
+## Create an Experiment
 
----
+Select **New experiment** from the Experiments list. In the **Create experiment** tab, provide a name, an optional description, and a default sort order for the experiment's evaluations, then select **Create**.
 
-## Run an Evaluation from an Agent page
+<Note>
 
-Navigate to the Agent you wish evaluation and Select Run Evaluation in the top right. Choose to create a new experiment to group evaluations and an evaluation and supply a configuration and dataset, or select an existing evaluation and use it's configurate to re-run the test. 
+The modal also has **NeMo Assistant** and **CLI command** tabs. **CLI command** shows an equivalent `nemo agents experimentalist run` invocation, with `--train-dataset` and `--validation-dataset` selecting the training and validation data; **NeMo Assistant** is a placeholder for a future guided flow.
 
-### Dataset and format
+</Note>
 
-Experiments expects a .jsonl format of multiple test cases. 
+## Experiment Detail
 
-```json
-{"subject": "Action Required: Review Updated Vendor Agreement", "sender": "procurement@lawvendor-support.com", "body": "Hi team,\n\nOur vendor, LawVendor Solutions, has updated the terms of our annual service agreement. Please review the attached document and confirm acceptance by Friday, May 10. If you have any questions, you can access the secure portal here: https://portal.lawvendor-support.com/login . Let me know once you've signed.\n\nThanks,\nJordan Lee\nProcurement Coordinator\nLawVendor Solutions", "label": "phishing"}
-{"subject": "Action Required: LabTech Solutions Contract Renewal \u2013 Review by Oct 15", "sender": "renewals@university-support.com", "body": "Hi Dr. Ellis,\n\nPlease review the updated contract for LabTech Solutions' spectroscopy equipment, set to renew on November 1. The revised terms are available in the attached PDF and can also be viewed via our secure portal: https://university-support.com/procurement/contract/LabTech. Log in with your university username and password to approve the renewal by October 15. If you have any questions, contact procurement@university-support.com.\n\nThank you,\nUniversity Procurement Team", "label": "phishing"}
-```
+Select an experiment to open its detail page, which shows aggregate metrics across its evaluations and a table of the evaluations in the group. Toggle **Pareto view** to plot evaluations on a chart instead of the table, by default cost against latency. Change either axis to cost, latency, or any evaluator's score (`cost_usd`, `latency_ms`, or `evaluators.<name>`); the selection is saved per experiment.
 
-The dataset's format should be paired with a prompt_template that references the keys in your test cases as so:
+Select **Edit** to update the experiment's name, description, or default sort order.
 
-```yaml
-prompt_template: |
-  From: {{ item.sender }}
-  Subject: {{ item.subject }}
+If the experiment was created from an Optimizer insight, an **Insight description** card appears with a link back to that insight. See [NeMo Studio Insights](/documentation/studio/insights).
 
-  {{ item.body }}
-```
+## Evaluation Drill-Down
 
+Select an evaluation from an experiment's table to open its detail page, which shows aggregate metrics for that evaluation and a table of its test-case runs (sessions).
 
-### Upload an Evaluation Config
+Select a session to open its detail page — the same trace and span view used by **Traces**, scoped to that test case. See [NeMo Studio Traces](/documentation/studio/traces).
 
-Example configuration. For more configuration options, review [NeMo evaluator documentation](https://docs.nvidia.com/nemo/evaluator/tutorials/walkthrough). 
+## Compare Runs Side by Side
 
-```yaml
-prompt_template: '{{ item.question }}'
-
-metrics:
-  # 1. Did the report end with a Sources section at all? Deterministic and free:
-  #    a missing Sources section means the citation contract was dropped
-  #    entirely, which is worth separating from citations being merely sloppy.
-  - metric_type: string-check
-    outputs:
-      - name: string-check
-        value_json_schema:
-          title: ContinuousScore
-          description: Continuous numeric metric value.
-          type: number
-    payload:
-      kind: inline
-      metric:
-        type: string-check
-        operation: contains
-        left_template: "{{ (sample.output_text or '') | lower }}"
-        right_template: "### sources"
-
-  # 2. One judge, three independent scores. Three separate llm-judge metrics
-  #    would union their output names across rows and read NaN for each other,
-  #    so a multi-output metric is the right shape for several rubric criteria.
-  - metric_type: llm-judge
-    outputs:
-      - name: answers_question
-        value_json_schema:
-          title: ContinuousScore
-          description: Continuous numeric metric value.
-          type: number
-      - name: citation_integrity
-        value_json_schema:
-          title: ContinuousScore
-          description: Continuous numeric metric value.
-          type: number
-      - name: report_style
-        value_json_schema:
-          title: ContinuousScore
-          description: Continuous numeric metric value.
-          type: number
-    payload:
-      kind: inline
-      metric:
-        type: llm-judge
-        model: default/nvidia-nemotron-3-super-120b-a12b
-        prompt_template:
-          messages:
-            - role: user
-              content: |-
-                You are grading a deep research agent's report against three independent criteria. Judge only what is in the report; do not research the topic yourself, and do not reward length.
-
-                The research question was:
-                {{ item.question }}
-
-                A strong report was expected to cover:
-                {{ item.expectation }}
-
-                The agent's report:
-                {{ sample.output_text }}
-
-                Score each criterion independently — a report can be well cited but off topic, or on topic with broken citations.
-
-                1. answers_question: 1 if the report substantively covers the expectation above, 0 if it is off topic, hedges without committing, or leaves most of the expected ground uncovered. Different wording or extra material is fine; missing the substance is not.
-
-                2. citation_integrity: 1 if every inline [n] marker resolves to an entry in the Sources section, the Sources list is numbered sequentially from [1] with no gaps or duplicates, and each entry carries a URL. 0 if there are no inline markers, if any marker has no matching source, or if the numbering skips or repeats.
-
-                3. report_style: 1 if the report reads as a professional document — prose organised under `##` headings, no self-referential narration such as "I searched" or "I found", and no meta-commentary about the research process. 0 if it is mostly bullet fragments, narrates the agent's own process, or has no headings.
-
-                Return only a JSON object:
-                {"answers_question": <0 or 1>, "citation_integrity": <0 or 1>, "report_style": <0 or 1>}
-        scores:
-          # Judges narrate around the JSON, so each score is pulled out by name
-          # rather than by parsing the whole reply as a document.
-          - name: answers_question
-            minimum: 0.0
-            maximum: 1.0
-            parser:
-              type: regex
-              method: search
-              pattern: 'answers_question"?\s*:\s*([01])'
-          - name: citation_integrity
-            minimum: 0.0
-            maximum: 1.0
-            parser:
-              type: regex
-              method: search
-              pattern: 'citation_integrity"?\s*:\s*([01])'
-          - name: report_style
-            minimum: 0.0
-            maximum: 1.0
-            parser:
-              type: regex
-              method: search
-              pattern: 'report_style"?\s*:\s*([01])'
-        inference:
-          # Reports run long, so the judge needs more room than a verdict check.
-          max_tokens: 2048
-          extra_body:
-            nvext:
-              max_thinking_tokens: 512
-        reasoning:
-          end_token: "</think>"
-```
+From a session's detail page, select **Compare against…** and choose another run of the same test case. Studio splits the view into two columns — the current run on the left, the selected run on the right — so you can compare trace output side by side. Select **Clear** to return to the single-run view.
 
 ## Related Topics
 
 - [Experiments](/documentation/evaluate-models/experiments)
+- [NeMo Studio Insights](/documentation/studio/insights)
+- [NeMo Studio Traces](/documentation/studio/traces)
 - [NeMo Studio Agents](/documentation/studio/agents)
 - [About NVIDIA NeMo Studio](/documentation/studio)

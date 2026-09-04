@@ -60,16 +60,14 @@ def _build_payload(dataset_path: Path) -> dict:
         {
             "model": _MODEL,
             "base_url": _BASE_URL,
-            "api_key": "not-used",
-            "allow_empty_api_key": True,
+            "api_key_env": "NEMO_AGENTS_IGW_API_KEY",
         }
     )
     agent["models"]["judge"].update(
         {
             "model": _MODEL,
             "base_url": _BASE_URL,
-            "api_key": "not-used",
-            "allow_empty_api_key": True,
+            "api_key_env": "NEMO_AGENTS_IGW_API_KEY",
         }
     )
     agent["eval"]["general"]["dataset"] = {"file_path": str(dataset_path)}

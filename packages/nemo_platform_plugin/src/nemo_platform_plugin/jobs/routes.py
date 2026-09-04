@@ -41,7 +41,7 @@ profile, or ``default_profile`` when the request did not choose one.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter
 from fastapi.routing import APIRoute
@@ -288,7 +288,10 @@ def _adapt_compile(
     ) -> Any:
         del original_spec  # NemoJob.compile only needs the canonical (transformed) spec
         try:
-            submit_control_kwargs = _submit_control_kwargs(job_cls.compile, profile=profile, options=options)
+            submit_control_kwargs = cast(
+                dict[str, Any],
+                _submit_control_kwargs(job_cls.compile, profile=profile, options=options),
+            )
             result = await job_cls.compile(
                 workspace=workspace,
                 spec=transformed_spec,

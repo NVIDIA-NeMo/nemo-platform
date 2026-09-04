@@ -1858,7 +1858,9 @@ paths:
       description: 'Delete Fileset.
 
 
-        Permanently deletes a fileset from the platform.
+        Permanently deletes an unreferenced fileset from the platform.
+
+        Referencing model or adapter entities must be relinked or deleted first.
 
         Returns metadata about the deleted fileset.
 
@@ -1884,6 +1886,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FilesetOutput'
+        '409':
+          description: Fileset is referenced by a model or adapter entity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+        '503':
+          description: Fileset references could not be verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
         '422':
           description: Validation Error
           content:
@@ -9895,6 +9915,31 @@ components:
       - policy
       title: ClavataRailOptions
       description: Configuration data for the Clavata API
+    ColumnLayout:
+      properties:
+        order:
+          items:
+            type: string
+          type: array
+          title: Order
+          description: 'Column ids in display order. Empty means no saved order: the
+            table falls back to its natural column order.'
+        hidden:
+          items:
+            type: string
+          type: array
+          title: Hidden
+          description: Column ids hidden from the table. Any column not listed is
+            shown.
+      type: object
+      title: ColumnLayout
+      description: "A saved table layout for a group's evaluations list: column order\
+        \ and which columns are hidden.\n\nColumn ids are Studio's and cannot be enumerated\
+        \ here \u2014 the table builds a column per evaluator\nand metadata key found\
+        \ in the rows \u2014 so ids are stored and echoed back unvalidated.\n\nVisibility\
+        \ is stored as the *hidden* ids rather than a map over every column, so a\
+        \ column that\nappears later (a new evaluator, a new metadata key) shows up\
+        \ by default."
     ComputeResourceSpec:
       properties:
         cpu:
@@ -12148,6 +12193,14 @@ components:
           description: Default X/Y metrics for the experiment's Pareto view. Omit
             to preserve the existing value on update; on create, defaults to cost
             vs. latency.
+        column_layout:
+          allOf:
+          - $ref: '#/components/schemas/ColumnLayout'
+          description: "Saved column order and column visibility for the experiment's\
+            \ evaluations table. Omit to leave the saved layout unchanged; on create\
+            \ that means no layout is saved. An empty order and hidden pair is itself\
+            \ a saved layout \u2014 one that shows every column \u2014 and is distinct\
+            \ from having none."
         is_favorite:
           type: boolean
           title: Is Favorite
@@ -12197,6 +12250,13 @@ components:
           title: Default Sort
         pareto:
           $ref: '#/components/schemas/ParetoConfig'
+        column_layout:
+          allOf:
+          - $ref: '#/components/schemas/ColumnLayout'
+          description: Saved column order and column visibility for the experiment's
+            evaluations table. Null when no layout has been saved, which is distinct
+            from a saved layout that hides nothing.
+          nullable: true
         is_favorite:
           type: boolean
           title: Is Favorite
@@ -12299,6 +12359,14 @@ components:
           description: Default X/Y metrics for the experiment's Pareto view. Omit
             to preserve the existing value on update; on create, defaults to cost
             vs. latency.
+        column_layout:
+          allOf:
+          - $ref: '#/components/schemas/ColumnLayout'
+          description: "Saved column order and column visibility for the experiment's\
+            \ evaluations table. Omit to leave the saved layout unchanged; on create\
+            \ that means no layout is saved. An empty order and hidden pair is itself\
+            \ a saved layout \u2014 one that shows every column \u2014 and is distinct\
+            \ from having none."
         is_favorite:
           type: boolean
           title: Is Favorite
@@ -15822,11 +15890,22 @@ components:
           title: Is Chat
           description: Whether this is a chat model
           type: boolean
+        head_type:
+          type: string
+          enum:
+          - causal_lm
+          - embedding
+          - cross_encoder
+          - unknown
+          title: Head Type
+          description: Task-specific head persisted in the checkpoint.
+          default: unknown
         is_embedding_model:
           type: boolean
           title: Is Embedding Model
-          description: Whether this is an embedding model
+          description: Deprecated compatibility alias for head_type == 'embedding'.
           default: false
+          deprecated: true
         checkpoint_model_name:
           type: string
           title: Checkpoint Model Name

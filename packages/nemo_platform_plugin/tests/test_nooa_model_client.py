@@ -82,6 +82,33 @@ def test_configured_model_refs_requires_default(monkeypatch):
         configured_model_refs()
 
 
+def test_configured_model_refs_rejects_unqualified_default(monkeypatch):
+    """An unqualified NEMO_DEFAULT_MODEL must fail here, not inside a running job."""
+    monkeypatch.setattr(
+        nooa_model_client,
+        "get_context",
+        lambda: SimpleNamespace(default_model="nvidia-nemotron-mini-4b-instruct", fast_model=None),
+    )
+
+    with pytest.raises(ValueError, match="must use workspace/name format") as excinfo:
+        configured_model_refs()
+
+    message = str(excinfo.value)
+    assert "default/nvidia-nemotron-mini-4b-instruct" in message
+    assert "NEMO_DEFAULT_MODEL" in message
+
+
+def test_configured_model_refs_rejects_unqualified_fast(monkeypatch):
+    monkeypatch.setattr(
+        nooa_model_client,
+        "get_context",
+        lambda: SimpleNamespace(default_model="default/quality", fast_model="bare-fast"),
+    )
+
+    with pytest.raises(ValueError, match="NEMO_FAST_MODEL"):
+        configured_model_refs()
+
+
 async def test_resolve_model_clients_deduplicates_same_model(monkeypatch):
     model_entity = _model_entity(
         workspace="default",

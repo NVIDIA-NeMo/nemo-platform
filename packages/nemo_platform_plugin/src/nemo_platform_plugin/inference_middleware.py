@@ -526,8 +526,11 @@ class ModelSpec(Protocol):
     is_chat: bool | None
     """Whether this model is a chat/instruction-tuned model."""
 
+    head_type: str
+    """Task-specific head persisted in the checkpoint."""
+
     is_embedding_model: bool
-    """Whether this model produces embeddings rather than completions."""
+    """Deprecated compatibility alias for an embedding head."""
 
     context_size: int | None
     """Maximum context window in tokens, or ``None`` if unspecified."""
