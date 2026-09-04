@@ -19,6 +19,7 @@ from typing import Dict, Optional
 from datetime import datetime
 
 from ..._models import BaseModel
+from .column_layout import ColumnLayout
 from .pareto_config import ParetoConfig
 
 __all__ = ["ExperimentResponse"]
@@ -37,6 +38,20 @@ class ExperimentResponse(BaseModel):
 
     baseline_evaluation_name: Optional[str] = None
     """Name of this Experiment's selected baseline Evaluation, if any."""
+
+    column_layout: Optional[ColumnLayout] = None
+    """
+    A saved table layout for a group's evaluations list: column order and which
+    columns are hidden.
+
+    Column ids are Studio's and cannot be enumerated here — the table builds a
+    column per evaluator and metadata key found in the rows — so ids are stored and
+    echoed back unvalidated.
+
+    Visibility is stored as the _hidden_ ids rather than a map over every column, so
+    a column that appears later (a new evaluator, a new metadata key) shows up by
+    default.
+    """
 
     created_at: Optional[datetime] = None
 

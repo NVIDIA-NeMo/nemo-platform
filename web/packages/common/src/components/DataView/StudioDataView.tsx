@@ -69,6 +69,8 @@ interface Props<DataType> {
    * When omitted, the default table with pagination is rendered.
    */
   children?: ReactNode;
+  /** Rendered at the leading end of the toolbar row, before the search bar. */
+  toolbarSlotStart?: ReactNode;
   /**
    * Rendered at the trailing end of the toolbar row (after the search bar and filter toggle).
    * Useful for controls like a sort dropdown that belong visually in the toolbar.
@@ -103,6 +105,7 @@ export const StudioDataView = <DataType,>({
   renderBulkActions,
   scrollContainerRef,
   searchField,
+  toolbarSlotStart,
   toolbarSlotEnd,
 }: Props<DataType>) => {
   const [showFilters, setShowFilters] = useState(false);
@@ -165,6 +168,7 @@ export const StudioDataView = <DataType,>({
           onToggleFilters={toggleFilters}
           renderBulkActions={renderBulkActions}
           searchBarProps={attributes?.DataViewSearchBar}
+          slotStart={toolbarSlotStart}
           slotEnd={toolbarSlotEnd}
         />
         <Flex className="min-h-0 h-full">
