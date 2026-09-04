@@ -38,6 +38,7 @@ models:
     base_url: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_API_KEY
     temperature: 0.0
+    max_tokens: 512
 
 environment:
   provider: local
