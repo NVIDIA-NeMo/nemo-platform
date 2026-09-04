@@ -140,7 +140,7 @@ test.describe('Intake trace graph', () => {
     await disableAuthForTest(page);
   });
 
-  test('opens a trace and keeps context while exploring its graph', async ({ page }) => {
+  test('opens a trace and keeps context while exploring its graph @record', async ({ page }) => {
     await page.goto('/workspaces/default/intake/traces');
     await page.getByText(trace.name, { exact: true }).click();
     await expect(page).toHaveURL(
