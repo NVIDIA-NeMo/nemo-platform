@@ -94,6 +94,11 @@ SUCCESSFUL_FABRIC_STATUSES = {"succeeded"}
 DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS = 60 * 60
 DEFAULT_AGENT_EXECUTION_IMAGE_NAME = "nmp-api"
 
+# Name Fabric gives the agent process's captured stderr. It lives under a
+# runtime/invocation directory Fabric names itself, so it is found by search
+# rather than opened by path.
+_AGENT_STDERR_FILENAME = "stderr.txt"
+
 # k8s resource key carrying the GPU count. The agents ``ComputeResources`` maps
 # express GPUs the Kubernetes way (a ``nvidia.com/gpu`` entry in ``limits``);
 # the jobs executor's ``ResourcesSpec`` instead carries a top-level integer
@@ -399,6 +404,12 @@ class ExecuteAgentJob(NemoJob):
                 )
             )
         except Exception as error:
+            # Fabric never produced a result, so the agent's own stderr is the
+            # only account of how far it got, if anywhere.
+            logger.exception(
+                "Fabric invocation failed for agent %s/%s.", step_config.agent.workspace, step_config.agent.name
+            )
+            _log_agent_stderr(fabric_dirs.artifacts)
             self._save_fabric_error_results(
                 ctx, workspace_dir=fabric_dirs.workspace, artifacts_dir=fabric_dirs.artifacts, error=error
             )
@@ -427,6 +438,24 @@ class ExecuteAgentJob(NemoJob):
             except Exception:
                 logger.exception("Execute-agent extension failed.")
                 raise
+        else:
+            # A Fabric result that *reports* failure is not an exception here,
+            # so this is the only place the reason is stated. Without it the
+            # step exits non-zero having logged nothing at all, and the cause
+            # is only reachable by downloading the saved artifacts.
+            logger.error(
+                "Agent %s/%s failed: fabric_status=%s error=%s (runtime_id=%s invocation_id=%s). "
+                "Fabric run result: %s. Agent stdout/stderr: %s",
+                step_config.agent.workspace,
+                step_config.agent.name,
+                result.status,
+                result.error,
+                result.runtime_id,
+                result.invocation_id,
+                fabric_run_result_ref.artifact_url,
+                output_artifacts_ref.artifact_url,
+            )
+            _log_agent_stderr(fabric_dirs.artifacts)
 
         output = {
             "status": status,
@@ -471,6 +500,43 @@ class ExecuteAgentJob(NemoJob):
             _save_json_result(ctx, FABRIC_ERROR_RESULT_NAME, ctx.storage.ephemeral / FABRIC_ERROR_FILENAME, payload)
         except Exception:
             logger.warning("Failed to save Fabric error result.", exc_info=True)
+
+
+def _log_agent_stderr(artifacts_dir: Path) -> None:
+    """Log the agent process's captured stderr after a run that failed.
+
+    Fabric runs the agent as its own process and redirects its streams to files
+    under the artifacts directory, so nothing it logs reaches the task
+    container's stdout. Only stderr is worth reading: the stdout file is the
+    adapter's protocol channel - a single JSON response, already saved as
+    ``fabric_run_result`` - and the lifecycle harness redirects the agent's own
+    stdout into stderr anyway, so nothing is lost by ignoring it.
+
+    Read on failure only. A healthy run's execution record belongs in telemetry,
+    which carries it live and structured; this exists for what telemetry cannot
+    see - a failure before the agent started and produced any spans, an export
+    that never landed, a process that died.
+
+    Best-effort: it runs on an already-failing path and must never replace the
+    error that got us here.
+    """
+    try:
+        paths = sorted(artifacts_dir.rglob(_AGENT_STDERR_FILENAME))
+    except OSError as error:
+        logger.warning("Could not search %s for agent stderr: %s", artifacts_dir, error)
+        return
+    for path in paths:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as error:
+            logger.warning("Could not read agent stderr at %s: %s", path, error)
+            continue
+        if not text.strip():
+            logger.warning("Agent stderr at %s was empty.", path)
+            continue
+        # Logged whole: it is only read on failure, and the tail of a truncated
+        # traceback is rarely the half that explains anything.
+        logger.error("Agent stderr (%s):\n%s", path, text)
 
 
 class _AgentSource(BaseModel):

@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import traceback
 from datetime import datetime
 from typing import Any
 
@@ -14,6 +16,9 @@ from nemo_fabric_adapters.common import lifecycle
 from nemo_insights_plugin.analyst.run import run_analyst_change_set
 from nemo_platform_plugin.nooa_model_client import ConfiguredModelRefs
 from nemo_platform_plugin.sdk_provider import get_async_task_sdk
+from nemo_platform_plugin.tasks.logging_setup import configure_task_logging
+
+logger = logging.getLogger(__name__)
 
 
 class AnalystAdapterConfigError(ValueError):
@@ -41,9 +46,22 @@ class InsightsAnalystRuntime:
         try:
             result = await self._run_analysis(request)
         except Exception as error:
+            # Log the full exception so it reaches this process's stderr, which
+            # is where the job reads a failed run's diagnostics from.
+            logger.exception("Insights analyst run failed.")
             return contract.AgentRunResult(
                 status=contract.AgentRunStatus.FAILED,
-                output={"response": str(error)},
+                # ``AgentRunError`` carries only code/message/retryable, so the
+                # diagnostic detail rides on ``output``, which the adapter owns.
+                # This is what puts it in ``fabric_run_result`` - the artifact
+                # someone debugging a failed run reaches for first, and which
+                # otherwise holds only ``str(error)``. The extension that reads
+                # ``output`` runs on success only, so these keys cannot confuse it.
+                output={
+                    "response": str(error),
+                    "error_type": type(error).__name__,
+                    "traceback": _format_traceback(error),
+                },
                 error=contract.AgentRunError(
                     code="insights_analyst_failed",
                     message=str(error),
@@ -103,6 +121,19 @@ class InsightsAnalystRuntime:
         self.__init__()
 
 
+def _format_traceback(error: BaseException) -> str:
+    """Render *error* with its whole cause chain.
+
+    Rendered in full: it lands in a saved artifact rather than on a job record,
+    and both ends of a chain carry the diagnosis. ``format_exception`` renders
+    oldest-first, so the *originating* exception is at the head while the one
+    actually raised is at the tail - an LLM error raised after retries reads
+    identically at the tail whatever provoked it, and only the head names the
+    endpoint that 404'd.
+    """
+    return "".join(traceback.format_exception(type(error), error, error.__traceback__))
+
+
 def _string_setting(settings: dict[str, Any], key: str) -> str | None:
     value = settings.get(key)
     if value is None:
@@ -154,6 +185,11 @@ def _fast_model_ref(
 
 def main() -> None:
     """Serve the persistent local-host lifecycle protocol."""
+    # Fabric spawns this as its own process and redirects its streams to the
+    # run's stdout/stderr artifacts. Nothing configures logging here, so
+    # without this the analyst's and Nooa's INFO output is dropped and those
+    # artifacts hold only bare WARNING+ lines from ``logging.lastResort``.
+    configure_task_logging()
     lifecycle.serve(InsightsAnalystRuntime, config_loader=contract.AgentConfig.from_mapping)
 
 

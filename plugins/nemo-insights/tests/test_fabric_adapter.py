@@ -141,3 +141,73 @@ async def test_fabric_adapter_reports_configuration_failure() -> None:
     assert result.error is not None
     assert result.error.code == "insights_analyst_failed"
     assert "harness.settings.agent is required" in result.error.message
+
+
+async def test_fabric_adapter_failure_output_carries_the_traceback(monkeypatch) -> None:
+    """``str(error)`` alone loses the cause chain, which is what actually
+    identifies the failure - an LLM error raised after retries reads
+    identically whatever provoked it."""
+    clients: list[_StubClient] = []
+
+    async def fail(**kwargs: Any) -> tuple[AnalystResult, object]:
+        raise RuntimeError("LLM API error after 3 retries")
+
+    monkeypatch.setattr(fabric_adapter, "run_analyst_change_set", fail)
+    monkeypatch.setattr(fabric_adapter, "get_async_task_sdk", _stub_sdk_factory(clients))
+
+    runtime = fabric_adapter.InsightsAnalystRuntime()
+    await runtime.start({"config": _agent_config({"agent": "research-agent"})})
+
+    result = await runtime.invoke(_request({"job_workspace": "workspace"}), cast(contract.RuntimeContext, None))
+
+    assert result.status is contract.AgentRunStatus.FAILED
+    assert result.output["error_type"] == "RuntimeError"
+    assert "LLM API error after 3 retries" in result.output["traceback"]
+    assert "Traceback (most recent call last)" in result.output["traceback"]
+    assert result.error is not None
+    assert result.error.code == "insights_analyst_failed"
+
+
+async def test_fabric_adapter_logs_the_failure_with_its_traceback(monkeypatch, caplog) -> None:
+    """The adapter's stderr is captured to a run artifact, so logging here is
+    what puts the traceback somewhere retrievable."""
+    clients: list[_StubClient] = []
+
+    async def fail(**kwargs: Any) -> tuple[AnalystResult, object]:
+        raise RuntimeError("gateway returned 502")
+
+    monkeypatch.setattr(fabric_adapter, "run_analyst_change_set", fail)
+    monkeypatch.setattr(fabric_adapter, "get_async_task_sdk", _stub_sdk_factory(clients))
+
+    runtime = fabric_adapter.InsightsAnalystRuntime()
+    await runtime.start({"config": _agent_config({"agent": "research-agent"})})
+
+    with caplog.at_level("ERROR", logger="nemo_insights_plugin.fabric_adapter"):
+        await runtime.invoke(_request({"job_workspace": "workspace"}), cast(contract.RuntimeContext, None))
+
+    assert "Insights analyst run failed." in caplog.text
+    assert "gateway returned 502" in caplog.text
+
+
+async def test_fabric_adapter_preserves_the_cause_chain_in_the_traceback(monkeypatch) -> None:
+    clients: list[_StubClient] = []
+
+    first_message = "Function 'abc-123': Not found for account"
+    second_message = "LLM API error after 3 retries"
+
+    async def fail(**kwargs: Any) -> tuple[AnalystResult, object]:
+        try:
+            raise ValueError(first_message)
+        except ValueError as cause:
+            raise RuntimeError(second_message) from cause
+
+    monkeypatch.setattr(fabric_adapter, "run_analyst_change_set", fail)
+    monkeypatch.setattr(fabric_adapter, "get_async_task_sdk", _stub_sdk_factory(clients))
+
+    runtime = fabric_adapter.InsightsAnalystRuntime()
+    await runtime.start({"config": _agent_config({"agent": "research-agent"})})
+
+    result = await runtime.invoke(_request({"job_workspace": "workspace"}), cast(contract.RuntimeContext, None))
+
+    assert first_message in result.output["traceback"]
+    assert second_message in result.output["traceback"]
