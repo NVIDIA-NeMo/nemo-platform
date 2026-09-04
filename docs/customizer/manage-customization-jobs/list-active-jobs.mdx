@@ -6,7 +6,7 @@ title: "List Active Jobs"
 description: ""
 ---
 <a id="ft-list-active-customization-jobs"></a>
-List active customization jobs and their high-level status. Customization jobs run on the platform's Jobs service, so you list them through that service and filter by `source` and `status`. The `source` scopes results to a backend (`automodel` or `unsloth`), while `status="active"` excludes completed, failed, and cancelled jobs. Each entry includes the job definition (model, dataset, training configuration) and overall status.
+List active customization jobs and their high-level status. Customization jobs run on the platform's Jobs service, so you list them through that service and filter by `source` and `status`. Platform job records use `source="customization"` for Automodel, Unsloth, and RL (the Jobs service does not store the training backend as `source`). `status="active"` excludes completed, failed, and cancelled jobs. Tell backends apart from the job name prefix (`automodel-…`, `unsloth-…`, `rl-…`) or from the backend you submitted to. Each entry includes the job definition (model, dataset, training configuration) and overall status.
 
 <Tip>
 
@@ -28,7 +28,7 @@ export NMP_BASE_URL="https://your-nmp-base-url"
 
 ## To List Active Customization Jobs
 
-Use the SDK to list jobs, filtering by `source` to scope the results to a customization backend and by `status` to return only active jobs:
+Use the SDK to list jobs, filtering by `source="customization"` and by `status` to return only active customization jobs:
 
 ```python
 import os
@@ -40,11 +40,11 @@ client = NeMoPlatform(
     workspace="default",
 )
 
-# List active automodel customization jobs
+# List active customization jobs
 jobs = client.jobs.list(
     workspace="default",
     filter={
-        "source": "automodel",  # Use "unsloth" for the Unsloth backend
+        "source": "customization",
         "status": "active",
     },
     page=1,
@@ -61,7 +61,7 @@ for job in jobs.data:
 filtered_jobs = client.jobs.list(
     workspace="default",
     filter={
-        "source": "automodel",
+        "source": "customization",
         "status": "active",
         "project": "my-finetuning-project",
     },
@@ -84,7 +84,7 @@ for job in filtered_jobs.data:
       "id": "platform-job-QtyhRY5ub4t4tTLPY4sTkz",
       "name": "automodel-99da3f7c1b2e",
       "workspace": "default",
-      "source": "automodel",
+      "source": "customization",
       "created_at": "2026-02-09T22:12:45",
       "updated_at": "2026-02-09T22:12:45",
       "status": "active",
@@ -126,7 +126,7 @@ for job in filtered_jobs.data:
   },
   "sort": "created_at",
   "filter": {
-    "source": "automodel",
+    "source": "customization",
     "status": "active"
   },
   "search": {}
