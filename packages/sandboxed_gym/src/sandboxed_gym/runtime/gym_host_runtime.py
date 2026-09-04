@@ -11,12 +11,16 @@ is injected verbatim into the sandbox image, where ``nemo_rl`` may not be import
 """
 
 import asyncio
+import concurrent.futures
 import json
 import os
 import socket
 import subprocess
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+import time
+import traceback
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from sandboxed_gym.environment_package import (
@@ -49,6 +53,20 @@ _READY: bool = False
 _RUN_HELPER: Any = None
 _HEAD_SERVER_CONFIG: Any = None
 _ROLLOUT_HELPER: Any = None
+_EVENT_LOOP: asyncio.AbstractEventLoop | None = None
+_EVENT_LOOP_LOCK = threading.Lock()
+
+#: The sandbox proxy gives up on a request whose first byte has not arrived within 180s, a cap its
+#: config does not expose, and a batch routinely outlasts that. Whitespace is a valid JSON prefix,
+#: so writing it while the work runs costs the reader nothing and keeps every hop's timer alive.
+_HEARTBEAT_INTERVAL_S = 15.0
+#: With no hop left to time a rollout out, the host has to be what gives up: a wedged batch would
+#: otherwise heartbeat until the sandbox's ttl_s.
+ROLLOUT_DEADLINE_ENV_KEY = "NMP_ROLLOUT_DEADLINE_S"
+_DEFAULT_ROLLOUT_DEADLINE_S = 30 * 60.0
+# Bounded so a deeply recursive failure cannot produce an oversized error response.
+_TRACEBACK_FRAMES = 20
+_MAX_TRACEBACK_CHARS = 8_000
 
 
 def _env_int(name: str, default: int) -> int:
@@ -56,6 +74,13 @@ def _env_int(name: str, default: int) -> int:
     if not raw:
         return default
     return int(raw)
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return float(raw)
 
 
 def _runtime_error(code: str, message: str) -> dict[str, Any]:
@@ -303,17 +328,51 @@ async def _collect_rollout_results(
     return results
 
 
+def _ensure_event_loop() -> asyncio.AbstractEventLoop:
+    """Return the process-wide event loop every rollout request runs on.
+
+    One loop per process, not one per request: Gym's shared HTTP client binds to the loop that
+    created it, so a per-request loop would leave the next request pointing at a closed one.
+    """
+    global _EVENT_LOOP
+    with _EVENT_LOOP_LOCK:
+        if _EVENT_LOOP is None:
+            _EVENT_LOOP = asyncio.new_event_loop()
+            threading.Thread(target=_EVENT_LOOP.run_forever, name="gym-host-event-loop", daemon=True).start()
+        return _EVENT_LOOP
+
+
+def submit_rollouts(
+    examples: list[dict],
+    head_server_config: Any,
+    rollout_helper: Any,
+) -> concurrent.futures.Future[list[dict]]:
+    """Start ``examples`` on the shared loop and return without waiting.
+
+    Handing back a future rather than the results is what lets the handler answer before the work
+    finishes, so a long batch does not look to the proxy like an unresponsive server.
+    """
+    # Handler threads hand work to the one loop, so concurrent /rollouts/run calls interleave on
+    # it rather than each running a loop of its own.
+    return asyncio.run_coroutine_threadsafe(
+        _collect_rollout_results(examples, head_server_config, rollout_helper),
+        _ensure_event_loop(),
+    )
+
+
 def run_rollouts_sync(
     examples: list[dict],
     head_server_config: Any,
     rollout_helper: Any,
 ) -> list[dict]:
-    return asyncio.run(_collect_rollout_results(examples, head_server_config, rollout_helper))
+    return submit_rollouts(examples, head_server_config, rollout_helper).result()
 
 
 class Handler(BaseHTTPRequestHandler):
     max_request_bytes: int = 268_435_456
     max_response_bytes: int = 268_435_456
+    heartbeat_interval_s: float = _HEARTBEAT_INTERVAL_S
+    rollout_deadline_s: float = _DEFAULT_ROLLOUT_DEADLINE_S
 
     def do_GET(self) -> None:
         if not self.path.startswith("/health"):
@@ -373,15 +432,72 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
-        try:
-            results = run_rollouts_sync(examples, _HEAD_SERVER_CONFIG, _ROLLOUT_HELPER)
-        except Exception as exc:
-            self._send_json(
-                500,
-                _runtime_error("internal", str(exc)),
-            )
-            return
+        # The only progress signal this process emits: log_message is silenced below, and both Gym
+        # servers filter their own 200s.
+        print(f"gym-host: rollouts/run <- {len(examples)} example(s)", flush=True)
+        started = time.monotonic()
+        future = submit_rollouts(examples, _HEAD_SERVER_CONFIG, _ROLLOUT_HELPER)
 
+        # Committed to 200 before the work is done, so the first byte leaves immediately and no hop
+        # can mistake a long batch for a dead one. Everything judgeable from the request alone was
+        # rejected with a real status above; failures from here travel in the body as
+        # {"error": ...}, which the caller already treats as fatal. No Content-Length: the body is
+        # delimited by the close that `Connection: close` promises, which is what allows the
+        # heartbeats below to precede a payload of unknown length.
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(self._await_results(future, started))
+
+    def _await_results(self, future: concurrent.futures.Future[list[dict]], started: float) -> bytes:
+        """Wait for ``future``, heartbeating while it runs, and return the body to send.
+
+        Returns an error envelope rather than raising: the status line is already on the wire by
+        the time this is called, so a failure can only be reported in the body.
+        """
+        deadline = started + self.rollout_deadline_s
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                future.cancel()
+                detail = f"rollout exceeded the host deadline of {self.rollout_deadline_s:g}s and was abandoned"
+                print(f"gym-host: rollouts/run failed: {detail}", flush=True)
+                return self._error_body("deadline_exceeded", detail)
+
+            # wait() rather than result(timeout=...): a rollout is free to raise TimeoutError of
+            # its own, which is not this loop's tick.
+            done, _ = concurrent.futures.wait([future], timeout=min(self.heartbeat_interval_s, remaining))
+            if not done:
+                try:
+                    self.wfile.write(b" ")
+                    self.wfile.flush()
+                except OSError as exc:
+                    # The caller is gone. Nothing will read this batch, so stop paying for it:
+                    # cancelling the future propagates to the collector task on the shared loop.
+                    # Rollouts Gym has already started keep running until they finish -- they are
+                    # its tasks, not ours, and the deadline above is what bounds them.
+                    future.cancel()
+                    print(
+                        f"gym-host: rollouts/run abandoned, the caller disconnected: {exc}",
+                        flush=True,
+                    )
+                    raise
+                continue
+
+            try:
+                results = future.result()
+            except Exception as exc:
+                # Returned to the caller: this process's stdout never reaches the job.
+                detail = traceback.format_exc(limit=_TRACEBACK_FRAMES)
+                print(f"gym-host: rollouts/run failed: {detail}", flush=True)
+                return self._error_body("internal", f"{type(exc).__name__}: {exc}\n{detail[-_MAX_TRACEBACK_CHARS:]}")
+            break
+
+        print(
+            f"gym-host: rollouts/run -> {len(results)} result(s) in {time.monotonic() - started:.1f}s",
+            flush=True,
+        )
         envelope = {
             "results": results,
             "job_id": os.environ.get("NMP_JOB_ID", ""),
@@ -390,20 +506,15 @@ class Handler(BaseHTTPRequestHandler):
         }
         body = json.dumps(envelope).encode("utf-8")
         if len(body) > self.max_response_bytes:
-            self._send_json(
-                413,
-                _runtime_error(
-                    "payload_too_large",
-                    f"response body {len(body)} exceeds max {self.max_response_bytes}",
-                ),
+            return self._error_body(
+                "payload_too_large",
+                f"response body {len(body)} exceeds max {self.max_response_bytes}; "
+                f"lower sandbox.rollout_chunk_size or raise sandbox.max_response_bytes",
             )
-            return
+        return body
 
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    def _error_body(self, code: str, message: str) -> bytes:
+        return json.dumps(_runtime_error(code, message)).encode("utf-8")
 
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -422,12 +533,17 @@ def main() -> None:
 
     Handler.max_request_bytes = _env_int("NMP_MAX_REQUEST_BYTES", Handler.max_request_bytes)
     Handler.max_response_bytes = _env_int("NMP_MAX_RESPONSE_BYTES", Handler.max_response_bytes)
+    # Set from the caller's rollout_timeout_s. This, not that timeout, is what actually bounds a
+    # batch: the client's is a per-read socket timeout, and the heartbeat keeps resetting it.
+    Handler.rollout_deadline_s = _env_float(ROLLOUT_DEADLINE_ENV_KEY, Handler.rollout_deadline_s)
 
+    _ensure_event_loop()
     _RUN_HELPER, _HEAD_SERVER_CONFIG, _ROLLOUT_HELPER = bootstrap_gym_host()
     _READY = True
 
     port = _env_int("NMP_RUNTIME_HTTP_PORT", _DEFAULT_HTTP_PORT)
-    HTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    # Threaded so chunked rollouts overlap and /health stays answerable mid-batch.
+    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
 
 
 if __name__ == "__main__":

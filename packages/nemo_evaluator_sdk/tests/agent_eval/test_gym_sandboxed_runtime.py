@@ -147,6 +147,25 @@ async def test_an_http_error_names_the_host_and_carries_its_body(tasks, tmp_path
     assert "resources_server crashed" in message
 
 
+async def test_an_error_carried_on_a_200_is_still_a_failure(tasks, tmp_path, monkeypatch) -> None:
+    """The host commits its 200 before the batch finishes, so late failures ride the body.
+
+    It answers early on purpose: the sandbox proxy gives up on a request whose first byte has not
+    arrived, and a batch outlasts that. Reading only the status would call a deadline or a crashed
+    environment a success and then blame the run for having no results.
+    """
+    host = _FakeHost(body={"error": {"code": "deadline_exceeded", "message": "abandoned after 1800s"}})
+    runner = runner_against(host, monkeypatch)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    message = str(excinfo.value)
+    assert "deadline_exceeded" in message
+    assert "abandoned after 1800s" in message
+    assert ROLLOUT_URL in message
+
+
 async def test_a_response_without_a_results_list_is_refused(tasks, tmp_path, monkeypatch) -> None:
     # Reaching the parser with nothing collected would surface as "no rollouts", blaming the run
     # for what is a malformed reply.

@@ -144,6 +144,16 @@ class SandboxedGymAgentTaskRunner:
                 f"{response.text[:2000]}"
             )
         body = response.json()
+        error = body.get("error") if isinstance(body, Mapping) else None
+        if error is not None:
+            # The host commits its 200 before the batch finishes, so that it can hold the
+            # connection open past the sandbox proxy's first-byte cap. A failure after that point
+            # has only the body left to travel in, and carries the code and traceback that say
+            # which of Gym's layers raised.
+            raise RuntimeError(
+                f"sandboxed Gym host reported an error from {self._config.rollout_url}: "
+                f"{error if isinstance(error, str) else json.dumps(error)[:2000]}"
+            )
         results = body.get("results") if isinstance(body, Mapping) else None
         if not isinstance(results, list):
             raise RuntimeError(
