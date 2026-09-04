@@ -331,6 +331,53 @@ async def test_delete_job_serializes_with_rerun_job(
 
 
 @pytest.mark.asyncio
+async def test_delete_job_serializes_with_same_name_create(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+    mock_nmp_client,
+    sample_platform_job_request: CreatePlatformJobRequest,
+):
+    """A same-name create waits until delete finishes all cleanup for the old job."""
+    job_id, job_name, _, _, _, _ = await create_test_job_data(mock_store, "delete-create-lock-test-job")
+    other_dispatcher = JobDispatcher(store=mock_store, sdk=mock_nmp_client)
+    create_request = sample_platform_job_request.model_copy(update={"name": job_name})
+
+    delete_started = asyncio.Event()
+    allow_delete = asyncio.Event()
+    original_delete_by_id = mock_store.delete_by_id
+
+    async def blocking_delete_by_id(entity_type, entity_id):
+        if entity_type is PlatformJobResult and not delete_started.is_set():
+            delete_started.set()
+            await allow_delete.wait()
+        return await original_delete_by_id(entity_type, entity_id)
+
+    with patch.object(mock_store, "delete_by_id", side_effect=blocking_delete_by_id):
+        delete_task = asyncio.create_task(mock_dispatcher.delete_job(job_name, DEFAULT_WORKSPACE))
+        create_task = None
+        try:
+            await asyncio.wait_for(delete_started.wait(), timeout=1.0)
+
+            create_task = asyncio.create_task(other_dispatcher.create_job(create_request, DEFAULT_WORKSPACE))
+            await asyncio.sleep(0.05)
+            assert not create_task.done()
+
+            allow_delete.set()
+            assert await delete_task is True
+            recreated = await create_task
+        finally:
+            allow_delete.set()
+            if create_task is not None:
+                await asyncio.gather(delete_task, create_task, return_exceptions=True)
+            else:
+                await asyncio.gather(delete_task, return_exceptions=True)
+
+    await verify_job_data_exists(mock_store, job_id, should_exist=False)
+    assert recreated.name == job_name
+    assert recreated.id != job_id
+
+
+@pytest.mark.asyncio
 async def test_delete_job_serializes_with_task_creation(
     mock_dispatcher: JobDispatcher,
     mock_store: EntityClient,
