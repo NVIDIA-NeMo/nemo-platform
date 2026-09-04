@@ -145,7 +145,7 @@ export const GeneralParametersSection = () => {
                       slotLabel: 'Min Learning Rate',
                       slotInfo: 'Minimum LR for cosine decay.',
                     }}
-                    {...specSliderProps(DPO_SPEC_DEFAULTS, 'optimizer_type')}
+                    {...specSliderProps(DPO_SPEC_DEFAULTS, 'min_learning_rate')}
                     min={0}
                     max={1e-3}
                     step={1e-6}
@@ -154,7 +154,7 @@ export const GeneralParametersSection = () => {
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'rl.training.adam_beta1', control }}
                     formFieldProps={{ slotLabel: 'Adam β₁' }}
-                    {...specSliderProps(DPO_SPEC_DEFAULTS, 'seed')}
+                    {...specSliderProps(DPO_SPEC_DEFAULTS, 'adam_beta1')}
                     min={0}
                     max={0.999}
                     step={0.001}
@@ -209,7 +209,7 @@ export const GeneralParametersSection = () => {
                       slotLabel: 'Keep Top-K Checkpoints',
                       slotInfo: 'Number of best checkpoints to retain, ranked by validation loss.',
                     }}
-                    {...specSliderProps(DPO_SPEC_DEFAULTS, 'val_at_end')}
+                    {...specSliderProps(DPO_SPEC_DEFAULTS, 'keep_top_k')}
                     min={1}
                     max={10}
                     step={1}
@@ -231,7 +231,7 @@ export const GeneralParametersSection = () => {
           <ControlledSliderWithTextInput
             useControllerProps={{ name: 'automodel.schedule.epochs', control }}
             formFieldProps={{ slotLabel: 'Epochs' }}
-            {...specSliderProps(DPO_SPEC_DEFAULTS, 'val_check_interval')}
+            {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'schedule_epochs')}
             min={1}
             max={100}
             step={1}
@@ -240,7 +240,7 @@ export const GeneralParametersSection = () => {
           <ControlledSliderWithTextInput
             useControllerProps={{ name: 'automodel.optimizer.learning_rate', control }}
             formFieldProps={{ slotLabel: 'Learning Rate' }}
-            {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'schedule_epochs')}
+            {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'optimizer_learning_rate')}
             min={1e-6}
             max={1e-3}
             step={1e-6}
@@ -279,7 +279,7 @@ export const GeneralParametersSection = () => {
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'automodel.batch.micro_batch_size', control }}
                     formFieldProps={{ slotLabel: 'Micro Batch Size' }}
-                    {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'batch_sequence_packing')}
+                    {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'batch_micro_batch_size')}
                     min={1}
                     max={64}
                     step={1}
@@ -356,7 +356,10 @@ export const GeneralParametersSection = () => {
                       control,
                     }}
                     formFieldProps={{ slotLabel: 'Sequence Packing Max Samples' }}
-                    {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'optimizer_optimizer')}
+                    {...specSliderProps(
+                      AUTOMODEL_SPEC_DEFAULTS,
+                      'batch_sequence_packing_max_samples'
+                    )}
                     min={1}
                     max={10000}
                     step={1}
