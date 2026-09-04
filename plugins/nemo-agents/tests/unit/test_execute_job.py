@@ -1609,3 +1609,87 @@ def test_log_agent_stderr_reports_an_empty_stream(tmp_path: Path, caplog: pytest
 def test_log_agent_stderr_survives_a_missing_artifacts_directory() -> None:
     """Never the reason a failing run fails differently."""
     _log_agent_stderr(Path("/nonexistent/artifacts"))
+
+
+def test_run_logs_progress_through_a_successful_run(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """A healthy run should account for itself: which agent, that it was
+    invoked, and what came back."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello", timeout_seconds=300),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="succeeded", response="done")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Executing agent default/calc (timeout 300s)." in caplog.text
+    assert "Invoking agent default/calc." in caplog.text
+    assert "returned status=succeeded after" in caplog.text
+
+
+def test_run_names_the_agent_before_validating_its_config(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """A config that fails to parse must still say which agent it belonged to."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=ResolvedAgentConfig(
+            name="calc",
+            workspace="default",
+            config={"not": "a valid agent config"},
+            config_format="nemo-agents-spec-v1",
+        ),
+    )
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        pytest.raises(Exception),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Executing agent default/calc" in caplog.text
+
+
+def test_run_does_not_announce_workdir_staging_when_there_is_none(
+    ctx: JobContext, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Most runs stage nothing; the line would be noise."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="succeeded", response="done")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Staging workdir" not in caplog.text
+
+
+def test_run_logs_elapsed_time_when_fabric_raises(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """How long a run got before dying is part of diagnosing a timeout."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        raise TimeoutError("fabric timed out")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        pytest.raises(TimeoutError),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Fabric invocation failed for agent default/calc after" in caplog.text

@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -374,6 +375,10 @@ class ExecuteAgentJob(NemoJob):
 
     def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
         step_config = ExecuteAgentStepConfig.model_validate(config)
+        agent_ref = f"{step_config.agent.workspace}/{step_config.agent.name}"
+        # Logged before validation so a config that fails to parse still names the agent it belonged to.
+        logger.info("Executing agent %s (timeout %gs).", agent_ref, step_config.request.timeout_seconds)
+
         _validate_agent_config_format(step_config.agent.config_format)
         agent_config = _validate_agent_config(step_config.agent.config)
 
@@ -382,10 +387,13 @@ class ExecuteAgentJob(NemoJob):
         if step_config.workdir is not None and _has_workdir_inputs(step_config.workdir):
             if sdk is None:
                 raise RuntimeError("sdk is required to stage workdir inputs.")
+            logger.info("Staging workdir inputs for agent %s.", agent_ref)
             materialize_agent_workdir(step_config.workdir, sdk.files, fabric_dirs.workspace)
 
         input_workdir_ref = ctx.results.save(INPUT_WORKDIR_RESULT_NAME, fabric_dirs.workspace)
 
+        logger.info("Invoking agent %s.", agent_ref)
+        started_at = time.monotonic()
         try:
             result = asyncio.run(
                 invoke_agent_config_request_once(
@@ -397,7 +405,7 @@ class ExecuteAgentJob(NemoJob):
                         caller_context={
                             "job_id": ctx.job_id,
                             "job_workspace": ctx.workspace,
-                            "agent": f"{step_config.agent.workspace}/{step_config.agent.name}",
+                            "agent": agent_ref,
                         },
                         timeout_seconds=step_config.request.timeout_seconds,
                     )
@@ -407,13 +415,15 @@ class ExecuteAgentJob(NemoJob):
             # Fabric never produced a result, so the agent's own stderr is the
             # only account of how far it got, if anywhere.
             logger.exception(
-                "Fabric invocation failed for agent %s/%s.", step_config.agent.workspace, step_config.agent.name
+                "Fabric invocation failed for agent %s after %.1fs.", agent_ref, time.monotonic() - started_at
             )
             _log_agent_stderr(fabric_dirs.artifacts)
             self._save_fabric_error_results(
                 ctx, workspace_dir=fabric_dirs.workspace, artifacts_dir=fabric_dirs.artifacts, error=error
             )
             raise
+
+        logger.info("Agent %s returned status=%s after %.1fs.", agent_ref, result.status, time.monotonic() - started_at)
 
         fabric_run_result_ref = _save_json_result(
             ctx,
@@ -444,10 +454,9 @@ class ExecuteAgentJob(NemoJob):
             # step exits non-zero having logged nothing at all, and the cause
             # is only reachable by downloading the saved artifacts.
             logger.error(
-                "Agent %s/%s failed: fabric_status=%s error=%s (runtime_id=%s invocation_id=%s). "
+                "Agent %s failed: fabric_status=%s error=%s (runtime_id=%s invocation_id=%s). "
                 "Fabric run result: %s. Agent stdout/stderr: %s",
-                step_config.agent.workspace,
-                step_config.agent.name,
+                agent_ref,
                 result.status,
                 result.error,
                 result.runtime_id,
@@ -459,7 +468,7 @@ class ExecuteAgentJob(NemoJob):
 
         output = {
             "status": status,
-            "agent": f"{step_config.agent.workspace}/{step_config.agent.name}",
+            "agent": agent_ref,
             "fabric_status": result.status,
             "runtime_id": result.runtime_id,
             "invocation_id": result.invocation_id,
@@ -534,8 +543,6 @@ def _log_agent_stderr(artifacts_dir: Path) -> None:
         if not text.strip():
             logger.warning("Agent stderr at %s was empty.", path)
             continue
-        # Logged whole: it is only read on failure, and the tail of a truncated
-        # traceback is rarely the half that explains anything.
         logger.error("Agent stderr (%s):\n%s", path, text)
 
 
