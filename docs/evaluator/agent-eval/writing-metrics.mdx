@@ -142,8 +142,10 @@ async def read_trace(input: MetricInput) -> None:
 | **filesystem** (`EVIDENCE_FINAL_STATE`, `EVIDENCE_INITIAL_STATE`) | `await evidence.filesystem(name)` | `.run_verifier(command)`, `.diff(other)` — run a check or diff two snapshots |
 | **logs** | `await evidence.logs(name)` | `.read_text(file)`, `.tail(file)` |
 
-OTLP exposes the unflattened `resourceSpans` tree; it does not provide a generic `tool_calls()` method.
-It's a responsibility of consumer to parse `resourceSpans` tree specific to OTLP exporter to extract the searched data.
+OTLP exposes the unflattened span tree as parsed `ResourceSpans` protobuf messages — the same type
+`opentelemetry-proto` defines and Intake ingests — so a reader walks `.scope_spans[].spans[]` and
+typed attributes rather than decoded JSON. It does not provide a generic `tool_calls()` method: what
+counts as a tool call is exporter-specific, so extracting them is the consumer's job.
 
 ### Asking for one trace format
 

@@ -17,19 +17,33 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from google.protobuf.json_format import MessageToDict
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import DEFAULT_REWARD_KEY
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import (
     _ENV_LOG_NAME,
+    NG_ATTEMPT_INDEX,
     NG_ROLLOUT_INDEX,
     NG_TASK_INDEX,
     _read_jsonl,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
-from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_evaluator_sdk.ng_trajectory_otlp import rollout_to_resource_spans
+from nemo_evaluator_sdk.values.evidence import (
+    EVIDENCE_FORMAT_OTLP,
+    EVIDENCE_TRACE,
+    CandidateEvidence,
+    EvidenceDescriptor,
+)
 from nemo_evaluator_sdk.values.results import AggregateRangeScore, AggregateScalarScore, AggregateScore
+from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans
 
 logger = logging.getLogger(__name__)
+
+#: Evidence key for Gym's own model-call capture, kept beside the OTLP view projected from it.
+#: Named for NeMo Gym's documented `ng_trajectory` schema; 0.5.0 writes it as one
+#: `<rollout_id>.capture.jsonl` per rollout rather than as a field on the rollout record.
+NG_TRAJECTORY_EVIDENCE = "ng_trajectory"
 
 
 _TOKEN_USAGE_KEYS = ("total_tokens", "input_tokens", "output_tokens", "prompt_tokens", "completion_tokens")
@@ -38,10 +52,6 @@ _TOKEN_USAGE_KEYS = ("total_tokens", "input_tokens", "output_tokens", "prompt_to
 _INPUT_TOKEN_KEYS = ("total_tokens", "input_tokens", "prompt_tokens")
 
 
-#: Gym's index fields on each rollout record. ``_ng_task_index`` is the only join back to the input
-#: rows that survives a round-trip: Gym mutates ``responses_create_params`` (even the prompt) and
-#: copies only a fixed allowlist of row keys onto the result, so no field we invent comes back. Gym
-#: *honors* a caller-supplied ``_ng_task_index``, which is what makes the join here deterministic.
 def _agent_never_ran(record: Mapping[str, Any]) -> bool:
     """True when a result record shows the agent produced nothing *and* never called the model.
 
@@ -118,6 +128,105 @@ def _require_full_coverage(tasks: Sequence[AgentEvalTask], *, covered_task_ids: 
         f"  gym logs:  {rollouts_path.parent} (gym_env.log, gym_eval.stdout.log, gym_eval.stderr.log)\n"
         f"  unrepresented task id(s): {missing}"
     )
+
+
+def _rollout_evidence(
+    record: Mapping[str, Any],
+    *,
+    rollouts_path: Path,
+    task_id: str,
+    trial_id: str,
+    capture_dir: Path | None = None,
+) -> CandidateEvidence:
+    """The rollouts file every trial shares, plus this rollout's own trace.
+
+    The trace is derived from the record rather than captured, so it is carried inline rather than
+    written beside the rollouts file. It is registered under the format-qualified key as well as the
+    plain one, so a metric asking for ``format="otlp"`` and one asking for whatever is primary reach
+    the same handle.
+    """
+    descriptors: dict[str, EvidenceDescriptor] = {
+        "rollouts": EvidenceDescriptor(kind="filesystem", format="file", ref=str(rollouts_path))
+    }
+    capture_path = _capture_path(record, capture_dir)
+    if capture_dir is not None and capture_path is None:
+        # Capture is switched on by the runner, so an absent one is Gym not doing what it was
+        # asked. The trial still scores; its trace just loses the timing capture exists to provide.
+        logger.warning(
+            "No model-call capture for trial %s under %s; its trace will carry no per-call timing.",
+            trial_id,
+            capture_dir,
+        )
+    model_calls = _read_model_calls(capture_path, trial_id=trial_id)
+    if capture_path is not None:
+        # Kept as its own evidence, by reference: the OTLP view below is a projection of it, and a
+        # projection is not a reason to lose what it was projected from.
+        descriptors[NG_TRAJECTORY_EVIDENCE] = EvidenceDescriptor(
+            kind="filesystem", format="file", ref=str(capture_path)
+        )
+    resource_spans = _rollout_resource_spans(record, task_id=task_id, trial_id=trial_id, model_calls=model_calls)
+    if resource_spans is not None:
+        # Rendered to JSON here and only here, because an ``EvidenceDescriptor`` holds JSON.
+        trace = EvidenceDescriptor(
+            kind=EVIDENCE_TRACE,
+            format=EVIDENCE_FORMAT_OTLP,
+            data=[MessageToDict(entry) for entry in resource_spans],
+        )
+        descriptors[EVIDENCE_TRACE] = trace
+        descriptors[f"{EVIDENCE_TRACE}:{EVIDENCE_FORMAT_OTLP}"] = trace
+    return CandidateEvidence(descriptors=descriptors)
+
+
+def _rollout_resource_spans(
+    record: Mapping[str, Any], *, task_id: str, trial_id: str, model_calls: Sequence[Mapping[str, Any]] = ()
+) -> list[ResourceSpans] | None:
+    """Project one rollout onto OTLP resource spans, or ``None`` when it will not convert.
+
+    Seeded on the trial id because span identity has to be unique per attempt: Gym does not always
+    record ``_ng_rollout_index``, and ``_rollout_trial_id`` is what already resolves that.
+    """
+    try:
+        return rollout_to_resource_spans(record, rollout_id=trial_id, task_id=task_id, model_calls=model_calls)
+    except (TypeError, ValueError) as error:
+        # A trace is a second view of a result Gym already reported; losing it must not lose the
+        # trial, whose reward and output stand on their own.
+        logger.warning("Could not build an OTLP trace for trial %s: %s", trial_id, error)
+        return None
+
+
+def _capture_path(record: Mapping[str, Any], capture_dir: Path | None) -> Path | None:
+    """The model-call capture Gym wrote for this rollout, or ``None`` when there is not one.
+
+    Gym keys a capture by ``"{task}-{rollout}"``, suffixed ``-a{attempt}`` past the first attempt
+    (``nemo_gym.rollout_correlation``). Both indices are on the record, so the join is exact rather
+    than a search.
+    """
+    if capture_dir is None:
+        return None
+    task, rollout = record.get(NG_TASK_INDEX), record.get(NG_ROLLOUT_INDEX)
+    if not isinstance(task, int) or not isinstance(rollout, int):
+        return None
+    rollout_id = f"{task}-{rollout}"
+    attempt = record.get(NG_ATTEMPT_INDEX)
+    if isinstance(attempt, int) and attempt > 0:
+        rollout_id = f"{rollout_id}-a{attempt}"
+    path = capture_dir / f"{rollout_id}.capture.jsonl"
+    return path if path.exists() else None
+
+
+def _read_model_calls(capture_path: Path | None, *, trial_id: str) -> list[dict[str, Any]]:
+    """This rollout's captured model exchanges, or none when unreadable.
+
+    Tolerant on purpose: the capture is a bonus view over a result Gym already reported, so a
+    truncated file costs the trial its per-call timing, not the trial.
+    """
+    if capture_path is None:
+        return []
+    try:
+        return _read_jsonl(capture_path, tolerant=True)
+    except OSError as error:
+        logger.warning("Could not read the model-call capture for trial %s: %s", trial_id, error)
+        return []
 
 
 def _failures_path_for(rollouts_path: Path) -> Path:
@@ -344,6 +453,7 @@ def _trials_from_rollouts(
     index_to_task_id: Mapping[int, str],
     *,
     reward_key: str = DEFAULT_REWARD_KEY,
+    capture_dir: Path | None = None,
 ) -> list[AgentEvalTrial]:
     """Fan Gym's rollout records out into one :class:`AgentEvalTrial` per attempt.
 
@@ -383,9 +493,6 @@ def _trials_from_rollouts(
     # missing/null index must not collapse multiple attempts for one task onto the same trial id.
     synth_seq: dict[str, int] = {}
 
-    success_evidence = CandidateEvidence(
-        descriptors={"rollouts": EvidenceDescriptor(kind="filesystem", format="file", ref=str(rollouts_path))}
-    )
     unattributed_successes = 0
     empty_output_count = 0
     #: Tasks with at least one trial where the agent never ran. Tracked separately from trial
@@ -423,13 +530,20 @@ def _trials_from_rollouts(
                 "the agent produced no output and consumed no tokens, so the model was never called; "
                 f"the reported score of {reward!r} is not a measurement of this agent"
             )
+        trial_id = _rollout_trial_id(task_id, raw_rollout_index, synth_seq, missing_label="noidx")
         trials.append(
             AgentEvalTrial(
-                id=_rollout_trial_id(task_id, raw_rollout_index, synth_seq, missing_label="noidx"),
+                id=trial_id,
                 task_id=task_id,
                 status=status,
                 output=AgentOutput(response=record.get("response"), metadata={"agent_ref": record.get("agent_ref")}),
-                evidence=success_evidence,
+                evidence=_rollout_evidence(
+                    record,
+                    rollouts_path=rollouts_path,
+                    task_id=task_id,
+                    trial_id=trial_id,
+                    capture_dir=capture_dir,
+                ),
                 metadata=metadata,
             )
         )

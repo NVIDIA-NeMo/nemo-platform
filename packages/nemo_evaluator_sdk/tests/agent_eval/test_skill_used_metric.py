@@ -225,9 +225,10 @@ async def test_empty_skills_list_scores_not_present() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_malformed_unrelated_span_field_does_not_hide_the_skill() -> None:
-    # A false negative here corrupts a skill A/B result, so the search reads the strings a
-    # trace does carry rather than requiring every unrelated field to parse.
+async def test_a_trace_that_will_not_parse_scores_false_rather_than_guessing() -> None:
+    # Read as OTLP like every other reader, so a malformed field refuses the trace rather than
+    # being worked around. `_any_skill_used` then tries the ATIF view and, finding none, logs
+    # which formats failed before scoring False -- a loud miss rather than a silent one.
     sample = {
         "skills": [_PROV],
         "evidence": CandidateEvidence(
@@ -261,4 +262,4 @@ async def test_a_malformed_unrelated_span_field_does_not_hide_the_skill() -> Non
         ),
     }
 
-    assert await _score(sample) == {"skill_present": True, "skill_used": True}
+    assert await _score(sample) == {"skill_present": True, "skill_used": False}

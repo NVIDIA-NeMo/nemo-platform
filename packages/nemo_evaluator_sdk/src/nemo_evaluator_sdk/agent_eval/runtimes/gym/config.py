@@ -29,6 +29,8 @@ DEFAULT_REWARD_KEY = "reward"
 #: once, and that path is what the subprocesses run — so a child whose PATH differs from ours cannot
 #: end up executing a different Gym.
 _HYDRA_SUBDIR = "gym_hydra"
+#: Where Gym writes its per-rollout model-call captures, under the run's work dir.
+_CAPTURE_SUBDIR = "model_calls"
 #: `gym env start`'s combined output, under the run's work dir. Named here because a *collection*
 #: failure often has to point at it: the eval logs show the symptom, this shows the cause.
 _SECRET_KEY_MARKERS = ("api_key", "apikey", "token", "secret", "password", "passwd", "credential")
@@ -202,7 +204,19 @@ def _selection_args(config: GymRuntimeConfig, work_dir: Path) -> list[str]:
     # silently misread or rejected outright. Verified against Hydra's own parser — unquoted,
     # `/tmp/a,b` becomes a ChoiceSweep and `/tmp/x[1]` raises OverrideParseException.
     selection.append(f"hydra.run.dir={_hydra_scalar(str(work_dir / _HYDRA_SUBDIR))}")
+    # Off (Gym's default) a rollout reports one usage block summed over the turn and no timing at
+    # all; on, each model exchange is captured with its own tokens and latency. Asserted over
+    # `hydra_params` rather than defaulted, because turning it off degrades every trace silently.
+    # ``++`` for the same reason `_flatten_overrides` uses it: these keys are absent from the merged
+    # config until something sets them, and a bare `+` fails once they are present.
+    selection.append(f"++observability_enabled={_hydra_scalar(True)}")
+    selection.append(f"++model_call_capture_dir={_hydra_scalar(str(model_call_capture_dir(work_dir)))}")
     return selection
+
+
+def model_call_capture_dir(work_dir: Path) -> Path:
+    """Where Gym writes one ``<rollout_id>.capture.jsonl`` per rollout. Gym requires an absolute path."""
+    return (work_dir / _CAPTURE_SUBDIR).resolve()
 
 
 class GymRuntimeConfig(BaseModel):
