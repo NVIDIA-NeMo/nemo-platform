@@ -110,6 +110,24 @@ environment, do not offer to generate it. Link the docs and tell the user to
 create or provide an Ethos path, then rerun the audit command with the path to
 that file.
 
+Use this user-facing message shape for that skills-unavailable path:
+
+```text
+Missing Ethos
+
+Eval Author needs a source of truth for how the agent is supposed to behave before it can generate an audit coverage report.
+
+I could not find `ETHOS.md` at the repository root or a Platform-managed Ethos at `agents/<name>-ethos/ETHOS.md`.
+
+ETHOS.md records intended behavior, mission, constraints, success and failure criteria, and what may change.
+
+Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos
+
+I do not have access to both required Ethos creation skills, `nemo-explore` and `nemo-ethos`, in this environment, so I cannot generate one automatically here.
+
+Create or provide an Ethos path, then rerun the audit flow with `--ethos <path>`.
+```
+
 Do not create a placeholder Ethos inside the audit flow, and do not substitute
 other repository material for it. Contributor docs, operations docs, README
 files, code, traces, or draft labels are not valid source-of-truth replacements
