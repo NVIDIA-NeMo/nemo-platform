@@ -50,7 +50,12 @@ RUN mkdir -p /etc/nemo-relay /home/sandbox/.iron-swarm/relay \
 ENV HERMES_NEMO_RELAY_PLUGINS_TOML=/etc/nemo-relay/plugins.toml
 # Relay is an opt-in Hermes plugin. Without enabling it, its middleware never registers and the env
 # var above is read by nobody — the victim runs, emits nothing, and the run's preflight fails it.
+#
+# Enable it as `sandbox`, not root: Hermes keeps plugin state per-user (~/.hermes), so enabling as
+# root leaves it "not enabled" for the user the victim actually runs as.
+USER sandbox
 RUN /workspace/.venv/bin/hermes plugins enable observability/nemo_relay
+USER root
 
 ENV AGENT_CONFIG_PATH=/workspace/agent.yaml
 ENV PORT=8000
