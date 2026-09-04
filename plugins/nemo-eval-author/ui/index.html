@@ -1,0 +1,94 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Eval Author Coverage Report</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="np-page">
+    <main class="shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Eval Author</p>
+          <h1>Audit coverage report</h1>
+          <p class="lede">Open an aggregate coverage report and see the gaps that matter.</p>
+        </div>
+        <div class="actions">
+          <button id="sample-button" type="button">Load sample</button>
+          <label class="file-button">
+            <input id="file-input" type="file" accept=".json,application/json" />
+            Open report
+          </label>
+        </div>
+      </header>
+
+      <section class="input-row" aria-label="Report JSON input">
+        <div class="input-heading">
+          <h2>Report JSON</h2>
+          <button id="toggle-input" type="button" aria-expanded="true">Hide JSON</button>
+        </div>
+        <textarea
+          id="report-input"
+          spellcheck="false"
+          placeholder="Paste .eval-author/audit-coverage-report.json here."
+        ></textarea>
+      </section>
+
+      <section id="message" class="message" role="status">
+        Paste or open a `nemo.eval_author.audit_coverage_report.v1` JSON report.
+      </section>
+
+      <section id="dashboard" class="dashboard" hidden>
+        <section class="summary-grid" aria-label="Coverage summary">
+          <article class="metric">
+            <span>Agent</span>
+            <strong id="agent-name"></strong>
+          </article>
+          <article class="metric">
+            <span>Coverage</span>
+            <strong id="coverage-percent"></strong>
+            <small id="coverage-detail"></small>
+          </article>
+          <article class="metric">
+            <span>Actionable tools</span>
+            <strong id="actionable-count"></strong>
+          </article>
+        </section>
+
+        <section class="panel" aria-label="Coverage by kind">
+          <div class="panel-title">
+            <h2>Coverage by kind</h2>
+            <span id="measured-kinds" class="pill"></span>
+          </div>
+          <div id="kind-bars" class="kind-bars"></div>
+        </section>
+
+        <section class="panel" aria-label="Actionable tool gaps">
+          <div class="panel-title">
+            <h2>Actionable tool gaps</h2>
+          </div>
+          <div id="actionable-gaps" class="gap-list"></div>
+        </section>
+
+        <section class="panel" aria-label="All uncovered items">
+          <div class="panel-title">
+            <h2>All uncovered items</h2>
+            <span id="uncovered-count" class="pill"></span>
+          </div>
+          <div id="uncovered-items" class="item-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
