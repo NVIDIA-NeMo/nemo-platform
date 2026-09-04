@@ -4593,7 +4593,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "harbor", marker = "python_full_version >= '3.12' and extra == 'harbor'", specifier = ">=0.16.1" },
+    { name = "harbor", marker = "python_full_version >= '3.12' and extra == 'harbor'", specifier = ">=0.20,<0.21" },
     { name = "httpx", specifier = ">=0.27.0,<1" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "jsonpath-ng", specifier = ">=1.7.0" },
@@ -4645,7 +4645,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "harbor", specifier = ">=0.16" },
+    { name = "harbor", specifier = ">=0.20,<0.21" },
     { name = "httpx" },
     { name = "nemo-evaluator-sdk", editable = "packages/nemo_evaluator_sdk" },
     { name = "nemo-insights-plugin", editable = "plugins/nemo-insights" },
@@ -5917,10 +5917,10 @@ requires-dist = [
     { name = "gunicorn", marker = "extra == 'nemo-safe-synthesizer-plugin'", specifier = ">=23.0.0" },
     { name = "gunicorn", marker = "extra == 'plugins'", specifier = ">=23.0.0" },
     { name = "gunicorn", marker = "extra == 'services'", specifier = ">=23.0.0" },
-    { name = "harbor", marker = "extra == 'all'", specifier = ">=0.16" },
-    { name = "harbor", marker = "extra == 'nemo-experimentalist-plugin'", specifier = ">=0.16" },
-    { name = "harbor", marker = "extra == 'plugins'", specifier = ">=0.16" },
-    { name = "harbor", marker = "extra == 'services'", specifier = ">=0.16" },
+    { name = "harbor", marker = "extra == 'all'", specifier = ">=0.20,<0.21" },
+    { name = "harbor", marker = "extra == 'nemo-experimentalist-plugin'", specifier = ">=0.20,<0.21" },
+    { name = "harbor", marker = "extra == 'plugins'", specifier = ">=0.20,<0.21" },
+    { name = "harbor", marker = "extra == 'services'", specifier = ">=0.20,<0.21" },
     { name = "httpx", marker = "extra == 'all'" },
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27.0" },
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27.2" },
