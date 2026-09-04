@@ -628,7 +628,7 @@ def _add_submit_command(
         if renderer is not None and rctx is not None:
             renderer.on_complete(ctx=rctx)
 
-    help_text = "Submit to a cluster."
+    help_text = job_cls.description if command_name == job_cls.name and job_cls.description else "Submit to a cluster."
     epilog = build_epilog(schema=schema, leaves=leaves, kind="Job", unavailable=unavailable)
     setattr(_submit, "__signature__", _build_job_submit_signature(leaves))
     group.command(name=command_name, help=help_text, epilog=epilog, rich_help_panel=rich_help_panel)(_submit)

@@ -8,7 +8,7 @@
 # Contains only the eval section — not the agent workflow. The agent runs
 # remotely (already deployed); its endpoint is passed via the CLI:
 #
-#   nemo agents evaluate run \
+#   nemo agents evaluate \
 #       --eval-config plugins/nemo-agents/examples/email-phishing-analyzer/src/nat_email_phishing_analyzer/email-phishing-eval.yml \
 #       --agent email-phishing-agent
 #

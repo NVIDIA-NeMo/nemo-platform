@@ -5,14 +5,10 @@
 
 Registered under ``nemo.jobs`` as ``agents.optimize-skills``.
 
-Two invocation paths share the same ``run(config)`` body:
-
-* ``nemo agents optimize-skills run --spec '{...}'`` — local, in-process, no
-  platform job row (good for offline iteration / no platform required).
-* ``nemo agents optimize-skills submit --spec '{...}'`` — POSTs to the
-  platform; the jobs controller dispatches a subprocess on the same host that
-  runs the platform and the result lands in ``nemo jobs list`` / Studio's
-  Jobs view.
+The CLI command ``nemo agents optimize-skills --spec '{...}'`` submits it to
+the platform; the jobs controller dispatches a subprocess on the same host
+that runs the platform and the result lands in ``nemo jobs list`` / Studio's
+Jobs view.
 """
 
 from __future__ import annotations
@@ -20,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 from nemo_agents_plugin.jobs.evaluate_suite import _require_absolute
 from nemo_platform_plugin.job import NemoJob
@@ -62,10 +58,18 @@ class OptimizeSkillsConfig(BaseModel):
     anthropic_api_key_secret: str | None = Field(
         default=None,
         description=(
-            "Name of a platform Secret holding the Anthropic API key.  When set on a submit, "
+            "Name of a platform Secret holding the Anthropic API key.  When set on a platform submission, "
             "the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess so "
             "the loop's ``check_anthropic_api`` / Claude analyzer preflights pass.  Local "
             "(in-process) runs read ``ANTHROPIC_API_KEY`` from the calling shell as before."
+        ),
+    )
+    anthropic_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Anthropic-compatible API base URL injected as ``ANTHROPIC_BASE_URL`` for platform "
+            "submissions.  Local (in-process) runs read ``ANTHROPIC_BASE_URL`` from the calling "
+            "shell as before."
         ),
     )
 
@@ -76,10 +80,11 @@ class OptimizeSkillsJob(NemoJob):
     name: ClassVar[str] = "optimize-skills"
     description: ClassVar[str] = "Optimize an agent's skills against eval failures via a coding agent (Claude)."
     container: ClassVar[str] = "cpu-tasks"
+    generate_legacy_verbs: ClassVar[bool] = False
     spec_schema: ClassVar[type[BaseModel]] = OptimizeSkillsConfig
 
     @classmethod
-    async def compile(  # type: ignore[override]
+    async def compile(  # ty: ignore[invalid-method-override]
         cls,
         *,
         workspace: str,
@@ -113,7 +118,7 @@ class OptimizeSkillsJob(NemoJob):
         _require_absolute(spec.state, "state")
         _require_absolute(spec.initial_batch, "initial_batch")
 
-        # Mirror the run() guard so submit fails fast with a 422 instead of
+        # Mirror the run() guard so remote submission fails fast with a 422 instead of
         # spawning a doomed subprocess that errors inside analyze_only.
         if spec.analyze_only and not spec.initial_batch:
             raise PlatformJobCompilationError(
@@ -141,6 +146,8 @@ class OptimizeSkillsJob(NemoJob):
                     from_secret=EnvironmentVariableFromSecret(name=spec.anthropic_api_key_secret),
                 )
             )
+        if spec.anthropic_base_url:
+            environment.append(EnvironmentVariable(name="ANTHROPIC_BASE_URL", value=spec.anthropic_base_url))
 
         return PlatformJobSpec(
             steps=[
@@ -156,11 +163,11 @@ class OptimizeSkillsJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext | None = None) -> dict:
+    def run(self, config: dict, *, ctx: JobContext | None = None) -> dict[str, Any]:
         from nemo_agents_plugin.improvement import preflight
         from nemo_agents_plugin.improvement.coding_agents.claude import ClaudeCodingAgent
         from nemo_agents_plugin.improvement.loop import run_analyze_only, run_loop
-        from nemo_agents_plugin.improvement.models import _serialize
+        from nemo_agents_plugin.improvement.models import _serialize_dict
 
         cfg = OptimizeSkillsConfig.model_validate(config)
         agent_root = Path(cfg.agent).resolve()
@@ -182,7 +189,7 @@ class OptimizeSkillsJob(NemoJob):
                     trace_parser=cfg.trace_parser,
                 )
             )
-            return _serialize(state)  # type: ignore[return-value]  # type: ignore[return-value]
+            return _serialize_dict(state)
 
         # Preflight: fail fast before any slow work
         preflight.check_evals_dir(evals_dir)
@@ -220,4 +227,4 @@ class OptimizeSkillsJob(NemoJob):
                 trace_parser=cfg.trace_parser,
             )
         )
-        return _serialize(state)
+        return _serialize_dict(state)

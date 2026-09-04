@@ -11,11 +11,17 @@
 #   python tests/agentic-use/build_aut_eval_dataset.py --all
 #
 # Optimize:
-#   nemo agents optimize run \
-#     --optimize-config tests/agentic-use/aut-optimize.yml \
+#   nemo agents optimize prepare-fileset \
+#     --source tests/agentic-use \
+#     --optimize-config aut-optimize.yml \
+#     --fileset agentic-use-aut-optimize \
+#     --agent <your-agent-name>
+#   nemo agents optimize \
+#     --optimize-config-fileset default/agentic-use-aut-optimize \
+#     --optimize-config aut-optimize.yml \
 #     --agent <your-agent-name>
 #
-# This config is for local optimizer experimentation only.
+# This config is for optimizer experimentation against this benchmark suite.
 # Benchmark baseline/candidate promotion is gated by:
 #   1) verifier pass-rate floor
 #   2) token total minimization (runtime only as tie-breaker)

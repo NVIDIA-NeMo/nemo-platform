@@ -13,31 +13,40 @@
 # Prerequisites:
 #   - docker (daemon running) and the harbor CLI on PATH
 #   - claude CLI authenticated locally (the loop spawns it as a subprocess)
-#   - ANTHROPIC_API_KEY + ANTHROPIC_BASE_URL exported (used for the agent
-#     under test inside the harbor container, and for the LLM analyzer pass)
+#   - ANTHROPIC_API_KEY exported locally to create the platform Secret below
+#   - ANTHROPIC_BASE_URL exported locally and passed to platform submissions
 #
 # Usage (from the repo root):
 #   export ANTHROPIC_API_KEY='<your-key>'
 #   export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
-#   nemo agents optimize-skills run --spec-file .agent-improver.yml
+#   printf '%s' "$ANTHROPIC_API_KEY" | nemo secrets create anthropic-api-key --from-file -
+#   nemo agents optimize-skills --spec-file .agent-improver.yml \
+#     --evals "$(pwd)/tests/agentic-use" \
+#     --agent "$(pwd)" \
+#     --anthropic-api-key-secret anthropic-api-key \
+#     --anthropic-base-url "$ANTHROPIC_BASE_URL"
 #
 # Single-eval debug run — edit `filter_glob` and `iterations` in this file,
 # or copy it and pass the copy via --spec-file.
 #
 # Use as a template for any other agent: copy this file into your agent's
-# repo, retarget --evals at your eval suite, and point --skills-path at where
-# YOUR agent's skills live.
+# repo, retarget evals and agent to absolute paths, and point skills_path at
+# where YOUR agent's skills live.
 
 # ---------------------------------------------------------------------------
 # Agent + evals
 # ---------------------------------------------------------------------------
 
 # The Harbor agentic-use eval suite — discovered as task.toml-marked dirs.
+# Override with --evals "$(pwd)/tests/agentic-use" when submitting this checked-in
+# config through the direct platform command.
 evals: tests/agentic-use
 
-# Agent root: this repo. The optimize-skills strategy is allowed to write
-# only under skills_path; the loop's post-edit guard reverts any change
-# outside it (and the eval directory is invariant for all strategies).
+# Agent root: this repo. Override with --agent "$(pwd)" when submitting this
+# checked-in config through the direct platform command. The optimize-skills
+# strategy is allowed to write only under skills_path; the loop's post-edit
+# guard reverts any change outside it (and the eval directory is invariant for
+# all strategies).
 agent: .
 
 # Where NeMo's Claude skills live. The strategy can write here, and only

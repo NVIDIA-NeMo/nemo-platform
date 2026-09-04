@@ -7,8 +7,8 @@ This guide walks through using the `nemo agents` plugin to improve an agent
 end-to-end: **run eval suites → analyze failures → optimize skills → verify**.
 
 If your agent has Harbor (`task.toml`) or NAT (`workflow.yml`) eval tasks, you
-can use this directly. The same workflow improves NeMo itself — see
-`.agent-improver.yml` at the root of the Platform repo for a working example.
+can use this directly. The same workflow improves NeMo itself; the Platform repo
+ships `.agent-improver.yml` as an annotated config.
 
 ## What you need
 
@@ -17,7 +17,7 @@ can use this directly. The same workflow improves NeMo itself — see
 | `docker` (daemon running) | Building / running eval container | All commands |
 | `harbor` CLI on PATH | Harbor task execution | `evaluate-suite`, `optimize-skills` |
 | `claude` CLI authenticated | The coding agent that edits skills | `optimize-skills` only |
-| `ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL` env vars | Agent-under-test inference + LLM analyzer pass | All commands |
+| `ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL` | Agent-under-test inference + LLM analyzer pass | All commands |
 
 The plugin runs preflight checks before any slow work, so missing prereqs
 fail fast with actionable errors.
@@ -59,18 +59,25 @@ documented inline.
 cd /path/to/my-agent
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
+printf '%s' "$ANTHROPIC_API_KEY" | nemo secrets create anthropic-api-key --from-file -
 
-nemo agents evaluate-suite run --spec-file .agent-improver.yml
+nemo agents evaluate-suite --spec-file .agent-improver.yml \
+  --evals "$(pwd)/tests/agentic" \
+  --agent "$(pwd)" \
+  --output "$(pwd)/runs/batch-smoke" \
+  --anthropic-api-key-secret anthropic-api-key \
+  --anthropic-base-url "$ANTHROPIC_BASE_URL"
 ```
 
-Output lands in `./runs/batch-<timestamp>/` with `report.md` / `report.csv`
+Output lands in the directory passed to `--output` with `report.md` / `report.csv`
 / `report.json` and `baselines.json`. With `repeats > 1`, per-eval trial
 data is also written to `<batch_dir>/<eval-name>__trials.json`.
 
 ### 3. Inspect the results
 
 ```bash
-nemo agents analyze run --spec '{"batch": "./runs/batch-<timestamp>", "format": "md"}'
+BATCH_DIR="$(ls -td "$(pwd)"/runs/batch-* | head -n1)"
+nemo agents analyze --spec "{\"batch\": \"$BATCH_DIR\", \"format\": \"md\", \"anthropic_api_key_secret\": \"anthropic-api-key\", \"anthropic_base_url\": \"$ANTHROPIC_BASE_URL\"}"
 ```
 
 You'll get a markdown report with:
@@ -82,7 +89,8 @@ You'll get a markdown report with:
 For just the mechanical pass (no LLM, no API key needed):
 
 ```bash
-nemo agents analyze run --spec '{"batch": "./runs/batch-<timestamp>", "mechanical_only": true}'
+BATCH_DIR="$(ls -td "$(pwd)"/runs/batch-* | head -n1)"
+nemo agents analyze --spec "{\"batch\": \"$BATCH_DIR\", \"mechanical_only\": true}"
 ```
 
 ### 4. Run the optimize-skills loop
@@ -92,7 +100,11 @@ cd /path/to/my-agent
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
 
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills --spec-file .agent-improver.yml \
+  --evals "$(pwd)/tests/agentic" \
+  --agent "$(pwd)" \
+  --anthropic-api-key-secret anthropic-api-key \
+  --anthropic-base-url "$ANTHROPIC_BASE_URL"
 ```
 
 The loop strips `CLAUDE_CODE_*` env markers when spawning `claude --print`,
@@ -126,11 +138,16 @@ changed, before/after metrics, and verdict.
 
 ### Improve NeMo itself
 
-NeMo Platform ships a working `.agent-improver.yml` at the repo root. Run from the
-repo root:
+NeMo Platform ships an annotated `.agent-improver.yml` at the repo root. Run from
+the repo root and override the checked-in relative paths with absolute host
+paths:
 
 ```bash
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills --spec-file .agent-improver.yml \
+  --evals "$(pwd)/tests/agentic-use" \
+  --agent "$(pwd)" \
+  --anthropic-api-key-secret anthropic-api-key \
+  --anthropic-base-url "$ANTHROPIC_BASE_URL"
 ```
 
 This is also the cheapest way to validate the workflow end-to-end on a
@@ -152,7 +169,7 @@ Then re-run with `--spec-file <path>`.
 Add to the YAML:
 
 ```yaml
-initial_batch: ./runs/batch-2026-04-30__09-10-42
+initial_batch: /path/to/my-agent/runs/batch-2026-04-30__09-10-42
 ```
 
 ### Run with variance reduction
@@ -245,18 +262,23 @@ implementation, gated on plumbing ``workspace`` / ``agent_name`` /
 
 ## Command verbs
 
-Each improvement command is a NemoJob group with the standard `run` /
-`submit` / `explain` verbs:
+Each improvement command is a direct NemoJob submit command:
 
 ```bash
-# Run locally, in-process
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+# Submit to the active platform
+nemo agents optimize-skills --spec-file .agent-improver.yml \
+  --evals "$(pwd)/tests/agentic" \
+  --agent "$(pwd)" \
+  --anthropic-api-key-secret anthropic-api-key \
+  --anthropic-base-url "$ANTHROPIC_BASE_URL"
 
-# Submit to a cluster
-nemo agents optimize-skills submit --spec-file .agent-improver.yml --cluster <url>
-
-# Print the spec schema
-nemo agents optimize-skills explain
+# Submit to a configured cluster
+nemo agents optimize-skills --spec-file .agent-improver.yml \
+  --evals "$(pwd)/tests/agentic" \
+  --agent "$(pwd)" \
+  --anthropic-api-key-secret anthropic-api-key \
+  --anthropic-base-url "$ANTHROPIC_BASE_URL" \
+  --cluster <name>
 ```
 
-`evaluate-suite` and `analyze` follow the same pattern.
+`evaluate-suite` and `analyze` follow the same direct-command pattern.
