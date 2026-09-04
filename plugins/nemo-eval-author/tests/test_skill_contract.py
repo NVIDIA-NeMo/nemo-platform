@@ -1072,6 +1072,25 @@ def test_audit_skill_reads_schema_before_drafting_items() -> None:
     assert "Do not use validation as the primary way to discover the format" in normalized_step
 
 
+def test_audit_skill_routes_missing_ethos_to_platform_skills() -> None:
+    """Audit needs a real Ethos contract, not a placeholder denominator source."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+    preflight = body.split("## Scripts", 1)[0]
+    normalized_preflight = re.sub(r"\s+", " ", preflight)
+
+    assert "If no Ethos file exists, stop the audit flow" in normalized_preflight
+    assert "needs a source of truth for how the agent is supposed to behave" in normalized_preflight
+    assert "Code shows what the agent does today" in normalized_preflight
+    assert "Ethos records intended behavior" in normalized_preflight
+    assert "https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in preflight
+    assert "If the NeMo Platform skills are available" in normalized_preflight
+    assert "If those skills are not installed or live in another repository" in normalized_preflight
+    assert "nemo-explore" in preflight
+    assert "nemo-ethos" in preflight
+    assert "agents/<name>-ethos/ETHOS.md" in preflight
+    assert "Do not create a placeholder Ethos inside the audit flow" in normalized_preflight
+
+
 def test_audit_skill_anchors_tool_names_to_runtime_measurement_surface() -> None:
     """Tool names should match traces, not plausible aliases from prose."""
     _, body = _frontmatter_and_body(_AUDIT_DIR)
@@ -1563,6 +1582,37 @@ def test_audit_generate_rejects_outputs_outside_eval_author(tmp_path: Path) -> N
     assert "--out must resolve inside a .eval-author/ directory" in result.stderr
     assert "Traceback" not in result.stderr
     assert out.read_text(encoding="utf-8") == "customer source must stay intact\n"
+
+
+def test_audit_generate_explains_missing_ethos_with_docs_link(tmp_path: Path) -> None:
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+    out = tmp_path / ".eval-author" / "audit.md"
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(out),
+    )
+
+    assert result.returncode == 1
+    assert result.stderr.startswith("Missing Ethos\n\n")
+    assert "needs a source of truth for how the agent is supposed to behave" in result.stderr
+    assert "before it can generate an audit coverage report" in result.stderr
+    assert "ETHOS.md records intended behavior" in result.stderr
+    assert "Missing file:" in result.stderr
+    assert "Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in result.stderr
+    assert "Next steps:\n" in result.stderr
+    assert "- Create an Ethos, then rerun this command with --ethos <path>." in result.stderr
+    assert "https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in result.stderr
+    assert "nemo-explore followed by nemo-ethos" in result.stderr
+    assert "author ETHOS.md by hand" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not out.exists()
 
 
 def test_audit_generate_rejects_missing_candidate_name_before_reconcile(tmp_path: Path) -> None:
