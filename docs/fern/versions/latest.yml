@@ -367,12 +367,18 @@ navigation:
             path: ../../studio/data-designer-build.mdx
           - page: Experiments
             path: ../../studio/experiments.mdx
+          - page: Insights
+            path: ../../studio/insights.mdx
+          - page: Model Evaluations
+            path: ../../studio/model-evaluations.mdx
           - page: Monitor
             path: ../../studio/monitor.mdx
           - page: Plugin UIs
             path: ../../studio/plugins.mdx
           - page: Guardrail Configs
             path: ../../studio/guardrails.mdx
+          - page: Traces
+            path: ../../studio/traces.mdx
           - page: Virtual Models
             path: ../../studio/virtual-models.mdx
       - section: Kubernetes Deployment
