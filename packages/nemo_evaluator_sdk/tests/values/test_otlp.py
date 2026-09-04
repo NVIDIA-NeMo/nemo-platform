@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+from base64 import b64decode
 from typing import Any
 
 import pytest
@@ -384,3 +385,30 @@ def test_each_attribute_value_type_maps_to_its_any_value_field() -> None:
     assert values["f"].double_value == pytest.approx(1.5)
     assert values["b"].bool_value is True
     assert values["b"].WhichOneof("value") == "bool_value"
+
+
+def test_a_payload_nested_past_the_parser_s_limit_is_rejected_as_a_value_error() -> None:
+    # protobuf guards against deeply nested messages by raising RecursionError, which is neither a
+    # ParseError nor a ValueError -- so without its own except it escapes every caller's guard and
+    # takes down a run over one unreadable trace.
+    value: dict[str, Any] = {"stringValue": "deep"}
+    for _ in range(200):
+        value = {"kvlistValue": {"values": [{"key": "k", "value": value}]}}
+    span = {
+        "traceId": _HEX_TRACE_ID,
+        "spanId": _HEX_SPAN_ID,
+        "name": "root",
+        "attributes": [{"key": "a", "value": value}],
+    }
+
+    with pytest.raises(ValueError, match="nested too deeply"):
+        _parsed(span)
+
+
+def test_an_id_field_of_the_right_length_but_not_hex_is_left_alone() -> None:
+    # Length alone does not make a string hex. Converting on length would corrupt an id already in
+    # another encoding, so a non-hex string is passed through for the parser to interpret itself --
+    # here as the base64 it also happens to be.
+    parsed = _parsed({"traceId": "z" * 32, "spanId": _HEX_SPAN_ID, "name": "root"})
+
+    assert parsed[0].scope_spans[0].spans[0].trace_id == b64decode("z" * 32)

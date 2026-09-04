@@ -211,10 +211,15 @@ def _tool_spans(response: Mapping[str, Any], *, trace_id: bytes, parent_id: byte
     items = response.get("output")
     if not isinstance(items, list):
         return
+    # Keyed on the call id, so an output without a usable one is dropped rather than filed under
+    # ``None``: every such output would share that key, and a call whose own id is missing would
+    # then read the last one back as its result and attribute another tool's output to itself.
     results = {
         item.get("call_id"): item.get("output")
         for item in items
-        if isinstance(item, Mapping) and item.get("type") == "function_call_output"
+        if isinstance(item, Mapping)
+        and item.get("type") == "function_call_output"
+        and isinstance(item.get("call_id"), str)
     }
     ordinal = 0
     for item in items:

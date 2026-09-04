@@ -438,13 +438,23 @@ def _resolve_task_id(
     return task_id
 
 
-def _rollout_trial_id(task_id: str, raw_rollout_index: Any, synth_seq: dict[str, int], *, missing_label: str) -> str:
+def _rollout_trial_id(
+    task_id: str, raw_rollout_index: Any, synth_seq: dict[str, int], *, missing_label: str, attempt: Any = None
+) -> str:
     """Per-attempt trial id: use the record's ``_ng_rollout_index`` when it's a real int, else a
-    per-task-unique ``{missing_label}{n}`` suffix so records lacking an index don't collide on one id."""
+    per-task-unique ``{missing_label}{n}`` suffix so records lacking an index don't collide on one id.
+
+    A retry reuses its task and rollout indices, so the attempt index is part of the identity too:
+    without it a failed attempt and the retry that replaced it land on one id, and since span ids are
+    derived from this one, a consumer keyed on span identity would keep only the last. Suffixed
+    ``-a{attempt}`` past the first attempt, matching how Gym keys the capture in ``_capture_path`` so
+    the two agree on what "this attempt" means.
+    """
+    suffix = f"-a{attempt}" if isinstance(attempt, int) and attempt > 0 else ""
     if isinstance(raw_rollout_index, int) and not isinstance(raw_rollout_index, bool):
-        return f"{task_id}:{raw_rollout_index}"
+        return f"{task_id}:{raw_rollout_index}{suffix}"
     seq = synth_seq[task_id] = synth_seq.get(task_id, 0) + 1
-    return f"{task_id}:{missing_label}{seq}"
+    return f"{task_id}:{missing_label}{seq}{suffix}"
 
 
 def _trials_from_rollouts(
@@ -530,7 +540,9 @@ def _trials_from_rollouts(
                 "the agent produced no output and consumed no tokens, so the model was never called; "
                 f"the reported score of {reward!r} is not a measurement of this agent"
             )
-        trial_id = _rollout_trial_id(task_id, raw_rollout_index, synth_seq, missing_label="noidx")
+        trial_id = _rollout_trial_id(
+            task_id, raw_rollout_index, synth_seq, missing_label="noidx", attempt=record.get(NG_ATTEMPT_INDEX)
+        )
         trials.append(
             AgentEvalTrial(
                 id=trial_id,
@@ -567,7 +579,13 @@ def _trials_from_rollouts(
             raw_rollout_index = record.get(NG_ROLLOUT_INDEX)
             trials.append(
                 AgentEvalTrial(
-                    id=_rollout_trial_id(task_id, raw_rollout_index, synth_seq, missing_label="fail"),
+                    id=_rollout_trial_id(
+                        task_id,
+                        raw_rollout_index,
+                        synth_seq,
+                        missing_label="fail",
+                        attempt=record.get(NG_ATTEMPT_INDEX),
+                    ),
                     task_id=task_id,
                     status=AgentEvalTrialStatus.FAILED,
                     output=AgentOutput(

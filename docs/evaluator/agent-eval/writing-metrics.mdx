@@ -145,7 +145,9 @@ async def read_trace(input: MetricInput) -> None:
 OTLP exposes the unflattened span tree as parsed `ResourceSpans` protobuf messages — the same type
 `opentelemetry-proto` defines and Intake ingests — so a reader walks `.scope_spans[].spans[]` and
 typed attributes rather than decoded JSON. It does not provide a generic `tool_calls()` method: what
-counts as a tool call is exporter-specific, so extracting them is the consumer's job.
+counts as a tool call depends on whatever produced the spans — the Gym projection, or a harness like
+Fabric or Codex — each of which names and nests them differently, so extracting them is the
+consumer's job.
 
 ### Asking for one trace format
 

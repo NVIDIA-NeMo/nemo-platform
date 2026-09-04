@@ -14,13 +14,17 @@ span per function call the model made.
 ```python
 from nemo_evaluator_sdk.ng_trajectory_otlp import rollout_to_resource_spans
 
+# A record is one line of the rollouts JSONL Gym wrote; this is the smallest one that converts.
+record = {"response": {"output_text": "Answer."}}
 resource_spans = rollout_to_resource_spans(record, rollout_id="task-1:0", task_id="task-1")
 ```
 
 It returns generated `ResourceSpans` messages.
 
 ```python
-ExportTraceServiceRequest(resource_spans=resource_spans)
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+
+request = ExportTraceServiceRequest(resource_spans=resource_spans)
 ```
 
 The Gym runtime renders the message to JSON only to store it, because an `EvidenceDescriptor` holds
