@@ -79,7 +79,7 @@ def create_job_payload(spec: BaseModel) -> dict[str, Any]:
 def _job_status_path(root: str, backend: str, workspace: str, job_name: str) -> str:
     encoded_workspace = quote(workspace, safe="")
     encoded_job = quote(job_name, safe="")
-    return f"{base_url(root)}/apis/customization/v2/workspaces/{encoded_workspace}/{backend}/jobs/{encoded_job}"
+    return f"{base_url(root)}/apis/customization/v2/workspaces/{encoded_workspace}/{backend}/jobs/{encoded_job}/status"
 
 
 # --------------------------------------------------------------------------- #

@@ -751,6 +751,7 @@ openshell = "nemo_deployments_plugin.backends.openshell.sandbox_profile:PROFILE"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.sdk"]
+jobs = "nemo_platform_plugin.jobs.sdk:jobs_sdk_resources"
 agents = "nemo_agents_plugin.sdk:agents_sdk_resources"
 anonymizer = "nemo_anonymizer_plugin.sdk.resources:anonymizer_sdk_resources"
 auditor = "nemo_auditor.sdk:auditor_sdk_resources"
@@ -837,7 +838,7 @@ only-include = ["_empty"]
 # Library packages
 nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common", inherit = { "entry-points" = ["nemo.*"] } }
 nmp-customization-common = { source = "../../packages/nmp_customization_common/src/nmp/customization_common", module = "nmp/customization_common" }
-nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin" }
+nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin", inherit = { "entry-points" = ["nemo.sdk"] } }
 nemo-platform-ext = { source = "../../packages/nemo_platform_ext/src/nemo_platform_ext", module = "nemo_platform_ext", deps_group = "nemo-platform-sdk", force_include = { "../../../../docs" = "nemo_platform_ext/cli/docs" } }
 models = { source = "../../packages/models/src/models", module = "models", deps_group = "nemo-platform-sdk" }
 filesets = { source = "../../packages/filesets/src/filesets", module = "filesets", deps_group = "nemo-platform-sdk" }

@@ -277,6 +277,12 @@ class AgentEvaluatorJobResource:
         response.raise_for_status()
         return PlatformJobStatusResponse.model_validate(response.json())
 
+    def delete(self) -> None:
+        """Delete this agent-evaluation job."""
+        response = self._http_client.delete(self._job_base_url, headers=self._headers)
+        response.raise_for_status()
+        return None
+
     def check_if_complete(self, *, raise_if_not_complete: bool = False) -> bool:
         """Return whether the job has completed.
 
@@ -354,6 +360,12 @@ class EvaluatorJobResource:
         )
         response.raise_for_status()
         return PlatformJobStatusResponse.model_validate(response.json())
+
+    def delete(self) -> None:
+        """Delete this evaluator job."""
+        response = self._http_client.delete(self._job_base_url, headers=self._headers)
+        response.raise_for_status()
+        return None
 
     def check_if_complete(self, *, raise_if_not_complete: bool = False) -> bool:
         """Return whether the evaluator job has completed.
@@ -491,6 +503,12 @@ class AsyncEvaluatorJobResource:
         response.raise_for_status()
         return PlatformJobStatusResponse.model_validate(response.json())
 
+    async def delete(self) -> None:
+        """Delete this evaluator job."""
+        response = await self._delete(self._job_base_url)
+        response.raise_for_status()
+        return None
+
     async def check_if_complete(self, *, raise_if_not_complete: bool = False) -> bool:
         """Return whether the evaluator job has completed.
 
@@ -589,3 +607,9 @@ class AsyncEvaluatorJobResource:
         if isinstance(self._http_client, httpx.Client):
             return await asyncio.to_thread(self._http_client.get, url, headers=self._headers)
         return await self._http_client.get(url, headers=self._headers)
+
+    async def _delete(self, url: str) -> httpx.Response:
+        """Run one HTTP DELETE without blocking the event loop for sync clients."""
+        if isinstance(self._http_client, httpx.Client):
+            return await asyncio.to_thread(self._http_client.delete, url, headers=self._headers)
+        return await self._http_client.delete(url, headers=self._headers)

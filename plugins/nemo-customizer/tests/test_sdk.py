@@ -45,8 +45,9 @@ def test_customization_composes_automodel_when_contributor_present() -> None:
     ):
         customization = Customization(platform)
 
-    assert hasattr(customization, "automodel")
-    assert hasattr(customization.automodel, "jobs")
+    mounted_resources = vars(customization)
+    assert isinstance(mounted_resources["automodel"], AutomodelCustomization)
+    assert mounted_resources["automodel"].jobs is not None
 
 
 def test_customization_skips_contributors_without_sdk() -> None:
@@ -62,7 +63,7 @@ def test_customization_skips_contributors_without_sdk() -> None:
     ):
         customization = Customization(platform)
 
-    assert not hasattr(customization, "noop")
+    assert "noop" not in vars(customization)
 
 
 def _health_platform() -> MagicMock:

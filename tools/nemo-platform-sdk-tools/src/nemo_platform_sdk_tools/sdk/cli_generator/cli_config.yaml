@@ -51,9 +51,6 @@ top_level:
   intake:
     panel: Functional plugins
     help: Intake operations.
-  jobs:
-    panel: Core plugins
-    help: Manage jobs.
   models:
     panel: Core plugins
     help: Manage models.
@@ -169,29 +166,7 @@ config:
       - description
       - created_at
 - resource: [jobs]
-  additional_methods:
-    watch:
-      override: jobs/watch.py
-  methods:
-    create:
-      wait:
-        type: platform_job
-        resource_label: job
-      watch:
-        type: platform_job
-        resource_label: job
-    list:
-      columns:
-      - name
-      - description
-      - status
-      - created_at
-    list_execution_profiles:
-      columns:
-      - profile
-      - backend
-      - provider
-      - config
+  skip: true
 - resource: [models]
   methods:
     list:

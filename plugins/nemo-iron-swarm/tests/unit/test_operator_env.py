@@ -31,6 +31,12 @@ def _config(tmp_path: Path) -> IronSwarmConfig:
     )
 
 
+@pytest.fixture(autouse=True)
+def _clear_operator_inference_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep tests independent of any credential exported by the runner shell."""
+    monkeypatch.delenv(INFERENCE_API_KEY_ENVVAR, raising=False)
+
+
 # ── read_env_file ────────────────────────────────────────────────────────
 
 
@@ -96,8 +102,6 @@ def test_resolve_inference_key_falls_back_to_env_when_store_unavailable(
 def test_resolve_inference_key_returns_none_when_platform_down_and_non_interactive(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv(INFERENCE_API_KEY_ENVVAR, raising=False)
-
     def _raise(base: str) -> None:
         raise RuntimeError("platform unreachable")
 
@@ -161,7 +165,7 @@ def test_write_operator_env_never_creates_a_world_readable_file(tmp_path: Path) 
 # ── run job env injection ────────────────────────────────────────────────
 
 
-def test_run_job_injects_operator_env_without_overriding_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_job_uses_operator_env_when_shell_key_is_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     plugin_config = _config(tmp_path)
     plugin_config.venv_path.mkdir(parents=True)
     plugin_config.iron_swarm_bin.parent.mkdir(parents=True, exist_ok=True)
