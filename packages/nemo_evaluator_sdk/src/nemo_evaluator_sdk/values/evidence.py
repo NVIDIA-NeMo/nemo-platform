@@ -19,12 +19,12 @@ from pathlib import Path
 from typing import Any, Literal, TypeAlias, overload
 from urllib.parse import urlparse
 
-from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, model_validator
 
 from nemo_evaluator_sdk.values.atif import FinalMetrics, Step, ToolCall, Trajectory
 from nemo_evaluator_sdk.values.otlp import (
-    export_request_from_resource_spans,
+    parse_resource_spans,
     resource_spans_from_request,
     resource_spans_from_text,
     validate_resource_spans,
@@ -375,44 +375,40 @@ class OTLPTraceHandle:
 
     def __init__(self, descriptor: EvidenceDescriptor) -> None:
         self._descriptor = descriptor
-        self._resource_spans: list[dict[str, Any]] | None = None
-        self._export_request: ExportTraceServiceRequest | None = None
+        self._resource_spans: list[ResourceSpans] | None = None
 
-    async def export_request(self) -> ExportTraceServiceRequest:
-        """Return the trace as the typed OTLP request, parsed once.
+    async def resource_spans(self) -> list[ResourceSpans]:
+        """Return the trace as typed OTLP resource spans, read and parsed once.
 
-        Serializing this is what OTLP ingest accepts, so a consumer that publishes and one
-        that reads share a representation instead of re-encoding between two.
-        """
-        if self._export_request is None:
-            resource_spans = await self.resource_spans()
-            self._export_request = await asyncio.to_thread(export_request_from_resource_spans, resource_spans)
-        return self._export_request
+        This is the representation producers and consumers share. A caller sending them to OTLP
+        ingest wraps them in an ``ExportTraceServiceRequest``, which is that RPC's envelope and
+        nothing a reader needs.
 
-    async def resource_spans(self) -> list[dict[str, Any]]:
-        """Return concatenated OTLP ``resourceSpans``, loading and validating once.
-
-        Returns:
-            Resource-span objects in request and file order.
+        Raises:
+            ValueError: The evidence is missing, unreadable, or not valid OTLP.
         """
         if self._resource_spans is None:
-            self._resource_spans = await asyncio.to_thread(self._load_resource_spans)
+            self._resource_spans = await asyncio.to_thread(self._read)
         return self._resource_spans
 
-    def _load_resource_spans(self) -> list[dict[str, Any]]:
-        """Load inline or local OTLP evidence into its resource-span export units.
+    def _read(self) -> list[ResourceSpans]:
+        """Load inline or local OTLP evidence and parse it.
 
-        Returns:
-            Validated resource-span objects from every request.
+        The decoded JSON is a step on the way in, never a representation this hands out: OTLP is
+        a schema, and a reader that has honoured it cannot be handed a dict that has not.
         """
         descriptor = self._descriptor
         if descriptor.data is not None:
-            if isinstance(descriptor.data, list):
-                return validate_resource_spans(descriptor.data)
-            return resource_spans_from_request(descriptor.data)
-        if descriptor.ref is None:
+            payload = (
+                validate_resource_spans(descriptor.data)
+                if isinstance(descriptor.data, list)
+                else resource_spans_from_request(descriptor.data)
+            )
+        elif descriptor.ref is None:
             raise ValueError("trace evidence descriptor requires ref or data")
-        return resource_spans_from_text(_local_filesystem_ref(descriptor.ref).read_text(encoding="utf-8"))
+        else:
+            payload = resource_spans_from_text(_local_filesystem_ref(descriptor.ref).read_text(encoding="utf-8"))
+        return parse_resource_spans(payload)
 
 
 class ATIFTraceHandle:

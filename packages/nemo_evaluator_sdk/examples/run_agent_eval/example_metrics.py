@@ -22,6 +22,7 @@ from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.trials import EVIDENCE_FINAL_STATE, EVIDENCE_INITIAL_STATE, EVIDENCE_TRACE
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
+from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, Span
 
 
 class TestsPassMetric:
@@ -141,110 +142,71 @@ class InefficientRetryLoopMetric:
         )
 
 
-def _otlp_tool_calls(resource_spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _otlp_tool_calls(resource_spans: list[ResourceSpans]) -> list[dict[str, Any]]:
     """Extract fully identified OTLP tool calls in start-time order.
 
     Args:
-        resource_spans: OTLP resource-span export units.
+        resource_spans: Parsed OTLP resource spans.
 
     Returns:
         Tool name and argument mappings ordered by span start time.
     """
     found: list[tuple[int, int, dict[str, Any]]] = []
-    index = 0
-    for resource_span in resource_spans:
-        for scope_span in _otlp_dict_items(resource_span.get("scopeSpans")):
-            for span in _otlp_dict_items(scope_span.get("spans")):
-                call = _otlp_tool_call(span)
-                if call is None:
-                    continue
-                found.append((_otlp_start_ns(span), index, call))
-                index += 1
+    for index, span in enumerate(
+        span
+        for resource_span in resource_spans
+        for scope_span in resource_span.scope_spans
+        for span in scope_span.spans
+    ):
+        call = _otlp_tool_call(span)
+        if call is not None:
+            # Index breaks ties so spans sharing a start time keep their recorded order.
+            found.append((span.start_time_unix_nano, index, call))
     found.sort(key=lambda item: (item[0], item[1]))
     return [item[2] for item in found]
 
 
-def _otlp_tool_call(span: dict[str, Any]) -> dict[str, Any] | None:
+def _otlp_tool_call(span: Span) -> dict[str, Any] | None:
     """Project one recognized OTLP tool span into retry-comparison fields.
 
     Args:
-        span: Decoded OTLP span object.
+        span: An OTLP span.
 
     Returns:
         Tool name and arguments, or ``None`` when the span is not a tool call.
     """
-    attrs = _otlp_attr_map(span.get("attributes"))
+    attrs = _otlp_attr_map(span)
     kind = attrs.get("openinference.span.kind")
     operation = attrs.get("gen_ai.operation.name")
     if kind != "TOOL" and operation != "execute_tool":
         return None
-    name = attrs.get("tool.name") or attrs.get("gen_ai.tool.name") or span.get("name") or "tool"
+    name = attrs.get("tool.name") or attrs.get("gen_ai.tool.name") or span.name or "tool"
     function_name = str(name)
     argument_keys = ("input.value", "tool.parameters", "gen_ai.tool.call.arguments")
     raw = next((attrs[key] for key in argument_keys if key in attrs), None)
     if raw is None:
         raise ValueError(f"OTLP tool call {function_name!r} has no arguments; retry identity is unavailable")
-    arguments: dict[str, Any]
-    if isinstance(raw, dict):
-        arguments = raw
-    elif isinstance(raw, str):
+    if isinstance(raw, str):
         try:
             parsed = json.loads(raw)
         except ValueError:
-            parsed = {"_raw": raw}
-        arguments = parsed if isinstance(parsed, dict) else {"_raw": parsed}
-    else:
-        arguments = {"_raw": raw}
-    return {"function_name": function_name, "arguments": arguments}
+            return {"function_name": function_name, "arguments": {"_raw": raw}}
+        return {"function_name": function_name, "arguments": parsed if isinstance(parsed, dict) else {"_raw": parsed}}
+    return {"function_name": function_name, "arguments": {"_raw": raw}}
 
 
-def _otlp_start_ns(span: dict[str, Any]) -> int:
-    """Coerce an OTLP span start timestamp for stable tool-call ordering.
+def _otlp_attr_map(span: Span) -> dict[str, Any]:
+    """Read a span's scalar string and integer attributes by key.
 
     Args:
-        span: Decoded OTLP span object.
-
-    Returns:
-        Nanosecond timestamp, or zero when missing or malformed.
-    """
-    raw = span.get("startTimeUnixNano") or 0
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _otlp_attr_map(attributes: Any) -> dict[str, Any]:
-    """Decode scalar string and integer OTLP attributes by key.
-
-    Args:
-        attributes: Candidate OTLP key-value attribute list.
+        span: An OTLP span.
 
     Returns:
         Supported attribute values keyed by attribute name.
     """
-    out: dict[str, Any] = {}
-    for item in _otlp_dict_items(attributes):
-        key = item.get("key")
-        value = item.get("value")
-        if not isinstance(key, str):
-            continue
-        if isinstance(value, dict) and "stringValue" in value:
-            out[key] = value["stringValue"]
-        elif isinstance(value, dict) and "intValue" in value:
-            out[key] = value["intValue"]
-    return out
-
-
-def _otlp_dict_items(value: Any) -> list[dict[str, Any]]:
-    """Return only dictionary elements from an OTLP repeated field.
-
-    Args:
-        value: Candidate decoded repeated field.
-
-    Returns:
-        Dictionary elements, or an empty list for malformed containers.
-    """
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, dict)]
+    values: dict[str, Any] = {}
+    for attribute in span.attributes:
+        field = attribute.value.WhichOneof("value")
+        if field in ("string_value", "int_value"):
+            values[attribute.key] = getattr(attribute.value, field)
+    return values

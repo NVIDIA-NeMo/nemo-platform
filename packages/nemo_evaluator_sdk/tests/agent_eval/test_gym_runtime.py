@@ -408,6 +408,57 @@ def test_materialize_dataset_reassembles_row_without_storing_params_twice(tmp_pa
     assert {k: v for k, v in row.items() if k != NG_TASK_INDEX} == source
 
 
+@pytest.mark.asyncio
+async def test_a_rollout_carries_an_otlp_trace_the_sdk_can_read(tmp_path: Path) -> None:
+    # Gym records a result, not a trace, so the OTLP view is projected from the record. It earns its
+    # place only if the SDK's own reader accepts it and finds the agent's answer.
+    from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_OTLP, EVIDENCE_TRACE
+    from nemo_evaluator_sdk.values.otlp import final_output_text
+
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text(json.dumps({"responses_create_params": {"input": "What is 2 + 2?"}}) + "\n", encoding="utf-8")
+    tasks = discover_gym_tasks(dataset)
+    index_map = _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+    bundle = tmp_path / "rollouts.jsonl"
+    bundle.write_text(
+        json.dumps(
+            {
+                NG_TASK_INDEX: 0,
+                NG_ROLLOUT_INDEX: 0,
+                "reward": 1.0,
+                "responses_create_params": {"input": "What is 2 + 2?"},
+                "response": {
+                    "usage": {"input_tokens": 12, "output_tokens": 3},
+                    "output": [
+                        {"type": "function_call", "call_id": "c1", "name": "calculator", "arguments": "{}"},
+                        {"type": "function_call_output", "call_id": "c1", "output": "4"},
+                        {"type": "message", "content": [{"type": "output_text", "text": "The answer is 4."}]},
+                    ],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    trial = _trials_from_rollouts(bundle, tasks, index_map)[0]
+
+    assert trial.evidence is not None
+    handle = await trial.evidence.trace(EVIDENCE_TRACE, format=EVIDENCE_FORMAT_OTLP)
+    resource_spans = await handle.resource_spans()
+    # The agent's answer, not the tool's "4": only AGENT/CHAIN/LLM spans are eligible.
+    assert final_output_text(resource_spans) == "The answer is 4."
+    kinds = [
+        attribute.value.string_value
+        for resource_span in resource_spans
+        for scope_spans in resource_span.scope_spans
+        for span in scope_spans.spans
+        for attribute in span.attributes
+        if attribute.key == "openinference.span.kind"
+    ]
+    assert kinds == ["AGENT", "LLM", "TOOL"]
+
+
 def test_success_records_without_rollout_index_get_distinct_ids(tmp_path: Path) -> None:
     # Mirror of the failure-path guard: two successful attempts for one task lacking _ng_rollout_index
     # must not collapse to a single trial id.
@@ -422,6 +473,35 @@ def test_success_records_without_rollout_index_get_distinct_ids(tmp_path: Path) 
     assert len(trials) == 2
     assert len({trial.id for trial in trials}) == 2  # distinct ids despite missing rollout index
     assert all(trial.task_id == ordered[0] for trial in trials)
+
+
+@pytest.mark.asyncio
+async def test_indexless_rollouts_of_one_task_get_distinct_trace_ids(tmp_path: Path) -> None:
+    # Span identity is derived, and Intake's spans table replaces on it, so two attempts sharing
+    # an id would store only the last. Gym does not always record _ng_rollout_index, which leaves
+    # the trial id to carry the distinction.
+    tasks = discover_gym_tasks(EXAMPLE)
+    _, index_map = _index_map(tasks, tmp_path)
+    bundle = tmp_path / "rollouts.jsonl"
+    bundle.write_text(
+        json.dumps({NG_TASK_INDEX: 0, "reward": 1.0, "response": "first"})
+        + "\n"
+        + json.dumps({NG_TASK_INDEX: 0, "reward": 0.0, "response": "second"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    trials = _trials_from_rollouts(bundle, tasks, index_map)
+
+    roots = []
+    for trial in trials:
+        assert trial.evidence is not None
+        spans = await (await trial.evidence.trace("trace", format="otlp")).resource_spans()
+        roots.append(spans[0].scope_spans[0].spans[0])
+
+    assert len(roots) == 2
+    assert len({root.trace_id for root in roots}) == 2
+    assert len({root.span_id for root in roots}) == 2
 
 
 def test_indexless_failures_get_distinct_trial_ids(tmp_path: Path) -> None:

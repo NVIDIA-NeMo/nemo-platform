@@ -38,11 +38,11 @@ from nemo_evaluator_sdk.values.evidence import (
     read_atif,
 )
 from nemo_evaluator_sdk.values.otlp import (
-    export_request_from_resource_spans,
     final_output_text,
+    parse_resource_spans,
     resource_spans_from_text,
 )
-from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +124,8 @@ def _trial_from_harbor_result(
 
     # Discovery names an OTLP trace from its artifact path alone; only reading it proves it
     # parses. Both the primary trace and the answer follow from that one read.
-    otlp_request = _read_otlp(otlp_trace)
-    primary_trace = otlp_trace if otlp_request is not None else atif_trace
+    otlp_spans = _read_otlp(otlp_trace)
+    primary_trace = otlp_trace if otlp_spans is not None else atif_trace
     if primary_trace is not None:
         descriptors[EVIDENCE_TRACE] = primary_trace
 
@@ -134,7 +134,7 @@ def _trial_from_harbor_result(
         task_id=task_id,
         status=status,
         output=AgentOutput(
-            output_text=_trial_output_text(otlp_request, atif_trace),
+            output_text=_trial_output_text(otlp_spans, atif_trace),
             metadata={"harbor_trial_dir": str(trial_dir)},
         ),
         evidence=CandidateEvidence(descriptors=descriptors),
@@ -143,17 +143,15 @@ def _trial_from_harbor_result(
     )
 
 
-def _trial_output_text(
-    otlp_request: ExportTraceServiceRequest | None, atif_trace: EvidenceDescriptor | None
-) -> str | None:
+def _trial_output_text(otlp_spans: list[ResourceSpans] | None, atif_trace: EvidenceDescriptor | None) -> str | None:
     """The agent's answer for the trial, from its OTLP trace when that carries one.
 
     ATIF remains the fallback because an agent may emit no OTLP trace, and OTLP spans that
     carry no output attribute yield nothing to read. Both being absent is normal: oracle and
     nop produce neither.
     """
-    if otlp_request is not None:
-        answer = final_output_text(otlp_request)
+    if otlp_spans is not None:
+        answer = final_output_text(otlp_spans)
         if answer:
             return answer
     if atif_trace is None or atif_trace.ref is None:
@@ -161,13 +159,13 @@ def _trial_output_text(
     return _final_agent_message(read_atif(Path(atif_trace.ref)))
 
 
-def _read_otlp(descriptor: EvidenceDescriptor | None) -> ExportTraceServiceRequest | None:
+def _read_otlp(descriptor: EvidenceDescriptor | None) -> list[ResourceSpans] | None:
     """Parse a trial's OTLP trace, or ``None`` when it is absent or will not read."""
     if descriptor is None or descriptor.ref is None:
         return None
     path = Path(descriptor.ref)
     try:
-        return export_request_from_resource_spans(resource_spans_from_text(path.read_text(encoding="utf-8")))
+        return parse_resource_spans(resource_spans_from_text(path.read_text(encoding="utf-8")))
     except (OSError, ValueError) as error:
         logger.warning("Ignoring unreadable OTLP trace %s: %s", path, error)
         return None

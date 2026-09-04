@@ -20,6 +20,9 @@ host's ``/rollouts/run`` and writes the returned records where the parser expect
 Attribution survives that hop because the host copies each example's ``_ng_task_index`` onto its
 result. Nothing here joins by position.
 
+One thing does not survive yet (AALGO-593): the host does not enable Gym's model-call capture, so trials from
+this runner carry a trace projected from the rollout record alone, without per-call timing.
+
 The host itself is provisioned by ``sandboxed-gym``: start a session, take its rollout URL and
 token off the descriptor, and hand them to this runner.
 """
@@ -196,6 +199,12 @@ class SandboxedGymAgentTaskRunner:
         )
 
         self._run_aggregations = _read_run_aggregations(rollouts_path)
-        trials = _trials_from_rollouts(rollouts_path, tasks, index_to_task_id, reward_key=cfg.reward_key)
+        # No capture_dir yet (AALGO-593): the host does not switch Gym's model-call capture on, so
+        # its captures never leave the sandbox and traces from this runner carry no per-call timing.
+        # Unimplemented rather than impossible -- the host drives Gym through its Python API, whose
+        # global config takes the same observability keys the CLI runtime sets.
+        trials = _trials_from_rollouts(
+            rollouts_path, tasks, index_to_task_id, reward_key=cfg.reward_key, capture_dir=None
+        )
         _require_full_coverage(tasks, covered_task_ids={trial.task_id for trial in trials}, rollouts_path=rollouts_path)
         return trials
