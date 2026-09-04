@@ -361,6 +361,8 @@ navigation:
         contents:
           - page: Agents
             path: ../../studio/agents.mdx
+          - page: Custom Models
+            path: ../../studio/customization.mdx
           - page: Data Designer
             path: ../../studio/data-designer-build.mdx
           - page: Experiments
