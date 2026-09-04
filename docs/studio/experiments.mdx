@@ -1,0 +1,49 @@
+---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+title: "NeMo Studio Experiments"
+description: "Group evaluations into experiments, drill into results, and compare runs side by side."
+---
+
+Use **Evaluations > Experiments** in the NeMo Studio workspace sidebar to group evaluations for comparison, and to drill into evaluation results and individual runs.
+
+<Note>
+
+Experiments is enabled by default. An administrator can disable it by setting `studio.feature_flags.experiment: false` in the platform configuration and restarting Studio.
+
+</Note>
+
+## Create an Experiment
+
+Select **New experiment** from the Experiments list. In the **Create experiment** tab, provide a name, an optional description, and a default sort order for the experiment's evaluations, then select **Create**.
+
+<Note>
+
+The modal also has **NeMo Assistant** and **CLI command** tabs. **CLI command** shows the `nemo exp run` invocation for the equivalent workflow; **NeMo Assistant** is a placeholder for a future guided flow.
+
+</Note>
+
+## Experiment Detail
+
+Select an experiment to open its detail page, which shows aggregate metrics across its evaluations and a table of the evaluations in the group. Toggle **Pareto view** to plot evaluations by cost against accuracy instead of the table.
+
+Select **Edit** to update the experiment's name, description, or default sort order.
+
+If the experiment was created from an Optimizer insight, an **Insight description** card appears with a link back to that insight. See [NeMo Studio Insights](/documentation/studio/insights).
+
+## Evaluation Drill-Down
+
+Select an evaluation from an experiment's table to open its detail page, which shows aggregate metrics for that evaluation and a table of its test-case runs (sessions).
+
+Select a session to open its detail page — the same trace and span view used by **Traces**, scoped to that test case. See [NeMo Studio Traces](/documentation/studio/traces).
+
+## Compare Runs Side by Side
+
+From a session's detail page, select **Compare against…** and choose another run of the same test case. Studio splits the view into two columns — the current run on the left, the selected run on the right — so you can compare trace output side by side. Select **Clear** to return to the single-run view.
+
+## Related Topics
+
+- [Experiments](/documentation/evaluate-models/experiments)
+- [NeMo Studio Insights](/documentation/studio/insights)
+- [NeMo Studio Traces](/documentation/studio/traces)

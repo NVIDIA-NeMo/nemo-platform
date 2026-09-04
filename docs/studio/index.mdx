@@ -32,11 +32,11 @@ The current sidebar groups related pages under expandable parents. Selecting a p
 
 | Sidebar group | Current entry point | Purpose and availability |
 | --- | --- | --- |
-| **Observability** | **Insights** | Review recurring agent failure patterns and optimization insights. Shown when optimization is enabled. |
-| **Observability** | **Traces** | Inspect ingested traces, spans, and session details. |
+| **Observability** | **Insights** | Review optimization insights generated from observed agent sessions. Shown when optimization is enabled; see [NeMo Studio Insights](/documentation/studio/insights). |
+| **Observability** | **Traces** | Inspect ingested traces, spans, and session details; see [NeMo Studio Traces](/documentation/studio/traces). |
 | **Components** | **Agents** | Opens the agent list. Select an agent to access Deployments, Logs, Chat, Evaluations, and Details. |
-| **Components** | **Models** | Opens the base-model list directly. Expand **Models** for **Fine-tune**, **Model Evaluations**, **Playground**, and **Virtual Models**, when those capabilities are enabled. **Fine-tune** opens the Custom Models list; see [NeMo Studio Custom Models](/documentation/studio/customization). |
-| **Evaluations** | **Experiments** | Review experiments, evaluations, sessions, and published results across the workspace. |
+| **Components** | **Models** | Opens the base-model list directly. Expand **Models** for **Fine-tune**, **Model Evaluations**, **Playground**, and **Virtual Models**, when those capabilities are enabled. **Fine-tune** opens the Custom Models list; see [NeMo Studio Custom Models](/documentation/studio/customization). **Model Evaluations** opens evaluation job results; see [NeMo Studio Model Evaluations](/documentation/studio/model-evaluations). |
+| **Evaluations** | **Experiments** | Group evaluations for comparison, drill into results, and compare runs side by side; see [NeMo Studio Experiments](/documentation/studio/experiments). |
 | **Data** | **Datasets > Data Designer** | Build and monitor synthetic-data jobs. Other installed data plugins can appear below **Datasets**. |
 | **Governance** | **Guardrails** | Manage guardrail configurations. Disabled by default; see [Studio Guardrail Configs](/documentation/studio/guardrail-configs). |
 | **Governance** | **Iron Swarm** | Plugin-provided agent hardening UI. Appears only when the Iron Swarm plugin is installed; see [Studio Plugin UIs](/documentation/studio/plugins). |
@@ -50,6 +50,18 @@ Additional entries, including Dashboard, Safe Synthesizer, Anonymizer, deploymen
 Use the Studio Agents area to review Platform-managed agents, including the current Fabric-first `nemo-agents-spec-v1` experience, inspect agent details, deploy agents, open a chat session against a running deployment, and clean up deployments that are no longer needed.
 
 For the full workflow, see [Studio Agents](/documentation/studio/agents).
+
+### Insights
+
+Use **Observability > Insights** to review optimization insights the analyst agent generates from observed agent sessions and traces, drill into an insight's linked experiments and source traces, and run the CLI command to start experiments for it.
+
+For the full workflow, see [Studio Insights](/documentation/studio/insights).
+
+### Traces
+
+Use **Observability > Traces** to inspect ingested telemetry in the Traces and Spans tables, and drill into a session's trace and span detail, with specialized views for LLM, tool, agent, chain, embedding, reranker, retriever, guardrail, and evaluator spans.
+
+For the full workflow, see [Studio Traces](/documentation/studio/traces).
 
 ### Monitor
 
@@ -120,8 +132,8 @@ Studio provides separate agent, model, and workspace evaluation views:
 | Location | What it shows |
 | -------- | ------------- |
 | **Agents > select an agent > Evaluations** | Active evaluation jobs, completed evaluations, and experiments scoped to the selected agent. |
-| **Models > Model Evaluations** | Model evaluation results. |
-| **Evaluations > Experiments** | Experiments and their evaluations across the workspace. |
+| **Models > Model Evaluations** | Model evaluation job results and per-row scores. See [Studio Model Evaluations](/documentation/studio/model-evaluations). |
+| **Evaluations > Experiments** | Experiments and their evaluations across the workspace, evaluation drill-down, and side-by-side run comparison. See [Studio Experiments](/documentation/studio/experiments). |
 
 Use the agent's **Evaluations** tab when reviewing how a specific agent performed. Use **Experiments** for the broader workspace history.
 
