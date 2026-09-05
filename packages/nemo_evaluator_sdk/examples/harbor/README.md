@@ -70,9 +70,6 @@ The runtime is [`harbor_runtime.py`](../../src/nemo_evaluator_sdk/agent_eval/run
   `AgentEvalTrial`s.
 - `HarborTasksetLoader` / `discover_harbor_tasks` — turn a dataset dir into tasks.
 - `HarborRewardMetric` — scores the verifier reward stamped on each trial.
-- `reward_payload_from_result` — collapses a scored `AgentEvalResult` back into
-  the legacy `{reward, reward_details, exceptions}` shape older NeMo Optimizer
-  consumers expect.
 
 ### Re-running and caching
 
@@ -94,14 +91,8 @@ await run_harbor_eval(config, "hello_world_dataset")  # second call re-adapts th
 From the repository root:
 
 ```bash
-# Native path: run and print the SDK summary.
-uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
-
-# Optimizer path: run, then rebuild NeMo Optimizer's legacy reward payload.
-uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
+uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example
 ```
-
-Both modes call `run_harbor_eval`; the only difference is what they print.
 
 ## Custom (wrapped) agents
 

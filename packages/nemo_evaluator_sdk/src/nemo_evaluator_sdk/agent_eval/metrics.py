@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from collections.abc import Mapping
 from typing import Any, ClassVar, Literal
 
@@ -31,6 +30,7 @@ from nemo_evaluator_sdk.metrics.protocol import (
     MetricOutputSpec,
     MetricResult,
 )
+from nemo_evaluator_sdk.metrics.utils import as_finite_float
 from nemo_evaluator_sdk.values.atif import Trajectory
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_ATIF,
@@ -259,7 +259,7 @@ class TrialMeasurements(BaseModel):
         return cls(
             **tokens,
             runtime_sec=_runtime_sec(metadata),
-            cost_usd=_as_float(metadata.get("cost_usd")),
+            cost_usd=as_finite_float(metadata.get("cost_usd")),
             reward=_reward(metadata, passed),
             passed=passed,
         )
@@ -290,19 +290,6 @@ def _as_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
     return value if isinstance(value, int) else None
-
-
-def _as_float(value: Any) -> float | None:
-    # bool is an int subclass; never treat True/False as a measurement. NaN, the infinities, and
-    # integers too large to represent are rejected too: none can be serialised onto the wire, so
-    # recording one would fail the publish of an otherwise good trial.
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return None
-    try:
-        number = float(value)
-    except OverflowError:
-        return None
-    return number if math.isfinite(number) else None
 
 
 def _runtime_sec(metadata: Mapping[str, Any]) -> float | None:

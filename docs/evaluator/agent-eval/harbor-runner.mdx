@@ -3,14 +3,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 title: "Evaluate a Harbor Task Suite"
-description: "Run an existing Harbor task dataset through NeMo Evaluator's Harbor runner — Harbor executes each task in a Docker sandbox and its verifier emits a reward, which the SDK scores and reports like any other agent-eval run."
+description: "Run an existing Harbor task dataset through NeMo Evaluator's Harbor runner — Harbor executes each task in a Docker sandbox and its verifier emits named rewards, which the SDK scores and reports like any other agent-eval run."
 ---
 
 [Harbor](https://www.harborframework.com) is a container-based harness for agentic tasks: it runs each
-task in a Docker sandbox, lets an agent work in it, then runs a **verifier** that emits a **reward**
+task in a Docker sandbox, lets an agent work in it, then runs a **verifier** that emits named
+**rewards**
 (see Harbor's [Core Concepts](https://www.harborframework.com/docs/core-concepts) for its task, trial,
 and job model). If you already have Harbor task datasets, the **Harbor runner** runs them and scores
-the verifier reward through agent-eval — the same
+the verifier rewards through agent-eval — the same
 [`AgentEvaluator`](/documentation/evaluate-models/agent-eval) and the same result and bundle as the
 [quickstart](/documentation/evaluate-models/agent-eval/quickstart). Only the runner changes.
 
@@ -85,7 +86,8 @@ async def main() -> None:
             # OUTPUT: where Harbor writes its <job_name>/ results tree (not the dataset).
             jobs_dir=Path("./harbor-jobs"),
             agent_name="oracle",  # a built-in Harbor agent — see "Choosing an agent"
-        )
+            reward_key="reward",  # selects the required primary reward
+        ),
     )
 
     # Same AgentEvaluator as every agent-eval run; only the target changes.
@@ -99,7 +101,7 @@ asyncio.run(main())
 
 The three pieces map onto the model: `discover_harbor_tasks` turns the suite into tasks,
 `HarborAgentTaskRunner` runs the Harbor job and returns one trial per Harbor trial, and `AgentEvaluator`
-scores each trial's reward with `HarborRewardMetric`.
+scores each trial's named rewards with `HarborRewardMetric`.
 
 <Note>
 
@@ -132,12 +134,55 @@ Swap `agent_name` (or `agent_import_path`) for your own agent to get a real scor
 ## How scoring works
 
 1. Harbor runs each task in its sandbox and writes a `<task>__<hash>/result.json` per trial, including
-   the reward from the task's [verifier](https://www.harborframework.com/docs/tasks).
-2. The runner reads that reward onto each trial's metadata, and `HarborRewardMetric` scores it — the
-   `reward` value, or `0.0` for a trial whose verifier emitted none.
-3. `result.summary` aggregates the reward across tasks (`harbor_reward.reward`), `result.trials` holds
-   each trial's status and evidence, and — if you call `result.persist()` — the run **bundle**
-   (including `report.html`) is written like any other agent-eval run.
+   the reward mapping from the task's [verifier](https://www.harborframework.com/docs/tasks).
+2. `reward_key` identifies the primary reward by name. If not specified, it defaults to `reward`.
+   Mapping order and alphabetical order never select the primary.
+3. The primary output is required. On a scoreable trial, a finite numeric value is emitted unchanged;
+   a missing or unusable primary emits `0.0` and a diagnostic instead of skipping the trial.
+4. Other reward keys discovered for that task become optional secondary outputs. Finite numeric
+   values are emitted. Missing, Boolean, nonnumeric, NaN, or infinite values are omitted with a
+   diagnostic. A secondary discovered for one task does not become applicable to another task.
+5. `result.summary` aggregates each named output, `result.trials` holds each trial's status and
+   evidence, and `result.persist()` writes the standard run bundle.
+
+### What counts as a numeric reward
+
+Harbor's [task format](https://www.harborframework.com/docs/tasks) defines each `reward.json` value
+as a float or integer (`reward.txt` is a single number, stored under the key `reward`). Harbor reads
+and validates that file before writing `result.json`:
+
+- Finite numbers are retained. Numeric strings such as `"1.25"` are coerced to numbers.
+- A nonnumeric string, `null`, or an object fails validation of the whole reward mapping.
+- A JSON Boolean is coerced to `1.0` or `0.0`.
+- `NaN` and infinity pass Harbor's numeric validation, but serialize as `null` in `result.json`.
+
+The SDK adapter reads `result.json` per key. It keeps finite numbers and accepts numeric strings in
+imported or manually authored result files. It omits a Boolean, `null`, unparseable value, NaN, or
+infinity with a diagnostic while retaining usable sibling rewards.
+
+Emit finite JSON numbers from the verifier. Use `1` and `0` when a reward represents pass/fail; do
+not rely on Harbor's coercion of strings or Booleans.
+
+### Sparse secondary example
+
+For two attempts on task A:
+
+```text
+a1: reward=1.0, format_ok=1.0
+a2: reward=0.0, format_ok omitted
+```
+
+| Consumer | Expected result |
+|---|---|
+| `harbor_reward.reward` | `mean=0.5`, `count=2`, `nan_count=0` |
+| `harbor_reward.format_ok` | `mean=1.0`, `count=1`, `nan_count=1` |
+| `format_ok` coverage | `total=2`, `scored=1`, `missing=1`, `failed=0` |
+| `harbor_reward.format_ok.pass@1` | `mean=1.0`; measured `n=1` |
+| `harbor_reward.format_ok.pass@2` | unestimable: `count=0`, `nan_count=1`, `mean=None` |
+
+Omission means unmeasured, not failure. It does not create a persisted null, NaN, or zero. See
+[Reading Results](/documentation/evaluate-models/agent-eval/reading-results) for denominator, failed
+trial, semantic-view, and persistence behavior.
 
 ## Attempts, concurrency, and caching
 
@@ -152,11 +197,13 @@ When a run is exactly "one Harbor suite, scored by its reward," `run_harbor_eval
 steps above — discover, run, score — into a single call:
 
 ```python
+from pathlib import Path
+
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborRuntimeConfig, run_harbor_eval
 
 result = await run_harbor_eval(
-    HarborRuntimeConfig(jobs_dir="./harbor-jobs", agent_name="oracle"),
-    dataset_path="path/to/my-suite",
+    HarborRuntimeConfig(jobs_dir=Path("./harbor-jobs"), agent_name="oracle"),
+    dataset_path=Path("path/to/my-suite"),
 )
 ```
 
@@ -169,4 +216,5 @@ targets.
 <Cards>
   <Card title="Agent Evaluation (concepts)" href="/documentation/evaluate-models/agent-eval" />
   <Card title="Agent Evaluation Quickstart" href="/documentation/evaluate-models/agent-eval/quickstart" />
+  <Card title="Reading Results" href="/documentation/evaluate-models/agent-eval/reading-results" />
 </Cards>
