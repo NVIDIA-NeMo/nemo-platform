@@ -25,6 +25,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyEntityType,
     AccessKeyListResponse,
     AccessKeyRevokeResponse,
+    AccessKeyRotateResponse,
     AccessKeyStatus,
     AccessKeyStatusChangeResponse,
 )
@@ -273,6 +274,10 @@ class AccessKeyIssuerService(AccessKeyIssuer):
     def unsuspend(self, jti: str) -> AccessKeyStatusChangeResponse:
         self._ensure_enabled()
         raise AccessKeyOperationNotImplementedError(f"Scoped Access Key unsuspension for {jti} is not implemented.")
+
+    def rotate(self, jti: str) -> AccessKeyRotateResponse:
+        self._ensure_enabled()
+        raise AccessKeyOperationNotImplementedError(f"Scoped Access Key rotation for {jti} is not implemented.")
 
 
 def _create_access_key_token(

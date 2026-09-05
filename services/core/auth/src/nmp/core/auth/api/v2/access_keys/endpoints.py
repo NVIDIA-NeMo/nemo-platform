@@ -89,6 +89,15 @@ _ACCESS_KEY_SUSPENSION_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     409: _ACCESS_KEY_STATE_CONFLICT_ERROR_RESPONSE,
     501: _ACCESS_KEY_NOT_IMPLEMENTED_ERROR_RESPONSE,
 }
+_ACCESS_KEY_ROTATE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {
+        "description": "Scoped Access Key rotation error",
+        "model": schemas.AccessKeyErrorResponse,
+    },
+    404: _ACCESS_KEY_DISABLED_OR_NOT_FOUND_ERROR_RESPONSE,
+    409: _ACCESS_KEY_STATE_CONFLICT_ERROR_RESPONSE,
+    501: _ACCESS_KEY_NOT_IMPLEMENTED_ERROR_RESPONSE,
+}
 
 
 async def _is_platform_admin(auth_client: AuthClient) -> bool:
@@ -242,3 +251,28 @@ async def unsuspend_access_key(
     issuer: PersistentAccessKeyIssuer = Depends(get_access_key_issuer),
 ) -> schemas.AccessKeyStatusChangeResponse | JSONResponse:
     return await _change_suspension_status(jti, issuer.unsuspend_async)
+
+
+@router.post(
+    "/v2/access-keys/{jti}/rotate",
+    response_model=schemas.AccessKeyRotateResponse,
+    responses=_ACCESS_KEY_ROTATE_ERROR_RESPONSES,
+)
+async def rotate_access_key(
+    jti: _AccessKeyJTI,
+    issuer: PersistentAccessKeyIssuer = Depends(get_access_key_issuer),
+) -> schemas.AccessKeyRotateResponse | JSONResponse:
+    try:
+        return await issuer.rotate_async(jti)
+    except AccessKeyFeatureDisabledError:
+        return _disabled_response()
+    except AccessKeyOperationNotImplementedError as exc:
+        raise _not_implemented(exc) from exc
+    except AccessKeyNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AccessKeyStateConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except AccessKeyValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except EntityConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Concurrent update conflict; retry.") from exc

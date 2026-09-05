@@ -8,7 +8,7 @@ from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AccessKeyStatus = Literal["ACTIVE", "EXPIRED", "REVOKED", "SUSPENDED"]
+AccessKeyStatus = Literal["ACTIVE", "EXPIRED", "REVOKED", "SUSPENDED", "ROTATING"]
 AccessKeyReversibleStatus = Literal["ACTIVE", "EXPIRED", "SUSPENDED"]
 AccessKeyEntityType = Literal["USER", "SERVICE_ACCOUNT"]
 
@@ -87,6 +87,16 @@ class AccessKeyMetadataResponse(BaseModel):
     )
     created_at: datetime
     expires_at: datetime | None = Field(default=None, json_schema_extra={"nullable": True})
+    grace_period_expires_at: datetime | None = Field(
+        default=None,
+        json_schema_extra={"nullable": True},
+        description="Timestamp when the rotated-out key's grace period expires.",
+    )
+    last_used_at: datetime | None = Field(
+        default=None,
+        json_schema_extra={"nullable": True},
+        description="Timestamp of the most recent successful authentication with this Scoped Access Key.",
+    )
 
 
 class AccessKeyCreateResponse(AccessKeyMetadataResponse):
@@ -121,6 +131,35 @@ class AccessKeyStatusChangeResponse(BaseModel):
         description="Resulting effective status of the key, including expiration."
     )
     changed: bool = Field(description="True when this request changed the key's persistent status.")
+
+
+class AccessKeyRotateResponse(BaseModel):
+    """Response returned after rotating a Scoped Access Key.
+
+    The rotated-out key (``previous_jti``) remains usable for ``grace_period_seconds``
+    (the dual-active grace period) so callers can cut traffic over to ``new_key``
+    before the old key is treated as revoked.
+    """
+
+    new_key: AccessKeyCreateResponse = Field(
+        description="Newly minted successor Scoped Access Key. Its raw token is returned only once."
+    )
+    previous_jti: str = Field(description="Stable JWT ID of the Scoped Access Key that was rotated out.")
+    previous_status: AccessKeyStatus = Field(
+        description=(
+            "Effective status of the rotated-out key immediately after this request. Normally "
+            "ROTATING, but may already read as REVOKED or EXPIRED if reconciling this request's "
+            "outcome was itself delayed past the grace deadline or a concurrent revoke."
+        )
+    )
+    grace_period_seconds: int = Field(
+        description="Seconds the rotated-out key remains usable before it is treated as revoked."
+    )
+    grace_period_expires_at: datetime | None = Field(
+        default=None,
+        json_schema_extra={"nullable": True},
+        description="Timestamp when the rotated-out key's grace period expires.",
+    )
 
 
 class AccessKeyNotImplementedErrorResponse(BaseModel):

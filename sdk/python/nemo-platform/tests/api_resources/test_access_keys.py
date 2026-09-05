@@ -28,6 +28,7 @@ from nemo_platform.types.access_keys import (
     AccessKeyListResponse,
     AccessKeyCreateResponse,
     AccessKeyRevokeResponse,
+    AccessKeyRotateResponse,
     AccessKeyStatusChangeResponse,
 )
 
@@ -152,6 +153,48 @@ class TestAccessKeys:
     def test_path_params_delete(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `jti` but received ''"):
             client.access_keys.with_raw_response.delete(
+                "",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_rotate(self, client: NeMoPlatform) -> None:
+        access_key = client.access_keys.rotate(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+        assert_matches_type(AccessKeyRotateResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_rotate(self, client: NeMoPlatform) -> None:
+        response = client.access_keys.with_raw_response.rotate(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        access_key = response.parse()
+        assert_matches_type(AccessKeyRotateResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_rotate(self, client: NeMoPlatform) -> None:
+        with client.access_keys.with_streaming_response.rotate(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            access_key = response.parse()
+            assert_matches_type(AccessKeyRotateResponse, access_key, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_rotate(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `jti` but received ''"):
+            client.access_keys.with_raw_response.rotate(
                 "",
             )
 
@@ -360,6 +403,48 @@ class TestAsyncAccessKeys:
     async def test_path_params_delete(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `jti` but received ''"):
             await async_client.access_keys.with_raw_response.delete(
+                "",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_rotate(self, async_client: AsyncNeMoPlatform) -> None:
+        access_key = await async_client.access_keys.rotate(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+        assert_matches_type(AccessKeyRotateResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_rotate(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.access_keys.with_raw_response.rotate(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        access_key = await response.parse()
+        assert_matches_type(AccessKeyRotateResponse, access_key, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_rotate(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.access_keys.with_streaming_response.rotate(
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            access_key = await response.parse()
+            assert_matches_type(AccessKeyRotateResponse, access_key, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_rotate(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `jti` but received ''"):
+            await async_client.access_keys.with_raw_response.rotate(
                 "",
             )
 

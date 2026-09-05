@@ -53,3 +53,11 @@ def test_unsuspend_access_key_endpoint_uses_jti_path_param() -> None:
     assert prepared.method == "POST"
     assert prepared.path_template == "/apis/auth/v2/access-keys/{jti}/unsuspend"
     assert prepared.path_params == {"jti": "ak_example"}
+
+
+def test_rotate_access_key_endpoint_uses_jti_path_param() -> None:
+    prepared = endpoints.rotate_access_key(jti="ak_example")
+
+    assert prepared.method == "POST"
+    assert prepared.path_template == "/apis/auth/v2/access-keys/{jti}/rotate"
+    assert prepared.path_params == {"jti": "ak_example"}

@@ -922,6 +922,8 @@ def list_access_keys(
             Column("audiences", None),
             Column("created_at", None),
             Column("expires_at", None),
+            Column("last_used_at", None),
+            Column("grace_period_expires_at", None),
         ],
         timestamp_format=state.get_timestamp_format(),
     )
@@ -987,6 +989,46 @@ def unsuspend_access_key(
         typer.echo(f"Unsuspended Scoped Access Key {jti}.")
     else:
         typer.echo(f"Scoped Access Key {jti} was already {result.status.lower()}.")
+
+
+@access_keys_app.command("rotate")
+@handle_errors
+def rotate_access_key(
+    ctx: typer.Context,
+    jti: Annotated[str, typer.Argument(help="Stable ID of the Scoped Access Key to rotate.")],
+) -> None:
+    """Mint a successor Scoped Access Key and start the old key's rotation grace period.
+
+    The old key (jti) keeps working for its rotation grace period so you can cut
+    configuration over to the new key without downtime, then revoke the old key once
+    traffic has moved, or let it expire automatically at the end of the grace period.
+    """
+    try:
+        result = _access_key_issuer(ctx).rotate(jti)
+    except AccessKeyFeatureDisabledError as exc:
+        _raise_access_key_disabled(exc)
+    except AccessKeyOperationNotImplementedError as exc:
+        _raise_access_key_not_implemented(exc)
+    typer.echo(result.new_key.token)
+    if result.previous_status == "ROTATING":
+        if result.grace_period_expires_at is not None:
+            typer.echo(
+                f"Rotated Scoped Access Key {jti}; it remains usable until "
+                f"{result.grace_period_expires_at.isoformat()} "
+                f"(grace period {result.grace_period_seconds}s).",
+                err=True,
+            )
+        else:
+            typer.echo(
+                f"Rotated Scoped Access Key {jti}; it remains usable for a "
+                f"grace period of {result.grace_period_seconds}s.",
+                err=True,
+            )
+    else:
+        typer.echo(
+            f"Rotated Scoped Access Key {jti}; it is now {result.previous_status} and is no longer usable.",
+            err=True,
+        )
 
 
 @app.command("status")

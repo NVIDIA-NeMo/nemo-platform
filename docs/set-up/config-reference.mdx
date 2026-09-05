@@ -170,6 +170,8 @@ auth:
     default_expires_in_seconds: 2592000
     # Maximum finite lifetime accepted when creating Scoped Access Keys. Set to null to allow explicit no-expiration requests. | default: 2592000
     max_expires_in_seconds: 2592000
+    # How long a rotated-out Scoped Access Key remains usable after POST /v2/access-keys/{jti}/rotate before it is treated as revoked. Gives callers a dual-active window to cut over to the newly issued key. | default: 172800
+    rotation_grace_period_seconds: 172800
   # Port to run the service on | default: 8000
   port: 8000
   # Refresh interval for policy data in seconds | default: 30
