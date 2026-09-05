@@ -62,6 +62,34 @@ jobs:
         run: |
           node scripts/materialize-release-versions.mjs --check-tag "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
+      - name: Fetch pre-release branches
+        if: ${{ steps.release-tag.outputs.eligible != 'false' }}
+        working-directory: ./docs/fern
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -f release-branches.json ]; then
+            exit 0
+          fi
+          # Checkout used persist-credentials: false, so authenticate this one
+          # fetch the same way actions/checkout does internally, scoped to this
+          # step only (no credentials left behind for later steps).
+          auth_header="AUTHORIZATION: basic $(printf '%s' "x-access-token:${GH_TOKEN}" | base64 | tr -d '\n')"
+          for branch in $(node -e "for (const b of Object.keys(require('./release-branches.json'))) console.log(b)"); do
+            if git -c http.https://github.com/.extraheader="${auth_header}" \
+              ls-remote --exit-code --heads origin "${branch}" >/dev/null; then
+              git -c http.https://github.com/.extraheader="${auth_header}" \
+                fetch origin "${branch}:refs/remotes/origin/${branch}"
+            else
+              status=$?
+              if [ "${status}" -eq 2 ]; then
+                echo "::warning::Pre-release branch ${branch} does not exist (release-branches.json)"
+              else
+                exit "${status}"
+              fi
+            fi
+          done
+
       - name: Materialize release versions
         if: ${{ steps.release-tag.outputs.eligible != 'false' }}
         working-directory: ./docs/fern
