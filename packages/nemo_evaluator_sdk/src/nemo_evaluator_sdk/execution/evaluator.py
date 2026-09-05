@@ -13,7 +13,9 @@ from typing import Any, TypeGuard, overload
 
 import nemo_evaluator_sdk.inference as inference
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
+from nemo_evaluator_sdk.execution.retrieval_execution import evaluate_retrieval
 from nemo_evaluator_sdk.metrics.protocol import Metric
+from nemo_evaluator_sdk.retrieval.beir import BeirDataset
 from nemo_evaluator_sdk.values.agents import Agent
 from nemo_evaluator_sdk.values.dataset_schemas import FieldMapping
 from nemo_evaluator_sdk.values.datasets import DatasetInput
@@ -137,6 +139,22 @@ class Evaluator:
     async def run(
         self,
         metrics: Sequence[Metric],
+        *,
+        retrieval: BeirDataset,
+        target: Model,
+        dataset: None = None,
+        config: None = None,
+        field_mapping: None = None,
+        prompt_template: None = None,
+        aggregate_fields: None = None,
+        preprocess_hooks: None = None,
+        postprocess_hooks: None = None,
+    ) -> BenchmarkEvaluationResult: ...
+
+    @overload
+    async def run(
+        self,
+        metrics: Sequence[Metric],
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfig | None = None,
@@ -181,8 +199,9 @@ class Evaluator:
     async def run(
         self,
         metrics: Sequence[Metric],
-        dataset: DatasetInput | str | Path,
+        dataset: DatasetInput | str | Path | None = None,
         *,
+        retrieval: BeirDataset | None = None,
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         field_mapping: FieldMapping | None = None,
@@ -207,6 +226,27 @@ class Evaluator:
         Returns:
             The completed multi-metric result.
         """
+        if retrieval is not None:
+            if dataset is not None:
+                raise ValueError("dataset and retrieval are mutually exclusive")
+            if not isinstance(target, Model):
+                raise TypeError("retrieval evaluation requires a Model target")
+            if any(
+                value is not None
+                for value in (
+                    config,
+                    field_mapping,
+                    prompt_template,
+                    aggregate_fields,
+                    preprocess_hooks,
+                    postprocess_hooks,
+                )
+            ):
+                raise ValueError("retrieval evaluation does not accept dataset evaluation options")
+            return await evaluate_retrieval(retrieval=retrieval, target=target, metrics=metrics)
+        if dataset is None:
+            raise ValueError("one of dataset or retrieval is required")
+
         params = resolve_params(config, target)
         normalized_preprocess_hooks = tuple(preprocess_hooks) if preprocess_hooks is not None else None
         normalized_postprocess_hooks = tuple(postprocess_hooks) if postprocess_hooks is not None else None
@@ -221,6 +261,22 @@ class Evaluator:
             preprocess_hooks=normalized_preprocess_hooks,
             postprocess_hooks=normalized_postprocess_hooks,
         )
+
+    @overload
+    def run_sync(
+        self,
+        metrics: Sequence[Metric],
+        *,
+        retrieval: BeirDataset,
+        target: Model,
+        dataset: None = None,
+        config: None = None,
+        field_mapping: None = None,
+        prompt_template: None = None,
+        aggregate_fields: None = None,
+        preprocess_hooks: None = None,
+        postprocess_hooks: None = None,
+    ) -> BenchmarkEvaluationResult: ...
 
     @overload
     def run_sync(
@@ -270,8 +326,9 @@ class Evaluator:
     def run_sync(
         self,
         metrics: Sequence[Metric],
-        dataset: DatasetInput | str | Path,
+        dataset: DatasetInput | str | Path | None = None,
         *,
+        retrieval: BeirDataset | None = None,
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         field_mapping: FieldMapping | None = None,
@@ -298,6 +355,27 @@ class Evaluator:
         """
 
         async def _call() -> BenchmarkEvaluationResult:
+            if retrieval is not None:
+                if dataset is not None:
+                    raise ValueError("dataset and retrieval are mutually exclusive")
+                if not isinstance(target, Model):
+                    raise TypeError("retrieval evaluation requires a Model target")
+                if any(
+                    value is not None
+                    for value in (
+                        config,
+                        field_mapping,
+                        prompt_template,
+                        aggregate_fields,
+                        preprocess_hooks,
+                        postprocess_hooks,
+                    )
+                ):
+                    raise ValueError("retrieval evaluation does not accept dataset evaluation options")
+                return await evaluate_retrieval(retrieval=retrieval, target=target, metrics=metrics)
+            if dataset is None:
+                raise ValueError("one of dataset or retrieval is required")
+
             params = resolve_params(config, target)
             normalized_preprocess_hooks = tuple(preprocess_hooks) if preprocess_hooks is not None else None
             normalized_postprocess_hooks = tuple(postprocess_hooks) if postprocess_hooks is not None else None

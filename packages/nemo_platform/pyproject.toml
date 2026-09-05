@@ -739,6 +739,7 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "data-designer.retrieval-generate" = "nemo_data_designer_plugin.jobs.retrieval_generate:RetrievalGenerateJob"
 "data-designer.retrieval-prepare" = "nemo_data_designer_plugin.jobs.retrieval_prepare:RetrievalPrepareJob"
 "data-designer.retrieval-run" = "nemo_data_designer_plugin.jobs.retrieval_run:RetrievalRunJob"
+"evaluator.retrieve-eval" = "nemo_evaluator.jobs.retrieve_eval:RetrieveEvalJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.optimization.backends"]

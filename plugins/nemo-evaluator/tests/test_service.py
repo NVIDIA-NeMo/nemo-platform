@@ -17,7 +17,9 @@ def _route_paths(app: FastAPI) -> set[str]:
     while queue:
         route = queue.pop()
         if hasattr(route, "path"):
-            paths.add(route.path)
+            path = route.path
+            if isinstance(path, str):
+                paths.add(path)
         fn = getattr(route, "effective_candidates", None)
         if callable(fn):
             queue.extend(fn())  # type: ignore[arg-type]
@@ -37,7 +39,7 @@ def test_service_health_route_mounts_with_valid_prefix() -> None:
         "plugin": "evaluator",
         "status": "ok",
         "mode": "sdk-backed-job-scaffold",
-        "jobs": ["evaluator.evaluate", "evaluator.agent-evaluate"],
+        "jobs": ["evaluator.evaluate", "evaluator.agent-evaluate", "evaluator.retrieve-eval"],
     }
 
 
@@ -50,3 +52,12 @@ def test_service_mounts_evaluator_job_collection_at_sdk_route() -> None:
     route_paths = _route_paths(app)
 
     assert "/v2/workspaces/{workspace}/evaluate/jobs" in route_paths
+
+
+def test_service_mounts_retrieve_eval_job_collection_at_sdk_route() -> None:
+    app = FastAPI()
+    service = EvaluatorPluginService()
+    for spec in service.get_routers():
+        app.include_router(spec.router, prefix=spec.prefix)
+
+    assert "/v2/workspaces/{workspace}/retrieve-eval/jobs" in _route_paths(app)

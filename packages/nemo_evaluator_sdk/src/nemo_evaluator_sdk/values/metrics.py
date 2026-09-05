@@ -167,6 +167,74 @@ class F1(MetricBase):
         return _input_schema_from_templates(templates)
 
 
+class RetrievalNDCG(MetricBase):
+    """Normalized discounted cumulative gain over BEIR retrieval results."""
+
+    type: Literal[MetricType.RETRIEVAL_NDCG] = MetricType.RETRIEVAL_NDCG
+    k: list[int] = Field(default=[1, 5, 10, 100], min_length=1)
+
+    @model_validator(mode="after")
+    def validate_k(self) -> Self:
+        """Require unique, positive retrieval cutoffs."""
+        if any(cutoff < 1 for cutoff in self.k):
+            raise ValueError("retrieval cutoffs must be positive")
+        if len(set(self.k)) != len(self.k):
+            raise ValueError("retrieval cutoffs must be unique")
+        self.k.sort()
+        return self
+
+
+class RetrievalRecall(MetricBase):
+    """Recall over BEIR retrieval results."""
+
+    type: Literal[MetricType.RETRIEVAL_RECALL] = MetricType.RETRIEVAL_RECALL
+    k: list[int] = Field(default=[1, 5, 10, 100], min_length=1)
+
+    @model_validator(mode="after")
+    def validate_k(self) -> Self:
+        """Require unique, positive retrieval cutoffs."""
+        if any(cutoff < 1 for cutoff in self.k):
+            raise ValueError("retrieval cutoffs must be positive")
+        if len(set(self.k)) != len(self.k):
+            raise ValueError("retrieval cutoffs must be unique")
+        self.k.sort()
+        return self
+
+
+class RetrievalPrecision(MetricBase):
+    """Precision over BEIR retrieval results."""
+
+    type: Literal[MetricType.RETRIEVAL_PRECISION] = MetricType.RETRIEVAL_PRECISION
+    k: list[int] = Field(default=[1, 5, 10, 100], min_length=1)
+
+    @model_validator(mode="after")
+    def validate_k(self) -> Self:
+        """Require unique, positive retrieval cutoffs."""
+        if any(cutoff < 1 for cutoff in self.k):
+            raise ValueError("retrieval cutoffs must be positive")
+        if len(set(self.k)) != len(self.k):
+            raise ValueError("retrieval cutoffs must be unique")
+        self.k.sort()
+        return self
+
+
+class RetrievalMAP(MetricBase):
+    """Mean average precision over BEIR retrieval results."""
+
+    type: Literal[MetricType.RETRIEVAL_MAP] = MetricType.RETRIEVAL_MAP
+    k: list[int] = Field(default=[1, 5, 10, 100], min_length=1)
+
+    @model_validator(mode="after")
+    def validate_k(self) -> Self:
+        """Require unique, positive retrieval cutoffs."""
+        if any(cutoff < 1 for cutoff in self.k):
+            raise ValueError("retrieval cutoffs must be positive")
+        if len(set(self.k)) != len(self.k):
+            raise ValueError("retrieval cutoffs must be unique")
+        self.k.sort()
+        return self
+
+
 class LLMJudge(MetricBase):
     """LLM-as-a-Judge metric configuration."""
 

@@ -410,7 +410,11 @@ def test_cli_info_reports_registered_evaluator_job_keys() -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["jobs"] == ["evaluator.evaluate", "evaluator.agent-evaluate"]
+    assert payload["jobs"] == [
+        "evaluator.evaluate",
+        "evaluator.agent-evaluate",
+        "evaluator.retrieve-eval",
+    ]
 
 
 def test_cli_metric_types_reports_sdk_metric_union_types() -> None:

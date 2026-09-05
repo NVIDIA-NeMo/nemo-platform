@@ -16,6 +16,7 @@ from nemo_evaluator.authz import scope
 from nemo_evaluator.core import say_hello
 from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
 from nemo_evaluator.jobs.evaluate import EvaluateJob
+from nemo_evaluator.jobs.retrieve_eval import RetrieveEvalJob
 from nemo_evaluator.schema import HelloResponse
 from nemo_platform_plugin.authz import CallerKind, PermissionSet, path_rule, perm
 from nemo_platform_plugin.jobs.routes import add_job_routes
@@ -27,6 +28,11 @@ from nemo_platform_plugin.service import NemoService, RouterSpec
 #: endpoint 500 when it renders the other type's spec. ``EvaluateJob`` keeps the derived default so its
 #: existing records still match its list.
 AGENT_EVAL_JOB_SOURCE = "nemo-evaluator.agent-evaluate"
+
+#: The ``source`` tag for retrieve-eval job records. Same rationale as
+#: :data:`AGENT_EVAL_JOB_SOURCE`: BEIR retrieval specs share none of the row evaluate shape, so a
+#: distinct source keeps each collection's list endpoint from rendering the other type's spec.
+RETRIEVE_EVAL_JOB_SOURCE = "nemo-evaluator.retrieve-eval"
 
 
 class EvaluatorPerms(PermissionSet, namespace="evaluator"):
@@ -53,6 +59,11 @@ class EvaluatorPluginService(NemoService):
         # collection's list endpoint doesn't return (and 500 rendering) row EvaluateJob specs, and
         # vice versa. EvaluateJob keeps its derived ``nemo-evaluator`` source. See AGENT_EVAL_JOB_SOURCE.
         agent_jobs_router = add_job_routes(AgentEvalJob, service_name=AGENT_EVAL_JOB_SOURCE, authz=scope)
+        retrieve_jobs_router = add_job_routes(
+            RetrieveEvalJob,
+            service_name=RETRIEVE_EVAL_JOB_SOURCE,
+            authz=scope,
+        )
 
         @router.get("/healthz")
         @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[])
@@ -61,7 +72,7 @@ class EvaluatorPluginService(NemoService):
                 "plugin": self.name,
                 "status": "ok",
                 "mode": "sdk-backed-job-scaffold",
-                "jobs": ["evaluator.evaluate", "evaluator.agent-evaluate"],
+                "jobs": ["evaluator.evaluate", "evaluator.agent-evaluate", "evaluator.retrieve-eval"],
             }
 
         return [
@@ -90,6 +101,13 @@ class EvaluatorPluginService(NemoService):
                 router=agent_jobs_router,
                 tag="Evaluator Plugin Agent Eval Jobs Routes",
                 description="Evaluator plugin agent-evaluation job routes.",
+                prefix="/v2/workspaces/{workspace}",
+            ),
+            RouterSpec(
+                # POST /apis/evaluator/v2/workspaces/{workspace}/retrieve-eval/jobs.
+                router=retrieve_jobs_router,
+                tag="Evaluator Plugin Retrieve Eval Jobs Routes",
+                description="Evaluator plugin BEIR retrieval evaluation job routes.",
                 prefix="/v2/workspaces/{workspace}",
             ),
             RouterSpec(

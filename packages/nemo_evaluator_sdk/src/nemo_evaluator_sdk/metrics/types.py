@@ -30,6 +30,12 @@ from nemo_evaluator_sdk.metrics.ragas.metrics import (
     TopicAdherenceMetric,
 )
 from nemo_evaluator_sdk.metrics.remote import NemoAgentToolkitRemoteMetric, RemoteMetric
+from nemo_evaluator_sdk.metrics.retrieval import (
+    RetrievalMAPMetric,
+    RetrievalNDCGMetric,
+    RetrievalPrecisionMetric,
+    RetrievalRecallMetric,
+)
 from nemo_evaluator_sdk.metrics.rouge import ROUGEMetric
 from nemo_evaluator_sdk.metrics.runner_rewards import GymRewardMetric, HarborRewardMetric
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
@@ -45,6 +51,10 @@ MetricVariants: TypeAlias = (
     | NumberCheckMetric
     | RemoteMetric
     | NemoAgentToolkitRemoteMetric
+    | RetrievalNDCGMetric
+    | RetrievalRecallMetric
+    | RetrievalPrecisionMetric
+    | RetrievalMAPMetric
     | ROUGEMetric
     | StringCheckMetric
     | ToolCallingMetric
