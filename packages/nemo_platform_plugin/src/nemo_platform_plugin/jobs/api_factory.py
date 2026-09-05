@@ -1142,6 +1142,7 @@ def job_route_factory(
             sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
             limit: int | None = Query(default=None),
             page_cursor: str | None = Query(default=None),
+            tail: int | None = Query(default=None, gt=0, le=10_000),
         ) -> PlatformJobLogPage:
             f"""Get the logs of a job by name for the {service_name} microservice."""
 
@@ -1150,6 +1151,8 @@ def job_route_factory(
                 logs_query["limit"] = limit
             if page_cursor is not None:
                 logs_query["page_cursor"] = page_cursor
+            if tail is not None:
+                logs_query["tail"] = tail
             logs_page = (
                 await client_from_platform(sdk, AsyncJobsClient).list_job_logs(
                     workspace=workspace, name=name, query_params=logs_query

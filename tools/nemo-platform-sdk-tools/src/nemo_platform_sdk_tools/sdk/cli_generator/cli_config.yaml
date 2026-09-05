@@ -172,6 +172,8 @@ config:
   additional_methods:
     watch:
       override: jobs/watch.py
+    tail:
+      override: jobs/tail.py
   methods:
     create:
       wait:

@@ -12,7 +12,7 @@ from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.entities.client import (
     EntityClient,
 )
-from nmp.common.jobs.schemas import PlatformJobLogPage
+from nmp.common.jobs.schemas import InvalidPageCursorError, PlatformJobLogPage
 from nmp.common.service.dependencies import get_entity_client, get_sdk_client
 from nmp.core.files.api.endpoint_helpers import (
     get_fileset,
@@ -37,6 +37,9 @@ from starlette.status import (
 
 logger = logging.getLogger(__name__)
 
+MAX_LOG_QUERY_LINES = 10_000
+DEFAULT_LOG_QUERY_LIMIT = 100
+
 
 class LogQueryRequest(BaseModel):
     """Request body for querying logs from a fileset."""
@@ -45,20 +48,44 @@ class LogQueryRequest(BaseModel):
         default_factory=dict,
         description="Key-value filters to apply to the query",
     )
-    limit: int = Field(
-        default=100,
+    limit: int | None = Field(
+        default=None,
         gt=0,
-        le=1000,
+        le=MAX_LOG_QUERY_LINES,
         description="Maximum number of results to return",
+        json_schema_extra={"default": DEFAULT_LOG_QUERY_LIMIT},
     )
     page_cursor: str | None = Field(
         default=None,
         description="Cursor for pagination",
     )
+    tail: int | None = Field(
+        default=None,
+        gt=0,
+        le=MAX_LOG_QUERY_LINES,
+        description="Number of newest log lines to return",
+    )
     artifact_base_path: str | None = Field(
         default=None,
         description="Folder inside the fileset the logs were nested under (must match the value used on write)",
     )
+
+
+def _validate_log_query_request(request: LogQueryRequest) -> int:
+    if request.tail is not None:
+        if request.limit is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="tail cannot be combined with limit; tail controls the returned log window size.",
+            )
+        if request.page_cursor is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="tail cannot be combined with page_cursor; pass the returned prev_page as page_cursor without tail.",
+            )
+        return request.tail
+
+    return request.limit if request.limit is not None else DEFAULT_LOG_QUERY_LIMIT
 
 
 router = APIRouter()
@@ -92,15 +119,20 @@ async def query_otlp_logs(
     fileset = await get_fileset(workspace, name, entity_store)
     secrets = await resolve_storage_secrets_for_user(fileset.storage, workspace, sdk, auth_client)
     storage = storage_impl_factory(fileset.storage, secrets)
+    effective_limit = _validate_log_query_request(request)
 
     try:
         return await log_storage.query_logs(
             storage=storage,
             filters=request.filters,
-            page_size=request.limit,
+            page_size=effective_limit,
             page_cursor=request.page_cursor,
+            tail=request.tail,
             artifact_base_path=request.artifact_base_path,
         )
+    except InvalidPageCursorError as e:
+        logger.error(f"Invalid page cursor: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
     except InvalidFilterError as e:
         logger.error(f"Invalid filter: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Invalid filter: {str(e)}")

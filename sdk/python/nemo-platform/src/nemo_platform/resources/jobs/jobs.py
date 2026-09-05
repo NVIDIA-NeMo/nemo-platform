@@ -353,6 +353,7 @@ class JobsResource(SyncAPIResource):
         limit: int | Omit = omit,
         page_cursor: str | Omit = omit,
         step_id: str | Omit = omit,
+        tail: int | Omit = omit,
         task_id: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -372,6 +373,8 @@ class JobsResource(SyncAPIResource):
           page_cursor: Page cursor
 
           step_id: Filter logs by step name
+
+          tail: Number of newest log lines to return
 
           task_id: Filter logs by task ID
 
@@ -403,6 +406,7 @@ class JobsResource(SyncAPIResource):
                         "limit": limit,
                         "page_cursor": page_cursor,
                         "step_id": step_id,
+                        "tail": tail,
                         "task_id": task_id,
                     },
                     job_get_logs_params.JobGetLogsParams,
@@ -872,6 +876,7 @@ class AsyncJobsResource(AsyncAPIResource):
         limit: int | Omit = omit,
         page_cursor: str | Omit = omit,
         step_id: str | Omit = omit,
+        tail: int | Omit = omit,
         task_id: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -891,6 +896,8 @@ class AsyncJobsResource(AsyncAPIResource):
           page_cursor: Page cursor
 
           step_id: Filter logs by step name
+
+          tail: Number of newest log lines to return
 
           task_id: Filter logs by task ID
 
@@ -922,6 +929,7 @@ class AsyncJobsResource(AsyncAPIResource):
                         "limit": limit,
                         "page_cursor": page_cursor,
                         "step_id": step_id,
+                        "tail": tail,
                         "task_id": task_id,
                     },
                     job_get_logs_params.JobGetLogsParams,

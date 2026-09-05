@@ -5830,20 +5830,31 @@ paths:
         in: query
         required: false
         schema:
-          type: integer
-          exclusiveMinimum: 0
           description: Maximum number of logs to return
-          default: 100
           title: Limit
+          default: 100
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
         description: Maximum number of logs to return
       - name: page_cursor
         in: query
         required: false
         schema:
-          type: string
           description: Page cursor
           title: Page Cursor
+          type: string
         description: Page cursor
+      - name: tail
+        in: query
+        required: false
+        schema:
+          description: Number of newest log lines to return
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
+        description: Number of newest log lines to return
       - name: attempt_id
         in: query
         required: false
@@ -14653,16 +14664,22 @@ components:
           title: Filters
           description: Key-value filters to apply to the query
         limit:
-          type: integer
-          maximum: 1000.0
-          exclusiveMinimum: 0.0
           title: Limit
           description: Maximum number of results to return
           default: 100
+          type: integer
+          maximum: 10000.0
+          exclusiveMinimum: 0.0
         page_cursor:
           title: Page Cursor
           description: Cursor for pagination
           type: string
+        tail:
+          title: Tail
+          description: Number of newest log lines to return
+          type: integer
+          maximum: 10000.0
+          exclusiveMinimum: 0.0
         artifact_base_path:
           title: Artifact Base Path
           description: Folder inside the fileset the logs were nested under (must

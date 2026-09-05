@@ -473,3 +473,71 @@ def test_anyof_null_collapse_hoists_optional_union():
         ],
         "title": "Replace",
     }
+
+
+def test_tweak_spec_promotes_schema_default_extension():
+    spec = {
+        "components": {
+            "schemas": {
+                "LogQueryRequest": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "integer",
+                            "x-schema-default": 100,
+                        }
+                    },
+                }
+            }
+        },
+        "paths": {
+            "/logs": {
+                "get": {
+                    "parameters": [
+                        {
+                            "name": "limit",
+                            "in": "query",
+                            "schema": {
+                                "type": "integer",
+                                "x-schema-default": 100,
+                            },
+                        }
+                    ]
+                }
+            }
+        },
+    }
+
+    result = tweak_spec(spec)
+
+    query_schema = result["paths"]["/logs"]["get"]["parameters"][0]["schema"]
+    model_schema = result["components"]["schemas"]["LogQueryRequest"]["properties"]["limit"]
+    assert query_schema["default"] == 100
+    assert "x-schema-default" not in query_schema
+    assert model_schema["default"] == 100
+    assert "x-schema-default" not in model_schema
+
+
+def test_tweak_spec_removes_null_schema_default_extension_after_nullable_collapse():
+    spec = {
+        "components": {
+            "schemas": {
+                "SearchParams": {
+                    "type": "object",
+                    "properties": {
+                        "cursor": {
+                            "anyOf": [{"type": "string"}, {"type": "null"}],
+                            "x-schema-default": None,
+                            "title": "Cursor",
+                        }
+                    },
+                }
+            }
+        },
+        "paths": {},
+    }
+
+    result = tweak_spec(spec)
+
+    cursor_schema = result["components"]["schemas"]["SearchParams"]["properties"]["cursor"]
+    assert cursor_schema == {"type": "string", "title": "Cursor"}
