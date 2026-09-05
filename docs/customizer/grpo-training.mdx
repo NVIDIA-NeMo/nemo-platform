@@ -84,7 +84,14 @@ There are two installs at job start:
 | `wheels-v1` | The package's `wheels/`, for anything it vendors | No, **if the closure also covers step 1** |
 | `adapter-wheels-v1` | The package's `wheels/`, plus the agent harness's own requirements | Yes — see below |
 
-A `wheels-v1` job runs with no egress only when `wheels/` carries the server's full requirement closure, `nemo-gym` at exactly the training-image version, and Gym's pinned `ray[default]` and `openai` — the venv is seeded empty, so nothing carries over from the image. Completeness of `wheels/` is what makes an offline run work, not the format name. Full detail: [GRPO Environment Packages](/documentation/customizer-reference/tutorials/grpo-environment-packages#dependencies).
+A `wheels-v1` job runs with no egress only when `wheels/` carries all of:
+
+- the server's own requirement closure;
+- `nemo-gym` at exactly the training-image version;
+- `ray[default]` and `openai` at the versions the image pins, which Gym appends to every install;
+- **`pip`** — `uv venv --seed` installs it into each new virtualenv *before* any dependency install, resolving it like any other package.
+
+The virtualenv is created empty, so nothing carries over from the image. Completeness of `wheels/` is what makes an offline run work, not the format name. Full detail: [GRPO Environment Packages](/documentation/customizer-reference/tutorials/grpo-environment-packages#dependencies).
 
 <Warning>
 `adapter-wheels-v1` requires network access when the job starts. The package `wheels/` directory covers the hub environment; `verifiers_agent` also installs `verifiers` from GitHub.
@@ -105,7 +112,7 @@ ARCH=x86_64        # amd64 nodes
 The interpreter is **Python 3.13** on every architecture. A closure resolved for the wrong architecture passes `--validate-only`, which checks layout rather than wheel tags, and then fails on the cluster with `has no wheels with a matching platform tag`.
 
 ```bash
-pip download <requirements> --dest my-env/wheels \
+pip download <requirements> pip --dest my-env/wheels \
   --only-binary=:all: \
   --python-version 3.13 \
   --platform "manylinux_2_39_$ARCH" \
