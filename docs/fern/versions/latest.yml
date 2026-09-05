@@ -493,6 +493,8 @@ navigation:
                 path: ../../auth/deployment/credential-propagation.mdx
               - page: Gateway Integration
                 path: ../../auth/deployment/gateway.mdx
+              - page: Scoped Intake Tokens
+                path: ../../auth/deployment/scoped-intake-tokens.mdx
               - page: Production Hardening
                 path: ../../auth/deployment/hardening.mdx
           - page: Security Model
