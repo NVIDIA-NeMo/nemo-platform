@@ -38,7 +38,7 @@ describe('AgentDetailRoute', () => {
     expect(screen.getByRole('tab', { name: 'Chat' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Details' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Configuration' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open traces' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open traces' })).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getAllByRole('button', { name: 'Run evaluation' })).toHaveLength(2);
     });
@@ -52,15 +52,6 @@ describe('AgentDetailRoute', () => {
     expect(await screen.findByText('Trace statistics')).toBeInTheDocument();
     expect(screen.getByText('Agent ID')).toBeInTheDocument();
     expect(screen.getByText('Created')).toBeInTheDocument();
-  });
-
-  it('navigates to intake traces when Open traces is clicked', async () => {
-    const user = userEvent.setup();
-    renderDetail();
-
-    await user.click(await screen.findByRole('button', { name: 'Open traces' }));
-
-    expect(await screen.findByText('intake-traces-page')).toBeInTheDocument();
   });
 
   it('switches to the chat tab', async () => {

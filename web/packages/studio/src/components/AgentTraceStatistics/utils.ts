@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { formatNumericValue } from '@nemo/common/src/components/charts/format';
 import type { TraceMetricBucketParam } from '@nemo/sdk/generated/platform/schema';
 import type {
   TraceStatisticsBucket,
@@ -75,6 +76,11 @@ export const formatTokens = (value: number): string =>
 
 export const formatLatencyMs = (value: number): string =>
   `${value.toLocaleString(undefined, { maximumFractionDigits: value < 10 ? 1 : 0 })} ms`;
+
+export const formatTokensCompact = (value: number): string => formatNumericValue(Math.round(value));
+
+export const formatLatencyMsCompact = (value: number): string =>
+  Math.abs(value) >= 1000 ? `${formatNumericValue(value)} ms` : formatLatencyMs(value);
 
 /** Buckets are aligned to the browser's timezone, so the tick reads in local time too. */
 export const formatBucketTick = (timestamp: number, range: TraceStatisticsRange): string => {

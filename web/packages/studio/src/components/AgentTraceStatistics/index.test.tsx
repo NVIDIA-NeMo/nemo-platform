@@ -47,8 +47,9 @@ describe('AgentTraceStatistics', () => {
 
     expect(screen.getByText('Trace statistics')).toBeInTheDocument();
     expect(screen.getByText('Total traces')).toBeInTheDocument();
-    expect(screen.getByText('1,500')).toBeInTheDocument();
-    expect(screen.getByText('2,500 ms')).toBeInTheDocument();
+    // Tiles compact large magnitudes: 1500 -> "1.5K", 2500 -> "2.5K".
+    expect(screen.getByText('1.5K')).toBeInTheDocument();
+    expect(screen.getByText('2.5K ms')).toBeInTheDocument();
     expect(screen.getByText('$0.03')).toBeInTheDocument();
   });
 

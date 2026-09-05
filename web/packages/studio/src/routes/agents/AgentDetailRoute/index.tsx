@@ -18,7 +18,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
-import { AGENT_OVERVIEW_ENABLED, INTAKE_ENABLED } from '@studio/constants/environment';
+import { AGENT_OVERVIEW_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -36,10 +36,10 @@ import {
   clearAgentWalkthroughPending,
   isAgentWalkthroughPending,
 } from '@studio/routes/agents/AgentDetailRoute/walkthroughStorage';
-import { getAgentsListRoute, getIntakeTracesRoute } from '@studio/routes/utils';
-import { ClipboardCheck, Dot, ListTree, Rocket } from 'lucide-react';
+import { getAgentsListRoute } from '@studio/routes/utils';
+import { ClipboardCheck, Dot, Rocket } from 'lucide-react';
 import { type FC, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 
 const TAB_SEARCH_PARAM = 'tab';
 const DETAIL_TABS = ['overview', 'deployments', 'logs', 'chat', 'evaluations', 'details'] as const;
@@ -54,7 +54,6 @@ const isAgentDetailTab = (value: string | null): value is AgentDetailTab =>
 
 export const AgentDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
-  const navigate = useNavigate();
   const { [ROUTE_PARAMS.agentName]: agentName } = useParams<{ agentName: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedDeploymentName, setSelectedDeploymentName] = useState<string | undefined>();
@@ -172,12 +171,6 @@ export const AgentDetailRoute: FC = () => {
           }
           slotActions={
             <Flex gap="2" wrap="wrap" justify="end">
-              {INTAKE_ENABLED && (
-                <Button kind="secondary" onClick={() => navigate(getIntakeTracesRoute(workspace))}>
-                  <ListTree className="size-4" aria-hidden />
-                  Open traces
-                </Button>
-              )}
               <Button
                 kind="secondary"
                 onClick={() => setSubmitEvalOpen(true)}

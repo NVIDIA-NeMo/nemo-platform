@@ -77,7 +77,7 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
   const [directoryName, setDirectoryName] = useState('');
   const [selectionError, setSelectionError] = useState<string | undefined>(undefined);
   const [replaceArmedFor, setReplaceArmedFor] = useState<string | null>(null);
-  const [tab, setTab] = useState<NewAgentTab>('coding-agent-prompt');
+  const [tab, setTab] = useState<NewAgentTab>('integrate-agent');
 
   const {
     mutateAsync: createAgent,
@@ -127,7 +127,7 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
     setDirectoryName('');
     setSelectionError(undefined);
     setReplaceArmedFor(null);
-    setTab('coding-agent-prompt');
+    setTab('integrate-agent');
     onClose();
   };
 
@@ -250,8 +250,8 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
       open={open}
       onClose={resetAndClose}
       className="w-[720px] max-w-[90vw]"
-      title="Instrument an agent with NeMo Platform"
-      instruction="Integrated agents allow users to evaluate, optimize, and deploy agents."
+      title="Register an Agent"
+      instruction="Register an agent with NeMo Platform to observe, evaluate, and optimize its performance."
       submitButtonText={replaceOrphan ? 'Replace and create' : 'Create'}
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
@@ -267,12 +267,12 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
       }
     >
       <TabsRoot value={tab} onValueChange={(value) => setTab(value as NewAgentTab)}>
-        <TabsList aria-label="Ways to instrument an agent">
-          <TabsTrigger value="coding-agent-prompt">Coding agent prompt</TabsTrigger>
+        <TabsList aria-label="Ways to register an agent">
+          <TabsTrigger value="integrate-agent">Integrate agent</TabsTrigger>
           <TabsTrigger value="upload">Upload agent</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="coding-agent-prompt" className="items-stretch p-0 pt-density-lg">
+        <TabsContent value="integrate-agent" className="items-stretch p-0 pt-density-lg">
           <CodingAgentPromptEditor
             prompt={agentIntegrationPrompt({ workspace, baseUrl: PLATFORM_BASE_URL })}
           />
@@ -280,6 +280,11 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
 
         <TabsContent value="upload" className="items-stretch p-0 pt-density-lg">
           <Stack gap="density-md">
+            <ControlledTextInput
+              useControllerProps={{ control, name: 'name' }}
+              label="Name"
+              formFieldProps={{ slotError: errors.name?.message }}
+            />
             <Text kind="label/semibold/md">Select agent config files</Text>
             <UploadRoot multiple disabled={isPending}>
               <UploadTrigger
@@ -298,11 +303,6 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
               </UploadTrigger>
             </UploadRoot>
             {entriesSummary ? <Text kind="body/regular/sm">{entriesSummary}</Text> : null}
-            <ControlledTextInput
-              useControllerProps={{ control, name: 'name' }}
-              label="Name"
-              formFieldProps={{ slotError: errors.name?.message }}
-            />
           </Stack>
         </TabsContent>
       </TabsRoot>
