@@ -204,7 +204,7 @@ def _read_manifest(environment_path: str | None) -> dict:
 
 def _environment_is_offline(environment_path: str | None) -> bool:
     """Whether the package promises a self-sufficient wheelhouse."""
-    
+
     return _read_manifest(environment_path).get("format") in OFFLINE_ENVIRONMENT_FORMATS
 
 
@@ -279,15 +279,18 @@ def _build_nemo_gym_env_config(
     # FileNotFoundError on e.g. /opt/nemo-rl/configs/<agent>.yaml. So anchor them to wherever
     # the package is actually visible to the process that loads them: the sandbox mount in
     # mode B, the job-storage copy in mode A. Absolute entries are passed through untouched.
-    package_root = SANDBOX_ENVIRONMENT_PATH if sandboxed else (gym.environment_path or DEFAULT_ENVIRONMENT_PATH)
+    # Where the manifest is readable from THIS process, which is the job-storage copy in
+    # both modes. Distinct from package_root below, which is where the servers will see it.
+    manifest_root = gym.environment_path or DEFAULT_ENVIRONMENT_PATH
+    package_root = SANDBOX_ENVIRONMENT_PATH if sandboxed else manifest_root
     config_paths = [
         path if Path(path).is_absolute() else str(Path(package_root) / path)
-        for path in _read_manifest_config_paths(gym.environment_path)
+        for path in _read_manifest_config_paths(manifest_root)
     ]
     if config_paths:
         nemo_gym["config_paths"] = config_paths
 
-    offline_environment = _environment_is_offline(gym.environment_path)
+    offline_environment = _environment_is_offline(manifest_root)
     if offline_environment:
         nemo_gym["environment_offline"] = True
 

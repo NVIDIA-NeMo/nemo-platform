@@ -228,7 +228,8 @@ def _build_pure_wheel(requirement: str, wheels: Path) -> None:
 
 def _download_with_sdist_fallback(download_cmd: list[str], wheels: Path, max_builds: int = 8) -> None:
     """Run pip download, building any pin that publishes no wheel, then retrying."""
-    for _ in range(max_builds + 1):
+    builds = 0
+    while True:
         result = subprocess.run(download_cmd, stderr=subprocess.PIPE, text=True)
         if result.returncode == 0:
             return
@@ -236,8 +237,10 @@ def _download_with_sdist_fallback(download_cmd: list[str], wheels: Path, max_bui
         match = _NO_WHEEL_RE.search(result.stderr)
         if not match:
             raise SystemExit("pip download failed; see the error above.")
+        if builds >= max_builds:
+            raise SystemExit(f"still missing wheels after building {max_builds} package(s).")
         _build_pure_wheel(match.group(1), wheels)
-    raise SystemExit(f"still missing wheels after building {max_builds} package(s).")
+        builds += 1
 
 
 def vendor_wheels(
@@ -329,6 +332,11 @@ def vendor_wheels(
             str(wheels),
             "--python-version",
             TARGET_PYTHON_VERSION,
+            # pip defaults this to the build host's interpreter; the target is CPython
+            # regardless of what runs this script. The ABI set is left to pip, which
+            # derives it from the implementation and version.
+            "--implementation",
+            "cp",
         ]
         for tag in (
             f"manylinux_2_39_{arch}",
