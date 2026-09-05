@@ -114,6 +114,10 @@ const TIMEZONE_REGEX = /(Z|[+-]\d{2}:?\d{2})$/;
 /**
  * Check if a model was created within the deployment grace period.
  * Models need time after creation for the backend to deploy them and populate the artifact.
+ *
+ * Only meaningful for models that are waiting on a deployment. A model that already
+ * carries an `api_endpoint.url` has no artifact pending, so callers exempt it — see
+ * {@link getModelEntityChatStatus}.
  */
 const isWithinDeploymentGracePeriod = (model: ModelEntity) => {
   if (!model.created_at) {
@@ -158,7 +162,8 @@ export type GetModelEntityChatStatusOptions = {
  *
  * Order of evaluation:
  * 1. `deploymentLoading` → `'pending'`
- * 2. Creation grace period → `'pending'`
+ * 2. Creation grace period → `'pending'`, **unless** the entity already has an
+ *    `api_endpoint.url` (endpoint-backed models have nothing to deploy).
  * 3. Entities with `base_model` or an **adapter** row need a READY deployment; `api_endpoint` alone is not enough.
  * 4. Standalone entities: `api_endpoint.url`, READY deployment, or (if deployment unknown) optimistic `'enabled'`.
  */
@@ -168,11 +173,17 @@ export function getModelEntityChatStatus(
 ): ModelChatStatus {
   const { adapter, deploymentLoading, deploymentStatus } = options ?? {};
 
-  if (deploymentLoading || isWithinDeploymentGracePeriod(model)) {
+  const hasApiEndpoint = Boolean(model.api_endpoint?.url);
+
+  // The grace period covers the gap between an entity being created and the backend
+  // populating its deployment artifact. A model autodiscovered from an external
+  // provider (build.nvidia.com, any OpenAI-compatible host) has its api_endpoint set
+  // at creation and is serveable immediately, so applying the timer there reports a
+  // deployment that does not exist and never will.
+  if (deploymentLoading || (!hasApiEndpoint && isWithinDeploymentGracePeriod(model))) {
     return 'pending';
   }
 
-  const hasApiEndpoint = Boolean(model.api_endpoint?.url);
   const needsReadyDeployment = Boolean(adapter) || Boolean(model.base_model);
 
   if (needsReadyDeployment) {

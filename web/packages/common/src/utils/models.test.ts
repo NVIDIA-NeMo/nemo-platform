@@ -93,6 +93,39 @@ describe('getModelEntityChatStatus', () => {
     expect(getModelEntityChatStatus(model)).toBe('pending');
   });
 
+  it('skips the grace period for a freshly created model that already has an api_endpoint', () => {
+    // Autodiscovered from an external provider (e.g. build.nvidia.com): the endpoint is
+    // live the moment the entity exists, so there is no deployment to wait for.
+    vi.setSystemTime(new Date('2025-01-07T12:00:00Z').getTime());
+
+    const model = createModel({
+      created_at: '2025-01-07T11:57:00Z', // 3 minutes ago
+      api_endpoint: { url: 'https://integrate.api.nvidia.com/v1/chat/completions' },
+    });
+
+    expect(getModelEntityChatStatus(model)).toBe('enabled');
+  });
+
+  it('still applies the grace period to a fresh model with no api_endpoint', () => {
+    // Deployment-backed: the artifact genuinely is still being populated.
+    vi.setSystemTime(new Date('2025-01-07T12:00:00Z').getTime());
+
+    const model = createModel({ created_at: '2025-01-07T11:57:00Z' });
+
+    expect(getModelEntityChatStatus(model, { deploymentStatus: null })).toBe('pending');
+  });
+
+  it('still reports pending while the deployment chain is loading, endpoint or not', () => {
+    vi.setSystemTime(new Date('2025-01-07T12:00:00Z').getTime());
+
+    const model = createModel({
+      created_at: '2025-01-07T11:57:00Z',
+      api_endpoint: { url: 'https://integrate.api.nvidia.com/v1/chat/completions' },
+    });
+
+    expect(getModelEntityChatStatus(model, { deploymentLoading: true })).toBe('pending');
+  });
+
   it('returns enabled when model created more than 5 minutes ago', () => {
     const now = new Date('2025-01-07T12:00:00Z').getTime();
     vi.setSystemTime(now);
