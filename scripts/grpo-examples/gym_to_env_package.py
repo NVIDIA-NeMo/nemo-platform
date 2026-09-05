@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -201,6 +202,44 @@ def build_fork_wheel(gym_root: Path, wheels: Path, expect_version: str | None) -
     return target
 
 
+_NO_WHEEL_RE = re.compile(r"No matching distribution found for (\S+)")
+
+
+def _build_pure_wheel(requirement: str, wheels: Path) -> None:
+    """Build a wheel for a pin that publishes none, e.g. antlr4-python3-runtime.
+
+    Only pure-Python projects are safe to build here: the build host is not the target, so
+    anything compiling an extension would produce a wheel for the wrong platform.
+    """
+    before = set(wheels.glob("*.whl"))
+    subprocess.run(
+        [sys.executable, "-m", "pip", "wheel", "--no-deps", "--no-cache-dir", "--wheel-dir", str(wheels), requirement],
+        check=True,
+    )
+    for built in set(wheels.glob("*.whl")) - before:
+        if not built.stem.endswith("-py3-none-any") and not built.stem.endswith("-py2.py3-none-any"):
+            built.unlink()
+            raise SystemExit(
+                f"{requirement} has no wheel on the index and does not build a pure-Python one "
+                f"({built.name}). Building it here would target the build host, not the cluster."
+            )
+        print(f"Built from sdist: {built.name}", flush=True)
+
+
+def _download_with_sdist_fallback(download_cmd: list[str], wheels: Path, max_builds: int = 8) -> None:
+    """Run pip download, building any pin that publishes no wheel, then retrying."""
+    for _ in range(max_builds + 1):
+        result = subprocess.run(download_cmd, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            return
+        sys.stderr.write(result.stderr)
+        match = _NO_WHEEL_RE.search(result.stderr)
+        if not match:
+            raise SystemExit("pip download failed; see the error above.")
+        _build_pure_wheel(match.group(1), wheels)
+    raise SystemExit(f"still missing wheels after building {max_builds} package(s).")
+
+
 def vendor_wheels(
     out_dir: Path,
     gym_root: Path,
@@ -267,11 +306,6 @@ def vendor_wheels(
             "--no-header",
             # Ignore the ambient project's [tool.uv] policy, which would repin the closure.
             "--no-config",
-            # Resolve to wheels only, matching the download below. uv would otherwise pick a
-            # version shipping only an sdist (antlr4-python3-runtime 4.9.3), which
-            # `pip download --only-binary` cannot fetch.
-            "--only-binary",
-            ":all:",
             "--python-platform",
             f"{arch}-unknown-linux-gnu",
             "--python-version",
@@ -290,6 +324,9 @@ def vendor_wheels(
             "--no-cache-dir",
             "--only-binary",
             ":all:",
+            # Pick up anything built from an sdist below.
+            "--find-links",
+            str(wheels),
             "--python-version",
             TARGET_PYTHON_VERSION,
         ]
@@ -302,7 +339,7 @@ def vendor_wheels(
             download_cmd += ["--platform", tag]
         download_cmd += ["-r", str(pinned)]
         print("Running:", " ".join(download_cmd), flush=True)
-        subprocess.run(download_cmd, check=True)
+        _download_with_sdist_fallback(download_cmd, wheels)
 
     stray = [f.name for f in wheels.iterdir() if f.is_file() and f.suffix != ".whl"]
     if stray:
