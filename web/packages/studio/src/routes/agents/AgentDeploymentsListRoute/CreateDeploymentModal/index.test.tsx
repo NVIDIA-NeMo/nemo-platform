@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+vi.hoisted(() => {
+  vi.stubEnv('VITE_FF_AGENT_CONTAINER_DEPLOYMENTS_ENABLED', 'true');
+});
+
 import { getAgentsListDeploymentsQueryKey } from '@nemo/sdk/generated/agents/agent-deployments';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
@@ -22,8 +26,16 @@ interface CapturedDeployment {
   image?: string;
 }
 
-const renderModal = () =>
-  renderRoute(<CreateDeploymentModal open onClose={vi.fn()} workspace={workspace} agent={agent} />);
+const renderModal = (initialImage?: string) =>
+  renderRoute(
+    <CreateDeploymentModal
+      open
+      onClose={vi.fn()}
+      workspace={workspace}
+      agent={agent}
+      initialImage={initialImage}
+    />
+  );
 
 const captureCreate = (): { body: CapturedDeployment } => {
   const captured: { body: CapturedDeployment } = { body: {} };
@@ -73,7 +85,60 @@ describe('CreateDeploymentModal', () => {
     );
   });
 
-  it('requires an image for container deployments', async () => {
+  it('deploys a freshly packaged image without retyping it', async () => {
+    const user = userEvent.setup();
+    const captured = captureCreate();
+    renderModal('nemo-agents/default/nemo-studio-assistant:1.0');
+
+    const dialog = await getDeploymentDialog();
+    await user.click(within(dialog).getByRole('button', { name: 'Deploy' }));
+
+    await waitFor(() =>
+      expect(captured.body).toEqual({
+        agent,
+        deployment_mode: 'docker',
+        image: 'nemo-agents/default/nemo-studio-assistant:1.0',
+      })
+    );
+  });
+
+  it('keeps container options out of the way until asked for', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    const dialog = await getDeploymentDialog();
+
+    // The accordion hides its content rather than unmounting it, so this is about
+    // what the user can see, not what React rendered.
+    expect(within(dialog).getByRole('combobox', { name: 'Runtime' })).not.toBeVisible();
+
+    await user.click(within(dialog).getByText(/Show Advanced/));
+
+    expect(within(dialog).getByRole('combobox', { name: 'Runtime' })).toBeVisible();
+  });
+
+  it('opens the disclosure when a packaged image arrives, so the tag is visible', async () => {
+    renderModal('nemo-agents/default/my-agent:1.0');
+
+    const dialog = await getDeploymentDialog();
+
+    expect(await within(dialog).findByRole('textbox', { name: 'Container Image' })).toHaveValue(
+      'nemo-agents/default/my-agent:1.0'
+    );
+  });
+
+  it("surfaces the server's refusal when no image resolves", async () => {
+    server.use(
+      http.post(deploymentsUrl, () =>
+        HttpResponse.json(
+          {
+            detail:
+              "deployment_mode 'docker' requires a container image. Set 'image' on the request, or configure 'deployments.default_image'.",
+          },
+          { status: 400 }
+        )
+      )
+    );
     const user = userEvent.setup();
     renderModal();
 
@@ -82,10 +147,20 @@ describe('CreateDeploymentModal', () => {
     await user.click(await screen.findByRole('option', { name: 'Docker' }));
     await user.click(within(dialog).getByRole('button', { name: 'Deploy' }));
 
-    expect(
-      await within(dialog).findByText(
-        'Container image is required for Docker and Kubernetes deployments'
-      )
-    ).toBeInTheDocument();
+    expect(await within(dialog).findByText(/requires a container image/)).toBeInTheDocument();
+  });
+
+  it('submits without an image so a configured default can apply', async () => {
+    const captured = captureCreate();
+    const user = userEvent.setup();
+    renderModal();
+
+    const dialog = await getDeploymentDialog();
+    await user.click(within(dialog).getByRole('combobox', { name: 'Runtime' }));
+    await user.click(await screen.findByRole('option', { name: 'Docker' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Deploy' }));
+
+    await waitFor(() => expect(captured.body.deployment_mode).toBe('docker'));
+    expect(captured.body.image).toBeUndefined();
   });
 });
