@@ -185,18 +185,33 @@ def _count_jsonl_rows(path: Path) -> int:
     return count
 
 
-def _read_manifest_config_paths(environment_path: str | None) -> list[str]:
-    """Read ``config_paths`` from the environment package manifest on job storage."""
+# Formats whose wheels/ is a complete closure, so the job can resolve without an index.
+# adapter-wheels-v1 ships wheels too, but its agent harness still installs from GitHub.
+OFFLINE_ENVIRONMENT_FORMATS = frozenset({"wheels-v1"})
+
+
+def _read_manifest(environment_path: str | None) -> dict:
+    """Load the environment package manifest from job storage, or {} when absent."""
     if not environment_path:
-        return []
+        return {}
     manifest_path = Path(environment_path) / "nemo-environment.yaml"
     if not manifest_path.is_file():
         logger.warning("No nemo-environment.yaml at %s; Gym will start with no config_paths", environment_path)
-        return []
+        return {}
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, dict) or not manifest.get("config_paths"):
-        return []
-    return list(manifest["config_paths"])
+    return manifest if isinstance(manifest, dict) else {}
+
+
+def _environment_is_offline(environment_path: str | None) -> bool:
+    """Whether the package promises a self-sufficient wheelhouse."""
+    
+    return _read_manifest(environment_path).get("format") in OFFLINE_ENVIRONMENT_FORMATS
+
+
+def _read_manifest_config_paths(environment_path: str | None) -> list[str]:
+    """Read ``config_paths`` from the environment package manifest on job storage."""
+    manifest = _read_manifest(environment_path)
+    return list(manifest["config_paths"]) if manifest.get("config_paths") else []
 
 
 def _resolve_gym_paths(
@@ -272,6 +287,10 @@ def _build_nemo_gym_env_config(
     if config_paths:
         nemo_gym["config_paths"] = config_paths
 
+    offline_environment = _environment_is_offline(gym.environment_path)
+    if offline_environment:
+        nemo_gym["environment_offline"] = True
+
     if sandboxed:
         # Fail loudly rather than substituting a default here: a wrong sandbox
         # image surfaces as an opaque client-side ReadTimeout once the sandbox pod
@@ -340,6 +359,7 @@ def _build_nemo_gym_env_config(
             sandboxed=True,
             host_provider="opensandbox",
             environment_path=gym.sandbox_environment_path or SANDBOX_ENVIRONMENT_PATH,
+            environment_offline=offline_environment,
             job_id=job_ctx.job_id,
             sandbox=sandbox,
         )
