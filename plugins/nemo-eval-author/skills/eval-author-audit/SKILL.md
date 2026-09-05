@@ -59,6 +59,82 @@ not declare as allowed tools.
 Write audit artifacts under `.eval-author/`. Do not edit the customer's source,
 existing evals, source-of-truth documents, or `ETHOS.md`.
 
+## Ethos Pre-flight
+
+Before drafting audit items, locate the Ethos file that will serve as the source
+of truth. Prefer `ETHOS.md` at the repository root when it exists. If it is
+missing, check for one existing Platform-managed Ethos at
+`agents/<name>-ethos/ETHOS.md` and use that path as `<ethos_path>`.
+
+If no Ethos file exists, stop the audit flow and ground the user first: Eval
+Author needs a source of truth for how the agent is supposed to behave before it
+can decide what `audit.md` should cover. Code shows what the agent does today;
+Ethos records intended behavior, mission, constraints, success and failure
+criteria, and what may change. Link the user to
+[ETHOS.md](https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos)
+for what Ethos is and how to create one.
+
+If the current assistant environment exposes both required Ethos creation
+skills, `nemo-explore` and `nemo-ethos`, share that Eval Author can generate the
+Ethos with them now. Ask the user whether they want you to:
+
+1. automatically generate the Ethos with `nemo-explore` followed by
+   `nemo-ethos`, then resume this audit flow with
+   `--ethos agents/<name>-ethos/ETHOS.md`; or
+2. let them create the Ethos themselves from the documentation, then rerun the
+   audit command with `--ethos <path>`.
+
+Use this user-facing message shape for that skills-present path:
+
+```text
+Missing Ethos
+
+Eval Author needs a source of truth for how the agent is supposed to behave before it can generate an audit coverage report.
+
+I could not find `ETHOS.md` at the repository root or a Platform-managed Ethos at `agents/<name>-ethos/ETHOS.md`.
+
+ETHOS.md records intended behavior, mission, constraints, success and failure criteria, and what may change.
+
+Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos
+
+`nemo-explore` and `nemo-ethos` are available here, so I can generate a real Ethos first and then resume audit coverage, or you can create/provide one yourself.
+
+How would you like to move forward?
+1. Generate the Ethos for me with `nemo-explore` and `nemo-ethos`.
+2. I'll create or provide an Ethos path myself.
+```
+
+Only offer automatic generation when both required skills are present and usable.
+If those skills are absent, unavailable, or live outside the current assistant
+environment, do not offer to generate it. Link the docs and tell the user to
+create or provide an Ethos path, then rerun the audit command with the path to
+that file.
+
+Use this user-facing message shape for that skills-unavailable path:
+
+```text
+Missing Ethos
+
+Eval Author needs a source of truth for how the agent is supposed to behave before it can generate an audit coverage report.
+
+I could not find `ETHOS.md` at the repository root or a Platform-managed Ethos at `agents/<name>-ethos/ETHOS.md`.
+
+ETHOS.md records intended behavior, mission, constraints, success and failure criteria, and what may change.
+
+Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos
+
+I do not have access to both required Ethos creation skills, `nemo-explore` and `nemo-ethos`, in this environment, so I cannot generate one automatically here.
+
+Create or provide an Ethos path, then rerun the audit flow with `--ethos <path>`.
+```
+
+Do not create a placeholder Ethos inside the audit flow, and do not substitute
+other repository material for it. Contributor docs, operations docs, README
+files, code, traces, or draft labels are not valid source-of-truth replacements
+for a missing Ethos. Do not synthesize an audit denominator from those materials,
+even if the output is marked as draft. The audit denominator depends on the
+durable agent contract that `nemo-explore` and `nemo-ethos` produce.
+
 ## Scripts
 
 Audit-spec mechanics live under `scripts/audit_spec/`:
@@ -86,7 +162,7 @@ worked example and the JSON Schema descriptions as the field definitions. Do not
 use validation as the primary way to discover the format; validation is the
 enforcement and repair step after drafting.
 
-Read `ETHOS.md` and draft audit items at the level between Ethos and runnable
+Read `<ethos_path>` and draft audit items at the level between Ethos and runnable
 tasks: canonical tools, high-level capabilities, and material failure cases. Keep
 the list finite. Do not create separate items for prompt paraphrases, fixture
 variants, or ordinary happy-path permutations.
@@ -114,13 +190,13 @@ as `expected_failure_behavior`.
 
 ## Step 2: Generate Or Reconcile Audit.md
 
-Create or update `.eval-author/audit.md` from `ETHOS.md` and the reviewed item
+Create or update `.eval-author/audit.md` from `<ethos_path>` and the reviewed item
 proposals:
 
 ```bash
 uv run --with pyyaml --with jsonschema \
   <skill_dir>/scripts/audit_spec/generate.py \
-  --ethos ETHOS.md \
+  --ethos <ethos_path> \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md
 ```
@@ -143,14 +219,14 @@ Use the explicit modes when the default is not what the user wants:
 ```bash
 uv run --with pyyaml --with jsonschema \
   <skill_dir>/scripts/audit_spec/generate.py \
-  --ethos ETHOS.md \
+  --ethos <ethos_path> \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md \
   --mode suggest
 
 uv run --with pyyaml --with jsonschema \
   <skill_dir>/scripts/audit_spec/generate.py \
-  --ethos ETHOS.md \
+  --ethos <ethos_path> \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md \
   --mode reconcile \
@@ -158,7 +234,7 @@ uv run --with pyyaml --with jsonschema \
 
 uv run --with pyyaml --with jsonschema \
   <skill_dir>/scripts/audit_spec/generate.py \
-  --ethos ETHOS.md \
+  --ethos <ethos_path> \
   --items .eval-author/audit-items.yaml \
   --out .eval-author/audit.md \
   --mode replace

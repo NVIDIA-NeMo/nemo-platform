@@ -24,6 +24,7 @@ _MARKED_BLOCK_RE = re.compile(
     rf"(?ms)^(?P<begin>[ \t]*{re.escape(BEGIN_MARKER)}[ \t]*\n).*?"
     rf"^(?P<end>[ \t]*{re.escape(END_MARKER)}[ \t]*$)"
 )
+ETHOS_DOCS_URL = "https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -119,7 +120,7 @@ def _validated_output_path(path: Path) -> Path:
 
 
 def _candidate_spec(args: argparse.Namespace, yaml: Any) -> dict[str, Any]:
-    ethos_bytes = args.ethos.read_bytes()
+    ethos_bytes = _read_ethos(args.ethos)
     ethos_text = ethos_bytes.decode("utf-8")
     agent = args.agent or _agent_name(ethos_text, args.ethos, yaml)
     return {
@@ -135,6 +136,34 @@ def _candidate_spec(args: argparse.Namespace, yaml: Any) -> dict[str, Any]:
         "status": args.status or "draft",
         "items": _load_items_file(args.items, yaml),
     }
+
+
+def _read_ethos(path: Path) -> bytes:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError as exc:
+        raise AuditSpecError(
+            "Missing Ethos\n\n"
+            "Eval Author needs a source of truth for how the agent is supposed to behave before it can "
+            "generate an audit coverage report.\n\n"
+            f"Missing file: {path}\n\n"
+            "ETHOS.md records intended behavior, mission, constraints, success and failure criteria, "
+            "and what may change.\n\n"
+            f"Docs: {ETHOS_DOCS_URL}\n\n"
+            "Next steps:\n"
+            "- Create an Ethos, then rerun this command with --ethos <path>.\n"
+            "- If NeMo Platform skills are available, run nemo-explore followed by nemo-ethos.\n"
+            "- Otherwise, author ETHOS.md by hand from the documentation."
+        ) from exc
+    except OSError as exc:
+        raise AuditSpecError(
+            "Unreadable Ethos\n\n"
+            "Eval Author needs a source of truth for how the agent is supposed to behave before it can "
+            "generate an audit coverage report.\n\n"
+            f"Unreadable file: {path}\n"
+            f"Error: {exc}\n\n"
+            f"Docs: {ETHOS_DOCS_URL}"
+        ) from exc
 
 
 def _prepare_output(
