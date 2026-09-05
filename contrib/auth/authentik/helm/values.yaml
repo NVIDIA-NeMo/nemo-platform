@@ -132,6 +132,11 @@ nemo-platform:
       controllerGroup: core
       startupProbe:
         failureThreshold: 80
+      controllers:
+        - jobs
+        - models
+        - entities
+        - deployments
       env:
         NMP_PLATFORM_URL: "https://nemo-platform-envoy.$(POD_NAMESPACE).svc.cluster.local:8080"
         NMP_AUTH_URL: "https://nemo-platform-envoy.$(POD_NAMESPACE).svc.cluster.local:8080"
@@ -145,6 +150,15 @@ nemo-platform:
     serviceGroup: core
     startupProbe:
       failureThreshold: 80
+    services:
+      - auth
+      - models
+      - files
+      - inference-gateway
+      - jobs
+      - secrets
+      - entities
+      - deployments
     env:
       NMP_AUTH_TOKEN_SIGNING__PRIVATE_KEY_FILE: "/etc/nmp/workload-token/private-key.pem"
     extraVolumes:

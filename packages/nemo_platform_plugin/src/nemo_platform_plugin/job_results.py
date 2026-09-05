@@ -30,7 +30,6 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.jobs.result_manager import result_manager_factory
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -168,6 +167,8 @@ class PlatformJobResults(JobResults):
         sdk: NeMoPlatform,
         attempt_id: str | None = None,
     ) -> None:
+        from nemo_platform_plugin.jobs.result_manager import result_manager_factory
+
         self._manager = result_manager_factory(
             job_name=job_name,
             workspace=workspace,

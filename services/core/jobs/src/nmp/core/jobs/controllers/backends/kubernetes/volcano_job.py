@@ -8,6 +8,7 @@ from typing import Any, Literal
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 from nemo_platform_plugin.jobs.types import PlatformJobStepWithContext
+from nmp.common.auth import get_workload_delegation_audience
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.core.jobs.app.constants import (
     JOB_EXECUTION_BACKEND_LABEL,
@@ -111,7 +112,7 @@ class VolcanoJobBackend(
             core_v1=self._core_v1,
             namespace=self.namespace,
             ttl_seconds_active=lambda: self._execution_profile_config.ttl_seconds_active,
-            workload_audience=self._workload_delegation_audience,
+            workload_audience=get_workload_delegation_audience,
             register_workload_delegation=self._workload_delegation_store.register,
             revoke_workload_delegation=self._workload_delegation_store.revoke,
         )
@@ -120,19 +121,6 @@ class VolcanoJobBackend(
         self._core_v1.api_client.close()
         self._custom_v1.api_client.close()
         return
-
-    @staticmethod
-    def _workload_delegation_audience() -> str:
-        try:
-            from nmp.common.config import get_auth_config
-
-            oidc_config = get_auth_config().oidc
-        except Exception:
-            logger.debug("Could not resolve auth config for Volcano workload delegation audience", exc_info=True)
-            return "nemo-platform"
-        return (
-            getattr(oidc_config, "workload_audience", None) or getattr(oidc_config, "audience", None) or "nemo-platform"
-        )
 
     def _workload_delegation_target_for_volcano_job(
         self, job: dict

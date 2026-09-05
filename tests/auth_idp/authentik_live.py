@@ -204,6 +204,35 @@ AUTHENTIK_DOCKER_E2E_CONFIG = pytest.mark.e2e_config(
             ]
         }
     },
+    {
+        "deployments": {
+            "default_executor": "auth-idp-docker",
+            "executors": [
+                {
+                    "name": "auth-idp-docker",
+                    "backend": "docker",
+                    "config": {
+                        "pull_images": False,
+                        "network": AUTHENTIK_WORKLOAD_NETWORK_NAME,
+                        "endpoint_mode": "network",
+                        "docker_timeout": 600,
+                        "oneshot_observe_timeout_seconds": 30,
+                        "additional_volume_mounts": [
+                            {
+                                "volume_name": AUTHENTIK_GATEWAY_TLS_VOLUME_NAME,
+                                "mount_path": "/etc/nmp/gateway-tls",
+                                "read_only": True,
+                            }
+                        ],
+                    },
+                }
+            ],
+            "controller": {
+                "interval_seconds": 2,
+                "terminal_orphan_grace_seconds": 300,
+            },
+        }
+    },
     harness={
         "backend": "docker_compose",
         "compose_file": "contrib/auth/authentik/compose/docker-compose.yml",

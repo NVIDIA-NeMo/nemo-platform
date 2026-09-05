@@ -40,6 +40,70 @@ def test_create_deployment_config_201(client: TestClient, mock_entity_client: As
     assert resp.json()["name"] == "cfg1"
 
 
+def test_create_deployment_config_accepts_camel_case_restart_policy(
+    client: TestClient,
+    mock_entity_client: AsyncMock,
+) -> None:
+    mock_entity_client.create.side_effect = lambda config: config
+
+    resp = client.post(
+        "/apis/deployments/v2/workspaces/default/deployment-configs",
+        json={
+            "name": "cfg1",
+            "containers": [{"name": "main", "image": "nginx"}],
+            "restartPolicy": "Never",
+            "backoffLimit": 3,
+        },
+    )
+
+    assert resp.status_code == 201
+    created_config = mock_entity_client.create.await_args.args[0]
+    assert created_config.restart_policy == "Never"
+    assert created_config.backoff_limit == 3
+
+
+def test_create_deployment_config_accepts_snake_case_top_level_fields(
+    client: TestClient,
+    mock_entity_client: AsyncMock,
+) -> None:
+    mock_entity_client.create.side_effect = lambda config: config
+
+    resp = client.post(
+        "/apis/deployments/v2/workspaces/default/deployment-configs",
+        json={
+            "name": "cfg1",
+            "containers": [{"name": "main", "image": "nginx"}],
+            "init_containers": [{"name": "init", "image": "busybox"}],
+            "volume_mounts": [{"name": "data", "mountPath": "/data"}],
+            "config_files": [{"path": "/etc/config.txt", "content": "value"}],
+            "restart_policy": "Never",
+            "backoff_limit": 3,
+            "drift_recovery": {"max_attempts": 2},
+            "backend_config": {"k8s": {"namespace": "dep-ns", "serviceAccount": "dep-sa"}},
+            "workload_identity": {
+                "enabled": True,
+                "tokenExpirationSeconds": 900,
+            },
+        },
+    )
+
+    assert resp.status_code == 201
+    await_args = mock_entity_client.create.await_args
+    assert await_args is not None
+    created_config = await_args.args[0]
+    assert created_config.init_containers[0].name == "init"
+    assert created_config.volume_mounts[0].mount_path == "/data"
+    assert created_config.config_files[0].path == "/etc/config.txt"
+    assert created_config.restart_policy == "Never"
+    assert created_config.backoff_limit == 3
+    assert created_config.drift_recovery.max_attempts == 2
+    assert created_config.backend_config.k8s is not None
+    assert created_config.backend_config.k8s.namespace == "dep-ns"
+    assert created_config.backend_config.k8s.service_account == "dep-sa"
+    assert created_config.workload_identity is not None
+    assert created_config.workload_identity.token_expiration_seconds == 900
+
+
 def test_create_deployment_config_rejects_zero_backoff_limit(
     client: TestClient,
     mock_entity_client: AsyncMock,

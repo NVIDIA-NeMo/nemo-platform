@@ -110,6 +110,9 @@ def test_manager_registers_pod_uid_bound_delegation(test_step_pending_with_auth_
     assert delegation.bound_reference_name == KUBERNETES_POD_UID_REFERENCE_NAME
     assert delegation.bound_reference_value == "pod-uid-123"
     assert delegation.workload_workspace == "default"
+    assert delegation.workload_kind == "job"
+    assert delegation.workload_id == "test-job-id"
+    assert delegation.workload_generation == "test-job-attempt-id/test-step-id/pod-uid-123"
     assert delegation.job_id == "test-job-id"
     assert delegation.attempt_id == "test-job-attempt-id"
     assert delegation.step_id == "test-step-id"

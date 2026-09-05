@@ -3,11 +3,13 @@
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from typing import TypeAlias
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Volume
 from nemo_deployments_plugin.types import Endpoint
+from nemo_platform_plugin.auth import AuthContext as DeploymentAuthContext
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
@@ -16,6 +18,8 @@ from nmp.core.models.controllers.backends.common import DeploymentConfigView
 from nmp.core.models.controllers.backends.deployments_plugin.backend import DeploymentsPluginServiceBackend
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.resolve import ResolvedPluginDeployment
+
+CreatedEntity: TypeAlias = Deployment | DeploymentConfig
 
 
 def _ctx() -> SimpleNamespace:
@@ -28,7 +32,7 @@ def _ctx() -> SimpleNamespace:
 
 def _resolved() -> ResolvedPluginDeployment:
     return ResolvedPluginDeployment(
-        deployment=SimpleNamespace(name="my-dep", workspace="default"),
+        deployment=SimpleNamespace(name="my-dep", workspace="default", entity_version=1, auth_context=None),
         config=SimpleNamespace(engine="vllm"),
         model_entity=None,
         view=DeploymentConfigView(model_namespace="org", model_name="model"),
@@ -98,9 +102,9 @@ async def test_create_order_volume_puller_server_with_prerequisite() -> None:
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
     backend.init()
     backend._entities = AsyncMock()
-    created: list[object] = []
+    created: list[CreatedEntity] = []
 
-    async def _create(entity: object) -> object:
+    async def _create(entity: CreatedEntity) -> CreatedEntity:
         created.append(entity)
         return entity
 
@@ -131,7 +135,7 @@ async def test_create_order_volume_puller_server_with_prerequisite() -> None:
 
 def _resolved_docker_lora() -> ResolvedPluginDeployment:
     return ResolvedPluginDeployment(
-        deployment=SimpleNamespace(name="my-dep", workspace="default"),
+        deployment=SimpleNamespace(name="my-dep", workspace="default", entity_version=1, auth_context=None),
         config=SimpleNamespace(engine="vllm"),
         model_entity=None,
         view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=True, gpu=1),
@@ -155,9 +159,9 @@ async def test_docker_lora_creates_substrate() -> None:
     backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
     backend.init()
     backend._entities = AsyncMock()
-    created: list[object] = []
+    created: list[CreatedEntity] = []
 
-    async def _create(entity: object) -> object:
+    async def _create(entity: CreatedEntity) -> CreatedEntity:
         created.append(entity)
         return entity
 
@@ -422,3 +426,38 @@ async def test_delete_escalates_to_error_after_deleting_timeout() -> None:
     assert result.error_details is not None
     assert result.error_details["reason"] == "deleting_timeout"
     assert result.error_details["timeout_seconds"] == 60
+
+
+@pytest.mark.asyncio
+async def test_create_propagates_deployment_auth_context_to_plugin_deployments() -> None:
+    auth_context = DeploymentAuthContext(principal_id="user:alice", principal_groups=["research"])
+    resolved = _resolved()
+    resolved.deployment.auth_context = auth_context
+    backend = DeploymentsPluginServiceBackend(AsyncMock(), {}, "puller:latest")
+    backend.init()
+    backend._entities = AsyncMock()
+    created: list[CreatedEntity] = []
+
+    async def _create(entity: CreatedEntity) -> CreatedEntity:
+        created.append(entity)
+        return entity
+
+    backend._entities.create = AsyncMock(side_effect=_create)
+    backend._entities.get = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
+    backend._entities.delete = AsyncMock(side_effect=NemoEntityNotFoundError("missing"))
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.resolve_plugin_deployment",
+            return_value=resolved,
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.executor_for_runtime",
+            return_value="local-k8s",
+        ),
+    ):
+        result = await backend.create_model_deployment(_ctx())
+
+    assert result.status == "PENDING"
+    plugin_deployments = [entity for entity in created if isinstance(entity, Deployment)]
+    assert len(plugin_deployments) == 2
+    assert all(deployment.auth_context == auth_context for deployment in plugin_deployments)

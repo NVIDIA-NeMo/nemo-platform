@@ -10,6 +10,7 @@ from nemo_deployments_plugin.backends.base import BackendStatusUpdate
 from nemo_deployments_plugin.backends.k8s.backend import K8sDeploymentBackend
 from nemo_deployments_plugin.backends.k8s.config import K8sExecutorConfig
 from nemo_deployments_plugin.entities import Container, DeploymentConfig
+from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 
 def test_executor_config_parsed_from_dict(k8s_backend: K8sDeploymentBackend) -> None:
@@ -80,8 +81,9 @@ async def test_create_passes_secret_env_and_unmodified_config(
             "nemo_deployments_plugin.backends.k8s.backend.resolve_deployment_secret_env",
             AsyncMock(return_value=secret_env),
         ) as resolve_mock,
-        patch(
-            "nemo_deployments_plugin.backends.k8s.backend.deployment_ops.create_deployment",
+        patch.object(
+            k8s_backend._deployment_ops,
+            "create_deployment",
             AsyncMock(return_value=BackendStatusUpdate(status="STARTING")),
         ) as create_mock,
     ):
@@ -97,3 +99,40 @@ async def test_create_passes_secret_env_and_unmodified_config(
     assert create_mock.await_args is not None
     assert create_mock.await_args.kwargs["config"] is stored
     assert create_mock.await_args.kwargs["secret_env"] == secret_env
+
+
+@pytest.mark.asyncio
+async def test_delete_deployment_revokes_delegations_when_context_missing(
+    k8s_backend: K8sDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
+    mock_entities.get.side_effect = NemoEntityNotFoundError("missing")
+
+    with (
+        patch.object(
+            k8s_backend._deployment_ops,
+            "delete_deployment",
+            AsyncMock(return_value=BackendStatusUpdate(status="SUCCEEDED")),
+        ) as delete_deployment_mock,
+        patch.object(
+            k8s_backend._job_ops,
+            "delete_job",
+            AsyncMock(return_value=BackendStatusUpdate(status="SUCCEEDED")),
+        ) as delete_job_mock,
+        patch.object(
+            k8s_backend._workload_identity_ops,
+            "revoke_workload_delegations",
+            AsyncMock(),
+        ) as revoke_mock,
+    ):
+        update = await k8s_backend.delete_deployment("default", "server")
+
+    assert update.status == "SUCCEEDED"
+    delete_deployment_mock.assert_awaited_once()
+    delete_job_mock.assert_awaited_once()
+    revoke_mock.assert_awaited_once_with(
+        k8s_backend._workload_delegations,
+        config=None,
+        workspace="default",
+        deployment_name="server",
+    )

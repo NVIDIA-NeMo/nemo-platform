@@ -194,6 +194,7 @@ class DeploymentReconciler:
                 config_name=config.name,
                 labels=labels,
                 backend_config=config.backend_config.model_dump(by_alias=True, exclude_none=True),
+                auth_context=deployment.auth_context,
             )
         except Exception as exc:
             logger.exception("Failed to create deployment %s", dep_id)
@@ -301,6 +302,7 @@ class DeploymentReconciler:
                 config_name=config.name,
                 labels=labels,
                 backend_config=config.backend_config.model_dump(by_alias=True, exclude_none=True),
+                auth_context=deployment.auth_context,
             )
         except Exception as exc:
             logger.exception("Drift recovery failed for %s", dep_id)

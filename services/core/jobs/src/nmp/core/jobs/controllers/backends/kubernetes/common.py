@@ -995,8 +995,7 @@ def create_pod_template_spec(
     """
 
     platform_config = get_platform_config()
-    workload_identity_enabled = is_workload_identity_token_exchange_enabled() and step.auth_context is not None
-    workload_identity_token_audience = config.workload_identity.token_audience or get_workload_identity_token_audience()
+    workload_identity_enabled = step.auth_context is not None and is_workload_identity_token_exchange_enabled()
 
     # Profile-level env vars first (e.g. HOME=/tmp); system, step, and shared env override these
     env = [client.V1EnvVar(name=name, value=value) for name, value in config.env.items()]
@@ -1103,6 +1102,9 @@ def create_pod_template_spec(
         client.V1Volume(name=STEP_CONFIG_VOLUME_NAME, config_map=client.V1ConfigMapVolumeSource(name=configmap_name)),
     ]
     if workload_identity_enabled:
+        workload_identity_token_audience = (
+            config.workload_identity.token_audience or get_workload_identity_token_audience()
+        )
         volumes.append(
             client.V1Volume(
                 name=WORKLOAD_IDENTITY_VOLUME_NAME,

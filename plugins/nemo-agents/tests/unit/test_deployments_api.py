@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -25,6 +25,7 @@ from nemo_agents_plugin.entities import (
     ComputeResources,
     DeploymentStatus,
 )
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 NOW = datetime.now(timezone.utc)
@@ -161,6 +162,7 @@ class TestCreateDeployment:
         monkeypatch.setattr(AgentsConfig, "get", classmethod(lambda cls: agents_cfg))
         mock_entity_client = AsyncMock()
         mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
         client = _test_client(mock_entity_client)
 
         resp = client.post(
@@ -199,6 +201,7 @@ class TestCreateDeployment:
         config = AgentsConfig.get()
         monkeypatch.setattr(config.deployments, "default_image", "registry.example/agent:pinned")
         monkeypatch.setattr(AgentsConfig, "get", classmethod(lambda cls: config))
+
         mock_entity_client = AsyncMock()
         mock_entity_client.get = AsyncMock(return_value=_make_agent())
 
@@ -218,6 +221,74 @@ class TestCreateDeployment:
         assert resp.status_code == 201
         created_deployment: AgentDeployment = mock_entity_client.create.call_args[0][0]
         assert created_deployment.image == ""
+
+    def test_create_ignores_raw_auth_context_headers(self) -> None:
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={
+                "agent": "fabric-agent",
+                "name": "fabric-dep",
+                "deployment_mode": "docker",
+                "image": "registry.example/agent:1.0",
+            },
+            headers={
+                "X-NMP-Principal-Id": "user:alice",
+                "X-NMP-Principal-Email": "alice@example.com",
+                "X-NMP-Principal-Groups": "research,platform",
+            },
+        )
+
+        assert resp.status_code == 201
+        created_deployment: AgentDeployment = mock_entity_client.create.call_args[0][0]
+        assert created_deployment.auth_context is None
+
+    def test_create_captures_runtime_auth_context(self) -> None:
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        with patch(
+            "nemo_agents_plugin.api.v2.deployments.current_auth_context",
+            return_value=AuthContext(
+                principal_id="bearer@example.com",
+                principal_email="bearer@example.com",
+                principal_groups=["runtime"],
+            ),
+        ):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments",
+                json={
+                    "agent": "fabric-agent",
+                    "name": "fabric-dep",
+                    "deployment_mode": "docker",
+                    "image": "registry.example/agent:1.0",
+                },
+            )
+
+        assert resp.status_code == 201
+        created_deployment: AgentDeployment = mock_entity_client.create.call_args[0][0]
+        assert created_deployment.auth_context is not None
+        assert created_deployment.auth_context.principal_id == "bearer@example.com"
+        assert created_deployment.auth_context.principal_email == "bearer@example.com"
+        assert created_deployment.auth_context.principal_groups == ["runtime"]
 
     def test_create_allows_subprocess_deployment_without_an_image(self) -> None:
         mock_entity_client = AsyncMock()

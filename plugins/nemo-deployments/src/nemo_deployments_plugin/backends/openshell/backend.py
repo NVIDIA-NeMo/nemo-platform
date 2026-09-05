@@ -55,10 +55,15 @@ from nemo_deployments_plugin.backends.openshell.policy import (
     load_policy_dict,
     normalize_loaded_policy,
 )
+from nemo_deployments_plugin.backends.workload_identity import (
+    workload_identity_activation_error,
+    workload_identity_requested,
+)
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import ConfigFile, Container, DeploymentConfig, OpenShellDeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import DeploymentStatus, Endpoint
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
@@ -295,6 +300,7 @@ class OpenShellDeploymentBackend(DeploymentBackend):
         config_name: str,
         labels: dict[str, str],
         backend_config: dict[str, Any],
+        auth_context: AuthContext | None = None,
     ) -> BackendStatusUpdate:
         openshell_cfg = OpenShellDeploymentConfig.model_validate(backend_config.get("openshell") or {})
         sandbox_nm = _sandbox_name(workspace, name)
@@ -323,6 +329,13 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             return BackendStatusUpdate(
                 status="FAILED",
                 status_message=f"Failed to load deployment config: {exc}",
+            )
+
+        if workload_identity_requested(config):
+            identity_error = workload_identity_activation_error(config=config, auth_context=auth_context)
+            return BackendStatusUpdate(
+                status="FAILED",
+                status_message=identity_error or "workload_identity is not supported by the openshell backend",
             )
 
         if not config.containers:
