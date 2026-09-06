@@ -34,7 +34,11 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('Agent Hardener plugin', () => {
-  test('is discovered by Studio and mounts its nav entry', async ({ page, agentHardener, request }) => {
+  test('is discovered by Studio and mounts its nav entry', async ({
+    page,
+    agentHardener,
+    request,
+  }) => {
     // The plugin contract, asserted at both ends: the service advertises a bundle, and Studio loads
     // it. A plugin appears only if its Python package is installed and dist/index.js exists, so this
     // failing means packaging, not UI.
@@ -43,7 +47,10 @@ test.describe('Agent Hardener plugin', () => {
     const plugins: Array<{ name: string; bundleUrl: string | null }> = await response.json();
     const agentHardenerPlugin = plugins.find((plugin) => plugin.name === 'agent-hardener');
 
-    expect(agentHardenerPlugin, 'agent-hardener is not installed on the target platform').toBeDefined();
+    expect(
+      agentHardenerPlugin,
+      'agent-hardener is not installed on the target platform'
+    ).toBeDefined();
     expect(agentHardenerPlugin?.bundleUrl).toBe('/plugin-ui/agent-hardener/index.js');
 
     await agentHardener.gotoRuns();
@@ -91,11 +98,17 @@ test.describe('Agent Hardener plugin', () => {
     await expect(page.getByLabel(/deployed agent/i)).toBeHidden();
   });
 
-  test('manifest detail shows the target and opens the run dialog', async ({ page, agentHardener }) => {
+  test('manifest detail shows the target and opens the run dialog', async ({
+    page,
+    agentHardener,
+  }) => {
     await agentHardener.gotoManifests();
     await agentHardener.waitForTable();
 
-    test.skip(!(await agentHardener.openFirstRow()), 'No manifests on the target platform to open.');
+    test.skip(
+      !(await agentHardener.openFirstRow()),
+      'No manifests on the target platform to open.'
+    );
 
     const runButton = page.getByRole('button', { name: /run war-game/i });
     await expect(runButton).toBeVisible({ timeout: 30_000 });
@@ -132,7 +145,12 @@ test.describe('Agent Hardener plugin', () => {
     // Every lane gets the same generous timeout. The graph lays out progressively, so giving only
     // the first assertion room to wait made the rest race the layout — the test then failed and
     // passed on retry, which is worse than not having it.
-    for (const lane of ['ATTACKER SWARM', 'OPENSHELL SANDBOX', 'DEFENDER SWARM', 'VALIDATOR SWARM']) {
+    for (const lane of [
+      'ATTACKER SWARM',
+      'OPENSHELL SANDBOX',
+      'DEFENDER SWARM',
+      'VALIDATOR SWARM',
+    ]) {
       await expect(page.getByText(lane)).toBeVisible({ timeout: 30_000 });
     }
   });
