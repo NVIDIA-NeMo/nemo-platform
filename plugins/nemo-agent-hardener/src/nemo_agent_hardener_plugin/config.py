@@ -152,7 +152,7 @@ class AgentHardenerConfig(NemoConfig):
         ),
     )
     spec: str = Field(
-        default="agent-hardener>=0.0.8",
+        default="nvidia-agent-hardener>=0.0.10",
         description=(
             "Package spec `nemo agent-hardener setup` installs into the venv (e.g. 'agent-hardener', "
             "'agent-hardener==0.0.1', or a local path/VCS URL for development). The floor is the release "
