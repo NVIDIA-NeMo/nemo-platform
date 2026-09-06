@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # The image for a Fabric agent, owned by its author rather than rendered.
 #
 # `nemo agents package` can render one, but a rendered Dockerfile pins the packaging machine's own

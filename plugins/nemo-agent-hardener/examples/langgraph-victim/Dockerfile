@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Packages the LangGraph agent and its HTTP server into one image.
 #
 #   docker build -t langgraph-victim:v1 examples/langgraph-victim
