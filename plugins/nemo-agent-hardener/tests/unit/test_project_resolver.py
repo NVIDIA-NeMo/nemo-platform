@@ -160,8 +160,9 @@ def test_missing_secrets_and_egress_are_warned_not_invented(tmp_path: Path):
 def test_egress_is_taken_from_hosts_the_project_names(tmp_path: Path):
     text = "FROM x\nENV BASE_URL=https://inference-api.nvidia.com/v1\nRUN curl https://pypi.org/simple\n"
     derived = inspect_project(_project(tmp_path, text))
-    assert "inference-api.nvidia.com" in derived["egress"]
-    assert "pypi.org" in derived["egress"]
+    # Exact list, not membership: `"host" in ...` reads to CodeQL as URL-substring
+    # sanitization, and asserting the whole sorted list is a stronger check anyway.
+    assert derived["egress"] == ["inference-api.nvidia.com", "pypi.org"]
 
 
 def test_secrets_come_from_a_committed_dotenv_too(tmp_path: Path):
