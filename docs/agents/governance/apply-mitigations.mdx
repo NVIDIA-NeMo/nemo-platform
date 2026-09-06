@@ -37,7 +37,7 @@ and runs the benign suite. Use it to compare selections without touching the
 agent.
 
 ```bash
-nemo iron-swarm sanity-check --manifest-id react-agent \
+nemo agent-hardener sanity-check --manifest-id react-agent \
   --mitigations mitigations.json \
   --replay-hitlog <fileset-ref> \
   --keep custom_guardrail_1
@@ -73,7 +73,7 @@ Open the finished run and select the **Harden** panel.
    counters and the configuration diff.
 1. Select **Sanity check** to replay the attacks against just that selection
    and see what it blocks and which ordinary requests it breaks.
-1. Select **Apply to Agent** to write the hardened workflow back onto the
+1. Select **Apply to Agent** to record the hardened guardrails onto the
    agent config.
 
 </Tab>
@@ -84,7 +84,7 @@ workflow and policy for exactly those defenses:
 
 ```bash
 curl -X POST \
-  $NMP_BASE_URL/apis/iron-swarm/v2/workspaces/default/runs/<run-name>/compose-defense \
+  $NMP_BASE_URL/apis/agent-hardener/v2/workspaces/default/runs/<run-name>/compose-defense \
   -H "Content-Type: application/json" \
   -d '{
     "mitigations": { ... },
@@ -93,17 +93,22 @@ curl -X POST \
 ```
 
 `mitigations` is the run's mitigations artifact. `selected_defense_ids` takes
-guardrail ids and `openshell_policy`. The response carries `workflow_yaml` and
+guardrail ids and `openshell_policy`. The response carries `guardrails_toml` and
 `policy_yaml`, and an unselected surface comes back at its baseline.
 
-Then write the composed workflow onto the agent:
+Then write the composed guardrails onto the agent:
 
 ```bash
 curl -X POST \
-  $NMP_BASE_URL/apis/iron-swarm/v2/workspaces/default/runs/<run-name>/apply-mitigation \
+  $NMP_BASE_URL/apis/agent-hardener/v2/workspaces/default/runs/<run-name>/apply-mitigation \
   -H "Content-Type: application/json" \
-  -d '{"workflow_yaml": "<the workflow_yaml from compose-defense>"}'
+  -d '{"guardrails_toml": "<the guardrails_toml from compose-defense>"}'
 ```
+
+`guardrails_toml` is required; the call returns `422` without it. Only the
+guardrails are written — `policy_yaml` is composed for review and sanity-check
+but is not applied to the agent. Runs from a bring-your-own manifest
+(`--project-dir`) are refused, because there is no registered agent to write to.
 
 The response reports `applied`, the `agent` whose config changed, and a
 `detail` note.
@@ -112,21 +117,23 @@ The response reports `applied`, the `agent` whose config changed, and a
 
 </Tabs>
 
-Applying writes the hardened workflow onto the agent config and refreshes the
+Applying records the hardened guardrails on the agent config and refreshes the
 manifest, so the next run measures the change you just made.
 
 <Warning>
 
-Redeploy the agent for the guardrails to take effect. Applying updates the
-stored config; the running deployment keeps its previous configuration until it
-restarts.
+Applying does not yet activate the guardrails on a running agent. The guardrails
+are stored on the agent entity, but the deployment path does not read them back,
+so redeploying does not put them in force. Use `sanity-check` to confirm a
+defense works, and apply the guardrails to your agent's own configuration until
+this is wired up.
 
 </Warning>
 
 <Note>
 
 Applying writes another service's entity: it updates the target agent's config.
-The `iron-swarm.runs.apply` permission is therefore an agent-write grant in
+The `agent-hardener.runs.apply` permission is therefore an agent-write grant in
 practice. Assign it accordingly.
 
 </Note>
@@ -138,11 +145,11 @@ directly comparable. Run the cycle again after applying and compare the attack
 block rate and the benign pass rate against the earlier run:
 
 ```bash
-nemo iron-swarm run --manifest-id react-agent
-nemo iron-swarm status --limit 5
+nemo agent-hardener run --manifest-id react-agent
+nemo agent-hardener status --limit 5
 ```
 
 ## Related Topics
 
-- [Iron Swarm CLI Reference](/documentation/agents/governance/cli-reference): every command and flag.
+- [Agent Hardener CLI Reference](/documentation/agents/governance/cli-reference): every command and flag.
 - [Guardrail Models](/documentation/guardrail-models): manage the guardrail configurations the defender writes against.
