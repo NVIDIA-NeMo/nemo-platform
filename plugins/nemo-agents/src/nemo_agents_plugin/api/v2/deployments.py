@@ -20,11 +20,12 @@ import logging
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from nemo_agents_plugin.agent_config_formats import AgentConfigFormatError, resolve_agent_config_for_deployment
 from nemo_agents_plugin.api.v2._perms import DeploymentPerms
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
 from nemo_agents_plugin.authz import scope
+from nemo_agents_plugin.config import AgentsConfig
 from nemo_agents_plugin.entities import (
     Agent,
     AgentDeployment,
@@ -39,12 +40,17 @@ from nemo_agents_plugin.environment_resolution import (
     merge_environment_spec_into_agent_config,
     resolve_environment,
 )
+from nemo_agents_plugin.runner.deployments_backend import (
+    executor_for_mode,
+    require_executor_matches_mode,
+)
 from nemo_agents_plugin.schema import (
     CreateDeploymentRequest,
     DeploymentFilter,
     DeploymentPage,
 )
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
+from nemo_platform_plugin.auth import current_auth_context
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.schema import PaginationData
@@ -66,6 +72,7 @@ _DELETE_MARK_ATTEMPTS = 3
 async def create_deployment(
     workspace: str,
     body: CreateDeploymentRequest,
+    request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> AgentDeployment:
     """Create a new deployment for an existing agent.
@@ -92,6 +99,27 @@ async def create_deployment(
         raise HTTPException(
             status_code=400,
             detail="use_image_entrypoint requires deployment_mode 'docker' or 'k8s'.",
+        )
+
+    # The controller refuses this too, but only on its next reconcile — by which
+    # point a pending deployment exists and the caller has had its 201.
+    if is_container_deployment_mode(body.deployment_mode):
+        runner_config = AgentsConfig.get().deployments
+        try:
+            require_executor_matches_mode(executor_for_mode(runner_config, body.deployment_mode), body.deployment_mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # The runner fails the deployment for this; the answer is already available here.
+    if is_container_deployment_mode(body.deployment_mode) and not (
+        body.image or AgentsConfig.get().deployments.default_image
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"deployment_mode '{body.deployment_mode}' requires a container image. "
+                "Set 'image' on the request, or configure 'deployments.default_image'."
+            ),
         )
 
     # 3. Resolve deployment-time config. NAT workflows need legacy injection;
@@ -122,7 +150,7 @@ async def create_deployment(
         image=body.image,
         use_image_entrypoint=body.use_image_entrypoint,
         plugin_deployment=deployment_name if is_container_deployment_mode(body.deployment_mode) else "",
-    )
+    ).with_auth_context(current_auth_context())
     try:
         saved = await entity_client.create(deployment)
     except NemoEntityConflictError as exc:

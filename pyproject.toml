@@ -256,6 +256,15 @@ cpu-tasks = [
   "nmp-hello-world",
 ]
 
+# Task runtime for agent-evaluate jobs that orchestrate sandboxed Gym runs.
+# Keep this exact environment separate from cpu-tasks because it additionally
+# needs the Evaluator plugin and OpenSandbox SDK.
+gym-task-orchestrator = [
+  { include-group = "cpu-tasks" },
+  "nemo-evaluator-plugin",
+  "sandboxed-gym[opensandbox]",
+]
+
 # GPU task dependencies (for nmp-gpu-tasks container)
 # Services that have GPU-intensive batch tasks
 gpu-tasks = [
@@ -317,13 +326,13 @@ constraint-dependencies = [
   "mcp>=1.28.1",
   "mlflow-skinny>=3.15.0,<3.16.0",
   "msgpack>=1.2.1",
-  "nemo-fabric-adapter-contract>=0.2.0,<0.3.0",
-  "nemo-fabric-adapters-claude>=0.2.0,<0.3.0",
-  "nemo-fabric-adapters-codex>=0.2.0,<0.3.0",
-  "nemo-fabric-adapters-common>=0.2.0,<0.3.0",
-  "nemo-fabric-adapters-deepagents>=0.2.0,<0.3.0",
-  "nemo-fabric-adapters-hermes>=0.2.0,<0.3.0",
-  "nemo-fabric-runtime>=0.2.0,<0.3.0",
+  "nemo-fabric-adapter-contract==0.3.0b1",
+  "nemo-fabric-adapters-claude==0.3.0b1",
+  "nemo-fabric-adapters-codex==0.3.0b1",
+  "nemo-fabric-adapters-common==0.3.0b1",
+  "nemo-fabric-adapters-deepagents==0.3.0b1",
+  "nemo-fabric-adapters-hermes==0.3.0b1",
+  "nemo-fabric-runtime==0.3.0b1",
   "nbconvert>=7.17.1",
   "nltk>=3.10.0",
   "pillow>=12.3.0",

@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, DeploymentsRunnerConfig
-from nemo_agents_plugin.entities import ComputeResources, Endpoint
+from nemo_agents_plugin.entities import ComputeResources, DeploymentMode, Endpoint
 from nemo_agents_plugin.fabric.gateway_credentials import PLATFORM_IGW_API_KEY_ENV, PLATFORM_IGW_API_KEY_PLACEHOLDER
 from nemo_agents_plugin.runner.deployments_backend import (
     DeploymentsRunnerBackend,
@@ -21,6 +21,7 @@ from nemo_agents_plugin.runner.deployments_backend import (
     build_deployment_config,
     executor_for_mode,
     map_status,
+    require_executor_matches_mode,
     resolve_agent_gateway_url,
     rewrite_config_base_urls,
     rewrite_fabric_config_base_urls,
@@ -28,6 +29,7 @@ from nemo_agents_plugin.runner.deployments_backend import (
 from nemo_agents_plugin.runner.fabric_artifact_staging import FabricArtifactStagingError
 from nemo_deployments_plugin.entities import ConfigFile, Deployment, DeploymentConfig
 from nemo_deployments_plugin.types import Endpoint as PluginEndpoint
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
@@ -218,6 +220,100 @@ def test_executor_for_mode_prefers_mode_specific() -> None:
     assert executor_for_mode(cfg, "k8s") == "k8s-exec"
 
 
+def _executors(*pairs: tuple[str, str], default: str | None = None) -> Any:
+    """A standalone DeploymentsConfig.
+
+    Not ``DeploymentsConfig.get()``: that is a cached singleton, and assigning to
+    it outlives the test that did so.
+    """
+    from nemo_deployments_plugin.config import DeploymentsConfig, ExecutorConfigEntry
+
+    return DeploymentsConfig(
+        executors=[ExecutorConfigEntry(name=n, backend=b) for n, b in pairs],
+        default_executor=default,
+    )
+
+
+def test_k8s_mode_on_a_docker_executor_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    cfg = _executors(("default-exec", "docker"))
+    monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
+
+    with pytest.raises(ValueError, match="runs on 'docker'"):
+        require_executor_matches_mode("default-exec", "k8s")
+
+
+def test_k8s_mode_on_a_non_deployable_backend_omits_the_mode_suggestion(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    # 'openshell' is a deployments-plugin backend but not a DeploymentMode, so
+    # the error must not suggest deploying with a mode that can't validate.
+    cfg = _executors(("default-exec", "openshell"))
+    monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
+
+    with pytest.raises(ValueError, match="runs on 'openshell'") as exc_info:
+        require_executor_matches_mode("default-exec", "k8s")
+    assert "deploy with deployment_mode" not in str(exc_info.value)
+
+
+def test_k8s_mode_accepts_a_k8s_capable_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    # The naive check — "is k8s_executor set" — would reject this, but a default
+    # executor backed by k8s honours the requested mode.
+    cfg = _executors(("default-exec", "k8s"))
+    monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
+
+    require_executor_matches_mode("default-exec", "k8s")
+
+
+def test_k8s_mode_with_no_runner_executors_still_checks_the_plugin_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    # executor_for_mode returns None here, but ExecutorRegistry.resolve falls back
+    # to the plugin's own default — so None is not "nothing will run".
+    cfg = _executors(("plugin-default", "docker"), default="plugin-default")
+    monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
+
+    with pytest.raises(ValueError, match="runs on 'docker'"):
+        require_executor_matches_mode(None, "k8s")
+
+
+def test_no_executor_anywhere_is_left_to_the_deployments_plugin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    cfg = _executors()
+    monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
+
+    # Nothing to run it on at all is ExecutorNotFoundError's message to give.
+    require_executor_matches_mode(None, "k8s")
+
+
+def test_docker_mode_on_a_docker_executor_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    cfg = _executors(("docker-exec", "docker"))
+    monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
+
+    require_executor_matches_mode("docker-exec", "docker")
+
+
+def test_an_unknown_executor_is_left_to_the_deployments_plugin(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    # Naming an executor that is not configured is the deployments plugin's error
+    # to report; guessing here would turn its message into a worse one.
+    cfg = _executors(("something-else", "docker"))
+    monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: cfg))
+
+    require_executor_matches_mode("not-configured", "k8s")
+
+
 def test_config_mount_path_default_is_under_writable_workspace() -> None:
     assert DeploymentsRunnerConfig().config_mount_path == "/tmp/nemo/config.yaml"
 
@@ -358,12 +454,38 @@ def test_build_deployment_config_no_secrets_adds_no_secret_env() -> None:
     assert all(e.secret_ref is None for e in cfg.containers[0].env)
 
 
+def test_build_deployment_config_adds_workload_identity_when_requested() -> None:
+    with patch(
+        "nemo_agents_plugin.runner.deployments_backend.get_workload_identity_token_audience",
+        return_value="agent-audience",
+    ):
+        cfg = build_deployment_config(
+            name="hello-dep",
+            workspace="default",
+            image="nat-runtime:latest",
+            port=8000,
+            agent_config={},
+            platform_base_url="http://nmp-api:8080",
+            config_mount_path="/workspace/config.yaml",
+            mode="k8s",
+            workload_identity_enabled=True,
+        )
+
+    assert cfg.workload_identity is not None
+    assert cfg.workload_identity.enabled is True
+    assert cfg.workload_identity.workload_kind == "agent_deployment"
+    assert cfg.workload_identity.workload_id == "hello-dep"
+    assert cfg.workload_identity.token_audience == "agent-audience"
+
+
 @pytest.mark.parametrize("mode", ["docker", "k8s"])
 @pytest.mark.parametrize(
     "reserved_name",
     ["NMP_WORKSPACE", "NMP_AGENT_NAME", "NMP_BASE_URL", "PYTHONPATH", "AGENT_CONFIG_PATH", "NAT_CONFIG_PATH"],
 )
-def test_build_deployment_config_rejects_secret_name_colliding_with_reserved(reserved_name: str, mode: str) -> None:
+def test_build_deployment_config_rejects_secret_name_colliding_with_reserved(
+    reserved_name: str, mode: DeploymentMode
+) -> None:
     # A secret env var whose name collides with a platform-generated container
     # env var is rejected up front (behavior would otherwise differ by substrate).
     with pytest.raises(ReservedSecretEnvVarError, match=reserved_name):
@@ -1282,3 +1404,40 @@ async def test_create_deployment_fabric_staging_error_fails_before_entity_create
     assert info.status == "failed"
     assert "skills/review" in info.error
     entities.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_enables_workload_identity_with_auth_context() -> None:
+    backend = _backend(default_image="nat:latest", default_executor="local-docker")
+    entities = AsyncMock()
+    backend._entities = entities
+    auth_context = AuthContext(principal_id="user:alice", principal_groups=["research"])
+
+    with (
+        patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://127.0.0.1:8080"),
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.is_workload_identity_token_exchange_enabled",
+            return_value=True,
+        ),
+        patch(
+            "nemo_agents_plugin.runner.deployments_backend.get_workload_identity_token_audience",
+            return_value="agent-audience",
+        ),
+    ):
+        info = await backend.create_deployment(
+            workspace="default",
+            name="hello-dep",
+            config={"workflow": {"_type": "react_agent"}},
+            port=0,
+            deployment_mode="docker",
+            auth_context=auth_context,
+        )
+
+    assert info.status == "starting"
+    created_config = entities.create.await_args_list[0].args[0]
+    created_dep = entities.create.await_args_list[1].args[0]
+    assert created_config.workload_identity is not None
+    assert created_config.workload_identity.enabled is True
+    assert created_config.workload_identity.workload_id == "hello-dep"
+    assert created_config.workload_identity.token_audience == "agent-audience"
+    assert created_dep.auth_context == auth_context

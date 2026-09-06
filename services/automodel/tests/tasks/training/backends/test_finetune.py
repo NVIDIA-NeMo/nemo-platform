@@ -32,6 +32,7 @@ _STUBBED_MODULES = (
     "nemo_automodel.recipes.llm.kd",
     "nemo_automodel.recipes.llm.train_ft",
     "nemo_automodel.recipes.retrieval.train_bi_encoder",
+    "nemo_automodel.recipes.retrieval.train_cross_encoder",
 )
 _FINETUNE = "nmp.automodel.tasks.training.backends.finetune"
 
@@ -67,6 +68,16 @@ def test_every_prefixed_name_is_stripped_not_just_the_loss(finetune: ModuleType)
     stripped = finetune.strip_val_prefix({"val_loss": 0.5, "val_acc1": 0.8, "val_mrr": 0.7})
 
     assert stripped == {"loss": 0.5, "acc1": 0.8, "mrr": 0.7}
+
+
+def test_cross_encoder_target_is_detected(finetune: ModuleType) -> None:
+    def NeMoAutoModelCrossEncoder() -> None:
+        pass
+
+    cfg = {"model": {"_target_": NeMoAutoModelCrossEncoder}}
+
+    assert finetune._model_target_contains(cfg, "crossencoder") is True
+    assert finetune._model_target_contains(cfg, "biencoder") is False
 
 
 def test_an_unprefixed_name_is_left_alone(finetune: ModuleType) -> None:

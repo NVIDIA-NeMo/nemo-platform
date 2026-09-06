@@ -50,6 +50,10 @@ class TestExperiments:
         experiment = client.experiments.create(
             workspace="workspace",
             name="name",
+            column_layout={
+                "hidden": ["string"],
+                "order": ["string"],
+            },
             default_sort="default_sort",
             description="description",
             insight_id="insight_id",
@@ -171,6 +175,10 @@ class TestExperiments:
             workspace="workspace",
             body_name="name",
             baseline_evaluation_name="baseline_evaluation_name",
+            column_layout={
+                "hidden": ["string"],
+                "order": ["string"],
+            },
             default_sort="default_sort",
             description="description",
             insight_id="insight_id",
@@ -367,6 +375,10 @@ class TestAsyncExperiments:
         experiment = await async_client.experiments.create(
             workspace="workspace",
             name="name",
+            column_layout={
+                "hidden": ["string"],
+                "order": ["string"],
+            },
             default_sort="default_sort",
             description="description",
             insight_id="insight_id",
@@ -488,6 +500,10 @@ class TestAsyncExperiments:
             workspace="workspace",
             body_name="name",
             baseline_evaluation_name="baseline_evaluation_name",
+            column_layout={
+                "hidden": ["string"],
+                "order": ["string"],
+            },
             default_sort="default_sort",
             description="description",
             insight_id="insight_id",

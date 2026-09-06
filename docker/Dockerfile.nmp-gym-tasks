@@ -13,9 +13,19 @@ ARG NMP_PYTHON_BASE=nmp-python-base
 FROM ${NMP_CPU_TASKS_BASE} AS cpu-tasks
 
 FROM ${NMP_PYTHON_BASE} AS gym-builder
-COPY --from=cpu-tasks /app/.venv /app/.venv
+COPY --from=nmp-workspace . .
 ENV VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:$PATH"
+
+# Create a fresh /app/.venv containing the CPU task dependencies, Evaluator
+# plugin, and OpenSandbox SDK required by agent-evaluate to launch the Gym host
+# and its episode sandboxes. The locked group makes this environment reproducible.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    UV_CACHE_DIR=/root/.cache/uv UV_LINK_MODE=copy uv sync \
+        --frozen \
+        --no-install-project \
+        --only-group gym-task-orchestrator \
+        --no-editable
 
 COPY docker/locks/nmp-gym-tasks /opt/nmp-gym-tasks-lock
 
@@ -38,6 +48,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && test -z "$(find /opt/gym-venv -path '*/site-packages/ray/jars/*' -print -quit)"
 
 FROM cpu-tasks AS runtime
+COPY --chown=1000:1000 --from=gym-builder /app/.venv /app/.venv
 COPY --chown=1000:1000 --from=gym-builder /opt/gym-venv /opt/gym-venv
 COPY --from=gym-builder /usr/local/bin/python* /usr/local/bin/
 COPY --from=gym-builder /usr/local/include/python3.13 /usr/local/include/python3.13
@@ -50,6 +61,8 @@ ENV PATH="/opt/gym-venv/bin:/app/.venv/bin:$PATH" \
 
 FROM runtime AS smoke-test
 RUN gym --help >/dev/null \
+    && /app/.venv/bin/python -c \
+        'import importlib.metadata as m; import nemo_evaluator, sandboxed_gym; from opensandbox.config import ConnectionConfig; print({"nemo-evaluator-plugin": m.version("nemo-evaluator-plugin"), "sandboxed-gym": m.version("sandboxed-gym"), "opensandbox": m.version("opensandbox"), "connection_config": ConnectionConfig.__name__})' \
     && /opt/gym-venv/bin/python -c \
         'import importlib.metadata as m; import nemo_gym, ray, tiktoken; print({"nemo-gym": m.version("nemo-gym"), "ray": m.version("ray"), "tiktoken": m.version("tiktoken")})'
 

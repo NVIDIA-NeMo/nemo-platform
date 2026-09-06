@@ -117,6 +117,7 @@ class LogsResource(SyncAPIResource):
         filters: Dict[str, str] | Omit = omit,
         limit: int | Omit = omit,
         page_cursor: str | Omit = omit,
+        tail: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -139,6 +140,8 @@ class LogsResource(SyncAPIResource):
           limit: Maximum number of results to return
 
           page_cursor: Cursor for pagination
+
+          tail: Number of newest log lines to return
 
           extra_headers: Send extra headers
 
@@ -166,6 +169,7 @@ class LogsResource(SyncAPIResource):
                     "filters": filters,
                     "limit": limit,
                     "page_cursor": page_cursor,
+                    "tail": tail,
                 },
                 log_query_params.LogQueryParams,
             ),
@@ -256,6 +260,7 @@ class AsyncLogsResource(AsyncAPIResource):
         filters: Dict[str, str] | Omit = omit,
         limit: int | Omit = omit,
         page_cursor: str | Omit = omit,
+        tail: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -278,6 +283,8 @@ class AsyncLogsResource(AsyncAPIResource):
           limit: Maximum number of results to return
 
           page_cursor: Cursor for pagination
+
+          tail: Number of newest log lines to return
 
           extra_headers: Send extra headers
 
@@ -305,6 +312,7 @@ class AsyncLogsResource(AsyncAPIResource):
                     "filters": filters,
                     "limit": limit,
                     "page_cursor": page_cursor,
+                    "tail": tail,
                 },
                 log_query_params.LogQueryParams,
             ),

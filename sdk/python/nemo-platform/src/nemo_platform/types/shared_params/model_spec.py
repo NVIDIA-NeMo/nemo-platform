@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from typing import Iterable
-from typing_extensions import Required, TypedDict
+from typing_extensions import Literal, Required, TypedDict
 
 from .mo_e_config import MoEConfig
 from .mamba_config import MambaConfig
@@ -78,11 +78,14 @@ class ModelSpec(TypedDict, total=False):
     context_size: int
     """Context window size"""
 
+    head_type: Literal["causal_lm", "embedding", "cross_encoder", "unknown"]
+    """Task-specific head persisted in the checkpoint."""
+
     is_chat: bool
     """Whether this is a chat model"""
 
     is_embedding_model: bool
-    """Whether this is an embedding model"""
+    """Deprecated compatibility alias for head_type == 'embedding'."""
 
     linear_layers: Iterable[LinearLayerSpec]
     """List of all linear/Conv1D layers with their dimensions.

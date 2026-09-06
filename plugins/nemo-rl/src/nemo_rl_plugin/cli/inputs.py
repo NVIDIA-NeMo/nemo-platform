@@ -5,7 +5,7 @@
 
 The override machinery is shared in :mod:`nmp.customization_common.cli.overrides`;
 this module supplies the RL specifics: the ``RlJobInput`` schema (via
-``load_job_json``), the ``JOB_JSON`` help text, and the run-disabled message.
+``load_job_json``) and the ``JOB_JSON`` help text.
 """
 
 import json
@@ -17,11 +17,6 @@ from nmp.customization_common.cli.overrides import apply_job_cli_overrides
 from nemo_rl_plugin.schema import RlJobInput
 
 _JOB_JSON_HELP = "Path to NeMo-RL job JSON (RlJobInput schema)."
-_RUN_DISABLED_MESSAGE = (
-    "NeMo-RL does not support local run (it provisions a Ray cluster on the remote Kubernetes cluster). "
-    "Submit to the platform API instead:\n"
-    "  nemo customization rl submit <job.json> -w <workspace>"
-)
 
 
 def load_job_json(path: Path) -> str:
@@ -32,10 +27,9 @@ def load_job_json(path: Path) -> str:
 
 
 def apply_rl_job_cli_overrides(group: typer.Typer) -> None:
-    """Flat ``rl`` CLI: ``submit JOB.json``; ``run`` is disabled."""
+    """Flat ``rl`` CLI: ``submit JOB.json``."""
     apply_job_cli_overrides(
         group,
         load_job_json=load_job_json,
         job_json_help=_JOB_JSON_HELP,
-        run_disabled_message=_RUN_DISABLED_MESSAGE,
     )

@@ -34,6 +34,8 @@ from pydantic import BaseModel, ConfigDict, Field
 #: Env-var names that look like a credential. Used to refuse a sandboxed run that would hand one to
 #: user-supplied environment code through `env_vars`; `env_secrets` is the supported route.
 _CREDENTIAL_PATTERN = re.compile(r"(API_?KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_?KEY)", re.IGNORECASE)
+#: Removed by the Gym host before handing the config to NeMo Gym.
+ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY = "_nmp_environment_component_selection"
 
 
 class SandboxUnavailableError(RuntimeError):
@@ -63,17 +65,17 @@ def gym_global_config(target: GymRunnerTarget) -> dict[str, Any]:
     command line accepts. Here the config *is* a dict, so the nested form is passed through as-is --
     fewer conversions, and no quoting grammar to get wrong.
     """
-    config: dict[str, Any] = {
-        "config_paths": [
-            target.agent_config,
-            _asset_config_path("responses_api_models", target.model_type),
-            _asset_config_path("resources_servers", target.resources_server),
-        ],
-    }
+    model_config = _asset_config_path("responses_api_models", target.model_type)
+    resources_server_config = _asset_config_path("resources_servers", target.resources_server)
+    config_paths = [model_config, resources_server_config]
+    if target.agent_config is not None:
+        config_paths.insert(0, target.agent_config)
+    config: dict[str, Any] = {"config_paths": config_paths}
 
     if target.bind_resources_server:
         # The CLI's `+{agent}.responses_api_agents.{agent}.resources_server.name={server}`, as data.
-        config[target.agent] = {
+        agent_instance = (target.agent_ref_name or target.agent) if target.environment is not None else target.agent
+        config[agent_instance] = {
             "responses_api_agents": {
                 target.agent: {"resources_server": {"name": target.resources_server}},
             }
@@ -85,6 +87,16 @@ def gym_global_config(target: GymRunnerTarget) -> dict[str, Any]:
             config[key] = {**config[key], **value}
         else:
             config[key] = value
+
+    if target.environment is not None:
+        # Gym does not read this key. The host uses it to rebuild config_paths.
+        config[ENVIRONMENT_COMPONENT_SELECTION_CONFIG_KEY] = {
+            "agent_instance": target.agent_ref_name or target.agent,
+            "agent_config": target.agent_config,
+            "resources_server_instance": target.resources_server,
+            "resources_server_config": resources_server_config,
+            "model_config": model_config,
+        }
     return config
 
 
@@ -176,7 +188,12 @@ class SandboxPlan(BaseModel):
     approved_images: tuple[str, ...] = ()
 
 
-def resolve_sandbox_plan(config: EvaluatorConfig, target: GymRunnerTarget) -> SandboxPlan | None:
+def resolve_sandbox_plan(
+    config: EvaluatorConfig,
+    target: GymRunnerTarget,
+    *,
+    sandbox_server_protocol: str | None = None,
+) -> SandboxPlan | None:
     """The sandbox settings for this target, or ``None`` when the deployment runs Gym colocated.
 
     Raises rather than falling back: a cluster that cannot sandbox refuses the run instead of
@@ -192,6 +209,13 @@ def resolve_sandbox_plan(config: EvaluatorConfig, target: GymRunnerTarget) -> Sa
     # `require_sandbox_available` has just established that neither is empty.
     assert config.sandbox_runtime_image is not None
     assert config.sandbox_job_storage_pvc_claim is not None
+    host_provider_options = dict(config.sandbox_host_provider_options)
+    # In-cluster OpenSandbox speaks http. If we leave this unset, the host probes the
+    # sandbox over https and the readiness wait times out.
+    if config.sandbox_host_provider == "opensandbox" and sandbox_server_protocol:
+        connection = dict(host_provider_options.get("connection") or {})
+        connection["protocol"] = sandbox_server_protocol
+        host_provider_options["connection"] = connection
     return SandboxPlan(
         host_provider=config.sandbox_host_provider,
         runtime_image=config.sandbox_runtime_image,
@@ -199,7 +223,7 @@ def resolve_sandbox_plan(config: EvaluatorConfig, target: GymRunnerTarget) -> Sa
         environment_sub_path=config.sandbox_environment_sub_path,
         workspace_sub_path=config.sandbox_workspace_sub_path,
         resources=config.sandbox_resources,
-        host_provider_options=dict(config.sandbox_host_provider_options),
+        host_provider_options=host_provider_options,
         egress_allow=tuple(config.sandbox_egress_allow),
         policy_base_urls=tuple(config.sandbox_policy_base_urls),
         episode_backend=config.sandbox_episode_backend,

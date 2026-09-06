@@ -227,6 +227,7 @@ class ExecuteAgentJob(NemoJob):
     name: ClassVar[str] = "execute"
     description: ClassVar[str] = "Execute an agent to completion as a scheduled platform job."
     container: ClassVar[str] = "cpu-tasks"
+    generate_legacy_verbs: ClassVar[bool] = False
     input_spec_schema: ClassVar[type[BaseModel]] = ExecuteAgentJobConfig
     spec_schema: ClassVar[type[BaseModel]] = ExecuteAgentStepConfig
 
@@ -235,7 +236,7 @@ class ExecuteAgentJob(NemoJob):
         return AgentsConfig.get().deployments.default_image or get_qualified_image(DEFAULT_AGENT_EXECUTION_IMAGE_NAME)
 
     @classmethod
-    async def to_spec(  # type: ignore[override]
+    async def to_spec(
         cls,
         input_spec: BaseModel,
         *,
@@ -310,7 +311,7 @@ class ExecuteAgentJob(NemoJob):
         )
 
     @classmethod
-    async def compile(  # type: ignore[override]
+    async def compile(
         cls,
         *,
         workspace: str,

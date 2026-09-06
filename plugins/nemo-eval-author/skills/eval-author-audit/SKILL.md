@@ -64,8 +64,8 @@ existing evals, source-of-truth documents, or `ETHOS.md`.
 Audit-spec mechanics live under `scripts/audit_spec/`:
 
 Read `scripts/audit_spec/README.md` for the current measurement assumptions:
-ATIF input, Harbor trajectory parsing, v1 `tool_calls` coverage only, and
-coverage aggregation from `coverage.json` files.
+ATIF input, Harbor trajectory parsing, v1 `tool_calls` and `capabilities`
+coverage, and coverage aggregation from `coverage.json` files.
 
 | Script | Use it to |
 |---|---|
@@ -74,19 +74,8 @@ coverage aggregation from `coverage.json` files.
 | `scripts/audit_spec/report.py` | Aggregate per-trace `coverage.json` files into one coverage report with uncovered audit items |
 | `scripts/audit_spec/validate.py` | Validate the marked audit-spec block in `audit.md` |
 
-Shared helpers are private modules in the same tree:
-`scripts/audit_spec/_schema.py` and `scripts/audit_spec/_markdown.py`.
-Measurement uses Harbor's `harbor.models.trajectories.Trajectory` to read ATIF
-files. Measurement methods live under `scripts/audit_spec/measurements/`; v1 ships
-`scripts/audit_spec/measurements/tool_calls.py`.
-Shared coverage output is defined by `schemas/audit_coverage.schema.json`.
-Aggregate coverage output is defined by
-`schemas/audit_coverage_report.schema.json`.
-Tool-call debug output is defined by
-`schemas/audit_tool_calls_details.schema.json`.
-Concrete instances live under `examples/schemas/tool_calls.coverage.json`,
-`examples/schemas/tool_calls.details.json`, and
-`examples/schemas/coverage_report.json`.
+Shared helpers, measurement method contracts, schemas, and examples are
+documented in `scripts/audit_spec/README.md`.
 Runtime dependencies are listed in `requirements.txt`.
 
 ## Step 1: Draft Or Update Audit Items
@@ -246,17 +235,56 @@ uv run --with-requirements <skill_dir>/requirements.txt \
 ```
 
 `--measure` may be passed more than once or as CSV, for example
-`--measure tool_calls,boundary`. The script loads the trajectory once, then runs
-each selected method against the same parsed Harbor trajectory model. Unknown
-method names fail before the trace is loaded.
+`--measure tool_calls,capabilities`. The default is `tool_calls`; include
+`capabilities` when the user wants the same trace to count against capability
+items. The script loads the trajectory once, then runs each selected method
+against the same parsed Harbor trajectory model. Unknown method names fail
+before the trace is loaded.
+
+When capability evidence contains non-tool kinds such as `user_intent`, `output`,
+`outcome`, `policy_boundary`, or `verifier`, inspect the trace and write a
+structured judgment file under `.eval-author/` using
+`schemas/audit_capability_judgments.schema.json`. Each judgment must target the
+capability `name` plus the zero-based `evidence_required` index, copy the
+evidence `kind` and `description` exactly, and judge only non-tool evidence. Do
+not write judgments for `tool_call`; the script measures those deterministically.
+Set the sidecar's required `trace_sha256` to `sha256:` followed by the lowercase
+SHA-256 digest of the exact ATIF trajectory file you inspected. Measurement
+rejects the sidecar if those trace bytes have changed or another trace is used.
+Use the capability description, evidence description, and concrete trace content
+as the rubric: mark `satisfied` only when the trace clearly demonstrates the
+requirement, `missing` when it clearly does not, and `unclear` when the trace is
+ambiguous or insufficient. Include brief rationale and supporting trace
+references when available. A subjective judgment can satisfy only the non-tool
+evidence it targets; it cannot override missing required tools or missing
+`tool_call` evidence.
+Pass the sidecar when measuring capabilities:
+
+```bash
+uv run --with-requirements <skill_dir>/requirements.txt \
+  <skill_dir>/scripts/audit_spec/measure.py \
+  --audit .eval-author/audit.md \
+  --trace <path-to>/trajectory.json \
+  --task-id <task-id> \
+  --run-id <run-id> \
+  --measure capabilities \
+  --capability-judgments .eval-author/capability-judgments.json \
+  --out-dir .eval-author/audit-measurements
+```
+
+Capability coverage is conjunctive: every deterministic requirement must be
+satisfied, and every judged evidence requirement must be satisfied. Missing
+judgments leave the capability uncovered. Stale judgments fail measurement
+before the script writes a coverage report, including judgments bound to a
+different trace digest.
 
 The script writes one folder per task, run, and method. Task and run ids are
 encoded as single path components so ids containing `/` cannot create nested or
 escaping paths:
 
 ```text
-.eval-author/audit-measurements/task=<encoded-task-id>/run=<encoded-run-id>/tool_calls/coverage.json
-.eval-author/audit-measurements/task=<encoded-task-id>/run=<encoded-run-id>/tool_calls/details.json
+.eval-author/audit-measurements/task=<encoded-task-id>/run=<encoded-run-id>/<method>/coverage.json
+.eval-author/audit-measurements/task=<encoded-task-id>/run=<encoded-run-id>/<method>/details.json
 ```
 
 `coverage.json` uses the shared coverage schema and contains only the stable
@@ -267,11 +295,8 @@ aggregation should consume this file and ignore method-specific debug details.
 `details.json` is specific to the selected method and carries traceability data
 for humans.
 
-The only v1 measurement method is `tool_calls`. It covers only audit items whose
-`kind` is `tool` by matching each tool item's `name` against ATIF
-`steps[].tool_calls[].function_name`, including embedded subagent trajectories.
-It does not judge capabilities, failure cases, user intent, output quality, or
-other evidence kinds.
+For current method semantics and details schemas, see
+`scripts/audit_spec/README.md`.
 
 The script validates `coverage.json` against `schemas/audit_coverage.schema.json`
 and validates `details.json` against the selected method's details schema before
@@ -314,8 +339,10 @@ Treat that list as the input for a later task-generation step.
 
 - For audit-generation inputs and reconciliation modes, return to
   [Step 2: Generate Or Reconcile Audit.md](#step-2-generate-or-reconcile-auditmd).
-- When aggregate `uncovered_items` includes actionable tools
+- When aggregate `uncovered_items` includes actionable items
   (`reason: not_covered_by_any_input_report`), hand off to
   [`eval-author-task-create`](../eval-author-task-create/SKILL.md) to scaffold
-  and prove one gap at a time. Capability or failure-case items with
-  `reason: not_measured_by_any_method` stay audit findings only in v1.
+  and prove one gap at a time. Items with
+  `reason: not_measured_by_any_method`, such as failure-case items and
+  capability items measured without the `capabilities` method, stay audit
+  findings only in v1.

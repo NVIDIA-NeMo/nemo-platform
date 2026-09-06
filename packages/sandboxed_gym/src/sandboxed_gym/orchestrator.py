@@ -9,6 +9,7 @@ import asyncio
 import concurrent.futures
 import json
 import logging
+import threading
 import urllib.error
 import urllib.request
 from collections.abc import Coroutine, Mapping
@@ -47,6 +48,38 @@ def _run_coro_sync(coro: Coroutine[Any, Any, T]) -> T:
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         # `Future.result()` is typed with its own TypeVar, which does not unify with T here.
         return pool.submit(asyncio.run, coro).result()  # ty: ignore[invalid-return-type]
+
+
+class _SessionAsyncRunner:
+    """Run all OpenSandbox SDK calls for one host on the same asyncio loop.
+
+    The SDK's HTTP client is tied to the loop that created the sandbox. If we call
+    ``asyncio.run()`` separately for create, wait-ready, and destroy, the first loop
+    is already closed when we try to tear the sandbox down, and the pod is leaked.
+    """
+
+    def __init__(self) -> None:
+        self._loop = asyncio.new_event_loop()
+        self._ready = threading.Event()
+        self._thread = threading.Thread(target=self._serve, name="sandboxed-gym-sdk", daemon=True)
+        self._thread.start()
+        # Wait until the loop is running before anyone calls run().
+        self._ready.wait()
+
+    def _serve(self) -> None:
+        asyncio.set_event_loop(self._loop)
+        self._ready.set()
+        self._loop.run_forever()
+        self._loop.close()
+
+    def run(self, coro: Coroutine[Any, Any, T]) -> T:
+        """Wait until this coroutine finishes on the shared loop."""
+        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
+
+    def close(self) -> None:
+        """Stop the shared loop."""
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join()
 
 
 def apply_sandbox_runtime_defaults(global_config: dict[str, Any]) -> dict[str, Any]:
@@ -173,11 +206,10 @@ def build_gym_host_spec(
         allow_internet=sandbox.allow_internet,
         public_dns_allow=sandbox.network_policy.public_dns_allow,
         resolver_addresses=sandbox.network_policy.resolver_addresses,
-        # No entrypoint configured means the runtime image starts itself through its own CMD. The
-        # old default called `default_gym_host_entrypoint()`, which resolves `gym_host.sh` and
-        # `gym_host_runtime.py` from *this* process's installed package -- a path inside the
-        # orchestrator's container, handed to a host running a different image. It only ever
-        # resolved because the two images happened to share a layout.
+        # Leave an omitted entrypoint provider-specific: Docker preserves the runtime image CMD,
+        # while OpenSandbox must supply the standard Gym-host command explicitly because its SDK
+        # otherwise starts a persistent-sandbox keepalive. Avoid resolving scripts from this
+        # orchestrator container and handing those paths to a different runtime image.
         entrypoint=(tuple(sandbox.entrypoint) if sandbox.entrypoint else None),
     )
 
@@ -194,6 +226,7 @@ class SandboxedGymSession:
         host_provider: SandboxedGymHostProvider,
         host: GymHostHandle,
         orchestrator_url: str | None = None,
+        async_runner: _SessionAsyncRunner | None = None,
     ) -> None:
         self.cfg = cfg
         self._broker_server = broker_server
@@ -201,6 +234,7 @@ class SandboxedGymSession:
         self._host_provider = host_provider
         self.host = host
         self.orchestrator_url = orchestrator_url
+        self._async_runner = async_runner
         self._rollout_timeout_s = float(cfg.sandbox.rollout_timeout_s)
         self._max_request_bytes = cfg.sandbox.max_request_bytes
         self._max_response_bytes = cfg.sandbox.max_response_bytes
@@ -258,9 +292,15 @@ class SandboxedGymSession:
 
     def shutdown(self) -> None:
         try:
-            _run_coro_sync(self._host_provider.destroy_host(self.host))
+            if self._async_runner is not None:
+                self._async_runner.run(self._host_provider.destroy_host(self.host))
+            else:
+                _run_coro_sync(self._host_provider.destroy_host(self.host))
         except Exception:
             LOGGER.exception("Failed to destroy sandboxed Gym host")
+        finally:
+            if self._async_runner is not None:
+                self._async_runner.close()
         try:
             self._broker_server.shutdown()
         except Exception:
@@ -280,12 +320,21 @@ class SandboxedGymOrchestrator:
 
         host_spec = build_gym_host_spec(cfg, broker)
         host_provider = get_host_provider(cfg.host_provider, cfg.sandbox.host_provider_options)
-        host = _run_coro_sync(host_provider.create_host(host_spec))
+        # Use one loop for create, wait-ready, and destroy. A new asyncio.run() for
+        # each call closes the SDK client that create_host just built.
+        async_runner = _SessionAsyncRunner()
+        host: GymHostHandle | None = None
         try:
-            _run_coro_sync(host_provider.wait_ready(host, cfg.sandbox.ready_timeout_s))
+            host = async_runner.run(host_provider.create_host(host_spec))
+            async_runner.run(host_provider.wait_ready(host, cfg.sandbox.ready_timeout_s))
         except Exception:
-            _run_coro_sync(host_provider.destroy_host(host))
+            if host is not None:
+                try:
+                    async_runner.run(host_provider.destroy_host(host))
+                except Exception:
+                    LOGGER.exception("Failed to destroy sandboxed Gym host after startup failure")
             broker_server.shutdown()
+            async_runner.close()
             raise
 
         return SandboxedGymSession(
@@ -294,4 +343,5 @@ class SandboxedGymOrchestrator:
             broker=broker,
             host_provider=host_provider,
             host=host,
+            async_runner=async_runner,
         )

@@ -33,9 +33,10 @@ import os
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
+from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.job import job_collection_path_for
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
@@ -280,7 +281,7 @@ class NemoJobScheduler:
                 validated,
                 workspace=workspace,
                 entity_client=None,
-                async_sdk=async_sdk,
+                async_sdk=cast(AsyncNeMoPlatform, async_sdk),
                 is_local=is_local,
             )
             # Re-validate ``to_spec`` output against ``spec_schema`` so plugin

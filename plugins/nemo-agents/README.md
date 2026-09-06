@@ -343,10 +343,10 @@ The job downloads the agent's spec fileset into a temporary build context,
 writes `agent.yaml` from the stored config, and runs the same Fabric build the
 CLI runs.
 
-From the CLI the same job is `nemo agents package-agent submit`. It is
-deliberately *not* named `package`: the generated job sub-group mounts onto the
-same Typer app that already owns `nemo agents package`, and would shadow the
-local packaging flags above.
+From the CLI the same job is `nemo agents package-agent`. It is deliberately
+*not* named `package`: the generated job command mounts onto the same Typer app
+that already owns `nemo agents package`, and would shadow the local packaging
+flags above.
 
 | Limitation | Detail |
 |---|---|
@@ -849,7 +849,7 @@ specific VirtualModel registered in your workspace, then run:
 
 ```bash
 export NEMO_DEFAULT_MODEL=nvidia-nemotron-3-super-120b-a12b   # or any registered VirtualModel
-nemo agents evaluate run \
+nemo agents evaluate \
     --eval-config plugins/nemo-agents/examples/calculator-agent/src/calculator_agent/calculator-eval.yml \
     --agent calculator-agent
 ```

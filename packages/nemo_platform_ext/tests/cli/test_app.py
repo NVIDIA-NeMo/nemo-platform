@@ -307,6 +307,16 @@ def test_jobs_watch_command_is_registered():
     assert "--no-history" in result.stdout
 
 
+def test_jobs_tail_command_is_registered():
+    runner = CliRunner()
+    result = runner.invoke(app, ["jobs", "tail", "--help"])
+
+    assert result.exit_code == 0
+    assert "Print the newest lines from a platform job log." in result.stdout
+    assert "--lines" in result.stdout
+    assert "-n" in result.stdout
+
+
 def test_jobs_create_exposes_wait_and_watch_flags():
     runner = CliRunner()
     result = runner.invoke(app, ["jobs", "create", "--help"])

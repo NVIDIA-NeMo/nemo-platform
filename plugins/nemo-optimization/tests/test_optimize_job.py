@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 from nemo_optimization.jobs.optimize import OptimizeJob
-from nemo_optimization.schemas.optimize import OptimizeSpec
+from nemo_optimization.schemas.optimize import FILESET_REQUIRED, OptimizeSpec, OptimizeSubmitSpec
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.exceptions import (
@@ -27,6 +27,7 @@ from nemo_platform_plugin.jobs.execution_profiles import (
 )
 from nemo_platform_plugin.refs import FilesetRef
 from nemo_platform_plugin.run_dependencies import LocalRunError
+from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pydantic import ValidationError
 
 FABRIC_AGENT = {
@@ -97,7 +98,7 @@ async def test_compile_stamps_the_fileset_ref_into_the_step_config() -> None:
 @pytest.mark.asyncio
 async def test_compile_requires_a_staged_fileset() -> None:
     spec = OptimizeSpec(optimize_config="/abs/optimize.yml")
-    with pytest.raises(PlatformJobCompilationError, match="optimize_config_fileset is required"):
+    with pytest.raises(PlatformJobCompilationError, match="prepare-fileset"):
         await compile_spec(spec)
 
 
@@ -120,6 +121,23 @@ def test_spec_rejects_a_malformed_fileset_ref() -> None:
 def test_spec_requires_a_config_location() -> None:
     with pytest.raises(ValidationError):
         OptimizeSpec.model_validate({})
+
+
+def test_submit_spec_requires_fileset_for_remote_requests() -> None:
+    with pytest.raises(ValidationError, match="prepare-fileset") as missing:
+        OptimizeSubmitSpec.model_validate({"optimize_config": "optimize.yml"})
+    assert FILESET_REQUIRED in str(missing.value)
+
+    with pytest.raises(ValidationError, match="prepare-fileset") as explicit_none:
+        OptimizeSubmitSpec.model_validate({"optimize_config": "optimize.yml", "optimize_config_fileset": None})
+    assert FILESET_REQUIRED in str(explicit_none.value)
+
+
+def test_submit_spec_allows_missing_fileset_for_local_scheduler() -> None:
+    spec = OptimizeSubmitSpec.model_validate({"optimize_config": "/abs/optimize.yml"}, context={"is_local": True})
+
+    assert spec.optimize_config == "/abs/optimize.yml"
+    assert spec.optimize_config_fileset is None
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +234,28 @@ def test_run_dispatches_a_local_fabric_config(tmp_path: Path, ctx: JobContext) -
     kwargs = dispatch.call_args.kwargs
     assert kwargs["agent_config"] is None
     assert kwargs["optimize_config"]["optimizer"]["numeric"]["enabled"] is True
+
+
+def test_scheduler_run_local_preserves_workspace_for_absolute_config_without_fileset(tmp_path: Path) -> None:
+    optimize_config = write_config(tmp_path, {**FABRIC_AGENT, **MINIMAL_CONFIG})
+    observed: dict[str, str] = {}
+
+    def _preflight(*args: Any, workspace: str, **kwargs: Any) -> None:
+        del args, kwargs
+        observed["workspace"] = workspace
+
+    with (
+        patch("nemo_optimization.jobs.optimize.preflight_validate_llm_models", side_effect=_preflight),
+        patch("nemo_optimization.jobs.optimize.OptimizeRouter.dispatch", return_value={"status": "completed"}),
+    ):
+        result = NemoJobScheduler().run_local(
+            OptimizeJob,
+            {"optimize_config": optimize_config},
+            workspace="research",
+        )
+
+    assert result["status"] == "completed"
+    assert observed["workspace"] == "research"
 
 
 def test_run_leaves_the_working_directory_alone_in_local_mode(tmp_path: Path, ctx: JobContext) -> None:

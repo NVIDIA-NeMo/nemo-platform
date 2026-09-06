@@ -16,15 +16,24 @@ for the full one-time setup, including the Hermes harness install.
 Primary user surface (Alt 5):
 
 ```bash
-nemo agents optimize run|submit|explain|prepare-fileset
+nemo agents optimize prepare-fileset \
+  --source examples/hermes-optimize \
+  --optimize-config optimize-chatonly.yaml \
+  --fileset hermes-optimize-chatonly \
+  --workspace default
+
+nemo agents optimize \
+  --optimize-config-fileset default/hermes-optimize-chatonly \
+  --optimize-config optimize-chatonly.yaml \
+  --workspace default
 ```
 
-``run`` executes locally against absolute host paths.  ``submit`` hands the
-study to the platform, which cannot read the client's filesystem, so it requires
-``--optimize-config-fileset``: a fileset holding the whole bundle (config, Agent
-under Test, dataset, ``eval.fabric.base_dir`` tree, hooks and MCP configs) with
-``--optimize-config`` given relative to its root.  ``prepare-fileset`` validates
-a bundle directory (:mod:`nemo_optimization.bundle`) and uploads it.
+``prepare-fileset`` validates a bundle directory
+(:mod:`nemo_optimization.bundle`) and uploads it. ``optimize`` hands the study
+to the platform, which cannot read the client's filesystem, so CLI submissions
+require ``--optimize-config-fileset``: a fileset holding the whole bundle
+(config, Agent under Test, dataset, ``eval.fabric.base_dir`` tree, hooks and MCP
+configs) with ``--optimize-config`` given relative to its root.
 
 Golden-path agent shape: Fabric Hermes (``nvidia.fabric.hermes``). See
 ``examples/hermes-optimize/`` — runnable ``optimize-*.yaml`` packages:
@@ -56,6 +65,6 @@ Experimentalist / Customizer agent may call the same library.
 ## Next Steps
 
 * Try the runnable bundle example: [examples/hermes-optimize](examples/hermes-optimize).
-* Stage and submit a study to the platform with ``prepare-fileset`` + ``submit``;
+* Stage and launch a study on the platform with ``prepare-fileset`` + ``optimize``;
   see the "Primary user surface" commands above and that example's README for
-  the full ``run`` → ``prepare-fileset`` → ``submit`` workflow.
+  the full ``prepare-fileset`` → ``optimize`` workflow.

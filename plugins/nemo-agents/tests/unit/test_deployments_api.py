@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_agents_plugin.api.v2 import deployments as deployments_router_module
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
+from nemo_agents_plugin.config import AgentsConfig
 from nemo_agents_plugin.entities import (
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     Agent,
@@ -20,8 +22,10 @@ from nemo_agents_plugin.entities import (
     AgentDeployment,
     AgentEnvironment,
     AgentEnvironmentSpec,
+    ComputeResources,
     DeploymentStatus,
 )
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 NOW = datetime.now(timezone.utc)
@@ -145,6 +149,166 @@ class TestCreateDeployment:
         assert created_deployment.image == "hand-built-agent:latest"
         assert created_deployment.use_image_entrypoint is True
 
+    def test_create_rejects_a_mode_the_executor_will_not_honour(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_deployments_plugin.config import DeploymentsConfig, ExecutorConfigEntry
+
+        # A standalone config: DeploymentsConfig.get() is a cached singleton, and
+        # assigning to it would outlive this test.
+        deployments_cfg = DeploymentsConfig(executors=[ExecutorConfigEntry(name="default-exec", backend="docker")])
+        monkeypatch.setattr(DeploymentsConfig, "get", classmethod(lambda cls: deployments_cfg))
+        agents_cfg = AgentsConfig.get()
+        monkeypatch.setattr(agents_cfg.deployments, "default_executor", "default-exec")
+        monkeypatch.setattr(agents_cfg.deployments, "k8s_executor", None)
+        monkeypatch.setattr(AgentsConfig, "get", classmethod(lambda cls: agents_cfg))
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={
+                "agent": "fabric-agent",
+                "name": "fabric-dep",
+                "deployment_mode": "k8s",
+                "image": "registry.example/agent:1.0",
+            },
+        )
+
+        assert resp.status_code == 400
+        assert "runs on 'docker'" in resp.json()["detail"]
+        # The controller would have failed this on reconcile; nothing should persist.
+        mock_entity_client.create.assert_not_called()
+
+    def test_create_rejects_container_deployment_with_no_resolvable_image(self) -> None:
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={"agent": "fabric-agent", "name": "fabric-dep", "deployment_mode": "docker"},
+        )
+
+        assert resp.status_code == 400
+        assert "requires a container image" in resp.json()["detail"]
+        assert "deployments.default_image" in resp.json()["detail"]
+        mock_entity_client.create.assert_not_called()
+
+    def test_create_allows_container_deployment_without_image_when_a_default_is_configured(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = AgentsConfig.get()
+        monkeypatch.setattr(config.deployments, "default_image", "registry.example/agent:pinned")
+        monkeypatch.setattr(AgentsConfig, "get", classmethod(lambda cls: config))
+
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={"agent": "fabric-agent", "name": "fabric-dep", "deployment_mode": "docker"},
+        )
+
+        assert resp.status_code == 201
+        created_deployment: AgentDeployment = mock_entity_client.create.call_args[0][0]
+        assert created_deployment.image == ""
+
+    def test_create_ignores_raw_auth_context_headers(self) -> None:
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={
+                "agent": "fabric-agent",
+                "name": "fabric-dep",
+                "deployment_mode": "docker",
+                "image": "registry.example/agent:1.0",
+            },
+            headers={
+                "X-NMP-Principal-Id": "user:alice",
+                "X-NMP-Principal-Email": "alice@example.com",
+                "X-NMP-Principal-Groups": "research,platform",
+            },
+        )
+
+        assert resp.status_code == 201
+        created_deployment: AgentDeployment = mock_entity_client.create.call_args[0][0]
+        assert created_deployment.auth_context is None
+
+    def test_create_captures_runtime_auth_context(self) -> None:
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        with patch(
+            "nemo_agents_plugin.api.v2.deployments.current_auth_context",
+            return_value=AuthContext(
+                principal_id="bearer@example.com",
+                principal_email="bearer@example.com",
+                principal_groups=["runtime"],
+            ),
+        ):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments",
+                json={
+                    "agent": "fabric-agent",
+                    "name": "fabric-dep",
+                    "deployment_mode": "docker",
+                    "image": "registry.example/agent:1.0",
+                },
+            )
+
+        assert resp.status_code == 201
+        created_deployment: AgentDeployment = mock_entity_client.create.call_args[0][0]
+        assert created_deployment.auth_context is not None
+        assert created_deployment.auth_context.principal_id == "bearer@example.com"
+        assert created_deployment.auth_context.principal_email == "bearer@example.com"
+        assert created_deployment.auth_context.principal_groups == ["runtime"]
+
+    def test_create_allows_subprocess_deployment_without_an_image(self) -> None:
+        mock_entity_client = AsyncMock()
+        mock_entity_client.get = AsyncMock(return_value=_make_agent())
+
+        async def _save_deployment(deployment: AgentDeployment) -> AgentDeployment:
+            deployment._id = f"deployment-{deployment.name}-id"
+            deployment._created_at = NOW
+            return deployment
+
+        mock_entity_client.create = AsyncMock(side_effect=_save_deployment)
+        client = _test_client(mock_entity_client)
+
+        resp = client.post(
+            "/apis/agents/v2/workspaces/default/deployments",
+            json={"agent": "fabric-agent", "name": "fabric-dep", "deployment_mode": "subprocess"},
+        )
+
+        assert resp.status_code == 201
+
     def test_create_rejects_image_entrypoint_for_subprocess(self) -> None:
         mock_entity_client = AsyncMock()
         mock_entity_client.get = AsyncMock(return_value=_make_agent())
@@ -173,7 +337,7 @@ class TestCreateDeployment:
             env={"CUSTOM": "from-spec"},
             secrets={"APP_TOKEN": "default/app-token"},
         )
-        cspec = AgentComputeSpec(name="cspec", workspace="default", resources={"limits": {"cpu": "2"}})
+        cspec = AgentComputeSpec(name="cspec", workspace="default", resources=ComputeResources(limits={"cpu": "2"}))
 
         mock_entity_client = AsyncMock()
         # get order: agent (route), then AgentEnvironment, env spec, compute spec (resolver).

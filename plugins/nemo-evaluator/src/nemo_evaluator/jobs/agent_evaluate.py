@@ -26,7 +26,7 @@ from urllib.parse import urlsplit
 import nemo_evaluator.agent_seeds  # noqa: F401 - registers the platform 'fileset' workspace-seed handler
 from filesets import FilesetPathError, parse_fileset_ref
 from nemo_evaluator.api.schemas import MetricInline
-from nemo_evaluator.config import EvaluatorConfig
+from nemo_evaluator.config import get_config
 from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.agent_compiler import compile_agent_eval_job
 from nemo_evaluator.jobs.agent_spec import (
@@ -44,7 +44,6 @@ from nemo_evaluator.jobs.gym_environment_package import (
     ENVIRONMENT_MANIFEST_FILENAME,
     GymEnvironmentPackageError,
     parse_environment_manifest,
-    require_supported_environment_format,
     validate_environment_manifest_against_listing,
 )
 from nemo_evaluator.jobs.gym_sandbox import (
@@ -85,7 +84,11 @@ from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec, SubprocessExecutionProviderSpec
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
-from nemo_platform_plugin.jobs.execution_profiles import SubprocessJobExecutionProfile
+from nemo_platform_plugin.jobs.execution_profiles import (
+    KubernetesJobExecutionProfile,
+    SubprocessJobExecutionProfile,
+    VolcanoJobExecutionProfile,
+)
 from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
 from pydantic import BaseModel
 
@@ -109,8 +112,8 @@ def _harbor_backend_error(reason: str) -> PlatformJobCompilationError:
     return PlatformJobCompilationError(f"{reason} {_HARBOR_BACKEND_REQUIREMENT}")
 
 
-def _harbor_dependency_unavailable(profile: str) -> PlatformJobDependencyUnavailableError:
-    """A retryable failure while resolving the backend for a Harbor profile."""
+def _profile_dependency_unavailable(profile: str) -> PlatformJobDependencyUnavailableError:
+    """A retryable failure while resolving an execution profile."""
     return PlatformJobDependencyUnavailableError(
         f"Unable to resolve execution profile '{profile}': the Jobs service is temporarily unavailable. "
         "Retry the submission."
@@ -201,10 +204,8 @@ async def _resolve_gym_environment(
         ) from exc
 
     try:
-        # Listing-only checks: no customer code is imported, and native-v1 is refused here
-        # until it's supported.
+        # Listing-only checks: no customer code is imported.
         manifest = parse_environment_manifest(raw_manifest)
-        require_supported_environment_format(manifest)
         validate_environment_manifest_against_listing(manifest, paths)
     except GymEnvironmentPackageError as exc:
         raise ValueError(
@@ -343,23 +344,34 @@ class AgentEvalJob(NemoJob):
         """Compile the canonical spec into a plugin-native agent-evaluation job."""
         del entity_client, job_name, options
         canonical_spec = spec if isinstance(spec, AgentEvalSpec) else AgentEvalSpec.model_validate(spec.model_dump())
-        if isinstance(canonical_spec.target, GymRunnerTarget) and canonical_spec.target.environment is not None:
-            evaluator_config = EvaluatorConfig()
-            try:
-                require_fileset_environment_sandboxed(canonical_spec.target, evaluator_config)
-                execution_profile = await cls._execution_profile_for_storage(
-                    async_sdk=async_sdk,
-                    profile=profile or "default",
-                )
-                require_fileset_sandbox_storage_identity(
-                    canonical_spec.target,
-                    evaluator_config,
-                    execution_profile=execution_profile,
-                )
-            except SandboxUnavailableError as exc:
-                raise PlatformJobCompilationError(str(exc)) from exc
+        execution_profile: BaseExecutionProfile | None = None
+        if isinstance(canonical_spec.target, GymRunnerTarget):
+            evaluator_config = get_config() if canonical_spec.target.environment is not None else None
+            require_pvc_storage = (
+                evaluator_config is not None and evaluator_config.sandbox_host_provider == "opensandbox"
+            )
+            execution_profile = await cls._execution_profile(
+                async_sdk=async_sdk,
+                profile=profile or "default",
+                require_pvc_storage=require_pvc_storage,
+            )
+            if canonical_spec.target.environment is not None:
+                assert evaluator_config is not None
+                try:
+                    require_fileset_environment_sandboxed(canonical_spec.target, evaluator_config)
+                    require_fileset_sandbox_storage_identity(
+                        canonical_spec.target,
+                        evaluator_config,
+                        execution_profile=execution_profile,
+                    )
+                except SandboxUnavailableError as exc:
+                    raise PlatformJobCompilationError(str(exc)) from exc
         del workspace
-        platform_spec = compile_agent_eval_job(canonical_spec, profile=profile)
+        platform_spec = compile_agent_eval_job(
+            canonical_spec,
+            profile=profile,
+            use_subprocess=isinstance(execution_profile, SubprocessJobExecutionProfile),
+        )
         if isinstance(canonical_spec.target, HarborRunnerTarget):
             step = next(iter(platform_spec["steps"]))
             executor = cast(dict[str, Any], step["executor"])
@@ -370,19 +382,42 @@ class AgentEvalJob(NemoJob):
         return platform_spec
 
     @staticmethod
-    async def _execution_profile_for_storage(
+    async def _execution_profile(
         *,
         async_sdk: AsyncNeMoPlatform | None,
         profile: str,
+        require_pvc_storage: bool = False,
     ) -> BaseExecutionProfile | None:
-        """Look up the selected execution profile so FileSet staging can share its PVC."""
+        """Resolve the profile that Jobs will use for this submission."""
         if async_sdk is None:
             return None
         try:
             profiles = (await client_from_platform(async_sdk, AsyncJobsClient).get_execution_profiles()).data()
-        except (NemoTransportError, NemoResponseValidationError, InternalServerError):
-            return None
-        return next((item for item in profiles if item.profile == profile), None)
+        except (NemoTransportError, NemoResponseValidationError, InternalServerError) as exc:
+            raise _profile_dependency_unavailable(profile) from exc
+        if require_pvc_storage:
+            for item in profiles:
+                if item.profile == profile and isinstance(
+                    item, KubernetesJobExecutionProfile | VolcanoJobExecutionProfile
+                ):
+                    return item
+            raise PlatformJobCompilationError(
+                f"the FileSet-backed OpenSandbox Gym execution profile '{profile}' must use a Kubernetes "
+                "or Volcano backend with shared PVC storage."
+            )
+
+        # Profiles are keyed by (provider, profile), so cpu/default and subprocess/default may both
+        # be advertised. The Jobs API rewrites a CPU step to subprocess whenever a same-named
+        # subprocess profile is configured. Prefer that profile here as well, so Gym emits the
+        # host-portable `python -m ...` command that the rewritten step will need.
+        matching_profile: BaseExecutionProfile | None = None
+        for item in profiles:
+            if item.profile != profile:
+                continue
+            if isinstance(item, SubprocessJobExecutionProfile):
+                return item
+            matching_profile = item
+        return matching_profile
 
     @staticmethod
     async def _resolve_harbor_subprocess_executor(
@@ -392,12 +427,12 @@ class AgentEvalJob(NemoJob):
         profile = cast(str, executor["profile"])
         provider = cast(str, executor["provider"])
         if async_sdk is None:
-            raise _harbor_dependency_unavailable(profile)
+            raise _profile_dependency_unavailable(profile)
 
         try:
             profiles = (await client_from_platform(async_sdk, AsyncJobsClient).get_execution_profiles()).data()
         except (NemoTransportError, NemoResponseValidationError, InternalServerError) as exc:
-            raise _harbor_dependency_unavailable(profile) from exc
+            raise _profile_dependency_unavailable(profile) from exc
 
         # The concrete profile type fixes the backend to "subprocess".
         if any(
@@ -527,6 +562,11 @@ class AgentEvalJob(NemoJob):
                 raise SandboxUnavailableError(
                     "Gym environment FileSets require sandboxed execution. Enable `sandboxed_gym_default`, "
                     "or omit `target.environment` so colocated GymAgentTaskRunner cannot ignore the staged package."
+                )
+            if target.agent_config is None:
+                raise ValueError(
+                    "The agent_config field is required for colocated Gym execution; package-supplied agents "
+                    "are supported only by the sandboxed Gym host"
                 )
             gym_runtime = GymAgentTaskRunner(
                 config=GymRuntimeConfig(

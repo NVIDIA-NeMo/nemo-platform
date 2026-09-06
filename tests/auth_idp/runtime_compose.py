@@ -10,7 +10,7 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_ext.client.tls import httpx_tls_config_from_env
 
 from tests.auth_idp.common import jwt_claims
-from tests.auth_idp.runtime_contract import AuthIdpCase, TokenSet
+from tests.auth_idp.runtime_contract import AuthIdpCase, DeploymentWorkloadRuntimeConfig, TokenSet
 
 AUTHENTIK_COMPOSE_WORKLOAD_IDENTITY_PASSWORD = "svc-nemo-token-secret-e2e"
 AUTHENTIK_DEFAULT_PASSWORDS_BY_ENVVAR = {
@@ -97,6 +97,19 @@ class ComposeAuthIdpRuntime:
         assert token_response.get("token_type", "").lower() == "bearer"
         return TokenSet(access_token=access_token, claims=jwt_claims(access_token))
 
+    def workload_platform_token(self) -> TokenSet:
+        return self.workload_provider_token()
+
+    def deployment_workload_runtime_config(self) -> DeploymentWorkloadRuntimeConfig:
+        return DeploymentWorkloadRuntimeConfig(
+            env=(
+                {"name": "NMP_BASE_URL", "value": "https://nemo-gateway:8080"},
+                {"name": "NMP_CLIENT_SSL_CERT_FILE", "value": "/etc/nmp/gateway-tls/tls.crt"},
+                {"name": "SSL_CERT_FILE", "value": "/etc/nmp/gateway-tls/tls.crt"},
+                {"name": "REQUESTS_CA_BUNDLE", "value": "/etc/nmp/gateway-tls/tls.crt"},
+            ),
+        )
+
     def e2e_setup_sdk(self) -> NeMoPlatform:
         token = self.e2e_setup_token().access_token
         return NeMoPlatform(
@@ -114,7 +127,7 @@ class ComposeAuthIdpRuntime:
         )
 
     def workload_provider_sdk(self) -> NeMoPlatform:
-        token = self.workload_provider_token().access_token
+        token = self.workload_platform_token().access_token
         return NeMoPlatform(
             base_url=self.gateway_base_url,
             default_headers={"Authorization": f"Bearer {token}"},

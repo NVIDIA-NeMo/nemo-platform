@@ -33,7 +33,7 @@ work lands.
 ```bash
 # 0) Initialize plugin-backed agents CLI commands (required once per env)
 uv pip install -e packages/nemo_platform_plugin -e plugins/nemo-agents
-uv run _nemo agents evaluate run --help
+uv run _nemo agents evaluate --help
 
 # 1) Run correctness checks with task-specific pytest verifiers
 #    nat_runner.py is the canonical execution path: it runs each task's
@@ -81,7 +81,15 @@ python tests/agentic-use/passrate_token_policy_gate.py \
   --no-latest-per-task
 
 # 3) Optimize AUT parameters
-nemo agents optimize run --optimize-config tests/agentic-use/aut-optimize.yml --agent <your-agent>
+nemo agents optimize prepare-fileset \
+  --source tests/agentic-use \
+  --optimize-config aut-optimize.yml \
+  --fileset agentic-use-aut-optimize \
+  --agent <your-agent>
+nemo agents optimize \
+  --optimize-config-fileset default/agentic-use-aut-optimize \
+  --optimize-config aut-optimize.yml \
+  --agent <your-agent>
 ```
 
 `nemo agents evaluate` with LLM-as-judge can still be run for diagnostic signal,
@@ -95,7 +103,7 @@ the example matches the binary that's actually wired up in dev. The
 explicit `--base-url` keeps the run pointed at your local platform even
 if your shell exports a remote `NMP_BASE_URL`:
 ```bash
-uv run _nemo --base-url http://localhost:18080 agents evaluate run --spec '{
+uv run _nemo --base-url http://localhost:18080 agents evaluate --spec '{
   "agent": "<your-agent>",
   "eval_config": "tests/agentic-use/aut-eval-diagnostic.yml",
   "output": "./eval-out-diagnostic",
@@ -283,12 +291,12 @@ requirements) so dataset artifacts capture task assumptions explicitly.
 
 ## Plugin initialization preflight
 
-`agents evaluate run` and `agents optimize run` are provided by the
+`agents evaluate` and `agents optimize` are provided by the
 `plugins/nemo-agents` plugin. If `nemo/_nemo agents ...` is missing:
 
 ```bash
 uv pip install -e packages/nemo_platform_plugin -e plugins/nemo-agents
-uv run _nemo agents evaluate run --help
+uv run _nemo agents evaluate --help
 ```
 
 ## Architecture

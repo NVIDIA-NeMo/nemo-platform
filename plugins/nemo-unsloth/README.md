@@ -7,7 +7,7 @@ Unsloth GPU fine-tuning **customization contributor** for NeMo Platform.
 
 Registered under `nemo.customization.contributors` (key `unsloth`) — the `nemo-customizer-plugin` hub composes it under `/apis/customization/v2/workspaces/{workspace}/unsloth/` (HTTP) and `client.customization.unsloth.*` (SDK), and mounts the CLI at `nemo customization unsloth ...`.
 
-Unsloth is **submit-only**: training executes remotely on the platform's GPU cluster as a 4-step container job (download → train → upload → model-entity), mirroring `nemo-automodel-plugin`. The plugin itself stays lightweight — heavy ML deps (`unsloth`, `trl`, `transformers`, `peft`, `accelerate`, `bitsandbytes`, `torch`) live only inside the `nmp-unsloth-training` container image. `run` is hard-disabled — use `submit`.
+Unsloth is **submit-only**: training executes remotely on the platform's GPU cluster as a 4-step container job (download → train → upload → model-entity), mirroring `nemo-automodel-plugin`. The plugin itself stays lightweight — heavy ML deps (`unsloth`, `trl`, `transformers`, `peft`, `accelerate`, `bitsandbytes`, `torch`) live only inside the `nmp-unsloth-training` container image.
 
 ## Install
 
@@ -52,7 +52,6 @@ What happens after submit:
 ```bash
 nemo customization unsloth --help
 nemo customization unsloth submit JOB_JSON -w WORKSPACE [--profile P] [--cluster C] [-o k=v]
-nemo customization unsloth run ...      # hard-fails: Unsloth is submit-only
 nemo customization unsloth explain      # prints schemas
 ```
 

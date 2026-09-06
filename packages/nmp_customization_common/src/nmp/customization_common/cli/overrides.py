@@ -3,18 +3,18 @@
 
 """Shared CLI override machinery for customization contributor plugins.
 
-After the platform's ``_add_run_command`` / ``_add_submit_command`` register the
-default verbs, both backends swap in the same shapes:
+After the platform's ``_add_submit_command`` registers the default submit verb,
+Customizer backends swap in the same shape:
 
 - ``submit`` → positional ``JOB_JSON`` argument plus standard submit flags;
   loads + validates the JSON (via the backend's ``load_job_json``), then
   delegates to the original ``submit`` callback with ``--spec`` set.
-- ``run`` → hard-fails with a "submit-only" message (these backends run
-  remotely in a container, not locally).
+- any pre-existing generated ``run`` command is removed; Customizer jobs are
+  submitted to the platform, not executed through local CLI scheduling.
 - ``explain`` → unchanged.
 
-Only the backend's ``load_job_json``, the ``JOB_JSON`` help text, and the
-run-disabled message differ; everything else is shared here.
+Only the backend's ``load_job_json`` and the ``JOB_JSON`` help text differ;
+everything else is shared here.
 """
 
 from collections.abc import Callable
@@ -30,15 +30,14 @@ def apply_job_cli_overrides(
     *,
     load_job_json: LoadJobJson,
     job_json_help: str,
-    run_disabled_message: str,
 ) -> None:
-    """Drop the default ``run``/``submit`` verbs, then re-register the overrides.
+    """Drop generated ``run``/``submit`` verbs, then re-register submit.
 
     Order matters: drop first, then re-register. Typer iterates
     ``registered_commands`` in insertion order, so stale entries would route
     users back to the auto-generated shapes.
     """
-    _replace_job_run_disabled(group, job_json_help, run_disabled_message)
+    _drop_command(group, "run")
     _replace_job_submit(group, load_job_json, job_json_help)
 
 
@@ -51,19 +50,6 @@ def _pluck_callback(group: typer.Typer, verb: str) -> Callable[..., None]:
 
 def _drop_command(group: typer.Typer, name: str) -> None:
     group.registered_commands = [c for c in group.registered_commands if c.name != name]
-
-
-def _replace_job_run_disabled(group: typer.Typer, job_json_help: str, run_disabled_message: str) -> None:
-    """Replace ``run`` with a hard-fail explainer (these backends are submit-only)."""
-    _drop_command(group, "run")
-
-    @group.command("run")
-    def run(
-        _typer_ctx: typer.Context,
-        _job_json: Path | None = typer.Argument(None, metavar="JOB_JSON", help=job_json_help),
-    ) -> None:
-        typer.secho(run_disabled_message, err=True, fg=typer.colors.RED)
-        raise typer.Exit(code=1)
 
 
 def _replace_job_submit(group: typer.Typer, load_job_json: LoadJobJson, job_json_help: str) -> None:

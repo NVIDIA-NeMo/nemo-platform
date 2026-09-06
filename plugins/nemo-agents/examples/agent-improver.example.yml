@@ -4,13 +4,18 @@
 # Template config for nemo agents optimize-skills.
 #
 # Copy this file into your own agent's repo as ``.agent-improver.yml``,
-# retarget the paths, and run:
+# retarget the paths to absolute paths, and submit:
 #
-#   nemo agents optimize-skills run --spec-file .agent-improver.yml
+#   nemo agents optimize-skills --spec-file .agent-improver.yml \
+#     --anthropic-api-key-secret anthropic-api-key \
+#     --anthropic-base-url "$ANTHROPIC_BASE_URL"
 #
-# To submit to a cluster instead of running locally:
+# To submit to a configured cluster:
 #
-#   nemo agents optimize-skills submit --spec-file .agent-improver.yml --cluster <url>
+#   nemo agents optimize-skills --spec-file .agent-improver.yml \
+#     --anthropic-api-key-secret anthropic-api-key \
+#     --anthropic-base-url "$ANTHROPIC_BASE_URL" \
+#     --cluster <name>
 
 # ---------------------------------------------------------------------------
 # Agent + evals
@@ -20,11 +25,11 @@
 # task.toml (Harbor) or workflow.yml (NAT) plus instruction.md and
 # tests/test_outputs.py. See tests/agentic-use/ in the NeMo Platform repo for a real
 # example.
-evals: ./agent-evals
+evals: /path/to/my-agent/agent-evals
 
 # Your agent's repo root. The optimize-skills strategy is allowed to write
 # only under skills_path; everything else is reverted.
-agent: .
+agent: /path/to/my-agent
 
 # Where YOUR agent's skills live (relative to agent). Markdown files that
 # guide the agent when triggered by keywords / task patterns.
@@ -75,5 +80,5 @@ open_pr: false
 # ---------------------------------------------------------------------------
 
 # filter_glob: "auth-*"               # only evals matching this pattern
-# initial_batch: ./runs/batch-prev    # skip the initial run, use this as the baseline
-# state: ./.agent-improver-state.json # custom loop state path
+# initial_batch: /path/to/my-agent/runs/batch-prev    # skip the initial run, use this as the baseline
+# state: /path/to/my-agent/.agent-improver-state.json # custom loop state path

@@ -373,7 +373,7 @@ A full-weight GRPO job instead registers a new model entity, which does need its
 
 ## Key hyperparameters
 
-All GRPO knobs live under `training`, except `policy_backend`, which is under `training.parallelism`.
+All GRPO knobs live under `training`, including `policy_backend` (a sibling of `parallelism`, not a field on it).
 
 | Field | Default | Notes |
 | --- | --- | --- |
@@ -384,7 +384,7 @@ All GRPO knobs live under `training`, except `policy_backend`, which is under `t
 | `overlong_filtering` | `false` | Zero the loss contribution of responses truncated at the generation cap. |
 | `ref_policy_kl_penalty` | `0.0` | KL coefficient against the reference policy. |
 | `val_at_start` | `false` | Run validation before the first step, so baseline and result come from one job. |
-| `parallelism.policy_backend` | `automodel` | The NeMo-RL worker that trains the model, chosen explicitly and never inferred. `automodel` supports LoRA, `expert_parallel_size` above 1, and `automodel_kwargs`, and needs Transformer Engine (Hopper or newer). `dtensor` runs stock HuggingFace modules on PyTorch FSDP2 for pre-Hopper GPUs, and supports none of those three. Requesting an `automodel`-only feature under `dtensor` is rejected at submit, with every conflict reported at once. |
+| `policy_backend` | `automodel` | The NeMo-RL worker that trains the model, chosen explicitly and never inferred. Set it on `training` (for example `training.policy_backend`), not under `training.parallelism`. `automodel` supports LoRA, `expert_parallel_size` above 1, and `automodel_kwargs`, and needs Transformer Engine (Hopper or newer). `dtensor` runs stock HuggingFace modules on PyTorch FSDP2 for pre-Hopper GPUs, and supports none of those three. Requesting an `automodel`-only feature under `dtensor` is rejected at submit, with every conflict reported at once. |
 | `batching_strategy` | `dynamic` | How rollouts are grouped into training micro-batches. `dynamic` fills each micro-batch to a token budget, so short rollouts share a batch instead of each paying for a full-length pad. `static` puts one rollout per slot. `sequence_packing` concatenates rollouts, and is rejected for VLM, multimodal, and context-parallel runs. |
 | `train_mb_tokens` | Derived | Token budget per micro-batch, read by `dynamic` and `sequence_packing`. Defaults to `max_seq_length × micro_batch_size`. |
 | `sequence_length_round` | `64` | Round bucketed sequence lengths up to a multiple of this. Read only by `dynamic`. |

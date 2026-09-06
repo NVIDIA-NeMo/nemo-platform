@@ -229,12 +229,12 @@ def test_optimize_skills_job_analyze_only_requires_initial_batch() -> None:
 
 
 def _agents_cli_with_jobs():
-    """Build the agents CLI with ``nemo.jobs`` subgroups mounted.
+    """Build the agents CLI with ``nemo.jobs`` commands mounted.
 
     ``AgentsCLI.get_cli()`` alone does not mount job subcommands — the platform
     CLI loader injects them via :func:`add_job_commands`.  Replicate that here so
-    the ``optimize-skills run`` verb (and its analyze-only guard) is exercised
-    through the real generated CLI surface rather than a hand-written wrapper.
+    ``optimize-skills`` is exercised through the real generated CLI surface
+    rather than a hand-written wrapper.
     """
     from nemo_agents_plugin.cli import AgentsCLI
     from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
@@ -251,37 +251,82 @@ def _guard_message(result) -> str:
     return f"{result.output}\n{exc}"
 
 
-def test_cli_analyze_only_requires_initial_batch_flag() -> None:
-    """`optimize-skills run --analyze-only` without --initial-batch is rejected."""
+def test_cli_analyze_only_flag_flows_through_direct_command() -> None:
+    """`optimize-skills --analyze-only` without --initial-batch is submitted for server validation."""
+    from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
     from typer.testing import CliRunner
 
+    captured: dict[str, object] = {}
+
+    def _submit_remote(_self, job_cls, spec, **kwargs):
+        captured["job_cls"] = job_cls
+        captured["spec"] = spec
+        captured["base_url"] = kwargs["base_url"]
+        return {"name": "optimize-skills-123"}
+
     app = _agents_cli_with_jobs()
-    result = CliRunner().invoke(
-        app,
-        [
-            "optimize-skills",
-            "run",
-            "--agent",
-            "/tmp/agent",
-            "--evals",
-            "/tmp/x",
-            "--analyze-only",
-        ],
-    )
-    assert result.exit_code != 0
-    message = _guard_message(result)
-    assert "initial-batch" in message or "initial_batch" in message
+    with patch("nemo_platform_plugin.scheduler.NemoJobScheduler.submit_remote", _submit_remote):
+        result = CliRunner().invoke(
+            app,
+            [
+                "optimize-skills",
+                "--agent",
+                "/tmp/agent",
+                "--evals",
+                "/tmp/x",
+                "--analyze-only",
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, _guard_message(result)
+    assert captured["job_cls"] is OptimizeSkillsJob
+    assert captured["base_url"] == "http://test"
+    assert captured["spec"] == {
+        "agent": "/tmp/agent",
+        "evals": "/tmp/x",
+        "analyze_only": True,
+    }
+
+    legacy_result = CliRunner().invoke(app, ["optimize-skills", "run"])
+    assert legacy_result.exit_code != 0
 
 
-def test_cli_analyze_only_from_config_file_requires_initial_batch(tmp_path: Path) -> None:
-    """analyze_only=true in a --config-file YAML must also be guarded (not just the flag)."""
+def test_cli_analyze_only_from_spec_file_flows_through_direct_command(tmp_path: Path) -> None:
+    """analyze_only=true in a --spec-file YAML flows through the direct command."""
+    from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
     from typer.testing import CliRunner
 
     config = tmp_path / "config.yml"
     config.write_text("analyze_only: true\nagent: /tmp/agent\nevals: /tmp/x\n")
 
+    captured: dict[str, object] = {}
+
+    def _submit_remote(_self, job_cls, spec, **kwargs):
+        captured["job_cls"] = job_cls
+        captured["spec"] = spec
+        captured["base_url"] = kwargs["base_url"]
+        return {"name": "optimize-skills-123"}
+
     app = _agents_cli_with_jobs()
-    result = CliRunner().invoke(app, ["optimize-skills", "run", "--config-file", str(config)])
-    assert result.exit_code != 0
-    message = _guard_message(result)
-    assert "initial-batch" in message or "initial_batch" in message
+    with patch("nemo_platform_plugin.scheduler.NemoJobScheduler.submit_remote", _submit_remote):
+        result = CliRunner().invoke(
+            app,
+            [
+                "optimize-skills",
+                "--spec-file",
+                str(config),
+                "--base-url",
+                "http://test",
+            ],
+        )
+
+    assert result.exit_code == 0, _guard_message(result)
+    assert captured["job_cls"] is OptimizeSkillsJob
+    assert captured["base_url"] == "http://test"
+    assert captured["spec"] == {
+        "agent": "/tmp/agent",
+        "evals": "/tmp/x",
+        "analyze_only": True,
+    }

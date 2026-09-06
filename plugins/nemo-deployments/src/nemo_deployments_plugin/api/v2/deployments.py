@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from nemo_deployments_plugin.api.v2._perms import DeploymentPerms
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
 from nemo_deployments_plugin.authz import scope
@@ -23,6 +23,7 @@ from nemo_deployments_plugin.validation import (
     prerequisite_names,
 )
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
+from nemo_platform_plugin.auth import current_auth_context
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator
@@ -71,6 +72,7 @@ def _parse_deployment_config_ref(ref: str, default_workspace: str) -> tuple[str,
 async def create_deployment(
     workspace: str,
     body: CreateDeploymentRequest,
+    request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> Deployment:
     config_workspace, config_name = _parse_deployment_config_ref(body.deployment_config, workspace)
@@ -102,7 +104,7 @@ async def create_deployment(
         executor=body.executor,
         prerequisites=body.prerequisites,
         status="PENDING",
-    )
+    ).with_auth_context(current_auth_context())
     try:
         return await entity_client.create(deployment)
     except NemoEntityConflictError as exc:

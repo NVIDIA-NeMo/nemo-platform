@@ -8,7 +8,7 @@ from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from nmp.testing import grant_workspace_role
 from nmp.testing.e2e import wait_for_job_logs, wait_for_platform_job
 
-from tests.auth_idp.common import nmp_api_image, require_capability
+from tests.auth_idp.common import managed_workload_workspace_get_command, nmp_api_image, require_capability
 
 pytestmark = [
     pytest.mark.auth_idp,
@@ -54,19 +54,7 @@ def test_provider_workload_job_runs_via_workload_profile(
                                     "image": nmp_api_image(),
                                     "entrypoint": ["sh", "-c"],
                                     "command": [
-                                        'if [ -n "${NMP_PRINCIPAL:-}" ]; then '
-                                        "echo 'Unexpected NMP_PRINCIPAL in managed workload'; exit 42; "
-                                        "fi; "
-                                        'if [ -z "${NMP_WORKLOAD_IDENTITY_TOKEN_FILE:-}" ]; then '
-                                        "echo 'Missing NMP_WORKLOAD_IDENTITY_TOKEN_FILE in managed workload'; exit 43; "
-                                        "fi; "
-                                        'if [ ! -f "${NMP_WORKLOAD_IDENTITY_TOKEN_FILE}" ]; then '
-                                        "echo 'Workload identity token file is missing'; exit 44; "
-                                        "fi; "
-                                        "echo 'Workload auth env: NMP_PRINCIPAL=absent "
-                                        "NMP_WORKLOAD_IDENTITY_TOKEN_FILE=present'; "
-                                        "exec nemo-platform run task --task "
-                                        "nmp.hello_world.tasks.workload_workspace_get",
+                                        managed_workload_workspace_get_command(),
                                     ],
                                 },
                             },

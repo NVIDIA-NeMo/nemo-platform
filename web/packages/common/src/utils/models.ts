@@ -62,6 +62,32 @@ export const getBaseModelURN = (model: ModelEntity) => {
 };
 
 /**
+ * Platform-side model entity id, as it appears in a provider's `served_models`.
+ *
+ * This is an **identity, not a wire value**. Use it to find the provider entry
+ * for a model or adapter; the value that goes into a request body is that
+ * entry's `served_model_name`, which is the backend's own name and is discovered
+ * rather than derived (`{ws}--{name}`, sometimes namespace-qualified, plus two
+ * legacy shapes).
+ *
+ * A LoRA adapter has no standalone Model Entity, so the platform addresses it
+ * with a composite id built by the provider reconciler:
+ *
+ *     {base_workspace}/{base_name}&adapters/{adapter_workspace}/{adapter_name}
+ *
+ * The adapter segment carries its own workspace because an adapter may live in a
+ * different one from the base model.
+ *
+ * @param model - The base model entity being served
+ * @param adapter - The adapter to target, if any
+ * @returns The `model_entity_id` to match against `provider.served_models`
+ */
+export const toInferenceModelEntityId = (model: ModelEntity, adapter?: Adapter | null): string => {
+  const base = `${model.workspace}/${model.name}`;
+  return adapter ? `${base}&adapters/${adapter.workspace}/${adapter.name}` : base;
+};
+
+/**
  * Build a model config for evaluation related types like targets and metrics
  * @param model_id - The model URN to build the config for
  * @returns The model config

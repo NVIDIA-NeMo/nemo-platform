@@ -5,13 +5,9 @@
 
 Registered under ``nemo.jobs`` as ``agents.analyze``.
 
-Two invocation paths share the same ``run(config)`` body:
-
-* ``nemo agents analyze run --spec '{...}'`` — local, in-process, no
-  platform job row.
-* ``nemo agents analyze submit --spec '{...}'`` — POSTs to the platform;
-  the jobs controller dispatches a subprocess on the same host and the
-  result lands in ``nemo jobs list`` / Studio's Jobs view.
+The CLI command ``nemo agents analyze --spec '{...}'`` submits it to the
+platform; the jobs controller dispatches a subprocess on the same host and the
+result lands in ``nemo jobs list`` / Studio's Jobs view.
 """
 
 from __future__ import annotations
@@ -19,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 from nemo_agents_plugin.jobs.evaluate_suite import _require_absolute
 from nemo_platform_plugin.job import NemoJob
@@ -38,11 +34,19 @@ class AnalyzeBatchConfig(BaseModel):
     anthropic_api_key_secret: str | None = Field(
         default=None,
         description=(
-            "Name of a platform Secret holding the Anthropic API key.  When set on a submit, "
+            "Name of a platform Secret holding the Anthropic API key.  When set on a platform submission, "
             "the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess "
             "so the LLM gap-analysis pass can call Anthropic.  Ignored when "
             "``mechanical_only=True``.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` "
             "from the calling shell as before."
+        ),
+    )
+    anthropic_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Anthropic-compatible API base URL injected as ``ANTHROPIC_BASE_URL`` for platform "
+            "submissions.  Local (in-process) runs read ``ANTHROPIC_BASE_URL`` from the calling "
+            "shell as before."
         ),
     )
 
@@ -53,10 +57,11 @@ class AnalyzeBatchJob(NemoJob):
     name: ClassVar[str] = "analyze"
     description: ClassVar[str] = "Analyze a batch of eval-suite results (clusters, regressions, hypotheses)."
     container: ClassVar[str] = "cpu-tasks"
+    generate_legacy_verbs: ClassVar[bool] = False
     spec_schema: ClassVar[type[BaseModel]] = AnalyzeBatchConfig
 
     @classmethod
-    async def compile(  # type: ignore[override]
+    async def compile(  # ty: ignore[invalid-method-override]
         cls,
         *,
         workspace: str,
@@ -101,6 +106,8 @@ class AnalyzeBatchJob(NemoJob):
                     from_secret=EnvironmentVariableFromSecret(name=spec.anthropic_api_key_secret),
                 )
             )
+        if spec.anthropic_base_url:
+            environment.append(EnvironmentVariable(name="ANTHROPIC_BASE_URL", value=spec.anthropic_base_url))
 
         return PlatformJobSpec(
             steps=[
@@ -116,14 +123,14 @@ class AnalyzeBatchJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext | None = None) -> dict:
+    def run(self, config: dict, *, ctx: JobContext | None = None) -> dict[str, Any]:
         # ``ctx`` is signature-typed so the framework's DI populates it on the
-        # submit path; the friendly CLI calls ``run(spec)`` directly without one.
+        # remote job path; programmatic local callers invoke ``run(spec)`` directly.
         del ctx
         from nemo_agents_plugin.improvement.analysis.llm import generate_gap_analysis
         from nemo_agents_plugin.improvement.analysis.mechanical import cluster_evals, mechanical_analysis
         from nemo_agents_plugin.improvement.baselines import load_baselines
-        from nemo_agents_plugin.improvement.models import GapAnalysis, _serialize
+        from nemo_agents_plugin.improvement.models import GapAnalysis, _serialize_dict
         from nemo_agents_plugin.improvement.runners._harbor_results import parse_batch_results
         from nemo_agents_plugin.improvement.traces.base import TraceParser
         from nemo_agents_plugin.improvement.traces.claude_code_parser import ClaudeCodeTraceParser
@@ -155,7 +162,7 @@ class AnalyzeBatchJob(NemoJob):
             ga = asyncio.run(generate_gap_analysis(batch=batch, parser=parser, baselines=baselines))
 
         if cfg.format == "json":
-            return _serialize(ga)  # type: ignore[return-value]
+            return _serialize_dict(ga)
 
         # markdown
         from nemo_agents_plugin.improvement._analysis_reporting import generate_gap_report

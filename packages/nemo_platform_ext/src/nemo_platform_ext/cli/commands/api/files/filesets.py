@@ -167,11 +167,12 @@ def delete_filesets(
 ) -> None:
     """Delete Fileset.
 
-    Permanently deletes a fileset from the platform.
+    Permanently deletes an unreferenced fileset from the platform.
 
-    Returns metadata about the
-    deleted fileset. For local storage backends, this also deletes the underlying
-    files."""
+    Referencing model
+    or adapter entities must be relinked or deleted first. Returns metadata about
+    the deleted fileset. For local storage backends, this also deletes the
+    underlying files."""
     state: CLIContext = ctx.obj
     client = state.get_client()
 
