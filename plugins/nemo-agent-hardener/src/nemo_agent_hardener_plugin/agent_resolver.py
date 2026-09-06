@@ -214,10 +214,10 @@ def derive_secret_names(agent_config: dict[str, Any], extra: list[str] | None = 
 def derive_agent_env(agent_config: dict[str, Any]) -> dict[str, str]:
     """The agent's declared non-secret environment, for the manifest.
 
-    Fabric applies ``environment.env`` itself at runtime, so the victim gets these either way. Iron
-    Swarm needs them for a different reason: ``agent_env`` is what egress discovery reads to learn
-    which hosts the agent talks to. Without it, an agent whose env names a backend URL receives the
-    variable and is then refused the connection by its own sandbox policy.
+    Fabric applies ``environment.env`` itself at runtime, so the victim gets these either way.
+    Agent Hardener needs them for a different reason: ``agent_env`` is what egress discovery reads
+    to learn which hosts the agent talks to. Without it, an agent whose env names a backend URL
+    receives the variable and is then refused the connection by its own sandbox policy.
 
     Values that name a secret (``${VAR}``) are dropped rather than copied: they resolve to nothing
     useful here, and the manifest is written to disk and rendered in reports.

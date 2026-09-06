@@ -270,8 +270,10 @@ def inspect_project(project_root: Path, *, dockerfile: str | None = None) -> dic
         )
     if not secrets_and_egress:
         warnings.append(
-            "No hosts named in the project's own files. The sandbox is default-deny, so any host the agent "
-            "reaches at run time must be listed in `egress` or its traffic is dropped mid-run."
+            "No hosts named in the Dockerfile. The run also scans the project's source for endpoints, so this "
+            "is not necessarily a gap — but the sandbox is default-deny, and a host that neither names (one "
+            "reached only from an installed dependency, say) must be listed in `egress` or its traffic is "
+            "dropped mid-run."
         )
 
     unresolved = [name for name, value in (("start_command", start_command),) if not value]

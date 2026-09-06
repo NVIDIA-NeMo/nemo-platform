@@ -85,8 +85,8 @@ def register(app: typer.Typer) -> None:
             None,
             "--safety-model",
             help="Model the generated guardrail uses to screen traffic. Unset reuses the agent's own model. "
-            "Not preflighted — it runs inside the victim against agent-hardener's own endpoint, so a bad name "
-            "surfaces only when the guardrail runs.",
+            "Preflighted when set: a bad name or key fails before the sandbox is built, with the list of "
+            "models the credentials can reach.",
         ),
     ) -> None:
         """Run the attack/defend/validate war-game against a local manifest or a saved manifest.
