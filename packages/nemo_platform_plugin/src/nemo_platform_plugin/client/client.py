@@ -420,7 +420,7 @@ class BaseNemoClient:
 
         Mirrors NeMoPlatform.__getattr__: discovers plugin SDK resources
         via entry points and instantiates them with self as the platform.
-        This handles sdk.auditor, sdk.evaluator, sdk.agents, sdk.iron_swarm,
+        This handles sdk.auditor, sdk.evaluator, sdk.agents, sdk.agent_hardener,
         sdk.anonymizer, sdk.customizer, and any other plugin-level resource
         not covered by the convenience properties.
         """
@@ -614,10 +614,10 @@ class BaseNemoClient:
         return self._resource_client(DataDesignerClient, AsyncDataDesignerClient)
 
     @property
-    def iron_swarm(self) -> NemoClient | AsyncNemoClient:
-        from nemo_platform_plugin.iron_swarm.client import AsyncIronSwarmClient, IronSwarmClient
+    def agent_hardener(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.agent_hardener.client import AgentHardenerClient, AsyncAgentHardenerClient
 
-        return self._resource_client(IronSwarmClient, AsyncIronSwarmClient)
+        return self._resource_client(AgentHardenerClient, AsyncAgentHardenerClient)
 
     @property
     def inference(self) -> _InferenceNamespace:
