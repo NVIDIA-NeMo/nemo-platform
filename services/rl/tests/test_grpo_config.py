@@ -19,6 +19,7 @@ from nmp.rl.app.jobs.training.schemas import (
     PolicyBackend,
     TrainingBackend,
     TrainingStepConfig,
+    WandBConfig,
 )
 from nmp.rl.entities.values import FinetuningType, TrainingType
 from nmp.rl.tasks.training.backends.nemo_rl.grpo_config import compile_grpo_config
@@ -67,6 +68,7 @@ def _make_grpo_step(
     activation_checkpointing: bool = False,
     grpo: GRPOConfig | None = None,
     policy_backend: PolicyBackend = PolicyBackend.AUTOMODEL,
+    integrations: TrainingStepConfig.IntegrationsConfig | None = None,
 ) -> TrainingStepConfig:
     env_root = tmp_path / "environment"
     env_root.mkdir(exist_ok=True)
@@ -102,6 +104,7 @@ def _make_grpo_step(
             activation_checkpointing=activation_checkpointing,
             policy_backend=policy_backend,
         ),
+        integrations=integrations or TrainingStepConfig.IntegrationsConfig(),
         output_model="out",
         workspace_path=str(tmp_path / "workspace"),
     )
@@ -117,6 +120,7 @@ def _prepared_step(
     activation_checkpointing: bool = False,
     grpo: GRPOConfig | None = None,
     policy_backend: PolicyBackend = PolicyBackend.AUTOMODEL,
+    integrations: TrainingStepConfig.IntegrationsConfig | None = None,
 ) -> tuple[TrainingStepConfig, Path]:
     dataset_pvc = tmp_path / "dataset"
     dataset_pvc.mkdir(exist_ok=True)
@@ -133,6 +137,7 @@ def _prepared_step(
             activation_checkpointing=activation_checkpointing,
             grpo=grpo,
             policy_backend=policy_backend,
+            integrations=integrations,
         ),
         dataset_pvc,
     )
@@ -1352,3 +1357,51 @@ def test_router_aux_loss_coef_layers_onto_passthrough(
         "text_config": {"rope_theta": 1000.0},
         "router_aux_loss_coef": 0.0,
     }
+
+
+def test_full_result_tables_flag_absent_by_default(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Off means the key is not written at all, matching NeMo-RL's own reference configs."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    wandb_cfg = compile_grpo_config(step, job_ctx)["logger"]["wandb"]
+
+    assert "log_nemo_gym_full_result_tables" not in wandb_cfg
+
+
+def test_full_result_tables_flag_reaches_logger_wandb(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NeMo-RL reads ``master_config.logger["wandb"]``; anywhere else and it silently
+    never builds the Tables."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    monkeypatch.setenv("WANDB_API_KEY", "test-key")
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, log_nemo_gym_full_result_tables=True),
+        integrations=TrainingStepConfig.IntegrationsConfig(wandb=WandBConfig(project="p")),
+    )
+    cfg = compile_grpo_config(step, job_ctx)
+
+    assert cfg["logger"]["wandb_enabled"] is True
+    assert cfg["logger"]["wandb"]["log_nemo_gym_full_result_tables"] is True
+    # NeMo-RL pops it before wandb.init, so it must not leak into the policy block.
+    assert "log_nemo_gym_full_result_tables" not in cfg["policy"]
+
+
+def test_full_result_tables_flag_not_written_without_wandb(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With W&B off the flag cannot work, so the compiler must not write it.
+    ``validate_for_training`` already rejects this pairing earlier."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    monkeypatch.delenv("WANDB_API_KEY", raising=False)
+    step, _ = _prepared_step(
+        tmp_path,
+        grpo=GRPOConfig(num_generations_per_prompt=4, log_nemo_gym_full_result_tables=True),
+    )
+    cfg = compile_grpo_config(step, job_ctx)
+
+    assert cfg["logger"]["wandb_enabled"] is False
+    assert "log_nemo_gym_full_result_tables" not in cfg["logger"]["wandb"]

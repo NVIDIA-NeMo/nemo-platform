@@ -581,6 +581,10 @@ def compile_grpo_config(
 
     cfg["env"] = _build_nemo_gym_env_config(customizer_config, job_ctx)
     cfg["logger"] = _build_logger_config(customizer_config, job_ctx, workspace_dir)
+    # GRPO-only, so layered on here rather than in the shared DPO/GRPO helper. With W&B
+    # off, `logger.wandb` is an inert placeholder NeMo-RL never reads.
+    if cfg["logger"]["wandb_enabled"] and grpo_hp.log_nemo_gym_full_result_tables:
+        cfg["logger"]["wandb"]["log_nemo_gym_full_result_tables"] = True
     cfg["cluster"] = {
         "gpus_per_node": parallelism.num_gpus_per_node,
         "num_nodes": parallelism.num_nodes,

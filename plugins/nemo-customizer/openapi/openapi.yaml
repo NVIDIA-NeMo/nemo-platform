@@ -2788,6 +2788,15 @@ components:
             Raise toward 0.7 for large models; the rest is left for the colocated
             policy.
           default: 0.5
+        log_nemo_gym_full_result_tables:
+          type: boolean
+          title: Log Nemo Gym Full Result Tables
+          description: "Log each rollout's full NeMo-Gym payload to your own W&B as\
+            \ a Table (`<agent>/full_result`). The only place generated text is readable\
+            \ \u2014 the per-step JSONL carries token ids and an empty `content`.\
+            \ Each row is one JSON blob, so W&B cannot sort or filter on fields inside\
+            \ it. Payloads are large; enable for short debugging runs. Requires `integrations.wandb`."
+          default: false
       additionalProperties: false
       type: object
       required:
