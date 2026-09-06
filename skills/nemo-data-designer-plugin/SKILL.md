@@ -36,6 +36,7 @@ Read **only** the workflow file that matches the selected mode, then follow it:
 - For commands and context specific to this NeMo Platform plugin (e.g., sourcing model configs from IGW providers or in-script `ModelConfig`s, installing or publishing Nemotron Personas locales, platform-side resource pointers), read `references/nemo-platform-plugin-additions.md`.
 - For Nemotron retrieval SDG Stage 0/1 (`retrieval-generate` / `retrieval-prepare`), read `references/retrieval-sdg.md`. Do not use `create` for that pipeline.
 
+
 # Usage Tips and Common Pitfalls
 
 - **Sampler and validation columns need both a type and params.** E.g., `sampler_type="category"` with `params=dd.CategorySamplerParams(...)`.
