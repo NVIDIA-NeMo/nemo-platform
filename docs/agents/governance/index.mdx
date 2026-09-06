@@ -18,8 +18,8 @@ worked before you promote it. A run probes a sandboxed copy of the agent with
 adversarial input, generates guardrail and sandbox-policy fixes for whatever got
 through, and then replays the original attacks against those fixes.
 
-Agent Governance runs on Iron Swarm, which drives garak, NeMo Guardrails and
-OpenShell as a single cycle. The CLI is `nemo iron-swarm`.
+The engine behind it is Agent Hardener, which drives garak, NeMo Guardrails and
+OpenShell as a single cycle. You reach it through the `nemo agent-hardener` CLI.
 
 ## What a Run Produces
 
@@ -64,13 +64,13 @@ Nothing reaches your agent until you apply it.
 
 ### Runs Target a Frozen Manifest
 
-`nemo iron-swarm init` resolves your agent once and saves the result as a
+`nemo agent-hardener init` resolves your agent once and saves the result as a
 manifest. Every later run war-games that saved manifest, so two runs of the
 same manifest are comparable and you can answer whether hardening helped by
 comparing their reports.
 
 Editing the agent afterwards does not change an existing manifest. Pick up
-those changes with `nemo iron-swarm refresh`. Applying a fix refreshes the
+those changes with `nemo agent-hardener refresh`. Applying a fix refreshes the
 manifest for you, so a run, harden, apply, run sequence measures the change you
 just made.
 
@@ -103,9 +103,9 @@ Before running a war-game, make sure you have:
 1. The OpenShell gateway installed with its native installer. Installing
    OpenShell as a standalone CLI tool gives you the command without the gateway
    service, and a war-game needs the gateway.
-1. Iron Swarm provisioned once per machine with `nemo iron-swarm setup`, which
+1. Agent Hardener provisioned once per machine with `nemo agent-hardener setup`, which
    creates its virtual environments and the inference credential. Confirm
-   everything with `nemo iron-swarm doctor`.
+   everything with `nemo agent-hardener doctor`.
 1. At least one [Inference Gateway](/documentation/models-and-inference) model
    provider, so the attackers, defenders and the agent under test can all reach
    models.
@@ -122,9 +122,9 @@ Before running a war-game, make sure you have:
   OpenShell policy defender narrows what the sandbox can reach.
 - **Harness support is expanding.** Broader coverage is planned for a future
   release.
-- **Runs use a benign suite.** `nemo iron-swarm run` consumes a benign suite
+- **Runs use a benign suite.** `nemo agent-hardener run` consumes a benign suite
   rather than generating one, so create it once with
-  `nemo iron-swarm synth-benign`. It is cached on the manifest and reused by
+  `nemo agent-hardener synth-benign`. It is cached on the manifest and reused by
   later runs.
 - **Agent Governance runs before you ship.** The fixes it generates keep working
   once applied. For signals from an agent already serving traffic, see
@@ -135,7 +135,7 @@ Before running a war-game, make sure you have:
 Declare the hosts your agent's tools call when you create the manifest. The
 sandbox drops any outbound traffic the manifest does not allow-list, and a
 blocked tool usually looks like a passing run, because the model answers from
-its own knowledge instead of calling the tool. Iron Swarm can only discover
+its own knowledge instead of calling the tool. Agent Hardener can only discover
 hosts by scanning a project's source, so an agent whose tools live in an
 installed package needs its hosts declared explicitly.
 

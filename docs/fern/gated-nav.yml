@@ -21,7 +21,7 @@
   - page: Review and Apply Mitigations
     path: ../../agents/governance/apply-mitigations.mdx
     slug: apply-mitigations
-  - page: Iron Swarm CLI Reference
+  - page: Agent Hardener CLI Reference
     path: ../../agents/governance/cli-reference.mdx
     slug: cli-reference
   - page: Troubleshooting
