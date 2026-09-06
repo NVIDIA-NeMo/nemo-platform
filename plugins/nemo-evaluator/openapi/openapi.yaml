@@ -2988,6 +2988,10 @@ components:
           additionalProperties: true
           type: object
           title: Value Json Schema
+        required:
+          type: boolean
+          title: Required
+          default: true
       additionalProperties: false
       type: object
       required:

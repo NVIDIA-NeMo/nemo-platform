@@ -242,6 +242,35 @@ Inspect failed and partial trials and score diagnostics before interpreting
 aggregate values; a high mean with low coverage can hide missing or failed
 work.
 
+### Interpret sparse metric outputs
+
+`MetricOutputSpec.required` is the producer contract:
+
+- `required=True` is the default; the metric must emit the output.
+- `required=False` permits the metric to omit an unmeasured output.
+- Prefer omitting an unmeasured optional output so it stays out of the mean (it will be in `nan_count` for mean and `missing` for coverage ).
+Emitting a filler (`0.0` or NaN) is allowed but not generally recommended: it changes aggregates. Emitting `None` is rejected.
+
+Agent-eval averages finite measured values and exposes the denominator. For task A with two attempts,
+`a1={reward:1.0, format_ok:1.0}` and `a2={reward:0.0}`:
+
+| Consumer | Expected result |
+| --- | --- |
+| `harbor_reward.reward` | `mean=0.5`, `count=2`, `nan_count=0` |
+| `harbor_reward.format_ok` | `mean=1.0`, `count=1`, `nan_count=1` |
+| `format_ok` coverage | `total=2`, `scored=1`, `missing=1`, `failed=0` |
+| View requiring `format_ok` | a2 is unmeasured; the view does not partially reduce or zero-fill |
+| `format_ok.pass@1` | `mean=1.0`; measured `n=1` |
+| `format_ok.pass@2` | unestimable: `count=0`, `nan_count=1`, `mean=None` |
+| Persistence | `format_ok` stays absent for a2; no null, NaN label, or zero is synthesized |
+
+- For ordinary aggregates, `count + nan_count` equals applicable opportunities.
+- For coverage, `scored + missing + failed == total`.
+- Pass@k's measured `n` includes failed trials as non-passes. A failed metric (the trial completed, but scoring raised an exception) or an omitted
+  optional output is left out of `n` (unmeasured, not unsuccessful).
+- If task A declares `format_ok` and task B does not, `format_ok`'s `count`, `nan_count`, and
+  coverage are only over A's trials. B is omitted from that denominator, not counted as missing.
+
 ## Configure Harbor as a task runner
 
 Harbor requires its Python package, Docker access, and a Harbor dataset. Task
@@ -267,7 +296,8 @@ runner = HarborAgentTaskRunner(
         agent_name="oracle",
         n_attempts=1,
         n_concurrent_trials=2,
-    )
+        reward_key="reward",
+    ),
 )
 result = await AgentEvaluator().run(tasks=tasks, target=runner)
 ```
@@ -287,6 +317,18 @@ target = HarborRunnerTarget(
     reward_key="reward",
 )
 ```
+
+- `reward_key` selects the required primary reward by name (default `reward`). Mapping order and
+  alphabetical order do not select it.
+- The SDK scores only Harbor-valid `result.json` files (Harbor's `TrialResult`). A `null`,
+  nonnumeric string, or object in the reward mapping fails that check, so the whole attempt is
+  skipped and sibling rewards are not scored. Harbor writes `NaN` and infinity as `null`, which
+  hits this gate.
+- On a Harbor-valid trial, a finite primary is emitted unchanged. A missing or unusable primary
+  (including Boolean) emits `0.0` with a diagnostic; the trial is still scored.
+- Other keys from that task's Harbor-valid results become optional secondaries. Finite numbers are
+  emitted. Missing or Boolean values are omitted with a diagnostic; usable siblings are kept.
+- A secondary reward discovered for one task does not apply to another task.
 
 Use `agent_import_path` for a custom Harbor agent and `agent_model_name` when
 the agent requires a model. The module must be importable in the execution

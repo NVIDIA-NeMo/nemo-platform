@@ -25,8 +25,9 @@ Two ways to drive it:
 * **Injected / offline** — pass a ``job_dir`` (and optionally a ``run_job``
   callback) to adapt an already-completed job dir or to run a caller-built job.
 
-Trial *adaptation* only ever reads Harbor's on-disk ``result.json`` files, so
-that half stays dependency-free regardless of how the job was produced.
+Trial adaptation validates Harbor's on-disk ``result.json`` files with Harbor's
+own model. The import remains lazy, but invoking native execution or offline
+adaptation requires the optional Harbor extra and Python >=3.12.
 """
 
 from __future__ import annotations
@@ -54,18 +55,23 @@ from types import ModuleType
 from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
-from nemo_evaluator_sdk.agent_eval.runtimes.harbor_trial_adapter import _trial_from_harbor_result
-from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus
+from nemo_evaluator_sdk.agent_eval.reward_keys import ParsedHarborRewards, validate_reward_key
+from nemo_evaluator_sdk.agent_eval.runtimes.harbor_trial_adapter import (
+    _HARBOR_EXTRA_REQUIRED_MESSAGE,
+    _iter_harbor_trial_results,
+    _trial_from_harbor_result,
+)
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask, AgentEvalTaskset
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
+from nemo_evaluator_sdk.enums import MetricType
 from nemo_evaluator_sdk.metrics.protocol import Metric
+from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
 # Default reward key inside Harbor's ``verifier_result.rewards`` mapping.
 DEFAULT_REWARD_KEY = "reward"
-# Harbor trace format selected as the trial's standard trace evidence.
 # Filename that marks a directory as a Harbor task, and the template dir to skip.
 _TASK_CONFIG_FILENAME = "task.toml"
 _TASK_TEMPLATE_DIRNAME = "task_template"
@@ -112,7 +118,6 @@ _SPDX_HTML_COMMENT_RE = re.compile(r"<!--\s*SPDX-(?:FileCopyrightText|License-Id
 # deliverable — the Harbor wrapper does not upload them into the task container.
 _DIGEST_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", ".uv", ".mypy_cache", ".pytest_cache"})
 _DIGEST_CHUNK_BYTES = 1 << 20
-
 RunJob = Callable[[], Awaitable[None]]
 
 
@@ -194,8 +199,8 @@ class HarborAgentTaskRunner:
       :func:`discover_harbor_tasks`), or from an explicit ``dataset_path``
       override, so it isn't repeated. ``task_names`` optionally restricts the run
       to a subset of tasks, and the ``config``'s ``job_dir`` doubles as a cache:
-      an existing run whose results already cover every requested task (with
-      ``n_attempts`` completed, non-errored trials each) is re-adapted instead of
+      an existing run whose Harbor-valid results cover every requested task (with
+      ``n_attempts`` attempts each) is re-adapted instead of
       re-run (unless ``force_rerun`` is set). Caching only takes effect when a
       stable ``job_name`` is set on the config — the default timestamped
       ``job_name`` writes a fresh dir per run and never hits the cache.
@@ -225,6 +230,7 @@ class HarborAgentTaskRunner:
         self._job_dir = Path(job_dir) if job_dir is not None else None
         self._run_job = run_job
         self._reward_key = config.reward_key if config is not None else reward_key
+        validate_reward_key(self._reward_key)
 
     def runner_info(self) -> RunnerInfo:
         """Identify this runner and the Harbor settings that shape its results.
@@ -264,16 +270,16 @@ class HarborAgentTaskRunner:
         :func:`discover_harbor_tasks`) unless a ``dataset_path`` override was given,
         so callers don't repeat it.
 
-        ``job_dir`` doubles as a cache. Results are served straight off it, without
-        importing Harbor at all, only when **both** hold: every requested task already
-        has ``n_attempts`` completed, non-errored results there, *and* the directory
+        ``job_dir`` doubles as a cache. Results are served straight off it only when
+        **both** hold: every requested task already has ``n_attempts`` Harbor-valid
+        results there, *and* the directory
         carries a cache stamp matching this run's inputs (agent contents, task
         contents, result-affecting options).
 
         Otherwise Harbor runs, and what happens to the directory depends on *which*
         check failed. A **stamp mismatch** discards it first: those results came from
         different inputs, so there is nothing safe to resume onto. A directory that
-        merely lacks **coverage** — stamp matches, but not enough completed results —
+        merely lacks **coverage** — stamp matches, but not enough valid results —
         is handed to Harbor intact so its per-trial resume keeps the finished trials
         and runs only what is missing. Harbor may still refuse a directory on its own
         (stricter) terms; :func:`_build_native_job` then discards it and re-runs.
@@ -355,6 +361,34 @@ class HarborAgentTaskRunner:
             reward_key=self._reward_key,
         )
 
+    def scoring_metrics(
+        self,
+        task: AgentEvalTask,
+        trials: Sequence[AgentEvalTrial],
+    ) -> Sequence[Metric]:
+        """Add secondary Harbor verifier rewards from this task's trials as optional outputs."""
+        keys: set[str] = set()
+        for metric in task.metrics:
+            if metric_type_name(metric) == MetricType.HARBOR_REWARD:
+                keys.update(output.name for output in metric.output_spec() if not output.required)
+        for trial in trials:
+            # A reward the verifier emitted but the adapter could not use still names an output:
+            # the metric declares it and reports the rejection, rather than hiding the key.
+            rewards = ParsedHarborRewards.from_metadata(trial.metadata)
+            keys.update(rewards.values)
+            keys.update(rewards.rejected_by_key)
+        reward_keys = (self._reward_key, *sorted(keys - {self._reward_key}))
+        # ``output_name`` is deliberately the runner's ``reward_key``, not the task metric's own:
+        # ``discover_harbor_tasks`` builds ``HarborRewardMetric()`` with the default name, and a run
+        # with ``reward_key="score"`` relies on this rename. It is why this hook lives on the runner
+        # rather than on the metric.
+        return [
+            _harbor_reward_metric(output_name=self._reward_key, reward_keys=reward_keys)
+            if metric_type_name(metric) == MetricType.HARBOR_REWARD
+            else metric
+            for metric in task.metrics
+        ]
+
 
 def _dataset_path_from_tasks(tasks: Sequence[AgentEvalTask]) -> Path:
     """Recover the Harbor dataset dir stamped on tasks by :func:`discover_harbor_tasks`."""
@@ -388,28 +422,21 @@ def _harbor_folder_names(tasks: Sequence[AgentEvalTask]) -> list[str] | None:
 
 
 def _all_tasks_cached(job_dir: Path, tasks: Sequence[AgentEvalTask], *, n_attempts: int) -> bool:
-    """Return True when every requested task already has ``n_attempts`` completed results.
+    """Return True when each requested task has ``n_attempts`` Harbor-valid results.
 
-    Lets ``job_dir`` act as a cache so a native run whose results are all present
-    is re-adapted instead of re-run. The cache is **success-aware**: only trials
-    that finished without an ``exception_info`` count, and a task must have at
-    least ``n_attempts`` of them, so an interrupted, errored, or under-sampled run
-    is re-run rather than silently served from a partial cache. Caching only takes
-    effect when a stable ``job_name`` is set on the config; with the default
-    timestamped ``job_name`` every run writes a fresh dir and never hits the cache.
+    Every valid result counts, including one with ``exception_info``;
+    Harbor itself treats such a result as an existing completed attempt. Missing,
+    unreadable, and schema-invalid results do not count. Caching only takes effect
+    when a stable ``job_name`` is set on the config; with the default timestamped
+    name every run writes a fresh directory and never hits the cache.
     """
     if not job_dir.is_dir():
         return False
+    requested_task_ids = {task.id for task in tasks}
     counts: dict[str, int] = {}
-    for result_path in job_dir.glob("*/result.json"):
-        try:
-            data = json.loads(result_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            continue
-        if data.get("exception_info") is not None:
-            continue
+    for _trial_dir, data in _iter_harbor_trial_results(job_dir):
         name = data.get("task_name")
-        if isinstance(name, str):
+        if name in requested_task_ids:
             counts[name] = counts.get(name, 0) + 1
     return all(counts.get(task.id, 0) >= n_attempts for task in tasks)
 
@@ -803,18 +830,15 @@ def _build_native_job(
 
     async def run_job() -> None:
         try:
-            from harbor.job import DatasetConfig, Job, JobConfig  # ty: ignore[unresolved-import]
-            from harbor.models.job.config import RetryConfig  # ty: ignore[unresolved-import]
-            from harbor.models.trial.config import (  # ty: ignore[unresolved-import]
+            from harbor.job import DatasetConfig, Job, JobConfig  # ty: ignore[unresolved-import,unused-ignore-comment]
+            from harbor.models.job.config import RetryConfig  # ty: ignore[unresolved-import,unused-ignore-comment]
+            from harbor.models.trial.config import (  # ty: ignore[unresolved-import,unused-ignore-comment]
                 AgentConfig,
                 ArtifactConfig,
                 VerifierConfig,
             )
         except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError(
-                "the native Harbor runtime needs `harbor`, which is not an SDK dependency "
-                '(it requires Python >=3.12). Install it separately: uv pip install "harbor>=0.16.1"'
-            ) from exc
+            raise ModuleNotFoundError(_HARBOR_EXTRA_REQUIRED_MESSAGE) from exc
 
         if effective_force_rerun and job_dir.exists():
             shutil.rmtree(job_dir)
@@ -1124,22 +1148,18 @@ def build_trials_from_job_dir(
     ``metadata`` and standard evidence descriptors pointing at the trial's
     on-disk artifacts.
     """
+    validate_reward_key(reward_key)
     job_path = Path(job_dir)
     known_task_ids = {task.id for task in tasks}
     trials: list[AgentEvalTrial] = []
-    for result_path in sorted(job_path.glob("*/result.json")):
-        try:
-            data = json.loads(result_path.read_text())
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Skipping unreadable Harbor trial result %s: %s", result_path, exc)
-            continue
+    for trial_dir, data in _iter_harbor_trial_results(job_path):
         task_id = data.get("task_name")
         if task_id not in known_task_ids:
             # Trial for a task we weren't asked to score (e.g. a wider dataset run).
             continue
         trials.append(
             _trial_from_harbor_result(
-                result_path.parent,
+                trial_dir,
                 data,
                 reward_key=reward_key,
             )
@@ -1284,51 +1304,6 @@ async def run_harbor_eval(
     )
 
 
-def reward_payload_from_result(
-    result: AgentEvalResult,
-    *,
-    reward_key: str = DEFAULT_REWARD_KEY,
-) -> dict[str, Any]:
-    """Reconstruct the optimizer's legacy ``{reward, reward_details, exceptions}`` payload.
-
-    Phase-1 adapter so consumers that still expect Harbor's aggregate shape can
-    read it off an :class:`AgentEvalResult`:
-
-    * ``reward`` — mean of each metric output, keyed ``"<metric_type>.<output>"``.
-    * ``reward_details`` — ``{output: {value_str: [task_id, ...]}}`` grouped from
-      per-trial scores (Harbor's ``reward_stats`` analogue).
-    * ``exceptions`` — ``{error type: [task_id, ...]}`` from ``AgentEvalTrial.error``
-      (Harbor's ``exception_stats`` analogue, keyed by task rather than by trial).
-
-    Harbor keys ``exception_stats`` by *trial*, which is what
-    :attr:`AgentEvalSummary.error_trial_ids` now reproduces exactly. This payload keeps its
-    task-keyed shape for existing consumers; switching it over is AALGO-441.
-    """
-    reward = {score.name: score.mean for score in result.summary.scores.scores if score.mean is not None}
-
-    reward_details: dict[str, dict[str, list[str]]] = {}
-    for score in result.scores:
-        if score.status == AgentEvalScoreStatus.FAILED:
-            continue
-        for output in score.outputs:
-            value = output.value
-            value_str = (
-                str(float(value)) if isinstance(value, (int, float)) and not isinstance(value, bool) else str(value)
-            )
-            reward_details.setdefault(output.name, {}).setdefault(value_str, []).append(score.task_id)
-
-    exceptions: dict[str, list[str]] = {}
-    for trial in result.trials:
-        if trial.error is not None:
-            exceptions.setdefault(trial.error.type, []).append(trial.task_id)
-
-    return {
-        "reward": reward,
-        "reward_details": reward_details,
-        "exceptions": exceptions,
-    }
-
-
 __all__ = [
     "CACHE_STAMP_FILENAME",
     "CACHE_STAMP_VERSION",
@@ -1339,17 +1314,20 @@ __all__ = [
     "HarborTasksetLoader",
     "build_trials_from_job_dir",
     "discover_harbor_tasks",
-    "reward_payload_from_result",
     "run_harbor_eval",
     "scoped_harbor_agent_import",
 ]
 
 
-def _harbor_reward_metric() -> "HarborRewardMetric":
+def _harbor_reward_metric(
+    *,
+    output_name: str = DEFAULT_REWARD_KEY,
+    reward_keys: tuple[str, ...] = (),
+) -> HarborRewardMetric:
     """Build the default reward metric, importing it lazily to keep this module light."""
     from nemo_evaluator_sdk.metrics.runner_rewards import HarborRewardMetric
 
-    return HarborRewardMetric()
+    return HarborRewardMetric(output_name=output_name, reward_keys=reward_keys)
 
 
 def __getattr__(name: str) -> object:

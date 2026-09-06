@@ -2,20 +2,22 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import asyncio
-import builtins
 import hashlib
 import importlib
 import json
 import logging
 import os
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
+from typing import cast
 
 import pytest
+from harbor_fixtures import ErrorAwareQualityMetric, write_harbor_trial_result
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
+from nemo_evaluator_sdk.agent_eval.metrics import AgentPhaseSuccessMetric
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     HarborAgentTaskRunner,
@@ -25,12 +27,22 @@ from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     _build_native_job,
     build_trials_from_job_dir,
     discover_harbor_tasks,
-    reward_payload_from_result,
     scoped_harbor_agent_import,
 )
-from nemo_evaluator_sdk.agent_eval.runtimes.harbor_trial_adapter import _final_agent_message, _trial_from_harbor_result
-from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
+from nemo_evaluator_sdk.agent_eval.runtimes.harbor_trial_adapter import (
+    _final_agent_message,
+    _rewards_mapping,
+    _trial_from_harbor_result,
+)
+from nemo_evaluator_sdk.agent_eval.tasks import (
+    AgentEvalRunConfig,
+    AgentEvalTask,
+    SemanticReducer,
+    SemanticView,
+    ViewSignal,
+)
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, TrialError
+from nemo_evaluator_sdk.metrics.protocol import CandidateOutput, DatasetRow, MetricInput
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from nemo_evaluator_sdk.values.evidence import ATIFTraceHandle, OTLPTraceHandle, read_atif
 from pydantic import BaseModel, ValidationError
@@ -40,28 +52,232 @@ _FIXTURES = Path(__file__).parent / "fixtures"
 # A verbatim Harbor result.json from a real agent-timeout run, host paths scrubbed.
 _HARBOR_ERROR_RESULT = _FIXTURES / "harbor_error_result.json"
 _EXPECTED_MAX_TRACEBACK_CHARS = 8192
+_MISSING = object()
+
+
+class _BadFloat(float):
+    def __float__(self) -> float:
+        raise RuntimeError("must not be called")
+
+
+class _BadStr(str):
+    def __len__(self) -> int:
+        raise RuntimeError("must not be called")
 
 
 def _write_trial(
-    job_dir: Path, trial_name: str, task_name: str, *, reward: float | None, exception: object | None = None
+    job_dir: Path,
+    trial_name: str,
+    task_name: str,
+    *,
+    reward: float | None,
+    exception: str | Mapping[str, object] | None = None,
 ) -> None:
-    """Write one Harbor trial dir. ``exception`` is stored verbatim as ``exception_info``.
+    """Write one complete Harbor-valid trial result."""
+    write_harbor_trial_result(
+        job_dir / trial_name,
+        task_name=task_name,
+        rewards=None if reward is None else {"reward": reward},
+        exception=exception,
+    )
 
-    Typed loosely on purpose: Harbor writes a mapping there, older runs wrote a bare
-    string, so the adapter has to cope with both.
-    """
-    trial_dir = job_dir / trial_name
+
+def _write_rewards_trial(job_dir: Path, trial_name: str, task_name: str, rewards: Mapping[str, float | int]) -> None:
+    write_harbor_trial_result(job_dir / trial_name, task_name=task_name, rewards=rewards)
+
+
+def _adapt_raw_trial(
+    tmp_path: Path,
+    *,
+    rewards: Mapping[object, object] | None,
+    exception_info: object | None = None,
+    reward_key: str = "reward",
+) -> AgentEvalTrial:
+    """Exercise defensive normalization below the Harbor-valid file boundary."""
+    trial_dir = tmp_path / "raw__trial"
     (trial_dir / "agent").mkdir(parents=True)
-    (trial_dir / "verifier").mkdir(parents=True)
-    (trial_dir / "agent" / "trajectory.json").write_text("{}")
-    payload = {
-        "task_name": task_name,
-        "trial_name": trial_name,
-        "verifier_result": None if reward is None else {"rewards": {"reward": reward}},
-        "exception_info": exception,
-        "agent_result": {"n_input_tokens": 100, "n_output_tokens": 10, "n_cache_tokens": 5, "cost_usd": 0.25},
-    }
-    (trial_dir / "result.json").write_text(json.dumps(payload))
+    (trial_dir / "verifier").mkdir()
+    return _trial_from_harbor_result(
+        trial_dir,
+        {
+            "task_name": "t",
+            "trial_name": trial_dir.name,
+            "verifier_result": None if rewards is None else {"rewards": rewards},
+            "exception_info": exception_info,
+        },
+        reward_key=reward_key,
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected", "reason"),
+    [
+        (1, 1.0, None),
+        ("1.25", 1.25, None),
+        (True, None, "boolean"),
+        ("bad", None, "non_numeric"),
+        (float("nan"), None, "non_finite"),
+        (float("inf"), None, "non_finite"),
+        (float("-inf"), None, "non_finite"),
+    ],
+)
+def test_harbor_reward_parser_is_total_and_finite(value: object, expected: float | None, reason: str | None) -> None:
+    parsed = _rewards_mapping({"verifier_result": {"rewards": {"score": value, "sibling": 2}}})
+
+    assert parsed.values == ({"score": expected, "sibling": 2.0} if expected is not None else {"sibling": 2.0})
+    assert parsed.rejected_by_key == ({} if reason is None else {"score": reason})
+    assert parsed.rejected_entries == ()
+
+
+def test_harbor_reward_parser_preserves_punctuation_and_redacts_bad_keys() -> None:
+    parsed = _rewards_mapping(
+        {
+            "verifier_result": {
+                "rewards": {
+                    "criteria.legal": 1,
+                    "": 2,
+                    "bad\nkey": 3,
+                    "x" * 256: 4,
+                    "score.pass@2": 5,
+                }
+            }
+        }
+    )
+
+    assert parsed.values == {"criteria.legal": 1.0}
+    assert parsed.rejected_by_key == {}
+    assert parsed.rejected_entries == ("invalid_key", "invalid_key", "invalid_key", "reserved_key")
+
+
+def test_harbor_reward_parser_rejects_hostile_subclasses_without_losing_siblings() -> None:
+    parsed = _rewards_mapping(
+        {
+            "verifier_result": {
+                "rewards": {
+                    "reward": 1.0,
+                    "bad_value": _BadFloat(2.0),
+                    _BadStr("bad_key"): 3.0,
+                }
+            }
+        }
+    )
+
+    assert parsed.values == {"reward": 1.0}
+    assert parsed.rejected_by_key == {"bad_value": "non_numeric"}
+    assert parsed.rejected_entries == ("invalid_key",)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw", "expected_value", "reason"),
+    [
+        pytest.param(_MISSING, 0.0, "absent", id="missing"),
+        pytest.param(True, 0.0, "boolean", id="boolean"),
+        pytest.param("1.25", 1.25, None, id="finite-numeric-string"),
+        pytest.param("bad", 0.0, "non_numeric", id="non-numeric-string"),
+        pytest.param(float("nan"), 0.0, "non_finite", id="nan"),
+        pytest.param(float("inf"), 0.0, "non_finite", id="positive-infinity"),
+        pytest.param(float("-inf"), 0.0, "non_finite", id="negative-infinity"),
+    ],
+)
+async def test_primary_reward_matrix_survives_adaptation_and_metric_diagnostics(
+    tmp_path: Path,
+    raw: object,
+    expected_value: float,
+    reason: str | None,
+) -> None:
+    rewards: dict[object, object] = {"sibling": 0.5}
+    if raw is not _MISSING:
+        rewards["score"] = raw
+    trial = _adapt_raw_trial(tmp_path, rewards=rewards, reward_key="score")
+    result = await HarborRewardMetric(output_name="score", reward_keys=("score",)).compute_scores(
+        MetricInput(row=DatasetRow(data={}), candidate=CandidateOutput(metadata=trial.metadata))
+    )
+
+    assert [(output.name, output.value) for output in result.outputs] == [("score", expected_value)]
+    if reason is None:
+        assert trial.metadata["reward_details"]["score"] == expected_value
+        assert "score" not in trial.metadata["reward_rejections"]
+        assert result.diagnostics == []
+        assert trial.status is AgentEvalTrialStatus.COMPLETED
+    else:
+        expected_rejections = {} if raw is _MISSING else {"score": reason}
+        assert trial.metadata["reward_rejections"] == expected_rejections
+        assert [diagnostic.details for diagnostic in result.diagnostics] == [{"output": "score", "reason": reason}]
+        assert trial.status is AgentEvalTrialStatus.PARTIAL
+
+
+@pytest.mark.asyncio
+async def test_harbor_valid_boolean_primary_remains_unusable_after_file_validation(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_rewards_trial(job_dir, "t__a", "t", {"score": 1.0, "sibling": 0.5})
+    result_path = job_dir / "t__a" / "result.json"
+    payload = json.loads(result_path.read_text())
+    payload["verifier_result"]["rewards"]["score"] = True
+    result_path.write_text(json.dumps(payload))
+    task = AgentEvalTask(id="t", intent="t", inputs={"instruction": "t"}, metrics=[HarborRewardMetric()])
+
+    trial = build_trials_from_job_dir(job_dir, [task], reward_key="score")[0]
+    result = await HarborRewardMetric(output_name="score", reward_keys=("score",)).compute_scores(
+        MetricInput(row=DatasetRow(data={}), candidate=CandidateOutput(metadata=trial.metadata))
+    )
+
+    assert trial.status is AgentEvalTrialStatus.PARTIAL
+    assert trial.metadata["reward"] is None
+    assert trial.metadata["reward_rejections"] == {"score": "boolean"}
+    assert [(output.name, output.value) for output in result.outputs] == [("score", 0.0)]
+    assert [diagnostic.details for diagnostic in result.diagnostics] == [{"output": "score", "reason": "boolean"}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw", "expected_secondary", "reason"),
+    [
+        pytest.param(_MISSING, None, "absent", id="missing"),
+        pytest.param(True, None, "boolean", id="boolean"),
+        pytest.param("1.25", 1.25, None, id="finite-numeric-string"),
+        pytest.param("bad", None, "non_numeric", id="non-numeric-string"),
+        pytest.param(float("nan"), None, "non_finite", id="nan"),
+        pytest.param(float("inf"), None, "non_finite", id="positive-infinity"),
+        pytest.param(float("-inf"), None, "non_finite", id="negative-infinity"),
+    ],
+)
+async def test_secondary_reward_matrix_survives_adaptation_and_metric_diagnostics(
+    tmp_path: Path,
+    raw: object,
+    expected_secondary: float | None,
+    reason: str | None,
+) -> None:
+    rewards: dict[object, object] = {"score": 1.0}
+    if raw is not _MISSING:
+        rewards["format_ok"] = raw
+    trial = _adapt_raw_trial(tmp_path, rewards=rewards, reward_key="score")
+    result = await HarborRewardMetric(output_name="score", reward_keys=("score", "format_ok")).compute_scores(
+        MetricInput(row=DatasetRow(data={}), candidate=CandidateOutput(metadata=trial.metadata))
+    )
+
+    expected_outputs = [("score", 1.0)]
+    if expected_secondary is not None:
+        expected_outputs.append(("format_ok", expected_secondary))
+    assert [(output.name, output.value) for output in result.outputs] == expected_outputs
+    assert trial.status is AgentEvalTrialStatus.COMPLETED
+    if reason is None:
+        assert trial.metadata["reward_details"]["format_ok"] == expected_secondary
+        assert "format_ok" not in trial.metadata["reward_rejections"]
+        assert result.diagnostics == []
+    else:
+        expected_rejections = {} if raw is _MISSING else {"format_ok": reason}
+        assert trial.metadata["reward_rejections"] == expected_rejections
+        assert [diagnostic.details for diagnostic in result.diagnostics] == [{"output": "format_ok", "reason": reason}]
+
+
+@pytest.mark.parametrize("reward_key", ["", "bad\tkey", "x" * 256, "score.pass@2"])
+def test_harbor_runner_rejects_invalid_primary_before_running(tmp_path: Path, reward_key: str) -> None:
+    with pytest.raises(ValueError, match="reward_key"):
+        HarborAgentTaskRunner(job_dir=tmp_path, reward_key=reward_key)
+    with pytest.raises(ValueError, match="reward_key"):
+        build_trials_from_job_dir(tmp_path, [], reward_key=reward_key)
 
 
 @pytest.mark.asyncio
@@ -106,14 +322,6 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
     rewards_by_task = {score.task_id: score.outputs[0].value for score in result.scores if score.outputs}
     assert rewards_by_task == {"pass-task": 1.0, "fail-task": 0.0, "noreward-task": 0.0}
 
-    # Phase-1 legacy adapter reproduces the {reward, reward_details, exceptions} contract.
-    # Its `exceptions` block now reads AgentEvalTrial.error rather than the retired metadata key,
-    # while keeping its task-keyed shape -- switching that to trial ids is AALGO-441.
-    payload = reward_payload_from_result(result)
-    assert payload["reward"]["harbor_reward.reward"] == pytest.approx(1.0 / 3)
-    assert payload["reward_details"]["reward"]["1.0"] == ["pass-task"]
-    assert payload["exceptions"] == {"NonZeroAgentExitCodeError": ["fail-task"]}
-
     # ...and the summary carries Harbor's own trial-keyed shape, with no reconstruction needed.
     assert result.summary.error_trial_ids == {"NonZeroAgentExitCodeError": ["fail-task__bbb"]}
     assert result.summary.error_count == 1
@@ -121,29 +329,6 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
 
 async def _record(calls: list[str]) -> None:
     calls.append("ran")
-
-
-def _reward_details_from_summary(
-    summary: AgentEvalSummary,
-    *,
-    metric_type: str = "harbor_reward",
-    output_name: str = "reward",
-) -> dict[str, dict[str, list[str]]]:
-    """Rebuild ``reward_payload_from_result``'s ``reward_details`` from the summary alone.
-
-    Inverts ``{task_id: [value]}`` back into the legacy ``{output: {value_str: [task_id, ...]}}``.
-    Only numeric values are groupable: a dead trial has no value, and a label is not a reward.
-    The adapter drops both too (it skips ``FAILED`` scores and non-numeric outputs), so the two sides
-    agree on what is groupable.
-    """
-    key = f"{metric_type}.{output_name}"
-    details: dict[str, dict[str, list[str]]] = {}
-    for task_id, values_by_key in summary.task_metric_values.items():
-        for record in values_by_key.get(key, []):
-            if not isinstance(record.value, bool | int | float):
-                continue
-            details.setdefault(output_name, {}).setdefault(str(float(record.value)), []).append(task_id)
-    return details
 
 
 def _reward_stats_from_summary(
@@ -184,8 +369,7 @@ async def test_harbor_reward_stats_is_derivable_from_summary_task_metric_values(
 
     Harbor groups rewards by ``trial_name`` and keys them by the raw ``float | int``. Both were out of
     reach while values were bare numbers indexed by position; now that each record names its trial,
-    AALGO-441 can rebuild the real shape without re-walking ``result.scores``. The legacy
-    ``reward_details`` (task-keyed, stringified) stays derivable too, so the rewiring loses nothing.
+    AALGO-441 can rebuild the real shape without re-walking ``result.scores``.
 
     ``exception_stats`` is now covered too, by
     :func:`test_harbor_exception_stats_is_read_straight_off_the_summary` below (AALGO-428).
@@ -221,11 +405,6 @@ async def test_harbor_reward_stats_is_derivable_from_summary_task_metric_values(
     assert _reward_stats_from_summary(result.summary) == {
         "reward": {1.0: ["alpha__a", "beta__a", "beta__b"], 0.0: ["alpha__b", "gamma__a"]}
     }
-
-    # ...and the legacy task-keyed, stringified payload the current adapter emits stays derivable.
-    payload = reward_payload_from_result(result)
-    assert payload["reward_details"] == {"reward": {"1.0": ["alpha", "beta", "beta"], "0.0": ["alpha", "gamma"]}}
-    assert _reward_details_from_summary(result.summary) == payload["reward_details"]
 
 
 @pytest.mark.asyncio
@@ -270,11 +449,79 @@ async def test_harbor_exception_stats_is_read_straight_off_the_summary(tmp_path:
     assert by_trial["beta__a"].status is AgentEvalTrialStatus.PARTIAL
     assert by_trial["gamma__a"].status is AgentEvalTrialStatus.PARTIAL
 
-    # The legacy task-keyed payload stays derivable from the same typed source.
-    assert reward_payload_from_result(result)["exceptions"] == {
-        "RuntimeError": ["alpha", "beta"],
-        "TimeoutError": ["gamma"],
+
+@pytest.mark.asyncio
+async def test_errored_harbor_rewards_and_metric_owned_exclusions_are_independent(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_rewards_trial(job_dir, "t__a_success", "t", {"reward": 1.0, "format_ok": 1.0})
+    _write_trial(job_dir, "t__b_runtime_reward", "t", reward=0.8, exception="RuntimeError")
+    _write_trial(job_dir, "t__c_runtime_missing", "t", reward=None, exception="RuntimeError")
+    _write_trial(job_dir, "t__d_timeout", "t", reward=0.6, exception="AgentTimeoutError")
+    task = AgentEvalTask(
+        id="t",
+        intent="test",
+        inputs={"instruction": "test"},
+        metrics=[HarborRewardMetric(), ErrorAwareQualityMetric()],
+        views={
+            "quality": SemanticView(
+                reducer=SemanticReducer.MEAN,
+                signals=[ViewSignal(metric="error_aware_quality", output="quality")],
+            )
+        },
+    )
+
+    result = await AgentEvaluator().run(tasks=[task], target=HarborAgentTaskRunner(job_dir=job_dir))
+
+    assert [(trial.id, trial.status) for trial in result.trials] == [
+        ("t__a_success", AgentEvalTrialStatus.COMPLETED),
+        ("t__b_runtime_reward", AgentEvalTrialStatus.PARTIAL),
+        ("t__c_runtime_missing", AgentEvalTrialStatus.PARTIAL),
+        ("t__d_timeout", AgentEvalTrialStatus.PARTIAL),
+    ]
+    harbor_scores = [score for score in result.scores if score.metric_type == "harbor_reward"]
+    assert [(score.trial_id, score.outputs[0].value) for score in harbor_scores] == [
+        ("t__a_success", 1.0),
+        ("t__b_runtime_reward", 0.8),
+        ("t__c_runtime_missing", 0.0),
+        ("t__d_timeout", 0.6),
+    ]
+    missing_reward_score = next(score for score in harbor_scores if score.trial_id == "t__c_runtime_missing")
+    assert {"output": "reward", "reason": "absent"} in [
+        diagnostic.details for diagnostic in missing_reward_score.diagnostics
+    ]
+    assert result.summary.score("harbor_reward.reward").mean == pytest.approx(0.6)
+    assert result.summary.metric_coverage["harbor_reward"]["format_ok"].model_dump() == {
+        "total": 4,
+        "scored": 1,
+        "failed": 0,
+        "missing": 3,
     }
+
+    quality_scores = [score for score in result.scores if score.metric_type == "error_aware_quality"]
+    assert [[output.value for output in score.outputs] for score in quality_scores] == [[1.0], [], [], [1.0]]
+    assert [
+        diagnostic.details
+        for score in quality_scores
+        for diagnostic in score.diagnostics
+        if diagnostic.details is not None
+    ] == [
+        {"output": "quality", "reason": "excluded_error_type"},
+        {"output": "quality", "reason": "excluded_error_type"},
+    ]
+    assert result.summary.metric_coverage["error_aware_quality"]["quality"].model_dump() == {
+        "total": 4,
+        "scored": 2,
+        "failed": 0,
+        "missing": 2,
+    }
+    quality_view = result.summary.score("view.quality")
+    assert (quality_view.count, quality_view.nan_count, quality_view.mean) == (2, 2, 1.0)
+    assert result.summary.error_trial_ids == {
+        "RuntimeError": ["t__b_runtime_reward", "t__c_runtime_missing"],
+        "AgentTimeoutError": ["t__d_timeout"],
+    }
+    assert result.summary.trial_count == 4
 
 
 def test_reward_with_no_matching_reward_key_is_partial_and_warns(tmp_path: Path, caplog) -> None:
@@ -291,6 +538,150 @@ def test_reward_with_no_matching_reward_key_is_partial_and_warns(tmp_path: Path,
     assert trials[0].metadata["reward"] is None
     assert trials[0].status == AgentEvalTrialStatus.PARTIAL
     assert "none matches reward_key" in caplog.text
+
+
+def test_rejected_primary_is_distinguished_and_trial_metadata_is_sanitized(tmp_path: Path, caplog) -> None:
+    with caplog.at_level(logging.WARNING):
+        trial = _adapt_raw_trial(
+            tmp_path,
+            rewards={
+                "score": True,
+                "format_ok": "1",
+                "shape_ok": "bad",
+                "": 1,
+                "derived.pass@2": 1,
+            },
+            reward_key="score",
+        )
+
+    assert trial.metadata["reward"] is None
+    assert trial.metadata["reward_details"] == {"format_ok": 1.0}
+    assert trial.metadata["reward_rejections"] == {"score": "boolean", "shape_ok": "non_numeric"}
+    assert trial.metadata["reward_entry_rejections"] == ["invalid_key", "reserved_key"]
+    assert "emitted but rejected as boolean" in caplog.text
+    assert "derived.pass@2" not in repr(trial.metadata)
+
+
+@pytest.mark.asyncio
+async def test_harbor_runner_finalizes_sparse_outputs_per_task(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_rewards_trial(job_dir, "a__1", "A", {"score": 1, "format_ok": 1, "shape.ok": 0.5})
+    _write_rewards_trial(job_dir, "a__2", "A", {"score": 0})
+    _write_rewards_trial(job_dir, "b__1", "B", {"score": 1})
+
+    view = SemanticView(
+        reducer=SemanticReducer.MEAN,
+        signals=[ViewSignal(metric="agent_phase_success", output="agent_phase_success")],
+    )
+    tasks = [
+        AgentEvalTask(
+            id="A",
+            intent="A",
+            inputs={"instruction": "a"},
+            metrics=[HarborRewardMetric(), AgentPhaseSuccessMetric()],
+            views={"agent_ok": view},
+        ),
+        AgentEvalTask(id="B", intent="B", inputs={"instruction": "b"}, metrics=[HarborRewardMetric()]),
+    ]
+
+    result = await AgentEvaluator().run(
+        tasks=tasks,
+        target=HarborAgentTaskRunner(job_dir=job_dir, reward_key="score"),
+    )
+
+    by_task = {task.id: task for task in result.tasks}
+    a_metric = next(metric for metric in by_task["A"].metrics if metric_type_name(metric) == "harbor_reward")
+    b_metric = next(metric for metric in by_task["B"].metrics if metric_type_name(metric) == "harbor_reward")
+    assert [spec.name for spec in a_metric.output_spec()] == ["score", "format_ok", "shape.ok"]
+    assert [spec.required for spec in a_metric.output_spec()] == [True, False, False]
+    assert [spec.name for spec in b_metric.output_spec()] == ["score"]
+    assert metric_type_name(by_task["A"].metrics[1]) == "agent_phase_success"
+    assert by_task["A"].views == {"agent_ok": view}
+
+    format_score = result.summary.score("harbor_reward.format_ok")
+    shape_score = result.summary.score("harbor_reward.shape.ok")
+    assert (format_score.count, format_score.nan_count, format_score.mean) == (1, 1, 1.0)
+    assert (shape_score.count, shape_score.nan_count, shape_score.mean) == (1, 1, 0.5)
+    assert result.summary.metric_coverage["harbor_reward"]["format_ok"].missing == 1
+    assert result.summary.metric_coverage["harbor_reward"]["shape.ok"].missing == 1
+
+    a_scores = [score for score in result.scores if score.task_id == "A" and score.metric_type == "harbor_reward"]
+    assert [[output.name for output in score.outputs] for score in a_scores] == [
+        ["score", "format_ok", "shape.ok"],
+        ["score"],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_harbor_runner_retains_predeclared_secondary_when_every_trial_omits_it(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    _write_rewards_trial(job_dir, "a__1", "A", {"score": 1})
+    _write_rewards_trial(job_dir, "a__2", "A", {"score": 0})
+
+    task = AgentEvalTask(
+        id="A",
+        intent="A",
+        inputs={"instruction": "a"},
+        metrics=[HarborRewardMetric(output_name="score", reward_keys=("score", "format_ok"))],
+        views={
+            "format_quality": SemanticView(
+                reducer=SemanticReducer.MEAN,
+                signals=[ViewSignal(metric="harbor_reward", output="format_ok")],
+            )
+        },
+    )
+
+    result = await AgentEvaluator().run(
+        tasks=[task],
+        target=HarborAgentTaskRunner(job_dir=job_dir, reward_key="score"),
+    )
+
+    output_specs = result.tasks[0].metrics[0].output_spec()
+    assert [(spec.name, spec.required) for spec in output_specs] == [("score", True), ("format_ok", False)]
+
+    format_score = result.summary.score("harbor_reward.format_ok")
+    assert (format_score.count, format_score.nan_count, format_score.mean) == (0, 2, None)
+    assert result.summary.metric_coverage["harbor_reward"]["format_ok"].model_dump() == {
+        "total": 2,
+        "scored": 0,
+        "failed": 0,
+        "missing": 2,
+    }
+
+    format_view = result.summary.score("view.format_quality")
+    assert (format_view.count, format_view.nan_count, format_view.mean) == (0, 2, None)
+    for k in (1, 2):
+        pass_score = result.summary.score(f"harbor_reward.format_ok.pass@{k}")
+        assert (pass_score.count, pass_score.nan_count, pass_score.mean) == (0, 1, None)
+
+
+def test_harbor_scoring_task_output_order_is_attempt_order_independent(tmp_path: Path) -> None:
+    runner = HarborAgentTaskRunner(job_dir=tmp_path, reward_key="score")
+    task = AgentEvalTask(id="A", intent="A", inputs={"instruction": "a"}, metrics=[HarborRewardMetric()])
+    trials = [
+        AgentEvalTrial(
+            id="a2",
+            task_id="A",
+            status=AgentEvalTrialStatus.PARTIAL,
+            output=None,
+            metadata={"reward_details": {"z": 1.0}, "reward_rejections": {"a": "boolean"}},
+        ),
+        AgentEvalTrial(
+            id="a1",
+            task_id="A",
+            status=AgentEvalTrialStatus.PARTIAL,
+            output=None,
+            metadata={"reward_details": {"middle": 1.0}},
+        ),
+    ]
+
+    forward = runner.scoring_metrics(task, trials)[0].output_spec()
+    reverse = runner.scoring_metrics(task, list(reversed(trials)))[0].output_spec()
+
+    assert [spec.name for spec in forward] == ["score", "a", "middle", "z"]
+    assert [spec.name for spec in reverse] == ["score", "a", "middle", "z"]
 
 
 def test_task_discovery_and_taskset_loader_over_bundled_dataset() -> None:
@@ -390,29 +781,65 @@ def _seed_cached_job(tmp_path: Path, *, task_id: str = "t") -> tuple[HarborRunti
 
 
 @pytest.mark.asyncio
+async def test_metric_selection_changes_cached_scoring_but_not_execution_cache_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _cache_stamp
+
+    config, _job_dir, task = _seed_cached_job(tmp_path)
+    dataset_path = Path(str(task.metadata["harbor_dataset_path"]))
+    with_quality = task.model_copy(update={"metrics": [HarborRewardMetric(), ErrorAwareQualityMetric()]})
+    run_calls: list[bool] = []
+    _spy_on_run_job(monkeypatch, run_calls)
+
+    without_result = await AgentEvaluator().run(tasks=[task], target=HarborAgentTaskRunner(config=config))
+    with_result = await AgentEvaluator().run(tasks=[with_quality], target=HarborAgentTaskRunner(config=config))
+
+    assert _cache_stamp(config, dataset_path, [task]) == _cache_stamp(config, dataset_path, [with_quality])
+    assert run_calls == []
+    assert [trial.id for trial in without_result.trials] == [trial.id for trial in with_result.trials]
+    without_descriptors = without_result.tasks[0].model_dump(mode="json")["metrics"]
+    with_descriptors = with_result.tasks[0].model_dump(mode="json")["metrics"]
+    assert [descriptor["type"] for descriptor in without_descriptors] == ["harbor_reward"]
+    assert [descriptor["type"] for descriptor in with_descriptors] == ["harbor_reward", "error_aware_quality"]
+    assert with_descriptors[0] == without_descriptors[0]
+    assert with_descriptors[1]["outputs"] == [
+        {"name": "quality", "description": None, "value_schema": "ContinuousScore", "required": False}
+    ]
+    assert [score.metric_type for score in without_result.scores] == ["harbor_reward"]
+    assert [score.metric_type for score in with_result.scores] == ["harbor_reward", "error_aware_quality"]
+    assert [(output.name, output.value) for output in with_result.scores[1].outputs] == [("quality", 1.0)]
+
+
+@pytest.mark.asyncio
 async def test_native_runner_uses_job_dir_as_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A native run whose job_dir covers every requested task AND carries a matching
-    # cache stamp is re-adapted, not re-run: run_job is never awaited, so Harbor is
-    # never imported here (which is why this test needs no harbor install).
+    # cache stamp is re-adapted, not re-run. Adaptation still imports Harbor lazily
+    # to validate the persisted result against Harbor's own schema.
     config, _job_dir, task = _seed_cached_job(tmp_path)
-    # Watch the lazy import directly instead of mutating sys.modules: popping only
-    # "harbor" would leave already-imported harbor.* submodules parentless and
-    # corrupt the module identity other suites monkeypatch.
-    imported: list[str] = []
-    real_import = builtins.__import__
-
-    def recording_import(name, *args, **kwargs):
-        if name == "harbor" or name.startswith("harbor."):
-            imported.append(name)
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", recording_import)
+    run_calls: list[bool] = []
+    _spy_on_run_job(monkeypatch, run_calls)
     trials = await HarborAgentTaskRunner(config=config).run_tasks([task])
-    monkeypatch.undo()
 
     assert [trial.task_id for trial in trials] == ["t"]
     assert trials[0].metadata["reward"] == 1.0
-    assert imported == [], f"a cache hit must not import harbor, but imported {imported}"
+    assert run_calls == []
+
+
+@pytest.mark.asyncio
+async def test_cached_trials_finalize_sparse_reward_outputs(tmp_path: Path) -> None:
+    config, job_dir, task = _seed_cached_job(tmp_path)
+    _write_rewards_trial(job_dir, "t__aaa", "t", {"reward": 1.0, "format_ok": 1.0})
+
+    result = await AgentEvaluator().run(tasks=[task], target=HarborAgentTaskRunner(config=config))
+
+    metric = result.tasks[0].metrics[0]
+    assert [spec.name for spec in metric.output_spec()] == ["reward", "format_ok"]
+    assert [(output.name, output.value) for output in result.scores[0].outputs] == [
+        ("reward", 1.0),
+        ("format_ok", 1.0),
+    ]
 
 
 def _stamp_for(config: HarborRuntimeConfig, task: AgentEvalTask, job_dir: Path) -> None:
@@ -687,7 +1114,7 @@ def test_multiple_attempts_map_to_one_trial_each(tmp_path: Path) -> None:
     assert sorted(trial.metadata["reward"] for trial in trials) == [0.0, 1.0]
 
 
-def test_cache_is_attempt_and_success_aware(tmp_path: Path) -> None:
+def test_cache_counts_harbor_valid_physical_attempts(tmp_path: Path) -> None:
     from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import _all_tasks_cached
 
     job_dir = tmp_path / "job"
@@ -699,11 +1126,11 @@ def test_cache_is_attempt_and_success_aware(tmp_path: Path) -> None:
     assert _all_tasks_cached(job_dir, tasks, n_attempts=1) is True
     assert _all_tasks_cached(job_dir, tasks, n_attempts=2) is False
 
-    # An errored attempt does not count, so the run is not served from a partial cache.
+    # Harbor considers a valid errored result complete, so it is the second attempt.
     _write_trial(job_dir, "t__bbb", "t", reward=0.0, exception="NonZeroAgentExitCodeError")
-    assert _all_tasks_cached(job_dir, tasks, n_attempts=2) is False
+    assert _all_tasks_cached(job_dir, tasks, n_attempts=2) is True
 
-    # A second clean attempt satisfies n_attempts=2.
+    # Extra valid attempts do not invalidate already-satisfied coverage.
     _write_trial(job_dir, "t__ccc", "t", reward=1.0)
     assert _all_tasks_cached(job_dir, tasks, n_attempts=2) is True
 
@@ -1594,35 +2021,20 @@ def test_exception_info_shapes_all_resolve_to_a_type(
     actually writes — went untested. Resolving to None here would silently promote
     a crashed trial to COMPLETED and let it score.
     """
-    job_dir = tmp_path / "job"
-    job_dir.mkdir()
-    _write_trial(job_dir, "t__aaa", "t", reward=1.0, exception=exception_info)
+    trial = _adapt_raw_trial(tmp_path, rewards={"reward": 1.0}, exception_info=exception_info)
 
-    trials = build_trials_from_job_dir(
-        job_dir, [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
-    )
-
-    assert len(trials) == 1
-    assert trials[0].error is not None
-    assert trials[0].error.type == expected_type
-    assert trials[0].status is AgentEvalTrialStatus.PARTIAL
+    assert trial.error is not None
+    assert trial.error.type == expected_type
+    assert trial.status is AgentEvalTrialStatus.PARTIAL
 
 
 def test_non_string_message_and_traceback_are_dropped_rather_than_carried(tmp_path: Path) -> None:
     # Same totality requirement as the parametrization above: a producer that put a number (or a
     # nested object) where a string belongs must not take down the whole job dir.
-    job_dir = tmp_path / "job"
-    job_dir.mkdir()
-    _write_trial(
-        job_dir,
-        "t__aaa",
-        "t",
-        reward=1.0,
-        exception={"exception_type": "RuntimeError", "exception_message": 42, "exception_traceback": {"a": 1}},
-    )
-
-    [trial] = build_trials_from_job_dir(
-        job_dir, [AgentEvalTask(id="t", intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])]
+    trial = _adapt_raw_trial(
+        tmp_path,
+        rewards={"reward": 1.0},
+        exception_info={"exception_type": "RuntimeError", "exception_message": 42, "exception_traceback": {"a": 1}},
     )
 
     assert trial.error is not None
@@ -2156,35 +2568,39 @@ def test_legacy_harbor_trial_contract_import_resolves_to_source_module(source_na
 def test_atif_trajectory_supplies_the_final_answer(tmp_path: Path) -> None:
     trial = _trial_with_trajectory(tmp_path, _atif_trajectory_payload())
 
+    assert trial.output is not None
     assert trial.output.output_text == "204"
 
 
 def test_non_atif_trajectory_yields_no_final_answer(tmp_path: Path) -> None:
     trial = _trial_with_trajectory(tmp_path, {"not": "atif"})
 
+    assert trial.output is not None
     assert trial.output.output_text is None
 
 
 def test_final_answer_ignores_trailing_non_agent_steps(tmp_path: Path) -> None:
     payload = _atif_trajectory_payload()
-    payload["steps"].append(  # type: ignore[attr-defined]
-        {"step_id": 4, "source": "system", "message": "cleanup", "timestamp": "2026-01-01T00:00:03+00:00"}
-    )
+    steps = cast(list[dict[str, object]], payload["steps"])
+    assert isinstance(steps, list)
+    steps.append({"step_id": 4, "source": "system", "message": "cleanup", "timestamp": "2026-01-01T00:00:03+00:00"})
 
     trial = _trial_with_trajectory(tmp_path, payload)
 
+    assert trial.output is not None
     assert trial.output.output_text == "204"
 
 
 def test_empty_final_agent_message_is_not_backfilled_from_earlier_reasoning(tmp_path: Path) -> None:
     # Only the last agent step can be the answer; an earlier one is intermediate reasoning.
     payload = _atif_trajectory_payload()
-    payload["steps"].append(  # type: ignore[attr-defined]
-        {"step_id": 4, "source": "agent", "message": "", "timestamp": "2026-01-01T00:00:03+00:00"}
-    )
+    steps = cast(list[dict[str, object]], payload["steps"])
+    assert isinstance(steps, list)
+    steps.append({"step_id": 4, "source": "agent", "message": "", "timestamp": "2026-01-01T00:00:03+00:00"})
 
     trial = _trial_with_trajectory(tmp_path, payload)
 
+    assert trial.output is not None
     assert trial.output.output_text is None
 
 

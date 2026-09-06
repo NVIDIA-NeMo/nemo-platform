@@ -18,7 +18,6 @@ from pathlib import Path
 import pytest
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     HarborRuntimeConfig,
-    reward_payload_from_result,
     run_harbor_eval,
 )
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
@@ -82,11 +81,6 @@ async def test_sdk_runs_harbor_hello_world_natively(tmp_path: Path) -> None:
     trial_results = list(jobs_dir.glob("*/*/result.json"))
     assert trial_results, "Harbor did not write a per-trial result.json"
     assert json.loads(trial_results[0].read_text())["task_name"] == _TASK_NAME
-
-    # The optimizer-facing legacy payload reconstructs from the same result.
-    payload = reward_payload_from_result(result)
-    assert payload["reward"]["harbor_reward.reward"] == 1.0
-    assert payload["exceptions"] == {}
 
 
 @pytest.mark.asyncio
