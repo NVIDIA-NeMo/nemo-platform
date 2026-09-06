@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """A minimal LangGraph agent with two tools: bash_executor and python_executor, wired to NeMo Relay.
 
 Both tools actually execute what they're given — a shell command, a Python snippet — so a

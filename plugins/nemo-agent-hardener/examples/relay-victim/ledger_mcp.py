@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """The victim's business tools, served over MCP.
 
 An MCP server rather than Python passed to a framework, because that is the only way a NeMo Platform

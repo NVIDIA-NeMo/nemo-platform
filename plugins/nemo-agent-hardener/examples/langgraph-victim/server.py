@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Serve the LangGraph agent over HTTP, in the shape Agent Hardener calls a victim with.
 
     POST /v1/chat/completions   OpenAI-compatible; the one endpoint attack + benign traffic uses
