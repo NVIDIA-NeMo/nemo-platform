@@ -5,10 +5,16 @@ from __future__ import annotations
 
 import pytest
 from nemo_optimization.backends.optuna.search_space import (
-    SearchSpaceError,
     SearchSpaceSpec,
     grid_trial_count,
     parse_search_space,
+)
+from nemo_optimization.search_space import (
+    PromptSearchSpaceSpec,
+    SearchSpaceError,
+    parse_all_search_space,
+    parse_prompt_optimizer_config,
+    parse_prompt_search_space,
     suggestions_by_path,
 )
 
@@ -17,7 +23,7 @@ class _FakeTrial:
     def suggest_categorical(self, name: str, choices):  # noqa: ANN001
         return choices[0]
 
-    def suggest_int(self, name, low, high, *, log=False, step=None):  # noqa: ANN001
+    def suggest_int(self, name, low, high, *, log=False, step=1):  # noqa: ANN001
         return low
 
     def suggest_float(self, name, low, high, *, log=False, step=None):  # noqa: ANN001
@@ -65,14 +71,182 @@ def test_grid_requires_step_for_range() -> None:
         spec.to_grid_values()
 
 
-def test_parse_search_space_rejects_prompt_entries() -> None:
+def test_prompt_search_space_retains_prompt_metadata() -> None:
+    spec = PromptSearchSpaceSpec.from_mapping(
+        "system_prompt",
+        {
+            "type": "fabric",
+            "path": "instructions.system.content",
+            "is_prompt": True,
+            "purpose": "Answer accurately.",
+            "format": "text",
+        },
+    )
+
+    assert spec.path == "instructions.system.content"
+    assert spec.purpose == "Answer accurately."
+    assert spec.format == "text"
+
+
+def test_parse_search_space_filters_prompt_entries_for_optuna() -> None:
+    optimizer = {
+        "search_space": {
+            "temperature": {"path": "models.default.temperature", "values": [0.0, 0.2]},
+            "system_prompt": {
+                "path": "instructions.system.content",
+                "is_prompt": True,
+                "purpose": "Answer accurately.",
+            },
+        }
+    }
+
+    assert set(parse_all_search_space(optimizer)) == {"temperature", "system_prompt"}
+    assert set(parse_search_space(optimizer)) == {"temperature"}
+    assert set(parse_prompt_search_space(optimizer)) == {"system_prompt"}
+
+
+def test_parse_search_space_rejects_when_no_numeric_dimensions() -> None:
+    with pytest.raises(SearchSpaceError, match="non-prompt"):
+        parse_search_space(
+            {
+                "search_space": {
+                    "prompt": {
+                        "path": "instructions.system.content",
+                        "is_prompt": True,
+                        "purpose": "Answer accurately.",
+                    }
+                }
+            }
+        )
+
+
+def test_optuna_search_space_spec_rejects_prompt_entry() -> None:
     with pytest.raises(SearchSpaceError, match="prompt-only"):
-        parse_search_space({"search_space": {"prompt": {"is_prompt": True}}})
+        SearchSpaceSpec.from_mapping(
+            "prompt",
+            {
+                "path": "instructions.system.content",
+                "is_prompt": True,
+                "purpose": "Answer accurately.",
+            },
+        )
 
 
 def test_parse_search_space_requires_path() -> None:
     with pytest.raises(SearchSpaceError, match="requires 'path'"):
         parse_search_space({"search_space": {"temperature": {"values": [0.0]}}})
+
+
+def test_prompt_search_space_requires_purpose() -> None:
+    with pytest.raises(SearchSpaceError, match="requires non-empty 'purpose'"):
+        parse_prompt_search_space(
+            {
+                "search_space": {
+                    "system_prompt": {
+                        "path": "instructions.system.content",
+                        "is_prompt": True,
+                    }
+                }
+            }
+        )
+
+
+def test_prompt_search_space_requires_boolean_is_prompt() -> None:
+    with pytest.raises(SearchSpaceError, match="must be a boolean"):
+        parse_prompt_search_space(
+            {
+                "search_space": {
+                    "system_prompt": {
+                        "path": "instructions.system.content",
+                        "is_prompt": "false",
+                        "purpose": "Answer accurately.",
+                    }
+                }
+            }
+        )
+
+
+def test_prompt_optimizer_config_requires_model_reference() -> None:
+    payload = {
+        "optimizer": {
+            "prompt": {"enabled": True},
+            "search_space": {
+                "system_prompt": {
+                    "path": "instructions.system.content",
+                    "is_prompt": True,
+                    "purpose": "Answer accurately.",
+                }
+            },
+        },
+        "instructions": {"system": {"content": "Base prompt."}},
+        "models": {"prompt_optimizer": {"provider": "openai", "model": "gpt-5-mini"}},
+    }
+
+    with pytest.raises(SearchSpaceError, match="optimizer.prompt.model"):
+        parse_prompt_optimizer_config(payload)
+
+
+def test_prompt_optimizer_config_rejects_non_string_backend() -> None:
+    payload = {
+        "optimizer": {
+            "prompt": {"enabled": True, "backend": 123, "model": "prompt_optimizer"},
+            "search_space": {
+                "system_prompt": {
+                    "path": "instructions.system.content",
+                    "is_prompt": True,
+                    "purpose": "Answer accurately.",
+                }
+            },
+        },
+        "instructions": {"system": {"content": "Base prompt."}},
+        "models": {"prompt_optimizer": {"provider": "openai", "model": "gpt-5-mini"}},
+    }
+
+    with pytest.raises(SearchSpaceError, match="backend must be a non-empty backend name"):
+        parse_prompt_optimizer_config(payload)
+
+
+def test_prompt_optimizer_config_validates_path_resolves_to_string() -> None:
+    payload = {
+        "optimizer": {
+            "prompt": {"enabled": True, "model": "prompt_optimizer"},
+            "search_space": {
+                "system_prompt": {
+                    "path": "instructions.system.content",
+                    "is_prompt": True,
+                    "purpose": "Answer accurately.",
+                }
+            },
+        },
+        "instructions": {"system": {"content": "Base prompt."}},
+        "models": {"prompt_optimizer": {"provider": "openai", "model": "gpt-5-mini"}},
+    }
+
+    config = parse_prompt_optimizer_config(payload)
+
+    assert config.backend == "ga"
+    assert config.model == "prompt_optimizer"
+    assert config.search_space["system_prompt"].path == "instructions.system.content"
+
+
+def test_prompt_optimizer_config_rejects_non_string_prompt_path() -> None:
+    payload = {
+        "optimizer": {
+            "prompt": {"enabled": True, "model": "prompt_optimizer"},
+            "search_space": {
+                "system_prompt": {
+                    "path": "instructions.system",
+                    "is_prompt": True,
+                    "purpose": "Answer accurately.",
+                }
+            },
+        },
+        "instructions": {"system": {"content": "Base prompt."}},
+        "models": {"prompt_optimizer": {"provider": "openai", "model": "gpt-5-mini"}},
+    }
+
+    with pytest.raises(SearchSpaceError, match="must resolve to a string"):
+        parse_prompt_optimizer_config(payload)
 
 
 def test_parse_search_space_rejects_unknown_type() -> None:

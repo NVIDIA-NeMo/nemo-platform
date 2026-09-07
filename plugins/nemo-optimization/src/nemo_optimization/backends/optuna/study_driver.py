@@ -13,7 +13,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 import optuna
 import yaml
@@ -21,10 +21,6 @@ from optuna.samplers import GridSampler
 from optuna.study import StudyDirection
 
 from nemo_optimization.backends.optuna.artifacts import maybe_write_pareto_plots, write_trials_dataframe
-from nemo_optimization.backends.optuna.config_overlay import (
-    apply_suggestions,
-    suggestions_to_profile_overlay,
-)
 from nemo_optimization.backends.optuna.early_stop import maybe_stop_if_target_met
 from nemo_optimization.backends.optuna.search_space import (
     SearchSpaceError,
@@ -34,30 +30,17 @@ from nemo_optimization.backends.optuna.search_space import (
     suggestions_by_path,
 )
 from nemo_optimization.backends.optuna.selection import pick_trial
+from nemo_optimization.candidate import CandidateEvaluationError, CandidateEvaluationResult, CandidateEvaluator
+from nemo_optimization.config_overlay import (
+    apply_suggestions,
+    suggestions_to_profile_overlay,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class StudyDriverError(RuntimeError):
     """Raised when study configuration or execution fails."""
-
-
-class TrialEvaluator(Protocol):
-    """Evaluate one repetition of a trial (wired to AgentEvaluator in Phase B2)."""
-
-    def evaluate(
-        self,
-        *,
-        trial_number: int,
-        suggestions: dict[str, Any],
-        trial_overlay: dict[str, Any],
-        rep: int,
-    ) -> dict[str, float]:
-        """Return metric name to score for one repetition.
-
-        ``suggestions`` must be keyed by Fabric dotted paths (the output of
-        ``suggestions_by_path``), matching ``apply_suggestions`` / trial YAML.
-        """
 
 
 @dataclass(frozen=True)
@@ -82,9 +65,17 @@ class NumericStudyConfig:
 class NumericStudyResult:
     study: optuna.Study
     best_trial: optuna.trial.FrozenTrial
+    optimized_payload: dict[str, Any]
     metric_names: tuple[str, ...]
-    n_trials: int
+    planned_trials: int
+    executed_trials: int
     output_dir: Path
+
+    @property
+    def n_trials(self) -> int:
+        """Configured/resolved planned trial count, retained for compatibility."""
+
+        return self.planned_trials
 
 
 def parse_numeric_study_config(optimizer: Mapping[str, Any]) -> NumericStudyConfig:
@@ -169,7 +160,7 @@ def scores_to_objective_values(scores: Mapping[str, float], metric_names: Sequen
 def run_numeric_study(
     payload: Mapping[str, Any],
     output_dir: Path,
-    evaluator: TrialEvaluator,
+    evaluator: CandidateEvaluator,
     *,
     seed: int | None = None,
 ) -> NumericStudyResult:
@@ -206,7 +197,7 @@ def run_numeric_study(
             width=trial_id_width,
         )
 
-        rep_scores = [
+        rep_evaluations = [
             evaluator.evaluate(
                 trial_number=trial.number,
                 suggestions=dict(path_suggestions),
@@ -215,6 +206,7 @@ def run_numeric_study(
             )
             for rep in range(config.reps_per_param_set)
         ]
+        rep_scores = [evaluation.aggregate_metrics for evaluation in rep_evaluations]
         for rep_index, rep_score in enumerate(rep_scores):
             missing = [name for name in metric_names if name not in rep_score]
             if missing:
@@ -235,9 +227,9 @@ def run_numeric_study(
         return objective_values[0] if len(objective_values) == 1 else objective_values
 
     logger.info("Starting numeric Optuna study (%d trials, %d metrics)", n_trials, len(metric_names))
-    # Agent-eval / audit failures raise StudyDriverError; fail that Optuna trial and continue.
-    # Do not catch broader Exception — programming errors should still abort the study.
-    study.optimize(objective, n_trials=n_trials, catch=(StudyDriverError,))
+    # Candidate/eval failures fail the Optuna trial and continue. Do not catch
+    # broader Exception: programming errors should still abort the study.
+    study.optimize(objective, n_trials=n_trials, catch=(StudyDriverError, CandidateEvaluationError))
     logger.info("Numeric Optuna study finished")
 
     completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
@@ -260,9 +252,15 @@ def run_numeric_study(
 
     # best_trial.params is keyed by logical search-space names; map to Fabric paths
     # the same way trial configs do before writing optimized_config.yml.
+    best_path_suggestions = suggestions_by_path(config.search_space, best_trial.params)
+    optimized_payload = apply_suggestions(
+        base_config,
+        best_path_suggestions,
+        strip_optimizer=False,
+    )
     optimized_config = apply_suggestions(
         base_config,
-        suggestions_by_path(config.search_space, best_trial.params),
+        best_path_suggestions,
     )
     write_optimized_config(output_dir, optimized_config)
     write_trials_dataframe(study=study, metric_names=metric_names, output_dir=output_dir)
@@ -271,8 +269,10 @@ def run_numeric_study(
     return NumericStudyResult(
         study=study,
         best_trial=best_trial,
+        optimized_payload=optimized_payload,
         metric_names=metric_names,
-        n_trials=n_trials,
+        planned_trials=n_trials,
+        executed_trials=len(study.trials),
         output_dir=output_dir,
     )
 
@@ -357,10 +357,10 @@ class SyntheticTrialEvaluator:
         suggestions: dict[str, Any],
         trial_overlay: dict[str, Any],
         rep: int,
-    ) -> dict[str, float]:
+    ) -> CandidateEvaluationResult:
         del trial_number, trial_overlay, rep
         score = _numeric_suggestion_score(suggestions)
-        return {name: score for name in self._metric_names}
+        return CandidateEvaluationResult(aggregate_metrics={name: score for name in self._metric_names})
 
 
 def _numeric_suggestion_score(suggestions: Mapping[str, Any]) -> float:
@@ -380,7 +380,6 @@ __all__ = [
     "SearchSpaceError",
     "StudyDriverError",
     "SyntheticTrialEvaluator",
-    "TrialEvaluator",
     "average_metric_vectors",
     "create_sampler",
     "parse_numeric_study_config",
