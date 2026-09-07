@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import importlib.util
 import os
 import subprocess
@@ -93,6 +94,28 @@ def test_opensandbox_host_provider_uses_configured_protocol_for_bare_endpoints()
     provider = OpenSandboxGymHostProvider(connection={"protocol": "http"})
 
     assert provider._absolute_url("10.244.6.40:8080") == "http://10.244.6.40:8080"
+
+
+@requires_opensandbox
+def test_opensandbox_host_provider_surfaces_terminal_bootstrap_failure(monkeypatch):
+    from sandboxed_gym.host.models import GymHostHandle
+    from sandboxed_gym.host.opensandbox import OpenSandboxGymHostProvider
+
+    provider = OpenSandboxGymHostProvider(connection={"protocol": "http"})
+    monkeypatch.setattr(
+        provider,
+        "_get_json",
+        lambda url, headers: {
+            "error": {
+                "code": "bootstrap_failed",
+                "message": "ConfigPathNotFoundError: qa_no_such_resources_server was not found",
+            }
+        },
+    )
+    handle = GymHostHandle(host_id="sandbox-1", health_url="http://host/health", rollout_url="http://host/run")
+
+    with pytest.raises(RuntimeError, match="qa_no_such_resources_server"):
+        asyncio.run(provider.wait_ready(handle, timeout_s=5))
 
 
 def _gym_host_spec(*, entrypoint: tuple[str, ...] | None = None) -> GymHostSpec:

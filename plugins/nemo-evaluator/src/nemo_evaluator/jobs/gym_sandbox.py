@@ -368,6 +368,12 @@ def serve_config(
         "environment_path": "/job/environment" if fileset_environment else None,
         "sandbox": {
             "image": plan.runtime_image,
+            # Preserve the public runner timeout contract in sandboxed mode. Without this the
+            # host silently falls back to sandboxed-gym's 15-minute readiness default, so a
+            # submitted ``startup_timeout_s=120`` can remain active long after the caller's
+            # requested deadline when the runtime fails before opening its health endpoint.
+            "ready_timeout_s": target.startup_timeout_s,
+            **({"rollout_timeout_s": target.collection_timeout_s} if target.collection_timeout_s is not None else {}),
             # One claim, two sub-paths. The environment mount is read-only and the workspace is not,
             # so they must not resolve to the same directory.
             "environment_pvc_claim": environment_pvc_claim,

@@ -66,6 +66,54 @@ def test_health_not_ready():
         server.server_close()
 
 
+def test_health_reports_terminal_bootstrap_failure():
+    runtime._BOOTSTRAP_ERROR = "ConfigPathNotFoundError: qa_unknown_model_type was not found"
+    server = HTTPServer(("127.0.0.1", 0), runtime.Handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        import urllib.error
+        import urllib.request
+
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5)
+        assert exc.value.code == 500
+        body = json.loads(exc.value.read().decode())
+        assert body == {
+            "error": {
+                "code": "bootstrap_failed",
+                "message": "ConfigPathNotFoundError: qa_unknown_model_type was not found",
+            }
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_main_keeps_diagnostic_endpoint_alive_after_bootstrap_failure(monkeypatch):
+    served = []
+
+    class FakeServer:
+        def __init__(self, address, handler):
+            served.append((address, handler))
+
+        def serve_forever(self):
+            served.append("served")
+
+    def fail_bootstrap():
+        raise FileNotFoundError("qa_no_such_resources_server")
+
+    monkeypatch.setattr(runtime, "bootstrap_gym_host", fail_bootstrap)
+    monkeypatch.setattr(runtime, "HTTPServer", FakeServer)
+
+    runtime.main()
+
+    assert runtime._READY is False
+    assert runtime._BOOTSTRAP_ERROR == "FileNotFoundError: qa_no_such_resources_server"
+    assert served == [(("0.0.0.0", 8080), runtime.Handler), "served"]
+
+
 def test_health_ready(ready_server):
     import urllib.request
 
