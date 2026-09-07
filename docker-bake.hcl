@@ -128,7 +128,7 @@ variable "NEMO_RL_REPO" {
 # RL pins Gym as a git submodule (-> soluwalana/Gym over https), so Gym rides in with the RL git ADD
 # - no separate Gym pin needed.
 variable "NEMO_RL_REF" {
-  default = "874f94737d5358680607735e339a8c06c01495f7" # soluwalana/RL nmp/customizer
+  default = "19720f309c0b6b420ebdf18b92e6bd3ba31b3599" # soluwalana/RL nmp/customizer
 }
 variable "RL_BASE_CONTEXT" {
   default = ""

@@ -282,7 +282,11 @@ def _build_nemo_gym_env_config(
     # Where the manifest is readable from THIS process, which is the job-storage copy in
     # both modes. Distinct from package_root below, which is where the servers will see it.
     manifest_root = gym.environment_path or DEFAULT_ENVIRONMENT_PATH
-    package_root = SANDBOX_ENVIRONMENT_PATH if sandboxed else manifest_root
+    # What the Gym host will treat as the package root in mode B. NeMo-RL reads
+    # `sandboxed.environment_path` and only falls back to the mount, so anchoring
+    # config_paths to the bare constant would point them somewhere Gym never looks.
+    sandbox_root = gym.sandbox_environment_path or SANDBOX_ENVIRONMENT_PATH
+    package_root = sandbox_root if sandboxed else manifest_root
     config_paths = [
         path if Path(path).is_absolute() else str(Path(package_root) / path)
         for path in _read_manifest_config_paths(manifest_root)
@@ -361,7 +365,7 @@ def _build_nemo_gym_env_config(
         sandbox_cfg = NemoGymSandboxedConfig(
             sandboxed=True,
             host_provider="opensandbox",
-            environment_path=gym.sandbox_environment_path or SANDBOX_ENVIRONMENT_PATH,
+            environment_path=sandbox_root,
             environment_offline=offline_environment,
             job_id=job_ctx.job_id,
             sandbox=sandbox,
