@@ -48,6 +48,7 @@ class _FakeHost:
     def __init__(self, *, status: int = 200, body: Any = None, rewards: dict[int, float] | None = None) -> None:
         self.requests: list[httpx.Request] = []
         self.posted: list[dict[str, Any]] = []
+        self.payloads: list[dict[str, Any]] = []
         self._status = status
         self._body = body
         self._rewards = rewards
@@ -55,18 +56,26 @@ class _FakeHost:
     def transport(self) -> httpx.MockTransport:
         def handle(request: httpx.Request) -> httpx.Response:
             self.requests.append(request)
-            self.posted = json.loads(request.content.decode())["examples"]
+            payload = json.loads(request.content.decode())
+            self.payloads.append(payload)
+            examples = payload["examples"]
+            self.posted.extend(examples)
             if self._body is not None or self._status >= 400:
                 return httpx.Response(self._status, json=self._body if self._body is not None else {"error": "boom"})
             rewards = self._rewards if self._rewards is not None else {}
+            attempts = [
+                {**example, NG_ROLLOUT_INDEX: attempt}
+                for example in examples
+                for attempt in range(payload["num_repeats"])
+            ]
             results = [
                 {
                     NG_TASK_INDEX: example[NG_TASK_INDEX],
-                    NG_ROLLOUT_INDEX: 0,
+                    NG_ROLLOUT_INDEX: example.get(NG_ROLLOUT_INDEX, 0),
                     "reward": rewards.get(example[NG_TASK_INDEX], 1.0),
                     "response": f"answer-{example[NG_TASK_INDEX]}",
                 }
-                for example in self.posted
+                for example in attempts
             ]
             return httpx.Response(200, json={"results": results})
 
@@ -109,6 +118,20 @@ async def test_the_examples_posted_carry_the_index_we_stamped(tasks, tmp_path, m
 
     assert [example[NG_TASK_INDEX] for example in host.posted] == [0, 1]
     assert all("responses_create_params" in example for example in host.posted)
+
+
+async def test_repeat_and_concurrency_contract_crosses_http_once(tasks, tmp_path, monkeypatch) -> None:
+    host = _FakeHost()
+    runner = runner_against(host, monkeypatch, num_repeats=3, concurrency=2)
+
+    trials = await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    assert len(host.requests) == 1
+    assert host.payloads == [{"examples": host.posted, "num_repeats": 3, "concurrency": 2}]
+    assert len(trials) == 6
+    for task in tasks:
+        task_trials = [trial for trial in trials if trial.task_id == task.id]
+        assert {trial.metadata[NG_ROLLOUT_INDEX] for trial in task_trials} == {0, 1, 2}
 
 
 async def test_the_auth_token_is_sent_as_the_proxy_header(tasks, tmp_path, monkeypatch) -> None:
@@ -182,7 +205,12 @@ async def test_a_task_the_host_never_answered_fails_the_run(tasks, tmp_path, mon
 
 def test_runner_info_records_the_host_but_not_the_token() -> None:
     runner = SandboxedGymAgentTaskRunner(
-        config=SandboxedGymRuntimeConfig(rollout_url=ROLLOUT_URL, auth_token="sk-secret-value")
+        config=SandboxedGymRuntimeConfig(
+            rollout_url=ROLLOUT_URL,
+            auth_token="sk-secret-value",
+            num_repeats=3,
+            concurrency=2,
+        )
     )
 
     info = runner.runner_info()
@@ -190,4 +218,6 @@ def test_runner_info_records_the_host_but_not_the_token() -> None:
     assert info.name == "gym"
     assert info.config["mode"] == "sandboxed"
     assert info.config["rollout_url"] == ROLLOUT_URL
+    assert info.config["num_repeats"] == 3
+    assert info.config["concurrency"] == 2
     assert "sk-secret-value" not in json.dumps(info.config), "the token must not reach the run bundle"

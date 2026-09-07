@@ -415,9 +415,25 @@ async def _collect_rollout_results(
     examples: list[dict],
     head_server_config: Any,
     rollout_helper: Any,
+    *,
+    num_repeats: int = 1,
+    concurrency: int = 4,
 ) -> list[dict]:
+    attempts = [
+        {
+            **example,
+            **({NG_ROLLOUT_INDEX: attempt} if NG_TASK_INDEX in example else {}),
+        }
+        for example in examples
+        for attempt in range(num_repeats)
+    ]
+    semaphore = asyncio.Semaphore(concurrency)
     results: list[dict] = []
-    for task in rollout_helper.run_examples(examples=examples, head_server_config=head_server_config):
+    for task in rollout_helper.run_examples(
+        examples=attempts,
+        head_server_config=head_server_config,
+        semaphore=semaphore,
+    ):
         row, nemo_gym_result = await task
         results.append(_with_row_identity(nemo_gym_result, row))
     return results
@@ -427,8 +443,26 @@ def run_rollouts_sync(
     examples: list[dict],
     head_server_config: Any,
     rollout_helper: Any,
+    *,
+    num_repeats: int = 1,
+    concurrency: int = 4,
 ) -> list[dict]:
-    return asyncio.run(_collect_rollout_results(examples, head_server_config, rollout_helper))
+    return asyncio.run(
+        _collect_rollout_results(
+            examples,
+            head_server_config,
+            rollout_helper,
+            num_repeats=num_repeats,
+            concurrency=concurrency,
+        )
+    )
+
+
+def _positive_int(request: dict[str, Any], field: str, default: int) -> int:
+    value = request.get(field, default)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{field} must be a positive integer")
+    return value
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -494,7 +528,20 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            results = run_rollouts_sync(examples, _HEAD_SERVER_CONFIG, _ROLLOUT_HELPER)
+            num_repeats = _positive_int(request, "num_repeats", 1)
+            concurrency = _positive_int(request, "concurrency", 4)
+        except ValueError as exc:
+            self._send_json(400, _runtime_error("internal", str(exc)))
+            return
+
+        try:
+            results = run_rollouts_sync(
+                examples,
+                _HEAD_SERVER_CONFIG,
+                _ROLLOUT_HELPER,
+                num_repeats=num_repeats,
+                concurrency=concurrency,
+            )
         except Exception as exc:
             self._send_json(
                 500,

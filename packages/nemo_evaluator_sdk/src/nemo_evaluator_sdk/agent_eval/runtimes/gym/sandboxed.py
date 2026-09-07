@@ -84,6 +84,8 @@ class SandboxedGymRuntimeConfig(BaseModel):
         "instance an environment's config defines (`mcqa_simple_agent`), not the agent component "
         "(`simple_agent`).",
     )
+    num_repeats: int = Field(default=1, ge=1, description="Attempts per row; each attempt becomes one trial.")
+    concurrency: int = Field(default=4, ge=1, description="Maximum concurrent Gym rollout attempts.")
     reward_key: str = Field(default=DEFAULT_REWARD_KEY, description="Key read from each rollout record.")
 
 
@@ -117,6 +119,8 @@ class SandboxedGymAgentTaskRunner:
                 "mode": "sandboxed",
                 "rollout_url": cfg.rollout_url,
                 "agent_ref_name": cfg.agent_ref_name,
+                "num_repeats": cfg.num_repeats,
+                "concurrency": cfg.concurrency,
                 "reward_key": cfg.reward_key,
                 "timeout_s": cfg.timeout_s,
             },
@@ -129,26 +133,28 @@ class SandboxedGymAgentTaskRunner:
         return headers
 
     async def _collect(self, examples: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """POST the examples and return the host's rollout records."""
+        """Ask the host to repeat examples while bounding Gym's concurrent rollout attempts."""
+        cfg = self._config
         async with httpx.AsyncClient(timeout=self._config.timeout_s) as client:
             response = await client.post(
-                self._config.rollout_url,
-                json={"examples": examples},
+                cfg.rollout_url,
+                json={
+                    "examples": examples,
+                    "num_repeats": cfg.num_repeats,
+                    "concurrency": cfg.concurrency,
+                },
                 headers=self._request_headers(),
             )
         if response.status_code >= 400:
-            # The body is the host's own error envelope; it names which example or server failed,
-            # which the status code alone does not.
+            # The body says which example or server failed; the status code alone does not.
             raise RuntimeError(
-                f"sandboxed Gym host returned {response.status_code} from {self._config.rollout_url}: "
-                f"{response.text[:2000]}"
+                f"sandboxed Gym host returned {response.status_code} from {cfg.rollout_url}: {response.text[:2000]}"
             )
         body = response.json()
         results = body.get("results") if isinstance(body, Mapping) else None
         if not isinstance(results, list):
             raise RuntimeError(
-                f"sandboxed Gym host returned no `results` list from {self._config.rollout_url}; "
-                f"got {type(results).__name__}"
+                f"sandboxed Gym host returned no `results` list from {cfg.rollout_url}; got {type(results).__name__}"
             )
         return [record for record in results if isinstance(record, dict)]
 
