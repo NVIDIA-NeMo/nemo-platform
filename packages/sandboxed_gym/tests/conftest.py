@@ -18,3 +18,10 @@ def isolated_gym_host_process_state(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PYTHONPATH", raising=False)
     # Let the helper mutate an isolated list, then restore the interpreter's original sys.path object.
     monkeypatch.setattr(runtime.sys, "path", runtime.sys.path.copy())
+
+
+@pytest.fixture(autouse=True)
+def reset_gym_host_server_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Do not let module-level health state leak between HTTP handler tests."""
+    monkeypatch.setattr(runtime, "_READY", False)
+    monkeypatch.setattr(runtime, "_BOOTSTRAP_ERROR", None)

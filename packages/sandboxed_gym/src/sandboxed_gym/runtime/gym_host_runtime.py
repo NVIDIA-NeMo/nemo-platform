@@ -16,6 +16,7 @@ import os
 import socket
 import subprocess
 import sys
+import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
@@ -52,6 +53,7 @@ DEFAULT_GYM_PORT_RANGE_HIGH = 5999
 
 _DEFAULT_HTTP_PORT = 8080
 _READY: bool = False
+_BOOTSTRAP_ERROR: str | None = None
 _RUN_HELPER: Any = None
 _HEAD_SERVER_CONFIG: Any = None
 _ROLLOUT_HELPER: Any = None
@@ -440,7 +442,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        if not _READY:
+        if _BOOTSTRAP_ERROR is not None:
+            body = json.dumps(_runtime_error("bootstrap_failed", _BOOTSTRAP_ERROR)).encode("utf-8")
+            self.send_response(500)
+        elif not _READY:
             body = json.dumps({"status": "starting"}).encode("utf-8")
             self.send_response(503)
         else:
@@ -538,13 +543,21 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    global _READY, _RUN_HELPER, _HEAD_SERVER_CONFIG, _ROLLOUT_HELPER
+    global _BOOTSTRAP_ERROR, _READY, _RUN_HELPER, _HEAD_SERVER_CONFIG, _ROLLOUT_HELPER
 
     Handler.max_request_bytes = _env_int("NMP_MAX_REQUEST_BYTES", Handler.max_request_bytes)
     Handler.max_response_bytes = _env_int("NMP_MAX_RESPONSE_BYTES", Handler.max_response_bytes)
 
-    _RUN_HELPER, _HEAD_SERVER_CONFIG, _ROLLOUT_HELPER = bootstrap_gym_host()
-    _READY = True
+    try:
+        _RUN_HELPER, _HEAD_SERVER_CONFIG, _ROLLOUT_HELPER = bootstrap_gym_host()
+        _READY = True
+    except Exception as exc:
+        # OpenSandbox adds a long-running egress sidecar. If this process exits during bootstrap,
+        # Kubernetes leaves that sidecar running and the aggregate BatchSandbox remains Pending,
+        # hiding the real failure from the orchestrator. Keep only the diagnostic HTTP endpoint
+        # alive; wait_ready() reads this terminal response and immediately destroys the sandbox.
+        traceback.print_exc()
+        _BOOTSTRAP_ERROR = f"{type(exc).__name__}: {exc}"
 
     port = _env_int("NMP_RUNTIME_HTTP_PORT", _DEFAULT_HTTP_PORT)
     HTTPServer(("0.0.0.0", port), Handler).serve_forever()

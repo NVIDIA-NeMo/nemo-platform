@@ -193,11 +193,15 @@ class OpenSandboxGymHostProvider:
         while asyncio.get_running_loop().time() < deadline:
             try:
                 body = await asyncio.to_thread(self._get_json, handle.health_url, handle.headers)
-                if body.get("status") == "ready":
-                    return
-                last_error = RuntimeError(f"host not ready: {body!r}")
             except Exception as exc:
                 last_error = exc
+            else:
+                if body.get("status") == "ready":
+                    return
+                error = body.get("error")
+                if isinstance(error, Mapping) and error.get("code") == "bootstrap_failed":
+                    raise RuntimeError(f"job host {handle.host_id} failed during bootstrap: {error.get('message')}")
+                last_error = RuntimeError(f"host not ready: {body!r}")
             await asyncio.sleep(_HEALTH_POLL_S)
         raise TimeoutError(
             f"job host {handle.host_id} at {handle.health_url} did not become ready within {timeout_s:g}s"
@@ -210,8 +214,14 @@ class OpenSandboxGymHostProvider:
             with urlopen(request, timeout=10) as response:
                 payload = response.read()
         except HTTPError as exc:
-            if exc.code == 503:
-                return {"status": "starting"}
+            # The Gym host uses an HTTP error response for both a transient bootstrap state and a
+            # terminal bootstrap failure. Preserve a JSON error envelope so wait_ready() can
+            # distinguish them; re-raise unrelated/non-JSON proxy errors.
+            if exc.code in {500, 503}:
+                try:
+                    return json.loads(exc.read().decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    pass
             raise
         except URLError:
             raise

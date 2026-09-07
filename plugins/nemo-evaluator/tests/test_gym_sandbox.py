@@ -170,6 +170,17 @@ def test_serve_config_takes_cluster_facts_from_the_deployment_not_the_job() -> N
     assert payload["gym_global_config"]["config_paths"]
 
 
+def test_serve_config_preserves_runner_timeouts_in_sandboxed_mode() -> None:
+    payload = serve_config(
+        target(startup_timeout_s=123.0, collection_timeout_s=456.0),
+        capable_plan(),
+        job_id="job-7",
+    )
+
+    assert payload["sandbox"]["ready_timeout_s"] == 123.0
+    assert payload["sandbox"]["rollout_timeout_s"] == 456.0
+
+
 def test_sandbox_server_protocol_reaches_the_opensandbox_host_provider() -> None:
     plan = resolve_sandbox_plan(
         capable_config(),
