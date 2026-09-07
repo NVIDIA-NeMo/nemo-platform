@@ -186,7 +186,10 @@ def parse_prompt_optimizer_config(payload: Mapping[str, Any]) -> PromptOptimizer
     prompt = optimizer.get("prompt")
     if not isinstance(prompt, Mapping):
         raise SearchSpaceError("optimizer.prompt must be a mapping.")
-    if not prompt.get("enabled"):
+    enabled = prompt.get("enabled")
+    if not isinstance(enabled, bool):
+        raise SearchSpaceError("optimizer.prompt.enabled must be a boolean.")
+    if not enabled:
         raise SearchSpaceError("optimizer.prompt.enabled must be true.")
 
     backend = prompt.get("backend", DEFAULT_PROMPT_BACKEND)
