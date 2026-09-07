@@ -28,8 +28,10 @@ Matching is pattern-based, so it's most reliable on credentials, which have
 fixed published formats. For broader entity coverage, including names and
 locations, run a deep scan or use [Anonymizer](/documentation/anonymize-data).
 
-Rotate leaked credentials before doing any other cleanup. A rotated credential
-makes the exposure harmless; a redacted trace does not.
+Rotate or revoke leaked credentials promptly to block further use. Rotation
+does not prove the credential went unused or that no data was accessed before
+it happened, so preserve the trace as evidence and investigate prior access
+before cleaning it up.
 
 ## Prerequisites
 
