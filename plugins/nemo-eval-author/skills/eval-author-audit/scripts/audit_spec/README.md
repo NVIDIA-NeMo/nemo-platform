@@ -27,6 +27,10 @@ Current assumptions:
 - Failure-case measurement follows the capability pattern with
   `--failure-case-judgments`. It also deterministically requires every
   `prohibited_tools` value to be absent from the ATIF trace.
+- Measurement does not infer that a failure-case `trigger` occurred from its
+  prose field. Authors must represent the trigger in `evidence_required` and
+  judge that evidence from the trace; otherwise unrelated traces, especially a
+  failure case containing only `tool_call` evidence, can overstate coverage.
 - Reports are written under encoded path components:
   `<out-dir>/task=<task-id>/run=<run-id>/<method>/coverage.json` and
   `details.json`. The raw `task_id` and `run_id` remain in the JSON payloads.
@@ -72,7 +76,8 @@ Current assumptions:
 | `scripts/audit_spec/validate.py` | Validate the marked audit-spec block in `audit.md` |
 
 Private shared helpers live in `scripts/audit_spec/_schema.py`,
-`scripts/audit_spec/_markdown.py`, and
+`scripts/audit_spec/_markdown.py`,
+`scripts/audit_spec/measurements/_composite.py`, and
 `scripts/audit_spec/measurements/trace_tools.py`. Measurement methods live under
 `scripts/audit_spec/measurements/`; v1 ships
 `scripts/audit_spec/measurements/tool_calls.py` and

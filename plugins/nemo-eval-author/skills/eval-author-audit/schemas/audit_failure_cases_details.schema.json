@@ -279,7 +279,41 @@
             "$ref": "#/$defs/toolCall"
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "satisfied"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "matches": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "violated"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "matches": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
     },
     "evidenceResult": {
       "type": "object",
@@ -352,6 +386,10 @@
             }
           },
           "then": {
+            "required": [
+              "tool",
+              "matches"
+            ],
             "properties": {
               "status": {
                 "enum": [
@@ -366,11 +404,53 @@
           "if": {
             "properties": {
               "measurement": {
+                "const": "deterministic"
+              },
+              "status": {
+                "const": "satisfied"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "matches": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "measurement": {
+                "const": "deterministic"
+              },
+              "status": {
+                "const": "missing"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "matches": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "measurement": {
                 "const": "judged"
               }
             }
           },
           "then": {
+            "required": [
+              "confidence",
+              "rationale"
+            ],
             "properties": {
               "status": {
                 "enum": [
@@ -430,6 +510,24 @@
           },
           "then": {
             "properties": {
+              "prohibited_tool_results": {
+                "items": {
+                  "properties": {
+                    "status": {
+                      "const": "satisfied"
+                    }
+                  }
+                }
+              },
+              "evidence_results": {
+                "items": {
+                  "properties": {
+                    "status": {
+                      "const": "satisfied"
+                    }
+                  }
+                }
+              },
               "missing_reasons": {
                 "maxItems": 0
               }

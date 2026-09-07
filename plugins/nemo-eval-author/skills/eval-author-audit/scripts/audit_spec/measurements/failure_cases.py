@@ -6,10 +6,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from typing import Any, TypeAlias
 
-from measurements.trace_tools import collect_tool_calls, tool_call_counts
+from measurements._composite import CompositeSpec, ToolGateSpec, measure_composite
 
 try:
     from harbor.models.trajectories import Trajectory  # ty: ignore[unresolved-import]
@@ -18,239 +17,25 @@ except ImportError:
 
 JsonObject: TypeAlias = dict[str, Any]
 
-METHOD_NAME = "failure_cases"
-ITEM_KIND = "failure_case"
-DETAILS_SCHEMA = "nemo.eval_author.audit_failure_cases_details.v1"
-JUDGMENTS_SCHEMA = "nemo.eval_author.audit_failure_case_judgments.v1"
-DETERMINISTIC_EVIDENCE_KINDS = frozenset({"tool_call"})
-JUDGEABLE_EVIDENCE_KINDS = frozenset(
-    {
-        "environment_state",
-        "outcome",
-        "output",
-        "policy_boundary",
-        "state_change",
-        "trace_span",
-        "user_intent",
-        "verifier",
-    }
+_SPEC = CompositeSpec(
+    method_name="failure_cases",
+    item_kind="failure_case",
+    details_schema="nemo.eval_author.audit_failure_cases_details.v1",
+    judgments_schema="nemo.eval_author.audit_failure_case_judgments.v1",
+    tool_gate=ToolGateSpec(
+        item_field="prohibited_tools",
+        result_field="prohibited_tool_results",
+        should_be_observed=False,
+        failure_reason="prohibited_tool_observed",
+    ),
 )
-EvidenceTarget: TypeAlias = tuple[str, int]
+
+METHOD_NAME = _SPEC.method_name
+ITEM_KIND = _SPEC.item_kind
+DETAILS_SCHEMA = _SPEC.details_schema
+JUDGMENTS_SCHEMA = _SPEC.judgments_schema
 
 
 def measure(audit: JsonObject, trajectory: Trajectory, *, judgments: JsonObject | None = None) -> JsonObject:
     """Measure failure cases from prohibited tools, trace evidence, and optional judgments."""
-    audit_failure_cases = [item for item in audit["items"] if item["kind"] == ITEM_KIND]
-    observed_tool_calls = collect_tool_calls(trajectory)
-    calls_by_tool = _calls_by_tool(observed_tool_calls)
-    judgments_by_target = _judgments_by_target(audit_failure_cases, judgments)
-    failure_case_results = {
-        item["name"]: _failure_case_result(
-            item,
-            calls_by_tool=calls_by_tool,
-            judgments_by_target=judgments_by_target,
-        )
-        for item in audit_failure_cases
-    }
-    covered = [name for name, result in failure_case_results.items() if result["covered"]]
-    missing = [name for name in failure_case_results if name not in covered]
-    return {
-        "item_kind": ITEM_KIND,
-        "covered": covered,
-        "details": {
-            "schema": DETAILS_SCHEMA,
-            "covered": covered,
-            "missing": missing,
-            "judgment_input": _judgment_input_summary(judgments),
-            "observed_tool_calls": observed_tool_calls,
-            "tool_call_counts": tool_call_counts(observed_tool_calls),
-            "failure_case_results": failure_case_results,
-        },
-    }
-
-
-def _failure_case_result(
-    item: JsonObject,
-    *,
-    calls_by_tool: dict[str, list[JsonObject]],
-    judgments_by_target: dict[EvidenceTarget, JsonObject],
-) -> JsonObject:
-    """Return per-failure-case status after applying deterministic and judged evidence."""
-    prohibited_tools = _dedupe_names(item.get("prohibited_tools", []))
-    prohibited_tool_results = [_prohibited_tool_result(tool, calls_by_tool=calls_by_tool) for tool in prohibited_tools]
-    evidence_results = [
-        _evidence_result(
-            item["name"],
-            evidence_index,
-            evidence,
-            calls_by_tool=calls_by_tool,
-            judgments_by_target=judgments_by_target,
-        )
-        for evidence_index, evidence in enumerate(item["evidence_required"])
-    ]
-    missing_reasons = _missing_reasons(
-        prohibited_tool_results=prohibited_tool_results,
-        evidence_results=evidence_results,
-    )
-    return {
-        "covered": not missing_reasons,
-        "prohibited_tool_results": prohibited_tool_results,
-        "evidence_results": evidence_results,
-        "missing_reasons": missing_reasons,
-    }
-
-
-def _prohibited_tool_result(tool: str, *, calls_by_tool: dict[str, list[JsonObject]]) -> JsonObject:
-    """Return whether a failure case avoided one prohibited tool."""
-    matches = calls_by_tool.get(tool, [])
-    return {
-        "tool": tool,
-        "status": "violated" if matches else "satisfied",
-        "matches": matches,
-    }
-
-
-def _evidence_result(
-    failure_case_name: str,
-    evidence_index: int,
-    evidence: JsonObject,
-    *,
-    calls_by_tool: dict[str, list[JsonObject]],
-    judgments_by_target: dict[EvidenceTarget, JsonObject],
-) -> JsonObject:
-    """Return deterministic or judged status for one evidence requirement."""
-    kind = evidence["kind"]
-    result: JsonObject = {
-        "kind": kind,
-        "evidence_index": evidence_index,
-        "description": evidence["description"],
-    }
-    if kind in DETERMINISTIC_EVIDENCE_KINDS:
-        tool = evidence["tool"]
-        matches = calls_by_tool.get(tool, [])
-        result.update(
-            {
-                "measurement": "deterministic",
-                "tool": tool,
-                "status": "satisfied" if matches else "missing",
-                "matches": matches,
-            }
-        )
-        return result
-
-    if kind in JUDGEABLE_EVIDENCE_KINDS:
-        judgment = judgments_by_target.get((failure_case_name, evidence_index))
-        if judgment is None:
-            result.update(
-                {
-                    "measurement": "judgment_required",
-                    "status": "unjudged",
-                }
-            )
-            return result
-        result.update(
-            {
-                "measurement": "judged",
-                "status": judgment["status"],
-                "confidence": judgment["confidence"],
-                "rationale": judgment["rationale"],
-            }
-        )
-        if "supporting_trace_refs" in judgment:
-            result["supporting_trace_refs"] = judgment["supporting_trace_refs"]
-        return result
-
-    result["measurement"] = "unsupported"
-    result["status"] = "unsupported"
-    return result
-
-
-def _missing_reasons(
-    *,
-    prohibited_tool_results: list[JsonObject],
-    evidence_results: list[JsonObject],
-) -> list[str]:
-    """Return stable reason codes for why a failure case was not covered."""
-    reasons: list[str] = []
-    if any(result["status"] == "violated" for result in prohibited_tool_results):
-        reasons.append("prohibited_tool_observed")
-    if any(result["measurement"] == "deterministic" and result["status"] == "missing" for result in evidence_results):
-        reasons.append("missing_tool_call_evidence")
-    if any(result["status"] == "unjudged" for result in evidence_results):
-        reasons.append("unjudged_evidence")
-    if any(result["measurement"] == "judged" and result["status"] != "satisfied" for result in evidence_results):
-        reasons.append("judged_evidence_not_satisfied")
-    if any(result["status"] == "unsupported" for result in evidence_results):
-        reasons.append("unsupported_evidence_kind")
-    return reasons
-
-
-def _judgments_by_target(
-    audit_failure_cases: list[JsonObject], judgments: JsonObject | None
-) -> dict[EvidenceTarget, JsonObject]:
-    """Index failure-case judgments and reject stale or unsafe targets."""
-    if judgments is None:
-        return {}
-
-    failure_cases_by_name = {item["name"]: item for item in audit_failure_cases}
-    indexed: dict[EvidenceTarget, JsonObject] = {}
-    errors: list[str] = []
-    for index, judgment in enumerate(judgments["judgments"]):
-        failure_case_name = judgment["failure_case"]
-        evidence_index = judgment["evidence_index"]
-        target = (failure_case_name, evidence_index)
-        failure_case = failure_cases_by_name.get(failure_case_name)
-        if failure_case is None:
-            errors.append(f"judgments[{index}] references unknown failure case {failure_case_name!r}")
-            continue
-        evidence_items = failure_case["evidence_required"]
-        if evidence_index < 0 or evidence_index >= len(evidence_items):
-            errors.append(f"judgments[{index}] references missing evidence index {evidence_index}")
-            continue
-        evidence = evidence_items[evidence_index]
-        if evidence["kind"] in DETERMINISTIC_EVIDENCE_KINDS:
-            errors.append(f"judgments[{index}] targets deterministic evidence kind {evidence['kind']!r}")
-        if evidence["kind"] != judgment["kind"]:
-            errors.append(
-                f"judgments[{index}] kind {judgment['kind']!r} does not match audit evidence kind {evidence['kind']!r}"
-            )
-        if evidence["description"] != judgment["description"]:
-            errors.append(f"judgments[{index}] description does not match audit evidence description")
-        if target in indexed:
-            errors.append(
-                f"judgments[{index}] duplicates failure case {failure_case_name!r} evidence index {evidence_index}"
-            )
-        indexed[target] = judgment
-
-    if errors:
-        raise ValueError("invalid failure-case judgments:\n" + "\n".join(errors))
-    return indexed
-
-
-def _judgment_input_summary(judgments: JsonObject | None) -> JsonObject:
-    """Return reproducibility metadata about the optional judgment input."""
-    if judgments is None:
-        return {"provided": False, "judgment_count": 0}
-    summary: JsonObject = {
-        "provided": True,
-        "schema": judgments["schema"],
-        "trace_sha256": judgments["trace_sha256"],
-        "judgment_count": len(judgments["judgments"]),
-    }
-    judged_by = judgments.get("judged_by")
-    if isinstance(judged_by, str) and judged_by.strip():
-        summary["judged_by"] = judged_by.strip()
-    return summary
-
-
-def _dedupe_names(names: Iterable[str]) -> list[str]:
-    """Dedupe declared names while preserving audit order."""
-    return list(dict.fromkeys(names))
-
-
-def _calls_by_tool(tool_calls: list[JsonObject]) -> dict[str, list[JsonObject]]:
-    """Group observed ATIF tool calls by function name."""
-    grouped: dict[str, list[JsonObject]] = {}
-    for call in tool_calls:
-        grouped.setdefault(call["tool"], []).append(call)
-    return grouped
+    return measure_composite(audit, trajectory, judgments=judgments, spec=_SPEC)
