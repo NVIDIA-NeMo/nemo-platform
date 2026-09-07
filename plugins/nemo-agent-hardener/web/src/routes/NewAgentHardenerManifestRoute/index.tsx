@@ -43,7 +43,7 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { useQueryClient } from '@tanstack/react-query';
-import { FC, useEffect, useMemo, useState } from 'react';
+import { FC, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router';
 
@@ -79,6 +79,9 @@ export const NewAgentHardenerManifestRoute: FC = () => {
     resolver: zodResolver(manifestFormSchema),
   });
 
+  // Guards against a late agent/project inspection overwriting a newer selection's form state.
+  const selectionRef = useRef(0);
+
   // Pre-fill the port + secret fields from the agent's auto-derived defaults when one is selected;
   // both stay editable so the operator can override.
   const selectedAgent = watch('agent');
@@ -86,10 +89,12 @@ export const NewAgentHardenerManifestRoute: FC = () => {
   const { mutate: runInspectAgent } = inspectAgent;
   useEffect(() => {
     if (!selectedAgent) return;
+    const generation = ++selectionRef.current;
     runInspectAgent(
       { workspace, agent: selectedAgent },
       {
         onSuccess: (facts) => {
+          if (selectionRef.current !== generation) return;
           setValue('port', String(facts.port));
           setValue('secrets', facts.secrets.join(', '));
           setValue('egress', facts.egress.join(', '));
@@ -108,15 +113,18 @@ export const NewAgentHardenerManifestRoute: FC = () => {
   const onProjectSelected = (file: File) => {
     setProjectFile(file);
     setDerived(null);
+    const generation = ++selectionRef.current;
     uploadProject.mutate(
       { workspace, manifestName: watch('name') || 'byo', file },
       {
         onSuccess: (ref) => {
+          if (selectionRef.current !== generation) return;
           setProjectFileset(ref);
           inspectProject.mutate(
             { workspace, projectFileset: ref },
             {
               onSuccess: (facts) => {
+                if (selectionRef.current !== generation) return;
                 setDerived(facts);
                 setValue('dockerfile', facts.dockerfile);
                 setValue('startCommand', facts.start_command);
