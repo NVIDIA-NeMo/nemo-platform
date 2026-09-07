@@ -132,6 +132,16 @@ ENV RAY_USAGE_STATS_ENABLED=0 \
     NEMO_RL_VENV_DIR=/opt/ray_venvs \
     NEMO_GYM_VENV_DIR=/opt/gym_venvs
 
+# ---- gym-wheel: an installable nemo-gym for the Gym per-server venvs ----
+# Gym pins each staged server's venv to `nemo-gym==<the parent venv's version>` and resolves it
+# from a package index; this image runs a fork whose version is published nowhere, so every
+# native-v1 job died at spin-up (nvbug 6716627). Vendoring the wheel fixes that for every
+# environment. Rationale and the build-time guards live in the script.
+FROM base AS gym-wheel
+COPY --from=nemo-rl 3rdparty/Gym-workspace/Gym /build/Gym
+RUN --mount=type=bind,source=docker/rl/scripts/build-gym-wheel.sh,target=/build/build-gym-wheel.sh \
+    bash /build/build-gym-wheel.sh /build/Gym /opt/gym-wheels
+
 # ---- builder: uv sync RL + Gym with the extras we use ----
 # fsdp (DPO training), automodel (GRPO training on DTensor V2, the only LoRA-capable DTensor
 # backend), mcore (Megatron training + Megatron-native generation), vllm (generation), nemo_gym and
@@ -542,12 +552,24 @@ RUN apt-get purge -y ccache vim vim-common less >/dev/null 2>&1 || true; \
         /opt/nvidia/nsight-systems-cli /opt/nvidia/nsight-compute \
         /usr/local/bin/nsys /usr/local/bin/nsys-ui /usr/local/bin/ncu /usr/local/bin/ncu-ui \
     || true
-# NO_VCS_VERSION=1: with no .git present, nemo_rl/package_info.py's `git rev-parse` would fail on every
-# `import nemo_rl` (harmlessly, but it forks a subprocess each time, and this image starts many
-# worker processes). The flag is package_info.py's own opt-out, so the lookup is skipped entirely.
+# The vendored nemo-gym wheel (see the gym-wheel stage) and the env var that makes Gym's
+# per-server `uv pip install nemo-gym==<version>` resolve it. uv reads UV_FIND_LINKS natively, so
+# no Gym change is needed, and Gym's run_command copies os.environ into each server subprocess.
+#
+# Additive, not a redirect: everything else still resolves from the index, which native-v1 needs.
+# Safe for wheels-v1 too -- configure_environment_wheelhouse PREPENDS the package's own wheelhouse
+# and preserves what is already here, so an offline job still resolves from its own closure first.
+# Set in this stage, not in `base`: during the build the directory does not exist yet, and uv
+# errors on a find-links path it cannot open.
+COPY --from=gym-wheel /opt/gym-wheels /opt/gym-wheels
+
+# NO_VCS_VERSION=1: with no .git present, nemo_rl/package_info.py's `git rev-parse` would fail on
+# every `import nemo_rl` (harmlessly, but it forks a subprocess each time, and this image starts
+# many worker processes). The flag is package_info.py's own opt-out, so the lookup is skipped.
 ENV VIRTUAL_ENV=/opt/nemo_rl_venv \
     HF_HUB_ENABLE_HF_TRANSFER=1 \
     PATH="/opt/nemo_rl_venv/bin:/usr/local/bin:${PATH}" \
+    UV_FIND_LINKS=/opt/gym-wheels \
     NO_VCS_VERSION=1
 
 # The venv's python symlinks to CPython under /opt/cpython, nemo_rl is installed
