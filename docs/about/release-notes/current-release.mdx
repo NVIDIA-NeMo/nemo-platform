@@ -135,18 +135,27 @@ operations for the 0.5 release line.
 
 ## Install
 
-For a fresh local checkout:
+The quickest local install is from PyPI:
+
+```bash
+uv tool install "nemo-platform[all]"
+nemo setup
+```
+
+For a source checkout (contributing, local plugins, or Studio from source),
+install [Flox](https://flox.dev/docs/install-flox/install) first, then:
 
 ```bash
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
 cd nemo-platform
 make bootstrap
-source .venv/bin/activate
+flox -q activate
 nemo setup
 ```
 
-See [Setup](/documentation/get-started/setup) for prerequisites and provider
-configuration.
+Without Flox, run `make TOOLCHAIN=system bootstrap` followed by
+`source .venv/bin/activate`. See [Setup](/documentation/get-started/setup)
+for prerequisites, provider configuration, and the full wizard.
 
 For self-managed Kubernetes, start with
 [Install NeMo Platform Helm Chart](/documentation/kubernetes-deployment/setup/helm/install).
@@ -157,15 +166,26 @@ and [OpenSandbox](/documentation/kubernetes-deployment/setup/helm/opensandbox).
 
 ## Upgrade from v0.4.x
 
-From an existing local checkout:
+If you installed from PyPI:
+
+```bash
+uv tool install "nemo-platform[all]"
+nemo setup
+```
+
+From an existing local source checkout, install
+[Flox](https://flox.dev/docs/install-flox/install) first, then:
 
 ```bash
 git fetch
 git checkout main
 make bootstrap
-source .venv/bin/activate
+flox -q activate
 nemo setup
 ```
+
+Without Flox, run `make TOOLCHAIN=system bootstrap` followed by
+`source .venv/bin/activate`.
 
 After setup, restart local services before using CLI, SDK, Studio, or plugin
 workflows against the upgraded checkout.
