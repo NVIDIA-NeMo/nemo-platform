@@ -193,8 +193,14 @@ async def _reject_project_source(
         return
     try:
         manifest = await entity_client.get(AgentHardenerManifest, name=manifest_id, workspace=workspace)
-    except NemoEntityNotFoundError:
-        return
+    except NemoEntityNotFoundError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Run '{run_name}' references manifest '{manifest_id}', which no longer exists, so its "
+                "target cannot be confirmed. Re-run against an existing manifest before applying."
+            ),
+        ) from exc
     if manifest.source_type == "project":
         raise HTTPException(
             status_code=409,
