@@ -355,6 +355,7 @@ def _job_routes_app():
 
     mock_sdk = MagicMock()
     mock_jobs = MagicMock()
+    mock_jobs.with_retry.return_value = mock_jobs
     router = job_route_factory(
         service_name="test_service",
         job_type="TestJob",
