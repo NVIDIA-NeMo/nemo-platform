@@ -13,6 +13,7 @@ from collections.abc import Callable
 
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobLogPage
 from nemo_platform_plugin.jobs.types import PlatformJobResponse
@@ -85,6 +86,11 @@ def poll_until_terminal(
 TERMINAL_STATUSES = {"completed", "error", "cancelled"}
 
 
+def _job_status_value(status: object) -> str:
+    value = getattr(status, "value", status)
+    return str(value or "").lower()
+
+
 def wait_for_platform_job(
     sdk: NeMoPlatform,
     job_name: str,
@@ -129,7 +135,7 @@ def wait_for_platform_job(
     def get_status() -> str:
         nonlocal last_job
         last_job = client_from_platform(sdk, JobsClient).get_job(name=job_name, workspace=workspace).data()
-        current = last_job.status.lower() if last_job.status else ""
+        current = _job_status_value(last_job.status)
         if not status_history or status_history[-1] != current:
             status_history.append(current)
         return current
@@ -155,6 +161,84 @@ def wait_for_platform_job(
     # poll_until_terminal calls get_status (which sets last_job) at least once before returning.
     assert last_job is not None
     return last_job
+
+
+def wait_for_platform_job_terminal_or_absent(
+    sdk: NeMoPlatform,
+    job_name: str,
+    workspace: str,
+    timeout: float = 120.0,
+    poll_interval: float = 1.0,
+    terminal_statuses: set[str] | None = None,
+) -> PlatformJobResponse | None:
+    """Wait until a platform job is terminal or already absent."""
+    jobs = client_from_platform(sdk, JobsClient)
+    terminal = terminal_statuses or TERMINAL_STATUSES
+    deadline = time.monotonic() + timeout
+    last_status = ""
+
+    while True:
+        try:
+            job = jobs.get_job(name=job_name, workspace=workspace).data()
+        except NotFoundError:
+            return None
+
+        last_status = _job_status_value(job.status)
+        if last_status in terminal:
+            return job
+
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"'{job_name}' did not reach a terminal status within {timeout}s. Status: {last_status}")
+        time.sleep(poll_interval)
+
+
+def cleanup_platform_job(
+    sdk: NeMoPlatform,
+    job_name: str,
+    workspace: str,
+    timeout: float = 120.0,
+    poll_interval: float = 1.0,
+) -> None:
+    """Cancel, wait for terminal state, and delete a platform job.
+
+    A missing job is treated as already cleaned up. A delete conflict is not
+    swallowed; the helper keeps polling DELETE until it succeeds, the job is
+    absent, or the bounded timeout expires.
+    """
+    jobs = client_from_platform(sdk, JobsClient)
+    try:
+        job = jobs.get_job(name=job_name, workspace=workspace).data()
+    except NotFoundError:
+        return
+
+    if _job_status_value(job.status) not in TERMINAL_STATUSES:
+        try:
+            jobs.cancel_job(name=job_name, workspace=workspace).data()
+        except NotFoundError:
+            return
+        except ConflictError:
+            pass
+        wait_for_platform_job_terminal_or_absent(
+            sdk,
+            job_name,
+            workspace,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            jobs.delete_job(name=job_name, workspace=workspace).data()
+            return
+        except NotFoundError:
+            return
+        except ConflictError as exc:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"'{job_name}' could not be deleted within {timeout}s because it remained non-terminal"
+                ) from exc
+            time.sleep(poll_interval)
 
 
 def wait_for_job_completion(

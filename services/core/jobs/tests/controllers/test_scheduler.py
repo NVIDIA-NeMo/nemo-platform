@@ -30,15 +30,20 @@ def job_scheduler(backend_registry: BackendRegistry, mock_nmp_client) -> JobSche
     return JobScheduler(backend_registry, mock_nmp_client)
 
 
+@fixture
+def test_step_created(test_step_pending: PlatformJobStepWithContext) -> PlatformJobStepWithContext:
+    return test_step_pending.model_copy(update={"status": PlatformJobStatus.CREATED})
+
+
 def test_does_schedule_job(
     job_scheduler: JobScheduler,
     backend_registry: BackendRegistry,
     mock_nmp_client,
     mock_jobs_client,
-    test_step_pending: PlatformJobStepWithContext,
+    test_step_created: PlatformJobStepWithContext,
 ):
     # Mock the jobs list response
-    mock_jobs_client.list_steps.return_value = paginated_response([test_step_pending])
+    mock_jobs_client.list_steps.return_value = paginated_response([test_step_created])
 
     # Get the test backend from the registry
     backend = backend_registry.get_backend(provider="cpu", profile="default")
@@ -61,32 +66,82 @@ def test_does_schedule_job(
 
     # Test backend should have received one schedule call for our test job
     assert len(test_backend.mock.schedule_calls) == 1
-    assert test_backend.mock.schedule_calls[0]["step"].id == test_step_pending.id
+    assert test_backend.mock.schedule_calls[0]["step"].id == test_step_created.id
     assert test_backend.mock.sync_calls == []
 
 
-def test_scheduling_deferred_leaves_step_created(
+def test_scheduling_deferred_keeps_step_created_with_visible_status_details(
     job_scheduler: JobScheduler,
     mock_nmp_client,
     mock_jobs_client,
-    test_step_pending: PlatformJobStepWithContext,
+    test_step_created: PlatformJobStepWithContext,
 ):
-    mock_jobs_client.list_steps.return_value = paginated_response([test_step_pending])
+    mock_jobs_client.list_steps.return_value = paginated_response([test_step_created])
 
     with patch.object(job_scheduler, "schedule_step", side_effect=SchedulingDeferred("capacity full")):
         job_scheduler.step()
 
-    mock_jobs_client.update_job_step_status.assert_not_called()
+    mock_jobs_client.update_job_step_status.assert_called_once()
+    call = mock_jobs_client.update_job_step_status.call_args
+    assert call.kwargs["name"] == test_step_created.name
+    assert call.kwargs["workspace"] == test_step_created.workspace
+    assert call.kwargs["job"] == test_step_created.job
+    body = call.kwargs["body"]
+    assert body.status == PlatformJobStatus.CREATED
+    assert body.status_details == {"message": "capacity full"}
+
+
+def test_scheduling_deferred_preserves_step_resuming_with_visible_status_details(
+    job_scheduler: JobScheduler,
+    mock_nmp_client,
+    mock_jobs_client,
+    test_step_resuming: PlatformJobStepWithContext,
+):
+    mock_jobs_client.list_steps.return_value = paginated_response([test_step_resuming])
+
+    with patch.object(job_scheduler, "schedule_step", side_effect=SchedulingDeferred("capacity full")):
+        job_scheduler.step()
+
+    mock_jobs_client.update_job_step_status.assert_called_once()
+    call = mock_jobs_client.update_job_step_status.call_args
+    assert call.kwargs["name"] == test_step_resuming.name
+    assert call.kwargs["workspace"] == test_step_resuming.workspace
+    assert call.kwargs["job"] == test_step_resuming.job
+    body = call.kwargs["body"]
+    assert body.status == PlatformJobStatus.RESUMING
+    assert body.status_details == {"message": "capacity full"}
+
+
+def test_scheduling_deferred_status_write_failure_does_not_skip_later_steps(
+    job_scheduler: JobScheduler,
+    mock_nmp_client,
+    mock_jobs_client,
+    test_step_created: PlatformJobStepWithContext,
+):
+    next_step = test_step_created.model_copy(update={"id": "next-step-id", "name": "next-step", "job": "next-job"})
+    mock_jobs_client.list_steps.return_value = paginated_response([test_step_created, next_step])
+    mock_jobs_client.update_job_step_status.side_effect = [RuntimeError("persist failed"), data_response(None)]
+
+    with patch.object(job_scheduler, "schedule_step", side_effect=SchedulingDeferred("capacity full")) as schedule_step:
+        job_scheduler.step()
+
+    assert schedule_step.call_count == 2
+    assert mock_jobs_client.update_job_step_status.call_count == 2
+    first_body = mock_jobs_client.update_job_step_status.call_args_list[0].kwargs["body"]
+    second_body = mock_jobs_client.update_job_step_status.call_args_list[1].kwargs["body"]
+    assert first_body.status == PlatformJobStatus.CREATED
+    assert second_body.status == PlatformJobStatus.CREATED
+    assert second_body.status_details == {"message": "capacity full"}
 
 
 def test_resource_allocation_error_marks_step_as_error(
     job_scheduler: JobScheduler,
     mock_nmp_client,
     mock_jobs_client,
-    test_step_pending: PlatformJobStepWithContext,
+    test_step_created: PlatformJobStepWithContext,
 ):
     """When ResourceAllocationError is raised (e.g. no GPUs), scheduler marks step as error with error_details."""
-    mock_jobs_client.list_steps.return_value = paginated_response([test_step_pending])
+    mock_jobs_client.list_steps.return_value = paginated_response([test_step_created])
     error_message = "No GPUs available on this system. GPU jobs require a system with NVIDIA GPUs."
 
     with patch.object(job_scheduler, "schedule_step", side_effect=ResourceAllocationError(error_message)):
@@ -94,9 +149,9 @@ def test_resource_allocation_error_marks_step_as_error(
 
     mock_jobs_client.update_job_step_status.assert_called_once()
     call = mock_jobs_client.update_job_step_status.call_args
-    assert call.kwargs["name"] == test_step_pending.name
-    assert call.kwargs["workspace"] == test_step_pending.workspace
-    assert call.kwargs["job"] == test_step_pending.job
+    assert call.kwargs["name"] == test_step_created.name
+    assert call.kwargs["workspace"] == test_step_created.workspace
+    assert call.kwargs["job"] == test_step_created.job
     body = call.kwargs["body"]
     assert body.status == PlatformJobStatus.ERROR
     assert body.status_details == {"message": error_message}
@@ -107,9 +162,9 @@ def test_scheduler_logs_diagnostics_for_unexpected_schedule_error_in_debug_mode(
     job_scheduler: JobScheduler,
     mock_nmp_client,
     mock_jobs_client,
-    test_step_pending: PlatformJobStepWithContext,
+    test_step_created: PlatformJobStepWithContext,
 ):
-    mock_jobs_client.list_steps.return_value = paginated_response([test_step_pending])
+    mock_jobs_client.list_steps.return_value = paginated_response([test_step_created])
 
     with (
         patch.object(job_scheduler, "schedule_step", side_effect=RuntimeError("boom")),
@@ -120,7 +175,7 @@ def test_scheduler_logs_diagnostics_for_unexpected_schedule_error_in_debug_mode(
 
     log_diagnostics.assert_called_once_with(
         mock_nmp_client,
-        test_step_pending,
+        test_step_created,
         logger=job_scheduler._logger,
         context="unexpected scheduling error",
     )
@@ -130,14 +185,14 @@ def test_scheduler_does_not_mark_step_error_when_pending_update_conflicts_with_c
     job_scheduler: JobScheduler,
     mock_nmp_client,
     mock_jobs_client,
-    test_step_pending: PlatformJobStepWithContext,
+    test_step_created: PlatformJobStepWithContext,
 ):
-    mock_jobs_client.list_steps.return_value = paginated_response([test_step_pending])
+    mock_jobs_client.list_steps.return_value = paginated_response([test_step_created])
 
     conflict = _conflict_error(
         "Invalid status transition from PlatformJobStatus.ACTIVE to PlatformJobStatus.PENDING for step test-step-id"
     )
-    active_step = test_step_pending.model_copy(update={"status": PlatformJobStatus.ACTIVE})
+    active_step = test_step_created.model_copy(update={"status": PlatformJobStatus.ACTIVE})
     mock_jobs_client.update_job_step_status.side_effect = [conflict]
     get_step_resp = active_step
     mock_jobs_client.get_job_step.return_value.data.return_value = get_step_resp
@@ -146,15 +201,15 @@ def test_scheduler_does_not_mark_step_error_when_pending_update_conflicts_with_c
 
     mock_jobs_client.update_job_step_status.assert_called_once()
     update_call = mock_jobs_client.update_job_step_status.call_args
-    assert update_call.kwargs["name"] == test_step_pending.name
-    assert update_call.kwargs["workspace"] == test_step_pending.workspace
-    assert update_call.kwargs["job"] == test_step_pending.job
+    assert update_call.kwargs["name"] == test_step_created.name
+    assert update_call.kwargs["workspace"] == test_step_created.workspace
+    assert update_call.kwargs["job"] == test_step_created.job
     assert update_call.kwargs["body"].status == PlatformJobStatus.PENDING
 
     mock_jobs_client.get_job_step.assert_called_once_with(
-        name=test_step_pending.name,
-        workspace=test_step_pending.workspace,
-        job=test_step_pending.job,
+        name=test_step_created.name,
+        workspace=test_step_created.workspace,
+        job=test_step_created.job,
     )
 
 
