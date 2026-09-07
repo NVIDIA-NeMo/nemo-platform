@@ -124,6 +124,12 @@ export const NewAgentHardenerManifestRoute: FC = () => {
                 setValue('port', String(facts.port));
                 setValue('secrets', facts.secrets.join(', '));
                 setValue('egress', facts.egress.join(', '));
+                setValue(
+                  'env',
+                  Object.entries(facts.env)
+                    .map(([key, value]) => `${key}=${value}`)
+                    .join(', ')
+                );
               },
               onError: () => toast.error('Could not read the project bundle.'),
             }
