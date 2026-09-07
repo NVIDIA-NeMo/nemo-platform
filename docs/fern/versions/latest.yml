@@ -355,6 +355,7 @@ navigation:
           - page: Monitor
             path: ../../studio/monitor.mdx
           - page: Plugin UIs
+            slug: plugins
             path: ../../studio/plugins.mdx
           - page: Guardrail Configs
             path: ../../studio/guardrails.mdx

@@ -6,7 +6,7 @@
 ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square)
 
 Documentation can be found at: https://docs.nvidia.com/nemo-platform.
-For deployment instructions, see https://docs.nvidia.com/nemo-platform/documentation/self-managed-deployment/setup.
+For deployment instructions, see https://docs.nvidia.com/nemo-platform/documentation/kubernetes-deployment/setup.
 
 ## Platform Secrets Encryption Key
 
@@ -124,7 +124,7 @@ and
 The chart does not install Kyverno. Multi-node NCCL device injection renders
 ClusterPolicies that Kyverno must apply. Enable exactly one cloud provider
 under `multinodeNetworking`.
-How-to: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/multinode-networking
+How-to: https://docs.nvidia.com/nemo-platform/latest/documentation/kubernetes-deployment/setup/helm/multinode-networking
 
 ## Volcano
 
@@ -132,7 +132,7 @@ The chart does not install Volcano. Multi-node `volcano_job` workloads need it.
 `rbac.volcanoEnabled` defaults to true so the core controller can manage Volcano
 CRs. Skip Volcano and set `rbac.volcanoEnabled: false` if you are not running
 those jobs.
-How-to: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/volcano
+How-to: https://docs.nvidia.com/nemo-platform/latest/documentation/kubernetes-deployment/setup/helm/volcano
 
 ## OpenSandbox
 
@@ -144,9 +144,9 @@ already installed server as an HTTP client (`OPEN_SANDBOX_DOMAIN`,
 namespace**. Control plane may stay in `opensandbox-system`. Copy the API-key
 Secret into the job namespace.
 
-Example overlays: [examples/opensandbox](examples/opensandbox).
-Shared-kernel (cluster default OCI runtime): https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox
-Kata QEMU: https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox-kata
+Example overlays: [k8s/helm/examples/opensandbox](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/k8s/helm/examples/opensandbox).
+Shared-kernel (cluster default OCI runtime): https://docs.nvidia.com/nemo-platform/latest/documentation/kubernetes-deployment/setup/helm/open-sandbox
+Kata QEMU: https://docs.nvidia.com/nemo-platform/latest/documentation/kubernetes-deployment/setup/helm/opensandbox-kata
 
 ## NetworkPolicies
 
@@ -437,7 +437,7 @@ For the complete default values, see [values.yaml](values.yaml).
 | ncclTest.iterations | int | `3` | How many times to run the full multinode NCCL test (orchestrator loop; env NCCL_TEST_ITERATIONS). Increase the test timeout on helm test if increasing this variable |
 | ncclTest.validation.minBandwidthMBpsAt1024MB | int | `8000` | Minimum allreduce bandwidth (MB/s) at 1024MB message size; 0 disables the floor check in nccl_test.py. |
 | ncclTest.waitTimeoutSeconds | int | `900` | Max seconds to wait for each worker pod to complete. |
-| networkPolicies | object | [See values.yaml](values.yaml#L143) | NetworkPolicy configuration. Enable the top-level switch to render all default policies, then disable individual policies only for cluster-specific exceptions. For a Calico-backed smoke test, see https://docs.nvidia.com/nemo-platform/documentation/self-managed-deployment/setup/helm/network-policy-smoke-test. |
+| networkPolicies | object | [See values.yaml](values.yaml#L143) | NetworkPolicy configuration. Enable the top-level switch to render all default policies, then disable individual policies only for cluster-specific exceptions. For a Calico-backed smoke test, see https://docs.nvidia.com/nemo-platform/documentation/kubernetes-deployment/setup/helm/network-policy-smoke-test. |
 | networkPolicies.api | object | [See values.yaml](values.yaml#L148) | NetworkPolicy configuration for the Platform API pods. |
 | networkPolicies.api.enabled | bool | `true` | Create NetworkPolicy resources that isolate Platform API pod ingress. |
 | networkPolicies.api.extraIngress | list | `[]` | Extra NetworkPolicy ingress rules appended to the API policy, for cluster-specific ingress controllers, gateways, monitoring, or debugging pods. |
