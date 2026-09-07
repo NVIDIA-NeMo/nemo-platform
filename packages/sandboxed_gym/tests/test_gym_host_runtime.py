@@ -16,7 +16,14 @@ from sandboxed_gym.runtime import gym_host_runtime as runtime
 
 
 class _FakeRolloutHelper:
-    def run_examples(self, examples, head_server_config=None):
+    def __init__(self):
+        self.examples = []
+        self.semaphore = None
+
+    def run_examples(self, examples, head_server_config=None, semaphore=None):
+        self.examples = examples
+        self.semaphore = semaphore
+
         async def _one(row):
             return row, {"response": {"output": []}, "reward": 0.0}
 
@@ -88,6 +95,56 @@ def test_rollouts_run_returns_results(ready_server):
         body = json.loads(resp.read().decode())
     assert len(body["results"]) == 1
     assert body["results"][0]["reward"] == 0.0
+
+
+def test_rollouts_run_applies_repeats_and_concurrency(ready_server):
+    import urllib.request
+
+    payload = json.dumps(
+        {
+            "examples": [{"agent_ref": {"name": "a"}, "_ng_task_index": 7}],
+            "num_repeats": 3,
+            "concurrency": 2,
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{ready_server}/rollouts/run",
+        data=payload,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        body = json.loads(resp.read().decode())
+
+    assert len(body["results"]) == 3
+    assert [result["_ng_rollout_index"] for result in body["results"]] == [0, 1, 2]
+    helper = runtime._ROLLOUT_HELPER
+    assert len(helper.examples) == 3
+    assert helper.semaphore._value == 2
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("num_repeats", 0), ("num_repeats", True), ("concurrency", 0), ("concurrency", "2")],
+)
+def test_rollouts_run_rejects_invalid_repeat_and_concurrency(ready_server, field, value):
+    import urllib.error
+    import urllib.request
+
+    payload = json.dumps({"examples": [], field: value}).encode()
+    req = urllib.request.Request(
+        f"{ready_server}/rollouts/run",
+        data=payload,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        urllib.request.urlopen(req, timeout=5)
+
+    assert exc.value.code == 400
+    assert field in json.loads(exc.value.read().decode())["error"]["message"]
 
 
 def test_rollouts_run_rejects_oversize_request(ready_server):
@@ -223,7 +280,7 @@ def test_uv_cache_dir_returns_none_when_uv_unavailable(monkeypatch):
 class _IdentityStrippingHelper:
     """A helper whose results carry no index, i.e. Gym did not copy the caller's stamp through."""
 
-    def run_examples(self, examples, head_server_config=None):
+    def run_examples(self, examples, head_server_config=None, semaphore=None):
         async def _one(row):
             return row, {"response": {"output": []}, "reward": 0.5}
 
@@ -233,7 +290,7 @@ class _IdentityStrippingHelper:
 class _IdentityPreservingHelper:
     """A helper whose results carry Gym's own indices, which must win over the row's."""
 
-    def run_examples(self, examples, head_server_config=None):
+    def run_examples(self, examples, head_server_config=None, semaphore=None):
         async def _one(row):
             return row, {"reward": 1.0, "_ng_task_index": 99, "_ng_rollout_index": 7}
 
