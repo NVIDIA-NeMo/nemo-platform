@@ -138,7 +138,7 @@ multinodeNetworking:
     # -- Number of RDMA devices (mlnxnics) to request per GPU
     rdmaDevicesPerGPU: 8
 
-# -- NetworkPolicy configuration. Enable the top-level switch to render all default policies, then disable individual policies only for cluster-specific exceptions. For a Calico-backed smoke test, see https://docs.nvidia.com/nemo-platform/documentation/self-managed-deployment/setup/helm/network-policy-smoke-test.
+# -- NetworkPolicy configuration. Enable the top-level switch to render all default policies, then disable individual policies only for cluster-specific exceptions. For a Calico-backed smoke test, see https://docs.nvidia.com/nemo-platform/documentation/kubernetes-deployment/setup/helm/network-policy-smoke-test.
 # @default -- This object has the following default values. The top-level switch is disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled.
 networkPolicies:
   # -- Create NetworkPolicy resources for enabled subpolicies.
