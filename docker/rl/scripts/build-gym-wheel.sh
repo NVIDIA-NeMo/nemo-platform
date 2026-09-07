@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # Build an installable nemo-gym wheel for the Gym per-server venvs.
 #
 # Gym rewrites the install line for any server directory that is NOT inside a Gym checkout --

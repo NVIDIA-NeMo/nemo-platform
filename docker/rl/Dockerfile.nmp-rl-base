@@ -133,10 +133,8 @@ ENV RAY_USAGE_STATS_ENABLED=0 \
     NEMO_GYM_VENV_DIR=/opt/gym_venvs
 
 # ---- gym-wheel: an installable nemo-gym for the Gym per-server venvs ----
-# Gym pins each staged server's venv to `nemo-gym==<the parent venv's version>` and resolves it
-# from a package index; this image runs a fork whose version is published nowhere, so every
-# native-v1 job died at spin-up (nvbug 6716627). Vendoring the wheel fixes that for every
-# environment. Rationale and the build-time guards live in the script.
+# Gym resolves `nemo-gym==<parent version>` from an index for every staged server, and this
+# image's fork version is published nowhere. See scripts/build-gym-wheel.sh for the why.
 FROM base AS gym-wheel
 COPY --from=nemo-rl 3rdparty/Gym-workspace/Gym /build/Gym
 RUN --mount=type=bind,source=docker/rl/scripts/build-gym-wheel.sh,target=/build/build-gym-wheel.sh \
@@ -552,20 +550,14 @@ RUN apt-get purge -y ccache vim vim-common less >/dev/null 2>&1 || true; \
         /opt/nvidia/nsight-systems-cli /opt/nvidia/nsight-compute \
         /usr/local/bin/nsys /usr/local/bin/nsys-ui /usr/local/bin/ncu /usr/local/bin/ncu-ui \
     || true
-# The vendored nemo-gym wheel (see the gym-wheel stage) and the env var that makes Gym's
-# per-server `uv pip install nemo-gym==<version>` resolve it. uv reads UV_FIND_LINKS natively, so
-# no Gym change is needed, and Gym's run_command copies os.environ into each server subprocess.
-#
-# Additive, not a redirect: everything else still resolves from the index, which native-v1 needs.
-# Safe for wheels-v1 too -- configure_environment_wheelhouse PREPENDS the package's own wheelhouse
-# and preserves what is already here, so an offline job still resolves from its own closure first.
-# Set in this stage, not in `base`: during the build the directory does not exist yet, and uv
-# errors on a find-links path it cannot open.
+# UV_FIND_LINKS below is additive: it adds nemo-gym as a local candidate, and everything else
+# still resolves from the index. Copied here rather than in `base` so the build's own uv steps
+# never see a find-links path that does not exist yet.
 COPY --from=gym-wheel /opt/gym-wheels /opt/gym-wheels
 
-# NO_VCS_VERSION=1: with no .git present, nemo_rl/package_info.py's `git rev-parse` would fail on
-# every `import nemo_rl` (harmlessly, but it forks a subprocess each time, and this image starts
-# many worker processes). The flag is package_info.py's own opt-out, so the lookup is skipped.
+# NO_VCS_VERSION=1: with no .git present, nemo_rl/package_info.py's `git rev-parse` would fail on every
+# `import nemo_rl` (harmlessly, but it forks a subprocess each time, and this image starts many
+# worker processes). The flag is package_info.py's own opt-out, so the lookup is skipped entirely.
 ENV VIRTUAL_ENV=/opt/nemo_rl_venv \
     HF_HUB_ENABLE_HF_TRANSFER=1 \
     PATH="/opt/nemo_rl_venv/bin:/usr/local/bin:${PATH}" \
