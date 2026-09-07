@@ -20,14 +20,25 @@ def _project(tmp_path: Path) -> Path:
     return project
 
 
-def _patch_cli(cli_main: Any, monkeypatch: pytest.MonkeyPatch, captured: list[list[str]], created: dict) -> Any:
+def _patch_cli(
+    cli_main: Any, monkeypatch: pytest.MonkeyPatch, captured: list[list[str]], created: dict, project: Path
+) -> Any:
     """Neutralize preflight/SDK/upload and capture both the init argv and the create body."""
 
     def fake_create(*, workspace: str, **body):
         created.update(body)
         return {"name": body["name"], "launch_mode": body.get("launch_mode"), "dockerfile": "deploy/Dockerfile"}
 
-    fake_sdk = SimpleNamespace(agent_hardener=SimpleNamespace(manifests=SimpleNamespace(create=fake_create)))
+    def fake_inspect_project(project_fileset: str, *, dockerfile: str | None = None, workspace: str = "default"):
+        from nemo_agent_hardener_plugin.project_resolver import inspect_project
+
+        return inspect_project(project, dockerfile=dockerfile)
+
+    fake_sdk = SimpleNamespace(
+        agent_hardener=SimpleNamespace(
+            manifests=SimpleNamespace(create=fake_create, inspect_project=fake_inspect_project)
+        )
+    )
     monkeypatch.setattr(_shared.checks, "require_preflight", lambda _c: None)
     monkeypatch.setattr(_shared, "make_sdk", lambda _u: fake_sdk)
     monkeypatch.setattr(_shared, "base_url", lambda: "http://localhost:8080")
@@ -50,3 +61,37 @@ def _patch_cli(cli_main: Any, monkeypatch: pytest.MonkeyPatch, captured: list[li
 
     monkeypatch.setattr(lifecycle.provisioning, "run_subprocess", fake_subprocess)
     return cli_main.AgentHardenerCLI().get_cli()
+
+
+def test_init_project_dir_creates_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`init --project-dir` uploads the project, derives what it can, and creates the manifest."""
+    from nemo_agent_hardener_plugin.cli import main as cli_main
+    from typer.testing import CliRunner
+
+    project = _project(tmp_path)
+    captured: list[list[str]] = []
+    created: dict[str, Any] = {}
+    app = _patch_cli(cli_main, monkeypatch, captured, created, project)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "init",
+            "--project-dir",
+            str(project),
+            "--start-command",
+            "/app/run.sh",
+            "--harness",
+            "langgraph",
+            "--relay-confirmed",
+            "--output",
+            str(tmp_path / "agent-hardener.yaml"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert created["source_type"] == "project"
+    assert created["project_fileset"] == "default/proj-bundle"
+    assert created["start_command"] == "/app/run.sh"
+    assert created["harness"] == "langgraph"
+    assert created["relay_integration_confirmed"] is True
