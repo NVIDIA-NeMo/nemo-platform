@@ -132,7 +132,7 @@ That writes the package plus `training.jsonl` / `validation.jsonl` and, with `--
 
 Lives under `training`, a **sibling of `parallelism`** and not a field on it. The value picks the NeMo-RL policy worker, which picks the Ray actor's venv and kernels.
 
-**Each `finetuning_type` currently has exactly one supported backend.** LoRA supports `automodel` backend and `all_weights` support `dtensor` backend, leave `policy_backend` unset to slect the default values for both finetuning types.
+**Each `finetuning_type` currently has exactly one supported backend.** LoRA supports the `automodel` backend and `all_weights` supports `dtensor`; leave `policy_backend` unset to select the right one for each.
 
 | `finetuning_type` | Backend | Worker | Notes |
 |---|---|---|---|
