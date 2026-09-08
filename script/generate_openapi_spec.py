@@ -2,11 +2,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from __future__ import annotations
+
 import argparse
 import contextlib
 import importlib.metadata
 import inspect
 import json
+import multiprocessing
 import os
 import shutil
 import sys
@@ -14,6 +17,7 @@ import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from enum import Enum
+from io import StringIO
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -72,6 +76,46 @@ def print_verbose(message: str):
     """Print message only if verbose mode is enabled."""
     if VERBOSE:
         print(message)
+
+
+def _emit_worker_output(output: str, force: bool = False) -> None:
+    """Print captured subprocess output for verbose runs and failures."""
+    if output and (VERBOSE or force):
+        print(output, end="" if output.endswith("\n") else "\n")
+
+
+def _capture_generation_output(fn, item, verbose: bool) -> tuple[str, bool, str, str]:
+    """Run an OpenAPI extraction worker while capturing noisy import-time output."""
+    global VERBOSE
+    VERBOSE = verbose
+    set_verbose(verbose)
+
+    output = StringIO()
+    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+        name, success, error = fn(item)
+    return name, success, error, output.getvalue()
+
+
+def extract_openapi_spec_captured(service: ServiceConfig, verbose: bool) -> tuple[str, bool, str, str]:
+    return _capture_generation_output(extract_openapi_spec, service, verbose)
+
+
+def extract_plugin_openapi_spec_captured(plugin: PluginConfig, verbose: bool) -> tuple[str, bool, str, str]:
+    return _capture_generation_output(extract_plugin_openapi_spec, plugin, verbose)
+
+
+def bounded_worker_count(item_count: int, requested_workers: int | None = None, default_limit: int = 4) -> int:
+    """Return a conservative process count for isolated OpenAPI worker pools."""
+    if item_count <= 0:
+        return 0
+    if requested_workers is not None:
+        if requested_workers < 1:
+            msg = "--plugin-workers must be at least 1"
+            raise ValueError(msg)
+        return min(item_count, requested_workers)
+
+    cpu_count = os.cpu_count() or 1
+    return min(item_count, default_limit, cpu_count)
 
 
 class SpecType(Enum):
@@ -238,9 +282,10 @@ def extract_openapi_specs_sequential(services: List[ServiceConfig]) -> None:
     for service in services:
         # Create a new executor for each service - this ensures a fresh process
         with ProcessPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(extract_openapi_spec, service)
+            future = executor.submit(extract_openapi_spec_captured, service, VERBOSE)
             try:
-                name, success, error = future.result()
+                name, success, error, output = future.result()
+                _emit_worker_output(output, force=not success)
                 if success:
                     print_green(f"Completed: {name}")
                 else:
@@ -278,14 +323,17 @@ def extract_openapi_specs_with_process_pool(services: List[ServiceConfig]) -> No
     # ProcessPoolExecutor isolates imports in separate processes
     with ProcessPoolExecutor() as executor:
         # Submit all tasks
-        future_to_service = {executor.submit(extract_openapi_spec, service): service for service in services}
+        future_to_service = {
+            executor.submit(extract_openapi_spec_captured, service, VERBOSE): service for service in services
+        }
 
         # Collect results
         failed_services = []
         for future in as_completed(future_to_service):
             service = future_to_service[future]
             try:
-                name, success, error = future.result()
+                name, success, error, output = future.result()
+                _emit_worker_output(output, force=not success)
                 if success:
                     print_green(f"Completed: {name}")
                 else:
@@ -428,27 +476,41 @@ def _extract_plugin_openapi_spec(plugin: PluginConfig) -> tuple[str, bool, str]:
     return plugin.dir, True, ""
 
 
-def extract_plugin_specs_with_process_pool(plugins: List[PluginConfig]) -> None:
+def extract_plugin_specs_with_process_pool(plugins: List[PluginConfig], max_workers: int | None = None) -> None:
     """Extract OpenAPI specs for plugins via isolated subprocesses.
 
-    Each plugin gets a fresh ProcessPoolExecutor(max_workers=1) so a worker never
-    processes two plugins in one process. That matters on Linux (fork): discovering
-    services for plugin A imports route modules for plugin B, which registers
-    query-param filter schemas at import time; plugin B's extraction then calls
-    clear_query_param_schemas() and openapi() without re-importing those routes,
-    leaving dangling ``#/components/schemas/*Filter`` refs (e.g. MetricFilter).
+    Each plugin runs in a process that handles at most one plugin. That matters
+    on Linux: discovering services for plugin A can import route modules for
+    plugin B, which registers query-param filter schemas at import time; plugin
+    B's extraction then calls clear_query_param_schemas() and openapi() without
+    re-importing those routes, leaving dangling ``#/components/schemas/*Filter``
+    refs (e.g. MetricFilter). ``max_tasks_per_child=1`` preserves that isolation
+    while still allowing multiple plugins to generate concurrently.
     """
-    print_green(f"=== Generating OpenAPI specs for {len(plugins)} plugin(s) using process pool ===")
-
     if not plugins:
         return
 
+    worker_count = bounded_worker_count(len(plugins), max_workers)
+    print_green(
+        f"=== Generating OpenAPI specs for {len(plugins)} plugin(s) using {worker_count} isolated worker(s) ==="
+    )
+
     failed_plugins = []
-    for plugin in plugins:
-        with ProcessPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(extract_plugin_openapi_spec, plugin)
+    spawn_context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(
+        max_workers=worker_count,
+        mp_context=spawn_context,
+        max_tasks_per_child=1,
+    ) as executor:
+        future_to_plugin = {
+            executor.submit(extract_plugin_openapi_spec_captured, plugin, VERBOSE): plugin for plugin in plugins
+        }
+
+        for future in as_completed(future_to_plugin):
+            plugin = future_to_plugin[future]
             try:
-                name, success, error = future.result()
+                name, success, error, output = future.result()
+                _emit_worker_output(output, force=not success)
                 if success:
                     print_green(f"Completed: {name}")
                 else:
@@ -490,7 +552,7 @@ def apply_schema_fixes(spec_files: List[str], apply_reorder: bool = True) -> Non
             # top-level components instead of hunting through inline ``$defs``.
             spec = hoist_nested_defs(spec)
             for endpoint in health_endpoints:
-                remove_endpoint(spec, endpoint)
+                remove_endpoint(spec, endpoint, prune_unused=False)
 
             # Special handling for deployment management
             if "platform" in spec_file:
@@ -503,14 +565,14 @@ def apply_schema_fixes(spec_files: List[str], apply_reorder: bool = True) -> Non
                         rename_schema_references(spec, "PageResponse", "DeploymentsPage")
 
                 # Remove endpoints
-                remove_endpoint(spec, "/v1/deployments")
-                remove_endpoint(spec, "/v1/deployments/{deploymentId}")
+                remove_endpoint(spec, "/v1/deployments", prune_unused=False)
+                remove_endpoint(spec, "/v1/deployments/{deploymentId}", prune_unused=False)
 
             if "platform" in spec_file:
                 # Remove internal endpoints (not part of public API)
                 internal_endpoints = [p for p in spec.get("paths", {}).keys() if p.startswith("/internal/")]
                 for endpoint in internal_endpoints:
-                    remove_endpoint(spec, endpoint)
+                    remove_endpoint(spec, endpoint, prune_unused=False)
 
             # Apply streaming fixes for specific files
             if any(name in spec_file for name in ["platform"]):
@@ -629,7 +691,7 @@ def remove_guardrail_endpoints() -> None:
 
             # Remove guardrail endpoints
             for endpoint, method in guardrail_endpoints:
-                remove_endpoint(spec, endpoint, method)
+                remove_endpoint(spec, endpoint, method, prune_unused=False)
 
             # Apply schema fixes after removals (but don't reorder to preserve tag ordering)
             spec = tweak_spec(spec)
@@ -732,7 +794,7 @@ def validate_final_specs(spec_files: List[str]) -> None:
         raise RuntimeError(f"{sum(len(d) for _, d in all_dangling)} dangling $refs detected")
 
 
-def process_plugin_specs() -> None:
+def process_plugin_specs(plugin_workers: int | None = None) -> None:
     """Generate, fix, and validate OpenAPI specs for all opted-in plugins.
 
     Plugin specs land in ``plugins/<dir>/openapi/`` and are never merged into
@@ -743,7 +805,7 @@ def process_plugin_specs() -> None:
         return
 
     print_green(f"=== STEP 5: Generating OpenAPI specs for {len(plugins)} plugin(s) ===")
-    extract_plugin_specs_with_process_pool(plugins)
+    extract_plugin_specs_with_process_pool(plugins, max_workers=plugin_workers)
 
     plugin_spec_files = [p.output_path() for p in plugins]
 
@@ -778,6 +840,12 @@ def main():
     )
     parser.add_argument(
         "--only-gen-schema", action="store_true", help="Only generate the schema, then exist, for debugging purposes"
+    )
+    parser.add_argument(
+        "--plugin-workers",
+        type=int,
+        default=None,
+        help="Maximum isolated worker processes for plugin OpenAPI generation (default: min(4, plugins, CPUs))",
     )
     args = parser.parse_args()
 
@@ -848,7 +916,7 @@ def main():
         fix_ref_not_allowed_errors(platform_spec_files)
         validate_final_specs(platform_spec_files)
 
-        process_plugin_specs()
+        process_plugin_specs(plugin_workers=args.plugin_workers)
 
         print_green("=== OpenAPI spec generation completed successfully! ===")
 
