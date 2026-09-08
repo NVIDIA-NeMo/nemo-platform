@@ -122,10 +122,22 @@ def _write_hf_shard(directory: Path, name: str = "shard-00001-model-00001-of-000
 
 def test_finds_consolidated_full_weight_layout(tmp_path: Path):
     checkpoint = tmp_path / "step_20"
-    consolidated = _write_hf_shard(checkpoint / "policy" / "weights" / "model" / "consolidated", "model.safetensors")
+    consolidated = checkpoint / "policy" / "weights" / "model" / "consolidated"
+    consolidated.mkdir(parents=True)
+    (consolidated / "model.safetensors").write_text("consolidated-weights")
+    (consolidated / "config.json").write_text('{"model_type": "qwen3"}')
     _write_hf_shard(checkpoint / "policy" / "weights" / "model")
 
     assert find_hf_full_weight_root(checkpoint) == consolidated
+
+
+def test_empty_consolidated_dir_falls_back_to_shards(tmp_path: Path):
+    """Automodel mkdir's consolidated/ before writing; an empty dir is not the export."""
+    checkpoint = tmp_path / "step_20"
+    (checkpoint / "policy" / "weights" / "model" / "consolidated").mkdir(parents=True)
+    model_dir = _write_hf_shard(checkpoint / "policy" / "weights" / "model")
+
+    assert find_hf_full_weight_root(checkpoint) == model_dir
 
 
 def test_finds_automodel_sharded_full_weight_layout(tmp_path: Path):

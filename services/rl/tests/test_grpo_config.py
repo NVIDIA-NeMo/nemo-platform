@@ -909,9 +909,15 @@ def test_dtensor_v1_omits_model_save_format(
     assert "save_consolidated" not in checkpointing
 
 
-def test_automodel_lora_omits_consolidated_full_weight_export(
+def test_automodel_lora_still_requests_consolidated_export(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """V2 LoRA is still Automodel; save_consolidated is the V2-wide export switch.
+
+    Automodel skips writing a full-weight consolidated tree when is_peft, so this
+    does not change the published adapter. model_save_format stays omitted -- LoRA
+    already writes safetensors adapters, and V1 forbids the key.
+    """
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
     step, _ = _prepared_step(
         tmp_path,
@@ -920,8 +926,8 @@ def test_automodel_lora_omits_consolidated_full_weight_export(
     )
     checkpointing = compile_grpo_config(step, job_ctx)["checkpointing"]
 
+    assert checkpointing["save_consolidated"] == "every"
     assert "model_save_format" not in checkpointing
-    assert "save_consolidated" not in checkpointing
 
 
 def test_expert_parallel_size_reaches_dtensor(

@@ -528,12 +528,14 @@ def compile_grpo_config(
     # equal to "every", and the older bool-valued Automodel reads it as truthy, so this
     # is the one value correct on both. "final" never fires: NeMo-RL calls save_model()
     # without is_final_checkpoint, which then defaults to False on every save.
-    if (
-        parallelism.policy_backend is PolicyBackend.AUTOMODEL
-        and customizer_config.training.finetuning_type == FinetuningType.ALL_WEIGHTS
-    ):
-        cfg["checkpointing"]["model_save_format"] = "safetensors"
+    #
+    # LoRA still gets save_consolidated: Automodel no-ops consolidation when is_peft,
+    # but the key is V2-wide (same as the publisher expecting a consolidated tree).
+    # model_save_format stays all_weights-only; LoRA already saves safetensors adapters.
+    if parallelism.policy_backend is PolicyBackend.AUTOMODEL:
         cfg["checkpointing"]["save_consolidated"] = "every"
+        if customizer_config.training.finetuning_type == FinetuningType.ALL_WEIGHTS:
+            cfg["checkpointing"]["model_save_format"] = "safetensors"
     lora_cfg = _build_lora_cfg(customizer_config)
     dynamic_batching_cfg, sequence_packing_cfg = _build_batching_config(customizer_config, grpo_hp)
     chat_template = resolve_chat_template(

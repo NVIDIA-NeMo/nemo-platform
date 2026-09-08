@@ -131,10 +131,14 @@ def find_hf_full_weight_root(checkpoint_path: Path) -> Path | None:
 
     Prefers Automodel's consolidated export when present. Directories that are DCP
     (``.metadata``) or PEFT adapters are skipped so V1 conversion still runs.
+    ``model/consolidated`` is only chosen when ``config.json`` is there: Automodel
+    creates that directory before writing into it, so existence alone is not enough.
     """
     for relative in HF_FULL_WEIGHT_SEARCH_PATHS:
         candidate = checkpoint_path / relative
         if _has_dcp_metadata(candidate) or _is_peft_weight_dir(candidate):
+            continue
+        if relative.name == "consolidated" and not (candidate / "config.json").is_file():
             continue
         if _weight_safetensors(candidate):
             return candidate
