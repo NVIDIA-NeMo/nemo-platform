@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
 
@@ -165,6 +165,7 @@ class CompiledWorkload:
     service_containers: tuple[Container, ...]
     secret_body: Any | None = None
     secret_name: str | None = None
+    pod_annotations: dict[str, str] = field(default_factory=dict)
 
 
 def _reraise_api_unless(exc: ApiException, *allowed_statuses: int) -> None:
@@ -596,6 +597,8 @@ def compile_workload(
         tolerations = build_tolerations(k8s_config.tolerations)
         if tolerations:
             pod_spec_kwargs["tolerations"] = tolerations
+        if k8s_config.node_selector:
+            pod_spec_kwargs["node_selector"] = dict(k8s_config.node_selector)
         affinity = build_affinity(k8s_config.affinity)
         if affinity is not None:
             pod_spec_kwargs["affinity"] = affinity
@@ -606,6 +609,8 @@ def compile_workload(
     if effective_service_account_name:
         pod_spec_kwargs["service_account_name"] = effective_service_account_name
 
+    pod_annotations = dict(k8s_config.pod_annotations) if k8s_config is not None else {}
+
     return CompiledWorkload(
         pod_spec_kwargs=pod_spec_kwargs,
         configmap_body=configmap_body,
@@ -613,6 +618,7 @@ def compile_workload(
         service_containers=tuple(config.containers),
         secret_body=secret_body,
         secret_name=secret_name,
+        pod_annotations=pod_annotations,
     )
 
 

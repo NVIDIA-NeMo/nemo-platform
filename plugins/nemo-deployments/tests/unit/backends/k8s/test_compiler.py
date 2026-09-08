@@ -188,7 +188,6 @@ def test_compile_applies_k8s_deployment_config() -> None:
 def test_compile_workload_identity_prefers_workload_service_account() -> None:
     config = with_workload_identity(sample_always_config(), service_account_name="workload-sa")
     k8s_config = K8sDeploymentConfig.model_validate({"serviceAccount": "pod-sa"})
-
     compiled = compile_workload(
         config=config,
         workspace="default",
@@ -201,6 +200,108 @@ def test_compile_workload_identity_prefers_workload_service_account() -> None:
     pod_spec = _serialized(compiled.pod_spec_kwargs)
     assert pod_spec["service_account_name"] == "workload-sa"
     assert any(volume["name"] == WORKLOAD_IDENTITY_VOLUME_NAME for volume in pod_spec["volumes"])
+
+
+def test_compile_applies_node_selector() -> None:
+    config = sample_always_config()
+    k8s_config = K8sDeploymentConfig.model_validate({"nodeSelector": {"gpu": "a100", "zone": "us-west1-a"}})
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=k8s_config,
+        pod_restart_policy="Always",
+    )
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    assert pod_spec["node_selector"] == {"gpu": "a100", "zone": "us-west1-a"}
+
+
+def test_compile_carries_pod_annotations() -> None:
+    config = sample_config(restart_policy="Never")
+    k8s_config = K8sDeploymentConfig.model_validate({"podAnnotations": {"sidecar.istio.io/nativeSidecar": "true"}})
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=k8s_config,
+        pod_restart_policy="Never",
+    )
+    assert compiled.pod_annotations == {"sidecar.istio.io/nativeSidecar": "true"}
+    # Annotations live on the pod-template metadata, not the pod spec.
+    assert "annotations" not in compiled.pod_spec_kwargs
+
+
+def test_compile_pod_annotations_default_empty_without_k8s_config() -> None:
+    config = sample_config(restart_policy="Never")
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=None,
+        pod_restart_policy="Never",
+    )
+    assert compiled.pod_annotations == {}
+
+
+def test_build_job_body_stamps_pod_annotations_on_template() -> None:
+    config = sample_config(restart_policy="Never")
+    k8s_config = K8sDeploymentConfig.model_validate({"podAnnotations": {"sidecar.istio.io/nativeSidecar": "true"}})
+    built = build_job_body(
+        job_name="default-task",
+        labels={"managed-by": "nemo-deployments"},
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        k8s_config=k8s_config,
+    )
+    template_meta = _serialized(built.job)["spec"]["template"]["metadata"]
+    assert template_meta["annotations"] == {"sidecar.istio.io/nativeSidecar": "true"}
+
+
+def test_build_job_body_omits_annotations_when_none() -> None:
+    config = sample_config(restart_policy="Never")
+    built = build_job_body(
+        job_name="default-task",
+        labels={"managed-by": "nemo-deployments"},
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        k8s_config=None,
+    )
+    template_meta = _serialized(built.job)["spec"]["template"]["metadata"]
+    assert "annotations" not in template_meta
+
+
+def test_build_deployment_body_stamps_pod_annotations_on_template() -> None:
+    config = sample_always_config()
+    k8s_config = K8sDeploymentConfig.model_validate({"podAnnotations": {"sidecar.istio.io/nativeSidecar": "true"}})
+    built = build_deployment_body(
+        resource_name="default-task",
+        labels={"managed-by": "nemo-deployments"},
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        k8s_config=k8s_config,
+    )
+    template_meta = _serialized(built.deployment)["spec"]["template"]["metadata"]
+    assert template_meta["annotations"] == {"sidecar.istio.io/nativeSidecar": "true"}
+
+
+def test_build_deployment_body_omits_annotations_when_none() -> None:
+    config = sample_always_config()
+    built = build_deployment_body(
+        resource_name="default-task",
+        labels={"managed-by": "nemo-deployments"},
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        k8s_config=None,
+    )
+    template_meta = _serialized(built.deployment)["spec"]["template"]["metadata"]
+    assert "annotations" not in template_meta
 
 
 def test_compile_workload_emits_image_pull_secrets() -> None:

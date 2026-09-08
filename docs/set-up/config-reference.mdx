@@ -534,6 +534,12 @@ models:
         default_storage_class:
         # default: '200Gi'
         default_pvc_size: 200Gi
+        # Platform-default pod annotations applied to every k8s model deployment/job (all engines). Merged key-wise into the compiled K8sDeploymentConfig; a per-entity annotation for the same key wins over the platform default. Used to ship the Istio native-sidecar annotation so a mesh-injected proxy terminates when a puller Job's main container exits.
+        default_pod_annotations: {}
+        # Platform-default nodeSelector applied to every k8s model deployment/job (all engines).
+        default_node_selector: {}
+        # Platform-default pod tolerations applied to every k8s model deployment/job (all engines).
+        default_tolerations: []
         # default: 'nvcr.io/nim/meta/llama-3.1-8b-instruct'
         default_nimservice_image: nvcr.io/nim/meta/llama-3.1-8b-instruct
         # default: '1.8.5'

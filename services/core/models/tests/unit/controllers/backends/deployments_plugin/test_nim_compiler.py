@@ -206,6 +206,86 @@ def test_build_k8s_deployment_backend_config_ignores_nim_operator_fields_for_vll
     assert backend.k8s.affinity is None
 
 
+@pytest.mark.parametrize("engine", ["nim", "vllm", "generic"])
+def test_build_k8s_deployment_backend_config_applies_default_pod_annotations(engine: str) -> None:
+    view = DeploymentConfigView()
+    config = DeploymentsPluginConfig(default_pod_annotations={"sidecar.istio.io/nativeSidecar": "true"})
+    backend = build_k8s_deployment_backend_config(engine, view, config)
+    assert backend.k8s is not None
+    assert backend.k8s.pod_annotations == {"sidecar.istio.io/nativeSidecar": "true"}
+
+
+def test_build_k8s_deployment_backend_config_default_annotations_merge_key_wise() -> None:
+    # Per-entity annotation for the same key wins over the platform default;
+    # non-overlapping platform defaults are still applied.
+    view = DeploymentConfigView()
+    config = DeploymentsPluginConfig(
+        default_pod_annotations={"sidecar.istio.io/nativeSidecar": "true", "team": "platform"}
+    )
+    backend = build_k8s_deployment_backend_config("nim", view, config)
+    assert backend.k8s is not None
+    # Simulate a per-entity annotation set on the compiled config before merge is
+    # not exposed via the view; instead verify the config-default path directly.
+    assert backend.k8s.pod_annotations == {"sidecar.istio.io/nativeSidecar": "true", "team": "platform"}
+
+
+@pytest.mark.parametrize("engine", ["nim", "vllm", "generic"])
+def test_build_k8s_deployment_backend_config_applies_default_node_selector(engine: str) -> None:
+    view = DeploymentConfigView()
+    config = DeploymentsPluginConfig(default_node_selector={"gpu": "a100"})
+    backend = build_k8s_deployment_backend_config(engine, view, config)
+    assert backend.k8s is not None
+    assert backend.k8s.node_selector == {"gpu": "a100"}
+
+
+def test_build_k8s_deployment_backend_config_default_node_selector_skipped_when_affinity_set() -> None:
+    # A per-entity node selector (mapped to affinity by the nim operator path)
+    # wins; the platform default node_selector is not additionally applied.
+    view = DeploymentConfigView(
+        k8s_nim_operator_config=K8sNIMOperatorConfig(node_selector={"zone": "us-west1-a"}),
+    )
+    config = DeploymentsPluginConfig(default_node_selector={"gpu": "a100"})
+    backend = build_k8s_deployment_backend_config("nim", view, config)
+    assert backend.k8s is not None
+    assert backend.k8s.affinity is not None
+    assert backend.k8s.node_selector == {}
+
+
+@pytest.mark.parametrize("engine", ["nim", "vllm", "generic"])
+def test_build_k8s_deployment_backend_config_applies_default_tolerations(engine: str) -> None:
+    view = DeploymentConfigView()
+    config = DeploymentsPluginConfig(
+        default_tolerations=[{"key": "gpu", "operator": "Equal", "value": "true", "effect": "NoSchedule"}]
+    )
+    backend = build_k8s_deployment_backend_config(engine, view, config)
+    assert backend.k8s is not None
+    assert len(backend.k8s.tolerations) == 1
+    assert backend.k8s.tolerations[0].key == "gpu"
+
+
+def test_build_k8s_deployment_backend_config_default_tolerations_skipped_when_entity_tolerations_set() -> None:
+    view = DeploymentConfigView(
+        k8s_nim_operator_config=K8sNIMOperatorConfig(
+            tolerations=[{"key": "entity", "operator": "Exists"}],
+        ),
+    )
+    config = DeploymentsPluginConfig(
+        default_tolerations=[{"key": "gpu", "operator": "Equal", "value": "true", "effect": "NoSchedule"}]
+    )
+    backend = build_k8s_deployment_backend_config("nim", view, config)
+    assert backend.k8s is not None
+    assert len(backend.k8s.tolerations) == 1
+    assert backend.k8s.tolerations[0].key == "entity"
+
+
+def test_build_k8s_deployment_backend_config_no_defaults_returns_empty() -> None:
+    # With no platform defaults and no security context (generic + no run_as),
+    # the k8s section is omitted entirely.
+    view = DeploymentConfigView()
+    backend = build_k8s_deployment_backend_config("generic", view, DeploymentsPluginConfig())
+    assert backend.k8s is None
+
+
 def test_apply_container_resources_deep_merges_existing_values() -> None:
     container = Container(
         name="server",

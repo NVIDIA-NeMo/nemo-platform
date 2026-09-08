@@ -1177,6 +1177,11 @@ components:
         serviceAccount:
           title: Serviceaccount
           type: string
+        nodeSelector:
+          additionalProperties:
+            type: string
+          type: object
+          title: Nodeselector
         tolerations:
           items:
             $ref: '#/components/schemas/Toleration'
@@ -1186,6 +1191,15 @@ components:
           $ref: '#/components/schemas/Affinity'
         securityContext:
           $ref: '#/components/schemas/PodSecurityContext'
+        podAnnotations:
+          additionalProperties:
+            type: string
+          type: object
+          title: Podannotations
+          description: Annotations stamped onto the pod-template metadata for every
+            Job/Deployment pod rendered from this config (e.g. an Istio native-sidecar
+            annotation so a mesh-injected proxy terminates when a puller Job's main
+            container exits). k8s-only; ignored on docker/openshell backends.
       type: object
       title: K8sDeploymentConfig
     K8sVolumeConfig:
