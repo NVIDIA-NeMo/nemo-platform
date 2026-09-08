@@ -366,6 +366,7 @@ navigation:
           - page: Monitor
             path: ../../studio/monitor.mdx
           - page: Plugin UIs
+            slug: plugins
             path: ../../studio/plugins.mdx
           - page: Guardrail Configs
             path: ../../studio/guardrails.mdx
@@ -403,7 +404,7 @@ navigation:
                   - page: Volcano
                     path: ../../set-up/helm/volcano.mdx
                   - page: OpenSandbox
-                    slug: opensandbox
+                    slug: open-sandbox
                     path: ../../set-up/helm/opensandbox.mdx
                   - page: OpenSandbox with Kata
                     slug: opensandbox-kata

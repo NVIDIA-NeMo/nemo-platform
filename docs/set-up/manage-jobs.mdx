@@ -51,7 +51,7 @@ jobs:
  node-pool-name: h200-pool
 ```
 
-For full configuration details, see the [platform configuration reference](/documentation/self-managed-deployment/config-reference).
+For full configuration details, see the [platform configuration reference](/documentation/kubernetes-deployment/config-reference).
 
 ### Default Execution Profiles
 
@@ -60,7 +60,7 @@ The NeMo Platform defines a default execution profile for each execution backend
 - Default CPU Execution Profile (`cpu`): The default execution profile for CPU based jobs.
 - Default GPU Execution Profile (`gpu`): The default execution profile for GPU based jobs.
 
-You may configure the default execution profiles by updating the `executor_defaults` section of the `jobs` section of the [platform configuration](/documentation/self-managed-deployment/config-reference). The structure of the `executor_defaults` matches the configuration of the execution backend configuration.
+You may configure the default execution profiles by updating the `executor_defaults` section of the `jobs` section of the [platform configuration](/documentation/kubernetes-deployment/config-reference). The structure of the `executor_defaults` matches the configuration of the execution backend configuration.
 
 ```yaml
 jobs:
@@ -214,7 +214,7 @@ See the [KAI Scheduler documentation](https://github.com/kai-scheduler/KAI-Sched
 
 ### Volcano Jobs
 
-The NeMo Platform supports Volcano Jobs as an execution backend for launching distributed GPU jobs. Install Volcano as a cluster engine; see [Volcano](/documentation/self-managed-deployment/setup/helm/volcano).
+The NeMo Platform supports Volcano Jobs as an execution backend for launching distributed GPU jobs. Install Volcano as a cluster engine; see [Volcano](/documentation/kubernetes-deployment/setup/helm/volcano).
 
 Volcano Jobs are configured using the same configuration as Kubernetes Jobs, but with the following additional configuration:
 
@@ -222,7 +222,7 @@ Volcano Jobs are configured using the same configuration as Kubernetes Jobs, but
 - `scheduler_name`: The Volcano scheduler to use for the job.
 - `plugins`: The Volcano plugins to use for the job.
 - `max_retry`: The maximum number of retries for the job.
-- `enable_multi_node_networking`: Enable multi-node networking injection. Sets annotations to trigger Kyverno policy mutations. This is only available if the platform is configured to use multi-node networking (see [Multi-Node Networking](/documentation/self-managed-deployment/setup/helm/multinode-networking)).
+- `enable_multi_node_networking`: Enable multi-node networking injection. Sets annotations to trigger Kyverno policy mutations. This is only available if the platform is configured to use multi-node networking (see [Multi-Node Networking](/documentation/kubernetes-deployment/setup/helm/multinode-networking)).
 
 ```yaml
 jobs:
