@@ -2343,7 +2343,8 @@ async def test_cleanup_skips_orphaned_virtual_model_without_db_version(reconcile
 
 
 # =============================================================================
-# Deployment-backed provider tests (no autocreate, served_models from id/root/parent)
+# Deployment-backed provider tests
+# (no autocreate, but the base entity IS linked; served_models from id/root/parent)
 # =============================================================================
 
 
@@ -2379,6 +2380,100 @@ async def test_deployment_backed_never_calls_ensure_model_entity(reconciler, moc
     mock_ensure.assert_not_called()
     call_kwargs = mock_models_sdk.inference.providers.update_status.call_args.kwargs
     assert len(call_kwargs["served_models"]) == 2
+
+
+def _deployment_backed_ctx() -> ModelContext:
+    """Provider context for a deployment-backed provider serving ``ws/base-entity``."""
+    config = MagicMock()
+    config.model_entity_id = "ws/base-entity"
+    provider = MagicMock()
+    provider.workspace = "ws"
+    provider.name = "deploy-provider"
+    provider.model_deployment_id = "ws/my-deployment"
+    provider.enabled_models = None
+    provider.served_models = []
+    return ModelContext(
+        model_provider=provider,
+        model_deployment=MagicMock(),
+        model_deployment_config=config,
+        model_entity=None,
+    )
+
+
+def _base_entity(model_providers: list[str]) -> MagicMock:
+    entity = MagicMock()
+    entity.workspace = "ws"
+    entity.name = "base-entity"
+    entity.model_providers = model_providers
+    entity.fileset = None
+    entity.api_endpoint = None
+    return entity
+
+
+# Base model plus one LoRA adapter, as NIM/vLLM report them.
+_DEPLOYMENT_DISCOVERED = [
+    {"id": "ws/base-entity", "root": "ws/base-entity", "parent": None},
+    {"id": "default--pirate-speak", "root": "/scratch/loras/x", "parent": "ws/base-entity"},
+]
+
+
+@pytest.mark.asyncio
+async def test_deployment_backed_links_base_entity_to_provider(reconciler, mock_models_sdk):
+    """A deployment-backed provider writes itself into the base entity's model_providers.
+
+    Previously the entity stayed at ``model_providers == []`` while the provider was
+    READY and serving traffic, so Studio hid the model everywhere it gates on
+    ``hasModelProvider``.
+    """
+    reconciler._models_sdk.models_client.list_models = AsyncMock(return_value=_AsyncPage([_base_entity([])]))
+    await reconciler._entity_cache.refresh()
+
+    mock_models_sdk.inference.providers.update_status = AsyncMock()
+    with patch.object(reconciler, "_discover_models", return_value=DiscoverySuccess(_DEPLOYMENT_DISCOVERED)):
+        await reconciler.reconcile_model_providers([_deployment_backed_ctx()])
+    await reconciler._entity_cache.flush()
+
+    update = reconciler._models_sdk.models_client.update_model
+    update.assert_awaited_once()
+    call = update.await_args
+    assert call is not None
+    assert call.kwargs["workspace"] == "ws"
+    assert call.kwargs["name"] == "base-entity"
+    assert call.kwargs["body"].model_providers == ["ws/deploy-provider"]
+
+
+@pytest.mark.asyncio
+async def test_deployment_backed_link_is_idempotent(reconciler, mock_models_sdk):
+    """An entity already carrying the provider produces no write on a later tick."""
+    entity = _base_entity(["ws/deploy-provider"])
+    reconciler._models_sdk.models_client.list_models = AsyncMock(return_value=_AsyncPage([entity]))
+    await reconciler._entity_cache.refresh()
+
+    mock_models_sdk.inference.providers.update_status = AsyncMock()
+    with patch.object(reconciler, "_discover_models", return_value=DiscoverySuccess(_DEPLOYMENT_DISCOVERED)):
+        await reconciler.reconcile_model_providers([_deployment_backed_ctx()])
+    await reconciler._entity_cache.flush()
+
+    reconciler._models_sdk.models_client.update_model.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_deployment_backed_does_not_link_lora_composite_ids(reconciler, mock_models_sdk):
+    """LoRA composite ids have no standalone entity, so only the base entity is written."""
+    reconciler._models_sdk.models_client.list_models = AsyncMock(return_value=_AsyncPage([_base_entity([])]))
+    await reconciler._entity_cache.refresh()
+
+    mock_models_sdk.inference.providers.update_status = AsyncMock()
+    with patch.object(reconciler, "_discover_models", return_value=DiscoverySuccess(_DEPLOYMENT_DISCOVERED)):
+        await reconciler.reconcile_model_providers([_deployment_backed_ctx()])
+    await reconciler._entity_cache.flush()
+
+    update = reconciler._models_sdk.models_client.update_model
+    written = {c.kwargs["name"] for c in update.await_args_list}
+    assert written == {"base-entity"}
+    # The adapter is still routable via the composite served_models mapping.
+    served = mock_models_sdk.inference.providers.update_status.call_args.kwargs["served_models"]
+    assert any("&adapters/" in m.model_entity_id for m in served)
 
 
 @pytest.mark.asyncio
