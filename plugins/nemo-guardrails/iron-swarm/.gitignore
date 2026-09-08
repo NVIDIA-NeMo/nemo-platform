@@ -1,0 +1,6 @@
+.venv/
+.worker-venv/
+artifacts/
+__pycache__/
+*.pyc
+*.log

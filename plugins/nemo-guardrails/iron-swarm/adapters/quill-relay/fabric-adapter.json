@@ -1,0 +1,23 @@
+{
+  "contract_version": "fabric.adapter/v1alpha1",
+  "adapter_id": "iron_swarm.fabric.deepagents.guardrails",
+  "harness": "deepagents",
+  "adapter_kind": "python",
+  "runner": {
+    "module": "relay_guardrails.fabric_adapter"
+  },
+  "requirements": {},
+  "config": {
+    "accepts": ["models", "tools", "tools.blocked", "mcp", "skills", "telemetry"]
+  },
+  "telemetry": {
+    "providers": {
+      "relay": {
+        "outputs": ["atif", "otel", "openinference"]
+      },
+      "native": {
+        "outputs": ["otel", "openinference"]
+      }
+    }
+  }
+}

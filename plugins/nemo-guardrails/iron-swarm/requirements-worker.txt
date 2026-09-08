@@ -1,0 +1,13 @@
+# Dependencies for the NeMo Guardrails worker that Relay's built-in
+# `nemo_guardrails` plugin spawns (local backend). Install into a Python 3.11-3.13
+# interpreter and point IRON_SWARM_WORKER_PYTHON at it.
+#
+# Required by the guardrails plugin's worker: the built-in plugin always
+# runs the worker to execute guardrails_config/ (rails + actions.py). nemoguardrails
+# is pinned to the exact version Relay's local worker supports; it must match or
+# the worker refuses to start.
+nemoguardrails==0.22.0
+
+# Used by the judge model call in guardrails_config/actions.py (real judge path).
+openai>=1.40
+pyyaml>=6.0
