@@ -96,13 +96,16 @@ See **the `nemo-agent-skills-optimization` skill** for the full optimize-skills 
 ### 3. Prompt + hyperparameter tuning
 
 If `nemo agents optimize` has not been run for this agent since the last
-snapshot, suggest running it. The job sweeps prompts and hyperparameters via
-`nat optimize` against the agent's eval dataset.
+snapshot, suggest the appropriate required strategy: `hpo` for numeric or
+categorical Fabric parameters, or `prompt-master` for the agent's system
+instructions.
 
 Suggested actions:
 
-- `nemo agents optimize prepare-fileset --source <bundle-dir> --optimize-config <bundle-relative-yaml> --fileset <name>`
-- `nemo agents optimize --agent <name> --optimize-config-fileset <workspace/name> --optimize-config <config-path-in-fileset>`
+- `nemo agents optimize prepare-fileset --strategy hpo --source <bundle-dir> --optimize-config <bundle-relative-yaml> --fileset <name>`
+- `nemo agents optimize --strategy hpo --agent <name> --optimize-config-fileset <workspace/name> --optimize-config <config-path-in-fileset>`
+- For Prompt Master, use `--strategy prompt-master`; `--agent` supplies the
+  source prompt and `--output` receives the optimized Fabric config.
 - After it completes, apply the new prompt + hyperparameters to a sibling
   agent, deploy it, and run `nemo agents evaluate` to compare.
 
@@ -317,8 +320,8 @@ nemo models list --filter.name nemotron   # find Nemotron candidates
 # Optimization commands (see also: nemo-agent-skills-optimization skill).
 # The optimize command's --optimize-config value must be relative to the staged fileset root.
 nemo agents evaluate --agent <name> --eval-config <yaml>
-nemo agents optimize prepare-fileset --source <bundle-dir> --optimize-config <bundle-relative-yaml> --fileset <name>
-nemo agents optimize --agent <name> --optimize-config-fileset <workspace/name> --optimize-config <config-path-in-fileset>
+nemo agents optimize prepare-fileset --strategy hpo --source <bundle-dir> --optimize-config <bundle-relative-yaml> --fileset <name>
+nemo agents optimize --strategy hpo --agent <name> --optimize-config-fileset <workspace/name> --optimize-config <config-path-in-fileset>
 nemo agents optimize-skills --spec-file .agent-improver.yml
 nemo agents evaluate-suite --spec '{"evals": "<dir>", "agent": "<name>"}'
 

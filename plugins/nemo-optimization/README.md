@@ -17,12 +17,14 @@ Primary user surface (Alt 5):
 
 ```bash
 nemo agents optimize prepare-fileset \
+  --strategy hpo \
   --source examples/hermes-optimize \
   --optimize-config optimize-chatonly.yaml \
   --fileset hermes-optimize-chatonly \
   --workspace default
 
 nemo agents optimize \
+  --strategy hpo \
   --optimize-config-fileset default/hermes-optimize-chatonly \
   --optimize-config optimize-chatonly.yaml \
   --workspace default

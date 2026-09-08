@@ -82,11 +82,13 @@ python tests/agentic-use/passrate_token_policy_gate.py \
 
 # 3) Optimize AUT parameters
 nemo agents optimize prepare-fileset \
+  --strategy hpo \
   --source tests/agentic-use \
   --optimize-config aut-optimize.yml \
   --fileset agentic-use-aut-optimize \
   --agent <your-agent>
 nemo agents optimize \
+  --strategy hpo \
   --optimize-config-fileset default/agentic-use-aut-optimize \
   --optimize-config aut-optimize.yml \
   --agent <your-agent>

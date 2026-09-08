@@ -94,12 +94,14 @@ source "$REPO_ROOT/.venv/bin/activate"   # if not already
 cd "$BUNDLE"
 
 nemo agents optimize prepare-fileset \
+  --strategy hpo \
   --source "$BUNDLE" \
   --optimize-config optimize-chatonly.yaml \
   --fileset hermes-optimize-chatonly \
   --workspace default
 
 nemo agents optimize \
+  --strategy hpo \
   --optimize-config-fileset default/hermes-optimize-chatonly \
   --optimize-config optimize-chatonly.yaml \
   --workspace default
@@ -181,6 +183,7 @@ export NEMO_AGENTS_IGW_API_KEY="${NEMO_AGENTS_IGW_API_KEY:-not-used}"
 cd "$BUNDLE"
 
 nemo agents optimize prepare-fileset \
+  --strategy hpo \
   --source "$BUNDLE" \
   --optimize-config optimize-chatonly-via-agent.yaml \
   --fileset hermes-optimize-chatonly-via-agent \
@@ -188,6 +191,7 @@ nemo agents optimize prepare-fileset \
   --workspace default
 
 nemo agents optimize \
+  --strategy hpo \
   --optimize-config-fileset default/hermes-optimize-chatonly-via-agent \
   --optimize-config optimize-chatonly-via-agent.yaml \
   --agent hermes-optimize-chatonly \
@@ -227,6 +231,7 @@ here rather than failing minutes into the study.
 
 ```bash
 nemo agents optimize prepare-fileset \
+  --strategy hpo \
   --source "$BUNDLE" \
   --optimize-config optimize-chatonly.yaml \
   --fileset hermes-optimize-chatonly \
@@ -246,6 +251,7 @@ to the fileset root:
 
 ```bash
 nemo agents optimize \
+  --strategy hpo \
   --optimize-config-fileset default/hermes-optimize-chatonly \
   --optimize-config optimize-chatonly.yaml \
   --workspace default
@@ -322,12 +328,14 @@ export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
 export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
 
 nemo agents optimize prepare-fileset \
+  --strategy hpo \
   --source "$BUNDLE" \
   --optimize-config optimize-mcp.yaml \
   --fileset hermes-optimize-mcp \
   --workspace default
 
 nemo agents optimize \
+  --strategy hpo \
   --optimize-config-fileset default/hermes-optimize-mcp \
   --optimize-config optimize-mcp.yaml \
   --workspace default
