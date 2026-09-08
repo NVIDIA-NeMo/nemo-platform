@@ -326,12 +326,26 @@ def pod_security_context_for_engine(
     return PodSecurityContext(run_as_user=user_id, run_as_group=group_id, fs_group=group_id)
 
 
+def _default_tolerations(config: DeploymentsPluginConfig) -> list[Toleration]:
+    """Parse platform-default tolerations from config into plugin Toleration models."""
+    return _tolerations_from_config([item for item in config.default_tolerations if isinstance(item, dict)])
+
+
 def build_k8s_deployment_backend_config(
     engine: str,
     view: DeploymentConfigView,
     config: DeploymentsPluginConfig,
 ) -> DeploymentBackendConfig:
-    """Merge operator overrides and engine security defaults into backend_config.k8s."""
+    """Merge operator overrides, engine security defaults, and platform defaults into backend_config.k8s.
+
+    Platform defaults (``default_pod_annotations``, ``default_node_selector``,
+    ``default_tolerations``, ``default_affinity``, ``default_topology_spread_constraints``)
+    apply to every engine (nim/vllm/generic). Annotations merge key-wise with a per-entity
+    value winning over the platform default for the same key; per-entity
+    tolerations/node_selector/affinity/topology-spread (nim operator config) win wholesale
+    over the platform default when present. This helper only runs on the Kubernetes
+    runtime, so the defaults are k8s-only by construction.
+    """
     if engine == ENGINE_NIM:
         k8s = k8s_backend_config_from_nim_operator(view) or K8sDeploymentConfig()
     else:
@@ -339,6 +353,32 @@ def build_k8s_deployment_backend_config(
     security_context = pod_security_context_for_engine(engine, view, config)
     if security_context is not None:
         k8s.security_context = security_context
+
+    # Platform-default pod annotations (all engines), key-wise merge: platform
+    # default first, per-entity annotation for the same key wins.
+    if config.default_pod_annotations:
+        merged_annotations = {**config.default_pod_annotations, **k8s.pod_annotations}
+        k8s.pod_annotations = merged_annotations
+
+    # Platform-default node selector (all engines); a per-entity node selector
+    # (mapped onto affinity by the nim operator path) wins when present.
+    if config.default_node_selector and k8s.affinity is None:
+        k8s.node_selector = {**config.default_node_selector, **k8s.node_selector}
+
+    # Platform-default tolerations (all engines); per-entity tolerations win wholesale.
+    if config.default_tolerations and not k8s.tolerations:
+        k8s.tolerations = _default_tolerations(config)
+
+    # Platform-default affinity (all engines); a per-entity affinity (including the
+    # node-selector-derived affinity from the nim operator path) wins wholesale.
+    if config.default_affinity and k8s.affinity is None:
+        k8s.affinity = Affinity.model_validate(config.default_affinity)
+
+    # Platform-default topology spread constraints (all engines); per-entity
+    # constraints win wholesale.
+    if config.default_topology_spread_constraints and not k8s.topology_spread_constraints:
+        k8s.topology_spread_constraints = [dict(item) for item in config.default_topology_spread_constraints]
+
     if any(
         (
             k8s.tolerations,
@@ -346,6 +386,9 @@ def build_k8s_deployment_backend_config(
             k8s.security_context,
             k8s.namespace,
             k8s.service_account,
+            k8s.node_selector,
+            k8s.pod_annotations,
+            k8s.topology_spread_constraints,
         )
     ):
         return DeploymentBackendConfig(k8s=k8s)

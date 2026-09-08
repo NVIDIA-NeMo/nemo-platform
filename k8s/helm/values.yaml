@@ -577,6 +577,13 @@ basePlatformConfig: |
           enabled: true
           k8s_executor: local-k8s
           default_executor: local-k8s
+          # Platform-default pod annotations applied to every k8s model
+          # deployment/job (all engines). The Istio native-sidecar annotation
+          # makes a mesh-injected istio-proxy terminate when a Job's main
+          # container exits, so the weight-puller Job completes while keeping
+          # mesh mTLS egress (inject: "false" is NOT viable in-mesh).
+          default_pod_annotations:
+            sidecar.istio.io/nativeSidecar: "true"
           # Bypass the image `nemo` ENTRYPOINT; invoke the adapters module directly.
           # Avoids PermissionError when the sidecar writes instance state under $HOME.
           lora_sidecar_command:

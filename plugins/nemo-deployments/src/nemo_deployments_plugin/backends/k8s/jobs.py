@@ -168,7 +168,10 @@ def build_job_body(
         spec=k8s.client.V1JobSpec(
             backoff_limit=job_backoff_limit(config),
             template=k8s.client.V1PodTemplateSpec(
-                metadata=k8s.client.V1ObjectMeta(labels=labels),
+                metadata=k8s.client.V1ObjectMeta(
+                    labels=labels,
+                    annotations=compiled.pod_annotations or None,
+                ),
                 spec=k8s.client.V1PodSpec(**compiled.pod_spec_kwargs),
             ),
         ),

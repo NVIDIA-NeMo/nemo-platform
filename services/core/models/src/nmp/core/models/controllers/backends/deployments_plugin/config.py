@@ -3,6 +3,8 @@
 
 """Configuration for the deployments-plugin models backend."""
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -18,6 +20,40 @@ class DeploymentsPluginConfig(BaseModel):
     max_restart_count: int = 5
     default_storage_class: str | None = None
     default_pvc_size: str = "200Gi"
+    default_pod_annotations: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Platform-default pod annotations applied to every k8s model deployment/job "
+            "(all engines). Merged key-wise into the compiled K8sDeploymentConfig; a "
+            "per-entity annotation for the same key wins over the platform default. "
+            "Used to ship the Istio native-sidecar annotation so a mesh-injected proxy "
+            "terminates when a puller Job's main container exits."
+        ),
+    )
+    default_node_selector: dict[str, str] = Field(
+        default_factory=dict,
+        description="Platform-default nodeSelector applied to every k8s model deployment/job (all engines).",
+    )
+    default_tolerations: list[dict[str, str | int]] = Field(
+        default_factory=list,
+        description="Platform-default pod tolerations applied to every k8s model deployment/job (all engines).",
+    )
+    default_affinity: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Platform-default pod affinity applied to every k8s model deployment/job (all engines) "
+            "when the deployment does not already set an affinity. Raw Kubernetes affinity object "
+            "(nodeAffinity / podAffinity / podAntiAffinity)."
+        ),
+    )
+    default_topology_spread_constraints: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Platform-default pod topology spread constraints applied to every k8s model "
+            "deployment/job (all engines) when the deployment does not already set them. Each entry "
+            "is a raw Kubernetes topologySpreadConstraint object."
+        ),
+    )
     default_nimservice_image: str = "nvcr.io/nim/meta/llama-3.1-8b-instruct"
     default_nimservice_image_tag: str = "1.8.5"
     default_vllm_image: str = Field(
