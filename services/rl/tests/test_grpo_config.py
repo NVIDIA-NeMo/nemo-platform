@@ -884,6 +884,44 @@ def test_policy_backend_dtensor_omits_v2(
     assert dtensor_cfg["enabled"] is True
 
 
+def test_automodel_all_weights_requests_consolidated_safetensors(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    checkpointing = compile_grpo_config(step, job_ctx)["checkpointing"]
+
+    assert checkpointing["model_save_format"] == "safetensors"
+    assert checkpointing["save_consolidated"] is True
+
+
+def test_dtensor_v1_omits_model_save_format(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NeMo-RL raises if V1 sees model_save_format on DTensorPolicyWorker."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, policy_backend=PolicyBackend.DTENSOR)
+    checkpointing = compile_grpo_config(step, job_ctx)["checkpointing"]
+
+    assert "model_save_format" not in checkpointing
+    assert "save_consolidated" not in checkpointing
+
+
+def test_automodel_lora_omits_consolidated_full_weight_export(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        finetuning_type=FinetuningType.LORA,
+        lora=LoRAConfig(rank=8, alpha=16),
+    )
+    checkpointing = compile_grpo_config(step, job_ctx)["checkpointing"]
+
+    assert "model_save_format" not in checkpointing
+    assert "save_consolidated" not in checkpointing
+
+
 def test_expert_parallel_size_reaches_dtensor(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1307,6 +1345,7 @@ def test_sequence_packing_rejected_under_context_parallel(
         compile_grpo_config(step, job_ctx)
 
     # dynamic has no such restriction on the GRPO + DTensor path.
+    assert step.training.grpo is not None
     step.training.grpo.batching_strategy = BatchingStrategy.DYNAMIC
     assert compile_grpo_config(step, job_ctx)["policy"]["dynamic_batching"]["enabled"] is True
 

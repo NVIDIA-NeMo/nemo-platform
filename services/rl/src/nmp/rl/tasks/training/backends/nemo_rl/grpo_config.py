@@ -517,6 +517,15 @@ def compile_grpo_config(
     model_path = customizer_config.model.path
     precision = _adapt_precision(customizer_config.model.precision)
     parallelism = customizer_config.parallelism
+    # V2 (Automodel) already serializes HF safetensors. Ask it to also write the
+    # consolidated export Platform publishes. V1 forbids model_save_format on the
+    # DTensorPolicyWorker, so these keys stay omitted when policy_backend=dtensor.
+    if (
+        parallelism.policy_backend is PolicyBackend.AUTOMODEL
+        and customizer_config.training.finetuning_type == FinetuningType.ALL_WEIGHTS
+    ):
+        cfg["checkpointing"]["model_save_format"] = "safetensors"
+        cfg["checkpointing"]["save_consolidated"] = True
     lora_cfg = _build_lora_cfg(customizer_config)
     dynamic_batching_cfg, sequence_packing_cfg = _build_batching_config(customizer_config, grpo_hp)
     chat_template = resolve_chat_template(

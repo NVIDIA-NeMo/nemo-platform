@@ -34,7 +34,10 @@ from nmp.rl.entities.values import FinetuningType
 from nmp.rl.tasks.training.backends.nemo_rl.checkpoints import (
     LORA_ADAPTER_SEARCH_PATHS,
     convert_dcp_to_huggingface,
+    copy_hf_full_weights,
     copy_lora_adapter,
+    find_dcp_weights_root,
+    find_hf_full_weight_root,
     find_lora_adapter_root,
 )
 from nmp.rl.tasks.training.chat_templates import apply_chat_template_to_checkpoint
@@ -274,10 +277,11 @@ class NemoRLBackend(TrainingBackend):
     ) -> CheckpointInfo:
         """Process NeMo RL checkpoint to standard output format.
 
-        Full-weight jobs convert DCP → HuggingFace. GRPO LoRA jobs publish the exported
-        HF-PEFT adapter tree, which NeMo-RL nests under ``policy/weights`` rather than
-        leaving at the checkpoint root; only if no adapter is found do they fall back to
-        DCP conversion, and the artifact is still labelled PEFT.
+        Full-weight Automodel / DTensor V2 jobs already write HuggingFace safetensors
+        (``policy/weights/model``); those are copied. DTensor V1 still writes DCP, which
+        is converted. GRPO LoRA jobs publish the exported HF-PEFT adapter tree nested
+        under ``policy/weights``; only if no adapter is found do they fall back, and the
+        artifact is still labelled PEFT.
         """
         logger.info("Processing created checkpoint")
         is_lora = customizer_config.training.finetuning_type == FinetuningType.LORA
@@ -310,15 +314,27 @@ class NemoRLBackend(TrainingBackend):
                     format=CheckpointFormat.HF_PEFT,
                     precision=customizer_config.model.precision,
                 )
-            # DCP conversion below rebuilds full weights, which is wrong for an adapter
-            # run, so say why it was reached rather than failing three frames deeper.
+            # Full-weight publication below is wrong for an adapter run, so say why
+            # this path was reached rather than failing three frames deeper.
             logger.warning(
-                "No adapter_config.json under %s (searched %s); falling back to DCP conversion",
+                "No adapter_config.json under %s (searched %s); falling back to full-weight publication",
                 checkpoint_path,
                 ", ".join(str(path) for path in LORA_ADAPTER_SEARCH_PATHS),
             )
 
-        hf_checkpoint_path = convert_dcp_to_huggingface(checkpoint_path, output_path)
+        hf_root = find_hf_full_weight_root(checkpoint_path)
+        if hf_root is not None:
+            logger.info("Copying HuggingFace full-weight checkpoint from %s to %s", hf_root, output_path)
+            copy_hf_full_weights(checkpoint_path, hf_root, output_path)
+            hf_checkpoint_path = output_path
+        elif find_dcp_weights_root(checkpoint_path) is not None:
+            hf_checkpoint_path = convert_dcp_to_huggingface(checkpoint_path, output_path)
+        else:
+            raise FileNotFoundError(
+                f"No HuggingFace safetensors or DCP .metadata under {checkpoint_path}/policy/weights. "
+                "DTensor V2 (Automodel) writes policy/weights/model/*.safetensors; "
+                "DTensor V1 writes policy/weights/.metadata."
+            )
 
         # Apply chat template if available (full-weight / merged HF trees only)
         chat_template = None
