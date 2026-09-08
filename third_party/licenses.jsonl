@@ -287,6 +287,7 @@
 {"name": "openinference-instrumentation", "license": "APACHE-2.0", "compatible": true}
 {"name": "openinference-instrumentation-litellm", "license": "APACHE-2.0", "compatible": true}
 {"name": "openinference-semantic-conventions", "license": "APACHE-2.0", "compatible": true}
+{"name": "opensandbox", "license": "APACHE-2.0", "compatible": true}
 {"name": "openshell", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-api", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-distro", "license": "APACHE-2.0", "compatible": true}

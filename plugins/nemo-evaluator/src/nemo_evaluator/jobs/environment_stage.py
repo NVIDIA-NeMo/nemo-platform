@@ -45,7 +45,7 @@ class EnvironmentStageJob(NemoJob):
 
     name = "stage-environment"
     description = "Stage a Gym environment FileSet into persistent job storage."
-    container = "nmp-gym-tasks"
+    container = "nmp-cpu-tasks"
     spec_schema = EnvironmentStageSpec
 
     def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform) -> dict:

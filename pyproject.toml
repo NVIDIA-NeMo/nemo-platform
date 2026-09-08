@@ -250,19 +250,12 @@ functional-services = [
 cpu-tasks = [
   { include-group = "nmp-base" },
   { include-group = "nmp-task-runtime" },
+  "nemo-evaluator-plugin",
+  "sandboxed-gym[server,opensandbox]",
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin[retrieval-sdg]",
   "nemo-optimization-plugin",
   "nmp-hello-world",
-]
-
-# Task runtime for agent-evaluate jobs that orchestrate sandboxed Gym runs.
-# Keep this exact environment separate from cpu-tasks because it additionally
-# needs the Evaluator plugin and OpenSandbox SDK.
-gym-task-orchestrator = [
-  { include-group = "cpu-tasks" },
-  "nemo-evaluator-plugin",
-  "sandboxed-gym[opensandbox]",
 ]
 
 # GPU task dependencies (for nmp-gpu-tasks container)
