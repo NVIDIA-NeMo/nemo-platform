@@ -10,6 +10,18 @@ This package has **no NeMo-RL / GRPO dependency**. Callers get raw Gym host
 `/health` and `/rollouts/run` results. RL-specific postprocessing belongs in the
 training client (e.g. NeMo-RL's thin `SandboxedGymActor` adapter).
 
+## Provenance
+
+Vendored from [`soluwalana/RL`](https://github.com/soluwalana/RL) branch `nmp/customizer` at
+**`67821a9`** (2026-08-03), the fork this code still shares an ancestor with. Upstream changes have
+been applied selectively since; the divergences are deliberate and documented where they occur.
+
+Recorded because the original vendoring landed as one squashed commit with no provenance, and
+recovering this took a per-file comparison against every revision of the upstream tree. Diffing
+from any earlier commit shows `host/entrypoint.py` and `host/gym_host.sh` as drift when they are
+already here. Update this line whenever upstream is merged again; it becomes moot once the shared
+wheel exists.
+
 ## Architecture
 
 ![Architecture](docs/architecture.png)
