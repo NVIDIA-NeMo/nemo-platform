@@ -411,6 +411,8 @@ class ExecuteAgentJob(NemoJob):
 
         if step_config.request.telemetry and _adapter_supports_relay(agent_config, fabric_dirs.base):
             _configure_intake_telemetry(step_config.agent.config, workspace=ctx.workspace, sdk=sdk)
+            # Wiring mutates the config mapping, not the model validated above,
+            # so re-validate to carry it into what Fabric is handed.
             agent_config = _validate_agent_config(step_config.agent.config)
 
         if step_config.workdir is not None and _has_workdir_inputs(step_config.workdir):
