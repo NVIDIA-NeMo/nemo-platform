@@ -71,14 +71,17 @@ class TestDockerGPUPoolAllocation:
         assert set(gpu_ids_1).isdisjoint(set(gpu_ids_2))
 
     @pytest.mark.parametrize(
-        "pool_size,pre_allocate,num_requested,expected_error_fragment",
+        "pool_size,pre_allocate,num_requested,expected_error_fragment,expected_transient",
         [
-            pytest.param(2, 1, 2, "Requested 2", id="insufficient_remaining"),
-            pytest.param(1, 1, 1, "Requested 1", id="none_available"),
-            pytest.param(0, 0, 1, "Requested 1", id="empty_pool"),
+            pytest.param(2, 1, 2, "Requested 2", True, id="insufficient_remaining"),
+            pytest.param(1, 1, 1, "Requested 1", True, id="none_available"),
+            pytest.param(1, 0, 2, "Requested 2", False, id="request_exceeds_total"),
+            pytest.param(0, 0, 1, "Requested 1", False, id="empty_pool"),
         ],
     )
-    def test_allocate_raises_when_insufficient(self, pool_size, pre_allocate, num_requested, expected_error_fragment):
+    def test_allocate_raises_when_insufficient(
+        self, pool_size, pre_allocate, num_requested, expected_error_fragment, expected_transient
+    ):
         """Test that allocation raises GPUAllocationError when not enough GPUs available."""
         pool = DockerGPUPool(reserved_gpu_device_ids=list(range(pool_size)))
         if pre_allocate > 0:
@@ -88,6 +91,10 @@ class TestDockerGPUPoolAllocation:
             pool.allocate_gpu("workload-new", num_requested=num_requested)
 
         assert expected_error_fragment in str(exc_info.value)
+        assert exc_info.value.requested == num_requested
+        assert exc_info.value.available == pool_size - pre_allocate
+        assert exc_info.value.total == pool_size
+        assert exc_info.value.is_transient_capacity_exhaustion is expected_transient
 
     @pytest.mark.parametrize(
         "invalid_value",
@@ -107,6 +114,7 @@ class TestDockerGPUPoolAllocation:
 
         assert "Invalid GPU request" in str(exc_info.value)
         assert "Must be a positive integer" in str(exc_info.value)
+        assert exc_info.value.is_transient_capacity_exhaustion is False
 
 
 class TestDockerGPUPoolRelease:

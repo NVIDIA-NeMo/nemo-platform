@@ -1369,6 +1369,50 @@ async def test_cancel_job_conflict_sanitizes_log_fields(
 
 
 @pytest.mark.asyncio
+async def test_delete_non_terminal_job_returns_409_and_keeps_job(
+    test_client: AsyncClient,
+    sample_platform_job_request: CreatePlatformJobRequest,
+    caplog: pytest.LogCaptureFixture,
+):
+    request = sample_platform_job_request.model_copy(update={"name": "non-terminal-delete"})
+    create_response = await test_client.post("/apis/jobs/v2/workspaces/default/jobs", json=request.model_dump())
+    assert create_response.status_code == 201, create_response.text
+
+    with caplog.at_level(logging.INFO, logger="nmp.core.jobs.api.v2.jobs.endpoints"):
+        delete_response = await test_client.delete("/apis/jobs/v2/workspaces/default/jobs/non-terminal-delete")
+
+    assert delete_response.status_code == 409
+    assert "Cancel the job and wait for it to reach a terminal state" in delete_response.json()["detail"]
+    log_record = next(record for record in caplog.records if "Cannot delete job" in record.getMessage())
+    assert log_record.exc_info is None
+
+    get_response = await test_client.get("/apis/jobs/v2/workspaces/default/jobs/non-terminal-delete")
+    assert get_response.status_code == 200
+    assert get_response.json()["status"] == PlatformJobStatus.CREATED.value
+
+
+@pytest.mark.asyncio
+async def test_factory_delete_non_terminal_job_propagates_409(test_client: AsyncClient):
+    create_response = await test_client.post(
+        "/apis/jobs/v2/workspaces/default/hello-world/jobs",
+        json={
+            "name": "factory-non-terminal-delete",
+            "description": "factory delete conflict",
+            "spec": {"config": {"key": "value"}, "target": "str"},
+            "ownership": {"user": "u", "service": "s"},
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+
+    delete_response = await test_client.delete(
+        "/apis/jobs/v2/workspaces/default/hello-world/jobs/factory-non-terminal-delete"
+    )
+
+    assert delete_response.status_code == 409
+    assert "Cancel the job and wait for it to reach a terminal state" in delete_response.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_update_job_step_conflict_sanitizes_log_fields(
     test_client: AsyncClient,
     mock_dispatcher: JobDispatcher,
