@@ -276,7 +276,7 @@ def _ensure_fresh_output(rollouts_path: Path) -> None:
         names = ", ".join(path.name for path in preexisting)
         raise FileExistsError(
             f"{rollouts_path.parent} already holds Gym rollout output ({names}); give each run a fresh "
-            "output_dir (the AgentEvaluator convention). Gym appends to the failures sidecar, so reusing a "
+            "work_dir (AgentEvalRunConfig.work_dir). Gym appends to the failures sidecar, so reusing a "
             "directory would mix runs and could obscure a prior run's results."
         )
 

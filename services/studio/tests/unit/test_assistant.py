@@ -325,7 +325,7 @@ def test_create_session_persists_workspace_and_owner(
 def test_recent_conversation_messages_caps_model_context_without_mutating_history(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(assistant, "MAX_RETAINED_TURNS_PER_SESSION", 2)
+    monkeypatch.setattr(assistant, "MAX_MODEL_CONTEXT_TURNS_PER_SESSION", 2)
     conversation = [
         AssistantMessage(role=role, content=f"{role}-{turn}") for turn in range(3) for role in ("user", "assistant")
     ]
@@ -339,6 +339,39 @@ def test_recent_conversation_messages_caps_model_context_without_mutating_histor
         {"role": "assistant", "content": "assistant-2"},
     ]
     assert len(conversation) == 6
+
+
+def test_recent_conversation_messages_removes_legacy_studio_context():
+    contextual_prompt = assistant._build_claude_prompt(
+        "create a guardrail",
+        "default",
+        "https://studio.test",
+        "/workspaces/default/guardrails",
+    )
+    conversation = [AssistantMessage(role="user", content=contextual_prompt)]
+
+    recent = assistant._recent_conversation_messages(conversation)
+
+    assert recent[0].content == "create a guardrail"
+    assert conversation[0].content == contextual_prompt
+
+
+def test_recent_conversation_messages_preserves_user_prompt_with_studio_context_markers():
+    user_prompt = "\n".join(
+        [
+            assistant.STUDIO_CONTEXT_START,
+            "Explain how these Studio wrapper markers work.",
+            assistant.STUDIO_CONTEXT_END,
+            "",
+            assistant.STUDIO_CONTEXT_USER_REQUEST_PREFIX,
+            "This text is part of my example.",
+        ]
+    )
+    conversation = [AssistantMessage(role="user", content=user_prompt)]
+
+    recent = assistant._recent_conversation_messages(conversation)
+
+    assert recent[0].content == user_prompt
 
 
 def test_list_history_sessions_includes_persisted_conversation(
@@ -2326,6 +2359,15 @@ def test_nemo_agent_error_detail_does_not_expose_exception_text():
     assert assistant._assistant_error_detail(status_error) == "The deployed NeMo Assistant returned HTTP 502."
     assert assistant._assistant_error_detail(RuntimeError("private stack detail")) == (
         "The deployed NeMo Assistant returned an invalid response."
+    )
+
+
+def test_nemo_agent_timeout_detail_explains_where_to_find_late_results():
+    request = httpx.Request("POST", "https://platform.test/agent")
+
+    assert assistant._assistant_error_detail(httpx.ReadTimeout("private detail", request=request)) == (
+        "NeMo Assistant timed out before completing. The operation may still finish; "
+        "check History and Intake traces before retrying."
     )
 
 

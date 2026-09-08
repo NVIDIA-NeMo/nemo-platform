@@ -11,8 +11,12 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 
 from nemo_platform import APIConnectionError, APIStatusError, AsyncNeMoPlatform
 from nemo_platform.types.inference import ModelProvider, ServedModelMapping
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NemoHTTPError as PluginHTTPError
+from nemo_platform_plugin.client.errors import NemoTransportError as PluginTransportError
 from nemo_platform_plugin.inference_middleware import BackendFormat
+from nemo_platform_plugin.models.client import AsyncModelsClient
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
 from nmp.core.inference_gateway.api.proxy import retrieve_secret_value
 from nmp.core.inference_gateway.api.virtual_model_cache import (
@@ -191,7 +195,7 @@ def model_provider_getter_from_sdk(models_sdk: AsyncNeMoPlatform) -> Callable[[]
             providers = [provider async for provider in resp]
             return providers
         except APIConnectionError as exc:
-            raise ModelProviderRefreshError(f"Error connecting to models service: {exc.body}") from exc
+            raise ModelProviderRefreshError(f"Error connecting to models service: {exc}") from exc
         except APIStatusError as exc:
             raise ModelProviderRefreshError(
                 f"Error refreshing from models service: {exc.status_code}, {exc.body}"
@@ -204,20 +208,16 @@ def model_entity_getter_from_sdk(models_sdk: AsyncNeMoPlatform) -> Callable[[], 
     async def _model_entity_getter() -> list[ModelEntity]:
         try:
             # SDK returns AsyncPaginator - iterate through all pages to get all model entities.
-            resp = models_sdk.models.list(
+            resp = await client_from_platform(models_sdk, AsyncModelsClient).list_models(
                 workspace="-",  # Cross-workspace query
-                page_size=200,
-                verbose=False,
-                extra_headers=MARK_INTERNAL_REQUEST_HEADERS,
+                query_params={"page_size": 200, "verbose": False},
             )
-            models = [model async for model in resp]
+            models = [model async for model in resp.items()]
             return models
-        except APIConnectionError as exc:
-            raise ModelProviderRefreshError(f"Error connecting to models service: {exc.body}") from exc
-        except APIStatusError as exc:
-            raise ModelProviderRefreshError(
-                f"Error refreshing model entities from models service: {exc.status_code}, {exc.body}"
-            ) from exc
+        except PluginTransportError as exc:
+            raise ModelProviderRefreshError(f"Error connecting to models service: {exc}") from exc
+        except PluginHTTPError as exc:
+            raise ModelProviderRefreshError(f"Error refreshing model entities from models service: {exc}") from exc
 
     return _model_entity_getter
 

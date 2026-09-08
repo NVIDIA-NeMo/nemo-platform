@@ -5,6 +5,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from nmp.common.config import PlatformConfig
 
@@ -215,6 +216,76 @@ class AsyncPaginator:
         return self._items.pop(0)
 
 
+class _AsyncPage:
+    """Stand-in for ``AsyncNemoPaginatedResponse``: exposes an async ``items()``."""
+
+    def __init__(self, items):
+        self._items = list(items)
+
+    async def items(self):
+        for item in self._items:
+            yield item
+
+
+class _ModelResponse:
+    """Stand-in for ``NemoResponse[ModelEntity]``: exposes ``data()``."""
+
+    def __init__(self, value=None, exc: Exception | None = None):
+        self._value = value
+        self._exc = exc
+
+    def data(self):
+        if self._exc is not None:
+            raise self._exc
+        return self._value
+
+
+def _status_error(status: int, detail: str):
+    """Build a plugin client HTTP error for a given status (409/404)."""
+    from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
+
+    request = httpx.Request("POST", "http://test")
+    response = httpx.Response(status, request=request, json={"detail": detail})
+    if status == 409:
+        return ConflictError(response)
+    return NotFoundError(response)
+
+
+def make_async_models_client() -> MagicMock:
+    """Build a mock ``AsyncModelsClient`` exposing the typed surface the
+    controllers/reconcilers consume via ``client_from_platform``."""
+    client = MagicMock()
+    client.list_models = AsyncMock(return_value=_AsyncPage([]))
+    client.create_model = AsyncMock(return_value=_ModelResponse())
+    client.get_model = AsyncMock(return_value=_ModelResponse())
+    client.update_model = AsyncMock(return_value=_ModelResponse())
+    return client
+
+
+@pytest.fixture
+async def mock_models_client() -> MagicMock:
+    """A mock ``AsyncModelsClient`` returned by ``client_from_platform`` in the
+    controller/reconciler modules under test."""
+    return make_async_models_client()
+
+
+@pytest.fixture
+async def patch_models_client(mock_models_client):
+    """Route ``client_from_platform(sdk, AsyncModelsClient)`` in the models
+    controller modules back to :data:`mock_models_client`."""
+    with (
+        patch(
+            "nmp.core.models.controllers.entity_cache.client_from_platform",
+            return_value=mock_models_client,
+        ),
+        patch(
+            "nmp.core.models.sidecars.adapters.main.client_from_platform",
+            return_value=mock_models_client,
+        ),
+    ):
+        yield mock_models_client
+
+
 _ENTITY_FIELDS = ("model_providers", "fileset", "api_endpoint", "backend_format")
 
 
@@ -238,7 +309,18 @@ def make_entity(workspace: str, name: str, **attrs):
     return entity
 
 
-async def seed_entity_cache(mock_models_sdk, entity_cache, entities=()):
-    """Load the cache from the mock SDK so lookups resolve to ``entities``."""
-    mock_models_sdk.models.list = MagicMock(return_value=AsyncPaginator(list(entities)))
+async def seed_entity_cache(
+    mock_models_sdk,
+    entity_cache,
+    entities=(),
+    *,
+    models_client: MagicMock | None = None,
+):
+    """Load the cache from the mock SDK so lookups resolve to ``entities``.
+
+    ``models_client`` is the mock ``AsyncModelsClient`` returned by the patched
+    ``client_from_platform``; defaulting to ``mock_models_sdk.models_client``.
+    """
+    models_client = models_client or mock_models_sdk.models_client
+    models_client.list_models.return_value = _AsyncPage(list(entities))
     await entity_cache.refresh()

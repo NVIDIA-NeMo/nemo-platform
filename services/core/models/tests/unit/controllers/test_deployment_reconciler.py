@@ -18,7 +18,7 @@ from nmp.core.models.controllers.deployment_reconciler import ModelDeploymentRec
 from nmp.core.models.controllers.entity_cache import ModelEntityCache
 from nmp.core.models.schemas import ModelDeployment
 
-from .conftest import AsyncPaginator, make_entity, seed_entity_cache
+from .conftest import AsyncPaginator, _ModelResponse, make_async_models_client, make_entity, seed_entity_cache
 
 _AsyncPaginator = AsyncPaginator
 
@@ -32,8 +32,19 @@ def _entity(workspace, name, model_providers):
 def mock_models_sdk():
     """Create a mock AsyncNeMoPlatform SDK."""
     sdk = MagicMock(spec=AsyncNeMoPlatform)
-    sdk.models.list = MagicMock(return_value=_AsyncPaginator([]))
+    sdk.models_client = make_async_models_client()
     return sdk
+
+
+@pytest.fixture(autouse=True)
+def _patch_entity_cache_client_from_platform(mock_models_sdk):
+    """Route ``client_from_platform(sdk, AsyncModelsClient)`` in the entity cache
+    back to the mock typed client on ``mock_models_sdk.models_client``."""
+    with patch(
+        "nmp.core.models.controllers.entity_cache.client_from_platform",
+        side_effect=lambda sdk, cls: sdk.models_client,
+    ):
+        yield
 
 
 @pytest.fixture
@@ -951,7 +962,6 @@ async def test_cleanup_model_entities_removes_provider_from_entities(reconciler)
             _entity("test-ns", "model-2", ["test-ns/provider-1"]),
         ],
     )
-    reconciler._models_sdk.models.update = AsyncMock()
 
     # Call cleanup
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
@@ -964,17 +974,11 @@ async def test_cleanup_model_entities_removes_provider_from_entities(reconciler)
     )
 
     # Verify model entities were updated with provider removed
-    assert reconciler._models_sdk.models.update.call_count == 2
-    reconciler._models_sdk.models.update.assert_any_call(
-        name="model-1",
-        workspace="test-ns",
-        model_providers=["other-ns/other-provider"],
-    )
-    reconciler._models_sdk.models.update.assert_any_call(
-        name="model-2",
-        workspace="test-ns",
-        model_providers=[],
-    )
+    update = reconciler._models_sdk.models_client.update_model
+    assert update.await_count == 2
+    calls = {call.kwargs["name"]: call.kwargs["body"].model_providers for call in update.await_args_list}
+    assert calls["model-1"] == ["other-ns/other-provider"]
+    assert calls["model-2"] == []
 
 
 @pytest.mark.asyncio
@@ -985,7 +989,6 @@ async def test_cleanup_model_entities_no_served_models(reconciler):
     mock_provider.served_models = []
 
     reconciler._models_sdk.inference.providers.retrieve = AsyncMock(return_value=mock_provider)
-    reconciler._models_sdk.models.update = AsyncMock()
 
     # Call cleanup
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
@@ -995,7 +998,7 @@ async def test_cleanup_model_entities_no_served_models(reconciler):
     reconciler._models_sdk.inference.providers.retrieve.assert_called_once()
 
     # Verify no model entity operations were performed
-    reconciler._models_sdk.models.update.assert_not_called()
+    reconciler._models_sdk.models_client.update_model.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1004,14 +1007,13 @@ async def test_cleanup_model_entities_provider_not_found(reconciler):
     reconciler._models_sdk.inference.providers.retrieve = AsyncMock(
         side_effect=NotFoundError("Provider not found", response=MagicMock(), body=None)
     )
-    reconciler._models_sdk.models.update = AsyncMock()
 
     # Call cleanup - should not raise
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
     await reconciler._entity_cache.flush()
 
     # Verify no model entity operations were performed
-    reconciler._models_sdk.models.update.assert_not_called()
+    reconciler._models_sdk.models_client.update_model.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1029,14 +1031,13 @@ async def test_cleanup_model_entities_provider_not_in_list(reconciler):
         reconciler._entity_cache,
         [_entity("test-ns", "model-1", ["other-ns/other-provider"])],
     )
-    reconciler._models_sdk.models.update = AsyncMock()
 
     # Call cleanup
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
     await reconciler._entity_cache.flush()
 
     # Verify model entity was NOT updated (provider wasn't in the list)
-    reconciler._models_sdk.models.update.assert_not_called()
+    reconciler._models_sdk.models_client.update_model.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1056,18 +1057,19 @@ async def test_cleanup_model_entities_skips_missing_entity_and_continues(reconci
         reconciler._entity_cache,
         [_entity("test-ns", "model-2", ["test-ns/provider-1"])],
     )
-    reconciler._models_sdk.models.update = AsyncMock()
 
     # Call cleanup - should not raise
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
     await reconciler._entity_cache.flush()
 
     # Verify only the existing model was updated
-    reconciler._models_sdk.models.update.assert_called_once_with(
-        workspace="test-ns",
-        name="model-2",
-        model_providers=[],
-    )
+    update = reconciler._models_sdk.models_client.update_model
+    update.assert_awaited_once()
+    call = update.await_args
+    assert call is not None
+    assert call.kwargs["workspace"] == "test-ns"
+    assert call.kwargs["name"] == "model-2"
+    assert call.kwargs["body"].model_providers == []
 
 
 @pytest.mark.asyncio
@@ -1090,14 +1092,16 @@ async def test_cleanup_model_entities_handles_model_update_failure(reconciler):
         ],
     )
     # First update fails, second succeeds
-    reconciler._models_sdk.models.update = AsyncMock(side_effect=[Exception("Update failed"), None])
+    reconciler._models_sdk.models_client.update_model = AsyncMock(
+        side_effect=[Exception("Update failed"), _ModelResponse()]
+    )
 
     # Call cleanup - should not raise
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
     await reconciler._entity_cache.flush()
 
     # Verify both models were attempted to be updated
-    assert reconciler._models_sdk.models.update.call_count == 2
+    assert reconciler._models_sdk.models_client.update_model.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -1115,14 +1119,13 @@ async def test_cleanup_model_entities_with_null_model_providers(reconciler):
         reconciler._entity_cache,
         [_entity("test-ns", "model-1", None)],
     )
-    reconciler._models_sdk.models.update = AsyncMock()
 
     # Call cleanup - should not raise
     await reconciler._cleanup_model_entities_for_provider("test-ns", "provider-1", "test-ns/provider-1")
     await reconciler._entity_cache.flush()
 
     # Verify model entity was NOT updated (provider wasn't in the empty/null list)
-    reconciler._models_sdk.models.update.assert_not_called()
+    reconciler._models_sdk.models_client.update_model.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -50,6 +50,9 @@ class AccessKeyCreateResponse(BaseModel):
     description: Optional[str] = None
     """Human-readable description of the Scoped Access Key."""
 
+    entity_type: Optional[Literal["USER", "SERVICE_ACCOUNT"]] = None
+    """Whether the key is bound to a user or a non-human service account."""
+
     expires_at: Optional[datetime] = None
 
     name: Optional[str] = None

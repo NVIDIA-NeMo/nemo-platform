@@ -14,7 +14,10 @@ from nemo_platform_plugin.auth.access_keys.issuer import (
 )
 from nemo_platform_plugin.auth.access_keys.types import AccessKeyReversibleStatus
 from nmp.common.auth import AuthClient, get_auth_client
-from nmp.common.auth.access_keys import ACCESS_KEY_JTI_PATTERN, AccessKeyValidationError
+from nmp.common.auth.access_keys import (
+    ACCESS_KEY_JTI_PATTERN,
+    AccessKeyValidationError,
+)
 from nmp.common.config import get_auth_config
 from nmp.common.entities import EntityConflictError
 from nmp.core.auth.app.access_keys import (
@@ -64,6 +67,10 @@ _ACCESS_KEY_CREATE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         "description": "Scoped Access Key creation error",
         "model": schemas.AccessKeyErrorResponse,
     },
+    403: {
+        "description": "Service-bound Scoped Access Keys require PlatformAdmin",
+        "model": schemas.AccessKeyErrorResponse,
+    },
     404: _ACCESS_KEY_DISABLED_ERROR_RESPONSE,
     409: _ACCESS_KEY_CONFLICT_ERROR_RESPONSE,
     501: _ACCESS_KEY_NOT_IMPLEMENTED_ERROR_RESPONSE,
@@ -84,11 +91,30 @@ _ACCESS_KEY_SUSPENSION_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
+async def _is_platform_admin(auth_client: AuthClient) -> bool:
+    # Only human PlatformAdmins may create or manage service-bound Scoped Access Keys — the
+    # same invariant AccessKeyIssuerService._target_principal enforces for creation. A
+    # service-account principal must never qualify here, even if it were ever (mis)granted
+    # the PlatformAdmin role, since that would let a service credential manage other
+    # service-bound credentials, including its own.
+    if auth_client.principal.effective_principal.is_service_identity():
+        return False
+    # Deny (rather than has_role's own default-allow) when auth is globally disabled: there is
+    # no real identity to check "is PlatformAdmin" against, so we don't silently grant this
+    # highly privileged, service-account-impersonating capability.
+    return auth_client.auth_enabled and await auth_client.has_role("system", "PlatformAdmin")
+
+
 def get_access_key_issuer(
     auth_client: AuthClient = Depends(get_auth_client),
     registry: AccessKeyRegistry = Depends(get_access_key_registry),
 ) -> PersistentAccessKeyIssuer:
-    return PersistentAccessKeyIssuer(get_auth_config(), auth_client.principal, registry)
+    return PersistentAccessKeyIssuer(
+        get_auth_config(),
+        auth_client.principal.effective_principal,
+        registry,
+        admin_override=lambda: _is_platform_admin(auth_client),
+    )
 
 
 def _not_implemented(exc: AccessKeyOperationNotImplementedError) -> HTTPException:
@@ -131,6 +157,18 @@ async def create_access_key(
     issuer: PersistentAccessKeyIssuer = Depends(get_access_key_issuer),
 ) -> schemas.AccessKeyCreateResponse | JSONResponse:
     try:
+        if request.service_account_id is not None:
+            if not get_auth_config().access_keys.enabled:
+                raise AccessKeyFeatureDisabledError("Scoped Access Keys are not enabled")
+            # Delegates to the issuer's own memoized admin check (rather than calling
+            # _is_platform_admin(auth_client) directly here) so this pre-check and
+            # create_async's defense-in-depth re-check share one PDP has_role round trip.
+            if not await issuer.is_platform_admin():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only PlatformAdmin can create service-bound Scoped Access Keys",
+                )
+            return await issuer.create_async(request, allow_service_account=True)
         return await issuer.create_async(request)
     except AccessKeyFeatureDisabledError:
         return _disabled_response()

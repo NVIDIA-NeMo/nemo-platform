@@ -246,7 +246,7 @@ Use the CLI for faster deployment.
 
 ```python
 # Regular code
-sdk.models.deploy()
+sdk.models.create_deployment()
 ```
 
 :::{warning}
@@ -267,4 +267,4 @@ Make sure GPU resources are configured.
     assert "Use the CLI for faster deployment." in result
     assert "Make sure GPU resources are configured." in result
     assert "```python" in result
-    assert "sdk.models.deploy()" in result
+    assert "sdk.models.create_deployment()" in result

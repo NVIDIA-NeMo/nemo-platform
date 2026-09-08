@@ -32,8 +32,14 @@ from nemo_evaluator_sdk.metrics.protocol import (
     MetricResult,
 )
 from nemo_evaluator_sdk.values.atif import Trajectory
-from nemo_evaluator_sdk.values.evidence import EVIDENCE_TRACE
+from nemo_evaluator_sdk.values.evidence import (
+    EVIDENCE_FORMAT_ATIF,
+    EVIDENCE_FORMAT_OTLP,
+    EVIDENCE_TRACE,
+    CandidateEvidence,
+)
 from nemo_evaluator_sdk.values.metrics import MetricBase
+from nemo_evaluator_sdk.values.otlp import span_text_strings
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
@@ -166,16 +172,41 @@ class SkillUsedMetric(MetricBase):
         evidence = candidate.evidence
         if evidence is None or evidence.get(self.trace_evidence) is None:
             return False
-        try:
-            trajectory = await (await evidence.trace(self.trace_evidence)).trace()
-        except (KeyError, ValueError, ValidationError, OSError) as exc:
-            # Best-effort: a missing/malformed/invalid trajectory must score skill_used=False, not raise.
-            # ValidationError covers Trajectory.model_validate; OSError covers the underlying file read.
+        # Each view is resolved and read before the next is considered, so a trace that is
+        # discovered but will not parse falls through to the other rather than answering for it.
+        unreadable: list[str] = []
+        for evidence_format, read in ((EVIDENCE_FORMAT_OTLP, _otlp_used), (EVIDENCE_FORMAT_ATIF, _atif_used)):
+            try:
+                return await read(evidence, self.trace_evidence, locations)
+            except KeyError:
+                continue
+            except (ValueError, ValidationError, OSError) as exc:
+                # ValidationError covers Trajectory.model_validate; OSError the underlying read.
+                unreadable.append(f"{evidence_format}: {exc}")
+        if unreadable:
             logger.warning(
-                "SkillUsedMetric scored skill_used=False: could not read trace %r: %s", self.trace_evidence, exc
+                "SkillUsedMetric scored skill_used=False: could not read trace %r (%s)",
+                self.trace_evidence,
+                "; ".join(unreadable),
             )
-            return False
-        return any(_trajectory_references(trajectory, loc) for loc in locations)
+        return False
+
+
+async def _otlp_used(evidence: CandidateEvidence, name: str, locations: list[str]) -> bool:
+    """Whether the OTLP view of a trace references any staged skill location."""
+    resource_spans = await (await evidence.trace(name, format=EVIDENCE_FORMAT_OTLP)).resource_spans()
+    return any(_otlp_references(resource_spans, location) for location in locations)
+
+
+async def _atif_used(evidence: CandidateEvidence, name: str, locations: list[str]) -> bool:
+    """Whether the ATIF view of a trace references any staged skill location."""
+    trajectory = await (await evidence.trace(name, format=EVIDENCE_FORMAT_ATIF)).trace()
+    return any(_trajectory_references(trajectory, location) for location in locations)
+
+
+def _otlp_references(resource_spans: list[dict[str, Any]], needle: str) -> bool:
+    """Whether any string attribute on the trace's spans or events contains ``needle``."""
+    return any(needle in blob for blob in span_text_strings(resource_spans))
 
 
 class TrialMeasurements(BaseModel):

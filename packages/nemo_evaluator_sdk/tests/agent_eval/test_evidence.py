@@ -11,11 +11,15 @@ from pathlib import Path
 import pytest
 from nemo_evaluator_sdk.execution.samples import build_metric_input
 from nemo_evaluator_sdk.values.evidence import (
+    EVIDENCE_FORMAT_ATIF,
+    EVIDENCE_FORMAT_OTLP,
+    ATIFTraceHandle,
     CandidateEvidence,
     EvidenceDescriptor,
     LocalFilesystemEvidence,
+    OTLPTraceHandle,
 )
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 
 def test_metric_input_preserves_candidate_evidence_out_of_metadata() -> None:
@@ -316,6 +320,8 @@ async def test_trace_handle_reads_atif(tmp_path: Path) -> None:
         descriptors={"trace": EvidenceDescriptor(kind="trace", ref=str(trace_path), format="atif")}
     )
     handle = await evidence.trace("trace")
+    assert isinstance(handle, ATIFTraceHandle)
+    assert handle.format == "atif"
     assert handle is await evidence.trace("trace")  # cached
     trajectory = await handle.trace()
     assert trajectory.schema_version == "ATIF-v1.7"
@@ -327,8 +333,116 @@ async def test_trace_handle_reads_atif(tmp_path: Path) -> None:
     bad = CandidateEvidence(
         descriptors={"trace": EvidenceDescriptor(kind="trace", format="atif", data={"steps": "not-a-list"})}
     )
+    bad_handle = await bad.trace("trace")
+    assert isinstance(bad_handle, ATIFTraceHandle)
     with pytest.raises(ValidationError):
-        await (await bad.trace("trace")).trace()
+        await bad_handle.trace()
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_reads_atif_when_optional_format_is_absent() -> None:
+    evidence = CandidateEvidence(descriptors={"trace": EvidenceDescriptor(kind="trace", data=_ATIF_TRAJECTORY)})
+
+    handle = await evidence.trace("trace")
+    assert isinstance(handle, ATIFTraceHandle)
+    assert handle.format == "atif"
+    trajectory = await handle.trace()
+
+    assert trajectory.schema_version == "ATIF-v1.7"
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_reads_otlp_jsonl_and_inline_data(tmp_path: Path) -> None:
+    trace_path = tmp_path / "trace.jsonl"
+    trace_path.write_text(
+        json.dumps({"resourceSpans": [{"schemaUrl": "keep-me", "scopeSpans": []}]})
+        + "\n"
+        + json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": [{"name": "child"}]}]}]})
+        + "\n",
+        encoding="utf-8",
+    )
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_OTLP, ref=str(trace_path))}
+    )
+
+    assert EVIDENCE_FORMAT_ATIF == "atif"
+    assert EVIDENCE_FORMAT_OTLP == "otlp"
+    handle = await evidence.trace("trace")
+    assert isinstance(handle, OTLPTraceHandle)
+    assert handle.format == "otlp"
+    assert handle is await evidence.trace("trace")
+
+    resource_spans = await handle.resource_spans()
+    assert len(resource_spans) == 2
+    assert resource_spans[0]["schemaUrl"] == "keep-me"
+    assert resource_spans[1]["scopeSpans"][0]["spans"][0]["name"] == "child"
+
+    inline = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format="otlp", data=[{"scopeSpans": []}])}
+    )
+    inline_handle = await inline.trace("trace")
+    assert isinstance(inline_handle, OTLPTraceHandle)
+    assert await inline_handle.resource_spans() == [{"scopeSpans": []}]
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_reads_pretty_printed_otlp_object(tmp_path: Path) -> None:
+    trace_path = tmp_path / "trace.json"
+    trace_path.write_text(
+        json.dumps({"resourceSpans": [{"scopeSpans": []}]}, indent=2),
+        encoding="utf-8",
+    )
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format="otlp", ref=str(trace_path))}
+    )
+
+    handle = await evidence.trace()
+    assert isinstance(handle, OTLPTraceHandle)
+    assert await handle.resource_spans() == [{"scopeSpans": []}]
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_caches_empty_otlp_after_first_read(tmp_path: Path) -> None:
+    trace_path = tmp_path / "empty.jsonl"
+    trace_path.write_text('{"resourceSpans": []}\n', encoding="utf-8")
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format="otlp", ref=str(trace_path))}
+    )
+
+    handle = await evidence.trace()
+    assert isinstance(handle, OTLPTraceHandle)
+    assert await handle.resource_spans() == []
+    trace_path.unlink()
+    assert await handle.resource_spans() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "not-an-object",
+        {},
+        {"resourceSpans": "not-a-list"},
+        {"resourceSpans": ["not-an-object"]},
+    ],
+)
+async def test_trace_handle_rejects_malformed_otlp(payload: JsonValue) -> None:
+    evidence = CandidateEvidence(descriptors={"trace": EvidenceDescriptor(kind="trace", format="otlp", data=payload)})
+
+    handle = await evidence.trace()
+    assert isinstance(handle, OTLPTraceHandle)
+    with pytest.raises(ValueError):
+        await handle.resource_spans()
+
+
+@pytest.mark.asyncio
+async def test_trace_handle_rejects_unknown_format() -> None:
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format="json", data={"resourceSpans": []})}
+    )
+
+    with pytest.raises(ValueError, match="unknown trace evidence format 'json'"):
+        await evidence.trace()
 
 
 @pytest.mark.asyncio
@@ -337,7 +451,9 @@ async def test_trace_handle_exposes_typed_tool_evidence_and_retains_modeled_fiel
         descriptors={"trace": EvidenceDescriptor(kind="trace", format="atif", data=_ATIF_TRAJECTORY)}
     )
 
-    trajectory = await (await evidence.trace("trace")).trace()
+    handle = await evidence.trace("trace")
+    assert isinstance(handle, ATIFTraceHandle)
+    trajectory = await handle.trace()
     assert trajectory.agent is not None
     assert trajectory.agent.name == "demo"
     assert trajectory.session_id == "session-1"
@@ -393,3 +509,76 @@ async def test_logs_handle_reads_and_tails(tmp_path: Path) -> None:
     assert await handle.list_files() == ["agent.log"]
     assert await handle.read_text("agent.log") == "line1\nline2\nline3\n"
     assert await handle.tail("agent.log", 2) == "line2\nline3"
+
+
+def _both_format_evidence() -> CandidateEvidence:
+    """A trial carrying both encodings of one trace, ATIF primary."""
+    atif = EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_ATIF, data=_ATIF_TRAJECTORY)
+    otlp = EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_OTLP, data={"resourceSpans": []})
+    return CandidateEvidence(descriptors={"trace": atif, "trace:atif": atif, "trace:otlp": otlp})
+
+
+@pytest.mark.asyncio
+async def test_trace_format_selects_the_requested_encoding() -> None:
+    evidence = _both_format_evidence()
+
+    assert isinstance(await evidence.trace(), ATIFTraceHandle)
+    assert isinstance(await evidence.trace(format=EVIDENCE_FORMAT_ATIF), ATIFTraceHandle)
+    assert isinstance(await evidence.trace(format=EVIDENCE_FORMAT_OTLP), OTLPTraceHandle)
+
+
+@pytest.mark.asyncio
+async def test_trace_caches_each_format_separately() -> None:
+    evidence = _both_format_evidence()
+
+    atif = await evidence.trace(format=EVIDENCE_FORMAT_ATIF)
+    otlp = await evidence.trace(format=EVIDENCE_FORMAT_OTLP)
+
+    assert isinstance(atif, ATIFTraceHandle)
+    assert isinstance(otlp, OTLPTraceHandle)
+    assert atif is await evidence.trace(format=EVIDENCE_FORMAT_ATIF)
+    assert otlp is await evidence.trace(format=EVIDENCE_FORMAT_OTLP)
+
+
+@pytest.mark.asyncio
+async def test_trace_shares_one_handle_when_the_primary_key_already_holds_the_format() -> None:
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_OTLP, data={"resourceSpans": []})}
+    )
+
+    handle = await evidence.trace(format=EVIDENCE_FORMAT_OTLP)
+    assert handle is await evidence.trace()
+
+
+@pytest.mark.asyncio
+async def test_trace_treats_an_unset_format_as_atif_when_resolving() -> None:
+    evidence = CandidateEvidence(descriptors={"trace": EvidenceDescriptor(kind="trace", data=_ATIF_TRAJECTORY)})
+
+    assert isinstance(await evidence.trace(format=EVIDENCE_FORMAT_ATIF), ATIFTraceHandle)
+    with pytest.raises(KeyError, match="in format 'otlp'"):
+        await evidence.trace(format=EVIDENCE_FORMAT_OTLP)
+
+
+@pytest.mark.asyncio
+async def test_trace_rejects_a_format_no_descriptor_holds() -> None:
+    evidence = CandidateEvidence(
+        descriptors={"trace": EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_ATIF, data=_ATIF_TRAJECTORY)}
+    )
+
+    with pytest.raises(KeyError, match="missing evidence descriptor 'trace' in format 'otlp'"):
+        await evidence.trace(format=EVIDENCE_FORMAT_OTLP)
+
+
+@pytest.mark.asyncio
+async def test_trace_ignores_a_format_qualified_key_whose_descriptor_disagrees() -> None:
+    evidence = CandidateEvidence(
+        descriptors={
+            "trace": EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_ATIF, data=_ATIF_TRAJECTORY),
+            "trace:otlp": EvidenceDescriptor(kind="trace", format=EVIDENCE_FORMAT_ATIF, data=_ATIF_TRAJECTORY),
+        }
+    )
+
+    # Honouring the key suffix here would hand back an ATIFTraceHandle from a call
+    # whose narrowed return type promises OTLPTraceHandle.
+    with pytest.raises(KeyError, match="in format 'otlp'"):
+        await evidence.trace(format=EVIDENCE_FORMAT_OTLP)

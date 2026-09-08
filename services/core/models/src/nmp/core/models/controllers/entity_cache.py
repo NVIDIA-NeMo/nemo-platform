@@ -20,8 +20,10 @@ from logging import getLogger
 from typing import Callable
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import ConflictError, NotFoundError
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError, NotFoundError
+from nemo_platform_plugin.models.client import AsyncModelsClient
+from nemo_platform_plugin.models.types import CreateModelEntityRequest, ModelEntity, UpdateModelEntityRequest
 
 logger = getLogger(__name__)
 
@@ -94,7 +96,8 @@ class ModelEntityCache:
             )
 
         entities: dict[tuple[str, str], ModelEntity] = {}
-        async for entity in self._models_sdk.models.list(workspace="-", page_size=_PAGE_SIZE):
+        models = client_from_platform(self._models_sdk, AsyncModelsClient)
+        async for entity in (await models.list_models(workspace="-", query_params={"page_size": _PAGE_SIZE})).items():
             entities[(entity.workspace, entity.name)] = entity
             self._emit_heartbeat()
 
@@ -220,12 +223,17 @@ class ModelEntityCache:
             create_kwargs["model_providers"] = list(staged.link_providers)
 
         try:
-            created = await self._models_sdk.models.create(workspace=workspace, name=name, **create_kwargs)
+            models = client_from_platform(self._models_sdk, AsyncModelsClient)
+            created = (
+                await models.create_model(
+                    workspace=workspace, body=CreateModelEntityRequest(name=name, **create_kwargs)
+                )
+            ).data()
         except ConflictError:
             # Created concurrently; adopt it and apply the staged changes instead.
             logger.debug("Model Entity %s/%s already exists, applying staged changes", workspace, name)
             try:
-                existing = await self._models_sdk.models.retrieve(workspace=workspace, name=name)
+                existing = (await models.get_model(workspace=workspace, name=name)).data()
             except NotFoundError:
                 return
             self._entities[(workspace, name)] = existing
@@ -251,7 +259,10 @@ class ModelEntityCache:
             logger.debug("Model Entity %s/%s already matches desired state", workspace, name)
             return
 
-        updated = await self._models_sdk.models.update(workspace=workspace, name=name, **update_params)
+        models = client_from_platform(self._models_sdk, AsyncModelsClient)
+        updated = (
+            await models.update_model(workspace=workspace, name=name, body=UpdateModelEntityRequest(**update_params))
+        ).data()
         if updated is not None:
             self._entities[(workspace, name)] = updated
         logger.debug("Updated Model Entity %s/%s: %s", workspace, name, sorted(update_params))

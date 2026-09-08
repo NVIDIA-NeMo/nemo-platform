@@ -6,7 +6,7 @@ import { logger } from '@nemo/common/src/utils/logger';
 import {
   getAgentsStreamDeploymentLogsQueryKey,
   useAgentsGetDeploymentLogs,
-} from '@nemo/sdk/generated/agents/api';
+} from '@nemo/sdk/generated/agents/agent-deployments';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema';
 import type { PlatformJobLog } from '@nemo/sdk/generated/platform/schema';
 import { Block, Select, Stack, Text } from '@nvidia/foundations-react-core';

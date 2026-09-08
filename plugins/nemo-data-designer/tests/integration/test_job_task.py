@@ -34,6 +34,8 @@ from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig
 from nemo_data_designer_plugin.jobs.task_results import ANALYSIS_RESULT_NAME, ARTIFACTS_RESULT_NAME
 from nemo_data_designer_plugin.sdk.job_results import DataDesignerJobResults
 from nemo_data_designer_plugin.sdk.resources import DataDesignerResource
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
 
 pytestmark = pytest.mark.integration
 
@@ -57,6 +59,10 @@ def _get_dataset(ctx: u.CreateJobTestContext, job_name: str, tmp_path: Path) -> 
 
 def _get_analysis(ctx: u.CreateJobTestContext, job_name: str, tmp_path: Path) -> DatasetProfilerResults:
     return _load_results(ctx, job_name, tmp_path).load_analysis()
+
+
+def _list_job_results(ctx: u.CreateJobTestContext, job_name: str):
+    return client_from_platform(ctx.sdk, JobsClient).list_job_results(name=job_name).data()
 
 
 @pytest.fixture
@@ -84,7 +90,7 @@ async def test_task(tmp_path: Path) -> None:
         result = ctx.run_task()
         assert result.exit_code == 0
 
-        results = ctx.sdk.jobs.results.list(job_name)
+        results = _list_job_results(ctx, job_name)
         assert len(results.data) == 2
         result_names = [r.name for r in results.data]
         assert ANALYSIS_RESULT_NAME in result_names
@@ -122,7 +128,7 @@ async def test_save_partial_dataset_on_failure(_failing_result_manager: None, tm
         result = ctx.run_task()
         assert result.exit_code == 1
 
-        results = ctx.sdk.jobs.results.list(job_name)
+        results = _list_job_results(ctx, job_name)
         assert len(results.data) == 1
         result_names = [r.name for r in results.data]
         assert ANALYSIS_RESULT_NAME not in result_names

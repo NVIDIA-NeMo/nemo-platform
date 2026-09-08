@@ -53,10 +53,10 @@ and select **Run workflow**. The form shows the allowed custom artifact IDs.
 
 | Input | Use |
 | --- | --- |
-| `release-type` | `nightly` by default. Select `stable` for a full release. |
+| `release-type` | `nightly` by default. Select `stable` for a versioned release. Every successful non-dry-run stable release creates or confirms its Git tag and GitHub Release. |
 | `source-sha` | Required for stable releases. Optional for nightlies; a normal nightly with no SHA uses the current default-branch head. A dry-run nightly with no SHA uses the workflow commit so a branch can be validated. |
 | `version` | Required for stable releases. Enter the `MAJOR.MINOR.PATCH` release version. |
-| `release-scope` | `all` by default. Select `wheels`, `containers`, `helm`, or `custom` for a subset. |
+| `release-scope` | `all` by default. Select `wheels`, `containers`, `helm`, or `custom` for a subset. Scope selects artifacts only; it does not control the stable tag or GitHub Release. |
 | `wheel-ids`, `container-ids` | Comma-separated IDs used only with `release-scope: custom`. Each ID must be in the catalog above; duplicates and empty entries fail validation. |
 | `include-helm` | Includes the Helm chart in a custom release. |
 | `helm-version` | Optional exact SemVer Helm chart version for stable Helm-only releases. The stable release label still comes from `version`. |
@@ -71,6 +71,7 @@ Examples:
 | Scheduled-style nightly | Leave `release-type` as `nightly` and use the default `all` scope. |
 | Stable full release | `release-type: stable`, `source-sha: <40-character SHA>`, `version: <MAJOR.MINOR.PATCH>`, `release-scope: all`. |
 | One container | `release-scope: custom`, `container-ids: nmp-customizer-tasks`. |
+| Stable one-container release or retry | `release-type: stable`, `source-sha: <40-character SHA>`, `version: <MAJOR.MINOR.PATCH>`, `release-scope: custom`, `container-ids: nmp-customizer-tasks`. |
 | Helm-only validation | `release-scope: helm`, `dry-run: true`. |
 | Stable Helm-only chart override | `release-type: stable`, `source-sha: <40-character SHA>`, `version: 0.1.0`, `release-scope: helm`, `helm-version: 0.1.0+helmfix1`. |
 
@@ -94,14 +95,17 @@ America/Los_Angeles.
    `-nightly-<UTC timestamp>` appended, falling back to the `Chart.yaml`
    version if no such tag exists. A stable chart uses the stable release version
    unless `helm-version` is set for a stable Helm-only release.
-6. Waits for every selected final artifact that is published publicly to become
-   available before continuing. Nightly wheels are staged but not published, so
-   they are not polled. The polling job times out after four hours and sends
-   a Slack alert after two hours if it is still waiting.
-7. For a non-dry-run stable release with `release-scope: all`, creates the
-   GitHub release and tag at the selected SHA. GitHub generates the release
-   notes from the previous numeric SemVer tag. Subset releases do not create a
-   GitHub release or tag.
+6. Waits for every selected final artifact to become available at its configured
+   publication destination before continuing. The polling job times out after
+   four hours and sends a Slack alert after two hours if it is still waiting.
+7. For every non-dry-run stable release, creates or confirms the Git tag and
+   GitHub release at the selected SHA once the selected artifacts are
+   available. This is independent of `release-scope`, so subset and custom runs
+   can finish or retry a release. A rerun is a no-op when the tag and release
+   already match, creates the missing release when only the matching tag
+   exists, and fails when the version tag points to a different SHA or a draft
+   release exists. GitHub generates the release notes from the previous numeric
+   SemVer tag.
 8. After polling succeeds, releases that include the Helm chart dispatch a
    deployment signal to the configured internal release repository. The
    downstream workflow creates a pending GitHub Deployment, and the deployment
@@ -111,7 +115,7 @@ America/Los_Angeles.
 
 | Artifact | Nightly | Stable |
 | --- | --- | --- |
-| Wheels | Staged only | [PyPI](https://pypi.org) |
+| Wheels | [pypi.nvidia.com](https://pypi.nvidia.com) | [PyPI](https://pypi.org) |
 | Containers | `ghcr.io/nvidia-nemo/nemo-platform/<id>:nightly-...` | `nvcr.io/nvidia/nemo-platform/<id>:<version>` and the public NGC catalog |
 | Helm chart | OCI chart at `oci://ghcr.io/nvidia-nemo/nemo-platform` | Initially staged at `0921617854601259/nemo-platform`, then promoted to the public [NGC Helm repository](https://helm.ngc.nvidia.com/nvidia/nemo-platform) |
 
@@ -149,7 +153,7 @@ Dry-runs do not poll or send the delayed or final notification.
 
 The workflow summary records the selected wheels and containers. After a live
 release completes, check the selected artifacts at their destination above.
-For a full stable release, also verify that the GitHub tag and generated GitHub
+For a stable release, also verify that the GitHub tag and generated GitHub
 release point to the requested source SHA.
 
 For a stable wheel release, a quick client check is:

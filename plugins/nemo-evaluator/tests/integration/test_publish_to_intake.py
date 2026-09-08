@@ -40,6 +40,7 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSumm
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
+from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult, RowScore
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.types.intake.trace_filter_param import TraceFilterParam
@@ -56,11 +57,17 @@ NAN_EXPERIMENT_NAME = "intake-it-nan-exp"
 NAN_RUN_ID = "intake-it-nan-run"
 IDEMPOTENCY_EXPERIMENT_NAME = "intake-it-idempotency-exp"
 IDEMPOTENCY_RUN_ID = "intake-it-idempotency-run"
+OTLP_EXPERIMENT_NAME = "intake-it-otlp-exp"
+OTLP_RUN_ID = "intake-it-otlp-run"
+OTLP_TRACE_ID = "0123456789abcdef0123456789abcdef"
+OTLP_ROOT_SPAN_ID = "0102030405060708"
 ROW_EXPERIMENT_NAME = "intake-it-row-exp"
 ROW_RUN_ID = "intake-it-row-run"
 #: Recent, not fixed: a trajectory's start_time is a real timestamp, and Intake's trace queries
 #: only look back a bounded window — a hardcoded past date ingests fine but reads back empty.
 STARTED_AT = datetime.now(UTC) - timedelta(minutes=5)
+#: Fixed for the process so a re-publish writes the same ReplacingMergeTree key.
+_OTLP_START_NANOS = time.time_ns()
 
 
 def _docker_available() -> bool:
@@ -528,3 +535,122 @@ async def test_row_result_publishes_and_is_idempotent(platform_base_url: str) ->
 
         rows = await client.intake.spans.evaluator_results.list(second.published_trials[0].span_id, workspace=WORKSPACE)
         assert [row.name for row in rows] == ["exact_match.score"]
+
+
+def _otlp_result() -> AgentEvalResult:
+    """One trial whose trace is OTLP, so publish takes the OTLP path instead of ATIF.
+
+    Span times are minted once at import and reused by every publish in a run: Intake's
+    spans table is a ReplacingMergeTree keyed partly on ``start_time``, so a per-publish
+    clock would make a re-publish insert rather than replace. They are recent because that
+    table is also TTL'd on ``start_time``, and a fixed past timestamp would be dropped on
+    write while ingest still reported success.
+    """
+    span = {
+        "traceId": OTLP_TRACE_ID,
+        "spanId": OTLP_ROOT_SPAN_ID,
+        "name": "agent run",
+        "startTimeUnixNano": str(_OTLP_START_NANOS),
+        "endTimeUnixNano": str(_OTLP_START_NANOS + 5_000_000),
+        "attributes": [{"key": "output.value", "value": {"stringValue": "answer"}}],
+    }
+    trace = EvidenceDescriptor(
+        kind="trace", format="otlp", data={"resourceSpans": [{"scopeSpans": [{"spans": [span]}]}]}
+    )
+    return AgentEvalResult(
+        run_id=OTLP_RUN_ID,
+        tasks=[],
+        trials=[
+            AgentEvalTrial(
+                id="trial-1",
+                task_id="task-1",
+                status=AgentEvalTrialStatus.COMPLETED,
+                output=AgentOutput(output_text="answer"),
+                evidence=CandidateEvidence(descriptors={"trace": trace}),
+            )
+        ],
+        scores=[
+            AgentEvalTaskScore(
+                id="score-1",
+                run_id=OTLP_RUN_ID,
+                task_id="task-1",
+                trial_id="trial-1",
+                metric_type="accuracy",
+                status=AgentEvalScoreStatus.COMPLETED,
+                outputs=[MetricOutput(name="score", value=1.0)],
+            )
+        ],
+        summary=AgentEvalSummary(),
+        metadata=RunMetadata(started_at=STARTED_AT),
+    )
+
+
+async def test_publishing_a_trial_with_an_otlp_trace_lands_its_spans(platform_base_url: str) -> None:
+    async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
+        group = await client.experiments.create(workspace=WORKSPACE, name=GROUP_NAME, exist_ok=True)
+        await client.evaluations.create(
+            workspace=WORKSPACE,
+            name=OTLP_EXPERIMENT_NAME,
+            experiment_ids=[group.id],
+            dataset_name="intake-it-otlp-dataset",
+            dataset_version="v1",
+            exist_ok=True,
+        )
+
+        report = await publish_to_intake(
+            _otlp_result(),
+            platform=client,
+            experiment_id=OTLP_EXPERIMENT_NAME,
+            workspace=WORKSPACE,
+            agent_name="intake-it-agent",
+        )
+
+        published = report.published_trials[0]
+        # The span id is the producer's own, read off the payload rather than queried back.
+        assert published.span_id == OTLP_ROOT_SPAN_ID
+        assert published.session_id == f"{OTLP_RUN_ID}:trial-1"
+
+        # The stamped session id is what Intake indexed the spans under.
+        spans = await client.intake.spans.list(workspace=WORKSPACE, filter={"session_id": published.session_id})
+        assert [span.name for span in spans.data] == ["agent run"]
+
+        rows = await client.intake.spans.evaluator_results.list(published.span_id, workspace=WORKSPACE)
+        assert [row.name for row in rows] == ["accuracy.score"]
+
+
+async def test_republishing_an_otlp_result_replaces_rather_than_duplicates(platform_base_url: str) -> None:
+    # The session id we stamp is part of the ReplacingMergeTree key, so getting it wrong or
+    # letting it vary per publish inserts a second uncollapsible row instead of replacing.
+    async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
+        group = await client.experiments.create(workspace=WORKSPACE, name=GROUP_NAME, exist_ok=True)
+        await client.evaluations.create(
+            workspace=WORKSPACE,
+            name=OTLP_EXPERIMENT_NAME,
+            experiment_ids=[group.id],
+            dataset_name="intake-it-otlp-dataset",
+            dataset_version="v1",
+            exist_ok=True,
+        )
+
+        async def publish() -> PublishReport:
+            return await publish_to_intake(
+                _otlp_result(),
+                platform=client,
+                experiment_id=OTLP_EXPERIMENT_NAME,
+                workspace=WORKSPACE,
+                agent_name="intake-it-agent",
+            )
+
+        first = await publish()
+        second = await publish()
+
+        assert first.published_trials[0].session_id == second.published_trials[0].session_id
+        assert first.published_trials[0].span_id == second.published_trials[0].span_id
+
+        session_id = second.published_trials[0].session_id
+        trace_filter: TraceFilterParam = {"session_id": session_id}
+        traces = [trace async for trace in client.intake.traces.list(workspace=WORKSPACE, filter=trace_filter)]
+        assert len(traces) == 1, "re-publish duplicated the OTLP trace instead of replacing it"
+
+        spans = await client.intake.spans.list(workspace=WORKSPACE, filter={"session_id": session_id})
+        assert len(spans.data) == 1, "re-publish duplicated the span instead of replacing it"

@@ -65,6 +65,10 @@ class AsyncJWKSClient:
             refreshed_jwks = await self._refresh_jwks_for_unknown_kid()
             return signing_jwk_from_jwks(token, refreshed_jwks)
 
+    async def get_jwks(self) -> dict[str, Any]:
+        jwks, _ = await self._fetch_jwks()
+        return jwks
+
     def clear_cache(self) -> None:
         self._jwks = None
         self._jwks_cache_time = 0.0

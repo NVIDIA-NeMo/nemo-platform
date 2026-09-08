@@ -14,7 +14,11 @@ import anyio.from_thread
 import anyio.to_thread
 from anyio.lowlevel import current_token
 from fastapi import HTTPException, status
-from nemo_anonymizer_plugin.app.context import AnonymizerContext, create_anonymizer_context
+from nemo_anonymizer_plugin.app.context import (
+    AnonymizerContext,
+    create_anonymizer_context,
+    require_model_configs_for_execution,
+)
 from nemo_anonymizer_plugin.app.errors import AnonymizerInternalError, AnonymizerInvalidConfigError
 from nemo_anonymizer_plugin.app.input import AnonymizerInputSpec, PreparedAnonymizerInput
 from nemo_anonymizer_plugin.app.model_configs import (
@@ -78,6 +82,7 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
     description: ClassVar[str] = "Streaming preview of an Anonymizer config."
     spec_schema: ClassVar[type[BaseModel]] = PreviewSpec
     frame_schema: ClassVar[Any] = PreviewFrame
+    generate_legacy_verbs: ClassVar[bool] = False
 
     async def run(
         self,
@@ -85,26 +90,20 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
         *,
         ctx: FunctionContext,
         async_sdk: AsyncNeMoPlatform,
-        is_local: bool = False,
     ) -> AsyncIterator[BaseModel]:
         num_records = _validate_and_get_num_records(spec.num_records)
         validate_selected_models_have_model_configs(
             model_configs=spec.model_configs,
             selected_models=spec.selected_models,
         )
+        model_configs = require_model_configs_for_execution(spec.model_configs)
 
-        anon_ctx = create_anonymizer_context(is_local, async_sdk, ctx.workspace)
-        dd_providers = await anon_ctx.make_model_providers(
-            spec.model_configs,
-            require_model_configs=not is_local,
+        anon_ctx = create_anonymizer_context(async_sdk, ctx.workspace)
+        dd_providers = await anon_ctx.make_model_providers(model_configs)
+        model_configs_yaml = build_model_configs_yaml(
+            model_configs=model_configs,
+            selected_models=spec.selected_models,
         )
-        if spec.model_configs:
-            model_configs_yaml = build_model_configs_yaml(
-                model_configs=spec.model_configs,
-                selected_models=spec.selected_models,
-            )
-        else:
-            model_configs_yaml = ""
         async with _prepare_input(anon_ctx, spec.data) as prepared_input:
             send_stream, receive_stream = anyio.create_memory_object_stream[BaseModel]()
             token = current_token()

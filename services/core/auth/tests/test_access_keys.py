@@ -3,7 +3,7 @@
 
 import logging
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -22,11 +22,13 @@ from nmp.core.auth.app.access_keys import AccessKeyNotFoundError, AccessKeyState
 class InMemoryAccessKeyRegistry:
     def __init__(self):
         self.keys = {}
+        self.owners = {}
         self.revoked = set()
         self.suspended = set()
 
-    async def add(self, key):
+    async def add(self, key, *, owner_principal=None):
         self.keys[key.jti] = key
+        self.owners[key.jti] = owner_principal or key.principal
 
     def _status(self, jti, key):
         if jti in self.revoked:
@@ -37,12 +39,29 @@ class InMemoryAccessKeyRegistry:
             return "SUSPENDED"
         return key.status
 
-    async def list_for_principal(self, principal, *, page, page_size):
+    async def _may_manage(self, jti, principal, *, admin_override=None):
+        key = self.keys.get(jti)
+        if key is None:
+            return None
+        if key.entity_type == "SERVICE_ACCOUNT":
+            if admin_override is not None and await admin_override():
+                return key
+        elif self.owners[jti] == principal:
+            return key
+        return None
+
+    async def list_for_principal(self, principal, *, page, page_size, include_service_accounts=False):
         from nemo_platform_plugin.auth.access_keys.types import AccessKeyListResponse, AccessKeyMetadataResponse
 
         # Sort newest-first then by jti to match the real registry's `sort="-issued_at"`.
         owned = sorted(
-            [(jti, key) for jti, key in self.keys.items() if key.principal == principal],
+            [
+                (jti, key)
+                for jti, key in self.keys.items()
+                if self.owners[jti] == principal
+                and key.entity_type != "SERVICE_ACCOUNT"
+                or (include_service_accounts and key.entity_type == "SERVICE_ACCOUNT")
+            ],
             key=lambda item: (-item[1].created_at.timestamp(), item[0]),
         )
         start = (page - 1) * page_size
@@ -57,18 +76,18 @@ class InMemoryAccessKeyRegistry:
             has_more=start + page_size < len(owned),
         )
 
-    async def revoke(self, jti, principal):
-        key = self.keys.get(jti)
-        if key is None or key.principal != principal:
+    async def revoke(self, jti, principal, *, admin_override=None):
+        key = await self._may_manage(jti, principal, admin_override=admin_override)
+        if key is None:
             raise AccessKeyNotFoundError(f"Scoped Access Key {jti} was not found")
         revoked = jti not in self.revoked
         self.revoked.add(jti)
         self.suspended.discard(jti)
         return revoked
 
-    async def suspend(self, jti, principal):
-        key = self.keys.get(jti)
-        if key is None or key.principal != principal:
+    async def suspend(self, jti, principal, *, admin_override=None):
+        key = await self._may_manage(jti, principal, admin_override=admin_override)
+        if key is None:
             raise AccessKeyNotFoundError(f"Scoped Access Key {jti} was not found")
         if jti in self.revoked:
             raise AccessKeyStateConflictError(f"Revoked Scoped Access Key {jti} cannot be suspended")
@@ -78,9 +97,9 @@ class InMemoryAccessKeyRegistry:
         self.suspended.add(jti)
         return changed, self._status(jti, key)
 
-    async def unsuspend(self, jti, principal):
-        key = self.keys.get(jti)
-        if key is None or key.principal != principal:
+    async def unsuspend(self, jti, principal, *, admin_override=None):
+        key = await self._may_manage(jti, principal, admin_override=admin_override)
+        if key is None:
             raise AccessKeyNotFoundError(f"Scoped Access Key {jti} was not found")
         if jti in self.revoked:
             raise AccessKeyStateConflictError(f"Revoked Scoped Access Key {jti} cannot be unsuspended")
@@ -174,6 +193,181 @@ def test_create_access_key_returns_token_for_current_principal(client):
     assert body["principal"] == "alice@example.com"
     assert body["expires_at"] is not None
     assert body["token"].count(".") == 2
+
+
+def test_access_key_issuer_uses_effective_principal_for_delegated_requests():
+    auth_client = AuthClient(
+        principal=Principal(
+            id="service:evaluator",
+            on_behalf_of="admin@example.com",
+            on_behalf_of_email="admin@example.com",
+        ),
+        config=AuthConfig(enabled=True),
+    )
+
+    issuer = get_access_key_issuer(auth_client=auth_client, registry=InMemoryAccessKeyRegistry())
+
+    assert issuer.principal == "admin@example.com"
+
+
+def test_create_service_access_key_requires_platform_admin(client):
+    with patch.object(AuthClient, "has_role", new_callable=AsyncMock, return_value=False) as has_role:
+        response = client.post(
+            "/v2/access-keys",
+            json={"name": "otel", "service_account_id": "otel-collector"},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Only PlatformAdmin can create service-bound Scoped Access Keys"
+    has_role.assert_awaited_once_with("system", "PlatformAdmin")
+
+
+def test_service_account_principal_cannot_create_or_manage_service_bound_keys_even_with_platform_admin_role(client):
+    service_account_token = auth_client_context.set(
+        AuthClient(
+            principal=Principal(id="service-account:ci-bot"),
+            config=AuthConfig(enabled=True, access_keys=AccessKeyConfig(enabled=True)),
+        )
+    )
+    try:
+        with patch.object(AuthClient, "has_role", new_callable=AsyncMock, return_value=True) as has_role:
+            response = client.post(
+                "/v2/access-keys",
+                json={"name": "otel", "service_account_id": "otel-collector"},
+            )
+    finally:
+        auth_client_context.reset(service_account_token)
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Only PlatformAdmin can create service-bound Scoped Access Keys"
+    # The service-account identity check short-circuits before any PDP role lookup.
+    has_role.assert_not_awaited()
+
+
+def test_privileged_service_principal_cannot_create_service_bound_keys_even_with_platform_admin_role(client):
+    service_token = auth_client_context.set(
+        AuthClient(
+            principal=Principal(id="service:auth"),
+            config=AuthConfig(enabled=True, access_keys=AccessKeyConfig(enabled=True)),
+        )
+    )
+    try:
+        with patch.object(AuthClient, "has_role", new_callable=AsyncMock, return_value=True) as has_role:
+            response = client.post(
+                "/v2/access-keys",
+                json={"name": "otel", "service_account_id": "otel-collector"},
+            )
+    finally:
+        auth_client_context.reset(service_token)
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Only PlatformAdmin can create service-bound Scoped Access Keys"
+    has_role.assert_not_awaited()
+
+
+def test_create_service_access_key_is_denied_when_auth_is_disabled(client):
+    with (
+        patch.object(AuthClient, "auth_enabled", new_callable=PropertyMock, return_value=False),
+        patch.object(AuthClient, "has_role", new_callable=AsyncMock) as has_role,
+    ):
+        response = client.post(
+            "/v2/access-keys",
+            json={"service_account_id": "otel-collector"},
+        )
+
+    assert response.status_code == 403
+    has_role.assert_not_awaited()
+
+
+def test_platform_admin_creates_and_manages_service_access_key(client):
+    with patch.object(AuthClient, "has_role", new_callable=AsyncMock, return_value=True):
+        response = client.post(
+            "/v2/access-keys",
+            json={"name": "otel", "service_account_id": "otel-collector"},
+        )
+
+        assert response.status_code == 200
+        created = response.json()
+        assert created["principal"] == "service-account:otel-collector"
+        assert created["entity_type"] == "SERVICE_ACCOUNT"
+
+        listed = client.get("/v2/access-keys")
+        assert listed.status_code == 200
+        assert listed.json()["data"][0]["principal"] == "service-account:otel-collector"
+        assert client.delete(f"/v2/access-keys/{created['jti']}").status_code == 200
+
+
+def test_demoted_platform_admin_lists_personal_key_but_not_service_key(client):
+    with patch.object(AuthClient, "has_role", new_callable=AsyncMock, return_value=True):
+        personal = client.post("/v2/access-keys", json={"name": "personal"}).json()
+        service = client.post(
+            "/v2/access-keys",
+            json={"name": "otel", "service_account_id": "otel-collector"},
+        ).json()
+
+    with patch.object(AuthClient, "has_role", new_callable=AsyncMock, return_value=False):
+        response = client.get("/v2/access-keys")
+
+    assert response.status_code == 200
+    listed_jtis = {key["jti"] for key in response.json()["data"]}
+    assert personal["jti"] in listed_jtis
+    assert service["jti"] not in listed_jtis
+
+
+def test_service_key_creator_cannot_revoke_after_losing_platform_admin(client):
+    with patch.object(AuthClient, "has_role", new_callable=AsyncMock, return_value=True):
+        created = client.post(
+            "/v2/access-keys",
+            json={"name": "otel", "service_account_id": "otel-collector"},
+        ).json()
+
+    with patch.object(AuthClient, "has_role", new_callable=AsyncMock, return_value=False):
+        revoked = client.delete(f"/v2/access-keys/{created['jti']}")
+
+    assert revoked.status_code == 404
+
+
+def test_platform_admin_can_revoke_service_key_created_by_a_different_admin(client):
+    with patch.object(AuthClient, "has_role", new_callable=AsyncMock, return_value=True):
+        created = client.post(
+            "/v2/access-keys",
+            json={"name": "otel", "service_account_id": "otel-collector"},
+        ).json()
+
+        # A second PlatformAdmin, distinct from the creator, manages the same registry.
+        other_admin_token = auth_client_context.set(
+            AuthClient(
+                principal=Principal(id="bob@example.com", email="bob@example.com"),
+                config=AuthConfig(enabled=True, access_keys=AccessKeyConfig(enabled=True)),
+            )
+        )
+        try:
+            # Listing stays scoped to the caller's own keys (see PersistentAccessKeyIssuer.list_async);
+            # a PlatformAdmin manages another admin's service-bound key by its jti directly.
+            revoked = client.delete(f"/v2/access-keys/{created['jti']}")
+        finally:
+            auth_client_context.reset(other_admin_token)
+
+    assert revoked.status_code == 200
+    assert revoked.json()["revoked"] is True
+
+
+def test_platform_admin_cannot_revoke_another_admins_personal_access_key(client):
+    with patch.object(AuthClient, "has_role", new_callable=AsyncMock, return_value=True):
+        created = client.post("/v2/access-keys", json={"name": "personal"}).json()
+
+        other_admin_token = auth_client_context.set(
+            AuthClient(
+                principal=Principal(id="bob@example.com", email="bob@example.com"),
+                config=AuthConfig(enabled=True, access_keys=AccessKeyConfig(enabled=True)),
+            )
+        )
+        try:
+            revoked = client.delete(f"/v2/access-keys/{created['jti']}")
+        finally:
+            auth_client_context.reset(other_admin_token)
+
+    assert revoked.status_code == 404
 
 
 def test_create_and_revoke_emit_actor_aware_audit_logs(client, caplog):
@@ -298,6 +492,21 @@ def test_create_access_key_is_disabled_by_default(disabled_client):
     assert body["code"] == "access_keys_disabled"
 
 
+def test_create_service_access_key_is_disabled_before_role_check(disabled_client):
+    with patch.object(AuthClient, "has_role", new_callable=AsyncMock) as has_role:
+        response = disabled_client.post(
+            "/v2/access-keys",
+            json={"service_account_id": "otel-collector"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": "Scoped Access Keys are not enabled",
+        "code": "access_keys_disabled",
+    }
+    has_role.assert_not_awaited()
+
+
 def test_create_access_key_is_explicitly_not_implemented(client):
     class NotImplementedIssuer:
         async def create_async(self, request):
@@ -375,6 +584,10 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
     }
     assert create_responses["400"]["description"] == "Scoped Access Key creation error"
     assert create_responses["400"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AccessKeyErrorResponse"
+    }
+    assert create_responses["403"]["description"] == "Service-bound Scoped Access Keys require PlatformAdmin"
+    assert create_responses["403"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/AccessKeyErrorResponse"
     }
     assert create_responses["404"]["description"] == "Scoped Access Keys are not enabled"
@@ -499,6 +712,7 @@ def test_list_access_keys_returns_current_principals_persisted_keys(client):
             "jti": created["jti"],
             "name": "ci-intake",
             "principal": "alice@example.com",
+            "entity_type": "USER",
             "created_at": created["created_at"],
             "expires_at": created["expires_at"],
             "description": "CI intake automation",

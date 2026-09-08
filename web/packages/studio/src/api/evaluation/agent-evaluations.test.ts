@@ -21,7 +21,7 @@ vi.mock('@nemo/sdk/generated/fetchers/evaluator', () => ({
 }));
 
 const filesDownloadFileMock = vi.fn();
-vi.mock('@nemo/sdk/generated/platform/api', () => ({
+vi.mock('@nemo/sdk/generated/platform/files', () => ({
   filesDownloadFile: (...args: unknown[]) => filesDownloadFileMock(...args),
 }));
 

@@ -57,6 +57,7 @@ from nmp.intake.experiments.read_service import (
     EvaluationTelemetryUnavailableError,
     InvalidEvaluationSessionStatusError,
 )
+from nmp.intake.readiness import CLICKHOUSE_UNAVAILABLE_MESSAGE
 from nmp.intake.repository.evaluation_rollup import EvaluationRollup, ScoreRollup
 from nmp.intake.repository.evaluation_session import MetricSortTooLargeError
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
@@ -127,6 +128,7 @@ async def create_experiment(
         metadata=body.metadata,
         default_sort=body.default_sort,
         pareto=body.pareto,
+        column_layout=body.column_layout,
         is_favorite=body.is_favorite,
         show_evaluations_over_time=body.show_evaluations_over_time,
     )
@@ -245,16 +247,23 @@ async def update_experiment(
             detail="Cannot rename an experiment; the name is its identity.",
         )
     _validate_default_sort(body.default_sort)
-    existing.description = body.description
-    existing.insight_id = body.insight_id
-    existing.summary = body.summary
-    existing.metadata = body.metadata
+    # Guarded so a partial update cannot blank the fields it omits; an explicit null still clears.
+    if "description" in body.model_fields_set:
+        existing.description = body.description
+    if "insight_id" in body.model_fields_set:
+        existing.insight_id = body.insight_id
+    if "summary" in body.model_fields_set:
+        existing.summary = body.summary
+    if "metadata" in body.model_fields_set:
+        existing.metadata = body.metadata
     if "default_sort" in body.model_fields_set:
         existing.default_sort = body.default_sort
     # Only overwrite the saved axes when the client actually sent them; an omitted `pareto` (older
     # clients) must not silently reset customized axes to the cost/latency default.
     if body.pareto is not None:
         existing.pareto = body.pareto
+    if body.column_layout is not None:
+        existing.column_layout = body.column_layout
     # Preserve values written by newer clients when an older client sends a full update without
     # fields it does not know about.
     if "is_favorite" in body.model_fields_set:
@@ -808,14 +817,9 @@ async def list_evaluation_sessions(
             ),
         ) from exc
     except EvaluationTelemetryUnavailableError as exc:
-        detail = (
-            "Telemetry store unavailable."
-            if exc.configured
-            else "ClickHouse is unavailable; per-session reads require telemetry storage."
-        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=detail,
+            detail=CLICKHOUSE_UNAVAILABLE_MESSAGE,
         ) from exc
     data = [EvaluationSessionResponse.from_row(row, mode=mode) for row in result.rows]
     return Page(

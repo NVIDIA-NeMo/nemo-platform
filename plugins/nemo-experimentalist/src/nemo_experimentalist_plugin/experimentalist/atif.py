@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from nemo_experimentalist_plugin.entities import ResourceRef
+from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
 
 # ATIF carries agent identity on the trajectory; the Experimentalist carries it as
 # OTLP-style span attributes. This maps one onto the other.
@@ -54,7 +55,7 @@ def build_ingest_payload(
     evaluation_name: str,
     task_id: str,
     agent_attrs: dict[str, str],
-) -> dict[str, Any]:
+) -> AtifCreateParams:
     """Load a trajectory and stamp evaluation identity onto it for Intake ingest.
 
     Agent fields the producer already set are left alone; ``agent_attrs`` only
@@ -71,7 +72,7 @@ def build_ingest_payload(
         agent_attrs(dict[str, str]): OTLP-style agent attributes used as fallbacks.
 
     Returns:
-        dict[str, Any]: The ATIF ingest request body.
+        AtifCreateParams: The ATIF ingest request body.
     """
     trajectory = _load(ref)
     trajectory["evaluation_context"] = {
@@ -79,10 +80,18 @@ def build_ingest_payload(
         "test_case_name": task_id,
     }
     agent = trajectory.get("agent")
-    if not isinstance(agent, dict):
+    if agent is None:
         agent = {}
+    elif not isinstance(agent, dict):
+        raise ValueError(f"ATIF trajectory agent is not an object: {ref.uri}")
     for field, attr in _AGENT_FIELD_BY_ATTR:
         if not agent.get(field) and attr in agent_attrs:
             agent[field] = agent_attrs[attr]
     trajectory["agent"] = agent
-    return trajectory
+    # The trajectory is unvalidated JSON, so this cast is an assertion, not a proof: the
+    # checks cover only the keys AtifCreateParams marks required. Intake validates the rest.
+    if not isinstance(trajectory.get("schema_version"), str):
+        raise ValueError(f"ATIF trajectory has no schema_version: {ref.uri}")
+    if not all(isinstance(agent.get(field), str) for field in ("name", "version")):
+        raise ValueError(f"ATIF trajectory has no agent name and version: {ref.uri}")
+    return cast(AtifCreateParams, trajectory)

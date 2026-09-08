@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Annotated, Any, Protocol, runtime_checkable
 
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.values import Agent, Model
+from nemo_evaluator_sdk.values.agents import Agent
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FINAL_STATE,
     EVIDENCE_FORMAT_ATIF,
@@ -26,6 +26,7 @@ from nemo_evaluator_sdk.values.evidence import (
     CandidateEvidence,
     EvidenceDescriptor,
 )
+from nemo_evaluator_sdk.values.models import Model
 from nemo_evaluator_sdk.values.results import AggregateScore
 from pydantic import (
     BaseModel,
@@ -172,6 +173,20 @@ class AgentEvalTrial(BaseModel):
             raise ValueError("completed trial requires output")
         return self
 
+    def get_evidence(self, name: str) -> EvidenceDescriptor | None:
+        """Look up a named evidence descriptor for this trial.
+
+        Args:
+            name: Evidence key to retrieve.
+
+        Returns:
+            The matching descriptor, or ``None`` when the trial has no evidence or
+            the key is not present.
+        """
+        if self.evidence is None:
+            return None
+        return self.evidence.get(name)
+
 
 @runtime_checkable
 class AgentTaskRunner(Protocol):
@@ -285,8 +300,12 @@ def standard_evidence_descriptors(
     dir), ``final_state`` (workspace), and ``verifier_logs`` (only when present).
     Callers may add their own extension keys to the returned mapping.
 
-    ``trace_format`` declares the trace's format; without it the format is inferred from the
-    filename, which misreads an ATIF trajectory that is not named for it.
+    ``trace_format`` is the producer's parser hint. Without it, the hint is
+    inferred from the trace basename without reading the file: ``atif`` when the
+    name starts with ``atif`` or contains ``.atif.`` (for example
+    ``atif-trace.json`` or ``trajectory.atif.json``), otherwise ``json``.
+    Producers whose filenames do not follow that pattern can call
+    ``read_atif()`` first and pass ``trace_format`` only when parsing succeeds.
     """
     descriptors: dict[str, EvidenceDescriptor] = {}
 

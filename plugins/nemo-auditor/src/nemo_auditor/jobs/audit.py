@@ -35,12 +35,15 @@ import yaml
 from nemo_auditor.entities import AuditConfig, AuditTarget
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.response import NemoResponse
 from nemo_platform_plugin.entities import parse_qualified_name
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.job_results import JobResults
+from nemo_platform_plugin.models.client import AsyncModelsClient, ModelsClient
+from nemo_platform_plugin.models.types import ModelProvider
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 logger = logging.getLogger(__name__)
@@ -215,16 +218,20 @@ def _rewrite_options_uris(
             )
         try:
             if sdk is not None:
-                provider = sdk.inference.providers.retrieve(workspace=igw_ref["workspace"], name=igw_ref["provider"])
-                uri = sdk.models.get_provider_route_openai_url(provider)
+                models = client_from_platform(sdk, ModelsClient)
+                provider = models.get_provider(workspace=igw_ref["workspace"], name=igw_ref["provider"]).data()
+                uri = models.get_provider_route_openai_url(provider)
             else:
                 assert async_sdk is not None
                 # async_sdk path: AuditJob.run() executes inside asyncio.to_thread(), so
                 # this worker thread has no running event loop — asyncio.run() is safe.
-                provider = asyncio.run(
-                    async_sdk.inference.providers.retrieve(workspace=igw_ref["workspace"], name=igw_ref["provider"])
-                )
-                uri = async_sdk.models.get_provider_route_openai_url(provider)
+                async_models = client_from_platform(async_sdk, AsyncModelsClient)
+
+                async def _fetch_provider() -> NemoResponse[ModelProvider]:
+                    return await async_models.get_provider(workspace=igw_ref["workspace"], name=igw_ref["provider"])
+
+                provider = asyncio.run(_fetch_provider()).data()
+                uri = async_models.get_provider_route_openai_url(provider)
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to resolve inference gateway provider '{igw_ref['workspace']}/{igw_ref['provider']}': {exc}"
@@ -411,6 +418,7 @@ class AuditJob(NemoJob):
         profile: str | None = None,
         options: dict | None = None,
     ) -> object:
+        from nemo_auditor.config import get_config
         from nemo_platform_plugin.jobs.api_factory import (
             ContainerSpec,
             CPUExecutionProviderSpec,
@@ -426,7 +434,7 @@ class AuditJob(NemoJob):
                 PlatformJobStep(
                     name="audit-job",
                     executor=CPUExecutionProviderSpec(
-                        profile=profile or "default",
+                        profile=profile or get_config().job_executor_profile,
                         provider="cpu",
                         container=ContainerSpec(
                             image=get_qualified_image("auditor-tasks"),

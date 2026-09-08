@@ -1,0 +1,115 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The NeMo Platform API serving the scaled-evals plugin. No command override:
+# the image's own CMD is `nemo services run --services scaled-evals`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaled-evals-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: scaled-evals-control-plane
+      containers:
+        - name: api
+          image: scaled-evals-app
+          envFrom:
+            - configMapRef:
+                name: scaled-evals-env
+          env:
+            # `nemo services run` takes a flock under $XDG_STATE_HOME, which
+            # defaults to ~/.local/state/nmp. runAsUser below has no passwd
+            # entry, so the kubelet hands it HOME=/, and the runner dies on
+            # mkdir before it serves anything. /tmp is 1777, so this holds for
+            # whatever uid we run as.
+            - name: HOME
+              value: /tmp
+            # libpq reads the password from PGPASSWORD, so the DSN below carries no
+            # credential and the secret stays out of the ConfigMap and out of any log
+            # or provenance record that echoes the DSN.
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: scaled-evals-postgres
+                  key: password
+            - name: SCALED_EVALS_DATABASE_URL
+              value: postgresql://scaled_evals@postgres:5432/scaled_evals
+            - name: CREDENTIALS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: scaled-evals-credential-encryption
+                  key: CREDENTIALS_ENCRYPTION_KEY
+          ports:
+            - containerPort: 8080
+              name: http
+          # Liveness must not follow dependencies: a Postgres blip should pull
+          # the pod from rotation, not restart it. healthz is unconditional,
+          # readyz 503s when a dependency is down.
+          livenessProbe:
+            httpGet:
+              path: /apis/scaled-evals/healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /apis/scaled-evals/v1/readyz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            # Readiness additionally waits on the build worker's heartbeat, and
+            # the build worker cannot start until this pod has migrated the
+            # schema. Allow for that ordering rather than flapping through it.
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: registry-auth
+              mountPath: /var/run/scaled-evals/registry-auth
+              readOnly: true
+            # The API builds the same runtime backend as dispatch to answer
+            # preflight and readyz, so SANDBOX_K8S_ENV_FILE must resolve here
+            # too. It never launches a sandbox, so it gets no kubeconfig.
+            - name: target-env
+              mountPath: /run/target
+              readOnly: true
+      volumes:
+        - name: registry-auth
+          secret:
+            secretName: scaled-evals-gar-registry-auth
+        - name: target-env
+          configMap:
+            name: scaled-evals-sandbox-target
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scaled-evals-api
+spec:
+  selector:
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

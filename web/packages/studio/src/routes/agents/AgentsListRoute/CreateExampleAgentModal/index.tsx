@@ -7,8 +7,11 @@ import { ControlledSearchableSelect } from '@nemo/common/src/components/form/Con
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { getAgentsListAgentsQueryKey, useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
-import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
+import {
+  getAgentsListAgentsQueryKey,
+  useAgentsCreateAgent,
+} from '@nemo/sdk/generated/agents/agents';
+import { useModelsListModels } from '@nemo/sdk/generated/platform/models';
 import { loadSampleAgentConfig } from '@studio/api/agents/loadSampleAgentConfig';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import {
@@ -156,7 +159,9 @@ const CreateExampleAgentModalInner: FC<CreateExampleAgentModalProps> = ({
         workspace,
         data: {
           name: buildSampleAgentName(example.namePrefix),
-          description: example.description,
+          // The config is the single source of truth for the blurb; the registry no
+          // longer carries a copy that could drift from the shipped agent.yml.
+          description: typeof config.description === 'string' ? config.description : '',
           config,
           // Omitted for NAT samples (API defaults to nat-workflow-v1); set for
           // Fabric samples so the API validates the config as nemo-agents-spec-v1.

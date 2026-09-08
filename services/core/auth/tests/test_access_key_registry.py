@@ -6,8 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateResponse
-from nmp.common.auth.jwt import TokenClaims
+from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateResponse, AccessKeyEntityType
+from nmp.common.auth.token_claims import TokenClaims
 from nmp.common.entities import EntityConflictError, EntityNotFoundError
 from nmp.core.auth.app.access_keys import AccessKeyNotFoundError, AccessKeyRegistry, AccessKeyStateConflictError
 from nmp.core.auth.entities import AccessKeyEntity
@@ -15,13 +15,21 @@ from nmp.core.auth.entities import AccessKeyEntity
 NOW = datetime(2026, 8, 4, 18, 0, tzinfo=UTC)
 
 
-def _record(*, jti: str = "ak_example", principal: str = "alice@example.com", revoked: bool = False):
+def _record(
+    *,
+    jti: str = "ak_example",
+    principal: str = "alice@example.com",
+    revoked: bool = False,
+    service_account: bool = False,
+):
     return AccessKeyEntity(
         name=jti,
         workspace="system",
         key_name="ci-build",
         description="CI build automation",
         principal=principal,
+        subject_principal="service-account:otel-collector" if service_account else None,
+        entity_type="SERVICE_ACCOUNT" if service_account else "USER",
         issued_at=NOW,
         expires_at=datetime(2030, 1, 1, tzinfo=UTC),
         status="REVOKED" if revoked else "ACTIVE",
@@ -72,6 +80,33 @@ def test_access_key_entity_defaults_unrevoked_legacy_record_to_active() -> None:
     assert record.status == "ACTIVE"
 
 
+@pytest.mark.parametrize(
+    ("entity_type", "principal", "subject_principal"),
+    [
+        ("SERVICE_ACCOUNT", "admin@example.com", None),
+        ("SERVICE_ACCOUNT", "admin@example.com", "service-account:"),
+        ("SERVICE_ACCOUNT", "admin@example.com", "alice@example.com"),
+        ("SERVICE_ACCOUNT", "service:auth", "service-account:otel-collector"),
+        ("SERVICE_ACCOUNT", "service-account:creator", "service-account:otel-collector"),
+        ("USER", "alice@example.com", "service-account:otel-collector"),
+    ],
+)
+def test_access_key_entity_rejects_inconsistent_identity_binding(
+    entity_type: AccessKeyEntityType, principal: str, subject_principal: str | None
+) -> None:
+    with pytest.raises(ValueError):
+        AccessKeyEntity(
+            name="ak_invalid",
+            workspace="system",
+            principal=principal,
+            subject_principal=subject_principal,
+            entity_type=entity_type,
+            issued_at=NOW,
+            issuer="https://platform.example.com/apis/auth",
+            audiences=["nemo-platform-access-key"],
+        )
+
+
 @pytest.mark.asyncio
 async def test_registry_persists_created_key_metadata() -> None:
     entity_client = AsyncMock()
@@ -101,11 +136,43 @@ async def test_registry_persists_created_key_metadata() -> None:
 
 
 @pytest.mark.asyncio
+async def test_registry_separates_service_key_owner_from_token_subject() -> None:
+    entity_client = AsyncMock()
+    registry = AccessKeyRegistry(entity_client)
+    key = AccessKeyCreateResponse(
+        jti="ak_service",
+        name="otel",
+        principal="service-account:otel-collector",
+        entity_type="SERVICE_ACCOUNT",
+        created_at=NOW,
+        expires_at=NOW + timedelta(hours=1),
+        description=None,
+        status="ACTIVE",
+        issuer="https://platform.example.com/apis/auth",
+        audiences=["nemo-platform-access-key"],
+        token="secret-token",
+        token_type="Bearer",
+    )
+
+    await registry.add(key, owner_principal="admin@example.com")
+
+    saved = entity_client.create.await_args.args[0]
+    assert saved.principal == "admin@example.com"
+    assert saved.subject_principal == "service-account:otel-collector"
+    assert saved.entity_type == "SERVICE_ACCOUNT"
+
+
+@pytest.mark.asyncio
 async def test_registry_lists_principals_keys_with_status_across_pages() -> None:
     entity_client = AsyncMock()
     active_record = _record().model_copy(update={"audiences": ["nemo-platform-access-key", "nemo-platform-access-key"]})
     entity_client.list.return_value = SimpleNamespace(
-        data=[active_record, _record(jti="ak_revoked", revoked=True)], pagination=SimpleNamespace(total_pages=2)
+        data=[
+            active_record,
+            _record(jti="ak_service", principal="alice@example.com", service_account=True),
+            _record(jti="ak_revoked", revoked=True),
+        ],
+        pagination=SimpleNamespace(total_pages=2),
     )
     registry = AccessKeyRegistry(entity_client)
 
@@ -118,7 +185,26 @@ async def test_registry_lists_principals_keys_with_status_across_pages() -> None
     entity_client.list.assert_awaited_once()
     assert entity_client.list.await_args.kwargs["page"] == 1
     assert entity_client.list.await_args.kwargs["page_size"] == 2
-    assert entity_client.list.await_args.kwargs["filter_obj"] == {"principal": "alice@example.com"}
+    assert entity_client.list.await_args.kwargs["filter_operation"].to_dict() == {
+        "data.principal": {"$eq": "alice@example.com"}
+    }
+
+
+@pytest.mark.asyncio
+async def test_registry_lists_all_service_accounts_when_include_service_accounts() -> None:
+    entity_client = AsyncMock()
+    entity_client.list.return_value = SimpleNamespace(data=[], pagination=SimpleNamespace(total_pages=1))
+    registry = AccessKeyRegistry(entity_client)
+
+    await registry.list_for_principal("admin@example.com", page=1, page_size=100, include_service_accounts=True)
+
+    filter_operation = entity_client.list.await_args.kwargs["filter_operation"]
+    assert filter_operation.to_dict() == {
+        "$or": [
+            {"data.principal": {"$eq": "admin@example.com"}},
+            {"data.entity_type": {"$eq": "SERVICE_ACCOUNT"}},
+        ]
+    }
 
 
 @pytest.mark.asyncio
@@ -252,6 +338,104 @@ async def test_registry_hides_missing_and_other_principals_keys() -> None:
 
     entity_client.get.side_effect = EntityNotFoundError("missing")
     assert not await registry.is_active("ak_missing", "alice@example.com")
+
+
+@pytest.mark.asyncio
+async def test_registry_admin_override_lets_a_different_admin_revoke_a_service_bound_key() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _record(principal="admin-a@example.com", service_account=True)
+    registry = AccessKeyRegistry(entity_client)
+
+    assert await registry.revoke("ak_example", "admin-b@example.com", admin_override=AsyncMock(return_value=True))
+
+    updated = entity_client.update.await_args.args[0]
+    assert updated.status == "REVOKED"
+
+
+@pytest.mark.asyncio
+async def test_registry_admin_override_is_not_consulted_for_a_personal_key() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _record(principal="alice@example.com")
+    registry = AccessKeyRegistry(entity_client)
+    admin_override = AsyncMock(return_value=True)
+
+    with pytest.raises(AccessKeyNotFoundError):
+        await registry.revoke("ak_example", "bob@example.com", admin_override=admin_override)
+
+    admin_override.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_registry_admin_override_denied_still_hides_a_service_bound_key() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _record(principal="admin-a@example.com", service_account=True)
+    registry = AccessKeyRegistry(entity_client)
+
+    with pytest.raises(AccessKeyNotFoundError):
+        await registry.revoke("ak_example", "admin-b@example.com", admin_override=AsyncMock(return_value=False))
+
+
+@pytest.mark.asyncio
+async def test_registry_service_key_creator_must_still_pass_admin_override() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _record(principal="admin-a@example.com", service_account=True)
+    registry = AccessKeyRegistry(entity_client)
+    admin_override = AsyncMock(return_value=False)
+
+    with pytest.raises(AccessKeyNotFoundError):
+        await registry.revoke("ak_example", "admin-a@example.com", admin_override=admin_override)
+
+    admin_override.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_registry_admin_override_is_not_consulted_when_the_caller_already_owns_the_key() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _record(principal="alice@example.com")
+    registry = AccessKeyRegistry(entity_client)
+    admin_override = AsyncMock(return_value=True)
+
+    assert await registry.revoke("ak_example", "alice@example.com", admin_override=admin_override)
+
+    admin_override.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_registry_admin_override_lets_a_different_admin_suspend_and_unsuspend_a_service_bound_key() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.side_effect = [
+        _record(principal="admin-a@example.com", service_account=True),
+        _record(principal="admin-a@example.com", service_account=True).model_copy(update={"status": "SUSPENDED"}),
+    ]
+    registry = AccessKeyRegistry(entity_client)
+    admin_override = AsyncMock(return_value=True)
+
+    suspend_changed, suspend_status = await registry.suspend(
+        "ak_example", "admin-b@example.com", admin_override=admin_override
+    )
+    assert suspend_changed
+    assert suspend_status == "SUSPENDED"
+
+    unsuspend_changed, unsuspend_status = await registry.unsuspend(
+        "ak_example", "admin-b@example.com", admin_override=admin_override
+    )
+    assert unsuspend_changed
+    assert unsuspend_status == "ACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_registry_is_active_for_service_bound_key_checks_subject_not_owner() -> None:
+    entity_client = AsyncMock()
+    record = _record(principal="admin-a@example.com", service_account=True).model_copy(
+        update={"subject_principal": "service-account:otel-collector"}
+    )
+    entity_client.get.return_value = record
+    registry = AccessKeyRegistry(entity_client)
+
+    # Authenticating as the service-account subject succeeds...
+    assert await registry.is_active("ak_example", "service-account:otel-collector")
+    # ...but the owning admin's principal is not itself a valid authentication subject.
+    assert not await registry.is_active("ak_example", "admin-a@example.com")
 
 
 @pytest.mark.asyncio

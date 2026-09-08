@@ -69,11 +69,6 @@ export const evalJobDetailRoute = (workspace: string, row: EvalJobRow): string =
     ? getEvaluationResultDetailsRoute(workspace, row.name)
     : getAgentEvaluationDetailRoute(workspace, row.name);
 
-export const EVAL_JOB_KIND_LABEL: Record<EvalJobKind, string> = {
-  task: 'Task-Driven',
-  dataset: 'Dataset-Driven',
-};
-
 /** Metadata key the evaluator stamps the run's wall-clock seconds under, at publish time. */
 export const EVAL_DURATION_METADATA_KEY = 'eval_duration_sec';
 

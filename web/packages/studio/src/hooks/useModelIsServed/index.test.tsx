@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { modelsGetProvider } from '@nemo/sdk/generated/platform/api';
+import { modelsGetProvider } from '@nemo/sdk/generated/platform/model-providers';
 import type { ModelEntity, ModelProvider } from '@nemo/sdk/generated/platform/schema';
 import { useModelIsServed } from '@studio/hooks/useModelIsServed';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { FC, PropsWithChildren } from 'react';
 
-vi.mock('@nemo/sdk/generated/platform/api', () => ({
+vi.mock('@nemo/sdk/generated/platform/model-providers', () => ({
   modelsGetProvider: vi.fn(),
   getModelsGetProviderQueryKey: (workspace: string, name: string) => [
     'models',

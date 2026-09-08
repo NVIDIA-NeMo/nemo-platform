@@ -6,9 +6,8 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 from nemo_platform_ext.auth.helpers import discover_nmp_config
-from nemo_platform_ext.client.tls import client_verify_from_env
 
-from tests.auth_idp.common import require_capability
+from tests.auth_idp.common import require_capability, runtime_tls_config
 from tests.auth_idp.device_flow import (
     authenticate_authentik_device_flow,
     url_origin,
@@ -26,8 +25,8 @@ pytestmark = [
 def test_provider_gateway_serves_oidc_discovery(auth_idp_case, auth_idp_runtime):
     require_capability(auth_idp_case, "gateway_discovery")
 
-    verify = getattr(auth_idp_runtime, "verify", client_verify_from_env())
-    response = httpx.get(auth_idp_runtime.discovery_url, timeout=10.0, verify=verify)
+    tls_config = runtime_tls_config(auth_idp_runtime)
+    response = httpx.get(auth_idp_runtime.discovery_url, timeout=10.0, **tls_config)
 
     response.raise_for_status()
     discovery = response.json()
@@ -51,7 +50,8 @@ def test_provider_device_authorization_endpoint_issues_user_code(auth_idp_case, 
     require_capability(auth_idp_case, "device_flow")
 
     oidc = discover_nmp_config(auth_idp_runtime.gateway_base_url)
-    verify = getattr(auth_idp_runtime, "verify", client_verify_from_env())
+    tls_config = runtime_tls_config(auth_idp_runtime)
+    assert oidc.device_authorization_endpoint is not None
     device_authorization_endpoint = with_url_origin(
         oidc.device_authorization_endpoint,
         auth_idp_runtime.gateway_base_url,
@@ -63,7 +63,7 @@ def test_provider_device_authorization_endpoint_issues_user_code(auth_idp_case, 
             "scope": oidc.default_scopes,
         },
         timeout=30.0,
-        verify=verify,
+        **tls_config,
     )
 
     response.raise_for_status()
@@ -84,11 +84,12 @@ def test_provider_device_flow_returns_refresh_token(auth_idp_case, auth_idp_runt
     require_capability(auth_idp_case, "device_flow")
 
     oidc = discover_nmp_config(auth_idp_runtime.gateway_base_url)
+    assert oidc.client_id is not None
     assert oidc.token_endpoint
     assert oidc.device_authorization_endpoint
     assert "offline_access" in oidc.default_scopes.split()
 
-    verify = getattr(auth_idp_runtime, "verify", client_verify_from_env())
+    tls_config = runtime_tls_config(auth_idp_runtime)
     device_authorization_endpoint = with_url_origin(
         oidc.device_authorization_endpoint,
         auth_idp_runtime.gateway_base_url,
@@ -102,7 +103,7 @@ def test_provider_device_flow_returns_refresh_token(auth_idp_case, auth_idp_runt
         scope=oidc.default_scopes,
         username=auth_idp_case.provider.interactive_user_username,
         password=auth_idp_case.provider.interactive_user_password,
-        verify=verify,
+        tls_config=tls_config,
     )
 
     refresh_token = token_response.get("refresh_token")
@@ -119,7 +120,7 @@ def test_provider_device_flow_returns_refresh_token(auth_idp_case, auth_idp_runt
             "scope": oidc.default_scopes,
         },
         timeout=30.0,
-        verify=verify,
+        **tls_config,
     )
     refresh_response.raise_for_status()
     refreshed = refresh_response.json()

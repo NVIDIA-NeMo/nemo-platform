@@ -26,6 +26,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [NeMo Plugin Additions](references/nemo-platform-plugin-additions.md) <br>
+- [Retrieval SDG](references/retrieval-sdg.md) <br>
 - [Person Sampling Reference](references/person-sampling.md) <br>
 - [Seed Datasets](references/seed-datasets.md) <br>
 - [Autopilot Workflow](workflows/autopilot.md) <br>

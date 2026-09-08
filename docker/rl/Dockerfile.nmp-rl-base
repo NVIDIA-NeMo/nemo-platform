@@ -86,6 +86,8 @@ RUN ARCH="$(uname -m)" && \
     rm -rf "${F}" "${F}.tar.gz"
 
 # Official CPython (not uv-managed). libpython is $ORIGIN/../lib relative to the binary.
+# The extension modules also link against OpenSSL from this copied prefix, so expose its libdir to
+# the dynamic loader before Python imports urllib's HTTPS support.
 COPY --from=cpython /usr/local /opt/cpython
 RUN chmod -R a+rX /opt/cpython
 
@@ -98,13 +100,15 @@ ARG UV_VERSION
 # Raise uv's HTTP retry budget and cap concurrent downloads for large GitHub-hosted wheels like vLLM,
 # which can hit transient HTTP/2 refused-stream failures under BuildKit.
 ENV UV_PYTHON=/opt/cpython/bin/python3.13 \
+    LD_LIBRARY_PATH=/opt/cpython/lib \
     UV_HTTP_TIMEOUT=120 \
     UV_HTTP_RETRIES=8 \
     UV_CONCURRENT_DOWNLOADS=4 \
     PATH="/opt/cpython/bin:/usr/local/bin:/root/.local/bin:${PATH}"
 RUN umask 022 && \
     curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \
-    cp /root/.local/bin/uv /usr/local/bin/uv
+    cp /root/.local/bin/uv /usr/local/bin/uv && \
+    python3.13 -c 'import ssl, urllib.request; print(ssl.OPENSSL_VERSION)'
 COPY docker/scripts/collect-apt-sources.sh \
     docker/scripts/collect-python-sdists.py \
     /usr/local/bin/
@@ -131,6 +135,14 @@ ENV RAY_USAGE_STATS_ENABLED=0 \
     NRL_CONTAINER=1 \
     NEMO_RL_VENV_DIR=/opt/ray_venvs \
     NEMO_GYM_VENV_DIR=/opt/gym_venvs
+
+# ---- gym-wheel: an installable nemo-gym for the Gym per-server venvs ----
+# Gym resolves `nemo-gym==<parent version>` from an index for every staged server, and this
+# image's fork version is published nowhere. See scripts/build-gym-wheel.sh for the why.
+FROM base AS gym-wheel
+COPY --from=nemo-rl 3rdparty/Gym-workspace/Gym /build/Gym
+RUN --mount=type=bind,source=docker/rl/scripts/build-gym-wheel.sh,target=/build/build-gym-wheel.sh \
+    bash /build/build-gym-wheel.sh /build/Gym /opt/gym-wheels
 
 # ---- builder: uv sync RL + Gym with the extras we use ----
 # fsdp (DPO training), automodel (GRPO training on DTensor V2, the only LoRA-capable DTensor
@@ -251,8 +263,14 @@ grep -Fq \
 
 uv sync ${UV_SYNC_MODE} --extra vllm      --no-install-project   # GRPO generation (vllm 0.20 cu130 + flashinfer + deep_gemm/deep_ep)
 uv sync ${UV_SYNC_MODE} --extra fsdp      --no-install-project   # DPO policy training (flash-attn, mamba-ssm, causal-conv1d)
+
+# Transformer Engine invokes Ninja with all detected CPUs by default. On the arm64 BuildKit worker,
+# eight simultaneous ptxas processes exhaust available memory. Limit only the two extras that
+# can build Transformer Engine; the remaining dependency syncs retain their normal parallelism.
+export NVTE_BUILD_MAX_JOBS=2
 uv sync ${UV_SYNC_MODE} --extra automodel --no-install-project   # GRPO policy training, DTensor V2 (+ LoRA); builds Transformer-Engine
 uv sync ${UV_SYNC_MODE} --extra mcore     --no-install-project   # Megatron training + Megatron-native generation; reuses automodel's TE
+unset NVTE_BUILD_MAX_JOBS
 uv sync ${UV_SYNC_MODE} --extra modelopt  --no-install-project   # quantization / model-opt
 uv sync ${UV_SYNC_MODE} --extra nemo_gym  --no-install-project   # NeMo-Gym (uv workspace member)
 uv sync ${UV_SYNC_MODE} --all-groups      --no-install-project   # build/test/etc groups
@@ -542,12 +560,18 @@ RUN apt-get purge -y ccache vim vim-common less >/dev/null 2>&1 || true; \
         /opt/nvidia/nsight-systems-cli /opt/nvidia/nsight-compute \
         /usr/local/bin/nsys /usr/local/bin/nsys-ui /usr/local/bin/ncu /usr/local/bin/ncu-ui \
     || true
+# UV_FIND_LINKS below is additive: it adds nemo-gym as a local candidate, and everything else
+# still resolves from the index. Copied here rather than in `base` so the build's own uv steps
+# never see a find-links path that does not exist yet.
+COPY --from=gym-wheel /opt/gym-wheels /opt/gym-wheels
+
 # NO_VCS_VERSION=1: with no .git present, nemo_rl/package_info.py's `git rev-parse` would fail on every
 # `import nemo_rl` (harmlessly, but it forks a subprocess each time, and this image starts many
 # worker processes). The flag is package_info.py's own opt-out, so the lookup is skipped entirely.
 ENV VIRTUAL_ENV=/opt/nemo_rl_venv \
     HF_HUB_ENABLE_HF_TRANSFER=1 \
     PATH="/opt/nemo_rl_venv/bin:/usr/local/bin:${PATH}" \
+    UV_FIND_LINKS=/opt/gym-wheels \
     NO_VCS_VERSION=1
 
 # The venv's python symlinks to CPython under /opt/cpython, nemo_rl is installed

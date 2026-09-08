@@ -52,6 +52,7 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
     parallelism = spec.get("parallelism") or {}
 
     common: dict[str, Any] = {
+        "recipe": training.get("recipe", "auto"),
         "peft": _build_peft(training),
         "learning_rate": optimizer.get("learning_rate", 1e-4),
         "min_learning_rate": optimizer.get("min_learning_rate"),
@@ -59,7 +60,7 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
         "adam_beta1": optimizer.get("adam_beta1", 0.9),
         "adam_beta2": optimizer.get("adam_beta2", 0.999),
         "adam_eps": optimizer.get("adam_eps", 1e-8),
-        "optimizer": optimizer.get("optimizer", "Adam"),
+        "optimizer": optimizer.get("optimizer", "auto"),
         "lr_decay_style": optimizer.get("lr_decay_style", "cosine"),
         "warmup_steps": optimizer.get("warmup_steps", 0),
         "epochs": schedule.get("epochs", 1),
@@ -77,6 +78,7 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
         "precision": training.get("precision"),
         "attn_implementation": training.get("attn_implementation", "sdpa"),
         "seed": schedule.get("seed"),
+        "embedding": training.get("embedding"),
         "parallelism": ParallelismParams(
             num_nodes=parallelism.get("num_nodes", 1),
             num_gpus_per_node=parallelism.get("num_gpus_per_node", 1),

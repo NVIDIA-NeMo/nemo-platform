@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 from experimentalist_smoke_test_types import SandboxRunner
+from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import CACHE_STAMP_FILENAME
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _FIXTURE = _REPO_ROOT / "plugins" / "nemo-experimentalist" / "examples" / "smoke-agent"
@@ -40,7 +41,8 @@ class _ExperimentCase:
     """One Mode 2 loop configuration."""
 
     group: str
-    profile: str = "optimizer.yaml"
+    profile: str
+    outcome_evaluator: str
 
 
 @dataclass(frozen=True)
@@ -52,13 +54,23 @@ class _Experiment:
 
 
 _REPAIR_CASES = tuple(
-    pytest.param(_ExperimentCase(group), id=group, marks=pytest.mark.xdist_group(f"mode-2-{group}"))
+    pytest.param(
+        _ExperimentCase(group, "optimizer.yaml", "harbor-native"),
+        id=f"{group}-harbor-native",
+        marks=pytest.mark.xdist_group(f"mode-2-{group}-harbor-native"),
+    )
     for group in ("g1-aggregation", "g2-name-patterns", "g3-long-inputs", "g5-edge-cases")
+) + (
+    pytest.param(
+        _ExperimentCase("g1-aggregation", "optimizer.yaml", "harbor-runner"),
+        id="g1-aggregation-harbor-runner",
+        marks=pytest.mark.xdist_group("mode-2-g1-aggregation-harbor-runner"),
+    ),
 )
 _G4_CASE = pytest.param(
-    _ExperimentCase("g4-dispatch-order", "optimizer-generalization.yaml"),
-    id="g4-dispatch-order",
-    marks=pytest.mark.xdist_group("mode-2-g4-dispatch-order"),
+    _ExperimentCase("g4-dispatch-order", "optimizer-generalization.yaml", "harbor-native"),
+    id="g4-dispatch-order-harbor-native",
+    marks=pytest.mark.xdist_group("mode-2-g4-dispatch-order-harbor-native"),
 )
 
 
@@ -102,7 +114,8 @@ def _run_group(
     *,
     runtime: SandboxRunner,
     artifact_parent: Path,
-    profile_name: str = "optimizer.yaml",
+    profile_name: str,
+    outcome_evaluator: str,
 ) -> tuple[Path, Path]:
     """Run one group from a separate sandbox-side copy of the smoke fixture."""
     artifact_parent.mkdir(parents=True, exist_ok=True)
@@ -115,6 +128,13 @@ def _run_group(
         runtime.replace_text(profile, "g1-aggregation", group, log=log)
     if group == "g5-edge-cases":
         runtime.replace_text(config, "disable_trajectory_scoring: true", "disable_trajectory_scoring: false", log=log)
+    if outcome_evaluator == "harbor-runner":
+        runtime.replace_text(
+            config,
+            "outcome_evaluator_config:",
+            "outcome_evaluator: harbor-runner\noutcome_evaluator_config:",
+            log=log,
+        )
     _run_e2e_command(
         runtime,
         [
@@ -276,6 +296,14 @@ def _assert_g4_rejected_narrow_fix(experiment: Path) -> None:
     assert not broken_controls, f"g4 baseline controls are failing: {sorted(broken_controls)}"
 
 
+def _assert_harbor_runner_execution_provenance(experiment: Path, case: _ExperimentCase) -> None:
+    """Check that runner cases wrote the SDK's Harbor cache-stamp artifact."""
+    if case.outcome_evaluator != "harbor-runner":
+        return
+    stamps = sorted((experiment / "eval-and-optimize" / "results").rglob(CACHE_STAMP_FILENAME))
+    assert stamps, "harbor-runner did not write an SDK Harbor cache stamp into its job directories"
+
+
 @pytest.fixture(scope="session")
 def experiment(
     request: pytest.FixtureRequest,
@@ -286,13 +314,17 @@ def experiment(
     """Run and download one Mode 2 case."""
     case = request.param
     assert isinstance(case, _ExperimentCase)
-    artifact_parent = tmp_path_factory.mktemp(f"mode-2-{case.group}")
+    artifact_parent = tmp_path_factory.mktemp(f"mode-2-{case.group}-{case.outcome_evaluator}")
     path, _ = _run_group(
         case.group,
         runtime=sandbox_runner,
         artifact_parent=artifact_parent,
         profile_name=case.profile,
+        outcome_evaluator=case.outcome_evaluator,
     )
+    run = json.loads((path / "eval-and-optimize" / "run.json").read_text(encoding="utf-8"))
+    assert run.get("config_snapshot", {}).get("outcome_evaluator") == case.outcome_evaluator
+    _assert_harbor_runner_execution_provenance(path, case)
     return _Experiment(case, path)
 
 

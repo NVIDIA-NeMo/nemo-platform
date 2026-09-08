@@ -89,6 +89,27 @@ A local platform can coexist with remote contexts:
 nemo config set --context local --base-url http://localhost:8080
 ```
 
+For a local HTTPS deployment with a private certificate authority, save the CA
+bundle with the cluster:
+
+```bash
+nemo config set --context local-tls --base-url https://localhost:8443 --certificate-authority /path/to/ca.crt
+```
+
+The saved cluster entry uses the `certificate_authority` key.
+
+## Delete a context
+
+Delete a context when you no longer need it:
+
+```bash
+nemo config delete-context local-tls
+```
+
+This follows the same convention as `kubectl config delete-context`: the
+context is removed, but cluster and user records remain. To also remove
+unreferenced cluster and user records, pass `--prune-orphans`.
+
 <Note>
 `NMP_BASE_URL` and `NMP_CURRENT_CONTEXT` override saved configuration for all contexts. If switching contexts does not change the target deployment, unset those variables or update them for the current shell.
 </Note>

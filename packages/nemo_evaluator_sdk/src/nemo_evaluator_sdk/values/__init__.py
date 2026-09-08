@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     )
     from nemo_evaluator_sdk.values.datasets import DatasetInput, DatasetRows
     from nemo_evaluator_sdk.values.evidence import (
+        ATIFTraceHandle,
         CandidateEvidence,
         CommandResult,
         EvidenceDescriptor,
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
         FilesystemEntry,
         LocalFilesystemEvidence,
         LogHandle,
+        OTLPTraceHandle,
         TraceHandle,
         WellKnownEvidenceKey,
         parse_atif,
@@ -157,6 +159,7 @@ _LAZY_ATTRS: dict[str, str] = {
     "InputSchema": ".dataset_schemas",
     "DatasetInput": ".datasets",
     "DatasetRows": ".datasets",
+    "ATIFTraceHandle": ".evidence",
     "CandidateEvidence": ".evidence",
     "CommandResult": ".evidence",
     "EvidenceDescriptor": ".evidence",
@@ -164,6 +167,7 @@ _LAZY_ATTRS: dict[str, str] = {
     "FilesystemEntry": ".evidence",
     "LocalFilesystemEvidence": ".evidence",
     "LogHandle": ".evidence",
+    "OTLPTraceHandle": ".evidence",
     "TraceHandle": ".evidence",
     "WellKnownEvidenceKey": ".evidence",
     "parse_atif": ".evidence",
@@ -251,6 +255,7 @@ __all__ = [
     "AggregateRubricScore",
     "AggregateScore",
     "AggregateScoreBase",
+    "ATIFTraceHandle",
     "BenchmarkEvaluationResult",
     "BooleanValue",
     "CandidateEvidence",
@@ -264,6 +269,7 @@ __all__ = [
     "Metrics",
     "Observation",
     "ObservationResult",
+    "OTLPTraceHandle",
     "Step",
     "ToolCall",
     "Trajectory",

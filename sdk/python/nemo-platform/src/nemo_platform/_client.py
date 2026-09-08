@@ -226,7 +226,7 @@ class NeMoPlatform(SyncAPIClient):
         """
         env_base_url = os.environ.get("NEMO_PLATFORM_BASE_URL")
         bootstrap_base_url = base_url if base_url is not None else env_base_url
-
+        client_verify = client_verify_from_env()
         should_bootstrap = _should_bootstrap_config(
             http_client=http_client,
             base_url=base_url,
@@ -254,6 +254,7 @@ class NeMoPlatform(SyncAPIClient):
                 ):
                     raise TypeError("Expected httpx.Client from sync client factory")
                 http_client = client_init_kwargs.http_client
+                client_verify = client_init_kwargs.client_verify
             except Exception as e:
                 raise RuntimeError(f"NeMoPlatform client initialization failed: {e}") from e
 
@@ -263,7 +264,6 @@ class NeMoPlatform(SyncAPIClient):
         if base_url is None:
             raise RuntimeError("NeMoPlatform client initialization failed: base_url is required")
 
-        client_verify = client_verify_from_env()
         if http_client is None and client_verify is not True:
             http_client = DefaultHttpxClient(verify=client_verify)
 
@@ -569,11 +569,14 @@ class AsyncNeMoPlatform(AsyncAPIClient):
 
             import asyncio
             from nemo_platform import AsyncNeMoPlatform
+            from nemo_platform_plugin.client.adapter import client_from_platform
+            from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 
             async def main() -> None:
                 client = AsyncNeMoPlatform()
-                page = await client.workspaces.list()
-                print(page.data)
+                workspaces = await client_from_platform(client, AsyncWorkspacesClient).list_workspaces()
+                async for ws in workspaces.items():
+                    print(ws.name)
 
             asyncio.run(main())
 
@@ -583,6 +586,8 @@ class AsyncNeMoPlatform(AsyncAPIClient):
 
             import asyncio, os
             from nemo_platform import AsyncNeMoPlatform
+            from nemo_platform_plugin.client.adapter import client_from_platform
+            from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 
             async def main() -> None:
                 client = AsyncNeMoPlatform(
@@ -590,8 +595,9 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                     access_token=os.environ["NMP_ACCESS_TOKEN"],
                     workspace="default",
                 )
-                page = await client.workspaces.list()
-                print(page.data)
+                workspaces = await client_from_platform(client, AsyncWorkspacesClient).list_workspaces()
+                async for ws in workspaces.items():
+                    print(ws.name)
 
             asyncio.run(main())
 
@@ -625,7 +631,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         """
         env_base_url = os.environ.get("NEMO_PLATFORM_BASE_URL")
         bootstrap_base_url = base_url if base_url is not None else env_base_url
-
+        client_verify = client_verify_from_env()
         should_bootstrap = _should_bootstrap_config(
             http_client=http_client,
             base_url=base_url,
@@ -653,6 +659,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                 ):
                     raise TypeError("Expected httpx.AsyncClient from async client factory")
                 http_client = client_init_kwargs.http_client
+                client_verify = client_init_kwargs.client_verify
             except Exception as e:
                 raise RuntimeError(f"NeMoPlatform client initialization failed: {e}") from e
 
@@ -662,7 +669,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         if base_url is None:
             raise RuntimeError("NeMoPlatform client initialization failed: base_url is required")
 
-        client_verify = client_verify_from_env()
         if http_client is None and client_verify is not True:
             http_client = DefaultAsyncHttpxClient(verify=client_verify)
 

@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""``nemo agents optimize prepare-fileset`` — stage an optimize bundle for remote submit.
+"""``nemo agents optimize prepare-fileset`` — stage an optimize bundle for remote submission.
 
-``submit`` is deliberately dumb: it takes a fileset ref and nothing else, because the job runs on
-the platform and cannot see the submitting client's filesystem.  Something has to put the bundle
-there first, and that is this command.  It is a separate verb rather than an implicit upload inside
-``submit`` so the expensive, stateful half (validate a tree, create a fileset, push bytes) stays
-explicit and re-runnable, and so a bundle can be staged once and submitted many times.
+The remote optimize command takes a fileset ref and nothing else, because the job runs on
+the platform and cannot see the submitting client's filesystem. Something has to put the bundle
+there first, and that is this command. It is a separate job-specific command rather than an
+implicit upload inside the remote submission so the expensive, stateful half (validate a tree,
+create a fileset, push bytes) stays explicit and re-runnable, and so a bundle can be staged once
+and submitted many times.
 
 Lives in the agents plugin because agents owns the ``optimize`` CLI surface and the fileset
 helpers; the validation itself is library code in :mod:`nemo_optimization.bundle`.
@@ -29,11 +30,11 @@ PREPARE_FILESET_COMMAND = "prepare-fileset"
 
 
 def register_prepare_fileset_command(group: typer.Typer) -> None:
-    """Add ``prepare-fileset`` to the auto-generated ``optimize`` job group."""
+    """Add ``prepare-fileset`` to the generated ``optimize`` job command."""
 
     @group.command(
         name=PREPARE_FILESET_COMMAND,
-        help="Validate an optimize bundle and upload it to a fileset for `optimize submit`.",
+        help="Validate an optimize bundle and upload it to a fileset for `optimize`.",
     )
     def prepare_fileset(
         source: Annotated[
@@ -51,7 +52,7 @@ def register_prepare_fileset_command(group: typer.Typer) -> None:
             typer.Option(
                 "--optimize-config",
                 help="Optimize YAML, as a path relative to --source. This is the value to pass to "
-                "`optimize submit --optimize-config`.",
+                "`optimize --optimize-config`.",
             ),
         ],
         fileset: Annotated[
@@ -112,7 +113,7 @@ def register_prepare_fileset_command(group: typer.Typer) -> None:
         typer.echo(f"Staged {source}/ to fileset {ws}/{name}.\n")
         typer.echo("Submit the study with:\n")
         typer.echo(
-            f"  nemo agents optimize submit \\\n"
+            f"  nemo agents optimize \\\n"
             f"    --optimize-config-fileset {ws}/{name} \\\n"
             f"    --optimize-config {optimize_config} \\\n"
             + (f"    --agent {agent} \\\n" if agent else "")

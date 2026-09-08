@@ -11,7 +11,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
-import { useEvaluatorListEvaluateJobs } from '@nemo/sdk/generated/evaluator/api';
+import { useEvaluatorListEvaluateJobs } from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import {
   type EvaluateJob,
   type EvaluateJobsListFilter,

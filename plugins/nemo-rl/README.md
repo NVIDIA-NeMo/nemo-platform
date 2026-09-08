@@ -13,9 +13,9 @@ Thin contributor layer only — the heavy compile glue and container tasks live 
 ## Surfaces
 
 - **CLI:** `nemo customization rl submit <job.json> -w <workspace>` (submit-only;
-  `run` is disabled — there is no local execution).
+  there is no local `run` verb or local execution path).
 - **REST:** `POST /apis/customization/v2/workspaces/{workspace}/rl/jobs`
-- **SDK:** `client.customization.rl.jobs.create(...)`
+- **SDK:** `client.customization.rl.jobs.create(...).data()`
 
 ## Constraints
 

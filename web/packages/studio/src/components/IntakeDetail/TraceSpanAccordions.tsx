@@ -3,12 +3,7 @@
 
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import {
-  type ListSpansQueryError,
-  useGetSpan,
-  useListAnnotations,
-  useListSpans,
-} from '@nemo/sdk/generated/platform/api';
+import { useListAnnotations } from '@nemo/sdk/generated/platform/annotations';
 import {
   AnnotationSortField,
   type FeedbackAnnotationInputValue,
@@ -16,6 +11,11 @@ import {
   SpanStatus,
   type Trace,
 } from '@nemo/sdk/generated/platform/schema';
+import {
+  type ListSpansQueryError,
+  useGetSpan,
+  useListSpans,
+} from '@nemo/sdk/generated/platform/spans';
 import { Flex, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
 import { IntakeErrorBanner } from '@studio/components/IntakeDetail/IntakeComponents/IntakeErrorBanner';
 import { TraceSpanGraphView } from '@studio/components/IntakeDetail/TraceSpanGraphView';

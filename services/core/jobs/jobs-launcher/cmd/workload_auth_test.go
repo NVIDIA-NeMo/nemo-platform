@@ -51,6 +51,15 @@ func assertLogNotContains(t *testing.T, logOutput string, unexpected string) {
 	}
 }
 
+func TestSubjectTokenTypeForExchange(t *testing.T) {
+	if got := subjectTokenTypeForExchange("subject-token"); got != jwtTokenType {
+		t.Fatalf("expected JWT subject token type, got %q", got)
+	}
+	if got := subjectTokenTypeForExchange("nmp_obo_v1.delegation.secret"); got != dockerOpaqueWorkloadProofTokenType {
+		t.Fatalf("expected Docker opaque subject token type, got %q", got)
+	}
+}
+
 func TestGetOTLPLogWorkloadAuthHeadersReturnsAuthorizationWithoutMutatingEnv(t *testing.T) {
 	subjectTokenPath := filepath.Join(t.TempDir(), "subject.jwt")
 	if err := os.WriteFile(subjectTokenPath, []byte("subject-token\n"), 0o600); err != nil {

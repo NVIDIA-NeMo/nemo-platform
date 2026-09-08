@@ -17,7 +17,9 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { OPTIMIZER_TYPE_ITEMS } from '@studio/components/NewCustomizationForm/constants';
+import { ControlledStringListInput } from '@studio/components/NewCustomizationForm/ControlledStringListInput';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
+import { GrpoAdvancedSection } from '@studio/components/NewCustomizationForm/GrpoAdvancedSection';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import { useFormContext } from 'react-hook-form';
 
@@ -39,11 +41,12 @@ export const GrpoParametersSection = () => {
   const { control, watch, setValue, formState } = useFormContext<CustomizationFormFields>();
   const disabled = formState.isSubmitting;
   const finetuningType = watch('grpo.finetuning_type');
+  const useDynamicSampling = watch('grpo.use_dynamic_sampling');
   const isLora = finetuningType === RlGRPOTrainingFinetuningType.lora;
 
   return (
     <>
-      <FormSection title="Rollout & Reward">
+      <FormSection title="Rollout & Sampling">
         <Stack gap="density-lg">
           <ControlledSliderWithTextInput
             useControllerProps={{ name: 'rl.training.max_seq_length', control }}
@@ -62,10 +65,10 @@ export const GrpoParametersSection = () => {
             formFieldProps={{
               slotLabel: 'Rollouts per Prompt',
               slotInfo:
-                'Group size: number of responses sampled per prompt. Larger groups give more stable advantage estimates at higher memory cost.',
+                'Group size: responses sampled per prompt, scored against the group mean. Below 4 the advantage estimate is noisy; larger groups are steadier but cost more memory. NeMo RL key: num_generations_per_prompt.',
             }}
             defaultValue={8}
-            min={1}
+            min={2}
             max={64}
             step={1}
             disabled={disabled}
@@ -123,7 +126,7 @@ export const GrpoParametersSection = () => {
             formFieldProps={{
               slotLabel: 'Max New Tokens',
               slotInfo:
-                'Cap on tokens generated per rollout turn. Defaults to the max sequence length, letting a rollout run until the context is exhausted; lower it to bound response length and rollout duration. Cannot exceed max sequence length. NeMo RL key: max_new_tokens.',
+                "Cap on tokens generated per rollout turn; cannot exceed max sequence length. Known limitation: NeMo Gym's verifiers_agent ignores this and uses its own environment max_tokens, so bound response length through Max Sequence Length or the environment. NeMo RL key: max_new_tokens.",
             }}
             defaultValue={2048}
             min={128}
@@ -131,18 +134,206 @@ export const GrpoParametersSection = () => {
             step={128}
             disabled={disabled}
           />
+          <ControlledSliderWithTextInput
+            useControllerProps={{ name: 'grpo.top_k', control }}
+            formFieldProps={{
+              slotLabel: 'Top-K Sampling',
+              slotInfo:
+                'Restrict rollout sampling to the k most likely tokens at each step. Unset samples from the full distribution.',
+            }}
+            unsetPlaceholder="Off"
+            min={1}
+            max={1000}
+            step={1}
+            disabled={disabled}
+          />
+          <ControlledSwitch
+            useControllerProps={{ name: 'grpo.use_dynamic_sampling', control }}
+            formFieldProps={{
+              slotLabel: 'Dynamic Sampling',
+              labelPosition: 'left',
+              slotInfo:
+                'Discard prompt groups whose rewards all match, since a group with no spread teaches nothing, and keep generating until the step is full.',
+            }}
+            disabled={disabled}
+          />
+          {useDynamicSampling && (
+            <Stack gap="density-md" className="pl-density-lg">
+              <ControlledSliderWithTextInput
+                useControllerProps={{ name: 'grpo.batch_multiplier', control }}
+                formFieldProps={{
+                  slotLabel: 'Batch Multiplier',
+                  slotInfo:
+                    'Over-generate each step by this factor so dynamic sampling has candidates to filter. Only settable while dynamic sampling is on.',
+                }}
+                defaultValue={1}
+                min={1}
+                max={8}
+                step={0.1}
+                disabled={disabled}
+              />
+              <ControlledSliderWithTextInput
+                useControllerProps={{ name: 'grpo.dynamic_sampling_max_gen_batches', control }}
+                formFieldProps={{
+                  slotLabel: 'Max Generation Batches',
+                  slotInfo:
+                    'How many generation batches one step may consume trying to fill itself before the run fails.',
+                }}
+                defaultValue={10}
+                min={1}
+                max={100}
+                step={1}
+                disabled={disabled}
+              />
+            </Stack>
+          )}
+        </Stack>
+      </FormSection>
+      <Divider />
+      <FormSection title="Reward" description="How environment scores become the training signal.">
+        <Stack gap="density-lg">
+          <ControlledSwitch
+            useControllerProps={{ name: 'grpo.normalize_rewards', control }}
+            formFieldProps={{
+              slotLabel: 'Normalize Rewards',
+              labelPosition: 'left',
+              slotInfo: 'Normalize rewards within each prompt group before computing advantages.',
+            }}
+            disabled={disabled}
+          />
+          <AccordionRoot multiple>
+            <AccordionItem value="grpo-reward" className="border-b-0">
+              <AccordionTrigger>
+                <Text kind="label/bold/md">Reward Scaling & Shaping</Text>
+              </AccordionTrigger>
+              <AccordionContent>
+                <Stack gap="density-md" className="pt-density-md">
+                  <Text kind="body/regular/sm" color="secondary">
+                    Rescaling maps rewards onto a new range, so a wrong answer can be penalised
+                    rather than merely less rewarded. Leave all four blank for no rescaling; set any
+                    one and the rest fall back to the shown defaults.
+                  </Text>
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'grpo.reward_scaling.source_min', control }}
+                    formFieldProps={{ slotLabel: 'Scale Source Min' }}
+                    unsetPlaceholder="0"
+                    min={-10}
+                    max={10}
+                    step={0.1}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'grpo.reward_scaling.source_max', control }}
+                    formFieldProps={{ slotLabel: 'Scale Source Max' }}
+                    unsetPlaceholder="1"
+                    min={-10}
+                    max={10}
+                    step={0.1}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'grpo.reward_scaling.target_min', control }}
+                    formFieldProps={{ slotLabel: 'Scale Target Min' }}
+                    unsetPlaceholder="0"
+                    min={-10}
+                    max={10}
+                    step={0.1}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'grpo.reward_scaling.target_max', control }}
+                    formFieldProps={{ slotLabel: 'Scale Target Max' }}
+                    unsetPlaceholder="1"
+                    min={-10}
+                    max={10}
+                    step={0.1}
+                    disabled={disabled}
+                  />
+                  <Divider />
+                  <Text kind="body/regular/sm" color="secondary">
+                    Shaping softens the penalty for responses cut off at the length limit instead of
+                    scoring them a flat zero.
+                  </Text>
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{
+                      name: 'grpo.reward_shaping.overlong_buffer_length',
+                      control,
+                    }}
+                    formFieldProps={{ slotLabel: 'Overlong Buffer Length' }}
+                    unsetPlaceholder="Off"
+                    min={1}
+                    max={16384}
+                    step={128}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{
+                      name: 'grpo.reward_shaping.overlong_buffer_penalty',
+                      control,
+                    }}
+                    formFieldProps={{ slotLabel: 'Overlong Buffer Penalty' }}
+                    unsetPlaceholder="Off"
+                    min={0}
+                    max={10}
+                    step={0.1}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{
+                      name: 'grpo.reward_shaping.max_response_length',
+                      control,
+                    }}
+                    formFieldProps={{ slotLabel: 'Max Response Length' }}
+                    unsetPlaceholder="Off"
+                    min={1}
+                    max={131072}
+                    step={128}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{
+                      name: 'grpo.reward_shaping.stop_properly_penalty_coef',
+                      control,
+                    }}
+                    formFieldProps={{ slotLabel: 'Improper Stop Penalty' }}
+                    unsetPlaceholder="Off"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    disabled={disabled}
+                  />
+                </Stack>
+              </AccordionContent>
+            </AccordionItem>
+          </AccordionRoot>
         </Stack>
       </FormSection>
       <Divider />
       <FormSection title="Training Parameters">
         <Stack gap="density-lg">
           <ControlledSliderWithTextInput
+            useControllerProps={{ name: 'rl.training.epochs', control }}
+            formFieldProps={{
+              slotLabel: 'Epochs',
+              slotInfo: 'Passes through the dataset. Max Steps overrides this when both are set.',
+            }}
+            defaultValue={1}
+            min={1}
+            max={100}
+            step={1}
+            disabled={disabled}
+          />
+          <ControlledSliderWithTextInput
             useControllerProps={{ name: 'rl.training.learning_rate', control }}
-            formFieldProps={{ slotLabel: 'Learning Rate' }}
-            defaultValue={1e-4}
-            min={1e-6}
-            max={1e-3}
-            step={1e-6}
+            formFieldProps={{
+              slotLabel: 'Learning Rate',
+              slotInfo:
+                "Peak learning rate. RL fine-tuning runs far lower than SFT: the platform GRPO examples train at 5e-6. Above roughly 2e-5 a full-weight policy typically collapses within a few dozen steps. LoRA needs no separate value — the adapter's effective rate is scaled by alpha / rank, so the default rank 16 / alpha 32 trains at an effective 1e-5.",
+            }}
+            defaultValue={5e-6}
+            min={1e-7}
+            max={1e-4}
+            step={1e-7}
             disabled={disabled}
           />
           <ControlledSliderWithTextInput
@@ -150,19 +341,20 @@ export const GrpoParametersSection = () => {
             formFieldProps={{
               slotLabel: 'KL Penalty',
               slotInfo:
-                'KL penalty coefficient against the reference policy. Higher values keep the model closer to the reference.',
+                'KL penalty coefficient against the reference policy. Higher values keep the model closer to the reference. 0 disables it, which is what most current GRPO recipes do for verifiable-reward tasks; when enabled it usually sits between 0.001 and 0.01.',
             }}
             defaultValue={0.0}
             min={0}
-            max={1}
-            step={0.01}
+            max={0.1}
+            step={0.001}
             disabled={disabled}
           />
           <ControlledSliderWithTextInput
             useControllerProps={{ name: 'rl.training.max_steps', control }}
             formFieldProps={{
               slotLabel: 'Max Steps',
-              slotInfo: 'Maximum training steps. Overrides epochs when set.',
+              slotInfo:
+                'Caps the run at this many optimizer steps. It only ever shortens a run — GRPO trains for one epoch, so the budget is whichever of the two comes first.',
             }}
             defaultValue={500}
             min={1}
@@ -172,7 +364,11 @@ export const GrpoParametersSection = () => {
           />
           <ControlledSliderWithTextInput
             useControllerProps={{ name: 'rl.training.batch_size', control }}
-            formFieldProps={{ slotLabel: 'Global Batch Size' }}
+            formFieldProps={{
+              slotLabel: 'Global Batch Size',
+              slotInfo:
+                'Rollouts per optimizer step, across all GPUs. The rollout batch (prompts per step × rollouts per prompt) is split into chunks of this size, so it has to divide that product exactly.',
+            }}
             defaultValue={32}
             min={1}
             max={256}
@@ -216,35 +412,27 @@ export const GrpoParametersSection = () => {
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'grpo.ratio_clip_min', control }}
                     formFieldProps={{
-                      slotLabel: 'Clip Min',
-                      slotInfo: 'Lower bound for PPO-style importance ratio clipping.',
+                      slotLabel: 'Clip ε (Lower)',
+                      slotInfo:
+                        'Lower half-width of the PPO-style importance ratio clip, not the bound itself: the ratio is clipped to [1 − ε_lower, 1 + ε_upper], so 0.2 clips at 0.8. NeMo RL key: ratio_clip_min.',
                     }}
                     defaultValue={0.2}
-                    min={0}
-                    max={1}
+                    min={0.01}
+                    max={0.5}
                     step={0.01}
                     disabled={disabled}
                   />
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'grpo.ratio_clip_max', control }}
                     formFieldProps={{
-                      slotLabel: 'Clip Max',
-                      slotInfo: 'Upper bound for PPO-style importance ratio clipping.',
+                      slotLabel: 'Clip ε (Upper)',
+                      slotInfo:
+                        'Upper half-width of the importance ratio clip: the ratio is clipped to [1 − ε_lower, 1 + ε_upper], so 0.28 clips at 1.28. Defaulting it above the lower half-width is the DAPO clip-higher recipe, which leaves more room for low-probability tokens to gain and slows entropy collapse. NeMo RL key: ratio_clip_max.',
                     }}
                     defaultValue={0.28}
-                    min={0}
-                    max={2}
+                    min={0.01}
+                    max={0.5}
                     step={0.01}
-                    disabled={disabled}
-                  />
-                  <ControlledSwitch
-                    useControllerProps={{ name: 'grpo.normalize_rewards', control }}
-                    formFieldProps={{
-                      slotLabel: 'Normalize Rewards',
-                      labelPosition: 'left',
-                      slotInfo:
-                        'Normalize rewards within each prompt group before computing advantages.',
-                    }}
                     disabled={disabled}
                   />
                   <ControlledSliderWithTextInput
@@ -291,12 +479,12 @@ export const GrpoParametersSection = () => {
                     useControllerProps={{ name: 'rl.training.min_learning_rate', control }}
                     formFieldProps={{
                       slotLabel: 'Min Learning Rate',
-                      slotInfo: 'Minimum LR for cosine decay.',
+                      slotInfo: 'Floor the cosine schedule decays to. Keep it below the peak LR.',
                     }}
                     defaultValue={0}
                     min={0}
-                    max={1e-3}
-                    step={1e-6}
+                    max={1e-4}
+                    step={1e-7}
                     disabled={disabled}
                   />
                   <ControlledSliderWithTextInput
@@ -321,12 +509,13 @@ export const GrpoParametersSection = () => {
                     useControllerProps={{ name: 'rl.training.adam_eps', control }}
                     formFieldProps={{
                       slotLabel: 'Adam ε',
-                      slotInfo: 'Numerical stability term.',
+                      slotInfo:
+                        'Numerical stability term. The platform default is 1e-5, the value NeMo uses for bf16 training; 1e-8 is the Torch default.',
                     }}
-                    defaultValue={1e-8}
+                    defaultValue={1e-5}
                     min={1e-10}
-                    max={1e-6}
-                    step={1e-10}
+                    max={1e-4}
+                    step={1e-8}
                     disabled={disabled}
                   />
                   <ControlledSliderWithTextInput
@@ -334,12 +523,12 @@ export const GrpoParametersSection = () => {
                     formFieldProps={{
                       slotLabel: 'Evaluate every N steps',
                       slotInfo:
-                        'GRPO validation is a scored rollout pass, not a loss computation. Values ≤ 1.0 are a fraction of an epoch; values > 1.0 are a step count. NeMo RL key: val_check_interval.',
+                        'GRPO validation is a scored rollout pass, not a loss computation, so each one costs about as much as a training step. Interpreted as a step count, clamped to the run length; validation always runs at least once before training ends. NeMo RL key: val_check_interval.',
                     }}
-                    defaultValue={1.0}
-                    min={0.01}
-                    max={10}
-                    step={0.01}
+                    defaultValue={50}
+                    min={2}
+                    max={1000}
+                    step={1}
                     disabled={disabled}
                   />
                   <ControlledSwitch
@@ -445,13 +634,33 @@ export const GrpoParametersSection = () => {
                 step={0.01}
                 disabled={disabled}
               />
+              <ControlledStringListInput
+                useControllerProps={{ name: 'grpo.lora.target_modules', control }}
+                formFieldProps={{
+                  slotLabel: 'Target Modules',
+                  slotInfo:
+                    'Modules to attach adapters to, comma separated. Leave blank for the backend default.',
+                }}
+                placeholder="q_proj, k_proj, v_proj"
+                disabled={disabled}
+              />
+              <ControlledStringListInput
+                useControllerProps={{ name: 'grpo.lora.exclude_modules', control }}
+                formFieldProps={{
+                  slotLabel: 'Exclude Modules',
+                  slotInfo:
+                    'Modules to skip, comma separated. Supports glob patterns, e.g. *out_proj*.',
+                }}
+                placeholder="*out_proj*"
+                disabled={disabled}
+              />
               <ControlledSwitch
                 useControllerProps={{ name: 'grpo.lora.use_triton', control }}
                 formFieldProps={{
                   slotLabel: 'Use Triton Kernels',
                   labelPosition: 'left',
                   slotInfo:
-                    'DTensor v2 Triton LoRA kernels. Disable when tensor_parallel_size > 1.',
+                    'DTensor v2 Triton LoRA kernels. The backend disables them automatically when tensor_parallel_size > 1, so this flag only applies to single-GPU-per-shard runs.',
                 }}
                 disabled={disabled}
               />
@@ -459,6 +668,7 @@ export const GrpoParametersSection = () => {
           )}
         </Stack>
       </FormSection>
+      <GrpoAdvancedSection />
     </>
   );
 };

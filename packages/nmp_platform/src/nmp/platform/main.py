@@ -20,6 +20,7 @@ import runpy
 import sys
 
 from nmp.common.config import get_common_service_config
+from nmp.common.jobs.constants import TASK_CONFIG_ENVVAR
 from nmp.common.observability import initialize_obs, setup_global_instrumentations
 from nmp.common.observability.otel import settings as otel_settings
 from nmp.platform_runner.health import get_platform_resource_attributes
@@ -38,6 +39,7 @@ def run_task(module_name: str, env_vars: list[str], config: str | None) -> int:
             os.environ[key] = value
 
     if config:
+        os.environ[TASK_CONFIG_ENVVAR] = config
         os.environ["NEMO_JOB_STEP_CONFIG"] = config
 
     sys.argv = [module_name]
@@ -87,7 +89,7 @@ Examples:
     task_parser.add_argument(
         "--config",
         type=str,
-        help="Configuration JSON passed via NEMO_JOB_STEP_CONFIG env var",
+        help=f"Configuration JSON passed via {TASK_CONFIG_ENVVAR} env var",
     )
 
     args = parser.parse_args()

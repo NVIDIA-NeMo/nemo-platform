@@ -23,7 +23,7 @@ import {
   getEvaluatorListAgentEvaluateJobsQueryKey,
   useEvaluatorDeleteAgentEvaluateJob,
   useEvaluatorListAgentEvaluateJobs,
-} from '@nemo/sdk/generated/evaluator/api';
+} from '@nemo/sdk/generated/evaluator/evaluator-plugin-agent-eval-jobs-routes';
 import {
   type AgentEvaluateJob,
   type AgentEvaluateJobsListFilter,

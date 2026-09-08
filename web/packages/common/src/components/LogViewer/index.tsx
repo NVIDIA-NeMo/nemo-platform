@@ -5,22 +5,54 @@ import { useStickToBottom } from '@nemo/common/src/hooks/useStickToBottom';
 import type { NotifyFn } from '@nemo/common/src/providers/toast/types';
 import { useNotify } from '@nemo/common/src/providers/toast/useNotify';
 import { triggerDownload } from '@nemo/common/src/utils/file';
-import { formatLogs } from '@nemo/common/src/utils/logs';
+import { formatLogs, type LogLoadProgress } from '@nemo/common/src/utils/logs';
 import type { PlatformJobLog } from '@nemo/sdk/generated/platform/schema';
 import {
   Block,
   Button,
-  CodeSnippet,
+  CodeSnippetActions,
+  CodeSnippetCode,
+  CodeSnippetCopyButton,
+  CodeSnippetRoot,
   Flex,
   Spinner,
   Tag,
   Text,
 } from '@nvidia/foundations-react-core';
 import classNames from 'classnames';
-import { ArrowUp, Download, WrapText } from 'lucide-react';
-import { FC, useMemo, useState } from 'react';
+import { ArrowUp, Copy, Download, WrapText } from 'lucide-react';
+import { FC, useEffect, useMemo, useRef, useState } from 'react';
 
 const DEFAULT_ROW_COUNT = 30;
+
+// The page walk reports after every page, which on a long job is several updates a
+// second. Coalescing them keeps the aria-live region from queueing an announcement
+// per page while still reading as live progress.
+const PROGRESS_UPDATE_INTERVAL_MS = 1_000;
+
+/** Emits `value` immediately, then at most once per `intervalMs`, always settling on
+ *  the latest value. */
+function useThrottledValue<T>(value: T, intervalMs: number): T {
+  const [throttled, setThrottled] = useState(value);
+  const lastEmitRef = useRef(0);
+
+  useEffect(() => {
+    if (value === throttled) return;
+    const emit = () => {
+      lastEmitRef.current = Date.now();
+      setThrottled(value);
+    };
+    const waitMs = intervalMs - (Date.now() - lastEmitRef.current);
+    if (waitMs <= 0) {
+      emit();
+      return;
+    }
+    const timer = setTimeout(emit, waitMs);
+    return () => clearTimeout(timer);
+  }, [value, throttled, intervalMs]);
+
+  return throttled;
+}
 
 interface LogViewerProps {
   logs: PlatformJobLog[];
@@ -29,6 +61,9 @@ interface LogViewerProps {
   rows?: number;
   fillHeight?: boolean;
   emptyMessage?: string;
+  /** Progress of the initial multi-page fetch, shown beneath the loading spinner.
+   *  Ignored once logs are on screen. Callers that fetch in one shot can omit it. */
+  loadProgress?: LogLoadProgress | null;
   /** Where the copy confirmation goes. Defaults to the surrounding ToastProvider; plugins pass `host.notifications.notify`. */
   onNotify?: NotifyFn;
 }
@@ -40,6 +75,7 @@ export const LogViewer: FC<LogViewerProps> = ({
   rows = DEFAULT_ROW_COUNT,
   fillHeight = false,
   emptyMessage = 'No logs available yet',
+  loadProgress,
   onNotify,
 }) => {
   const [showAllLogs, setShowAllLogs] = useState(fillHeight);
@@ -50,6 +86,14 @@ export const LogViewer: FC<LogViewerProps> = ({
   const hasMoreLogs = logs && logs.length > rows;
 
   const isShowingLogs = useMemo(() => logs.length > 0 && !isLoading, [logs.length, isLoading]);
+
+  // Announce the wait straight away; the counts join it once the first page tells us
+  // the denominator.
+  const progressLabel =
+    loadProgress && loadProgress.total > 0
+      ? `Loading logs... ${loadProgress.loaded.toLocaleString()} of ${loadProgress.total.toLocaleString()} lines`
+      : 'Loading logs...';
+  const throttledProgressLabel = useThrottledValue(progressLabel, PROGRESS_UPDATE_INTERVAL_MS);
 
   const notify = useNotify(onNotify);
 
@@ -71,8 +115,29 @@ export const LogViewer: FC<LogViewerProps> = ({
 
   if (isLoading) {
     return (
-      <Flex align="center" justify="center" className="h-full min-h-32 w-full">
+      <Flex
+        direction="column"
+        align="center"
+        justify="center"
+        gap="density-sm"
+        className="h-full min-h-32 w-full"
+      >
         <Spinner size="medium" aria-label="Loading..." />
+        {/* The fetch walks the log a page at a time, so on a large job this sits here
+            for many round-trips. Mounted for every caller that opts into progress,
+            so that the counts arriving with the first page are a mutation inside a
+            live region already in the DOM — screen readers that only announce such
+            mutations skip a region that appears already populated. */}
+        {loadProgress !== undefined && (
+          <Text
+            kind="mono/md"
+            className="text-subtle"
+            aria-live="polite"
+            data-testid="log-load-progress"
+          >
+            {throttledProgressLabel}
+          </Text>
+        )}
       </Flex>
     );
   }
@@ -95,38 +160,23 @@ export const LogViewer: FC<LogViewerProps> = ({
           </Tag>
         </Block>
       )}
-      <CodeSnippet
-        language="shell"
-        value={logText}
+      <CodeSnippetRoot
         kind="block"
         collapsible={false}
         rows={fillHeight ? undefined : rows}
-        onCopySuccess={() => notify('Copied to clipboard!', 'success', { durationMs: 3000 })}
         className="min-h-auto h-full"
-        attributes={{
-          CodeSnippetCode: {
-            ref: codeScrollRef,
-            className: classNames(
-              'min-w-0 max-w-full',
-              { 'h-full !overflow-y-auto': fillHeight },
-              // Keep scroll on when wrapping: wrapped rows exceed the fixed height.
-              { '!overflow-y-hidden': !showAllLogs && !wrapLines },
-              {
-                'whitespace-pre-wrap [overflow-wrap:anywhere] [&_code]:whitespace-pre-wrap [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]':
-                  wrapLines,
-              }
-            ),
-          },
-        }}
-        slotActions={
+      >
+        <CodeSnippetActions>
           <Flex className="w-full" justify="between" wrap="wrap">
             <Text kind="mono/md">
-              {displayedLogs.length} {!showAllLogs && hasMoreLogs && `of ${logs.length}`} lines
+              {displayedLogs.length.toLocaleString()}{' '}
+              {!showAllLogs && hasMoreLogs && `of ${logs.length.toLocaleString()}`} lines
             </Text>
             <Flex gap="0.25">
               <Button
                 size="tiny"
                 kind={wrapLines ? 'secondary' : 'tertiary'}
+                title="Wrap lines"
                 aria-label="Wrap lines"
                 aria-pressed={wrapLines}
                 onClick={() => setWrapLines((prev) => !prev)}
@@ -134,14 +184,43 @@ export const LogViewer: FC<LogViewerProps> = ({
                 <WrapText />
               </Button>
               {downloadFilename && (
-                <Button size="tiny" kind="tertiary" onClick={handleDownload}>
+                <Button
+                  size="tiny"
+                  kind="tertiary"
+                  title="Download logs"
+                  aria-label="Download logs"
+                  onClick={handleDownload}
+                >
                   <Download />
                 </Button>
               )}
             </Flex>
           </Flex>
-        }
-      />
+          <CodeSnippetCopyButton
+            value={logText}
+            title="Copy logs"
+            aria-label="Copy logs"
+            onClick={() => notify('Copied to clipboard!', 'success', { durationMs: 3000 })}
+          >
+            <Copy />
+          </CodeSnippetCopyButton>
+        </CodeSnippetActions>
+        <CodeSnippetCode
+          value={logText}
+          language="shell"
+          ref={codeScrollRef}
+          className={classNames(
+            'min-w-0 max-w-full',
+            { 'h-full !overflow-y-auto': fillHeight },
+            // Keep scroll on when wrapping: wrapped rows exceed the fixed height.
+            { '!overflow-y-hidden': !showAllLogs && !wrapLines },
+            {
+              'whitespace-pre-wrap [overflow-wrap:anywhere] [&_code]:whitespace-pre-wrap [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]':
+                wrapLines,
+            }
+          )}
+        />
+      </CodeSnippetRoot>
     </Block>
   );
 };

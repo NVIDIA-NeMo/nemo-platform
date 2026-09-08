@@ -6,7 +6,10 @@ import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { PlatformJobResponse, PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
-import { customizationJob1 } from '@studio/mocks/customizer/customization-jobs';
+import {
+  customizationJob1,
+  failedGrpoCustomizationJob,
+} from '@studio/mocks/customizer/customization-jobs';
 import { dataset } from '@studio/mocks/datasets';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { server } from '@studio/mocks/node';
@@ -143,69 +146,63 @@ describe('CustomizationJobDetailsRoute', () => {
     );
   });
 
-  it('Should render error message for a failed customization', async () => {
-    const user = userEvent.setup();
-    const mockErrorDetail =
-      'CUDA out of memory. Tried to allocate 896.00 MiB. GPU 1 has a total capacity of 79.32 GiB of which 185.56 MiB is free.';
+  describe('a failed job', () => {
+    beforeEach(() => {
+      mockUseNavigate();
+      mockUseParams({
+        [ROUTE_PARAMS.workspace]: workspace1.name,
+        [ROUTE_PARAMS.customizationJobName]: failedGrpoCustomizationJob.name,
+      });
+    });
 
-    server.use(
-      http.get<never, never, PlatformJobResponse>(
-        `${PLATFORM_BASE_URL}/apis/jobs/v2/workspaces/:workspace/jobs/:name`,
-        () => {
-          return HttpResponse.json({
-            ...customizationJob1,
-            status: PlatformJobStatus.error,
-            status_details: {
-              created_at: customizationJob1.created_at!,
-              updated_at: customizationJob1.updated_at!,
-              status: 'failed',
-              status_logs: [
-                {
-                  updated_at: customizationJob1.updated_at!,
-                  message: 'TraingJobFailed',
-                  detail: mockErrorDetail,
-                },
-              ],
-            },
-          } as unknown as PlatformJobResponse);
-        }
-      ),
-      http.get(`${PLATFORM_BASE_URL}/apis/jobs/v2/workspaces/:workspace/jobs/:name/logs`, () =>
-        HttpResponse.json({
-          data: [
-            {
-              timestamp: customizationJob1.updated_at!,
-              job: customizationJob1.name,
-              job_step: 'training',
-              job_task: 'main',
-              message: mockErrorDetail,
-            },
-          ],
-          total: 1,
-          next_page: '',
-          prev_page: '',
-        })
-      )
-    );
+    it('shows the mapped cause from the failing task, not the generic job-level text', async () => {
+      render(
+        <TestProviders>
+          <CustomizationJobDetailsRoute />
+        </TestProviders>
+      );
 
-    render(
-      <TestProviders>
-        <CustomizationJobDetailsRoute />
-      </TestProviders>
-    );
+      const banner = await screen.findByTestId('customization-error-banner', undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      });
 
-    // Ensure status is error (PlatformJobStatus.error displays as "Error")
-    expect(
-      await screen.findByText('Error', undefined, { timeout: XL_SELECTOR_TIMEOUT })
-    ).toBeInTheDocument();
+      expect(banner).toHaveTextContent(/ran out of GPU memory/);
+      expect(banner).not.toHaveTextContent(/One or more tasks are in error state/);
+    });
 
-    await user.click(await screen.findByRole('tab', { name: /Logs/ }));
+    it('names the failing pipeline step and the mapped error type', async () => {
+      render(
+        <TestProviders>
+          <CustomizationJobDetailsRoute />
+        </TestProviders>
+      );
 
-    await waitFor(
-      () => {
-        expect(screen.getByText(/CUDA out of memory/)).toBeInTheDocument();
-      },
-      { timeout: XL_SELECTOR_TIMEOUT }
-    );
+      const banner = await screen.findByTestId('customization-error-banner', undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      });
+
+      expect(banner).toHaveTextContent('Failed during GRPO training');
+      expect(banner).toHaveTextContent('CudaError');
+    });
+
+    it('opens the logs tab from the banner', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <TestProviders>
+          <CustomizationJobDetailsRoute />
+        </TestProviders>
+      );
+
+      await user.click(
+        await screen.findByRole(
+          'button',
+          { name: /View GRPO training logs/ },
+          { timeout: XL_SELECTOR_TIMEOUT }
+        )
+      );
+
+      expect(await screen.findByRole('tab', { name: /Logs/, selected: true })).toBeInTheDocument();
+    });
   });
 });

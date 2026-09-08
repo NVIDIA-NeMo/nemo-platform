@@ -234,12 +234,12 @@ session with the Evaluation's identity:
 - For Agent Trajectory Interchange Format (ATIF) and chat-completions, add a **top-level**
   `evaluation_context` object to the ingest payload
   carrying `evaluation_name` and `test_case_name`.
-- For OpenTelemetry Protocol (OTLP), set the `nemo.evaluation.name` and
-  `nemo.test_case.name` root-span attributes.
+- For OpenTelemetry Protocol (OTLP), set `nemo.evaluation.name` and
+  `nemo.test_case.name` on each trace's root span.
 
 The per-evaluator scores on the leaderboard come from **evaluator results** captured on those
-sessions, either automatically from ATIF verifier rewards or explicitly through the evaluator-results
-endpoint. Refer to
+sessions. Intake can derive them from ATIF verifier rewards. OTLP traces carry session telemetry, so
+the framework or caller must publish their scores through the evaluator-results endpoint. Refer to
 [Capture Evaluator Results](/documentation/agents/observe-agents#capture-evaluator-results) for both
 paths, and [Observe Agents](/documentation/agents/observe-agents) for the ingestion paths themselves.
 The `nemo-experiments-upload` skill walks this through end to end.
@@ -292,8 +292,29 @@ curl --fail-with-body -X POST \
       }'
 ```
 
-To **move or re-scope** an existing Evaluation's membership, `PATCH` its `experiment_ids`, which must
-stay non-empty:
+### Associate an Evaluation with Another Experiment
+
+An Evaluation can belong to several Experiments simultaneously, which is useful when the same run should
+appear on both a per-project board and a cross-project benchmark. To demonstrate adding a second membership,
+first create the second Experiment and capture its ID:
+
+```bash
+curl --fail-with-body -X POST \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "name": "reranker-cross-project-benchmark",
+        "description": "Compare reranker candidates across projects."
+      }'
+
+export OTHER_EXPERIMENT_ID=$(curl --fail-with-body --silent \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-cross-project-benchmark" \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+```
+
+Then `PATCH` the existing Evaluation's `experiment_ids` with both IDs. The list must stay non-empty:
 
 ```bash
 curl --fail-with-body -X PATCH \
@@ -302,9 +323,6 @@ curl --fail-with-body -X PATCH \
   -H "Content-Type: application/json" \
   -d '{ "experiment_ids": ["'"$EXPERIMENT_ID"'", "'"$OTHER_EXPERIMENT_ID"'"] }'
 ```
-
-An Evaluation can belong to several Experiments simultaneously, which is useful when the same run should
-appear on both a per-project board and a cross-project benchmark.
 
 ### Update an Evaluation
 
@@ -374,6 +392,18 @@ Keep the current baseline, or any reference run, at the top of the Experiment fo
 
 ```bash
 curl --fail-with-body -X POST \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations" \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "name": "reranker-main-baseline",
+        "experiment_ids": ["'"$EXPERIMENT_ID"'"],
+        "dataset_name": "support-bench",
+        "dataset_version": "v3",
+        "metadata": { "reranker": "main-baseline" }
+      }'
+
+curl --fail-with-body -X POST \
   -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-main-baseline/pin"
 
@@ -428,6 +458,9 @@ curl --fail-with-body -X DELETE \
   "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/evaluations/reranker-bge-large"
 curl --fail-with-body -X DELETE \
   -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-cross-project-benchmark"
+curl --fail-with-body -X DELETE \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
   "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/experiments/reranker-prompt-iteration"
 ```
 
@@ -446,8 +479,8 @@ You typically do not create Evaluations manually. Common producers include:
 
 - **Optimizer**: records each run as an Experiment and its candidates as Evaluations, so results land
   automatically. Refer to [Optimize Agents](/documentation/agents/optimize-agents).
-- **Evaluation framework**: a framework like Harbor sends complete trajectories through Intake's ATIF
-  ingest, and each run becomes an Evaluation with its final metrics as evaluator results. Refer to
+- **Evaluation framework**: a framework like Harbor sends trajectories through Intake's ATIF or OTLP
+  ingest, publishes its scores as evaluator results, and records each run as an Evaluation. Refer to
   [Observe Agents](/documentation/agents/observe-agents).
 - **Direct API**: create the Experiment and Evaluations, then ingest their sessions, for a custom
   evaluation pipeline.

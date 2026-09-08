@@ -7,7 +7,7 @@ import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { DEFAULT_PAGE_SIZE_OPTIONS } from '@nemo/common/src/constants/pagination';
-import { useListExperiments } from '@nemo/sdk/generated/platform/api';
+import { useListExperiments } from '@nemo/sdk/generated/platform/experiments';
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text } from '@nvidia/foundations-react-core';
 import { getExperimentDetailRoute } from '@studio/routes/utils';

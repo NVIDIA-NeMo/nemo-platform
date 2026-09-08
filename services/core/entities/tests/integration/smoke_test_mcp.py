@@ -16,6 +16,8 @@ import pytest
 from fastmcp import FastMCP
 from mcp.types import TextContent
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
 from nmp.common.sdk_factory import get_platform_sdk
 from nmp.core.entities.mcp.server import create_server
 
@@ -52,9 +54,9 @@ class TestEntitiesMCPServerSmoke:
 
     def test_nmp_connection(self, nemo_sdk: NeMoPlatform) -> None:
         """Verify we can connect to NeMo Platform instance."""
-        response = nemo_sdk.workspaces.list()
+        response = client_from_platform(nemo_sdk, WorkspacesClient).list_workspaces()
         assert response is not None
-        assert hasattr(response, "data")
+        assert response.page().items is not None
 
     def test_mcp_server_created(self, mcp_server: FastMCP) -> None:
         """Verify MCP server instance is created."""
@@ -79,8 +81,8 @@ class TestEntitiesMCPServerSmoke:
         import json
 
         # Get workspaces via SDK
-        sdk_response = nemo_sdk.workspaces.list()
-        sdk_workspace_ids = {ws.id for ws in sdk_response.data}
+        sdk_response = client_from_platform(nemo_sdk, WorkspacesClient).list_workspaces()
+        sdk_workspace_ids = {ws.id for ws in sdk_response.items()}
 
         # Get workspaces via MCP tool
         tool_result = await mcp_server.call_tool("list_workspaces", {})
@@ -96,8 +98,8 @@ class TestEntitiesMCPServerSmoke:
         )
 
         # Verify counts match
-        assert mcp_result["total"] == len(sdk_response.data), (
-            f"MCP total {mcp_result['total']} should match SDK count {len(sdk_response.data)}"
+        assert mcp_result["total"] == sdk_response.page().metadata["total_results"], (
+            f"MCP total {mcp_result['total']} should match SDK count {sdk_response.page().metadata['total_results']}"
         )
 
     @pytest.mark.asyncio
@@ -110,19 +112,12 @@ class TestEntitiesMCPServerSmoke:
         import json
 
         class FailingWorkspacesClient:
-            def list(self, *args: object, **kwargs: object) -> object:
+            def list_workspaces(self, *args: object, **kwargs: object) -> object:
                 raise RuntimeError("platform unavailable")
 
-        class FailingPlatformClient:
-            workspaces = FailingWorkspacesClient()
-
-        def get_failing_platform_sdk(base_url: str | None = None) -> FailingPlatformClient:
-            _ = base_url
-            return FailingPlatformClient()
-
         monkeypatch.setattr(
-            "nmp.core.entities.mcp.server.get_platform_sdk",
-            get_failing_platform_sdk,
+            "nmp.core.entities.mcp.server.client_from_platform",
+            lambda sdk, client_cls: FailingWorkspacesClient(),
         )
         bad_server = create_server("http://unused.example.com")
         tool_result = await bad_server.call_tool("list_workspaces", {})

@@ -11,7 +11,7 @@ The NeMo Platform Helm chart does **not** install [Volcano](https://volcano.sh/e
 
 The chart grants the core controller Volcano RBAC when `rbac.volcanoEnabled` is `true` (the default).
 
-Job-level knobs (`queue`, `scheduler_name`, `plugins`) are documented in [Manage Jobs](/documentation/self-managed-deployment/setup/jobs). Multi-node NCCL injection still requires [Kyverno](/documentation/self-managed-deployment/setup/helm/multinode-networking) in addition to Volcano.
+Job-level knobs (`queue`, `scheduler_name`, `plugins`) are documented in [Manage Jobs](/documentation/kubernetes-deployment/setup/jobs). Multi-node NCCL injection still requires [Kyverno](/documentation/kubernetes-deployment/setup/helm/multinode-networking) in addition to Volcano.
 
 ## Install
 

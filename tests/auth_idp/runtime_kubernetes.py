@@ -7,6 +7,7 @@ import base64
 import contextlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -21,16 +22,18 @@ from typing import TypeVar
 import httpx
 import pytest
 from nemo_platform import DefaultHttpxClient, NeMoPlatform
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
+from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, HttpxTLSConfig
 
 from tests.auth_idp.common import jwt_claims
-from tests.auth_idp.runtime_contract import AuthIdpCase, TokenSet
+from tests.auth_idp.runtime_contract import AuthIdpCase, DeploymentWorkloadRuntimeConfig, TokenSet
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NAMESPACE = os.environ.get("NMP_AUTHENTIK_K8S_NAMESPACE", "nemo-authentik")
 HELM_RELEASE = os.environ.get("NMP_AUTHENTIK_K8S_HELM_RELEASE", "authentik-demo")
 HELM_CHART = Path("contrib/auth/authentik/helm")
 ENVOY_TLS_SECRET = "nemo-platform-envoy-tls"
+IN_CLUSTER_ENVOY_BASE_URL = f"https://nemo-platform-envoy.{NAMESPACE}.svc.cluster.local:8080"
+DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE = "/etc/nmp/workload-token-ca/ca.crt"
 WORKLOAD_AUDIENCE = "nemo-platform"
 WORKLOAD_CLIENT_ID = "nemo-platform-workload"
 AUTHENTIK_K8S_WORKLOAD_IDENTITY_PASSWORD = "workload-identity-dev-only"
@@ -44,8 +47,29 @@ ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
 T = TypeVar("T")
 
 
+_DURATION_TOKEN_RE = re.compile(r"(\d+)([hms])")
+
+
+def _duration_seconds(value: str) -> int:
+    if value.isdigit():
+        return int(value)
+
+    total = 0
+    position = 0
+    for match in _DURATION_TOKEN_RE.finditer(value):
+        if match.start() != position:
+            raise ValueError(f"invalid duration: {value}")
+        amount, unit = match.groups()
+        total += int(amount) * {"h": 3600, "m": 60, "s": 1}[unit]
+        position = match.end()
+
+    if position != len(value) or total == 0:
+        raise ValueError(f"invalid duration: {value}")
+    return total
+
+
 # Keep timeouts centralized so slow-cluster tuning is a single, visible edit.
-PYTEST_TIMEOUT_SECONDS = 900
+PYTEST_TIMEOUT_SECONDS = 2400
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 120
 DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS = 60
 POD_DISCOVERY_TIMEOUT_SECONDS = 60
@@ -55,8 +79,17 @@ IMAGE_LOAD_TIMEOUT_SECONDS = 300
 CLUSTER_DELETE_TIMEOUT_SECONDS = 180
 ROLLOUT_STATUS_TIMEOUT = "240s"
 ROLLOUT_COMMAND_TIMEOUT_SECONDS = 300
-HELM_WAIT_TIMEOUT = "10m"
-HELM_UPGRADE_COMMAND_TIMEOUT_SECONDS = 900
+HELM_WAIT_TIMEOUT_DEFAULT = "20m"
+HELM_WAIT_TIMEOUT = os.environ.get("NMP_AUTHENTIK_K8S_HELM_WAIT_TIMEOUT", HELM_WAIT_TIMEOUT_DEFAULT)
+HELM_UPGRADE_COMMAND_GRACE_SECONDS = 300
+try:
+    _helm_wait_seconds = _duration_seconds(HELM_WAIT_TIMEOUT)
+except ValueError as exc:
+    raise RuntimeError(
+        "NMP_AUTHENTIK_K8S_HELM_WAIT_TIMEOUT must be a helm duration such as "
+        f"'20m', '1h30m', or a plain number of seconds; got {HELM_WAIT_TIMEOUT!r}"
+    ) from exc
+HELM_UPGRADE_COMMAND_TIMEOUT_SECONDS = _helm_wait_seconds + HELM_UPGRADE_COMMAND_GRACE_SECONDS
 HELM_REPO_TIMEOUT_SECONDS = 60
 HELM_DEPENDENCY_TIMEOUT_SECONDS = 300
 HTTP_RETRY_TIMEOUT_SECONDS = 180
@@ -169,6 +202,13 @@ def _diagnostic_output_text(output: str | bytes | None) -> str:
     return output
 
 
+def _diagnostic_text_tail(path: Path, *, limit: int = 4000) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[-limit:]
+    except OSError:
+        return ""
+
+
 def _write_diagnostic_timeout(log_dir: Path, name: str, args: list[str], exc: subprocess.TimeoutExpired) -> None:
     (log_dir / name).write_text(
         "\n".join(
@@ -195,6 +235,24 @@ def _write_diagnostic_command(
     timeout: float = DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
 ) -> None:
     _write_diagnostic_process(log_dir, name, _kubectl_command(context, args, kubeconfig), timeout=timeout)
+
+
+def _port_forward_log_file(service: str) -> Path | None:
+    configured_dir = os.environ.get("NMP_AUTHENTIK_K8S_LOG_DIR")
+    if not configured_dir:
+        return None
+    safe_service = service.replace("/", "_")
+    return Path(configured_dir) / f"port-forward-{safe_service}.log"
+
+
+def _port_forward_exit_message(returncode: int, log_file: Path | None) -> str:
+    message = f"kubectl port-forward exited early with {returncode}"
+    if log_file is None:
+        return message
+    log_tail = _diagnostic_text_tail(log_file)
+    if not log_tail.strip():
+        return message
+    return f"{message}\nport-forward log ({log_file}):\n{log_tail}"
 
 
 def _collect_kubernetes_diagnostics(context: str, cluster_name: str, kubeconfig: Path | None = None) -> Path:
@@ -599,10 +657,12 @@ def _get_json_with_retries(
     url: str,
     *,
     timeout: float = HTTP_RETRY_TIMEOUT_SECONDS,
-    verify: str | bool = True,
+    tls_config: HttpxTLSConfig | None = None,
 ) -> dict:
+    request_tls_config: HttpxTLSConfig = {} if tls_config is None else tls_config
+
     def get_json(remaining: float) -> dict | None:
-        response = httpx.get(url, timeout=min(HTTP_REQUEST_TIMEOUT_SECONDS, remaining), verify=verify)
+        response = httpx.get(url, timeout=min(HTTP_REQUEST_TIMEOUT_SECONDS, remaining), **request_tls_config)
         if response.status_code >= 500:
             return None
         response.raise_for_status()
@@ -662,32 +722,48 @@ def _start_port_forward_service(
     kubeconfig: Path | None = None,
 ) -> tuple[str, subprocess.Popen[str]]:
     port = _configured_gateway_port() or _free_port()
-    process = subprocess.Popen(
-        _kubectl_command(
-            context,
-            [
-                "-n",
-                NAMESPACE,
-                "port-forward",
-                f"svc/{service}",
-                f"{port}:8080",
-            ],
-            kubeconfig,
-        ),
-        cwd=REPO_ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        text=True,
+    command = _kubectl_command(
+        context,
+        [
+            "-n",
+            NAMESPACE,
+            "port-forward",
+            f"svc/{service}",
+            f"{port}:8080",
+        ],
+        kubeconfig,
     )
+    log_file = _port_forward_log_file(service)
+    log_handle = None
+    stdout = subprocess.DEVNULL
+    if log_file is not None:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        log_handle = log_file.open("w", encoding="utf-8")
+        log_handle.write(f"command: {' '.join(command)}\n\n")
+        log_handle.flush()
+        stdout = log_handle
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=REPO_ROOT,
+            stdout=stdout,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    finally:
+        if log_handle is not None:
+            log_handle.close()
     gateway_url = f"https://127.0.0.1:{port}"
+    tls_config: HttpxTLSConfig = {"verify": str(ca_bundle)}
 
     def wait_for_gateway_ready(remaining: float) -> httpx.Response:
         if process.poll() is not None:
-            raise AssertionError(f"kubectl port-forward exited early with {process.returncode}")
+            assert process.returncode is not None
+            raise AssertionError(_port_forward_exit_message(process.returncode, log_file))
         return httpx.get(
             gateway_url + GATEWAY_READY_PATH,
             timeout=min(PORT_FORWARD_HTTP_TIMEOUT_SECONDS, remaining),
-            verify=str(ca_bundle),
+            **tls_config,
         )
 
     try:
@@ -794,6 +870,7 @@ class KubernetesAuthIdpRuntime:
 
     def exchange_workload_token(self, subject_token: str) -> TokenSet:
         assert self.workload_token_endpoint is not None
+        tls_config: HttpxTLSConfig = {"verify": self.verify}
         response = httpx.post(
             self.workload_token_endpoint,
             data={
@@ -806,13 +883,35 @@ class KubernetesAuthIdpRuntime:
                 "scope": "openid email groups",
             },
             timeout=TOKEN_EXCHANGE_TIMEOUT_SECONDS,
-            verify=self.verify,
+            **tls_config,
         )
         response.raise_for_status()
         token_response = response.json()
         access_token = token_response["access_token"]
         assert token_response.get("token_type", "").lower() == "bearer"
         return TokenSet(access_token=access_token, claims=jwt_claims(access_token))
+
+    def workload_platform_token(self) -> TokenSet:
+        return self.exchange_workload_token(self.workload_subject_token())
+
+    def deployment_workload_runtime_config(self) -> DeploymentWorkloadRuntimeConfig:
+        assert self.ca_bundle is not None
+        ca_bundle = self.ca_bundle.read_text(encoding="utf-8")
+        return DeploymentWorkloadRuntimeConfig(
+            env=(
+                {"name": "NMP_BASE_URL", "value": IN_CLUSTER_ENVOY_BASE_URL},
+                {"name": "NMP_CLIENT_SSL_CERT_FILE", "value": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE},
+                {"name": "SSL_CERT_FILE", "value": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE},
+                {"name": "REQUESTS_CA_BUNDLE", "value": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE},
+            ),
+            config_files=(
+                {
+                    "path": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE,
+                    "content": ca_bundle,
+                    "mode": 0o644,
+                },
+            ),
+        )
 
     def e2e_setup_sdk(self) -> NeMoPlatform:
         return self._sdk_for_token(self.e2e_setup_token().access_token)
@@ -821,7 +920,7 @@ class KubernetesAuthIdpRuntime:
         return self._sdk_for_token(self.interactive_user_token().access_token)
 
     def workload_provider_sdk(self) -> NeMoPlatform:
-        return self._sdk_for_token(self.exchange_workload_token(self.workload_subject_token()).access_token)
+        return self._sdk_for_token(self.workload_platform_token().access_token)
 
     def workload_role_principals(self) -> list[str]:
         return [f"system:serviceaccounts:{NAMESPACE}"]
@@ -908,7 +1007,7 @@ class KubernetesAuthIdpRuntime:
     def _exchange_token(self, token_endpoint: str, grant: dict[str, str]) -> str:
         from tests.auth_idp.conftest import _exchange_token_with_retries
 
-        return _exchange_token_with_retries(token_endpoint, grant, verify=self.verify)
+        return _exchange_token_with_retries(token_endpoint, grant, tls_config={"verify": self.verify})
 
     def _sdk_for_token(self, token: str) -> NeMoPlatform:
         return NeMoPlatform(

@@ -7,6 +7,13 @@ import type { FC } from 'react';
 
 export type StatTileStatus = 'success' | 'warning' | 'error' | 'neutral';
 
+/**
+ * `default` is the diagnostics tile: compact label, hint line, capped width.
+ * `metric` is the overview tile: larger label, the trailing label reads as a
+ * unit sitting on the value's baseline, and the tile fills its grid column.
+ */
+export type StatTileVariant = 'default' | 'metric';
+
 export interface StatTileProps {
   label: string;
   value: string;
@@ -14,8 +21,15 @@ export interface StatTileProps {
   trailingLabelStatus?: StatTileStatus;
   hint?: string;
   hintStatus?: StatTileStatus;
+  /**
+   * The tile's own health, independent of `trailingLabelStatus`/`hintStatus`: only this tints the
+   * border, so a value's delta direction (e.g. loss falling) never reads as a threshold breach.
+   * `success`/`neutral` keep the default border — only `warning`/`error` stand out.
+   */
+  status?: StatTileStatus;
   className?: string;
   bordered?: boolean;
+  variant?: StatTileVariant;
 }
 
 const MUTED_CLASS_NAME = 'text-placeholder';
@@ -27,6 +41,11 @@ const STATUS_CLASS_NAME: Record<StatTileStatus, string> = {
   neutral: MUTED_CLASS_NAME,
 };
 
+const BORDER_STATUS_CLASS_NAME: Partial<Record<StatTileStatus, string>> = {
+  warning: 'border-(--border-color-feedback-warning)',
+  error: 'border-(--border-color-feedback-danger)',
+};
+
 export const StatTile: FC<StatTileProps> = ({
   label,
   value,
@@ -34,29 +53,40 @@ export const StatTile: FC<StatTileProps> = ({
   trailingLabelStatus,
   hint,
   hintStatus,
+  status,
   className,
   bordered = true,
+  variant = 'default',
 }) => {
+  const isMetric = variant === 'metric';
+  const neutralClassName = isMetric ? 'text-secondary' : MUTED_CLASS_NAME;
+  const statusClassName = (status: StatTileStatus | undefined) =>
+    status && status !== 'neutral' ? STATUS_CLASS_NAME[status] : neutralClassName;
+
   const content = (
-    <Stack gap="density-sm">
-      <Text kind="body/regular/sm" className={MUTED_CLASS_NAME}>
+    <Stack gap={isMetric ? 'density-xxs' : 'density-sm'}>
+      <Text kind={isMetric ? 'body/regular/md' : 'body/regular/sm'} className={neutralClassName}>
         {label}
       </Text>
-      <Flex align="baseline" gap="density-sm" wrap="wrap">
+      <Flex
+        align={isMetric ? 'end' : 'baseline'}
+        gap={isMetric ? 'density-md' : 'density-sm'}
+        wrap="wrap"
+      >
         <Text kind="label/bold/2xl" className="tabular-nums">
           {value}
         </Text>
         {trailingLabel ? (
           <Text
             kind="body/regular/sm"
-            className={STATUS_CLASS_NAME[trailingLabelStatus ?? 'neutral']}
+            className={cn(statusClassName(trailingLabelStatus), isMetric && 'pb-density-xs')}
           >
             {trailingLabel}
           </Text>
         ) : null}
       </Flex>
       {hint ? (
-        <Text kind="body/regular/sm" className={STATUS_CLASS_NAME[hintStatus ?? 'neutral']}>
+        <Text kind="body/regular/sm" className={statusClassName(hintStatus)}>
           {hint}
         </Text>
       ) : null}
@@ -68,7 +98,15 @@ export const StatTile: FC<StatTileProps> = ({
   }
 
   return (
-    <Panel className={cn('max-w-sm', className)} elevation="high" data-testid="stat-tile-surface">
+    <Panel
+      className={cn(
+        isMetric ? 'w-full' : 'max-w-sm',
+        status && BORDER_STATUS_CLASS_NAME[status],
+        className
+      )}
+      elevation="high"
+      data-testid="stat-tile-surface"
+    >
       {content}
     </Panel>
   );

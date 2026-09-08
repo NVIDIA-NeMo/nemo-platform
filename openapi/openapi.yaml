@@ -126,6 +126,7 @@ paths:
                   type: string
                   enum:
                   - urn:ietf:params:oauth:token-type:jwt
+                  - urn:nvidia:nemo:params:oauth:token-type:docker-opaque-workload-proof
                   description: Token type identifier for the subject token.
                 requested_token_type:
                   type: string
@@ -136,6 +137,18 @@ paths:
                 audience:
                   type: string
                   description: Requested audience for the issued access token.
+                resource:
+                  not: {}
+                  type: string
+                  description: Unsupported for the jobs workload token exchange profile.
+                actor_token:
+                  not: {}
+                  type: string
+                  description: Unsupported for the jobs workload token exchange profile.
+                actor_token_type:
+                  not: {}
+                  type: string
+                  description: Unsupported for the jobs workload token exchange profile.
                 scope:
                   type: string
                   description: Space-separated scopes requested for the issued access
@@ -187,6 +200,12 @@ paths:
                 $ref: '#/components/schemas/AccessKeyCreateResponse'
         '400':
           description: Scoped Access Key creation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '403':
+          description: Service-bound Scoped Access Keys require PlatformAdmin
           content:
             application/json:
               schema:
@@ -2501,6 +2520,9 @@ paths:
                 $ref: '#/components/schemas/DeleteResponse'
         '404':
           description: Config does not exist.
+        '409':
+          description: Config is applied by one or more VirtualModels and cannot be
+            deleted.
         '422':
           description: Unable to delete config due to validation error while processing
             request.
@@ -3485,7 +3507,7 @@ paths:
         schema:
           $ref: '#/components/schemas/VirtualModelFilter'
         description: Filter virtual models by workspace, project, name, default_model_entity,
-          created_at, and updated_at.
+          guardrail_config, created_at, and updated_at.
       responses:
         '200':
           description: Paginated list of virtual models
@@ -4653,13 +4675,6 @@ paths:
         schema:
           type: string
           title: Workspace
-      - name: content-type
-        in: header
-        required: false
-        schema:
-          type: string
-          default: application/octet-stream
-          title: Content-Type
       - name: content-length
         in: header
         required: false
@@ -4679,6 +4694,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      requestBody:
+        content:
+          application/x-protobuf:
+            schema:
+              type: string
+              format: binary
+              description: Serialized OTLP ExportTraceServiceRequest protobuf
+        required: true
   /apis/intake/v2/workspaces/{workspace}/ingest/spans:
     post:
       tags:
@@ -5739,6 +5762,9 @@ paths:
           description: Successful Response
         '404':
           description: Job not Found
+        '409':
+          description: Job, attempt, or step is not terminal; paused or cancelling
+            jobs must reach a terminal state before deletion.
         '422':
           description: Validation Error
           content:
@@ -5804,20 +5830,31 @@ paths:
         in: query
         required: false
         schema:
-          type: integer
-          exclusiveMinimum: 0
           description: Maximum number of logs to return
-          default: 100
           title: Limit
+          default: 100
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
         description: Maximum number of logs to return
       - name: page_cursor
         in: query
         required: false
         schema:
-          type: string
           description: Page cursor
           title: Page Cursor
+          type: string
         description: Page cursor
+      - name: tail
+        in: query
+        required: false
+        schema:
+          description: Number of newest log lines to return
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
+        description: Number of newest log lines to return
       - name: attempt_id
         in: query
         required: false
@@ -8238,6 +8275,15 @@ components:
           nullable: true
           type: integer
           minimum: 1.0
+        service_account_id:
+          title: Service Account Id
+          description: Optional non-human service account to bind the key to. Service-bound
+            keys can only be created by a PlatformAdmin and authenticate as service-account:<id>.
+          nullable: true
+          type: string
+          maxLength: 240
+          minLength: 1
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._+/-]*$
       type: object
       title: AccessKeyCreateRequest
       description: Request body for creating a Scoped Access Key.
@@ -8261,6 +8307,14 @@ components:
           type: string
           title: Principal
           description: Principal ID stamped into the token.
+        entity_type:
+          type: string
+          enum:
+          - USER
+          - SERVICE_ACCOUNT
+          title: Entity Type
+          description: Whether the key is bound to a user or a non-human service account.
+          default: USER
         status:
           type: string
           enum:
@@ -8362,6 +8416,14 @@ components:
           type: string
           title: Principal
           description: Principal ID stamped into the token.
+        entity_type:
+          type: string
+          enum:
+          - USER
+          - SERVICE_ACCOUNT
+          title: Entity Type
+          description: Whether the key is bound to a user or a non-human service account.
+          default: USER
         status:
           type: string
           enum:
@@ -9359,12 +9421,25 @@ components:
           - workload_access_token
           - workload_subject_token
           title: Token Kind
+        on_behalf_of:
+          title: On Behalf Of
+          nullable: true
+          type: string
+        on_behalf_of_email:
+          title: On Behalf Of Email
+          nullable: true
+          type: string
+        on_behalf_of_groups:
+          items:
+            type: string
+          type: array
+          title: On Behalf Of Groups
       type: object
       required:
       - principal
       - token_kind
       title: AuthenticateResponse
-      description: Successful bearer token authentication response for auth callouts.
+      description: Successful bearer token authentication response for direct callers.
     AutoAlignOptions:
       properties:
         guardrails_config:
@@ -9851,6 +9926,31 @@ components:
       - policy
       title: ClavataRailOptions
       description: Configuration data for the Clavata API
+    ColumnLayout:
+      properties:
+        order:
+          items:
+            type: string
+          type: array
+          title: Order
+          description: 'Column ids in display order. Empty means no saved order: the
+            table falls back to its natural column order.'
+        hidden:
+          items:
+            type: string
+          type: array
+          title: Hidden
+          description: Column ids hidden from the table. Any column not listed is
+            shown.
+      type: object
+      title: ColumnLayout
+      description: "A saved table layout for a group's evaluations list: column order\
+        \ and which columns are hidden.\n\nColumn ids are Studio's and cannot be enumerated\
+        \ here \u2014 the table builds a column per evaluator\nand metadata key found\
+        \ in the rows \u2014 so ids are stored and echoed back unvalidated.\n\nVisibility\
+        \ is stored as the *hidden* ids rather than a map over every column, so a\
+        \ column that\nappears later (a new evaluator, a new metadata key) shows up\
+        \ by default."
     ComputeResourceSpec:
       properties:
         cpu:
@@ -10959,10 +11059,6 @@ components:
           allOf:
           - $ref: '#/components/schemas/DockerJobNetworkConfig'
           description: Docker networking configuration
-        workload_identity:
-          allOf:
-          - $ref: '#/components/schemas/DockerWorkloadIdentityConfig'
-          description: Docker workload identity subject-token issuer configuration.
       type: object
       title: DockerJobExecutionProfileConfig
       description: Configuration for Docker Job execution profile.
@@ -11032,60 +11128,6 @@ components:
       - volume_name
       - mount_path
       title: DockerVolumeMount
-    DockerWorkloadIdentityConfig:
-      properties:
-        enabled:
-          title: Enabled
-          description: Enable Docker workload identity token-file injection. Defaults
-            to auth.oidc.workload_token_exchange_enabled.
-          type: boolean
-        token_endpoint:
-          title: Token Endpoint
-          description: OAuth token endpoint used by the Docker demo issuer. Defaults
-            to auth.oidc.token_endpoint.
-          type: string
-        client_id:
-          title: Client Id
-          description: OAuth client ID used by the Docker demo issuer. Defaults to
-            auth.oidc.workload_client_id or auth.oidc.client_id.
-          type: string
-        client_secret:
-          format: password
-          title: Client Secret
-          description: OAuth client secret for the Docker demo issuer.
-          writeOnly: true
-          type: string
-        username:
-          title: Username
-          description: Username for the Docker demo issuer password grant.
-          type: string
-        password_env_var:
-          type: string
-          title: Password Env Var
-          description: Controller environment variable that contains the Docker demo
-            issuer password grant shared secret.
-          default: AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD
-        scope:
-          title: Scope
-          description: OAuth scope for the Docker demo issuer.
-          type: string
-        subject_token_ttl_seconds:
-          type: integer
-          minimum: 1.0
-          title: Subject Token Ttl Seconds
-          description: Fallback subject-token lifetime when the Docker demo issuer
-            response omits expires_in.
-        refresh_margin_seconds:
-          type: integer
-          minimum: 0.0
-          title: Refresh Margin Seconds
-          description: Seconds before subject-token expiry when the Docker refresher
-            issues a replacement token.
-          default: 60
-      additionalProperties: false
-      type: object
-      title: DockerWorkloadIdentityConfig
-      description: Docker-only subject token issuer configuration for workload identity.
     E2EJobExecutionProfile:
       properties:
         provider:
@@ -12162,6 +12204,14 @@ components:
           description: Default X/Y metrics for the experiment's Pareto view. Omit
             to preserve the existing value on update; on create, defaults to cost
             vs. latency.
+        column_layout:
+          allOf:
+          - $ref: '#/components/schemas/ColumnLayout'
+          description: "Saved column order and column visibility for the experiment's\
+            \ evaluations table. Omit to leave the saved layout unchanged; on create\
+            \ that means no layout is saved. An empty order and hidden pair is itself\
+            \ a saved layout \u2014 one that shows every column \u2014 and is distinct\
+            \ from having none."
         is_favorite:
           type: boolean
           title: Is Favorite
@@ -12211,6 +12261,13 @@ components:
           title: Default Sort
         pareto:
           $ref: '#/components/schemas/ParetoConfig'
+        column_layout:
+          allOf:
+          - $ref: '#/components/schemas/ColumnLayout'
+          description: Saved column order and column visibility for the experiment's
+            evaluations table. Null when no layout has been saved, which is distinct
+            from a saved layout that hides nothing.
+          nullable: true
         is_favorite:
           type: boolean
           title: Is Favorite
@@ -12313,6 +12370,14 @@ components:
           description: Default X/Y metrics for the experiment's Pareto view. Omit
             to preserve the existing value on update; on create, defaults to cost
             vs. latency.
+        column_layout:
+          allOf:
+          - $ref: '#/components/schemas/ColumnLayout'
+          description: "Saved column order and column visibility for the experiment's\
+            \ evaluations table. Omit to leave the saved layout unchanged; on create\
+            \ that means no layout is saved. An empty order and hidden pair is itself\
+            \ a saved layout \u2014 one that shows every column \u2014 and is distinct\
+            \ from having none."
         is_favorite:
           type: boolean
           title: Is Favorite
@@ -14081,18 +14146,10 @@ components:
           title: Launcher Image
           description: Container image that contains the jobs-launcher binary.
           default: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
-        workload_identity_token_expiration_seconds:
-          type: integer
-          minimum: 600.0
-          title: Workload Identity Token Expiration Seconds
-          description: Requested expirationSeconds for the projected service account
-            token used as the workload identity subject token.
-          default: 600
-        workload_identity_token_audience:
-          title: Workload Identity Token Audience
-          description: Audience for the projected service account token. Defaults
-            to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
-          type: string
+        workload_identity:
+          allOf:
+          - $ref: '#/components/schemas/KubernetesWorkloadIdentityConfig'
+          description: Kubernetes workload identity configuration.
       type: object
       title: KubernetesJobExecutionProfileConfig
       description: Configuration for Kubernetes execution environment.
@@ -14275,6 +14332,24 @@ components:
       - mount_path
       title: KubernetesVolumeMount
       description: Kubernetes Volume Mount definition.
+    KubernetesWorkloadIdentityConfig:
+      properties:
+        token_expiration_seconds:
+          type: integer
+          minimum: 600.0
+          title: Token Expiration Seconds
+          description: Requested expirationSeconds for the projected service account
+            token used as the workload identity subject token.
+          default: 600
+        token_audience:
+          title: Token Audience
+          description: Audience for the projected service account token. Defaults
+            to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
+          type: string
+      additionalProperties: false
+      type: object
+      title: KubernetesWorkloadIdentityConfig
+      description: Kubernetes workload identity token projection configuration.
     LLMCallInfo:
       properties:
         task:
@@ -14589,16 +14664,22 @@ components:
           title: Filters
           description: Key-value filters to apply to the query
         limit:
-          type: integer
-          maximum: 1000.0
-          exclusiveMinimum: 0.0
           title: Limit
           description: Maximum number of results to return
           default: 100
+          type: integer
+          maximum: 10000.0
+          exclusiveMinimum: 0.0
         page_cursor:
           title: Page Cursor
           description: Cursor for pagination
           type: string
+        tail:
+          title: Tail
+          description: Number of newest log lines to return
+          type: integer
+          maximum: 10000.0
+          exclusiveMinimum: 0.0
         artifact_base_path:
           title: Artifact Base Path
           description: Folder inside the fileset the logs were nested under (must
@@ -15826,11 +15907,22 @@ components:
           title: Is Chat
           description: Whether this is a chat model
           type: boolean
+        head_type:
+          type: string
+          enum:
+          - causal_lm
+          - embedding
+          - cross_encoder
+          - unknown
+          title: Head Type
+          description: Task-specific head persisted in the checkpoint.
+          default: unknown
         is_embedding_model:
           type: boolean
           title: Is Embedding Model
-          description: Whether this is an embedding model
+          description: Deprecated compatibility alias for head_type == 'embedding'.
           default: false
+          deprecated: true
         checkpoint_model_name:
           type: string
           title: Checkpoint Model Name
@@ -16699,6 +16791,25 @@ components:
       - artifact_url
       - artifact_storage_type
       title: PlatformJobResultResponse
+    PlatformJobSecret:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: The name of the secret
+        value:
+          title: Value
+          description: The secret value submitted with the job
+          type: string
+        ref_id:
+          title: Ref Id
+          description: Reference id for the stored secret value
+          type: string
+      type: object
+      required:
+      - name
+      title: PlatformJobSecret
+      description: Inline secret material submitted with a job spec.
     PlatformJobSecretEnvironmentVariableRef:
       properties:
         name:
@@ -16727,6 +16838,12 @@ components:
           type: array
           title: Steps
           description: List of steps to be executed in the job
+        secrets:
+          title: Secrets
+          description: Secrets referenced by the job
+          items:
+            $ref: '#/components/schemas/PlatformJobSecret'
+          type: array
       type: object
       required:
       - steps
@@ -20053,6 +20170,15 @@ components:
         override_proxy:
           title: Override Proxy
           type: string
+        guardrail_config_ids:
+          items:
+            type: string
+          type: array
+          title: Guardrail Config Ids
+          description: System-managed. Guardrail configs applied by this VirtualModel's
+            middleware, as "workspace/name" references. Derived from the middleware
+            pipelines on every write and ignored if supplied on a create or update
+            body. Filter on it with filter[guardrail_config].
         id:
           type: string
           title: Id
@@ -20168,6 +20294,12 @@ components:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter by update date.
+        guardrail_config:
+          description: Filter by a guardrail config reference in "workspace/name"
+            form. Matches VirtualModels whose request, response, or post-response
+            middleware applies that stored guardrail config.
+          title: Guardrail Config
+          type: string
       title: VirtualModelFilter
       type: object
     VirtualModelInferenceConfig:
@@ -20345,18 +20477,10 @@ components:
           title: Launcher Image
           description: Container image that contains the jobs-launcher binary.
           default: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
-        workload_identity_token_expiration_seconds:
-          type: integer
-          minimum: 600.0
-          title: Workload Identity Token Expiration Seconds
-          description: Requested expirationSeconds for the projected service account
-            token used as the workload identity subject token.
-          default: 600
-        workload_identity_token_audience:
-          title: Workload Identity Token Audience
-          description: Audience for the projected service account token. Defaults
-            to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
-          type: string
+        workload_identity:
+          allOf:
+          - $ref: '#/components/schemas/KubernetesWorkloadIdentityConfig'
+          description: Kubernetes workload identity configuration.
         queue:
           type: string
           title: Queue
@@ -20389,7 +20513,7 @@ components:
           type: string
           title: Error
           description: OAuth 2.0 or RFC 8693 token exchange error code, such as invalid_client,
-            invalid_request, invalid_grant, invalid_scope, or invalid_target.
+            invalid_request, invalid_scope, or invalid_target.
         error_description:
           title: Error Description
           description: Human-readable ASCII text providing additional information

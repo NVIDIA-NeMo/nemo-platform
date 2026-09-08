@@ -26,6 +26,9 @@ import { type FC } from 'react';
 
 const RANGE_OPTIONS: TraceStatisticsRange[] = ['day', 'week', 'month'];
 
+const isTraceStatisticsRange = (value: unknown): value is TraceStatisticsRange =>
+  typeof value === 'string' && (RANGE_OPTIONS as string[]).includes(value);
+
 export interface AgentTraceStatisticsProps {
   /**
    * Headline numbers for the selected range, or `null` when the range saw no runs. The caller owns
@@ -84,7 +87,13 @@ export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
             value={range}
             onValueChange={(value: string) => onRangeChange(value as TraceStatisticsRange)}
           >
-            <SelectTrigger aria-label="Statistics range" className="w-32" />
+            <SelectTrigger
+              aria-label="Statistics range"
+              className="w-32"
+              renderValue={(value) =>
+                isTraceStatisticsRange(value) ? RANGE_LABELS[value] : undefined
+              }
+            />
             <SelectContent className="min-w-40">
               <SelectListbox>
                 {RANGE_OPTIONS.map((option) => (

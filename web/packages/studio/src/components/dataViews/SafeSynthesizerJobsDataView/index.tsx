@@ -17,12 +17,12 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
-import { useJobsCancelJob, useJobsDeleteJob } from '@nemo/sdk/generated/platform/api';
+import { useJobsCancelJob, useJobsDeleteJob } from '@nemo/sdk/generated/platform/jobs';
 import {
   getSafeSynthesizerDownloadJobResultSummaryQueryOptions as getDownloadJobResultSummaryQueryOptions,
   getSafeSynthesizerListJobsQueryKey,
   useSafeSynthesizerListJobs,
-} from '@nemo/sdk/generated/safe-synthesizer/api';
+} from '@nemo/sdk/generated/safe-synthesizer/safe-synthesizer';
 import {
   GenerateJob,
   GenerateJobsListFilter,

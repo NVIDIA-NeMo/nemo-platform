@@ -19,7 +19,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Protocol, TypeAlias, TypedDict
+from typing import Any, Protocol, TypeAlias, TypedDict, cast
 from uuid import uuid4
 
 from harbor.constants import MAIN_SERVICE_NAME
@@ -111,6 +111,7 @@ _SHELL_SYNTAX_TIMEOUT_SEC = 10.0
 _CONTAINER_TESTS_REFERENCE = re.compile(r"/tests/([A-Za-z0-9_.\-/]+)")
 _SHELL_COMMENT = re.compile(r"(?:^|\s)#.*")
 _BLANKET_EXCEPTIONS = frozenset({"Exception", "BaseException"})
+_TOKEN_KEYS = ("n_input_tokens", "n_output_tokens", "n_cache_tokens")
 _TRIAL_LOG_DESCRIPTIONS = {
     "agent/oracle.txt": "Oracle-agent log captured when Harbor runs the reference solution.",
     "agent/setup/stdout.txt": "Agent setup stdout captured while Harbor uploads the agent and installs dependencies.",
@@ -605,6 +606,43 @@ def _trial_error(exception_info: Any) -> dict[str, DataValue] | None:
     return error or {"exception_info": exception_info}
 
 
+def _agent_token_contexts(trial_data: dict[str, Any]) -> list[dict[str, Any]]:
+    agent_result = trial_data.get("agent_result")
+    if isinstance(agent_result, dict):
+        return [agent_result]
+
+    step_results = trial_data.get("step_results")
+    if not isinstance(step_results, list):
+        return []
+
+    contexts: list[dict[str, Any]] = []
+    for step_result in step_results:
+        if not isinstance(step_result, dict):
+            continue
+        step_agent_result = step_result.get("agent_result")
+        if isinstance(step_agent_result, dict):
+            contexts.append(step_agent_result)
+    return contexts
+
+
+def _trial_token_metadata(trial_data: dict[str, Any]) -> dict[str, int]:
+    metadata: dict[str, int] = {}
+    for context in _agent_token_contexts(trial_data):
+        for key in _TOKEN_KEYS:
+            value = context.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                if value < 0:
+                    logger.warning(
+                        "Skipping negative Harbor token count for trial %r: %s=%d",
+                        trial_data.get("trial_name"),
+                        key,
+                        value,
+                    )
+                    continue
+                metadata[key] = metadata.get(key, 0) + value
+    return metadata
+
+
 def _reward_values_from_file(path: Path) -> dict[str, Any]:
     if path.suffix == ".json":
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -889,6 +927,7 @@ def trials_from_job_dir(
                 outputs={},
                 resources=resources,
                 metrics=_trial_metrics(trial_dir, trial_data, metric_spec),
+                metadata=cast(dict[str, DataValue], _trial_token_metadata(trial_data)),
             )
         )
     return trials

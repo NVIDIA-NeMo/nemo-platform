@@ -21,6 +21,7 @@ from nmp.common.entities import (
     EntityConflictError,
     EntityNotFoundError,
     StringFilter,
+    SyncEntityClient,
 )
 from pydantic import BaseModel, Discriminator, Field, PrivateAttr, Tag, computed_field
 
@@ -587,6 +588,41 @@ async def test_entity_client_list_rejects_search_kwarg():
 
     with pytest.raises(TypeError):
         await client.list(TestEntity, search='{"field_1":"value"}')  # type: ignore[call-arg]
+
+
+def test_sync_entity_client_create_uses_generic_entity_conversion():
+    """SyncEntityClient should serialize and convert entities like EntityClient."""
+
+    class TestEntity(EntityBase):
+        field_1: str
+
+    now = datetime.now()
+    api_entity = Entity(
+        entity_type="test_entity",
+        name="test-entity",
+        workspace="test-workspace",
+        id="entity-id",
+        created_at=now,
+        updated_at=now,
+        db_version=3,
+        data={"field_1": "value"},
+    )
+    mock_api = Mock()
+    mock_api.create_entity.return_value = _data_resp(api_entity)
+
+    saved = SyncEntityClient(mock_api).create(
+        TestEntity(name="test-entity", workspace="test-workspace", field_1="value")
+    )
+
+    assert saved.id == "entity-id"
+    assert saved.db_version == 3
+    assert saved.field_1 == "value"
+    mock_api.create_entity.assert_called_once()
+    call_kwargs = mock_api.create_entity.call_args.kwargs
+    assert call_kwargs["workspace"] == "test-workspace"
+    assert call_kwargs["entity_type"] == "test_entity"
+    assert call_kwargs["body"].name == "test-entity"
+    assert call_kwargs["body"].data == {"field_1": "value"}
 
 
 # ============================================================================
@@ -1463,6 +1499,32 @@ def _service_entities_client(url_resolver=None) -> tuple[EntityClient, AsyncMock
     return EntityClient(typed), mock_http
 
 
+def _sync_service_entities_client(url_resolver=None) -> tuple[SyncEntityClient, Mock]:
+    """Build a real SyncEntityClient over a mocked httpx transport."""
+    import httpx
+    from nemo_platform_plugin.entities.client import EntitiesClient
+
+    mock_http = Mock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("DELETE", "http://platform/apis/entities/v2/workspaces/default/entities/w/x"),
+        json={"message": "deleted", "id": "default/widget/x", "deleted_count": 1},
+    )
+    typed = EntitiesClient(
+        base_url="http://platform",
+        workspace="default",
+        default_headers={
+            "X-NMP-Principal-Id": "service:platform",
+            "X-NMP-Principal-On-Behalf-Of": "alice@example.com",
+            "X-NMP-Principal-On-Behalf-Of-Email": "alice@example.com",
+            "X-NMP-Principal-On-Behalf-Of-Groups": "team-ml",
+        },
+        http_client=mock_http,
+        url_resolver=url_resolver,
+    )
+    return SyncEntityClient(typed), mock_http
+
+
 def test_as_service_returns_new_client_without_mutating_the_original():
     client, _ = _service_entities_client()
 
@@ -1523,6 +1585,64 @@ async def test_as_service_internal_marks_requests_internal_on_the_wire():
     client, mock_http = _service_entities_client()
 
     await client.as_service("audit", internal=True).delete(TestEntity, "test-entity", workspace="test-workspace")
+
+    sent_headers = mock_http.request.call_args.kwargs["headers"]
+    assert sent_headers["X-NMP-Principal-Id"] == "service:audit"
+    assert sent_headers["X-NMP-Internal"] == "true"
+
+
+def test_sync_as_service_returns_new_client_without_mutating_the_original():
+    client, _ = _sync_service_entities_client()
+
+    elevated = client.as_service("models")
+
+    assert elevated is not client
+    assert isinstance(elevated, SyncEntityClient)
+    assert client._client._default_headers["X-NMP-Principal-On-Behalf-Of"] == "alice@example.com"
+    assert elevated._client._default_headers["X-NMP-Principal-Id"] == "service:models"
+    assert elevated._client._default_headers["X-NMP-Principal-On-Behalf-Of"] == ""
+
+
+def test_sync_as_service_preserves_the_platform_url_resolver():
+    def resolver(url: str) -> str:
+        return url.replace("http://platform", "http://uds-resolved")
+
+    client, _ = _sync_service_entities_client(url_resolver=resolver)
+
+    elevated = client.as_service("models")
+
+    assert elevated._client._url_resolver is resolver
+
+
+def test_sync_as_service_shares_the_underlying_http_transport():
+    client, mock_http = _sync_service_entities_client()
+
+    elevated = client.as_service("models")
+
+    assert elevated._client._http is mock_http
+    assert elevated._client._http is client._client._http
+
+
+def test_sync_as_service_principal_header_reaches_the_wire():
+    class TestEntity(EntityBase):
+        field_1: str
+
+    client, mock_http = _sync_service_entities_client()
+
+    client.as_service("models").delete(TestEntity, "test-entity", workspace="test-workspace")
+
+    sent_headers = mock_http.request.call_args.kwargs["headers"]
+    assert sent_headers["X-NMP-Principal-Id"] == "service:models"
+    assert sent_headers["X-NMP-Principal-On-Behalf-Of"] == ""
+
+
+def test_sync_as_service_internal_marks_requests_internal_on_the_wire():
+    class TestEntity(EntityBase):
+        field_1: str
+
+    client, mock_http = _sync_service_entities_client()
+
+    client.as_service("audit", internal=True).delete(TestEntity, "test-entity", workspace="test-workspace")
 
     sent_headers = mock_http.request.call_args.kwargs["headers"]
     assert sent_headers["X-NMP-Principal-Id"] == "service:audit"

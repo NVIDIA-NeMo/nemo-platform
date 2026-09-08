@@ -56,7 +56,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Callable, Literal, Mapping, Protocol
 
 import httpx
 from nemo_platform import (
@@ -110,6 +110,7 @@ class ClientInitConfig:
     workspace: str | None
     default_headers: Mapping[str, str] | None = None
     http_client: httpx.Client | httpx.AsyncClient | None = None
+    client_verify: str | Literal[True] = True
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,8 @@ class _ResolvedBootstrap:
     workspace: str | None
     default_headers: dict[str, str]
     token_provider: _AccessTokenProvider | None  # None for non-OAuth users
+    client_verify: str | Literal[True]
+    certificate_authority: str | None = None
 
 
 @dataclass(frozen=True)
@@ -127,7 +130,7 @@ class _ProviderCacheKey:
     """Composite key for the provider cache.
 
     Two clients share the same provider iff they read from the same config
-    file, same context, and the OIDC settings (endpoint, client, scope) match.
+    file, same context, OIDC settings (endpoint, client, scope), and CA match.
     """
 
     config_path: Path
@@ -135,9 +138,10 @@ class _ProviderCacheKey:
     token_endpoint: str
     client_id: str
     refresh_scope: str | None
+    certificate_authority: str | None
 
 
-# Process-wide cache: (config_path, context) → shared OIDCTokenProvider.
+# Process-wide cache: (config_path, context, OIDC settings, CA) → shared OIDCTokenProvider.
 # This avoids redundant refresh-token grants when the user creates multiple
 # NeMoPlatform() instances pointing at the same context.
 _TOKEN_PROVIDER_CACHE: dict[_ProviderCacheKey, OIDCTokenProvider] = {}
@@ -157,7 +161,7 @@ _OIDC_DISCOVERY_FALLBACK = NMPOIDCConfig(
 )
 
 
-def _discover_oidc_client_settings(base_url: str) -> NMPOIDCConfig:
+def _discover_oidc_client_settings(base_url: str, certificate_authority: str | None = None) -> NMPOIDCConfig:
     """Fetch OIDC config from the NeMo Platform cluster's discovery endpoint.
 
     Returns a safe fallback (auth_enabled=False) if the cluster is
@@ -165,7 +169,7 @@ def _discover_oidc_client_settings(base_url: str) -> NMPOIDCConfig:
     clusters work without errors during client construction.
     """
     try:
-        return discover_nmp_config(base_url)
+        return discover_nmp_config(base_url, certificate_authority=certificate_authority)
     except Exception:
         logger.debug("Could not discover OIDC settings from %s", base_url, exc_info=True)
         return _OIDC_DISCOVERY_FALLBACK
@@ -177,9 +181,14 @@ def _workload_identity_token_file_from_env() -> Path | None:
     return Path(token_file) if token_file else None
 
 
-def _create_workload_exchange_provider(base_url: str, subject_token_file: Path) -> WorkloadTokenExchangeProvider:
+def _create_workload_exchange_provider(
+    base_url: str,
+    subject_token_file: Path,
+    *,
+    certificate_authority: str | None = None,
+) -> WorkloadTokenExchangeProvider:
     """Create a workload identity token exchange provider from NeMo auth discovery metadata."""
-    oidc_config = _discover_oidc_client_settings(base_url)
+    oidc_config = _discover_oidc_client_settings(base_url, certificate_authority=certificate_authority)
     if not oidc_config.workload_token_exchange_enabled:
         raise RuntimeError(
             f"{WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR} is set but workload token exchange is not enabled by auth discovery"
@@ -202,6 +211,7 @@ def _create_workload_exchange_provider(base_url: str, subject_token_file: Path) 
         subject_token_file=subject_token_file,
         audience=oidc_config.workload_audience,
         scope=oidc_config.workload_scope,
+        certificate_authority=certificate_authority,
         refresh_margin_seconds=_TOKEN_REFRESH_MARGIN_SECONDS,
     )
 
@@ -209,9 +219,16 @@ def _create_workload_exchange_provider(base_url: str, subject_token_file: Path) 
 class _LazyWorkloadTokenExchangeProvider:
     """Create the workload exchange provider on the first token request."""
 
-    def __init__(self, *, base_url: str, subject_token_file: Path) -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        subject_token_file: Path,
+        certificate_authority: str | None = None,
+    ) -> None:
         self._base_url = base_url
         self._subject_token_file = subject_token_file
+        self._certificate_authority = certificate_authority
         self._provider: WorkloadTokenExchangeProvider | None = None
         self._lock = threading.Lock()
 
@@ -222,7 +239,11 @@ class _LazyWorkloadTokenExchangeProvider:
         with self._lock:
             provider = self._provider
             if provider is None:
-                provider = _create_workload_exchange_provider(self._base_url, self._subject_token_file)
+                provider = _create_workload_exchange_provider(
+                    self._base_url,
+                    self._subject_token_file,
+                    certificate_authority=self._certificate_authority,
+                )
                 self._provider = provider
             return provider
 
@@ -506,6 +527,8 @@ def _resolve_bootstrap(
     )
 
     base_url = str(resolved.cluster.base_url)
+    certificate_authority = resolved.cluster.certificate_authority
+    client_verify = client_verify_from_env(certificate_authority)
     headers: dict[str, str] = dict(extra_headers) if extra_headers else {}
 
     workload_identity_token_file = _workload_identity_token_file_from_env()
@@ -513,8 +536,9 @@ def _resolve_bootstrap(
         provider = _LazyWorkloadTokenExchangeProvider(
             base_url=base_url,
             subject_token_file=workload_identity_token_file,
+            certificate_authority=certificate_authority,
         )
-        return _ResolvedBootstrap(base_url, resolved.workspace, headers, provider)
+        return _ResolvedBootstrap(base_url, resolved.workspace, headers, provider, client_verify, certificate_authority)
 
     # --- Non-OAuth path (no auth) ---
     if not isinstance(resolved.user, OAuthUser):
@@ -522,18 +546,18 @@ def _resolve_bootstrap(
         user_headers = user_config.get("default_headers", {})
         if isinstance(user_headers, dict):
             headers.update(user_headers)
-        return _ResolvedBootstrap(base_url, resolved.workspace, headers, None)
+        return _ResolvedBootstrap(base_url, resolved.workspace, headers, None, client_verify, certificate_authority)
 
     # --- OAuth path: set up transparent token refresh ---
     try:
-        oidc_config = discover_nmp_config(base_url)
+        oidc_config = discover_nmp_config(base_url, certificate_authority=certificate_authority)
         if not oidc_config.auth_enabled and access_token is None:
             # Discovery succeeded and confirmed the cluster has no OIDC. The
             # stored OAuthUser token can't be refreshed here (no endpoint), so
             # fall back to no-auth. This guard only fires on a successful
             # discovery response — not on discovery failures, where the stored
             # token may still be valid and should be used as-is.
-            return _ResolvedBootstrap(base_url, resolved.workspace, headers, None)
+            return _ResolvedBootstrap(base_url, resolved.workspace, headers, None, client_verify, certificate_authority)
     except Exception:
         logger.debug("Could not discover OIDC settings from %s", base_url, exc_info=True)
         oidc_config = _OIDC_DISCOVERY_FALLBACK
@@ -560,6 +584,7 @@ def _resolve_bootstrap(
             token_endpoint=token_endpoint,
             client_id=client_id,
             refresh_scope=refresh_scope,
+            certificate_authority=certificate_authority,
         )
         on_refreshed = _make_config_persister(resolved.context_name, resolved_config_path)
         load_tokens = _make_config_token_loader(resolved.context_name, resolved_config_path)
@@ -573,6 +598,7 @@ def _resolve_bootstrap(
                 tokens=tokens,
                 refresh_margin_seconds=_TOKEN_REFRESH_MARGIN_SECONDS,
                 refresh_scope=refresh_scope,
+                certificate_authority=certificate_authority,
                 load_tokens=load_tokens,
                 refresh_lock=refresh_lock,
                 on_tokens_refreshed=on_refreshed,
@@ -586,9 +612,10 @@ def _resolve_bootstrap(
             tokens=tokens,
             refresh_margin_seconds=_TOKEN_REFRESH_MARGIN_SECONDS,
             refresh_scope=refresh_scope,
+            certificate_authority=certificate_authority,
         )
 
-    return _ResolvedBootstrap(base_url, resolved.workspace, headers, provider)
+    return _ResolvedBootstrap(base_url, resolved.workspace, headers, provider, client_verify, certificate_authority)
 
 
 # ---------------------------------------------------------------------------
@@ -623,6 +650,7 @@ def build_client_init_kwargs(
             base_url=bootstrap.base_url,
             workspace=bootstrap.workspace,
             default_headers=bootstrap.default_headers or None,
+            client_verify=bootstrap.client_verify,
         )
 
     # Seed the default headers with a current token so that SDK internals
@@ -634,13 +662,14 @@ def build_client_init_kwargs(
     http_client = DefaultHttpxClient(
         event_hooks={"request": [hook], "response": []},
         follow_redirects=True,
-        verify=client_verify_from_env(),
+        verify=bootstrap.client_verify,
     )
     return ClientInitConfig(
         base_url=bootstrap.base_url,
         workspace=bootstrap.workspace,
         default_headers=headers or None,
         http_client=http_client,
+        client_verify=bootstrap.client_verify,
     )
 
 
@@ -670,6 +699,7 @@ def build_async_client_init_kwargs(
             base_url=bootstrap.base_url,
             workspace=bootstrap.workspace,
             default_headers=bootstrap.default_headers or None,
+            client_verify=bootstrap.client_verify,
         )
 
     headers = _headers_with_seeded_auth(bootstrap.default_headers, bootstrap.token_provider)
@@ -677,13 +707,14 @@ def build_async_client_init_kwargs(
     http_client = DefaultAsyncHttpxClient(
         event_hooks={"request": [hook], "response": []},
         follow_redirects=True,
-        verify=client_verify_from_env(),
+        verify=bootstrap.client_verify,
     )
     return ClientInitConfig(
         base_url=bootstrap.base_url,
         workspace=bootstrap.workspace,
         default_headers=headers or None,
         http_client=http_client,
+        client_verify=bootstrap.client_verify,
     )
 
 
@@ -712,6 +743,8 @@ def create_client(
     http_client = client_init_kwargs.http_client
     if http_client is not None and not isinstance(http_client, httpx.Client):
         raise TypeError("build_client_init_kwargs returned a non-sync HTTP client")
+    if http_client is None and client_init_kwargs.client_verify is not True:
+        http_client = DefaultHttpxClient(verify=client_init_kwargs.client_verify)
 
     return NeMoPlatform(
         config_path=config_path,

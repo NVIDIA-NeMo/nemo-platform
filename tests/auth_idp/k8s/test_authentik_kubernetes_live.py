@@ -5,9 +5,12 @@ import pytest
 
 from tests.auth_idp.runtime_factory import iter_auth_idp_cases
 from tests.auth_idp.runtime_kubernetes import (
+    HELM_UPGRADE_COMMAND_GRACE_SECONDS,
     HELM_UPGRADE_COMMAND_TIMEOUT_SECONDS,
+    HELM_WAIT_TIMEOUT,
     PORT_FORWARD_READY_TIMEOUT_SECONDS,
     _add_platform_helm_repositories,
+    _duration_seconds,
     _helm_upgrade_args,
 )
 
@@ -24,5 +27,8 @@ pytestmark = [
 def test_authentik_kubernetes_runtime_exports_helm_contract_helpers() -> None:
     assert _helm_upgrade_args
     assert _add_platform_helm_repositories
-    assert HELM_UPGRADE_COMMAND_TIMEOUT_SECONDS == 900
+    assert (
+        HELM_UPGRADE_COMMAND_TIMEOUT_SECONDS
+        == _duration_seconds(HELM_WAIT_TIMEOUT) + HELM_UPGRADE_COMMAND_GRACE_SECONDS
+    )
     assert PORT_FORWARD_READY_TIMEOUT_SECONDS == 30

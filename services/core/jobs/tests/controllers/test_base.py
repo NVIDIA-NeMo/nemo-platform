@@ -379,6 +379,44 @@ class TestGetLogsEndpointFromFileset:
 
 
 class TestGetJobRuntimeSharedEnvvars:
+    def test_propagates_the_deployments_logging_settings_to_task_containers(self, monkeypatch, tmp_path):
+        """A task container gets no platform config file, so a chart set to
+        ``service.log_format: json`` would otherwise start its tasks on
+        ``plain``. Resolve here, where the file is readable, and pass it down."""
+        from nemo_platform_plugin.config import NMP_CONFIG_FILE_PATH_ENV_VAR, Configuration
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("service:\n  LOG_FORMAT: json\n  LOG_LEVEL: DEBUG\n")
+        monkeypatch.setenv(NMP_CONFIG_FILE_PATH_ENV_VAR, str(config_file))
+        monkeypatch.delenv("LOG_FORMAT", raising=False)
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        Configuration.clear_cache()
+
+        try:
+            envvars = get_job_runtime_shared_envvars(PlatformConfig())
+        finally:
+            Configuration.clear_cache()
+
+        assert envvars["LOG_FORMAT"] == "json"
+        assert envvars["LOG_LEVEL"] == "DEBUG"
+
+    def test_unreadable_logging_settings_do_not_fail_scheduling(self, monkeypatch, tmp_path):
+        """Logging configuration is not worth failing a schedule over; the task
+        falls back to its own defaults."""
+        from nemo_platform_plugin.config import NMP_CONFIG_FILE_PATH_ENV_VAR, Configuration
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("this: is: not: valid: yaml:\n")
+        monkeypatch.setenv(NMP_CONFIG_FILE_PATH_ENV_VAR, str(config_file))
+        Configuration.clear_cache()
+
+        try:
+            envvars = get_job_runtime_shared_envvars(PlatformConfig())
+        finally:
+            Configuration.clear_cache()
+
+        assert "NMP_BASE_URL" in envvars, "scheduling env was lost over a logging setting"
+
     def test_uses_service_discovery_gateway_urls_for_job_runtimes(self):
         config = PlatformConfig(  # type: ignore[abstract]
             base_url="http://127.0.0.1:8080",
@@ -403,6 +441,10 @@ class TestGetJobRuntimeSharedEnvvars:
             "NMP_MODELS_URL": "https://nemo-gateway:8080",
             "NMP_SECRETS_URL": "https://nemo-gateway:8080",
             "NMP_CONFIG_WARNINGS_DISABLED": "1",
+            # Propagated so a task container, which has no platform config
+            # file, still logs the way the deployment configured it.
+            "LOG_LEVEL": "INFO",
+            "LOG_FORMAT": "plain",
         }
 
     def test_gateway_base_url_is_used_for_job_runtimes_without_service_discovery(self):
@@ -427,6 +469,10 @@ class TestGetJobRuntimeSharedEnvvars:
             "NMP_MODELS_URL": "https://nemo-gateway:8080",
             "NMP_SECRETS_URL": "https://nemo-gateway:8080",
             "NMP_CONFIG_WARNINGS_DISABLED": "1",
+            # Propagated so a task container, which has no platform config
+            # file, still logs the way the deployment configured it.
+            "LOG_LEVEL": "INFO",
+            "LOG_FORMAT": "plain",
         }
 
     def test_resolved_base_url_is_used_for_job_runtimes_without_service_discovery(self):
@@ -451,6 +497,10 @@ class TestGetJobRuntimeSharedEnvvars:
             "NMP_MODELS_URL": "http://127.0.0.1:59007",
             "NMP_SECRETS_URL": "http://127.0.0.1:59007",
             "NMP_CONFIG_WARNINGS_DISABLED": "1",
+            # Propagated so a task container, which has no platform config
+            # file, still logs the way the deployment configured it.
+            "LOG_LEVEL": "INFO",
+            "LOG_FORMAT": "plain",
         }
 
     def test_auth_service_url_is_exported_for_job_runtime(self):
@@ -578,7 +628,9 @@ class TestCheckTaskStaleness:
     def test_disabled_when_lifecycle_is_none(self):
         backend = _make_backend()
         step = _make_step()
-        step.step_spec.lifecycle = None
+        step_spec = step.step_spec
+        assert step_spec is not None
+        step.step_spec = step_spec.model_copy(update={"lifecycle": None})
 
         assert backend.check_step_is_stale(step) is False
 

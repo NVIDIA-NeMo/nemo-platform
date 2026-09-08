@@ -6,12 +6,14 @@ import threading
 from logging import getLogger
 from typing import Optional
 
-from nemo_platform import DefaultAsyncHttpxClient
-from nemo_platform._exceptions import NotFoundError
+from nemo_platform import DefaultAsyncHttpxClient  # type: ignore[deprecated]
 from nemo_platform.types.inference import ModelDeploymentStatus
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
-from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.models.client import AsyncModelsClient
+from nemo_platform_plugin.models.types import ModelEntity
 from nmp.common.controller import Controller, HeartbeatMixin
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.sdk_factory import get_async_platform_sdk
@@ -236,10 +238,13 @@ class ModelsController(HeartbeatMixin, Controller):
             if revision or not self._entity_cache.loaded:
                 # A revision resolves server-side and does not correspond to an
                 # cache key, so it has to be fetched directly.
-                model_entity = await self._models_sdk.models.retrieve(
-                    name=full_model_name,
-                    workspace=workspace,
-                )
+                models = client_from_platform(self._models_sdk, AsyncModelsClient)
+                model_entity = (
+                    await models.get_model(
+                        name=full_model_name,
+                        workspace=workspace,
+                    )
+                ).data()
             else:
                 model_entity = self._entity_cache.get(workspace, model_name)
                 if model_entity is None:

@@ -4,7 +4,7 @@
 import { AccordionPanel } from '@nemo/common/src/components/AccordionPanel';
 import { ComparisonLineChart } from '@nemo/common/src/components/ComparisonLineChart';
 import { StatTile } from '@nemo/common/src/components/StatTile';
-import { Grid, Stack, Text } from '@nvidia/foundations-react-core';
+import { Flex, Grid, Stack, Text } from '@nvidia/foundations-react-core';
 import type {
   CustomizationMetricValue,
   CustomizationStatusDetailsWithMetrics,
@@ -60,7 +60,7 @@ export const GrpoTrainingHealthPanel: FC<Props> = ({ statusDetails }) => {
         </Text>
 
         {tiles.length > 0 && (
-          <Grid cols={{ base: 1, md: 2, lg: 3 }} gap="density-xl">
+          <Grid cols={{ base: 1, md: 2, lg: 4 }} gap="density-xl">
             {tiles.map(({ diagnostic, series }) => {
               const verdict = diagnostic.evaluate?.(series);
               return (
@@ -70,6 +70,7 @@ export const GrpoTrainingHealthPanel: FC<Props> = ({ statusDetails }) => {
                   value={diagnostic.formatValue(series[series.length - 1].value)}
                   trailingLabel={verdict?.label}
                   trailingLabelStatus={verdict?.status}
+                  status={verdict?.status}
                   hint={diagnostic.hint}
                 />
               );
@@ -80,26 +81,32 @@ export const GrpoTrainingHealthPanel: FC<Props> = ({ statusDetails }) => {
         {charts.length > 0 && (
           <Grid cols={{ base: 1, lg: 2 }} gap="density-xl">
             {charts.map(({ diagnostic, series }) => (
-              <ComparisonLineChart
-                key={diagnostic.id}
-                title={<Text kind="label/bold/md">{diagnostic.title}</Text>}
-                series={[
-                  {
-                    id: diagnostic.id,
-                    label: diagnostic.metric,
-                    data: series.map((point) => point.value),
-                    valueFormatter: (value) =>
-                      value === null ? '—' : diagnostic.formatValue(value),
-                  },
-                ]}
-                xAxis={series.map((point) => point.step)}
-                xAxisLabel="Step"
-                height={CHART_HEIGHT}
-                showLegend={false}
-                referenceLines={diagnostic.referenceLines}
-                {...thresholdAxisBounds(diagnostic, series)}
-                formatYValue={diagnostic.formatAxisValue ?? diagnostic.formatValue}
-              />
+              <Stack key={diagnostic.id} gap="density-sm">
+                <Flex justify="between" align="baseline" gap="density-md">
+                  <Text kind="label/bold/md">{diagnostic.title}</Text>
+                  <Text kind="body/regular/sm" className="text-secondary">
+                    {diagnostic.metric}
+                  </Text>
+                </Flex>
+                <ComparisonLineChart
+                  series={[
+                    {
+                      id: diagnostic.id,
+                      label: diagnostic.metric,
+                      data: series.map((point) => point.value),
+                      valueFormatter: (value) =>
+                        value === null ? '—' : diagnostic.formatValue(value),
+                    },
+                  ]}
+                  xAxis={series.map((point) => point.step)}
+                  xAxisLabel="Step"
+                  height={CHART_HEIGHT}
+                  showLegend={false}
+                  referenceLines={diagnostic.referenceLines}
+                  {...thresholdAxisBounds(diagnostic, series)}
+                  formatYValue={diagnostic.formatAxisValue ?? diagnostic.formatValue}
+                />
+              </Stack>
             ))}
           </Grid>
         )}

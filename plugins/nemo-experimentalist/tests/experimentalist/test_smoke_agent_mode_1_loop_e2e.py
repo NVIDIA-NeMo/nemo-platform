@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 from experimentalist_smoke_test_types import SandboxRunner
+from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import CACHE_STAMP_FILENAME
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _FIXTURE = _REPO_ROOT / "plugins" / "nemo-experimentalist" / "examples" / "smoke-agent"
@@ -147,6 +148,7 @@ class _ExperimentCase:
 
     group: str
     generated_only: bool
+    outcome_evaluator: str
 
 
 @dataclass(frozen=True)
@@ -157,15 +159,20 @@ class _Experiment:
     path: Path
 
 
-_EXPERIMENT_CONFIGURATIONS = tuple(
-    _ExperimentCase(group, generated_only) for group in _REPAIR_GROUPS for generated_only in (False, True)
+_EXPERIMENT_CONFIGURATIONS = (
+    *(
+        _ExperimentCase(group, generated_only, "harbor-native")
+        for group in _REPAIR_GROUPS
+        for generated_only in (False, True)
+    ),
+    _ExperimentCase("g1-aggregation", True, "harbor-runner"),
 )
 _EXPERIMENT_CASES = tuple(
     pytest.param(
         case,
-        id=f"{case.group}-{'generated-only' if case.generated_only else 'augmented'}",
+        id=f"{case.group}-{'generated-only' if case.generated_only else 'augmented'}-{case.outcome_evaluator}",
         marks=pytest.mark.xdist_group(
-            f"mode-1-{case.group}-{'generated-only' if case.generated_only else 'augmented'}"
+            f"mode-1-{case.group}-{'generated-only' if case.generated_only else 'augmented'}-{case.outcome_evaluator}"
         ),
     )
     for case in _EXPERIMENT_CONFIGURATIONS
@@ -173,8 +180,8 @@ _EXPERIMENT_CASES = tuple(
 _GENERATED_ONLY_CASES = tuple(
     pytest.param(
         case,
-        id=f"{case.group}-generated-only",
-        marks=pytest.mark.xdist_group(f"mode-1-{case.group}-generated-only"),
+        id=f"{case.group}-generated-only-{case.outcome_evaluator}",
+        marks=pytest.mark.xdist_group(f"mode-1-{case.group}-generated-only-{case.outcome_evaluator}"),
     )
     for case in _EXPERIMENT_CONFIGURATIONS
     if case.generated_only
@@ -599,17 +606,26 @@ def _assert_analysis_named_problem(experiment: Path, group: str) -> None:
     assert len(hits) >= _MIN_ROOT_CAUSE_HITS, f"{group} analysis did not name its problem; matched only {hits}"
 
 
+def _assert_harbor_runner_execution_provenance(experiment: Path, case: _ExperimentCase) -> None:
+    """Check that runner cases wrote the SDK's Harbor cache-stamp artifact."""
+    if case.outcome_evaluator != "harbor-runner":
+        return
+    stamps = sorted((experiment / "eval-and-optimize" / "results").rglob(CACHE_STAMP_FILENAME))
+    assert stamps, "harbor-runner did not write an SDK Harbor cache stamp into its job directories"
+
+
 def _run_mode_1_case(
     group: str,
     tmp_path: Path,
     runtime: SandboxRunner,
     *,
     generated_only: bool,
+    outcome_evaluator: str,
 ) -> Path:
     """Run and download one Mode 1 group with either augmented or generated-only data."""
     _require_e2e_environment()
     mode = "generated-only" if generated_only else "augmented"
-    artifact_parent = tmp_path / f"{group}-{mode}"
+    artifact_parent = tmp_path / f"{group}-{mode}-{outcome_evaluator}"
     experiment = artifact_parent / "experiment"
     log = artifact_parent / "run.log"
     workspace = f"smoke-agent-e2e-{group}-{uuid.uuid4().hex[:8]}"
@@ -632,6 +648,13 @@ def _run_mode_1_case(
             f"{remote_fixture}/configs/short.yaml",
             "disable_trajectory_scoring: true",
             "disable_trajectory_scoring: false",
+            log=log,
+        )
+    if outcome_evaluator == "harbor-runner":
+        runtime.replace_text(
+            f"{remote_fixture}/configs/short.yaml",
+            "outcome_evaluator_config:",
+            "outcome_evaluator: harbor-runner\noutcome_evaluator_config:",
             log=log,
         )
 
@@ -683,10 +706,14 @@ def experiment(
     assert isinstance(case, _ExperimentCase)
     path = _run_mode_1_case(
         case.group,
-        tmp_path_factory.mktemp(f"mode-1-{case.group}"),
+        tmp_path_factory.mktemp(f"mode-1-{case.group}-{case.outcome_evaluator}"),
         sandbox_runner,
         generated_only=case.generated_only,
+        outcome_evaluator=case.outcome_evaluator,
     )
+    run = json.loads((path / "eval-and-optimize" / "run.json").read_text(encoding="utf-8"))
+    assert run.get("config_snapshot", {}).get("outcome_evaluator") == case.outcome_evaluator
+    _assert_harbor_runner_execution_provenance(path, case)
     return _Experiment(case, path)
 
 

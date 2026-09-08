@@ -6,6 +6,7 @@ import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
 import { ExperimentDetailRoute } from '@studio/routes/ExperimentDetailRoute';
 import { renderRoute, screen } from '@studio/tests/util/render';
+import { waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 
 vi.hoisted(() => {
@@ -78,5 +79,72 @@ describe('ExperimentDetailRoute', () => {
 
     expect(await screen.findByText('Editable group description')).toBeInTheDocument();
     expect(screen.queryByText('Summary')).not.toBeInTheDocument();
+  });
+
+  describe('over-time chart visibility', () => {
+    const trendToggle = () => screen.getByRole('button', { name: /over time/i });
+
+    beforeEach(() => {
+      window.localStorage.clear();
+    });
+
+    it('shows the chart unasked when the experiment is flagged to evaluate over time', async () => {
+      mockGroup({ show_evaluations_over_time: true });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      // aria-pressed is the toggle's own view of whether the chart is showing.
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('hides the chart on an unflagged experiment', async () => {
+      mockGroup({ show_evaluations_over_time: false });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it("lets a viewer's stored choice override the flag it was made against", async () => {
+      window.localStorage.setItem(
+        `nemo-studio:experiment-trend:${group.id}`,
+        JSON.stringify({ visible: false, flag: true })
+      );
+      mockGroup({ show_evaluations_over_time: true });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('deletes a stored choice the flag has moved under, so a round trip cannot revive it', async () => {
+      const key = `nemo-studio:experiment-trend:${group.id}`;
+      // Chosen while the flag was off; the owner has since turned it on.
+      window.localStorage.setItem(key, JSON.stringify({ visible: true, flag: false }));
+      mockGroup({ show_evaluations_over_time: true });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      // Merely ignoring it would leave it to apply again the next time the flag reads false.
+      await waitFor(() => expect(window.localStorage.getItem(key)).toBeNull());
+    });
+
+    it('discards a value left in the older bare-boolean format', async () => {
+      const key = `nemo-studio:experiment-trend:${group.id}`;
+      window.localStorage.setItem(key, 'false');
+      mockGroup({ show_evaluations_over_time: true });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      await waitFor(() => expect(window.localStorage.getItem(key)).toBeNull());
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('retires a stored choice once the flag has moved under it', async () => {
+      // The viewer hid the chart while the flag was off; the owner has since turned it on.
+      window.localStorage.setItem(
+        `nemo-studio:experiment-trend:${group.id}`,
+        JSON.stringify({ visible: false, flag: false })
+      );
+      mockGroup({ show_evaluations_over_time: true });
+
+      expect(await screen.findByText('Editable group description')).toBeInTheDocument();
+      expect(trendToggle()).toHaveAttribute('aria-pressed', 'true');
+    });
   });
 });

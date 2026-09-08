@@ -710,6 +710,7 @@ data-designer==0.9.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin'
     --hash=sha256:ce6d4bc9fcd2c10fb59c28fe8f495cfb5fa39952b17b3d0b159b7dfc7fd724c1
     # via
     #   data-designer-nemo
+    #   data-designer-retrieval-sdg
     #   nemo-anonymizer
     #   nemo-anonymizer-plugin
     #   nemo-data-designer-plugin
@@ -724,6 +725,12 @@ data-designer-engine==0.9.1 ; (platform_machine == 'arm64' and sys_platform == '
     --hash=sha256:d86822d227335980fb70a993327e1e754216c8181b474c5c58590ac8e465dbdf \
     --hash=sha256:df6017f4623d696d8075b33fd3ab5b76dfda0e4cd623c109b8497ae46abfb918
     # via data-designer
+data-designer-retrieval-sdg==0.2.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:5c2b5d7da3340ed730d03bc0163318fae96656e4e414e8907b295ab72ea6fffd \
+    --hash=sha256:cde3f8143b862eb38a01899ab2b6f7181a5ebac79c2db4f4e5c5495e5f6b076e
+    # via
+    #   nemo-data-designer-plugin
+    #   nemo-platform
 databricks-sdk==0.125.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:a562669e248324b808ed7915a73de61f53bae687baef383266a5907907618fef \
     --hash=sha256:a99df74915361b2fbdf63803b4d7cc8e4b034d91aa317f8f9bfa51ee5d3777b7
@@ -1255,6 +1262,8 @@ huggingface-hub==1.26.0 ; (platform_machine == 'arm64' and sys_platform == 'darw
     #   diffusers
     #   fastembed
     #   mlx-audio
+    #   nemo-data-designer-plugin
+    #   nemo-platform
     #   nemo-safe-synthesizer
     #   nmp-common
     #   peft
@@ -1761,6 +1770,7 @@ mcp==1.29.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (pla
     # via
     #   claude-agent-sdk
     #   data-designer-engine
+    #   data-designer-retrieval-sdg
     #   fastmcp-slim
     #   langchain-mcp-adapters
 mdurl==0.1.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
@@ -2028,7 +2038,9 @@ ngcsdk==4.34.10 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
 nltk==3.10.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:2c7ccacb765c5e26b0cb60fb1b57080af522c6924d12a714a243305ba3637412 \
     --hash=sha256:fcfd80fb77931868cea8357573c79838b8abc609942ef9914d1c9f6070d4645c
-    # via rouge-score
+    # via
+    #   data-designer-retrieval-sdg
+    #   rouge-score
 nooa==0.0.9 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:60b64663f34a47aec206137035d62e816c1147484bb74a8a4700a47d1a10b60c \
     --hash=sha256:c7a90ffb5b54094180efcb845e74a00c4182766745245f4258e613f9c12cb522
@@ -2810,6 +2822,7 @@ pyarrow==24.0.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
     #   data-designer
     #   data-designer-config
     #   data-designer-engine
+    #   data-designer-retrieval-sdg
     #   datasets
     #   nemo-evaluator-sdk
 pyasn1==0.6.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
@@ -2938,6 +2951,7 @@ pydantic-settings==2.14.2 ; (platform_machine == 'arm64' and sys_platform == 'da
     --hash=sha256:a20c97b37910b6550d5ea50fbcc2d4187defe58cd57070b73863d069419c9440 \
     --hash=sha256:c19dd64b19097f1de80184f0cc7b0272a13ae6e170cbf240a3e27e381ed14a5f
     # via
+    #   data-designer-retrieval-sdg
     #   fastapi
     #   fastmcp-slim
     #   langchain-community
@@ -3076,6 +3090,7 @@ pyyaml==6.0.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   accelerate
     #   data-designer
     #   data-designer-config
+    #   data-designer-retrieval-sdg
     #   datasets
     #   fastmcp-slim
     #   garak-api
@@ -3532,6 +3547,7 @@ starlette==1.4.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     --hash=sha256:b7332de6e9375593a29ba9eee1e6ecfeb3eb2043e2e19a13b4b71da73ff35540
     # via
     #   data-designer-engine
+    #   data-designer-retrieval-sdg
     #   fastapi
     #   fastmcp-slim
     #   mcp

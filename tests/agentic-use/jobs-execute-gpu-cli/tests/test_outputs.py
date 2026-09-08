@@ -12,7 +12,7 @@ import os
 import time
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.jobs.client import JobsClient
 
 WORKSPACE = "gpu-job-workspace"
 
@@ -31,20 +31,20 @@ def _make_unsigned_jwt() -> str:
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> JobsClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(
+    return JobsClient(
         base_url=nmp_base_url,
         workspace=WORKSPACE,
-        access_token=_make_unsigned_jwt(),
+        auth=_make_unsigned_jwt(),
     )
 
 
-def _wait_for_terminal(client: NeMoPlatform, job_name: str, max_wait: int = 60) -> str:
+def _wait_for_terminal(client: JobsClient, job_name: str, max_wait: int = 60) -> str:
     """Wait for a job to reach a terminal status."""
     for _ in range(max_wait // 5):
         try:
-            resp = client.jobs.get_status(name=job_name, workspace=WORKSPACE)
+            resp = client.get_job_status(name=job_name, workspace=WORKSPACE)
             status = resp.status if hasattr(resp, "status") else str(resp)
             if status in ("completed", "error", "cancelled"):
                 return status
@@ -52,16 +52,16 @@ def _wait_for_terminal(client: NeMoPlatform, job_name: str, max_wait: int = 60) 
             pass
         time.sleep(5)
     try:
-        resp = client.jobs.get_status(name=job_name, workspace=WORKSPACE)
+        resp = client.get_job_status(name=job_name, workspace=WORKSPACE)
         return resp.status if hasattr(resp, "status") else str(resp)
     except Exception:
         return "unknown"
 
 
-def _find_job_by_name(client: NeMoPlatform, name: str):
+def _find_job_by_name(client: JobsClient, name: str):
     """Find a specific job by name."""
-    jobs = client.jobs.list(workspace=WORKSPACE)
-    for job in jobs.data:
+    jobs = client.list_jobs(workspace=WORKSPACE).items()
+    for job in jobs:
         if job.name == name:
             return job
     return None
@@ -70,37 +70,37 @@ def _find_job_by_name(client: NeMoPlatform, name: str):
 # --- Job existence and completion checks ---
 
 
-def test_multiple_jobs_created(client: NeMoPlatform) -> None:
+def test_multiple_jobs_created(client: JobsClient) -> None:
     """Verify that at least 3 jobs were created."""
-    jobs = client.jobs.list(workspace=WORKSPACE)
-    assert len(jobs.data) >= 3, f"Expected at least 3 jobs, found {len(jobs.data)}: {[j.name for j in jobs.data]}"
+    jobs = list(client.list_jobs(workspace=WORKSPACE).items())
+    assert len(jobs) >= 3, f"Expected at least 3 jobs, found {len(jobs)}: {[j.name for j in jobs]}"
 
 
-def test_gpu_verify_job_completed(client: NeMoPlatform) -> None:
+def test_gpu_verify_job_completed(client: JobsClient) -> None:
     """Verify gpu-verify-job reached completed status (nvidia-smi ran on GPU)."""
     job = _find_job_by_name(client, "gpu-verify-job")
     assert job is not None, (
-        f"Job 'gpu-verify-job' not found. Jobs: {[j.name for j in client.jobs.list(workspace=WORKSPACE).data]}"
+        f"Job 'gpu-verify-job' not found. Jobs: {[j.name for j in client.list_jobs(workspace=WORKSPACE).items()]}"
     )
     status = _wait_for_terminal(client, "gpu-verify-job")
     assert status == "completed", f"Job 'gpu-verify-job' has status '{status}', expected 'completed'."
 
 
-def test_gpu_compute_job_completed(client: NeMoPlatform) -> None:
+def test_gpu_compute_job_completed(client: JobsClient) -> None:
     """Verify gpu-compute-job reached completed status."""
     job = _find_job_by_name(client, "gpu-compute-job")
     assert job is not None, (
-        f"Job 'gpu-compute-job' not found. Jobs: {[j.name for j in client.jobs.list(workspace=WORKSPACE).data]}"
+        f"Job 'gpu-compute-job' not found. Jobs: {[j.name for j in client.list_jobs(workspace=WORKSPACE).items()]}"
     )
     status = _wait_for_terminal(client, "gpu-compute-job")
     assert status == "completed", f"Job 'gpu-compute-job' has status '{status}', expected 'completed'."
 
 
-def test_gpu_fail_job_errored(client: NeMoPlatform) -> None:
+def test_gpu_fail_job_errored(client: JobsClient) -> None:
     """Verify gpu-fail-job reached error status (exit code 1)."""
     job = _find_job_by_name(client, "gpu-fail-job")
     assert job is not None, (
-        f"Job 'gpu-fail-job' not found. Jobs: {[j.name for j in client.jobs.list(workspace=WORKSPACE).data]}"
+        f"Job 'gpu-fail-job' not found. Jobs: {[j.name for j in client.list_jobs(workspace=WORKSPACE).items()]}"
     )
     status = _wait_for_terminal(client, "gpu-fail-job")
     assert status == "error", f"Job 'gpu-fail-job' has status '{status}', expected 'error'."

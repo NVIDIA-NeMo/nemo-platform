@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
-import { useDataDesignerGetCreateJob } from '@nemo/sdk/generated/data-designer/api';
+import { useDataDesignerGetCreateJob } from '@nemo/sdk/generated/data-designer/data-designer';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';

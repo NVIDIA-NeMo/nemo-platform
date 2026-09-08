@@ -35,7 +35,7 @@ from nmp.automodel.app.constants import (
 )
 from nmp.automodel.app.jobs.training.compiler import (
     _extract_model_name,
-    _resolve_is_embedding_model,
+    _resolve_training_recipe,
     compile_training_step,
 )
 from nmp.automodel.config import config
@@ -82,6 +82,25 @@ def _get_cpu_resources() -> ResourcesSpec:
             cpu=config.default_job_resource_cpu_request,
             memory=config.default_job_resource_memory_request,
         ),
+    )
+
+
+def _cpu_tasks_executor(command: list[str], cpu_resources: ResourcesSpec, profile: str) -> CPUExecutionProviderSpec:
+    """CPU container steps for fileset I/O and model-entity create.
+
+    Local Docker maps ``cpu/default`` to host subprocess (see ``local.yaml``),
+    which fails because the host has no ``/opt/venv/bin/python``. Use the same
+    profile as training (default ``gpu``) so those steps stay Docker-backed.
+    """
+    return CPUExecutionProviderSpec(
+        provider="cpu",
+        profile=profile,
+        container=ContainerSpec(
+            image=get_tasks_image(),
+            entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
+            command=command,
+        ),
+        resources=cpu_resources,
     )
 
 
@@ -403,14 +422,16 @@ async def platform_job_config_compiler(
         await _validate_deployment_config(workspace, transformed_spec, sdk, auth_client)
 
     file_io_download_config = _build_file_download_config(transformed_spec, me, teacher_me)
-    is_embedding_model_flag = _resolve_is_embedding_model(me)
+    training_recipe = _resolve_training_recipe(me, transformed_spec.training.recipe)
 
     # The embedding NIM requires ONNX format, which cannot represent standalone LoRA adapters.
     # LoRA with merge=True (lora_merged) is allowed because it produces a full-weight model after training.
-    if is_embedding_model_flag and transformed_spec.training.finetuning_type == FinetuningType.LORA:
+    if training_recipe.value in ("bi_encoder", "cross_encoder") and (
+        transformed_spec.training.finetuning_type == FinetuningType.LORA
+    ):
         raise PlatformJobCompilationError(
-            "NeMo Platform does not support unmerged LoRA for embedding models because the embedding NIM requires ONNX format, "
-            "which cannot represent standalone adapters. "
+            "NeMo Platform does not support unmerged LoRA for embedding or cross-encoder models. "
+            "Embedding NIM requires ONNX (no standalone adapters); ranking NIM expects a full-weight checkpoint. "
             "Use peft with merge=True (lora_merged) or omit peft for all_weights training."
         )
 
@@ -426,19 +447,17 @@ async def platform_job_config_compiler(
     trust_remote_code = me.trust_remote_code or False
     model_entity_config = _build_model_entity_config(workspace, transformed_spec, trust_remote_code)
 
+    cpu_profile = (
+        transformed_spec.training.execution_profile
+        if transformed_spec.training.execution_profile is not None
+        else config.default_training_execution_profile
+    )
+
     steps = [
         # Step 1: Download model and dataset files from Files service
         PlatformJobStep(
             name="model-and-dataset-download",
-            executor=CPUExecutionProviderSpec(
-                provider="cpu",
-                container=ContainerSpec(
-                    image=get_tasks_image(),
-                    entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=FILE_IO_TASK_COMMAND,
-                ),
-                resources=cpu_resources,
-            ),
+            executor=_cpu_tasks_executor(FILE_IO_TASK_COMMAND, cpu_resources, cpu_profile),
             environment=base_env,
             config=file_io_download_config.model_dump(mode="json"),
         ),
@@ -452,30 +471,14 @@ async def platform_job_config_compiler(
         # Step 3: Upload customized model
         PlatformJobStep(
             name="model-upload",
-            executor=CPUExecutionProviderSpec(
-                provider="cpu",
-                container=ContainerSpec(
-                    image=get_tasks_image(),
-                    entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=FILE_IO_TASK_COMMAND,
-                ),
-                resources=cpu_resources,
-            ),
+            executor=_cpu_tasks_executor(FILE_IO_TASK_COMMAND, cpu_resources, cpu_profile),
             environment=base_env,
             config=file_io_upload_config.model_dump(mode="json"),
         ),
         # Step 4: Create model entity
         PlatformJobStep(
             name="model-entity-creation",
-            executor=CPUExecutionProviderSpec(
-                provider="cpu",
-                container=ContainerSpec(
-                    image=get_tasks_image(),
-                    entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=MODEL_ENTITY_TASK_COMMAND,
-                ),
-                resources=cpu_resources,
-            ),
+            executor=_cpu_tasks_executor(MODEL_ENTITY_TASK_COMMAND, cpu_resources, cpu_profile),
             environment=base_env,
             config=model_entity_config.model_dump(mode="json"),
         ),

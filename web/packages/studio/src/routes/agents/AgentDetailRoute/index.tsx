@@ -76,6 +76,7 @@ export const AgentDetailRoute: FC = () => {
     agent,
     agentDeployments,
     agentEvals,
+    isAgentEvalsPending,
     agentJobs,
     chatDeployment,
     deleteDeploymentMutation,
@@ -125,6 +126,9 @@ export const AgentDetailRoute: FC = () => {
   };
 
   const modelNames = getAgentModelNames(agent?.config);
+  const canDeploy = !!agent?.config;
+
+  const canRunEvaluation = !!agentName && canDeploy;
 
   const status = healthyDeployments.length > 0 ? 'running' : agentDeployments[0]?.status;
   const statusPillLabel =
@@ -177,7 +181,7 @@ export const AgentDetailRoute: FC = () => {
               <Button
                 kind="secondary"
                 onClick={() => setSubmitEvalOpen(true)}
-                disabled={!agentName}
+                disabled={!canRunEvaluation}
               >
                 <ClipboardCheck className="size-4" aria-hidden />
                 Run evaluation
@@ -186,7 +190,7 @@ export const AgentDetailRoute: FC = () => {
                 <Button
                   color="brand"
                   onClick={() => setCreateDeploymentOpen(true)}
-                  disabled={!agentName || isDeploying}
+                  disabled={!agentName || !canDeploy || isDeploying}
                 >
                   <Rocket className="size-4" aria-hidden />
                   {isDeploying ? 'Deploying...' : 'Deploy'}
@@ -216,16 +220,23 @@ export const AgentDetailRoute: FC = () => {
             <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="overview">
               <OverviewTab
                 workspace={workspace}
-                agentName={agentName}
                 agent={agent}
                 modelNames={modelNames}
+                evals={agentEvals}
+                isEvalsPending={isAgentEvalsPending}
                 onRunAgent={() => setSelectedTab('chat')}
+                onRunEvaluation={canRunEvaluation ? () => setSubmitEvalOpen(true) : undefined}
               />
             </TabsContent>
           )}
 
           <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="evaluations">
-            <EvaluationsTab workspace={workspace} evals={agentEvals} jobs={agentJobs} />
+            <EvaluationsTab
+              workspace={workspace}
+              agentName={agentName}
+              evals={agentEvals}
+              jobs={agentJobs}
+            />
           </TabsContent>
 
           <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="deployments">
@@ -238,6 +249,7 @@ export const AgentDetailRoute: FC = () => {
               onChat={switchToChat}
               onDelete={setDeleteDeploymentTarget}
               onViewLogs={viewLogs}
+              canDeploy={canDeploy}
             />
           </TabsContent>
 
@@ -262,6 +274,7 @@ export const AgentDetailRoute: FC = () => {
                 chatAreaRef={chatAreaRef}
                 onSelectDeployment={setSelectedDeploymentName}
                 onDeploy={() => setCreateDeploymentOpen(true)}
+                canDeploy={canDeploy}
               />
             </div>
           </TabsContent>

@@ -8,27 +8,27 @@ import { z } from 'zod';
 // mirroring src/constants/sampleDatasets.ts. Used by the Create Example Agent
 // modal (fetch + parse agent.yml, inject model, POST).
 //
-// Eval configs are a SEPARATE registry (EVAL_CONFIG_SAMPLES) on purpose: either
-// paradigm can target any agent, so a config is not owned by an agent.
+// Agent configs only. Eval configs and datasets are NOT seeded from here: Studio's
+// Run Evaluation flow takes a user-supplied config and dataset, so the sample eval
+// artifacts live with the example they score, at
+// plugins/nemo-agents/examples/nemo-agent-config/email-security-triage/.
 //
-// INVARIANT: a sample's deployment depends on something being installed in the
-// deploy venv/image, or it fails at startup. Two shapes:
+// INVARIANT: a sample can depend on something being installed in the deploy
+// venv/image, or it fails at startup:
 //
-// 1. NAT (`nat-workflow-v1`) entries whose agent.yml uses a custom `_type` need
-//    that tool's Python package:
-//      _type: calculator              -> plugins/nemo-agents/examples/calculator-agent
-//      _type: email_phishing_analyzer -> plugins/nemo-agents/examples/email-phishing-analyzer
-//
-// 2. Fabric (`nemo-agents-spec-v1`) entries need each `mcp.servers.<n>.url`
-//    console script on PATH, since Fabric spawns it as a stdio MCP child:
-//      email-security-triage-iocs -> plugins/nemo-agents/examples/nemo-agent-config/email-security-triage
+// - NAT (`nat-workflow-v1`) entries whose agent.yml uses a custom `_type` need
+//   that tool's Python package:
+//     _type: calculator              -> plugins/nemo-agents/examples/calculator-agent
+//     _type: email_phishing_analyzer -> plugins/nemo-agents/examples/email-phishing-analyzer
+// - Fabric (`nemo-agents-spec-v1`) entries need each `mcp.servers.<n>.url`
+//   console script on PATH, since Fabric spawns it as a stdio MCP child. No
+//   shipped sample declares `mcp:` today, so nothing currently relies on this.
 //
 // Each public/sample-agents/<dir>/agent.yml is an independent copy of the
 // example's config; keep them in sync by hand.
 export interface SampleAgent {
   key: string;
   displayName: string;
-  description: string;
   /** Prefix for generated agent names; drives onboarding detection. */
   namePrefix: string;
   /** Public path to the NAT workflow config (parsed + model-injected at create). */
@@ -43,58 +43,11 @@ export const SAMPLE_AGENTS: SampleAgent[] = [
   {
     key: 'email_security_triage',
     displayName: 'Email Security Triage',
-    description:
-      'A Fabric DeepAgents orchestrator that delegates the phishing verdict to a sub-agent and calls a deterministic extract_iocs tool, so each step is tunable in config and emits its own trace span.',
     namePrefix: 'email-security-triage',
     agentConfigPath: 'sample-agents/email-security-triage/agent.yml',
     configFormat: 'nemo-agents-spec-v1',
   },
 ];
-
-export interface EvalConfigSample {
-  key: string;
-  displayName: string;
-  description: string;
-  /** Public path to a reusable nemo-evaluator eval config. */
-  configPath: string;
-  /** Public path to the dataset a dataset-driven config scores over. Seeded into
-   *  the run's fileset alongside the config so the sample is self-contained. */
-  datasetPath?: string;
-  /** Public path to a README seeded beside the config, explaining what the suite
-   *  measures. Best-effort: a fetch failure does not block the submission. */
-  readmePath?: string;
-}
-
-// These target the sample agent's output contract, so they move when the sample agent does. The
-// email-security-analyst configs remain on disk as the reference for that agent's capabilities
-// (thread indexing, default review, draft warning) — capabilities the triage agent does not have,
-// which is why they are not simply repointed.
-export const EVAL_CONFIG_SAMPLES: EvalConfigSample[] = [
-  {
-    key: 'task_driven',
-    displayName: 'Task-Driven',
-    description:
-      'Inputs are varied tasks, each with its own metrics, so one suite can grade different kinds of work.',
-    configPath: 'sample-agents/email-security-triage/eval-config.task-driven.json',
-    readmePath: 'sample-agents/email-security-triage/eval-config.task-driven.README.md',
-  },
-  {
-    key: 'dataset_driven',
-    displayName: 'Dataset-Driven',
-    description:
-      'Inputs are rows in a dataset, each with an ideal response, scored by a common metric set.',
-    configPath: 'sample-agents/email-security-triage/eval-config.dataset-driven.json',
-    datasetPath: 'sample-agents/email-security-triage/dataset.jsonl',
-    readmePath: 'sample-agents/email-security-triage/eval-config.dataset-driven.README.md',
-  },
-];
-
-export const DEFAULT_EVAL_CONFIG_KEY = EVAL_CONFIG_SAMPLES[0].key;
-
-export const DATASET_EVAL_CONFIG_KEY = 'dataset_driven';
-
-export const getEvalConfigSample = (key: string): EvalConfigSample =>
-  EVAL_CONFIG_SAMPLES.find((sample) => sample.key === key) ?? EVAL_CONFIG_SAMPLES[0];
 
 export const DEFAULT_SAMPLE_AGENT_KEY = SAMPLE_AGENTS[0].key;
 

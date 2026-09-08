@@ -10,6 +10,7 @@ definition module so the module-attribute call in ``setup.py`` is intercepted.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,6 +30,16 @@ from nemo_platform_ext.cli.telemetry.events import TaskStatusEnum
 
 SETUP_MOD = "nemo_platform_ext.cli.commands.setup"
 EMIT_TARGET = "nemo_platform_ext.cli.telemetry.emit.emit_event"
+
+
+class _StubWorkspaces:
+    """Workspaces typed-client stub whose calls always succeed."""
+
+    def get_workspace(self, **kwargs) -> SimpleNamespace:
+        return SimpleNamespace(data=lambda: object())
+
+    def create_workspace(self, **kwargs) -> SimpleNamespace:
+        return SimpleNamespace(data=lambda: object())
 
 
 @pytest.fixture
@@ -337,6 +348,7 @@ class TestSetupFinishedTelemetry:
             patch(f"{SETUP_MOD}._maybe_start_services"),
             patch(f"{SETUP_MOD}._check_platform_reachable_with_retries", return_value=True),
             patch(f"{SETUP_MOD}._bootstrap_config_if_missing"),
+            patch(f"{SETUP_MOD}.client_from_platform", return_value=_StubWorkspaces()),
             patch(f"{SETUP_MOD}._run_interactive_mode", interactive),
         ):
             setup_command(ctx)

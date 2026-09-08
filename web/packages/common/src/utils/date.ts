@@ -51,13 +51,21 @@ const EMPTY_DURATION = '—';
  * `1h 0m 5s` renders as `1h 5s`), matching {@link formatTimeInSeconds}. Values
  * under one millisecond keep two decimals (`0.34ms`) so span timings are not
  * rounded to zero. Returns an em dash for null/undefined.
+ *
+ * With `hideMsAboveMinute`, the millisecond component is dropped once the total
+ * reaches a minute (`10m 12s`, not `10m 12s 13ms`); sub-minute durations still
+ * show ms. Use it where sub-second precision is noise past a minute.
  */
-export const formatDurationMs = (ms?: number | null): string => {
+export const formatDurationMs = (
+  ms?: number | null,
+  { hideMsAboveMinute = false }: { hideMsAboveMinute?: boolean } = {}
+): string => {
   if (ms == null) return EMPTY_DURATION;
   if (ms <= 0) return '0ms';
   if (ms < 1) return `${Number(ms.toFixed(2))}ms`;
 
   const total = Math.round(ms);
+  const dropMs = hideMsAboveMinute && total >= 60_000;
   const units: [number, string][] = [
     [Math.floor(total / 3_600_000), 'h'],
     [Math.floor((total % 3_600_000) / 60_000), 'm'],
@@ -65,7 +73,7 @@ export const formatDurationMs = (ms?: number | null): string => {
     [total % 1_000, 'ms'],
   ];
   return units
-    .filter(([value]) => value > 0)
+    .filter(([value, unit]) => value > 0 && !(dropMs && unit === 'ms'))
     .map(([value, unit]) => `${value}${unit}`)
     .join(' ');
 };

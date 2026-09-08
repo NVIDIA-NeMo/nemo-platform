@@ -100,7 +100,14 @@ def test_every_shipped_runner_reports_a_stable_name_and_result_shaping_config() 
         (
             HarborAgentTaskRunner(config=HarborRuntimeConfig(jobs_dir=Path("/jobs"))),
             "harbor",
-            {"agent_name", "agent_import_path", "effective_agent", "n_attempts", "jobs_dir", "reward_key"},
+            {
+                "agent_name",
+                "agent_import_path",
+                "effective_agent",
+                "n_attempts",
+                "jobs_dir",
+                "reward_key",
+            },
         ),
     ]
 

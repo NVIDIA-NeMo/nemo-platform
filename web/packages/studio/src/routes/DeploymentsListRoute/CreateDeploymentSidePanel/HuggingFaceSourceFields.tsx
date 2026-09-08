@@ -11,6 +11,8 @@
  */
 
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
+import { EngineFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/EngineFields';
+import { GPULoraFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/GPULoraFields';
 import type { WizardFormValues } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
@@ -55,17 +57,8 @@ export const HuggingFaceSourceFields: FC<HuggingFaceSourceFieldsProps> = ({
           slotError: errors.hfTokenSecret?.message,
         }}
       />
-      <ControlledTextInput
-        useControllerProps={{ control, name: 'gpu' }}
-        name="gpu"
-        label="GPUs"
-        type="number"
-        formFieldProps={{
-          slotInfo:
-            'Typically uses multi-LLM NIM; see supported architectures in deploy-models docs.',
-          slotError: errors.gpu?.message,
-        }}
-      />
+      <EngineFields control={control} errors={errors} />
+      <GPULoraFields control={control} errors={errors} />
       <CreateSecretModal
         workspace={workspace}
         open={createSecretModalOpen}

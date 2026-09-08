@@ -158,3 +158,4 @@ def test_vendored_module_exposes_the_error_rollup_surface() -> None:
 
     assert summary.error_trial_ids == {"RuntimeError": ["t0"]}
     assert summary.error_count == 1
+    assert trial.get_evidence("result") is None

@@ -9,7 +9,7 @@ import sys
 from importlib import import_module, util
 from importlib.abc import Loader, MetaPathFinder
 from importlib.machinery import ModuleSpec
-from types import ModuleType
+from types import CodeType, ModuleType
 from typing import Any
 
 
@@ -28,6 +28,17 @@ class _AliasLoader(Loader):
     def exec_module(self, module: ModuleType) -> None:
         del module
         return None
+
+    def get_code(self, fullname: str) -> CodeType | None:
+        """Return the target module's code so ``python -m`` and debugpy can run aliases."""
+        del fullname
+        target_spec = util.find_spec(self._target_name)
+        if target_spec is None or target_spec.loader is None:
+            return None
+        get_code = getattr(target_spec.loader, "get_code", None)
+        if get_code is None:
+            return None
+        return get_code(self._target_name)
 
     def get_resource_reader(self, fullname: str) -> Any:
         if fullname != self._alias_name:

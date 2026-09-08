@@ -30,7 +30,7 @@ class AutomodelJob(BaseSubmitJob):
     """GPU Automodel fine-tuning job under the customization router."""
 
     name: ClassVar[str] = "automodel.jobs"
-    description: ClassVar[str] = "Automodel SFT and knowledge-distillation training jobs."
+    description: ClassVar[str] = "Automodel SFT, retrieval, and knowledge-distillation training jobs."
     job_collection_path: ClassVar[str | None] = "/automodel/jobs"
     input_spec_schema: ClassVar[type[BaseModel] | None] = AutomodelJobInput
     spec_schema: ClassVar[type[BaseModel] | None] = AutomodelJobOutput

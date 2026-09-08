@@ -90,14 +90,18 @@ def _parse_access_key_expires_in(value: str | None) -> tuple[bool, int | None]:
     return True, expires_in_seconds
 
 
-def is_auth_disabled(base_url: str, timeout: float = 3.0) -> bool:
+def is_auth_disabled(base_url: str, timeout: float = 3.0, certificate_authority: str | None = None) -> bool:
     """Check whether authentication is disabled on the cluster.
 
     Returns:
         True if auth is disabled, False if enabled.
     """
     try:
-        return not discover_nmp_config(base_url, timeout=timeout).auth_enabled
+        return not discover_nmp_config(
+            base_url,
+            timeout=timeout,
+            certificate_authority=certificate_authority,
+        ).auth_enabled
     except httpx.HTTPError as exc:
         raise AuthError(f"Failed to discover auth configuration: {exc}") from exc
 
@@ -162,7 +166,7 @@ def ensure_valid_token(context: Context, refresh_buffer_seconds: int = 300) -> b
 
     base_url = str(context.cluster.base_url).rstrip("/")
     try:
-        nmp_config = discover_nmp_config(base_url)
+        nmp_config = discover_nmp_config(base_url, certificate_authority=context.cluster.certificate_authority)
     except httpx.HTTPError:
         return exp_dt > now
 
@@ -181,6 +185,7 @@ def ensure_valid_token(context: Context, refresh_buffer_seconds: int = 300) -> b
             ),
             refresh_scope=effective_scope,
             refresh_margin_seconds=float(refresh_buffer_seconds),
+            certificate_authority=context.cluster.certificate_authority,
         )
         provider.force_refresh()
 
@@ -227,11 +232,12 @@ def _login_with_oidc(
     console = Console()
     context = cli_context.get_sdk_context()
     base_url = str(context.cluster.base_url).rstrip("/")
+    certificate_authority = context.cluster.certificate_authority
 
     console.print(f"\nDiscovering auth configuration from {base_url}...")
 
     try:
-        oidc_config = discover_nmp_config(base_url)
+        oidc_config = discover_nmp_config(base_url, certificate_authority=certificate_authority)
     except httpx.HTTPError as exc:
         raise AuthError(f"Failed to discover auth configuration: {exc}") from exc
 
@@ -302,6 +308,7 @@ def _login_with_oidc(
                 username=login_username,
                 password=login_password,
                 scope=effective_scope,
+                certificate_authority=certificate_authority,
             )
         except DeviceFlowError as exc:
             raise AuthError(f"Authentication failed: {exc}") from exc
@@ -317,6 +324,7 @@ def _login_with_oidc(
                     client_id=client_id,
                     scope=effective_scope,
                     open_browser=not no_browser,
+                    certificate_authority=certificate_authority,
                 )
             )
         except DeviceFlowError as exc:
@@ -539,7 +547,7 @@ def login(
         base_url = str(context.cluster.base_url).rstrip("/")
 
         try:
-            oidc_config = discover_nmp_config(base_url)
+            oidc_config = discover_nmp_config(base_url, certificate_authority=context.cluster.certificate_authority)
             oidc_login_configured = bool(oidc_config.token_endpoint and oidc_config.client_id)
             if oidc_login_configured:
                 raise AuthError(
@@ -603,7 +611,7 @@ def logout(ctx: typer.Context) -> None:
 
     base_url = str(context.cluster.base_url).rstrip("/")
     try:
-        if is_auth_disabled(base_url) is True:
+        if is_auth_disabled(base_url, certificate_authority=context.cluster.certificate_authority) is True:
             console.print("[yellow]Authentication is disabled on this cluster — nothing to log out from.[/]")
             return
     except AuthError as exc:
@@ -741,7 +749,7 @@ def refresh(ctx: typer.Context) -> None:
     # Fetch client_id from cluster discovery
     base_url = str(context.cluster.base_url).rstrip("/")
     try:
-        oidc_config = discover_nmp_config(base_url)
+        oidc_config = discover_nmp_config(base_url, certificate_authority=context.cluster.certificate_authority)
     except httpx.HTTPError as e:
         raise AuthError(f"Failed to discover auth configuration: {e}") from e
 
@@ -760,6 +768,7 @@ def refresh(ctx: typer.Context) -> None:
             context.user.refresh_token.get_secret_value(),
         ),
         refresh_scope=effective_scope,
+        certificate_authority=context.cluster.certificate_authority,
     )
 
     try:
@@ -850,12 +859,20 @@ def create_access_key(
             help="Scoped Access Key lifetime in seconds. Use 'none' to request no expiration.",
         ),
     ] = None,
+    service_account: Annotated[
+        str | None,
+        typer.Option(
+            "--service-account",
+            help="Bind the key to a non-human service account (PlatformAdmin only).",
+        ),
+    ] = None,
 ) -> None:
-    """Create a Scoped Access Key for the currently authenticated user."""
+    """Create a user-bound or service-bound Scoped Access Key."""
     expires_in_was_set, parsed_expires_in = _parse_access_key_expires_in(expires_in)
     request = AccessKeyCreateRequest(
         name=name,
         description=description,
+        service_account_id=service_account,
         **({"expires_in_seconds": parsed_expires_in} if expires_in_was_set else {}),
     )
     try:
@@ -877,7 +894,11 @@ def list_access_keys(
         typer.Option("--page-size", min=1, max=100, help="Number of keys to retrieve per page."),
     ] = 100,
 ) -> None:
-    """List Scoped Access Keys owned by the currently authenticated user."""
+    """List Scoped Access Keys owned by the currently authenticated user.
+
+    PlatformAdmins also see every service-bound Scoped Access Key, not just the
+    ones they personally created.
+    """
     try:
         listed = _access_key_issuer(ctx).list(page=page, page_size=page_size)
     except AccessKeyFeatureDisabledError as exc:
@@ -894,6 +915,8 @@ def list_access_keys(
             Column("jti", None),
             Column("name", None),
             Column("description", None),
+            Column("entity_type", None),
+            Column("principal", None),
             Column("status", None),
             Column("issuer", None),
             Column("audiences", None),
@@ -987,7 +1010,7 @@ def status(ctx: typer.Context) -> None:
     base_url = str(context.cluster.base_url).rstrip("/")
     auth_discovery_error: AuthError | None = None
     try:
-        auth_disabled = is_auth_disabled(base_url)
+        auth_disabled = is_auth_disabled(base_url, certificate_authority=context.cluster.certificate_authority)
     except AuthError as exc:
         logger.debug("Failed to discover auth configuration during status", exc_info=True)
         auth_discovery_error = exc

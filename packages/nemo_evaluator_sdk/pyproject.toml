@@ -22,6 +22,10 @@ classifiers = [
 ]
 dependencies = [
   "pydantic>=2.10.6",
+  # The broker sandbox provider imports the wire contract at module scope. Cheap to depend on
+  # directly: sandboxed-gym's base install is Pydantic alone -- its server, OpenSandbox and Ray
+  # pieces are extras -- so this adds request/response models, not a web stack.
+  "sandboxed-gym",
   "jinja2>=3.1.6",
   "jsonschema>=4.23.0",
   "jsonpath-ng>=1.7.0",
@@ -34,12 +38,13 @@ dependencies = [
   "ragas==0.4.3",
   "langchain-openai>=1.3.5",
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
-  "nemo-relay>=0.7.2,<0.8",
+  "nemo-relay>=0.7.3,<0.8",
   # Fabric's typed config surface (FabricConfig/RuntimeConfig/ModelConfig/the relay models) — what the
   # agent-eval runtimes compose against. The metapackage includes nemo-fabric-runtime; the harness
   # adapters are the weight (codex ~299 MB, claude ~231 MB) and stay in the `fabric` extra below, so
   # only *resolving and running* a harness pulls them.
   "nemo-fabric==0.3.0b1",
+  "opentelemetry-proto>=1.27.0",
 ]
 version = "0.0.0"
 

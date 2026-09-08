@@ -13,10 +13,7 @@ export const ChartTooltipSurface: FC<{ label?: ReactNode; children?: ReactNode }
   label,
   children,
 }) => (
-  <Stack
-    gap="1"
-    className="bg-component-tooltip border border-component-tooltip shadow-sm rounded-lg p-3"
-  >
+  <Stack gap="1" className="bg-surface-overlay border border-base shadow-sm rounded-lg p-3">
     {label !== undefined && <Text kind="label/semibold/md">{label}</Text>}
     {children}
   </Stack>

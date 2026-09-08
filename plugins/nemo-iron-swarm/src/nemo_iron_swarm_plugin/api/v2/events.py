@@ -24,6 +24,8 @@ from nemo_iron_swarm_plugin.config import IronSwarmConfig
 from nemo_iron_swarm_plugin.entities import IRON_SWARM_RUN_TYPE
 from nemo_iron_swarm_plugin.filesets import download_fileset
 from nemo_platform_plugin.authz import CallerKind, path_rule
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import EntitiesClient
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
@@ -153,10 +155,14 @@ def _fileset_fallback(workspace: str, name: str, stream: Any, after: int) -> lis
         sdk = _get_sdk()
         # get_entity_by_name returns a generic Entity — its domain fields live under `.data`
         # (same access pattern as sdk.py::_run_to_dict), not as top-level attributes.
-        run = sdk.entities.get_entity_by_name(
-            name=name,
-            entity_type=IRON_SWARM_RUN_TYPE,
-            workspace=workspace,
+        run = (
+            client_from_platform(sdk, EntitiesClient)
+            .get_entity_by_name(
+                name=name,
+                entity_type=IRON_SWARM_RUN_TYPE,
+                workspace=workspace,
+            )
+            .data()
         )
         fileset_ref = (getattr(run, "data", None) or {}).get("events_fileset")
         if fileset_ref:

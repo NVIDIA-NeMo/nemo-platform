@@ -17,9 +17,10 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.capabilities import reset_capability_cache
 from nemo_platform_plugin.jobs.api_factory import ContainerSpec as FactoryContainerSpec
 from nemo_platform_plugin.jobs.api_factory import CPUExecutionProviderSpec as FactoryCPUExecutionProviderSpec
-from nemo_platform_plugin.jobs.api_factory import PlatformJobEnvironmentVariableParam, job_route_factory
+from nemo_platform_plugin.jobs.api_factory import EnvironmentVariable as FactoryEnvironmentVariable
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec as FactoryPlatformJobSpec
 from nemo_platform_plugin.jobs.api_factory import PlatformJobStep as FactoryPlatformJobStep
+from nemo_platform_plugin.jobs.api_factory import job_route_factory
 from nmp.common.config import Configuration, ImagePullSecret, PlatformConfig
 from nmp.common.entities.client import EntityClient
 from nmp.common.jobs.constants import (
@@ -318,7 +319,6 @@ def mock_nmp_client(_mock_files_client, mock_jobs_client):
     """
     mock_client = MagicMock()
     mock_client.beta = MagicMock()
-    mock_client.jobs = MagicMock()
 
     from nemo_platform_plugin.jobs.client import JobsClient
 
@@ -572,7 +572,7 @@ def hello_world_job_config(
                     ),
                 ),
                 config=output_spec.model_dump(),
-                environment=[PlatformJobEnvironmentVariableParam(name="ENV_VAR", value="test_value")],
+                environment=[FactoryEnvironmentVariable(name="ENV_VAR", value="test_value")],
             ),
         ]
     )

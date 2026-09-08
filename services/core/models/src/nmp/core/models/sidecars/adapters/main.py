@@ -14,8 +14,9 @@ import urllib.error
 import urllib.request
 
 from nemo_platform import NeMoPlatform, NotFoundError
-from nemo_platform.types.models import ModelEntity
-from nemo_platform.types.models.adapter import Adapter
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import Adapter, ModelEntity
 from nmp.common.config import get_platform_config
 from nmp.common.controller import (
     Controller,
@@ -92,6 +93,7 @@ class AdaptersController(HeartbeatMixin, Controller):
             as_service="models",
             internal=True,
         )
+        self._models = client_from_platform(self._sdk, ModelsClient)
 
     def download_fileset(self, dest_dir: str, workspace: str, name: str) -> bool:
         try:
@@ -156,11 +158,11 @@ class AdaptersController(HeartbeatMixin, Controller):
         # (AALGO-129): they remain single-workspace for now and continue to
         # use the bare model_entity.name as their on-disk directory.
         logger.info(f"Fetching prompt data for {self.workspace}/{self.model_name}")
-        model_entities: list[ModelEntity] = self._sdk.models.list(
-            workspace=self.workspace,
-            filter={
-                "base_model": self.model_name,
-            },
+        model_entities: list[ModelEntity] = list(
+            self._models.list_models(
+                workspace=self.workspace,
+                query_params={"filter": json.dumps({"base_model": self.model_name})},
+            ).items()
         )
         for model_entity in model_entities:
             if model_entity.prompt:
@@ -416,7 +418,7 @@ class AdaptersController(HeartbeatMixin, Controller):
         """
         logger.info(f"Fetching adapters for {self.workspace}/{self.model_name}")
 
-        model_entity: ModelEntity = self._sdk.models.retrieve(name=self.model_name, workspace=self.workspace)
+        model_entity: ModelEntity = self._models.get_model(name=self.model_name, workspace=self.workspace).data()
         if not model_entity.adapters:
             return
 

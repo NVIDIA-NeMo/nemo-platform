@@ -159,6 +159,6 @@ Successfully installed {{ .Chart.Name }}-{{ .Chart.Version }}, named {{ .Release
   OPEN_SANDBOX_DOMAIN={{ .Values.opensandbox.domain }} over {{ .Values.opensandbox.protocol }}.
   Copy Secret {{ .Values.opensandbox.apiKeySecret }} into this release namespace.
   The chart does not install OpenSandbox. See helm show readme and
-  https://docs.nvidia.com/nemo-platform/latest/documentation/self-managed-deployment/setup/helm/opensandbox
+  https://docs.nvidia.com/nemo-platform/latest/documentation/kubernetes-deployment/setup/helm/open-sandbox
 
 {{- end }}

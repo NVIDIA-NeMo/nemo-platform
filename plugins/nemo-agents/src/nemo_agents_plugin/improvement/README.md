@@ -11,10 +11,14 @@ agent skills via a coding agent (Claude).
 **Replaces `tools/self_improve/` from PR #38.** The standalone `nmp-eval-run`
 / `nmp-eval-analyze` / `nmp-self-improve` CLI tools are subsumed by these
 plugin commands; the canonical NeMo self-improvement config lives at
-`.agent-improver.yml` in the repo root and is invoked as:
+`.agent-improver.yml` in the repo root and is invoked from the repo root as:
 
 ```bash
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills --spec-file .agent-improver.yml \
+  --evals "$(pwd)/tests/agentic-use" \
+  --agent "$(pwd)" \
+  --anthropic-api-key-secret anthropic-api-key \
+  --anthropic-base-url "$ANTHROPIC_BASE_URL"
 ```
 
 **New here?** Read [`GETTING_STARTED.md`](./GETTING_STARTED.md) for the
@@ -27,39 +31,66 @@ skill (registered via `nemo.skills`), so a Claude session in any repo
 with this plugin installed knows how to drive the workflow when the user
 asks to "improve the agent" / "run agent evals" / etc.
 
+## Prerequisites
+
+- Install the agents CLI, for example with `uv sync --package nemo-agents-plugin`.
+- Authenticate to a running NeMo Platform instance and set the active workspace.
+- Configure the agent-improvement YAML with absolute `evals`, `agent`, `state`,
+  and `initial_batch` paths when those fields are present.
+- Create the `anthropic-api-key` platform secret before LLM-backed analysis:
+  `printf '%s' "$ANTHROPIC_API_KEY" | nemo secrets create anthropic-api-key --from-file -`.
+- Pass `--anthropic-base-url "$ANTHROPIC_BASE_URL"` on submitted jobs when
+  using an Anthropic-compatible proxy endpoint.
+
 ## CLI surface
 
-Three subcommands extend `nemo agents`, each registered as a standard
-NemoJob with `run` / `submit` / `explain` verbs:
+Three direct NemoJob commands extend `nemo agents`:
 
 ```bash
-# Run locally, in-process — daily use
-nemo agents evaluate-suite run --spec-file ./.agent-improver.yml
-nemo agents analyze         run --spec-file ./.agent-improver.yml
-nemo agents optimize-skills run --spec-file ./.agent-improver.yml
+# Submit to the active platform
+nemo agents evaluate-suite --spec-file ./.agent-improver.yml \
+  --output "$(pwd)/runs/batch-smoke" \
+  --anthropic-api-key-secret anthropic-api-key \
+  --anthropic-base-url "$ANTHROPIC_BASE_URL"
+nemo agents analyze         --spec-file ./analyze-batch.yml
+nemo agents optimize-skills --spec-file ./.agent-improver.yml \
+  --anthropic-api-key-secret anthropic-api-key \
+  --anthropic-base-url "$ANTHROPIC_BASE_URL"
 
-# Submit to a cluster
-nemo agents optimize-skills submit --spec-file ./.agent-improver.yml --cluster <url>
-
-# Inspect the spec schema for a job
-nemo agents optimize-skills explain
+# Submit to a configured cluster
+nemo agents optimize-skills --spec-file ./.agent-improver.yml \
+  --anthropic-api-key-secret anthropic-api-key \
+  --anthropic-base-url "$ANTHROPIC_BASE_URL" \
+  --cluster <name>
 ```
 
 You can pass the spec inline as JSON instead of a file:
 
 ```bash
-nemo agents analyze run --spec '{"batch": "./runs/batch-2026-04-28", "format": "md"}'
+nemo agents analyze --spec "{\"batch\": \"$(pwd)/runs/batch-2026-04-28\", \"format\": \"md\", \"anthropic_api_key_secret\": \"anthropic-api-key\", \"anthropic_base_url\": \"$ANTHROPIC_BASE_URL\"}"
 ```
 
-For one-off overrides, edit the YAML in place (or copy it and pass the
+For one-off overrides, edit the relevant YAML in place (or copy it and pass the
 copy via `--spec-file`); `--spec` JSON is ignored when `--spec-file` is set.
+
+Example `analyze-batch.yml`:
+
+```yaml
+# All fields match AnalyzeBatchConfig (Pydantic schema).
+batch: /path/to/my-agent/runs/batch-2026-04-28
+format: md
+anthropic_api_key_secret: anthropic-api-key
+anthropic_base_url: https://inference-api.nvidia.com
+
+# mechanical_only: true  # skips the LLM pass and does not need the secret
+```
 
 Example `.agent-improver.yml`:
 
 ```yaml
 # All fields match OptimizeSkillsConfig (Pydantic schema).
-evals: ./tests/agentic
-agent: .
+evals: /path/to/my-agent/tests/agentic
+agent: /path/to/my-agent
 skills_path: .agents/skills
 
 iterations: 3
@@ -67,7 +98,7 @@ concurrency: 4
 repeats: 3              # >1 enables median aggregation for noise reduction
 
 # filter_glob: "auth-*"  # optional: scope to subset of evals
-# initial_batch: ./runs/batch-2026-04-28  # skip the initial run
+# initial_batch: /path/to/my-agent/runs/batch-2026-04-28  # skip the initial run
 
 full_verification: false
 open_pr: false          # set true to auto-open a GitLab MR via glab

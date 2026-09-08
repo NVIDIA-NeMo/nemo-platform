@@ -9,16 +9,13 @@ providers for deterministic rail-model responses.
 """
 
 from collections.abc import Callable
-from typing import Any, TypeAlias, cast
+from typing import Any
 
-import nemo_platform
 import pytest
-from nemo_platform.types.guardrail import (
-    ChatCompletionAssistantMessageParam,
-    ChatCompletionUserMessageParam,
-    GuardrailCheckResponse,
-    GuardrailsDataParam,
-)
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import BadRequestError
+from nemo_platform_plugin.guardrail.client import GuardrailClient
+from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest, GuardrailCheckResponse
 
 from e2e.guardrails.utils import (
     BACKEND_RESPONSE,
@@ -26,12 +23,6 @@ from e2e.guardrails.utils import (
     CONTENT_SAFETY_OUTPUT_FLOW,
     GuardrailsChatTestCase,
 )
-
-# `guardrails` is assembled dynamically from test fixture data (`content_safety_config()`,
-# ad-hoc `extra_guardrails` overrides), so we build it as a plain dict and cast it once at
-# the SDK call boundary rather than threading `GuardrailsDataParam`'s nested TypedDicts
-# through the test fixtures.
-_CheckMessage: TypeAlias = ChatCompletionUserMessageParam | ChatCompletionAssistantMessageParam
 
 
 def _post_check(
@@ -51,16 +42,22 @@ def _post_check(
     if extra_guardrails:
         guardrails.update(extra_guardrails)
 
-    return test_case.sdk.guardrail.check(
-        workspace=test_case.workspace,
-        model=test_case.backend_model_ref,
-        messages=_check_messages(test_case),
-        guardrails=cast(GuardrailsDataParam, guardrails),
+    return (
+        client_from_platform(test_case.sdk, GuardrailClient)
+        .check_guardrail(
+            workspace=test_case.workspace,
+            body=GuardrailCheckRequest(
+                model=test_case.backend_model_ref,
+                messages=_check_messages(test_case),
+                guardrails=guardrails,
+            ),
+        )
+        .data()
     )
 
 
-def _check_messages(test_case: GuardrailsChatTestCase) -> list[_CheckMessage]:
-    messages: list[_CheckMessage] = [{"role": "user", "content": test_case.user_input}]
+def _check_messages(test_case: GuardrailsChatTestCase) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = [{"role": "user", "content": test_case.user_input}]
     if "output" in test_case.rail_types:
         messages.append({"role": "assistant", "content": BACKEND_RESPONSE})
     return messages
@@ -152,7 +149,7 @@ def test_checks_rejects_unknown_config_id(
         config_mode="referenced", outcome="safe", rail_types=("input",)
     )
 
-    with pytest.raises(nemo_platform.APIStatusError) as exc_info:
+    with pytest.raises(BadRequestError) as exc_info:
         _post_check(
             test_case,
             extra_guardrails={"config_id": f"{test_case.workspace}/missing-guardrails-config"},

@@ -253,6 +253,22 @@ class KubernetesJobStorageConfig(BaseModel):
     )
 
 
+class KubernetesWorkloadIdentityConfig(BaseModel):
+    """Kubernetes workload identity token projection configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token_expiration_seconds: int = Field(
+        default=600,
+        ge=600,
+        description="Requested expirationSeconds for the projected service account token used as the workload identity subject token.",
+    )
+    token_audience: str | None = Field(
+        default=None,
+        description="Audience for the projected service account token. Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.",
+    )
+
+
 class BaseKubernetesExecutionProfileConfig(JobExecutionProfileConfig):
     """Common configuration for Kubernetes execution environment."""
 
@@ -312,6 +328,10 @@ class BaseKubernetesExecutionProfileConfig(JobExecutionProfileConfig):
     launcher_image: str = Field(
         default="nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest",
         description="Container image that contains the jobs-launcher binary.",
+    )
+    workload_identity: KubernetesWorkloadIdentityConfig = Field(
+        default_factory=KubernetesWorkloadIdentityConfig,
+        description="Kubernetes workload identity configuration.",
     )
 
 

@@ -11,7 +11,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
-from nemo_evaluator_sdk.values import RunConfig, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values.params import RunConfig, RunConfigOnline, RunConfigOnlineModel
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 

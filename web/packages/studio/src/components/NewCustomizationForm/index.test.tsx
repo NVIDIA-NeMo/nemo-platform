@@ -16,9 +16,15 @@ const mutateAutomodel = vi.fn();
 const mutateUnsloth = vi.fn();
 const mutateRl = vi.fn();
 
-vi.mock('@nemo/sdk/generated/customizer/api', () => ({
+vi.mock('@nemo/sdk/generated/customizer/automodel-jobs', () => ({
   useCustomizationCreateAutomodelJob: () => ({ mutateAsync: mutateAutomodel, isPending: false }),
+}));
+
+vi.mock('@nemo/sdk/generated/customizer/unsloth-jobs', () => ({
   useCustomizationCreateUnslothJob: () => ({ mutateAsync: mutateUnsloth, isPending: false }),
+}));
+
+vi.mock('@nemo/sdk/generated/customizer/rl-jobs', () => ({
   useCustomizationCreateRlJob: () => ({ mutateAsync: mutateRl, isPending: false }),
 }));
 

@@ -46,6 +46,13 @@ def _comparable_trials(trials: Sequence[Any], *, include_id: bool = False) -> li
             "has_trace": trial.trace is not None,
             "resource_kinds": sorted({key.split(":")[0] for key in trial.resources}),
         }
+        tokens = {
+            key: trial.metadata[key]
+            for key in ("n_input_tokens", "n_output_tokens", "n_cache_tokens")
+            if key in trial.metadata
+        }
+        if tokens:
+            entry["tokens"] = tokens
         if include_id:
             entry["id"] = trial.id
         projected.append(entry)

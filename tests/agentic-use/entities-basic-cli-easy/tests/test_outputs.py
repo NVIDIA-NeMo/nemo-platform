@@ -14,29 +14,29 @@ TODO(mstaats): We need to verify the agentic path in the future, not just the en
 import os
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.entities.client import EntitiesClient
 
 WORKSPACE = "default"
 
 
 @pytest.fixture
-def client() -> NeMoPlatform:
+def client() -> EntitiesClient:
     nmp_base_url = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
-    return NeMoPlatform(base_url=nmp_base_url, workspace=WORKSPACE)
+    return EntitiesClient(base_url=nmp_base_url, workspace=WORKSPACE)
 
 
-def test_harbor_test_model_deleted(client: NeMoPlatform) -> None:
+def test_harbor_test_model_deleted(client: EntitiesClient) -> None:
     """Test that harbor-test-model was deleted after CRUD operations."""
-    response = client.entities.list(entity_type="model")
-    entity_names = [e.name for e in response.data]
+    response = client.list_entities(entity_type="model")
+    entity_names = [e.name for e in response.page().items]
     assert "harbor-test-model" not in entity_names, (
         f"Entity 'harbor-test-model' should have been deleted but still exists! Found: {entity_names}"
     )
 
 
-def test_harbor_final_dataset_exists(client: NeMoPlatform) -> None:
+def test_harbor_final_dataset_exists(client: EntitiesClient) -> None:
     """Test that harbor-final-dataset was created and has correct data."""
-    response = client.entities.get_entity_by_name(name="harbor-final-dataset", entity_type="dataset")
+    response = client.get_entity_by_name(name="harbor-final-dataset", entity_type="dataset").data()
     assert response.name == "harbor-final-dataset", (
         f"Expected entity name 'harbor-final-dataset', got '{response.name}'"
     )

@@ -31,7 +31,9 @@ from nemo_iron_swarm_plugin.jobs.errors import (
     IronSwarmRunError,
 )
 from nemo_iron_swarm_plugin.model_config import ModelChoice, WarGameModels
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.job_context import JobContext
+from nemo_platform_plugin.secrets.client import SecretsClient
 
 
 def require_provisioned(plugin_config: IronSwarmConfig) -> None:
@@ -81,7 +83,7 @@ def _resolve_secret(sdk: Any, name: str, workspace: str) -> str | None:
     """Fetch a Secret's plaintext value via the platform SDK; None if unavailable (caller warns/fails)."""
     if sdk is None:
         return None
-    secret = sdk.secrets.access(name, workspace=workspace)
+    secret = client_from_platform(sdk, SecretsClient).access_secret(name=name, workspace=workspace).data()
     value = getattr(secret, "value", None)
     return str(value) if value else None
 

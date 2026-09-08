@@ -3,8 +3,8 @@
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { logger } from '@nemo/common/src/utils/logger';
-import * as agentsSdk from '@nemo/sdk/generated/agents/api';
-import * as platformSdk from '@nemo/sdk/generated/platform/api';
+import * as agentsSdk from '@nemo/sdk/generated/agents/index';
+import * as platformSdk from '@nemo/sdk/generated/platform/index';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';

@@ -4,6 +4,7 @@
 """CLI integration tests for ``nemo setup`` connection selection."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +14,16 @@ from nemo_platform_ext.config.config import Config
 from typer.testing import CliRunner
 
 SETUP_MOD = "nemo_platform_ext.cli.commands.setup"
+
+
+class _StubWorkspaces:
+    """Workspaces typed-client stub whose calls always succeed."""
+
+    def get_workspace(self, **kwargs) -> SimpleNamespace:
+        return SimpleNamespace(data=lambda: object())
+
+    def create_workspace(self, **kwargs) -> SimpleNamespace:
+        return SimpleNamespace(data=lambda: object())
 
 
 def test_setup_help_documents_resume_flag() -> None:
@@ -32,7 +43,6 @@ def test_remote_choice_retries_and_persists_connection(
     monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
 
     client = MagicMock()
-    client.workspaces.retrieve.return_value = MagicMock()
 
     with (
         patch(f"{SETUP_MOD}.is_interactive", return_value=True),
@@ -49,6 +59,7 @@ def test_remote_choice_retries_and_persists_connection(
         patch(f"{SETUP_MOD}._ensure_platform_auth") as ensure_auth,
         patch(f"{SETUP_MOD}._start_services_background") as start_services,
         patch.object(CLIContext, "get_client", return_value=client),
+        patch(f"{SETUP_MOD}.client_from_platform", return_value=_StubWorkspaces()),
         patch(f"{SETUP_MOD}._run_interactive_mode") as run_interactive,
     ):
         result = CliRunner().invoke(app, ["setup"])
@@ -71,7 +82,6 @@ def test_local_choice_starts_services_and_keeps_local_connection(
     monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
 
     client = MagicMock()
-    client.workspaces.retrieve.return_value = MagicMock()
     process = MagicMock(pid=1234)
 
     with (
@@ -85,6 +95,7 @@ def test_local_choice_starts_services_and_keeps_local_connection(
         patch(f"{SETUP_MOD}._wait_for_platform", return_value=True),
         patch(f"{SETUP_MOD}._check_platform_reachable_with_retries", return_value=True),
         patch.object(CLIContext, "get_client", return_value=client),
+        patch(f"{SETUP_MOD}.client_from_platform", return_value=_StubWorkspaces()),
         patch(f"{SETUP_MOD}._run_interactive_mode") as run_interactive,
     ):
         result = CliRunner().invoke(app, ["setup"])

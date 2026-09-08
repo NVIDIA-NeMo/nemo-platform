@@ -6,6 +6,7 @@ import pathlib
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 from nemo_platform_plugin.capabilities import ProbeResult
 from nmp.common.config import Configuration, Runtime
 from nmp.core.jobs.app.providers import (
@@ -236,6 +237,23 @@ def test_jobs_config_merge_with_defaults_docker_additional_volumes():
     assert additional[0].allow_create_volume is True
 
 
+def test_authentik_compose_jobs_config_omits_docker_workload_identity_override():
+    global_settings = yaml.safe_load(
+        pathlib.Path("contrib/auth/authentik/config/platform-compose-authentik.yaml").read_text(encoding="utf-8")
+    )
+
+    config = Configuration.global_settings_to_service_config(global_settings, JobsServiceConfig)
+
+    workload_executor = next(
+        executor
+        for executor in config.executors
+        if executor.backend == "docker" and executor.provider == "cpu" and executor.profile == "workload"
+    )
+    assert isinstance(workload_executor.config, DockerJobExecutionProfileConfig)
+    assert "workload_identity" not in DockerJobExecutionProfileConfig.model_json_schema()["properties"]
+    assert not hasattr(workload_executor.config, "workload_identity")
+
+
 def test_docker_default_profiles(monkeypatch):
     # Clear caches to ensure fresh config read
     Configuration.clear_cache()
@@ -338,10 +356,27 @@ def test_volcano_job_service_account_name_default():
 def test_kubernetes_workload_identity_token_expiration_rejects_values_below_kubernetes_minimum(config_cls):
     """Projected service account token expiration must honor Kubernetes' 600 second minimum."""
     with pytest.raises(ValidationError) as exc_info:
-        config_cls(workload_identity_token_expiration_seconds=599)
+        config_cls(workload_identity={"token_expiration_seconds": 599})
 
-    assert "workload_identity_token_expiration_seconds" in str(exc_info.value)
+    assert "token_expiration_seconds" in str(exc_info.value)
     assert "greater than or equal to 600" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "config_cls",
+    [KubernetesJobExecutionProfileConfig, VolcanoJobExecutionProfileConfig],
+)
+def test_kubernetes_workload_identity_config_is_nested(config_cls):
+    """Kubernetes workload identity knobs are grouped under workload_identity."""
+    properties = config_cls.model_json_schema()["properties"]
+
+    assert "workload_identity" in properties
+    assert "workload_identity_token_expiration_seconds" not in properties
+    assert "workload_identity_token_audience" not in properties
+
+    config = config_cls()
+    assert config.workload_identity.token_expiration_seconds == 600
+    assert config.workload_identity.token_audience is None
 
 
 def test_job_execution_profile_config_rejects_reserved_env_vars():

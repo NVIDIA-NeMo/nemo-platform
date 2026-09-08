@@ -24,7 +24,8 @@ type SliderProps = ComponentProps<typeof Slider>;
 
 export type SliderWithTextInputProps = {
   field: FieldValues;
-  defaultValue: number;
+  defaultValue?: number;
+  unsetPlaceholder?: string;
   max: number;
   min: number;
   step?: number;
@@ -45,6 +46,7 @@ export type SliderWithTextInputProps = {
 export const SliderWithTextInput = ({
   field,
   defaultValue,
+  unsetPlaceholder,
   formFieldProps,
   max,
   min,
@@ -95,7 +97,8 @@ export const SliderWithTextInput = ({
   const handleReset = () => {
     setDraftValue(null);
     field.onChange(defaultValue);
-    attributes?.Slider?.onValueChange?.(defaultValue);
+    // Nothing numeric to forward when the field resets to unset.
+    if (defaultValue !== undefined) attributes?.Slider?.onValueChange?.(defaultValue);
   };
   const fallback = defaultValue ?? min;
   const isFieldValueNumber = typeof field.value === 'number' && !Number.isNaN(field.value);
@@ -167,6 +170,7 @@ export const SliderWithTextInput = ({
         status={fieldStatus}
         aria-label="Slider value"
         value={textInputValue}
+        placeholder={unsetPlaceholder}
         max={max.toString()}
         min={min.toString()}
         step={step?.toString()}

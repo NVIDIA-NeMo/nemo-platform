@@ -10,14 +10,25 @@
  * its affiliates is strictly prohibited.
  */
 
-import { CreateExperimentBody } from '@nemo/sdk/generated/platform/zod/experiments/createExperiment';
+import {
+  EXPERIMENT_SETTINGS_DEFAULTS,
+  experimentSettingsSchemaShape,
+} from '@studio/components/evaluation/shared/experimentSettings';
 import { workspaceInputSchema } from '@studio/constants/zod';
+import { z } from 'zod';
 
-// Override the SDK-generated `name` validation — the generated zod uses the DTO's loose
-// string pattern; we validate against the stricter workspace-name rules so the user sees
-// a useful inline error instead of a 422 toast.
-export const experimentCreateSchema = CreateExperimentBody.extend({
+// The name is validated against the stricter workspace-name rules rather than the DTO's loose
+// string pattern, so the user sees a useful inline error instead of a 422 toast. Everything below
+// the name is the shared experiment-settings shape, so this form, the edit form, and the
+// evaluation form's "new experiment" path cannot drift apart.
+export const experimentCreateSchema = z.object({
   name: workspaceInputSchema,
+  ...experimentSettingsSchemaShape,
 });
 
-export type ExperimentCreateFormFields = typeof experimentCreateSchema._type;
+export type ExperimentCreateFormFields = z.infer<typeof experimentCreateSchema>;
+
+export const experimentCreateDefaults: ExperimentCreateFormFields = {
+  name: '',
+  ...EXPERIMENT_SETTINGS_DEFAULTS,
+};

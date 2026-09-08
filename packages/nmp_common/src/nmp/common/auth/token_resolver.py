@@ -9,10 +9,31 @@ from typing import Literal
 
 from nmp.common.config import AuthConfig
 
-from .jwt import JWTValidator, TokenClaims
+from .jwt import JWTValidator
 from .models import Principal
+from .token_claims import TokenClaims
 
 ResolvedTokenKind = Literal["access_key", "oidc_access_token", "workload_access_token", "workload_subject_token"]
+
+
+def _direct_principal_from_claims(claims: TokenClaims) -> Principal:
+    return Principal(
+        id=claims.subject,
+        email=claims.email,
+        groups=claims.groups,
+    )
+
+
+def _workload_access_principal_from_claims(claims: TokenClaims) -> Principal:
+    if claims.actor is None:
+        return _direct_principal_from_claims(claims)
+    return Principal(
+        id=claims.actor.subject,
+        groups=claims.actor.groups,
+        on_behalf_of=claims.subject,
+        on_behalf_of_email=claims.email,
+        on_behalf_of_groups=claims.groups,
+    )
 
 
 @dataclass(frozen=True)
@@ -22,11 +43,9 @@ class ResolvedBearerToken:
 
     @property
     def principal(self) -> Principal:
-        return Principal(
-            id=self.claims.subject,
-            email=self.claims.email,
-            groups=self.claims.groups,
-        )
+        if self.token_kind == "workload_access_token":
+            return _workload_access_principal_from_claims(self.claims)
+        return _direct_principal_from_claims(self.claims)
 
     @property
     def scopes(self) -> list[str]:

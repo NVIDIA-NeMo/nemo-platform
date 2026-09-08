@@ -333,7 +333,10 @@ async def test_benchmark_produce_records_run_without_analyzing(monkeypatch, tmp_
     assert record["dataset_name"] == "tau2:airline"
     assert created == ["tau2-airline", "tau2-airline-oracle"]  # both stable workspaces ensured
     # Experiment entity created on the ORACLE workspace only.
-    assert experiments == [("tau2-airline-oracle", record["experiment_id"], "tau2:airline", record["dataset_version"])]
+    assert experiments == [
+        ("tau2-airline", record["experiment_id"], "tau2:airline", record["dataset_version"]),
+        ("tau2-airline-oracle", record["experiment_id"], "tau2:airline", record["dataset_version"]),
+    ]
     assert len(exported) == 4  # 2 sims x 2 workspaces
     # Every exported span is tagged with the run id.
     for _ws, _sid, spans in exported:
@@ -513,4 +516,4 @@ async def test_benchmark_produce_realistic_only_when_rewards_disabled(monkeypatc
     assert len(exported) == 2  # 2 sims x 1 workspace
     assert all(ws == record["realistic_workspace"] for ws, _, _ in exported)
     assert evals == []  # no oracle → no reward rows
-    assert experiments == []  # no oracle workspace → no Experiment entity
+    assert experiments == [("tau2-airline", record["experiment_id"], "tau2:airline", record["dataset_version"])]

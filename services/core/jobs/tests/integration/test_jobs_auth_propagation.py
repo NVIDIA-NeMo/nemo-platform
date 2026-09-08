@@ -18,6 +18,9 @@ from typing import Generator
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from nmp.core.files.service import FilesService
 from nmp.core.jobs.service import JobsService
 from nmp.testing import as_user, create_test_client, short_unique_name, unique_email
@@ -51,30 +54,33 @@ class TestJobCreationWithAuth:
 
         creator_sdk = as_user(sdk, creator_email, groups=["team-alpha"])
 
-        creator_sdk.jobs.create(
+        jobs = client_from_platform(creator_sdk, JobsClient)
+        jobs.create_job(
             workspace=workspace,
-            name=job_name,
-            source="auth-propagation-test",
-            spec={},
-            platform_spec={
-                "steps": [
-                    {
-                        "name": "test-step",
-                        "executor": {
-                            "provider": "cpu",
-                            "profile": "default",
-                            "container": {
-                                "image": "busybox:latest",
-                                "entrypoint": ["entrypoint"],
-                                "command": ["command"],
+            body=CreatePlatformJobRequest(
+                name=job_name,
+                source="auth-propagation-test",
+                spec={},
+                platform_spec={
+                    "steps": [
+                        {
+                            "name": "test-step",
+                            "executor": {
+                                "provider": "cpu",
+                                "profile": "default",
+                                "container": {
+                                    "image": "busybox:latest",
+                                    "entrypoint": ["entrypoint"],
+                                    "command": ["command"],
+                                },
                             },
                         },
-                    },
-                ]
-            },
+                    ]
+                },
+            ),
         )
 
-        steps = list(creator_sdk.jobs.steps.list(job_name, workspace=workspace))
+        steps = list(jobs.list_steps(name=job_name, workspace=workspace).items())
         assert len(steps) == 1
         assert steps[0].auth_context is None, "Regular user should not see auth_context"
 
@@ -87,31 +93,36 @@ class TestJobCreationWithAuth:
 
         creator_sdk = as_user(sdk, creator_email, groups=creator_groups)
 
-        creator_sdk.jobs.create(
+        jobs = client_from_platform(creator_sdk, JobsClient)
+        jobs.create_job(
             workspace=workspace,
-            name=job_name,
-            source="auth-propagation-test",
-            spec={},
-            platform_spec={
-                "steps": [
-                    {
-                        "name": "test-step",
-                        "executor": {
-                            "provider": "cpu",
-                            "profile": "default",
-                            "container": {
-                                "image": "busybox:latest",
-                                "entrypoint": ["entrypoint"],
-                                "command": ["command"],
+            body=CreatePlatformJobRequest(
+                name=job_name,
+                source="auth-propagation-test",
+                spec={},
+                platform_spec={
+                    "steps": [
+                        {
+                            "name": "test-step",
+                            "executor": {
+                                "provider": "cpu",
+                                "profile": "default",
+                                "container": {
+                                    "image": "busybox:latest",
+                                    "entrypoint": ["entrypoint"],
+                                    "command": ["command"],
+                                },
                             },
                         },
-                    },
-                ]
-            },
+                    ]
+                },
+            ),
         )
 
         service_sdk = _as_service_principal(sdk)
-        steps = list(service_sdk.jobs.steps.list(job_name, workspace=workspace))
+        steps = list(
+            client_from_platform(service_sdk, JobsClient).list_steps(name=job_name, workspace=workspace).items()
+        )
 
         assert len(steps) == 1
         step = steps[0]

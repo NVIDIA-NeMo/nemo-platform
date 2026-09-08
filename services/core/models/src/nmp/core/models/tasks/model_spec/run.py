@@ -18,25 +18,37 @@ import logging
 import os
 from pathlib import Path
 
-from nemo_platform import (
-    APIConnectionError,
-    APITimeoutError,
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import (
     InternalServerError,
-    NeMoPlatform,
-    NeMoPlatformError,
+    NemoClientError,
     NotFoundError,
 )
-from nemo_platform.types.models import ModelEntity
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import (
+    NemoTransportError as APIConnectionError,
+)
+from nemo_platform_plugin.client.errors import (
+    NemoTransportError as APITimeoutError,
+)
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, LocalStorageConfig, NGCStorageConfig
 from nemo_platform_plugin.files.types import FilesetOutput
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import (
+    ModelEntity,
+    UpdateModelEntityRequest,
+)
+from nemo_platform_plugin.models.types import (
+    ModelSpec as PluginModelSpec,
+)
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.model_utils import is_embedding_model
 from nmp.common.sdk_factory import get_platform_sdk
 from nmp.core.models.config import config as models_config
 from nmp.core.models.schemas import ModelSpec, ToolCallConfig
 from nmp.core.models.tasks.model_spec.schemas import ModelSpecTaskConfig, NMPJobContext
+from nmp.core.models.tasks.model_spec.utils import infer_model_head_type
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
@@ -76,13 +88,15 @@ class ModelSpecRunner:
     def __init__(self, sdk: NeMoPlatform, job_ctx: NMPJobContext):
         self.sdk = sdk
         self.job_ctx = job_ctx
+        self._models = client_from_platform(sdk, ModelsClient)
+        self._files = client_from_platform(sdk, FilesClient)
 
     @staticmethod
     def _merge_fileset_metadata(fs: FilesetOutput, model_spec: ModelSpec) -> None:
         """Merge tool calling metadata from fileset into model spec.
 
         Users can set these values on the fileset at creation time via metadata:
-            files = client_from_platform(sdk, FilesClient)
+            files = self._files
             files.create_fileset(
                 body=CreateFilesetRequest(
                     ...,
@@ -178,12 +192,12 @@ class ModelSpecRunner:
         logger.info(f"Fetching model entity: {config.workspace}/{config.name}")
 
         try:
-            me = self.sdk.models.retrieve(config.name, workspace=config.workspace, verbose=True)
+            me = self._models.get_model(name=config.name, workspace=config.workspace).data()
         except NotFoundError as err:
             raise ModelSpecCreationError(
                 f"Failed to create model spec: model entity {config.workspace}/{config.name} does not exist"
             ) from err
-        except NeMoPlatformError as err:
+        except NemoClientError as err:
             raise ModelSpecCreationError(
                 f"Failed to create model spec: model entity {config.workspace}/{config.name} unable to be fetched"
             ) from err
@@ -206,7 +220,7 @@ class ModelSpecRunner:
         # Validate that the fileset exists before creating the model entity
         logger.info(f"Validating fileset exists: {fileset_workspace}/{fileset_name}")
         try:
-            files = client_from_platform(self.sdk, FilesClient)
+            files = self._files
             fs = files.get_fileset(workspace=fileset_workspace, name=fileset_name).data()
             logger.info(f"Fileset validation successful: {fileset_workspace}/{fileset_name}")
         except Exception as e:
@@ -248,16 +262,25 @@ class ModelSpecRunner:
 
         logger.info(os.listdir(dest_dir))
         is_trusted = me.trust_remote_code if me.trust_remote_code is not None else False
-        model_spec = infer_model_cfg_from_hf(dest_dir, is_trusted=is_trusted, file_listing=all_file_paths)
-        # Embedding if model name or storage path contains "embed"; use or to avoid
-        # overwriting a correct True from model name when storage path lacks "embed"
-        model_spec.is_embedding_model = is_embedding_model(me.name)
-        if isinstance(fs.storage, LocalStorageConfig):
-            model_spec.is_embedding_model = model_spec.is_embedding_model or is_embedding_model(fs.storage.path)
-        elif isinstance(fs.storage, NGCStorageConfig):
-            model_spec.is_embedding_model = model_spec.is_embedding_model or is_embedding_model(fs.storage.target)
-        elif isinstance(fs.storage, HuggingfaceStorageConfig):
-            model_spec.is_embedding_model = model_spec.is_embedding_model or is_embedding_model(fs.storage.repo_id)
+        model_spec = infer_model_cfg_from_hf(str(dest_dir), is_trusted=is_trusted, file_listing=all_file_paths)
+        model_spec.head_type, head_type_reason = infer_model_head_type(str(dest_dir))
+
+        # Legacy filesets may omit model-card/config signals. Preserve the old
+        # name/path heuristic only as an unknown-result fallback.
+        if model_spec.head_type == "unknown":
+            legacy_identifiers = [me.name]
+            if isinstance(fs.storage, LocalStorageConfig):
+                legacy_identifiers.append(fs.storage.path)
+            elif isinstance(fs.storage, NGCStorageConfig):
+                legacy_identifiers.append(fs.storage.target)
+            elif isinstance(fs.storage, HuggingfaceStorageConfig):
+                legacy_identifiers.append(fs.storage.repo_id)
+            if any(is_embedding_model(identifier) for identifier in legacy_identifiers):
+                model_spec.head_type = "embedding"
+                head_type_reason = "legacy_fallback:name_or_storage_contains_embed"
+
+        model_spec.is_embedding_model = model_spec.head_type == "embedding"
+        logger.info("Inferred model head_type=%s (%s)", model_spec.head_type, head_type_reason)
 
         minimum_gpus_all_weights, _ = find_minimum_gpus_from_metadata(
             model_spec,
@@ -286,14 +309,18 @@ class ModelSpecRunner:
         self._merge_existing_spec(me, model_spec)
 
         try:
-            me: ModelEntity = self.sdk.models.update(
-                name=config.name, workspace=config.workspace, spec=model_spec, verbose=True
-            )
+            me: ModelEntity = self._models.update_model(
+                name=config.name,
+                workspace=config.workspace,
+                body=UpdateModelEntityRequest(
+                    spec=PluginModelSpec.model_validate(model_spec.model_dump(mode="python"))
+                ),
+            ).data()
         except NotFoundError as err:
             raise ModelSpecCreationError(
                 f"Failed to update model spec: model entity {config.workspace}/{config.name} does not exist"
             ) from err
-        except NeMoPlatformError as err:
+        except NemoClientError as err:
             raise ModelSpecCreationError(
                 f"Failed to update model spec: model entity {config.workspace}/{config.name} unable to be fetched"
             ) from err
@@ -323,6 +350,8 @@ def run(*, sdk: NeMoPlatform | None = None, job_ctx: NMPJobContext | None = None
         ).with_options(workspace=job_ctx.workspace)
         runner = ModelSpecRunner(sdk=sdk, job_ctx=job_ctx)
 
+        if job_ctx.config_path is None:
+            raise ModelSpecCreationError("Failed to create model spec: job step config path is not configured")
         config = get_config(job_ctx.config_path)
 
         logger.info(f"Starting model spec task with job context: {job_ctx}")

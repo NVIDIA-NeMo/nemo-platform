@@ -12,20 +12,22 @@ from enum import Enum
 from typing import Generic, Literal, Optional, TypeVar
 from urllib.parse import SplitResult, quote, urlsplit
 
+import nmp.common.auth.workload_identity as _workload_identity
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.jobs import execution_profiles as _execution_profiles
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.jobs.types import PlatformJobStepResponse, PlatformJobStepWithContext
+from nmp.common.auth import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nmp.common.auth.models import NMP_PRINCIPAL_ENVVAR
 from nmp.common.config.base import (
     LOOPBACK_ADDRESSES,
     NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR,
     PlatformConfig,
     determine_loopback_override,
+    get_common_service_config,
 )
 from nmp.common.jobs.constants import (
     CONFIG_TASK_STORAGE_PATH_ENVVAR,
@@ -48,6 +50,12 @@ from pydantic import BaseModel, model_validator
 
 logger = logging.getLogger(__name__)
 
+WORKLOAD_IDENTITY_TOKEN_FILE_PATH = _workload_identity.WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+WORKLOAD_IDENTITY_VOLUME_NAME = _workload_identity.WORKLOAD_IDENTITY_VOLUME_NAME
+WORKLOAD_IDENTITY_VOLUME_PATH = _workload_identity.WORKLOAD_IDENTITY_VOLUME_PATH
+get_workload_identity_token_audience = _workload_identity.get_workload_identity_token_audience
+is_workload_identity_token_exchange_enabled = _workload_identity.is_workload_identity_token_exchange_enabled
+
 ExecutionProviderConfigT = TypeVar("ExecutionProviderConfigT")
 ExecutionProfileConfigT = TypeVar("ExecutionProfileConfigT")
 
@@ -58,9 +66,6 @@ DEFAULT_PROVIDER = "cpu"
 # (imported above) so that both the server and the typed HTTP client agree on
 # the wire shape.
 
-WORKLOAD_IDENTITY_TOKEN_FILE_PATH = "/var/run/secrets/nemo-platform/workload/token"
-WORKLOAD_IDENTITY_VOLUME_PATH = "/var/run/secrets/nemo-platform/workload"
-WORKLOAD_IDENTITY_VOLUME_NAME = "nmp-workload-identity"
 JOB_LOGS_ENDPOINT_ENVVAR = _execution_profiles.JOB_LOGS_ENDPOINT_ENVVAR
 
 RESERVED_MANAGED_JOB_AUTH_ENVIRONMENT_VARIABLE_NAMES: frozenset[str] = frozenset(
@@ -132,29 +137,6 @@ def validate_no_reserved_managed_job_environment_variable_names(env_names: Itera
     conflicting = find_reserved_managed_job_environment_variable_names(env_names)
     if conflicting:
         raise ValueError(f"{source} must not use platform-reserved managed environment keys: {conflicting}")
-
-
-def is_workload_identity_token_exchange_enabled() -> bool:
-    """Return whether managed jobs should inject workload identity token-file config."""
-    try:
-        from nmp.common.config import get_auth_config
-
-        return bool(get_auth_config().oidc.workload_token_exchange_enabled)
-    except Exception:
-        logger.debug("Could not resolve auth config for workload identity token exchange", exc_info=True)
-        return False
-
-
-def get_workload_identity_token_audience() -> str:
-    """Return the Kubernetes projected service-account token audience for workload identity."""
-    try:
-        from nmp.common.config import get_auth_config
-
-        oidc = get_auth_config().oidc
-        return oidc.workload_client_id or oidc.client_id or "nemo-platform"
-    except Exception:
-        logger.debug("Could not resolve auth config for workload identity audience", exc_info=True)
-        return "nemo-platform"
 
 
 NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR = "NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT"
@@ -322,6 +304,20 @@ def get_job_runtime_shared_envvars(
     if disable_warnings:
         envvars[NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR] = "1"
 
+    # A task container does not get the platform config file, so the deployment's
+    # logging settings would otherwise not reach it: a chart configured with
+    # ``service.log_format: json`` would still start its tasks on ``plain``.
+    # Resolve them here, where the file *is* readable, and pass the answer down.
+    # Best-effort - logging configuration is not worth failing a schedule over,
+    # and the task falls back to its own defaults.
+    try:
+        service_config = get_common_service_config()
+    except Exception:
+        logger.warning("Could not resolve logging settings for job runtime env.", exc_info=True)
+    else:
+        envvars["LOG_LEVEL"] = service_config.log_level
+        envvars["LOG_FORMAT"] = service_config.log_format
+
     return envvars
 
 
@@ -474,7 +470,7 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
         in the step lifecycle AND all active tasks have updated_at older than
         the staleness threshold.
         """
-        staleness_timeout = step.step_spec.lifecycle.staleness_timeout_seconds if step.step_spec.lifecycle else None
+        staleness_timeout = configured_staleness_timeout_seconds(step)
         if not staleness_timeout or staleness_timeout <= 0:
             return False
 
@@ -525,13 +521,30 @@ def staleness_error_message(staleness_timeout: int) -> str:
     return f"Job terminated: no task updates received within {staleness_timeout}s staleness threshold"
 
 
+def configured_staleness_timeout_seconds(step: PlatformJobStepWithContext) -> int | None:
+    if step.step_spec is None or step.step_spec.lifecycle is None:
+        return None
+    return step.step_spec.lifecycle.staleness_timeout_seconds
+
+
+def require_staleness_timeout_seconds(step: PlatformJobStepWithContext) -> int:
+    staleness_timeout = configured_staleness_timeout_seconds(step)
+    if staleness_timeout is None or staleness_timeout <= 0:
+        raise ValueError("stale job step requires a positive staleness_timeout_seconds")
+    return staleness_timeout
+
+
 def extract_provider_profile(step: PlatformJobStepWithContext) -> tuple[str, str]:
+    step_spec = step.step_spec
+    if step_spec is None:
+        raise ValueError("Job step requires a step_spec")
+
     profile = DEFAULT_PROFILE
-    if isinstance(step.step_spec.executor, str):
-        provider = step.step_spec.executor
+    if isinstance(step_spec.executor, str):
+        provider = step_spec.executor
     else:
-        provider = step.step_spec.executor.provider or DEFAULT_PROVIDER
-        profile = step.step_spec.executor.profile or profile
+        provider = step_spec.executor.provider or DEFAULT_PROVIDER
+        profile = step_spec.executor.profile or profile
 
     return provider, profile
 

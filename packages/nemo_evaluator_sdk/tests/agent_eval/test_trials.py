@@ -12,6 +12,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     resolve_trial_status,
     standard_evidence_descriptors,
 )
+from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 from pydantic import ValidationError
 
 
@@ -40,6 +41,7 @@ def test_trial_accepts_mapping_shaped_evidence_and_serializes_descriptors() -> N
                 "ref": "runs/local/final-state",
                 "format": None,
                 "data": None,
+                "description": None,
                 "metadata": {},
             },
             "trace": {
@@ -47,6 +49,7 @@ def test_trial_accepts_mapping_shaped_evidence_and_serializes_descriptors() -> N
                 "ref": "runs/local/trace.atif.json",
                 "format": "atif",
                 "data": None,
+                "description": None,
                 "metadata": {},
             },
         },
@@ -59,6 +62,20 @@ def test_completed_trial_requires_output() -> None:
         AgentEvalTrial(id="trial-1", task_id="task-1", status=AgentEvalTrialStatus.COMPLETED)
 
 
+def test_trial_get_evidence_is_named_and_null_safe() -> None:
+    descriptor = EvidenceDescriptor(kind="json", format="json", ref="/tmp/result.json")
+    trial = AgentEvalTrial(
+        id="trial-1",
+        task_id="task-1",
+        status=AgentEvalTrialStatus.PARTIAL,
+        evidence=CandidateEvidence(descriptors={"result": descriptor}),
+    )
+
+    assert trial.get_evidence("result") is descriptor
+    assert trial.get_evidence("missing") is None
+    assert trial.model_copy(update={"evidence": None}).get_evidence("result") is None
+
+
 def test_resolve_trial_status_maps_ran_but_failed_to_partial() -> None:
     assert resolve_trial_status(True) == AgentEvalTrialStatus.COMPLETED
     # A ran-but-unsuccessful agent stays scorable (PARTIAL), not dropped (FAILED).
@@ -68,6 +85,8 @@ def test_resolve_trial_status_maps_ran_but_failed_to_partial() -> None:
 def test_standard_evidence_descriptors_builds_documented_keys(tmp_path: Path) -> None:
     verifier_dir = tmp_path / "verifier"
     verifier_dir.mkdir()
+    # The trace does not need to exist: the fallback is a parser hint inferred from
+    # its name, not an eager content-validation step.
     descriptors = standard_evidence_descriptors(
         logs_dir=tmp_path / "agent",
         final_state_dir=tmp_path / "workspace",

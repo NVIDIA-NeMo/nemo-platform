@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Harbor-on-K8s hello-world smoke with claude-code (non-oracle).
+# Same task as harbor_oracle_k8s.yaml; ANTHROPIC_* materialized at dispatch.
+#
+# ${...} filled by dispatch (envsubst from targets/<target>.env).
+job_name: hello-world-claude-code
+jobs_dir: jobs/sandbox-k8s
+n_attempts: 1
+n_concurrent_trials: 1
+timeout_multiplier: 1.0
+
+retry:
+  max_retries: 2
+  include_exceptions:
+    - EnvironmentStartTimeoutError
+    - SandboxCreationError
+    - SandboxExecutionError
+    - SandboxNotFoundError
+    - SandboxTimeoutError
+    - DownloadVerifierDirError
+    - AddTestsDirError
+
+environment:
+  import_path: sandbox_k8s.harbor:K8sSandboxEnvironment
+  delete: true
+  env:
+    HOME: /app
+  kwargs:
+    namespace: ${SANDBOX_NAMESPACE}
+    kubeconfig_path: ${HOME}/.kube/config
+    context: ${SANDBOX_CONTEXT}
+    # Sandbox readiness only. Harbor trial and command timeouts are separate.
+    timeout: 600
+    # This path is backed by the sandbox's writable workspace volume.
+    working_dir: /app
+    image: ${TASK_IMAGE}
+    image_pull_policy: Always
+    run_as_user: 1000
+    run_as_group: 1000
+    fs_group: 1000
+    # Dispatch binds the finalize-built image and its pull secret here.
+    image_pull_secrets: ${TASK_IMAGE_PULL_SECRET}
+    verify_ssl: ${VERIFY_SSL}
+    # Safe default for direct Harbor use. Scaled-evals dispatch replaces this
+    # with its authoritative k8s_network_policy for the requested run policy.
+    network_policy:
+      policyTypes:
+        - Egress
+      egress: []
+    resources:
+      requests:
+        cpu: "1"
+        memory: 2Gi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+
+agents:
+  - name: claude-code
+    model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
+    env:
+      HOME: /tmp/agent-home
+
+tasks:
+  - path: ${TASK_PATH}

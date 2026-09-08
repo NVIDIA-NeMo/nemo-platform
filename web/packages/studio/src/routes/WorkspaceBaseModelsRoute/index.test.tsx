@@ -61,7 +61,7 @@ vi.mock('@nemo/common/src/api/entity-store/useBaseModels', () => ({
   }),
 }));
 
-vi.mock('@nemo/sdk/generated/platform/api', () => ({
+vi.mock('@nemo/sdk/generated/platform/models', () => ({
   useModelsGetModel: () => ({
     data: undefined,
     isLoading: false,

@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+job_id: demo-job
+host_provider: opensandbox
+sandbox:
+  image: example.registry/nmp-gym-runtime:dev
+  environment_pvc_claim: job-pvc
+  environment_sub_path: environments/my-env
+  env_mount_path: /job/environment
+  dataset_pvc_claim: job-pvc
+  dataset_sub_path: datasets/my-split
+  dataset_mount_path: /job/dataset
+  workspace_pvc_claim: job-pvc
+  workspace_sub_path: work/demo-job
+  network_policy:
+    egress_allow: []
+  allow_internet: false
+episode_broker:
+  backend: opensandbox
+  port: 8741
+  advertise_url: http://sandboxed-gym-broker.demo-job.svc:8741
+  approved_image_prefixes:
+    - "example.registry/swe/"
+policy_base_urls:
+  - "http://vllm.demo-job.svc:8000/v1"
+gym_global_config:
+  environment_path: /job/environment
+  config_paths:
+    - /job/environment/configs/my_env.yaml
+  policy_base_url:
+    - "http://vllm.demo-job.svc:8000/v1"
+  policy_model_name: my-model
+  policy_api_key: dummy_key
+serve_mode: orchestrator
+# rollout_auth_token: "replace-me"

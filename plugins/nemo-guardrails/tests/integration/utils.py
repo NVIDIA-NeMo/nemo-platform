@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Any
 
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
+from nemo_platform import NotFoundError
 from nemo_platform.types.guardrail import GuardrailConfig
 from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
 from nmp.testing.utils import short_unique_name
@@ -71,6 +72,46 @@ def make_guardrails_test_data_names(
         guardrail_config_name=f"gr-config-{test_id}",
         model_provider_name=f"gr-provider-{test_id}",
     )
+
+
+def detach_guardrail_config(harness: Any, config_name: str) -> None:
+    """Remove every middleware call referencing ``config_name`` from the harness's VirtualModels.
+
+    The Guardrails service refuses to delete a config that a VirtualModel still applies, so a
+    test that deletes its config in ``finally`` has to detach first: harness cleanup deletes the
+    VirtualModels it created, but that runs *after* the test's own teardown.
+
+    Detaches rather than deletes so the harness's own bookkeeping stays intact — it still deletes
+    the VirtualModels itself, and does not log a spurious "failed to delete" warning for a route
+    a test removed behind its back.
+    """
+    config_ref = f"{harness.workspace}/{config_name}"
+    phases = ("request_middleware", "response_middleware", "post_response_middleware")
+
+    for workspace, name in harness.virtual_models:
+        try:
+            virtual_model = harness.sdk.inference.virtual_models.retrieve(name=name, workspace=workspace)
+        except NotFoundError:
+            continue
+
+        remaining: dict[str, list[Any]] = {}
+        for phase in phases:
+            calls = getattr(virtual_model, phase, None) or []
+            kept = [
+                call
+                for call in calls
+                if not (
+                    getattr(call, "config_type", None) == GUARDRAILS_PLUGIN_CONFIG_TYPE
+                    and getattr(call, "config_id", None) == config_ref
+                )
+            ]
+            if len(kept) != len(calls):
+                remaining[phase] = [call.model_dump(exclude_none=True) for call in kept]
+
+        if not remaining:
+            continue
+
+        harness.sdk.inference.virtual_models.patch(name=name, workspace=workspace, **remaining)
 
 
 class RailType(str, Enum):

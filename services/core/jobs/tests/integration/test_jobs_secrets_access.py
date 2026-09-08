@@ -18,8 +18,12 @@ from typing import Generator
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.types import CreatePlatformJobRequest
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.core.files.service import FilesService
 from nmp.core.jobs.service import JobsService
 from nmp.core.secrets.service import SecretsService
@@ -93,12 +97,18 @@ class TestJobCreationWithSecretsAccess:
         )
 
         user_sdk = as_user(sdk, user_email)
-        job = user_sdk.jobs.create(
-            workspace=workspace,
-            name=job_name,
-            source="integration-test",
-            spec={},
-            platform_spec=_platform_spec_with_secret(secret_name),
+        job = (
+            client_from_platform(user_sdk, JobsClient)
+            .create_job(
+                workspace=workspace,
+                body=CreatePlatformJobRequest(
+                    name=job_name,
+                    source="integration-test",
+                    spec={},
+                    platform_spec=_platform_spec_with_secret(secret_name),
+                ),
+            )
+            .data()
         )
 
         assert job.id is not None
@@ -114,8 +124,9 @@ class TestJobCreationWithSecretsAccess:
         user_email = unique_email("user")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace_own)
-        admin_sdk.workspaces.create(name=workspace_other)
+        workspaces = client_from_platform(admin_sdk, WorkspacesClient)
+        workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_own)).data()
+        workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace_other)).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace_own,
@@ -133,12 +144,14 @@ class TestJobCreationWithSecretsAccess:
         secret_ref = f"{workspace_other}/{secret_name}"
 
         with pytest.raises(Exception) as exc_info:
-            user_sdk.jobs.create(
+            client_from_platform(user_sdk, JobsClient).create_job(
                 workspace=workspace_own,
-                name=job_name,
-                source="integration-test",
-                spec={},
-                platform_spec=_platform_spec_with_secret(secret_ref),
+                body=CreatePlatformJobRequest(
+                    name=job_name,
+                    source="integration-test",
+                    spec={},
+                    platform_spec=_platform_spec_with_secret(secret_ref),
+                ),
             )
 
         msg = str(exc_info.value).lower()
@@ -160,12 +173,14 @@ class TestJobCreationWithSecretsAccess:
 
         user_sdk = as_user(sdk, user_email)
         with pytest.raises(Exception) as exc_info:
-            user_sdk.jobs.create(
+            client_from_platform(user_sdk, JobsClient).create_job(
                 workspace=workspace,
-                name=job_name,
-                source="integration-test",
-                spec={},
-                platform_spec=_platform_spec_with_secret("nonexistent-secret-name"),
+                body=CreatePlatformJobRequest(
+                    name=job_name,
+                    source="integration-test",
+                    spec={},
+                    platform_spec=_platform_spec_with_secret("nonexistent-secret-name"),
+                ),
             )
 
         msg = str(exc_info.value).lower()

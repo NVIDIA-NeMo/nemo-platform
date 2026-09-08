@@ -8,8 +8,9 @@ import logging
 import os
 import shutil
 import sys
+import threading
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 from nemo_experimentalist_plugin.entities import (
@@ -40,6 +41,8 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     _trial_metric_spec,
     _trial_metrics,
     _trial_resources,
+    _trial_token_metadata,
+    trials_from_job_dir,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
     _TRACE_ARTIFACT_DESTINATION,
@@ -1479,6 +1482,181 @@ def test_trial_error_non_dict():
     assert result == {"exception_info": "some string error"}
 
 
+def test_trial_token_metadata_accepts_all_token_keys():
+    assert _trial_token_metadata(
+        {
+            "agent_result": {
+                "n_input_tokens": 7,
+                "n_output_tokens": 3,
+                "n_cache_tokens": 1,
+            }
+        }
+    ) == {"n_input_tokens": 7, "n_output_tokens": 3, "n_cache_tokens": 1}
+
+
+def test_trial_token_metadata_retains_zero_and_omits_unset_keys():
+    assert _trial_token_metadata({"agent_result": {"n_input_tokens": 0}}) == {"n_input_tokens": 0}
+
+
+def test_trial_token_metadata_rejects_boolean_values():
+    assert _trial_token_metadata(
+        {
+            "agent_result": {
+                "n_input_tokens": True,
+                "n_output_tokens": False,
+                "n_cache_tokens": 2,
+            }
+        }
+    ) == {"n_cache_tokens": 2}
+
+
+def test_trial_token_metadata_rejects_float_and_string_values():
+    assert _trial_token_metadata(
+        {
+            "agent_result": {
+                "n_input_tokens": 7.0,
+                "n_output_tokens": "3",
+                "n_cache_tokens": 1,
+            }
+        }
+    ) == {"n_cache_tokens": 1}
+
+
+def test_trial_token_metadata_skips_negative_values(caplog: pytest.LogCaptureFixture):
+    with caplog.at_level(logging.WARNING):
+        metadata = _trial_token_metadata(
+            {
+                "trial_name": "task-a__0",
+                "agent_result": {"n_input_tokens": -1, "n_output_tokens": 3},
+            }
+        )
+
+    assert metadata == {"n_output_tokens": 3}
+    warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "task-a__0" in warnings[0]
+    assert "n_input_tokens=-1" in warnings[0]
+
+
+def test_trial_token_metadata_omits_null_values():
+    assert _trial_token_metadata({"agent_result": {"n_input_tokens": None}}) == {}
+
+
+def test_trial_token_metadata_omits_missing_agent_result():
+    assert _trial_token_metadata({}) == {}
+
+
+def test_trial_token_metadata_omits_non_dict_agent_result():
+    assert _trial_token_metadata({"agent_result": ["not", "a", "mapping"]}) == {}
+    assert _trial_token_metadata({"agent_result": "not a mapping"}) == {}
+
+
+def test_trial_token_metadata_excludes_cost():
+    assert _trial_token_metadata({"agent_result": {"n_input_tokens": 2, "cost_usd": 0.25}}) == {"n_input_tokens": 2}
+
+
+def test_trial_token_metadata_sums_multi_step_values(tmp_path: Path):
+    trial_dir = tmp_path / "job" / "task-a__0"
+    _write_json(
+        trial_dir / "result.json",
+        {
+            "trial_name": "task-a__0",
+            "agent_result": None,
+            "step_results": [
+                {"agent_result": {"n_input_tokens": 4, "n_output_tokens": 1}},
+                {"agent_result": {"n_input_tokens": 3, "n_output_tokens": None, "n_cache_tokens": 1}},
+            ],
+            "exception_info": None,
+        },
+    )
+
+    trials = trials_from_job_dir(tmp_path / "job", [])
+
+    assert len(trials) == 1
+    assert trials[0].metadata == {"n_input_tokens": 7, "n_output_tokens": 1, "n_cache_tokens": 1}
+
+
+def test_trial_token_metadata_sums_multi_step_zero_and_null_values():
+    assert _trial_token_metadata(
+        {
+            "agent_result": None,
+            "step_results": [
+                {"agent_result": {"n_input_tokens": 0, "n_output_tokens": None}},
+                {"agent_result": {"n_input_tokens": None}},
+            ],
+        }
+    ) == {"n_input_tokens": 0}
+
+
+def test_trial_token_metadata_top_level_empty_agent_result_ignores_steps():
+    assert (
+        _trial_token_metadata(
+            {
+                "agent_result": {},
+                "step_results": [{"agent_result": {"n_input_tokens": 7}}],
+            }
+        )
+        == {}
+    )
+
+
+def test_trials_from_job_dir_maps_token_metadata(tmp_path: Path):
+    trial_dir = tmp_path / "job" / "task-a__0"
+    _write_json(
+        trial_dir / "result.json",
+        {
+            "trial_name": "task-a__0",
+            "agent_result": {"n_input_tokens": 7, "n_output_tokens": 3, "n_cache_tokens": 1},
+            "exception_info": None,
+        },
+    )
+
+    trials = trials_from_job_dir(tmp_path / "job", [])
+
+    assert len(trials) == 1
+    assert trials[0].metadata == {"n_input_tokens": 7, "n_output_tokens": 3, "n_cache_tokens": 1}
+
+
+def test_trials_from_job_dir_keeps_completed_trials_with_negative_token_value(tmp_path: Path):
+    bad_trial_dir = tmp_path / "job" / "bad-task__0"
+    _write_json(
+        bad_trial_dir / "result.json",
+        {
+            "trial_name": "bad-task__0",
+            "agent_result": None,
+            "step_results": [
+                {"agent_result": {"n_input_tokens": 4}},
+                {"agent_result": {"n_input_tokens": -1, "n_output_tokens": 2}},
+            ],
+            "verifier_result": {"rewards": {"reward": 1.0}},
+            "exception_info": None,
+        },
+    )
+    good_trial_dir = tmp_path / "job" / "good-task__0"
+    _write_json(
+        good_trial_dir / "result.json",
+        {
+            "trial_name": "good-task__0",
+            "agent_result": {"n_input_tokens": 7, "n_output_tokens": 3},
+            "verifier_result": {"rewards": {"reward": 0.5}},
+            "exception_info": None,
+        },
+    )
+
+    trials = trials_from_job_dir(tmp_path / "job", [])
+
+    assert [trial.id for trial in trials] == ["bad-task__0", "good-task__0"]
+    assert [trial.status for trial in trials] == ["completed", "completed"]
+    assert [{name: metric.value for name, metric in trial.metrics.items()} for trial in trials] == [
+        {"reward": 1.0},
+        {"reward": 0.5},
+    ]
+    assert [trial.metadata for trial in trials] == [
+        {"n_input_tokens": 4, "n_output_tokens": 2},
+        {"n_input_tokens": 7, "n_output_tokens": 3},
+    ]
+
+
 def test_trial_metrics_skips_non_numeric(tmp_path):
     spec = MetricSpec(name="reward", description="")
     result = _trial_metrics(
@@ -2028,6 +2206,35 @@ def test_cleanup_scoped_imports_with_sibling_prevents_parent_removal():
     assert "_test_multi_abc" in sys.modules
     _cleanup_scoped_imports("_test_multi_abc.child2")
     assert "_test_multi_abc" not in sys.modules
+
+
+def test_cleanup_scoped_imports_tolerates_sys_modules_mutation():
+    """Harbor and xdist mutate sys.modules while cleanup walks parent packages."""
+    _ensure_package("_test_race_xyz.sub")
+    stop = threading.Event()
+    started = threading.Event()
+
+    def mutate() -> None:
+        i = 0
+        while not stop.is_set():
+            name = f"_test_race_xyz_noise_{i}"
+            sys.modules[name] = ModuleType(name)
+            started.set()
+            sys.modules.pop(name, None)
+            i += 1
+
+    thread = threading.Thread(target=mutate, daemon=True)
+    thread.start()
+    try:
+        assert started.wait(timeout=2)
+        for _ in range(200):
+            _ensure_package("_test_race_xyz.sub")
+            _cleanup_scoped_imports("_test_race_xyz.sub")
+    finally:
+        stop.set()
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+    assert "_test_race_xyz" not in sys.modules
 
 
 def test_trial_task_path_from_config_dict():

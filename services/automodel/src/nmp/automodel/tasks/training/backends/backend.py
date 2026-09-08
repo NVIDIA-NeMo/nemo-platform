@@ -21,6 +21,7 @@ from nmp.automodel.tasks.training.protocol import LibraryConfig
 from nmp.automodel.tasks.training.schemas import (
     CheckpointInfo,
     TrainingMetrics,
+    TrainingRecipe,
     TrainingStepConfig,
 )
 from nmp.automodel.tasks.training.utils import generate_torchrun_flags_from_env
@@ -28,11 +29,20 @@ from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.nccl import get_nccl_ib_env
 
 from .checkpoints import ModelType, find_best_checkpoint, process_checkpoint
-from .config import compile_automodel_config
+from .config import compile_automodel_config, resolve_compiled_recipe
 
 logger = logging.getLogger(__name__)
 
 AUTOMODEL_CONFIG_FILENAME = "automodel_config.yaml"
+
+
+def _checkpoint_model_type(config: TrainingStepConfig) -> ModelType:
+    recipe = resolve_compiled_recipe(config)
+    if recipe == TrainingRecipe.BI_ENCODER:
+        return ModelType.EMBEDDING
+    if recipe == TrainingRecipe.CROSS_ENCODER:
+        return ModelType.CROSS_ENCODER
+    return ModelType.LLM
 
 
 class AutomodelBackend:
@@ -166,7 +176,7 @@ class AutomodelBackend:
         library_config: Optional[LibraryConfig] = None,
     ) -> Path:
         """Find best Automodel checkpoint."""
-        model_type = ModelType.EMBEDDING if customizer_config.model.is_embedding_model else ModelType.LLM
+        model_type = _checkpoint_model_type(customizer_config)
         return find_best_checkpoint(workspace_dir, customizer_config, model_type=model_type)
 
     def process_checkpoint(
@@ -177,7 +187,7 @@ class AutomodelBackend:
         library_config: LibraryConfig | None = None,
     ) -> CheckpointInfo:
         """Process Automodel checkpoint."""
-        model_type = ModelType.EMBEDDING if customizer_config.model.is_embedding_model else ModelType.LLM
+        model_type = _checkpoint_model_type(customizer_config)
 
         # Extract resolved chat template from library config if available (LLM only)
         resolved_template = None

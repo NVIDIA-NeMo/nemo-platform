@@ -40,3 +40,10 @@ class AccessKeyCreateParams(TypedDict, total=False):
 
     The token jti remains the stable identifier.
     """
+
+    service_account_id: Optional[str]
+    """Optional non-human service account to bind the key to.
+
+    Service-bound keys can only be created by a PlatformAdmin and authenticate as
+    service-account:<id>.
+    """

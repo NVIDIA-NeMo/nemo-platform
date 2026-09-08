@@ -21,6 +21,7 @@ from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 from .utils import (
     GUARDRAILS_PLUGIN_NAME,
     GuardrailsTestDataNames,
+    detach_guardrail_config,
     make_guardrails_test_data_names,
 )
 
@@ -103,7 +104,26 @@ class TestMiddlewareConfigCaching:
         }
 
     @staticmethod
+    def _delete_config_entity_directly(harness: IGWPluginHarness, config_name: str) -> None:
+        """Delete the GuardrailConfig entity straight from the entity store.
+
+        The Guardrails API deliberately refuses to delete a config a VirtualModel still applies,
+        which is the very state these tests need: a route pointing at a config that is gone. The
+        state is still reachable in production — an entity removed out-of-band, or a reference
+        that predates that guard — and IGW must keep failing closed when it happens, so the tests
+        build it the way it actually arises rather than through the guarded endpoint.
+        """
+        harness.sdk.entities.delete_entity_by_name(
+            name=config_name,
+            workspace=harness.workspace,
+            entity_type=GUARDRAILS_PLUGIN_CONFIG_TYPE,
+        )
+
+    @staticmethod
     def _delete_config_if_present(harness: IGWPluginHarness, config_name: str) -> None:
+        # The service refuses to delete a config a VirtualModel still applies; harness
+        # cleanup removes those routes, but it runs after this teardown.
+        detach_guardrail_config(harness, config_name)
         try:
             harness.sdk.guardrail.configs.delete(name=config_name, workspace=harness.workspace)
         except nemo_platform.NotFoundError:
@@ -291,11 +311,8 @@ class TestMiddlewareConfigCaching:
                     config_version="v1",
                 )
 
-                # Delete the config referenced by the VirtualModel.
-                harness.sdk.guardrail.configs.delete(
-                    name=test_data_names.guardrail_config_name,
-                    workspace=harness.workspace,
-                )
+                # Delete the config referenced by the VirtualModel, out from under it.
+                self._delete_config_entity_directly(harness, test_data_names.guardrail_config_name)
                 self._refresh_caches(harness)
 
                 # Verify the next inference request fails closed because the referenced
@@ -317,11 +334,8 @@ class TestMiddlewareConfigCaching:
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             test_data_names = self._setup_entity_backed_vm(harness, config_version="v1")
             try:
-                # Delete the config referenced by the VirtualModel.
-                harness.sdk.guardrail.configs.delete(
-                    name=test_data_names.guardrail_config_name,
-                    workspace=harness.workspace,
-                )
+                # Delete the config referenced by the VirtualModel, out from under it.
+                self._delete_config_entity_directly(harness, test_data_names.guardrail_config_name)
                 self._refresh_caches(harness)
 
                 # Verify the next inference request fails closed because the referenced

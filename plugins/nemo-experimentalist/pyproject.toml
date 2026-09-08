@@ -58,4 +58,5 @@ pythonpath = ["src", "tests"]
 testpaths = ["tests"]
 markers = [
     "e2e: executes model-written shell and requires a sandbox, Docker, a running Platform, and configured models",
+    "integration: exercises external runtime integrations",
 ]

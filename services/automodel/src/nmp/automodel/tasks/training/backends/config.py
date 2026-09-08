@@ -33,6 +33,7 @@ from nmp.automodel.tasks.training.schemas import (
     EmbeddingConfig,
     FinetuningType,
     LoRAConfig,
+    TrainingRecipe,
     TrainingStepConfig,
     TrainingType,
 )
@@ -45,6 +46,37 @@ from nmp.customization_common.service.context import NMPJobContext
 
 logger = logging.getLogger(__name__)
 
+_OPTIMIZER_TARGETS = {
+    "Adam": "torch.optim.Adam",
+    "AdamW": "torch.optim.AdamW",
+    "FusedAdam": "transformer_engine.pytorch.optimizers.fused_adam.FusedAdam",
+}
+
+
+def resolve_compiled_recipe(customizer_config: TrainingStepConfig) -> TrainingRecipe:
+    """Resolve AUTO from the checkpoint head. Cross-encoder must not fall through to SFT."""
+    recipe = getattr(customizer_config.training, "recipe", TrainingRecipe.AUTO)
+    if not isinstance(recipe, TrainingRecipe):
+        recipe = TrainingRecipe.AUTO
+    if recipe != TrainingRecipe.AUTO:
+        return recipe
+    head = getattr(customizer_config.model, "checkpoint_head_type", "unknown")
+    if head == "cross_encoder":
+        return TrainingRecipe.CROSS_ENCODER
+    if head == "embedding":
+        return TrainingRecipe.BI_ENCODER
+    if head in (None, "unknown") and getattr(customizer_config.model, "is_embedding_model", False):
+        return TrainingRecipe.BI_ENCODER
+    return TrainingRecipe.SFT
+
+
+def _collator_prefix(value: str) -> str:
+    """BiEncoderCollator inserts a space after the prefix; Nemotron YAML uses ``"query: "``."""
+    return value.rstrip(" ")
+
+
+_RETRIEVAL_RECIPES = (TrainingRecipe.BI_ENCODER, TrainingRecipe.CROSS_ENCODER)
+
 
 def compile_automodel_config(
     customizer_config: TrainingStepConfig,
@@ -54,44 +86,209 @@ def compile_automodel_config(
     """
     Compile Automodel-specific configuration.
 
-    This transforms the standardized TrainingStepConfig into the format
-    expected by nemo_automodel's TrainFinetuneRecipeForNextTokenPrediction.
-    """
-    cfg: dict[str, Any] = {}
-    _is_embedding_model = customizer_config.model.is_embedding_model
-    trust_remote_code = customizer_config.model.trust_remote_code
-    embedding_config = EmbeddingConfig()
+    This transforms the standardized TrainingStepConfig into the format expected
+    by nemo_automodel's recipes.
 
-    # === Distributed Environment ===
-    # Required for torch.distributed initialization
+    Retrieval and causal-LM recipes do not differ by a few values in otherwise
+    common sections -- they want different sections: a bare seed against an rng
+    block, an encoder target plus tokenizer against a causal-LM target, their own
+    collating dataloaders against the default collater, and no packing, LM loss,
+    or MoE backend at all. Each is compiled by its own function over the section
+    builders they share, so a recipe reads top to bottom in one place.
+    """
+    recipe = resolve_compiled_recipe(customizer_config)
+    if recipe in _RETRIEVAL_RECIPES:
+        return _compile_retrieval_config(customizer_config, workspace_dir, job_ctx, recipe)
+    return _compile_llm_config(customizer_config, workspace_dir, job_ctx, recipe)
+
+
+def _compile_retrieval_config(
+    customizer_config: TrainingStepConfig,
+    workspace_dir: Path,
+    job_ctx: NMPJobContext,
+    recipe: TrainingRecipe,
+) -> dict[str, Any]:
+    """Compile a bi-encoder or cross-encoder recipe config.
+
+    Mirrors Nemotron Stage 2 (``nemotron embed|rerank finetune``): TE FusedAdam
+    by default,
+    inline retrieval data with its own collator, and no sequence packing or LM loss.
+    """
+    if customizer_config.training.training_type == TrainingType.DISTILLATION:
+        raise ValueError(
+            f"Knowledge distillation is not supported by the '{recipe.value}' recipe; "
+            "use the 'sft' recipe or drop the teacher model."
+        )
+
+    cfg: dict[str, Any] = {}
+    is_bi_encoder = recipe == TrainingRecipe.BI_ENCODER
+    embedding_config = customizer_config.embedding or EmbeddingConfig()
+    seed = _resolve_seed(customizer_config)
+
+    _build_dist_env(cfg)
+
+    # Retrieval recipes construct StatefulRNG from the seed internally, so they
+    # take a bare seed rather than the LLM recipe's full rng config object.
+    cfg["seed"] = seed
+    cfg["temperature"] = 0.02 if is_bi_encoder else 1.0
+
+    _build_base_model(cfg, customizer_config)
+    cfg["model"].update(
+        {
+            "_target_": (
+                "nemo_automodel._transformers.auto_model.NeMoAutoModelBiEncoder.from_pretrained"
+                if is_bi_encoder
+                else "nemo_automodel._transformers.auto_model.NeMoAutoModelCrossEncoder.from_pretrained"
+            ),
+            "pooling": "avg",
+            "use_liger_kernel": True,
+            "use_sdpa_patching": True,
+        }
+    )
+    if is_bi_encoder:
+        cfg["model"]["l2_normalize"] = True
+    else:
+        cfg["model"]["num_labels"] = 1
+        cfg["model"]["temperature"] = 1.0
+    if customizer_config.model.attn_implementation:
+        cfg["model"]["attn_implementation"] = customizer_config.model.attn_implementation
+
+    cfg["tokenizer"] = {
+        "_target_": "nemo_automodel._transformers.auto_tokenizer.NeMoAutoTokenizer.from_pretrained",
+        "pretrained_model_name_or_path": customizer_config.model.path,
+    }
+
+    _build_distributed(
+        cfg,
+        customizer_config,
+        activation_checkpointing=embedding_config.do_gradient_checkpointing,
+    )
+
+    prepared = _prepare_and_validate_dataset(customizer_config, workspace_dir)
+
+    # A retrieval sample is a query with its passages, so there is nothing to pack.
+    max_steps = _build_schedule(cfg, customizer_config, prepared, packing_factor=None)
+
+    _build_optimizer(
+        cfg,
+        customizer_config,
+        max_steps=max_steps,
+        optimizer_target=_resolve_optimizer_target(customizer_config, recipe),
+    )
+    _build_checkpoint(cfg, customizer_config, workspace_dir)
+
+    # Retrieval datasets bring their own dataloaders and collators.
+    _configure_datasets(
+        cfg,
+        customizer_config,
+        prepared,
+        customizer_config.model.max_seq_length,
+        seed,
+        recipe,
+        embedding_config,
+    )
+
+    _build_peft(cfg, customizer_config)
+    _build_integrations(cfg, customizer_config, job_ctx)
+
+    return cfg
+
+
+def _compile_llm_config(
+    customizer_config: TrainingStepConfig,
+    workspace_dir: Path,
+    job_ctx: NMPJobContext,
+    recipe: TrainingRecipe,
+) -> dict[str, Any]:
+    """Compile a causal-LM recipe config (SFT or knowledge distillation)."""
+    cfg: dict[str, Any] = {}
+    trust_remote_code = customizer_config.model.trust_remote_code
+    seed = _resolve_seed(customizer_config)
+
+    _build_dist_env(cfg)
+
+    # The LLM recipe expects the full rng config object.
+    cfg["rng"] = {
+        "_target_": "nemo_automodel.components.training.rng.StatefulRNG",
+        "seed": seed,
+        "ranked": True,  # Different seed per rank for data augmentation
+    }
+
+    _build_base_model(cfg, customizer_config)
+    cfg["model"].update(
+        {
+            "_target_": "nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained",
+            "attn_implementation": customizer_config.model.attn_implementation,
+        }
+    )
+
+    _build_distributed(cfg, customizer_config)
+
+    prepared = _prepare_and_validate_dataset(customizer_config, workspace_dir)
+
+    # Compute packing before the schedule so its estimated reduction in dataset
+    # length is reflected in steps_per_epoch, validation, and warmup.
+    effective_seq_length, packing_factor = _configure_sequence_packing(
+        cfg,
+        customizer_config,
+        prepared,
+        trust_remote_code=trust_remote_code,
+    )
+
+    max_steps = _build_schedule(cfg, customizer_config, prepared, packing_factor=packing_factor)
+    _build_optimizer(
+        cfg,
+        customizer_config,
+        max_steps=max_steps,
+        optimizer_target=_resolve_optimizer_target(customizer_config, recipe),
+    )
+    _build_checkpoint(cfg, customizer_config, workspace_dir)
+
+    _configure_datasets(cfg, customizer_config, prepared, effective_seq_length, seed, recipe, None)
+
+    cfg["dataloader"] = {
+        "_target_": "torchdata.stateful_dataloader.StatefulDataLoader",
+        "collate_fn": "nemo_automodel.components.datasets.utils.default_collater",
+        "shuffle": True,
+    }
+    cfg["validation_dataloader"] = {
+        "_target_": "torchdata.stateful_dataloader.StatefulDataLoader",
+        "collate_fn": "nemo_automodel.components.datasets.utils.default_collater",
+    }
+
+    _build_peft(cfg, customizer_config)
+
+    cfg["loss_fn"] = {
+        "_target_": "nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy",
+    }
+
+    # Check for custom Automodel implementations (e.g., MoE models) and
+    # configure backend/parallelizer settings.
+    _configure_moe_backend(cfg, customizer_config, trust_remote_code=trust_remote_code)
+
+    if customizer_config.training.training_type == TrainingType.DISTILLATION:
+        _configure_kd(cfg, customizer_config, trust_remote_code=trust_remote_code)
+
+    _build_integrations(cfg, customizer_config, job_ctx)
+
+    return cfg
+
+
+def _resolve_seed(customizer_config: TrainingStepConfig) -> int:
+    """Seed for reproducibility across restarts and multi-node training."""
+    return int(os.environ.get("PL_GLOBAL_SEED", customizer_config.seed))
+
+
+def _build_dist_env(cfg: dict[str, Any]) -> None:
+    """Required for torch.distributed initialization."""
     cfg["dist_env"] = {
         "backend": "nccl",
         "timeout_minutes": 30,  # Higher timeout for large model loading
     }
 
-    # === Random Number Generator ===
-    # Both recipes use StatefulRNG for reproducibility across restarts and multi-node training,
-    # but they expect the config in different formats:
-    # - Biencoder recipe: expects cfg["seed"] and creates StatefulRNG internally
-    # - LLM recipe: expects cfg["rng"] with full StatefulRNG config
-    seed = int(os.environ.get("PL_GLOBAL_SEED", customizer_config.seed))
 
-    if _is_embedding_model:
-        # Bi-encoder recipe creates StatefulRNG from seed internally.
-        # See: nemo_automodel/recipes/retrieval/train_bi_encoder.py
-        cfg["seed"] = seed
-        # Contrastive temperature (formerly model.t in Automodel <=0.3.x).
-        cfg["temperature"] = 0.02
-    else:
-        # LLM recipe expects the full rng config object
-        cfg["rng"] = {
-            "_target_": "nemo_automodel.components.training.rng.StatefulRNG",
-            "seed": seed,
-            "ranked": True,  # Different seed per rank for data augmentation
-        }
-
-    # === Model Configuration ===
-    # Common fields shared by both embedding and causal LM models
+def _build_base_model(cfg: dict[str, Any], customizer_config: TrainingStepConfig) -> None:
+    """Model fields common to the retrieval and causal-LM recipes."""
     cfg["model"] = {
         "pretrained_model_name_or_path": customizer_config.model.path,
         "torch_dtype": customizer_config.model.precision.to_torch_dtype()
@@ -99,36 +296,19 @@ def compile_automodel_config(
         else "auto",
         # trust_remote_code is required for models like nvidia/llama-nemotron-embed-1b-v2
         # which use custom model_type "llama_bidirec" with custom modeling code.
-        "trust_remote_code": trust_remote_code,
+        "trust_remote_code": customizer_config.model.trust_remote_code,
     }
     if customizer_config.model.override_custom_impl:
         cfg["model"]["force_hf"] = True
 
-    if _is_embedding_model:
-        cfg["model"].update(
-            {
-                "_target_": "nemo_automodel._transformers.auto_model.NeMoAutoModelBiEncoder.from_pretrained",
-                "pooling": "avg",
-                "l2_normalize": True,
-                "use_liger_kernel": True,
-                "use_sdpa_patching": True,
-            }
-        )
 
-        # === Tokenizer ===
-        cfg["tokenizer"] = {
-            "_target_": "nemo_automodel._transformers.auto_tokenizer.NeMoAutoTokenizer.from_pretrained",
-            "pretrained_model_name_or_path": customizer_config.model.path,
-        }
-    else:
-        cfg["model"].update(
-            {
-                "_target_": "nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained",
-                "attn_implementation": customizer_config.model.attn_implementation,
-            }
-        )
-
-    # === Distributed Configuration ===
+def _build_distributed(
+    cfg: dict[str, Any],
+    customizer_config: TrainingStepConfig,
+    *,
+    activation_checkpointing: bool = False,
+) -> None:
+    """Configure FSDP2 sharding and, for retrieval, activation checkpointing."""
     p = customizer_config.parallelism
     total_gpus = p.num_nodes * p.num_gpus_per_node
     # Note dp_size is typically auto-derived by Automodel (world_size / (tp * pp * cp)),
@@ -146,7 +326,7 @@ def compile_automodel_config(
         "ep_size": p.expert_parallel_size,
         "sequence_parallel": p.sequence_parallel,
     }
-    if _is_embedding_model and embedding_config.do_gradient_checkpointing:
+    if activation_checkpointing:
         cfg["distributed"]["activation_checkpointing"] = True
     if p.pipeline_parallel_size > 1:
         cfg["distributed"]["pipeline"] = {
@@ -155,8 +335,12 @@ def compile_automodel_config(
             "scale_grads_in_schedule": False,
         }
 
-    # === Dataset Preparation ===
-    # Discover, merge, and optionally split dataset files
+
+def _prepare_and_validate_dataset(
+    customizer_config: TrainingStepConfig,
+    workspace_dir: Path,
+) -> PreparedDataset:
+    """Discover, merge, and optionally split dataset files."""
     prepared = prepare_dataset(
         dataset_path=Path(customizer_config.dataset.path),
         output_dir=workspace_dir / "dataset",
@@ -170,42 +354,61 @@ def compile_automodel_config(
     validator.validate_dataset(str(prepared.train_file))
     validator.validate_dataset(str(prepared.validation_file))
     logger.info("Validated datasets successfully")
+    return prepared
 
-    # === Sequence Packing ===
-    # Compute packing before the schedule so its estimated reduction in dataset
-    # length is reflected in steps_per_epoch, validation, and warmup.
-    effective_seq_length = customizer_config.model.max_seq_length
-    packing_factor: float | None = None
-    if not _is_embedding_model and customizer_config.batch.sequence_packing:
-        packing_estimate = estimate_dataset_sequence_lengths(
-            customizer_config,
-            train_file=prepared.train_file,
-            max_samples=customizer_config.batch.sequence_packing_max_samples,
-            seed=customizer_config.seed,
-            trust_remote_code=trust_remote_code,
+
+def _configure_sequence_packing(
+    cfg: dict[str, Any],
+    customizer_config: TrainingStepConfig,
+    prepared: PreparedDataset,
+    *,
+    trust_remote_code: bool,
+) -> tuple[int, float | None]:
+    """Write ``packed_sequence`` when packing is on.
+
+    Returns the effective sequence length and packing factor, which the caller
+    feeds to the schedule and the dataset configuration.
+    """
+    if not customizer_config.batch.sequence_packing:
+        return customizer_config.model.max_seq_length, None
+
+    packing_estimate = estimate_dataset_sequence_lengths(
+        customizer_config,
+        train_file=prepared.train_file,
+        max_samples=customizer_config.batch.sequence_packing_max_samples,
+        seed=customizer_config.seed,
+        trust_remote_code=trust_remote_code,
+    )
+
+    if packing_estimate is not None:
+        optimal_pack_size = packing_estimate.pack_size
+        packing_factor = packing_estimate.packing_factor
+        logger.info(
+            f"Sequence packing enabled: pack_size={optimal_pack_size}, "
+            f"avg_seq={packing_estimate.avg_seq_length}, max_seq={packing_estimate.max_seq_length}, "
+            f"packing_factor={packing_factor}, samples={packing_estimate.samples_analyzed}"
+        )
+    else:
+        optimal_pack_size = calculate_optimal_pack_size(customizer_config)
+        packing_factor = float(calculate_target_packing_factor(customizer_config))
+        logger.info(
+            f"Sequence packing enabled with fallback pack_size={optimal_pack_size}, packing_factor={packing_factor}"
         )
 
-        if packing_estimate is not None:
-            optimal_pack_size = packing_estimate.pack_size
-            packing_factor = packing_estimate.packing_factor
-            logger.info(
-                f"Sequence packing enabled: pack_size={optimal_pack_size}, "
-                f"avg_seq={packing_estimate.avg_seq_length}, max_seq={packing_estimate.max_seq_length}, "
-                f"packing_factor={packing_factor}, samples={packing_estimate.samples_analyzed}"
-            )
-        else:
-            optimal_pack_size = calculate_optimal_pack_size(customizer_config)
-            packing_factor = float(calculate_target_packing_factor(customizer_config))
-            logger.info(
-                f"Sequence packing enabled with fallback pack_size={optimal_pack_size}, packing_factor={packing_factor}"
-            )
+    cfg["packed_sequence"] = {
+        "packed_sequence_size": optimal_pack_size,
+    }
+    return optimal_pack_size, packing_factor
 
-        cfg["packed_sequence"] = {
-            "packed_sequence_size": optimal_pack_size,
-        }
-        effective_seq_length = optimal_pack_size
 
-    # === Step Scheduler (with val_check_interval conversion) ===
+def _build_schedule(
+    cfg: dict[str, Any],
+    customizer_config: TrainingStepConfig,
+    prepared: PreparedDataset,
+    *,
+    packing_factor: float | None,
+) -> int:
+    """Write the step scheduler and progress reporting; return effective max_steps."""
     batch_size = customizer_config.batch.global_batch_size
     epochs = customizer_config.schedule.epochs
 
@@ -254,20 +457,41 @@ def compile_automodel_config(
     cfg["step_scheduler"]["ckpt_every_steps"] = val_every_steps
     logger.info(f"Validation interval: {customizer_config.schedule.val_check_interval} -> {val_every_steps} steps")
 
+    return max_steps
+
+
+def _resolve_optimizer_target(customizer_config: TrainingStepConfig, recipe: TrainingRecipe) -> str:
+    """Resolve ``auto`` by recipe, then map the optimizer to its implementation.
+
+    Nemotron retrieval defaults ``auto`` to Transformer Engine FusedAdam.
+    Existing causal-LM jobs retain torch Adam as their ``auto`` default. Explicit
+    choices override either default.
+    """
+    optimizer_name = customizer_config.optimizer.optimizer_name
+    if optimizer_name == "auto":
+        optimizer_name = "FusedAdam" if recipe in _RETRIEVAL_RECIPES else "Adam"
+    if optimizer_name not in _OPTIMIZER_TARGETS:
+        raise ValueError(
+            f"Unsupported optimizer_name {optimizer_name!r}; expected 'auto' or one of {sorted(_OPTIMIZER_TARGETS)}."
+        )
+    return _OPTIMIZER_TARGETS[optimizer_name]
+
+
+def _build_optimizer(
+    cfg: dict[str, Any],
+    customizer_config: TrainingStepConfig,
+    *,
+    max_steps: int,
+    optimizer_target: str,
+) -> None:
+    """Write the optimizer and its learning-rate schedule."""
     warmup_steps = resolve_warmup_steps(
         warmup_steps=customizer_config.optimizer.warmup_steps,
         max_steps=max_steps,
     )
 
-    # === Optimizer ===
-    # Map the optimizer choice to its torch class. Reject unknown names instead of
-    # silently falling back to Adam, which would mask a misconfigured optimizer.
-    optimizer_targets = {"Adam": "torch.optim.Adam", "AdamW": "torch.optim.AdamW"}
-    optimizer_name = customizer_config.optimizer.optimizer_name
-    if optimizer_name not in optimizer_targets:
-        raise ValueError(f"Unsupported optimizer_name {optimizer_name!r}; expected one of {sorted(optimizer_targets)}.")
     cfg["optimizer"] = {
-        "_target_": optimizer_targets[optimizer_name],
+        "_target_": optimizer_target,
         "lr": customizer_config.optimizer.learning_rate,
         "weight_decay": customizer_config.optimizer.weight_decay,
         "betas": [customizer_config.optimizer.beta1, customizer_config.optimizer.beta2],
@@ -281,7 +505,12 @@ def compile_automodel_config(
     if customizer_config.optimizer.min_learning_rate:
         cfg["lr_scheduler"]["min_lr"] = customizer_config.optimizer.min_learning_rate
 
-    # === Checkpoint ===
+
+def _build_checkpoint(
+    cfg: dict[str, Any],
+    customizer_config: TrainingStepConfig,
+    workspace_dir: Path,
+) -> None:
     cfg["checkpoint"] = {
         "enabled": True,
         "model_save_format": "safetensors",
@@ -293,69 +522,42 @@ def compile_automodel_config(
         "v4_compatible": customizer_config.model.v4_compatible,
     }
 
-    # === Dataset Configuration (with schema detection) ===
-    _configure_datasets(
-        cfg,
-        customizer_config,
-        prepared,
-        effective_seq_length,
-        seed,
-        _is_embedding_model,
-        embedding_config,
-    )
 
-    # === Dataloader ===
-    # Embedding datasets configure their own specialized dataloaders in _configure_embedding_dataset
-    if not _is_embedding_model:
-        cfg["dataloader"] = {
-            "_target_": "torchdata.stateful_dataloader.StatefulDataLoader",
-            "collate_fn": "nemo_automodel.components.datasets.utils.default_collater",
-            "shuffle": True,
-        }
-        cfg["validation_dataloader"] = {
-            "_target_": "torchdata.stateful_dataloader.StatefulDataLoader",
-            "collate_fn": "nemo_automodel.components.datasets.utils.default_collater",
-        }
-
-    # === PEFT (LoRA) ===
-    if customizer_config.training.training_type in (
+def _build_peft(cfg: dict[str, Any], customizer_config: TrainingStepConfig) -> None:
+    """Write the LoRA adapter config for both unmerged and merged LoRA."""
+    if customizer_config.training.training_type not in (
         TrainingType.SFT,
         TrainingType.DISTILLATION,
-    ) and customizer_config.training.finetuning_type in (FinetuningType.LORA, FinetuningType.LORA_MERGED):
-        lora = customizer_config.training.lora
-        if lora is None:
-            lora = LoRAConfig()
-        peft_cfg: dict[str, Any] = {
-            "_target_": "nemo_automodel.components._peft.lora.PeftConfig",
-            "dim": lora.rank,
-            "alpha": lora.alpha,
-            "dropout": lora.dropout,
-            "use_triton": lora.use_triton,
-            "target_modules": lora.target_modules,
-        }
-        if lora.exclude_modules:
-            peft_cfg["exclude_modules"] = lora.exclude_modules
-        cfg["peft"] = peft_cfg
+    ):
+        return
+    if customizer_config.training.finetuning_type not in (
+        FinetuningType.LORA,
+        FinetuningType.LORA_MERGED,
+    ):
+        return
 
-    # === Loss ===
-    if not _is_embedding_model:
-        cfg["loss_fn"] = {
-            "_target_": "nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy",
-        }
+    lora = customizer_config.training.lora
+    if lora is None:
+        lora = LoRAConfig()
+    peft_cfg: dict[str, Any] = {
+        "_target_": "nemo_automodel.components._peft.lora.PeftConfig",
+        "dim": lora.rank,
+        "alpha": lora.alpha,
+        "dropout": lora.dropout,
+        "use_triton": lora.use_triton,
+        "target_modules": lora.target_modules,
+    }
+    if lora.exclude_modules:
+        peft_cfg["exclude_modules"] = lora.exclude_modules
+    cfg["peft"] = peft_cfg
 
-    # === Custom Model Configuration ===
-    # Check for custom Automodel implementations (e.g., MoE models)
-    # and configure backend/parallelizer settings
-    if not _is_embedding_model:
-        _configure_moe_backend(cfg, customizer_config, trust_remote_code=trust_remote_code)
 
-    # === Knowledge Distillation ===
-    if customizer_config.training.training_type == TrainingType.DISTILLATION:
-        _configure_kd(cfg, customizer_config, trust_remote_code=trust_remote_code)
-
-    # === Integrations (Runtime Environment) ===
-
-    # WandB - check for API key in environment
+def _build_integrations(
+    cfg: dict[str, Any],
+    customizer_config: TrainingStepConfig,
+    job_ctx: NMPJobContext,
+) -> None:
+    """Attach WandB and MLflow when the runtime environment supplies credentials."""
     wandb_config = build_wandb_config(
         customizer_config=customizer_config,
         job_ctx=job_ctx,
@@ -365,7 +567,6 @@ def compile_automodel_config(
         cfg["wandb"] = wandb_config
         logger.info(f"WandB enabled: project={wandb_config.get('project')}")
 
-    # MLflow
     mlflow_config = build_mlflow_config(
         customizer_config=customizer_config,
         job_ctx=job_ctx,
@@ -374,8 +575,6 @@ def compile_automodel_config(
     if mlflow_config:
         cfg["mlflow"] = mlflow_config
         logger.info(f"MLflow enabled: {mlflow_config.get('tracking_uri')}")
-
-    return cfg
 
 
 def estimate_steps_per_epoch(
@@ -508,7 +707,7 @@ def _configure_datasets(
     prepared: PreparedDataset,
     seq_length: int,
     seed: int,
-    is_embedding_model: bool = False,
+    recipe: TrainingRecipe = TrainingRecipe.SFT,
     embedding_config: EmbeddingConfig | None = None,
 ) -> None:
     """
@@ -528,8 +727,8 @@ def _configure_datasets(
             When sequence packing is enabled, this is the pack size.
             Otherwise, this is the model's max_seq_length.
         seed: Random seed for reproducibility.
-        is_embedding_model: Whether this is an embedding model (for dataset format hints).
-        embedding_config: Embedding model configuration (required for embedding datasets).
+        recipe: Selected training recipe.
+        embedding_config: Retrieval model configuration (required for retrieval datasets).
     """
     train_file = prepared.train_file
     validation_file = prepared.validation_file
@@ -540,25 +739,34 @@ def _configure_datasets(
         prompt_template=customizer_config.dataset.prompt_template,
     )
 
-    # Validate that embedding models use embedding datasets and vice versa
-    if is_embedding_model and schema != DatasetSchema.EMBEDDING:
+    is_retrieval = recipe in (TrainingRecipe.BI_ENCODER, TrainingRecipe.CROSS_ENCODER)
+
+    # Validate the dataset against the selected recipe, not the checkpoint's original head.
+    if is_retrieval and schema != DatasetSchema.EMBEDDING:
         raise ValueError(
-            f"Model '{customizer_config.model.name}' is detected as an embedding model but the dataset "
-            f"is in '{schema.value}' format. Embedding models require datasets with 'query', 'pos_doc', "
+            f"Recipe '{recipe.value}' requires a retrieval dataset, but the dataset "
+            f"is in '{schema.value}' format. Retrieval recipes require 'query', 'pos_doc', "
             "and 'neg_doc' fields. Please provide a dataset in embedding format."
         )
-    if schema == DatasetSchema.EMBEDDING and not is_embedding_model:
+    if schema == DatasetSchema.EMBEDDING and not is_retrieval:
         raise ValueError(
-            f"Dataset is in embedding format (query/pos_doc/neg_doc) but model "
-            f"'{customizer_config.model.name}' is not detected as an embedding model. "
-            "Embedding datasets can only be used with embedding models."
+            "Dataset is in retrieval format (query/pos_doc/neg_doc), but the selected "
+            f"recipe is '{recipe.value}'. Select 'bi_encoder' or 'cross_encoder'."
         )
 
     if schema == DatasetSchema.EMBEDDING:
         # Embedding/retrieval dataset - uses inline format directly
         if embedding_config is None:
             raise ValueError("embedding_config is required for embedding dataset configuration")
-        _configure_embedding_dataset(cfg, customizer_config, train_file, validation_file, seed, embedding_config)
+        _configure_retrieval_dataset(
+            cfg,
+            customizer_config,
+            train_file,
+            validation_file,
+            seed,
+            embedding_config,
+            recipe,
+        )
     elif schema == DatasetSchema.CHAT:
         # Chat dataset (OpenAI messages format)
         _configure_chat_dataset(cfg, customizer_config, train_file, validation_file, seq_length)
@@ -671,15 +879,16 @@ def _configure_sft_dataset(
     }
 
 
-def _configure_embedding_dataset(
+def _configure_retrieval_dataset(
     cfg: dict[str, Any],
     customizer_config: TrainingStepConfig,
     train_file: Path,
     val_file: Path,
     seed: int,
     embedding_config: EmbeddingConfig,
+    recipe: TrainingRecipe,
 ) -> None:
-    """Configure embedding/retrieval dataset for biencoder training.
+    """Configure inline retrieval data for bi-encoder or cross-encoder training.
 
     Uses Automodel's inline retrieval dataset format which directly accepts
     Customizer's embedding format without conversion:
@@ -698,27 +907,50 @@ def _configure_embedding_dataset(
         embedding_config: Embedding model configuration.
     """
 
-    logger.info(f"Configuring embedding dataset with train_n_passages={embedding_config.train_n_passages}")
+    model_type = "bi_encoder" if recipe == TrainingRecipe.BI_ENCODER else "cross_encoder"
+    collator_target = (
+        "nemo_automodel.components.datasets.llm.BiEncoderCollator"
+        if recipe == TrainingRecipe.BI_ENCODER
+        else "nemo_automodel.components.datasets.llm.CrossEncoderCollator"
+    )
+    logger.info(
+        "Configuring %s dataset with train_n_passages=%s",
+        model_type,
+        embedding_config.train_n_passages,
+    )
+
+    def collator_config(*, validation: bool = False) -> dict[str, Any]:
+        if recipe == TrainingRecipe.CROSS_ENCODER:
+            return {
+                "_target_": collator_target,
+                "rerank_max_length": embedding_config.passage_max_length,
+                "prompt_template": "question:{query} \n \n passage:{passage}",
+                "pad_to_multiple_of": 8,
+            }
+        result: dict[str, Any] = {
+            "_target_": collator_target,
+            "q_max_len": embedding_config.query_max_length,
+            "p_max_len": embedding_config.passage_max_length,
+            "query_prefix": _collator_prefix(embedding_config.query_prefix),
+            "passage_prefix": _collator_prefix(embedding_config.passage_prefix),
+            "pad_to_multiple_of": 8,
+        }
+        if validation:
+            result["padding"] = "longest"
+        return result
 
     cfg["dataloader"] = {
         "_target_": "torchdata.stateful_dataloader.StatefulDataLoader",
         "dataset": {
             "_target_": "nemo_automodel.components.datasets.llm.retrieval_dataset_inline.make_retrieval_dataset",
-            "model_type": "bi_encoder",
+            "model_type": model_type,
             "data_dir_list": [str(train_file)],
             "data_type": "train",
             "n_passages": embedding_config.train_n_passages,
             "seed": seed,
             "do_shuffle": True,
         },
-        "collate_fn": {
-            "_target_": "nemo_automodel.components.datasets.llm.BiEncoderCollator",
-            "q_max_len": embedding_config.query_max_length,
-            "p_max_len": embedding_config.passage_max_length,
-            "query_prefix": embedding_config.query_prefix,
-            "passage_prefix": embedding_config.passage_prefix,
-            "pad_to_multiple_of": 8,
-        },
+        "collate_fn": collator_config(),
         "shuffle": True,
         "num_workers": 0,
     }
@@ -728,7 +960,7 @@ def _configure_embedding_dataset(
             "_target_": "torchdata.stateful_dataloader.StatefulDataLoader",
             "dataset": {
                 "_target_": "nemo_automodel.components.datasets.llm.retrieval_dataset_inline.make_retrieval_dataset",
-                "model_type": "bi_encoder",
+                "model_type": model_type,
                 "data_dir_list": [str(val_file)],
                 "data_type": "eval",
                 "n_passages": embedding_config.train_n_passages,
@@ -736,15 +968,7 @@ def _configure_embedding_dataset(
                 "seed": seed,
                 "do_shuffle": False,
             },
-            "collate_fn": {
-                "_target_": "nemo_automodel.components.datasets.llm.BiEncoderCollator",
-                "q_max_len": embedding_config.query_max_length,
-                "p_max_len": embedding_config.passage_max_length,
-                "query_prefix": embedding_config.query_prefix,
-                "passage_prefix": embedding_config.passage_prefix,
-                "padding": "longest",
-                "pad_to_multiple_of": 8,
-            },
+            "collate_fn": collator_config(validation=True),
             "batch_size": customizer_config.batch.micro_batch_size,
             "shuffle": False,
             "num_workers": 0,

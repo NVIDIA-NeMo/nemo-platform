@@ -112,11 +112,15 @@ def test_authentik_manifest_compose_and_kubernetes_runtime_capabilities_stay_in_
     compose = runtimes["authentik-compose"]
     kubernetes = runtimes["authentik-kubernetes"]
 
-    assert compose - {"docker_subject_token_refresh"} == kubernetes - {"kubernetes_token_review"}
+    assert compose == kubernetes - {"kubernetes_token_review"}
     assert "interactive_user_token" not in compose
     assert "interactive_user_token" not in kubernetes
     assert "workload_provider_token" in compose
     assert "workload_provider_token" in kubernetes
+    assert "workload_deployment" in compose
+    assert "workload_deployment" in kubernetes
+    assert "managed_workload_deployment_obo" in compose
+    assert "managed_workload_deployment_obo" in kubernetes
 
 
 def test_authentik_common_contracts_do_not_require_removed_interactive_user_token_capability():

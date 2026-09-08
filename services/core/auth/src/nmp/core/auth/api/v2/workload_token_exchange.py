@@ -5,11 +5,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import math
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,10 +22,25 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from nmp.common.auth.access_keys import public_jwk_from_private_key_pem_async
 from nmp.common.auth.signing_keys import RSASigningKey, RSASigningKeyCache
+from nmp.common.auth.token_claims import groups_from_claim
+from nmp.common.auth.workload_delegations import (
+    DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE,
+    KUBERNETES_POD_UID_REFERENCE_NAME,
+    InvalidWorkloadProofTokenError,
+    WorkloadDelegationEntity,
+    WorkloadDelegationStore,
+    parse_opaque_docker_proof_token,
+    reference_delegation_name,
+    verify_opaque_docker_proof_token_hash,
+)
 from nmp.common.config import AuthConfig, get_auth_config, get_platform_config
+from nmp.common.entities import EntityClient
+from nmp.common.service.dependencies import get_entity_client
+from opentelemetry import metrics
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
+meter = metrics.get_meter(__name__)
 
 TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange"
 JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
@@ -32,6 +50,11 @@ WORKLOAD_TOKEN_PATH = "/apis/auth/token"
 WORKLOAD_JWKS_PATH = "/apis/auth/jwks"
 DEFAULT_WORKLOAD_AUDIENCE = "nemo-platform"
 DEFAULT_WORKLOAD_SCOPE = "openid email groups"
+
+_delegation_lookup_retry_exhausted_total = meter.create_counter(
+    name="nmp.auth.workload_delegation.lookup_retry_exhausted.total",
+    description="Number of workload delegation lookups that exhausted their retry budget",
+)
 
 _TOKEN_EXCHANGE_FORM_REQUEST_BODY: dict[str, Any] = {
     "required": True,
@@ -57,7 +80,7 @@ _TOKEN_EXCHANGE_FORM_REQUEST_BODY: dict[str, Any] = {
                     "subject_token_type": {
                         "type": "string",
                         "description": "Token type identifier for the subject token.",
-                        "enum": [JWT_TOKEN_TYPE],
+                        "enum": [JWT_TOKEN_TYPE, DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE],
                     },
                     "requested_token_type": {
                         "type": "string",
@@ -68,6 +91,21 @@ _TOKEN_EXCHANGE_FORM_REQUEST_BODY: dict[str, Any] = {
                     "audience": {
                         "type": "string",
                         "description": "Requested audience for the issued access token.",
+                    },
+                    "resource": {
+                        "type": "string",
+                        "description": "Unsupported for the jobs workload token exchange profile.",
+                        "not": {},
+                    },
+                    "actor_token": {
+                        "type": "string",
+                        "description": "Unsupported for the jobs workload token exchange profile.",
+                        "not": {},
+                    },
+                    "actor_token_type": {
+                        "type": "string",
+                        "description": "Unsupported for the jobs workload token exchange profile.",
+                        "not": {},
                     },
                     "scope": {
                         "type": "string",
@@ -89,9 +127,33 @@ class _SubjectJWKSCacheEntry:
 
 
 @dataclass(frozen=True)
+class VerifiedWorkloadReference:
+    name: str
+    value: str
+
+
+@dataclass(frozen=True)
+class DecodedSubjectToken:
+    claims: dict[str, Any]
+    bound_reference: VerifiedWorkloadReference | None = None
+
+
+@dataclass(frozen=True)
 class _SubjectTokenDecoder:
     name: str
-    decode: Callable[[], Awaitable[dict[str, Any]]]
+    decode: Callable[[], Awaitable[DecodedSubjectToken]]
+
+
+@dataclass(frozen=True)
+class VerifiedSubjectToken:
+    subject: str
+    groups: list[str]
+    email: str | None = None
+    delegation_name: str | None = None
+    bound_reference: VerifiedWorkloadReference | None = None
+    is_docker_proof: bool = False
+    is_opaque_docker_proof: bool = False
+    opaque_secret: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +162,10 @@ class _SigningKeyLoadRequest:
     private_key_file: str | None
     missing_private_key_message: str
     invalid_private_key_message: str
+
+
+class _InvalidGrantError(Exception):
+    """Raised when a validated subject token is not authorized for delegation."""
 
 
 class WorkloadTokenExchangeResponse(BaseModel):
@@ -118,7 +184,7 @@ class WorkloadTokenExchangeErrorResponse(BaseModel):
     error: str = Field(
         description=(
             "OAuth 2.0 or RFC 8693 token exchange error code, such as invalid_client, "
-            "invalid_request, invalid_grant, invalid_scope, or invalid_target."
+            "invalid_request, invalid_scope, or invalid_target."
         ),
     )
     error_description: str | None = Field(
@@ -234,9 +300,19 @@ def _validate_subject_jwks(jwks: dict[str, Any]) -> None:
 class WorkloadTokenExchangeService:
     """Stateful helpers for workload token exchange endpoints."""
 
-    def __init__(self, signing_key_cache: RSASigningKeyCache | None = None) -> None:
+    def __init__(
+        self,
+        signing_key_cache: RSASigningKeyCache | None = None,
+        *,
+        delegation_lookup_retry_timeout_seconds: float = 5.0,
+        delegation_lookup_retry_interval_seconds: float = 0.1,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> None:
         self._signing_key_cache = signing_key_cache or RSASigningKeyCache()
         self._subject_jwks_cache: dict[str, _SubjectJWKSCacheEntry] = {}
+        self._delegation_lookup_retry_timeout_seconds = delegation_lookup_retry_timeout_seconds
+        self._delegation_lookup_retry_interval_seconds = delegation_lookup_retry_interval_seconds
+        self._sleep = sleep
 
     def workload_signing_key(self, config: AuthConfig) -> RSASigningKey:
         load_request = _workload_signing_key_load_request(config)
@@ -329,10 +405,13 @@ class WorkloadTokenExchangeService:
             raise jwt.InvalidIssuerError(f"unexpected subject token issuer: {issuer!r}")
         return claims
 
-    async def decode_subject_token(self, config: AuthConfig, subject_token: str, audience: str) -> dict[str, Any]:
+    async def decode_subject_token(self, config: AuthConfig, subject_token: str, audience: str) -> DecodedSubjectToken:
+        async def decode_configured_jwt_subject_token() -> DecodedSubjectToken:
+            return DecodedSubjectToken(claims=await self.decode_jwt_subject_token(config, subject_token))
+
         errors: list[str] = []
         for decoder in (
-            _SubjectTokenDecoder("JWT subject token", lambda: self.decode_jwt_subject_token(config, subject_token)),
+            _SubjectTokenDecoder("JWT subject token", decode_configured_jwt_subject_token),
             _SubjectTokenDecoder(
                 "Kubernetes TokenReview subject token",
                 lambda: _decode_kubernetes_subject_token(config, subject_token, audience),
@@ -344,6 +423,37 @@ class WorkloadTokenExchangeService:
                 message = str(exc) or exc.__class__.__name__
                 errors.append(f"{decoder.name}: {message}")
         raise jwt.InvalidTokenError("; ".join(errors))
+
+    async def get_delegation_with_retry(
+        self,
+        store: WorkloadDelegationStore,
+        name: str,
+        *,
+        retry: bool,
+    ) -> WorkloadDelegationEntity | None:
+        """Fetch a delegation row by name with a bounded retry for Kubernetes startup races."""
+        if not retry:
+            return await store.get(name)
+
+        retry_attempts = (
+            max(
+                0,
+                math.ceil(
+                    self._delegation_lookup_retry_timeout_seconds / self._delegation_lookup_retry_interval_seconds
+                ),
+            )
+            if self._delegation_lookup_retry_timeout_seconds > 0 and self._delegation_lookup_retry_interval_seconds > 0
+            else 0
+        )
+        while True:
+            entity = await store.get(name)
+            if entity is not None:
+                return entity
+            if retry_attempts <= 0:
+                _delegation_lookup_retry_exhausted_total.add(1)
+                return None
+            retry_attempts -= 1
+            await self._sleep(self._delegation_lookup_retry_interval_seconds)
 
 
 def get_workload_token_exchange_service(request: Request) -> WorkloadTokenExchangeService:
@@ -415,6 +525,26 @@ def _validated_audience(config: AuthConfig, requested_audience: Any) -> str:
     return audience
 
 
+def _epoch_seconds(value: datetime) -> int:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return int(value.timestamp())
+
+
+def _split_scope(scope: Any) -> list[str]:
+    if not isinstance(scope, str):
+        return []
+    return [part for part in scope.split() if part]
+
+
+def _granted_workload_scope(config: AuthConfig, requested_scope: Any) -> str | None:
+    allowed_scopes = _split_scope(config.oidc.workload_scope or DEFAULT_WORKLOAD_SCOPE)
+    requested_scopes = _split_scope(requested_scope) or allowed_scopes
+    allowed = set(allowed_scopes)
+    granted = [scope for scope in requested_scopes if scope in allowed]
+    return " ".join(granted) or None
+
+
 def _groups_claim_for_gateway_header(groups: Any) -> str | None:
     if isinstance(groups, str):
         return groups
@@ -438,7 +568,7 @@ async def _decode_kubernetes_subject_token(
     config: AuthConfig,
     subject_token: str,
     audience: str,
-) -> dict[str, Any]:
+) -> DecodedSubjectToken:
     if not config.oidc.workload_kubernetes_token_review_enabled:
         raise jwt.InvalidTokenError("Kubernetes TokenReview subject token validation is disabled")
 
@@ -489,10 +619,141 @@ async def _decode_kubernetes_subject_token(
     if not subject:
         raise jwt.InvalidTokenError("Kubernetes TokenReview response did not include a username")
 
-    return {
+    claims: dict[str, Any] = {
         "sub": subject,
         "groups": user.get("groups", []),
     }
+    bound_reference = None
+    extra = user.get("extra")
+    if isinstance(extra, dict) and KUBERNETES_POD_UID_REFERENCE_NAME in extra:
+        pod_uids = extra.get(KUBERNETES_POD_UID_REFERENCE_NAME)
+        if not isinstance(pod_uids, list) or len(pod_uids) != 1 or not isinstance(pod_uids[0], str) or not pod_uids[0]:
+            raise _InvalidGrantError("Kubernetes TokenReview did not include exactly one pod UID reference")
+        bound_reference = VerifiedWorkloadReference(name=KUBERNETES_POD_UID_REFERENCE_NAME, value=pod_uids[0])
+
+    return DecodedSubjectToken(claims=claims, bound_reference=bound_reference)
+
+
+def _subject_groups_from_claims(claims: dict[str, Any]) -> list[str]:
+    return groups_from_claim(claims.get("groups", []))
+
+
+async def _normalize_verified_subject_token(
+    config: AuthConfig,
+    workload_token_exchange_service: WorkloadTokenExchangeService,
+    *,
+    subject_token: str,
+    subject_token_type: str,
+) -> VerifiedSubjectToken:
+    if subject_token_type == DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE:
+        try:
+            parsed = parse_opaque_docker_proof_token(subject_token)
+        except InvalidWorkloadProofTokenError as exc:
+            raise _InvalidGrantError("Docker opaque workload proof token is malformed") from exc
+        return VerifiedSubjectToken(
+            subject=parsed.delegation_name,
+            groups=[],
+            delegation_name=parsed.delegation_name,
+            is_docker_proof=True,
+            is_opaque_docker_proof=True,
+            opaque_secret=parsed.secret,
+        )
+
+    decoded = await workload_token_exchange_service.decode_subject_token(
+        config,
+        subject_token,
+        _workload_subject_audience(config),
+    )
+    claims = decoded.claims
+    subject = claims.get("sub")
+    if not isinstance(subject, str) or not subject:
+        raise jwt.InvalidTokenError("Subject token did not include a subject")
+
+    return VerifiedSubjectToken(
+        subject=subject,
+        groups=_subject_groups_from_claims(claims),
+        email=claims.get("email") if isinstance(claims.get("email"), str) else None,
+        bound_reference=decoded.bound_reference,
+    )
+
+
+def _delegation_lookup_name(verified_subject: VerifiedSubjectToken, audience: str) -> str | None:
+    if verified_subject.is_docker_proof:
+        return verified_subject.delegation_name
+    if verified_subject.bound_reference is None:
+        return None
+    return reference_delegation_name(
+        workload_audience=audience,
+        workload_subject=verified_subject.subject,
+        bound_reference_name=verified_subject.bound_reference.name,
+        bound_reference_value=verified_subject.bound_reference.value,
+    )
+
+
+def _validate_delegation_for_exchange(
+    delegation: WorkloadDelegationEntity,
+    verified_subject: VerifiedSubjectToken,
+    *,
+    audience: str,
+) -> None:
+    if not delegation.is_active(now=datetime.now(timezone.utc)):
+        raise _InvalidGrantError("Workload delegation is expired or revoked")
+    if delegation.workload_audience != audience:
+        raise _InvalidGrantError("Workload delegation audience does not match")
+    if delegation.workload_subject != verified_subject.subject:
+        raise _InvalidGrantError("Workload delegation subject does not match")
+
+    stored_reference = None
+    if delegation.bound_reference_name or delegation.bound_reference_value:
+        if not delegation.bound_reference_name or not delegation.bound_reference_value:
+            raise _InvalidGrantError("Workload delegation bound reference is incomplete")
+        stored_reference = VerifiedWorkloadReference(
+            name=delegation.bound_reference_name,
+            value=delegation.bound_reference_value,
+        )
+
+    if stored_reference != verified_subject.bound_reference:
+        raise _InvalidGrantError("Workload delegation bound reference does not match")
+    if verified_subject.is_docker_proof and stored_reference is not None:
+        raise _InvalidGrantError("Docker workload delegation cannot use a bound reference")
+
+    if verified_subject.is_opaque_docker_proof:
+        if verified_subject.opaque_secret is None or not delegation.opaque_subject_token_hash:
+            raise _InvalidGrantError("Docker opaque workload delegation is missing proof-token state")
+        if not verify_opaque_docker_proof_token_hash(
+            verified_subject.opaque_secret,
+            delegation.opaque_subject_token_hash,
+        ):
+            raise _InvalidGrantError("Docker opaque workload proof-token hash does not match")
+    elif delegation.opaque_subject_token_hash:
+        raise _InvalidGrantError("Workload delegation requires an opaque proof token")
+
+
+def _build_workload_only_claims(verified_subject: VerifiedSubjectToken) -> dict[str, Any]:
+    claims: dict[str, Any] = {"sub": verified_subject.subject}
+    if verified_subject.email:
+        claims["email"] = verified_subject.email
+    if verified_subject.groups:
+        claims["groups"] = ",".join(verified_subject.groups)
+    return claims
+
+
+def _build_delegated_claims(
+    delegation: WorkloadDelegationEntity,
+    verified_subject: VerifiedSubjectToken,
+) -> dict[str, Any]:
+    delegated_principal = delegation.auth_context.to_principal().effective_principal
+    claims: dict[str, Any] = {"sub": delegated_principal.id}
+    if delegated_principal.email:
+        claims["email"] = delegated_principal.email
+    if delegated_principal.groups:
+        claims["groups"] = ",".join(delegated_principal.groups)
+
+    actor_claims: dict[str, Any] = {"sub": verified_subject.subject}
+    if verified_subject.groups:
+        actor_claims["groups"] = ",".join(verified_subject.groups)
+    claims["act"] = actor_claims
+    return claims
 
 
 @router.get(
@@ -528,6 +789,7 @@ async def jwks(
 async def token_exchange(
     request: Request,
     workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    entity_client: EntityClient | None = Depends(get_entity_client),
 ) -> WorkloadTokenExchangeResponse | JSONResponse:
     """Exchange an RFC 8693 workload identity subject token for a NeMo access token."""
     config = get_auth_config()
@@ -541,51 +803,91 @@ async def token_exchange(
         return _oauth_error(400, "unsupported_grant_type", "Only RFC 8693 token exchange is supported")
     if form.get("client_id") != client_id:
         return _oauth_error(401, "invalid_client", "Unknown workload token exchange client")
-    if form.get("subject_token_type") != JWT_TOKEN_TYPE:
-        return _oauth_error(400, "invalid_request", "subject_token_type must be a JWT token type")
+    subject_token_type = str(form.get("subject_token_type") or "")
+    if subject_token_type not in {JWT_TOKEN_TYPE, DOCKER_OPAQUE_WORKLOAD_PROOF_TOKEN_TYPE}:
+        return _oauth_error(400, "invalid_request", "subject_token_type must be a supported workload token type")
     if form.get("requested_token_type", ACCESS_TOKEN_TYPE) != ACCESS_TOKEN_TYPE:
         return _oauth_error(400, "invalid_request", "requested_token_type must be access_token")
+    if "actor_token" in form or "actor_token_type" in form:
+        return _oauth_error(
+            400,
+            "invalid_request",
+            "actor_token is not supported for this workload token exchange profile",
+        )
+
+    if "resource" in form:
+        return _oauth_error(400, "invalid_target", "resource is not supported for workload token exchange")
+
+    audience_values = [value for value in form.getlist("audience") if str(value or "").strip()]
+    if len(audience_values) > 1:
+        return _oauth_error(400, "invalid_target", "Only one audience is supported for workload token exchange")
+    requested_audience = audience_values[0] if audience_values else None
 
     subject_token = form.get("subject_token")
     if not subject_token:
         return _oauth_error(400, "invalid_request", "subject_token is required")
 
     try:
-        audience = _validated_audience(config, form.get("audience"))
+        audience = _validated_audience(config, requested_audience)
     except jwt.InvalidAudienceError as exc:
         logger.info("Requested token audience validation failed: %s", exc)
         return _oauth_error(400, "invalid_target", "Requested audience is not allowed")
 
     try:
-        subject_claims = await workload_token_exchange_service.decode_subject_token(
-            config, str(subject_token), _workload_subject_audience(config)
+        verified_subject = await _normalize_verified_subject_token(
+            config,
+            workload_token_exchange_service,
+            subject_token=str(subject_token),
+            subject_token_type=subject_token_type,
         )
-        subject = subject_claims.get("sub")
-        if not subject:
-            raise jwt.InvalidTokenError("Subject token did not include a subject")
     except jwt.InvalidTokenError as exc:
         logger.info("Subject token validation failed: %s", exc)
         # RFC 8693 clients only need a stable invalid_request response. Avoid
         # returning decoder details that may include infrastructure internals.
         return _oauth_error(400, "invalid_request", "Could not validate subject token")
+    except _InvalidGrantError as exc:
+        logger.info("Subject token was not eligible for workload delegation: %s", exc)
+        return _oauth_error(400, "invalid_request", "Subject token is not authorized for workload delegation")
+
+    try:
+        lookup_name = _delegation_lookup_name(verified_subject, audience)
+        delegation = None
+        if lookup_name is not None:
+            if entity_client is None:
+                raise _InvalidGrantError("Entity client is unavailable for workload delegation lookup")
+            delegation_store = WorkloadDelegationStore(entity_client)
+            delegation = await workload_token_exchange_service.get_delegation_with_retry(
+                delegation_store,
+                lookup_name,
+                retry=verified_subject.bound_reference is not None,
+            )
+            if delegation is None:
+                raise _InvalidGrantError("Workload delegation is not ready")
+            _validate_delegation_for_exchange(delegation, verified_subject, audience=audience)
+    except _InvalidGrantError as exc:
+        logger.info("Workload delegation lookup failed: %s", exc)
+        return _oauth_error(400, "invalid_request", "Subject token is not authorized for workload delegation")
 
     now = int(time.time())
-    scope = str(form.get("scope") or config.oidc.workload_scope or DEFAULT_WORKLOAD_SCOPE)
+    scope = _granted_workload_scope(config, form.get("scope"))
+    subject_claims = (
+        _build_delegated_claims(delegation, verified_subject)
+        if delegation is not None
+        else _build_workload_only_claims(verified_subject)
+    )
+    configured_exp = now + config.oidc.workload_token_ttl_seconds
+    token_exp = min(configured_exp, _epoch_seconds(delegation.expires_at)) if delegation is not None else configured_exp
+    expires_in = max(0, token_exp - now)
     exchanged_claims: dict[str, Any] = {
         "iss": workload_token_issuer(config, request),
-        "sub": subject,
+        **subject_claims,
         "aud": audience,
         "iat": now,
         "nbf": now,
-        "exp": now + config.oidc.workload_token_ttl_seconds,
-        "scope": scope,
+        "exp": token_exp,
     }
-    if "email" in subject_claims:
-        exchanged_claims["email"] = subject_claims["email"]
-    if "groups" in subject_claims:
-        groups_claim = _groups_claim_for_gateway_header(subject_claims["groups"])
-        if groups_claim:
-            exchanged_claims["groups"] = groups_claim
+    if scope:
+        exchanged_claims["scope"] = scope
 
     signing_key = await workload_token_exchange_service.workload_signing_key_async(config)
     access_token = jwt.encode(
@@ -598,6 +900,6 @@ async def token_exchange(
         access_token=access_token,
         issued_token_type=ACCESS_TOKEN_TYPE,
         token_type="Bearer",
-        expires_in=config.oidc.workload_token_ttl_seconds,
+        expires_in=expires_in,
         scope=scope,
     )

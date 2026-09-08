@@ -4,16 +4,20 @@
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
 import {
   customizationGetAutomodelJobStatus,
-  customizationGetRlJobStatus,
-  customizationGetUnslothJobStatus,
   getCustomizationGetAutomodelJobStatusQueryKey,
+} from '@nemo/sdk/generated/customizer/automodel-jobs';
+import {
+  customizationGetRlJobStatus,
   getCustomizationGetRlJobStatusQueryKey,
-  getCustomizationGetUnslothJobStatusQueryKey,
-} from '@nemo/sdk/generated/customizer/api';
+} from '@nemo/sdk/generated/customizer/rl-jobs';
 import type {
   PlatformJobStatusResponse,
   PlatformJobStepStatusResponse,
 } from '@nemo/sdk/generated/customizer/schema';
+import {
+  customizationGetUnslothJobStatus,
+  getCustomizationGetUnslothJobStatusQueryKey,
+} from '@nemo/sdk/generated/customizer/unsloth-jobs';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import type { CustomizationBackend } from '@studio/util/customizationBackend';
 import { skipToken, useQuery } from '@tanstack/react-query';
@@ -57,14 +61,20 @@ export interface UseCustomizationJobStatusResult {
   isError: boolean;
 }
 
+interface UseCustomizationJobStatusOptions {
+  /** Defaults to true. Set false to skip polling when a second consumer doesn't need it yet. */
+  enabled?: boolean;
+}
+
 export const useCustomizationJobStatus = (
   workspace: string,
   name: string,
   backend: CustomizationBackend | undefined,
-  jobStatus?: PlatformJobStatus
+  jobStatus?: PlatformJobStatus,
+  { enabled = true }: UseCustomizationJobStatusOptions = {}
 ): UseCustomizationJobStatusResult => {
   const endpoint = backend ? STATUS_ENDPOINTS[backend] : undefined;
-  const canFetch = Boolean(endpoint && workspace && name);
+  const canFetch = Boolean(endpoint && workspace && name && enabled);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: endpoint ? endpoint.getQueryKey(workspace, name) : PENDING_BACKEND_QUERY_KEY,

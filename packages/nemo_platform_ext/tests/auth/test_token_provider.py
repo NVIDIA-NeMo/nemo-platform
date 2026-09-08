@@ -125,6 +125,25 @@ class TestOIDCTokenProvider:
         assert mock_post.call_args.kwargs["verify"] == "/tmp/nemo-ca.pem"
 
     @patch("nemo_platform_ext.auth.token_provider.httpx.post")
+    def test_refresh_token_grant_uses_context_certificate_authority(self, mock_post, tmp_path, monkeypatch):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"access_token": "new_access"}
+        mock_post.return_value = mock_response
+        context_ca = str(tmp_path / "context-ca.pem")
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        result = refresh_token_grant(
+            token_endpoint="https://idp/token",
+            client_id="client",
+            refresh_token="refresh_abc",
+            certificate_authority=context_ca,
+        )
+
+        assert result == {"access_token": "new_access"}
+        assert mock_post.call_args.kwargs["verify"] == context_ca
+
+    @patch("nemo_platform_ext.auth.token_provider.httpx.post")
     def test_get_access_token_refreshes_when_expired(self, mock_post):
         old_token = _make_jwt({"exp": int(time.time()) - 100})
         new_token = _make_jwt({"exp": int(time.time()) + 3600})

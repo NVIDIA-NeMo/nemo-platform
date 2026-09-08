@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from backends.k8s.k8s_helpers import sample_always_config, sample_config
+from backends.k8s.k8s_helpers import sample_always_config, sample_config, with_workload_identity
 from kubernetes.client import ApiClient
 from nemo_deployments_plugin.backends.k8s.compiler import (
     DeploymentConfigError,
@@ -34,7 +34,15 @@ from nemo_deployments_plugin.entities import (
     K8sDeploymentConfig,
     Probe,
     SecretRef,
+    VolumeMount,
+    WorkloadIdentitySpec,
 )
+from nemo_platform_plugin.auth.workload_identity import (
+    WORKLOAD_IDENTITY_TOKEN_FILE_PATH,
+    WORKLOAD_IDENTITY_VOLUME_NAME,
+    WORKLOAD_IDENTITY_VOLUME_PATH,
+)
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.config import ImagePullSecret
 
 
@@ -175,6 +183,24 @@ def test_compile_applies_k8s_deployment_config() -> None:
     assert affinity.node_affinity is not None
     security_context = compiled.pod_spec_kwargs["security_context"]
     assert security_context.run_as_user == 1000
+
+
+def test_compile_workload_identity_prefers_workload_service_account() -> None:
+    config = with_workload_identity(sample_always_config(), service_account_name="workload-sa")
+    k8s_config = K8sDeploymentConfig.model_validate({"serviceAccount": "pod-sa"})
+
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=k8s_config,
+        pod_restart_policy="Always",
+    )
+
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    assert pod_spec["service_account_name"] == "workload-sa"
+    assert any(volume["name"] == WORKLOAD_IDENTITY_VOLUME_NAME for volume in pod_spec["volumes"])
 
 
 def test_compile_workload_emits_image_pull_secrets() -> None:
@@ -399,3 +425,142 @@ def test_compile_workload_no_secret_when_secret_env_empty() -> None:
     assert compiled.secret_name is None
     pod_spec = _serialized(compiled.pod_spec_kwargs)
     assert "envFrom" not in pod_spec["containers"][0]
+
+
+def test_compile_workload_projects_workload_identity_token() -> None:
+    config = sample_always_config().model_copy(
+        update={
+            "workload_identity": WorkloadIdentitySpec(
+                enabled=True,
+                workloadKind="agent_deployment",
+                workloadId="task",
+                tokenAudience="nemo-platform",
+                tokenExpirationSeconds=900,
+            )
+        }
+    )
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=None,
+        pod_restart_policy="Always",
+    )
+
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    volume = next(item for item in pod_spec["volumes"] if item["name"] == WORKLOAD_IDENTITY_VOLUME_NAME)
+    projection = volume["projected"]["sources"][0]["serviceAccountToken"]
+    assert projection["path"] == "token"
+    assert projection["audience"] == "nemo-platform"
+    assert projection["expirationSeconds"] == 900
+
+    main = pod_spec["containers"][0]
+    env = {item["name"]: item["value"] for item in main["env"]}
+    assert env[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR] == WORKLOAD_IDENTITY_TOKEN_FILE_PATH
+    mount = next(item for item in main["volumeMounts"] if item["name"] == WORKLOAD_IDENTITY_VOLUME_NAME)
+    assert mount["mountPath"] == WORKLOAD_IDENTITY_VOLUME_PATH
+    assert mount["readOnly"] is True
+
+
+def test_compile_workload_rejects_user_workload_identity_volume_mount_name() -> None:
+    config = with_workload_identity(
+        sample_always_config().model_copy(
+            update={
+                "volume_mounts": [
+                    VolumeMount(
+                        name=WORKLOAD_IDENTITY_VOLUME_NAME,
+                        mountPath="/data",
+                    )
+                ]
+            }
+        )
+    )
+
+    with pytest.raises(DeploymentConfigError, match=WORKLOAD_IDENTITY_VOLUME_NAME):
+        validate_config_for_deployment(config)
+
+
+def test_compile_workload_rejects_user_workload_identity_volume_mount_path() -> None:
+    config = with_workload_identity(
+        sample_always_config().model_copy(
+            update={
+                "volume_mounts": [
+                    VolumeMount(
+                        name="data",
+                        mountPath=WORKLOAD_IDENTITY_VOLUME_PATH,
+                    )
+                ]
+            }
+        )
+    )
+
+    with pytest.raises(DeploymentConfigError, match=WORKLOAD_IDENTITY_VOLUME_PATH):
+        validate_config_for_deployment(config)
+
+
+def test_compile_workload_allows_user_workload_identity_volume_mount_name_when_disabled() -> None:
+    config = sample_always_config().model_copy(
+        update={
+            "volume_mounts": [
+                VolumeMount(
+                    name=WORKLOAD_IDENTITY_VOLUME_NAME,
+                    mountPath="/data",
+                )
+            ]
+        }
+    )
+
+    validate_config_for_deployment(config)
+
+
+def test_compile_workload_rejects_mismatched_workload_identity_token_audience() -> None:
+    config = sample_always_config().model_copy(
+        update={
+            "workload_identity": WorkloadIdentitySpec(
+                enabled=True,
+                tokenAudience="other-audience",
+            )
+        }
+    )
+
+    with (
+        patch(
+            "nemo_deployments_plugin.backends.k8s.compiler.get_workload_identity_token_audience",
+            return_value="platform-audience",
+        ),
+        pytest.raises(DeploymentConfigError, match="tokenAudience"),
+    ):
+        compile_workload(
+            config=config,
+            workspace="default",
+            deployment_name="task",
+            labels={"managed-by": "nemo-deployments"},
+            k8s_config=None,
+            pod_restart_policy="Always",
+        )
+
+
+def test_compile_workload_does_not_mount_workload_identity_on_auth_proxy() -> None:
+    config = sample_always_config().model_copy(
+        update={
+            "auth_proxy_sidecar": True,
+            "auth_proxy_sidecar_identity": "agents",
+            "auth_proxy_sidecar_on_behalf_of": "user:alice",
+            "workload_identity": WorkloadIdentitySpec(enabled=True, workloadKind="agent_deployment", workloadId="task"),
+        }
+    )
+    with patch("nemo_deployments_plugin.auth_proxy.platform_auth_enabled", return_value=True):
+        compiled = compile_workload(
+            config=config,
+            workspace="default",
+            deployment_name="task",
+            labels={"managed-by": "nemo-deployments"},
+            k8s_config=None,
+            pod_restart_policy="Always",
+        )
+
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    auth_proxy = next(item for item in pod_spec["init_containers"] if item["name"] == "auth-proxy")
+    assert all(env["name"] != WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR for env in auth_proxy.get("env", []))
+    assert all(mount["name"] != WORKLOAD_IDENTITY_VOLUME_NAME for mount in auth_proxy.get("volumeMounts", []))

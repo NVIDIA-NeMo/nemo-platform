@@ -20,6 +20,10 @@ from contextlib import suppress
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.testing import add_mock_provider, short_unique_name
 
 from e2e.auditor.utils import minimal_audit_config, unique_name
@@ -47,7 +51,7 @@ def _chat_completion(content: str = "I'm happy to help!") -> dict:
 def _wait_for_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> str:
     deadline = time.monotonic() + AUDIT_JOB_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        status_resp = sdk.jobs.get_status(name=job_name, workspace=workspace)
+        status_resp = client_from_platform(sdk, JobsClient).get_job_status(name=job_name, workspace=workspace)
         status = str(status_resp.status)
         if status in TERMINAL_STATUSES:
             return status
@@ -57,9 +61,10 @@ def _wait_for_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> str
 
 def _cleanup_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> None:
     with suppress(Exception):
-        sdk.jobs.cancel(name=job_name, workspace=workspace)
+        jobs = client_from_platform(sdk, JobsClient)
+        jobs.cancel_job(name=job_name, workspace=workspace)
     with suppress(Exception):
-        sdk.jobs.delete(name=job_name, workspace=workspace)
+        jobs.delete_job(name=job_name, workspace=workspace)
 
 
 def _add_mock_provider_or_skip(sdk: NeMoPlatform, workspace: str, name: str) -> str:
@@ -87,13 +92,14 @@ def _add_mock_provider_or_skip(sdk: NeMoPlatform, workspace: str, name: str) -> 
 
 @pytest.fixture(scope="module")
 def audit_workspace(sdk: NeMoPlatform) -> Iterator[str]:
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     name = short_unique_name("e2e-audit")
-    sdk.workspaces.create(name=name)
+    workspaces.create_workspace(body=CreateWorkspaceRequest(name=name)).data()
     try:
         yield name
     finally:
         with suppress(Exception):
-            sdk.workspaces.delete(name)
+            workspaces.delete_workspace(name=name).data()
 
 
 @pytest.fixture(scope="module")

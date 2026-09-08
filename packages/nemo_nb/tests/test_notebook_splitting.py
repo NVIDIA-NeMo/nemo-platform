@@ -399,7 +399,11 @@ class TestMystDirectiveStripping:
                 {"cell_type": "code", "metadata": {"language": "bash"}, "source": ["nemo models list\n"]},
                 {"cell_type": "markdown", "source": [":::\n"]},
                 {"cell_type": "markdown", "source": [":::{tab-item} Python SDK\n", ":sync: python-sdk\n"]},
-                {"cell_type": "code", "metadata": {"language": "python"}, "source": ["client.models.list()\n"]},
+                {
+                    "cell_type": "code",
+                    "metadata": {"language": "python"},
+                    "source": ["client_from_platform(client, ModelsClient).list_models()\n"],
+                },
                 {"cell_type": "markdown", "source": [":::\n"]},
                 {"cell_type": "markdown", "source": ["::::\n"]},
             ]

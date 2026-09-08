@@ -19,10 +19,13 @@ from pathlib import Path
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import BadRequestError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig, NGCStorageConfig
-from nemo_platform_plugin.files.types import CreateFilesetRequest
+from nemo_platform_plugin.files.types import CreateFilesetRequest, ListFilesQueryParams
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 
 # ---------------------------------------------------------------------------
 # NGC configuration
@@ -82,10 +85,11 @@ def hf_token() -> str:
 def hf_secret(sdk: NeMoPlatform, workspace: str, hf_token: str) -> Iterator[str]:
     """Create a secret containing the HF token, cleaned up after test."""
     secret_name = f"e2e-hf-tok-{uuid.uuid4().hex[:8]}"
-    sdk.secrets.create(workspace=workspace, name=secret_name, value=hf_token)
+    secrets = client_from_platform(sdk, SecretsClient)
+    secrets.create_secret(workspace=workspace, body=PlatformSecretCreateRequest(name=secret_name, value=hf_token))
     yield secret_name
     try:
-        sdk.secrets.delete(workspace=workspace, name=secret_name)
+        secrets.delete_secret(workspace=workspace, name=secret_name)
     except Exception:
         pass  # Best-effort cleanup; the workspace is deleted anyway
 
@@ -126,41 +130,50 @@ class TestNGCFileset:
 
     def test_list_files(self, sdk: NeMoPlatform, workspace: str, ngc_fileset: str):
         """Listing an NGC-backed fileset returns files with paths and sizes."""
-        files = sdk.files.list(fileset=ngc_fileset, workspace=workspace)
-        assert len(files.data) > 0, "NGC fileset should contain at least one file"
+        files = client_from_platform(sdk, FilesClient).list_files(name=ngc_fileset, workspace=workspace).data().data
+        assert len(files) > 0, "NGC fileset should contain at least one file"
 
-        for f in files.data:
+        for f in files:
             assert f.path, "Each file should have a path"
             assert f.size > 0, "Each file should have a non-zero size"
 
     def test_download_file(self, sdk: NeMoPlatform, workspace: str, ngc_fileset: str):
         """Downloading the smallest file from an NGC fileset succeeds and size matches."""
-        files = sdk.files.list(fileset=ngc_fileset, workspace=workspace)
-        assert len(files.data) > 0
+        files = client_from_platform(sdk, FilesClient).list_files(name=ngc_fileset, workspace=workspace).data().data
+        assert len(files) > 0
 
-        target = min(files.data, key=lambda f: f.size)
+        target = min(files, key=lambda f: f.size)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             local_path = Path(tmpdir) / target.path.replace("/", "_")
-            sdk.files.download(
-                fileset=ngc_fileset,
-                workspace=workspace,
-                remote_path=target.path,
-                local_path=str(local_path),
+            content = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(
+                    name=ngc_fileset,
+                    workspace=workspace,
+                    path=target.path,
+                )
+                .read()
             )
+            local_path.write_bytes(content)
             assert local_path.exists()
             assert local_path.stat().st_size == target.size
 
     def test_cache_status(self, sdk: NeMoPlatform, workspace: str, ngc_fileset: str):
         """NGC-backed files report a cacheable status."""
-        files = sdk.files.list(
-            fileset=ngc_fileset,
-            workspace=workspace,
-            include_cache_status=True,
+        files = (
+            client_from_platform(sdk, FilesClient)
+            .list_files(
+                name=ngc_fileset,
+                workspace=workspace,
+                query_params=ListFilesQueryParams(include_cache_status=True),
+            )
+            .data()
+            .data
         )
-        assert len(files.data) > 0
+        assert len(files) > 0
 
-        for f in files.data:
+        for f in files:
             assert f.cache_status is not None
             assert f.cache_status != "not_cacheable"
 
@@ -202,7 +215,8 @@ class TestNGCFileset:
         """Bad NGC configurations are rejected with 400."""
         value = secret_value if secret_value is not None else ngc_api_key
         secret_name = f"e2e-ngc-err-{uuid.uuid4().hex[:8]}"
-        sdk.secrets.create(workspace=workspace, name=secret_name, value=value)
+        secrets = client_from_platform(sdk, SecretsClient)
+        secrets.create_secret(workspace=workspace, body=PlatformSecretCreateRequest(name=secret_name, value=value))
         try:
             storage = NGCStorageConfig(
                 api_key_secret=secret_name,
@@ -220,7 +234,7 @@ class TestNGCFileset:
                     ),
                 )
         finally:
-            sdk.secrets.delete(workspace=workspace, name=secret_name)
+            secrets.delete_secret(workspace=workspace, name=secret_name)
 
     def test_create_error_nonexistent_secret(self, files_client: FilesClient, workspace: str):
         """Referencing a secret that doesn't exist is rejected with 400."""
@@ -251,41 +265,50 @@ class TestHuggingFaceFileset:
 
     def test_list_files(self, sdk: NeMoPlatform, workspace: str, hf_fileset: str):
         """Listing an HF-backed fileset returns files with paths and sizes."""
-        files = sdk.files.list(fileset=hf_fileset, workspace=workspace)
-        assert len(files.data) > 0, "HF fileset should contain at least one file"
+        files = client_from_platform(sdk, FilesClient).list_files(name=hf_fileset, workspace=workspace).data().data
+        assert len(files) > 0, "HF fileset should contain at least one file"
 
-        for f in files.data:
+        for f in files:
             assert f.path, "Each file should have a path"
             assert f.size > 0, "Each file should have a non-zero size"
 
     def test_download_file(self, sdk: NeMoPlatform, workspace: str, hf_fileset: str):
         """Downloading the smallest file from an HF fileset succeeds and size matches."""
-        files = sdk.files.list(fileset=hf_fileset, workspace=workspace)
-        assert len(files.data) > 0
+        files = client_from_platform(sdk, FilesClient).list_files(name=hf_fileset, workspace=workspace).data().data
+        assert len(files) > 0
 
-        target = min(files.data, key=lambda f: f.size)
+        target = min(files, key=lambda f: f.size)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             local_path = Path(tmpdir) / target.path.replace("/", "_")
-            sdk.files.download(
-                fileset=hf_fileset,
-                workspace=workspace,
-                remote_path=target.path,
-                local_path=str(local_path),
+            content = (
+                client_from_platform(sdk, FilesClient)
+                .download_file(
+                    name=hf_fileset,
+                    workspace=workspace,
+                    path=target.path,
+                )
+                .read()
             )
+            local_path.write_bytes(content)
             assert local_path.exists()
             assert local_path.stat().st_size == target.size
 
     def test_cache_status(self, sdk: NeMoPlatform, workspace: str, hf_fileset: str):
         """HF-backed files report a cacheable status."""
-        files = sdk.files.list(
-            fileset=hf_fileset,
-            workspace=workspace,
-            include_cache_status=True,
+        files = (
+            client_from_platform(sdk, FilesClient)
+            .list_files(
+                name=hf_fileset,
+                workspace=workspace,
+                query_params=ListFilesQueryParams(include_cache_status=True),
+            )
+            .data()
+            .data
         )
-        assert len(files.data) > 0
+        assert len(files) > 0
 
-        for f in files.data:
+        for f in files:
             assert f.cache_status is not None
             assert f.cache_status != "not_cacheable"
 

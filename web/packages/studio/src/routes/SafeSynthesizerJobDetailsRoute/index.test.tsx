@@ -3,7 +3,7 @@
 
 import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/api';
+import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/safe-synthesizer';
 import {
   type GenerateJob,
   type SafeSynthesizerSummary,
@@ -170,6 +170,7 @@ describe('GenerateJobDetailsRoute - Rendering', () => {
       isLoading: false,
       error: null,
       total: 0,
+      loadProgress: null,
       refetch: vi.fn(),
     });
     mockUseBreadcrumbs.mockReturnValue({
@@ -329,6 +330,7 @@ describe('GenerateJobDetailsRoute - Rendering', () => {
       isLoading: false,
       error: null,
       total: 3,
+      loadProgress: null,
       refetch: vi.fn(),
     });
 
@@ -365,6 +367,7 @@ describe('GenerateJobDetailsRoute - Rendering', () => {
       isLoading: false,
       error: null,
       total: 1,
+      loadProgress: null,
       refetch: vi.fn(),
     });
 
@@ -404,6 +407,7 @@ describe('GenerateJobDetailsRoute - Rendering', () => {
       isLoading: false,
       error: null,
       total: 2,
+      loadProgress: null,
       refetch: vi.fn(),
     });
 

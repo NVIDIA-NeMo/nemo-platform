@@ -18,10 +18,9 @@ import {
   isRlJob,
   isUnslothJob,
   type CustomizationJob,
-  type CustomizationJobStatusDetails,
 } from '@studio/util/customizationBackend';
 import { formatElapsedTime } from '@studio/util/date';
-import { GRPO_METRIC, readSeries } from '@studio/util/grpoMetrics';
+import { formatStepDuration, GRPO_METRIC, medianValue, readSeries } from '@studio/util/grpoMetrics';
 import { getTextWithCount } from '@studio/util/strings';
 import { Circle /* TODO: replace with a proper icon (was Circle) */, Gpu } from 'lucide-react';
 import { ReactNode } from 'react';
@@ -156,29 +155,6 @@ export const getTrainingBatchSize = (customizationJob?: CustomizationJob): numbe
   return 0;
 };
 
-/** Log entry in customization job status_details.status_logs */
-interface StatusDetails {
-  message?: string;
-  detail?: string;
-}
-
-/**
- * Returns the error message of the first failure log from a customization job's status details.
- */
-export const getFailureMessage = (statusDetails: CustomizationJobStatusDetails): string => {
-  const logs: StatusDetails[] = (statusDetails.status_logs as StatusDetails[]) || [];
-  const hasFailure = logs.find((log) => log.message?.includes('Failed'));
-  if (hasFailure) {
-    return logs.map((log) => log.detail || '').join('\n');
-  }
-  return '';
-};
-
-export const getProgressLogs = (statusDetails: CustomizationJobStatusDetails): StatusDetails[] => {
-  const logs = (statusDetails.status_logs as StatusDetails[]) || [];
-  return logs;
-};
-
 /**
  * Returns a string that represents the number of epochs completed by the given customization.
  */
@@ -262,13 +238,27 @@ const truncatePhase = (phase: string): string =>
 export const formatMetricValue = (value: number, decimals = 4): string =>
   Math.abs(value) >= EXPONENTIAL_ABOVE ? value.toExponential(2) : value.toFixed(decimals);
 
+interface FormatStepCountOptions {
+  /** Value past which compact notation ("10K") replaces the plain, comma-grouped one. */
+  floor?: number;
+  /** Lowercases the compact suffix ("10k" rather than "10K"), for prose rather than a tile. */
+  lowercase?: boolean;
+}
+
 /** Compact past four digits so a long run's step count cannot widen the column. */
-export const formatStepCount = (value: number): string =>
-  Math.abs(value) >= 10_000
-    ? new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(
-        value
-      )
-    : value.toLocaleString();
+export const formatStepCount = (
+  value: number,
+  { floor = 10_000, lowercase = false }: FormatStepCountOptions = {}
+): string => {
+  if (Math.abs(value) < floor) {
+    return value.toLocaleString();
+  }
+  const compact = new Intl.NumberFormat(undefined, {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
+  return lowercase ? compact.toLowerCase() : compact;
+};
 
 const formatDeltaHint = (delta: number, decimals: number): string =>
   `${delta >= 0 ? '+' : ''}${formatMetricValue(delta, decimals)} from start`;
@@ -404,14 +394,27 @@ export const getJobDuration = (
 interface TrainingDiagnosticsContext {
   isTerminal: boolean;
   duration: string;
+  /** Display name of the failing pipeline step, when the job errored. */
+  failedAtStepLabel?: string;
 }
 
-/** Total time once finished, current stage while running. Every backend's tile set ends with it. */
+/** Where the run ended up: failing step, total time once finished, or current stage while running. */
 const getRunStateTile = (
   telemetry: CustomizationTrainingTelemetry,
-  { isTerminal, duration }: TrainingDiagnosticsContext
-): StatTileProps =>
-  isTerminal
+  { isTerminal, duration, failedAtStepLabel }: TrainingDiagnosticsContext
+): StatTileProps => {
+  if (failedAtStepLabel) {
+    return {
+      label: 'Run State',
+      value: 'Failed',
+      hint: `during ${failedAtStepLabel}`,
+      // Every panel renders the run-state tile unbordered, and StatTile's border tint only
+      // applies to the bordered branch — so `hintStatus` is what actually reads as failure here.
+      hintStatus: 'error',
+      status: 'error',
+    };
+  }
+  return isTerminal
     ? { label: 'Duration', value: duration, hint: 'total run time' }
     : {
         label: 'Phase',
@@ -420,6 +423,7 @@ const getRunStateTile = (
           : NOT_AVAILABLE,
         hint: 'current stage',
       };
+};
 
 export const getTrainingDiagnosticsTiles = (
   telemetry: CustomizationTrainingTelemetry,
@@ -464,6 +468,7 @@ export const getGrpoSummaryTiles = (
   const validation = readSeries(statusDetails, GRPO_METRIC.validationReward);
   const lastEvalStep = validation?.[validation.length - 1]?.step;
   const truncation = summarizeMetric(readSeries(statusDetails, GRPO_METRIC.truncationRate));
+  const stepTime = medianValue(readSeries(statusDetails, GRPO_METRIC.stepTime));
 
   return [
     metricTile(
@@ -479,12 +484,76 @@ export const getGrpoSummaryTiles = (
           : `held-out prompts, step ${formatStepCount(lastEvalStep)}`,
     }),
     {
+      label: 'Median Step Time',
+      value: stepTime === undefined ? NOT_AVAILABLE : formatStepDuration(stepTime),
+      hint: 'wall clock per step',
+    },
+    {
       label: 'Truncation Rate',
       value: truncation ? formatPercent(truncation.final) : NOT_AVAILABLE,
       hint: 'hit the length limit',
     },
   ];
 };
+
+/**
+ * Rollouts per training step: group size (rollouts per prompt) times prompts sampled per step.
+ * When the spec omits either factor, the service derives it from `batch_size` divided by the
+ * other factor, so the product collapses back to `batch_size` directly rather than dividing and
+ * multiplying back through a possibly-imprecise fraction.
+ */
+const getGrpoRolloutsPerStep = (training: RlGRPOTraining): number =>
+  training.num_prompts_per_step !== undefined && training.num_generations_per_prompt !== undefined
+    ? training.num_generations_per_prompt * training.num_prompts_per_step
+    : (training.batch_size ?? 0);
+
+/**
+ * Sub-header summary for a GRPO run: which training step it's on (out of the planned total, when
+ * known — whether still running or stopped short of it), or how many steps ran once terminal with
+ * no known target, plus the rollouts that implies. Rollout counts aren't reported directly, so
+ * they're derived from the step count and the group-size/prompts-per-step spec.
+ */
+export const getGrpoRunProgressSummary = (
+  customization: CustomizationJob | undefined,
+  telemetry: CustomizationTrainingTelemetry,
+  isTerminal: boolean
+): string => {
+  if (!customization || !isGrpoJob(customization) || telemetry.step === undefined) {
+    return '';
+  }
+
+  const stepText =
+    telemetry.maxSteps !== undefined
+      ? `step ${formatStepCount(telemetry.step)} of ${formatStepCount(telemetry.maxSteps)}`
+      : isTerminal
+        ? `${formatStepCount(telemetry.step)} ${telemetry.step === 1 ? 'step' : 'steps'} ran`
+        : `step ${formatStepCount(telemetry.step)}`;
+
+  const rolloutsPerStep = getGrpoRolloutsPerStep(customization.spec.training);
+  const rolloutsText =
+    rolloutsPerStep > 0
+      ? `${formatStepCount(telemetry.step * rolloutsPerStep, { floor: 0, lowercase: true })} rollouts generated`
+      : undefined;
+
+  return [stepText, rolloutsText].filter(Boolean).join(' · ');
+};
+
+/** Epochs, and where the run is — the progress row beside the GRPO reward chart. */
+export const getGrpoProgressTiles = (
+  telemetry: CustomizationTrainingTelemetry,
+  context: TrainingDiagnosticsContext
+): StatTileProps[] => [
+  {
+    label: 'Epochs Completed',
+    value:
+      telemetry.epoch === undefined
+        ? NOT_AVAILABLE
+        : telemetry.numEpochs
+          ? `${telemetry.epoch} / ${telemetry.numEpochs}`
+          : String(telemetry.epoch),
+  },
+  getRunStateTile(telemetry, context),
+];
 
 export interface GrpoRunConfig {
   environment?: string;
@@ -540,12 +609,6 @@ export const getGrpoRunConfig = (
     sequencePacking: 'Disabled',
   };
 };
-
-/** Steps, epochs, and where the run is — the progress row beside the GRPO reward chart. */
-export const getGrpoProgressTiles = (
-  telemetry: CustomizationTrainingTelemetry,
-  context: TrainingDiagnosticsContext
-): StatTileProps[] => [...getTrainingProgressTiles(telemetry), getRunStateTile(telemetry, context)];
 
 const badge = (key: string, icon: ReactNode, label: string): ReactNode => (
   <Badge key={key} color="gray" kind="solid">

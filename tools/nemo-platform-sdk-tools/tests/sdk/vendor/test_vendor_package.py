@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import sys
-from importlib import import_module, resources
+from importlib import import_module, resources, util
 from pathlib import Path
 
 import tomlkit
@@ -150,6 +150,53 @@ def test_alias_package_exposes_source_resource_metadata(tmp_path: Path, monkeypa
         assert resources.files(alias).joinpath("data.txt").read_text(encoding="utf-8") == "source-data\n"
     finally:
         for module_name in ("alias_pkg", "source_pkg", "nemo_platform._alias", "nemo_platform"):
+            sys.modules.pop(module_name, None)
+
+
+def test_alias_package_loader_provides_runpy_get_code(tmp_path: Path, monkeypatch) -> None:
+    source_package = tmp_path / "source_pkg"
+    source_package.mkdir()
+    (source_package / "__init__.py").write_text("VALUE = 'source'\n", encoding="utf-8")
+    (source_package / "child.py").write_text("VALUE = 7\n", encoding="utf-8")
+
+    alias_package = tmp_path / "alias_pkg"
+    alias_package.mkdir()
+    (alias_package / "__init__.py").write_text(
+        "from nemo_platform._alias import alias_package\n\nalias_package('source_pkg', globals())\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.syspath_prepend(str(vendor_package.NMP_ROOT_PATH / "sdk/python/nemo-platform/src"))
+    for module_name in (
+        "alias_pkg",
+        "alias_pkg.child",
+        "source_pkg",
+        "source_pkg.child",
+        "nemo_platform._alias",
+        "nemo_platform",
+    ):
+        sys.modules.pop(module_name, None)
+
+    try:
+        import_module("alias_pkg")
+        spec = util.find_spec("alias_pkg.child")
+        assert spec is not None
+        assert spec.loader is not None
+        get_code = getattr(spec.loader, "get_code", None)
+        assert get_code is not None
+        code = get_code("alias_pkg.child")
+        assert code is not None
+        assert code.co_filename == str(source_package / "child.py")
+    finally:
+        for module_name in (
+            "alias_pkg",
+            "alias_pkg.child",
+            "source_pkg",
+            "source_pkg.child",
+            "nemo_platform._alias",
+            "nemo_platform",
+        ):
             sys.modules.pop(module_name, None)
 
 

@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from pathlib import Path
 from unittest.mock import AsyncMock
 
+import data_designer.config as dd
 import pandas as pd
 import pytest
-from anonymizer.config.anonymizer_config import AnonymizerConfig
+from anonymizer.config.anonymizer_config import AnonymizerConfig, AnonymizerInput
 from anonymizer.config.replace_strategies import Redact
+from nemo_anonymizer_plugin.app import context as context_module
 from nemo_anonymizer_plugin.app.errors import AnonymizerInvalidConfigError
 from nemo_anonymizer_plugin.app.input import AnonymizerInputSpec
 from nemo_anonymizer_plugin.app.model_configs import SelectedModelsOverrides
@@ -22,18 +23,16 @@ from nemo_platform_plugin.function_context import FunctionContext
 from pydantic import BaseModel
 
 
-def _preview_spec(tmp_path: Path) -> PreviewSpec:
-    csv = tmp_path / "input.csv"
-    csv.write_text("biography\nhello\n")
+def _preview_spec() -> PreviewSpec:
     return PreviewSpec(
         config=AnonymizerConfig(replace=Redact()),
-        data=AnonymizerInputSpec(source=str(csv), text_column="biography"),
+        data=AnonymizerInputSpec(source="https://example.com/input.csv", text_column="biography"),
+        model_configs=[dd.ModelConfig(alias="detector", model="test/model", provider="provider")],
         num_records=1,
     )
 
 
 def test_preview_worker_sends_original_text_column_metadata(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     frames: list[BaseModel] = []
@@ -55,9 +54,9 @@ def test_preview_worker_sends_original_text_column_metadata(
 
     worker_module._make_preview(
         frames.append,
-        _preview_spec(tmp_path),
-        data=object(),  # type: ignore[arg-type]
-        model_configs_yaml="",
+        _preview_spec(),
+        data=AnonymizerInput(source="https://example.com/input.csv", text_column="biography"),
+        model_configs_yaml="model_configs:\n- alias: detector\n  model: test/model\n  provider: provider\n",
         dd_providers=None,
         num_records=1,
     )
@@ -66,10 +65,14 @@ def test_preview_worker_sends_original_text_column_metadata(
     assert trace_frame.original_text_column == "biography"
 
 
+def test_preview_worker_requires_model_configs() -> None:
+    with pytest.raises(RuntimeError, match="requires resolved model_configs"):
+        worker_module._make_anonymizer(model_configs_yaml="", dd_providers=None)
+
+
 @pytest.mark.asyncio
 async def test_preview_function_resets_request_log_callback(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
     def fake_worker(
         send_frame: Callable[[BaseModel], None],
@@ -77,26 +80,34 @@ async def test_preview_function_resets_request_log_callback(
     ) -> None:
         send_frame(LogFrame(level="info", message="generated"))
 
+    igw_lookup = AsyncMock(return_value=None)
+    monkeypatch.setattr(context_module, "make_model_provider_registry", igw_lookup)
     monkeypatch.setattr(worker_module, "_make_preview", fake_worker)
+    async_sdk = AsyncMock(spec=AsyncNeMoPlatform)
 
     frames = [
         frame
         async for frame in PreviewFunction().run(
-            _preview_spec(tmp_path),
+            _preview_spec(),
             ctx=FunctionContext(workspace="team-a"),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-            is_local=True,
+            async_sdk=async_sdk,
         )
     ]
 
+    igw_lookup.assert_awaited_once()
+    assert igw_lookup.await_args is not None
+    assert igw_lookup.await_args.kwargs["sdk"] is async_sdk
     assert [frame.model_dump()["kind"] for frame in frames] == ["log", "done"]
     assert request_callback_cvar.get() is None
 
 
 @pytest.mark.asyncio
-async def test_preview_function_rejects_selected_models_without_model_configs(tmp_path: Path) -> None:
-    spec = _preview_spec(tmp_path).model_copy(
-        update={"selected_models": SelectedModelsOverrides(detection={"entity_detector": "local"})}
+async def test_preview_function_rejects_selected_models_without_model_configs() -> None:
+    spec = _preview_spec().model_copy(
+        update={
+            "model_configs": None,
+            "selected_models": SelectedModelsOverrides(detection={"entity_detector": "detector"}),
+        }
     )
 
     with pytest.raises(AnonymizerInvalidConfigError, match="selected_models requires model_configs"):
@@ -106,22 +117,18 @@ async def test_preview_function_rejects_selected_models_without_model_configs(tm
                 spec,
                 ctx=FunctionContext(workspace="team-a"),
                 async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-                is_local=True,
             )
         ]
 
 
 @pytest.mark.asyncio
-async def test_preview_submit_requires_model_configs(tmp_path: Path) -> None:
+async def test_preview_submit_requires_model_configs() -> None:
     with pytest.raises(AnonymizerInvalidConfigError, match="model_configs are required"):
         [
             frame
             async for frame in PreviewFunction().run(
-                _preview_spec(tmp_path).model_copy(
-                    update={"data": AnonymizerInputSpec(source="https://example.com/input.csv")}
-                ),
+                _preview_spec().model_copy(update={"model_configs": None}),
                 ctx=FunctionContext(workspace="team-a"),
                 async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-                is_local=False,
             )
         ]

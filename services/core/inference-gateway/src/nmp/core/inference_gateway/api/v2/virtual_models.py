@@ -26,19 +26,23 @@ import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator
+from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nemo_platform_plugin.inference_middleware import (
     InferenceMiddlewareError,
-    MiddlewareCall,
     MiddlewareConfigNotFoundError,
+)
+from nemo_platform_plugin.inference_middleware_models import (
+    GUARDRAIL_CONFIG_IDS_FIELD,
+    MiddlewareCall,
     VirtualModel,
+    guardrail_config_membership_filter,
 )
 from nemo_platform_plugin.virtual_models.types import CreateVirtualModelRequest, UpdateVirtualModelRequest
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities import EntityClient, EntityConflictError, EntityNotFoundError
-from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter
+from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter, map_entity_field
 from nmp.common.service.dependencies import get_entity_client
 from nmp.core.inference_gateway.api.dependencies import global_middleware_registry
 from nmp.core.inference_gateway.api.middleware_registry import MiddlewareRegistry
@@ -61,6 +65,36 @@ class VirtualModelFilter(Filter):
     default_model_entity: StringFilter | str | None = Field(None, description="Filter by default model entity.")
     created_at: DatetimeFilter | None = Field(None, description="Filter by creation date.")
     updated_at: DatetimeFilter | None = Field(None, description="Filter by update date.")
+    guardrail_config: Annotated[str | None, map_entity_field(GUARDRAIL_CONFIG_IDS_FIELD)] = Field(
+        None,
+        description=(
+            'Filter by a guardrail config reference in "workspace/name" form. Matches VirtualModels '
+            "whose request, response, or post-response middleware applies that stored guardrail config."
+        ),
+    )
+
+
+def _rewrite_guardrail_filter(operation: FilterOperation | None) -> FilterOperation | None:
+    """Rewrite the scalar ``guardrail_config`` equality into a membership match.
+
+    The user-facing param is a single config reference, so it parses to an equality against the
+    denormalized list field; "uses this config" actually means "that list contains it", spanning
+    both storage representations.
+    """
+    if operation is None:
+        return None
+    if isinstance(operation, ComparisonOperation):
+        if operation.field == GUARDRAIL_CONFIG_IDS_FIELD and operation.operator == FilterOperator.EQ:
+            return guardrail_config_membership_filter(str(operation.value))
+        return operation
+    if isinstance(operation, LogicalOperation):
+        return LogicalOperation(
+            operator=operation.operator,
+            operations=[
+                rewritten for op in operation.operations if (rewritten := _rewrite_guardrail_filter(op)) is not None
+            ],
+        )
+    return operation
 
 
 def _middleware_validation_error(detail: str) -> HTTPException:
@@ -259,7 +293,8 @@ async def create_virtual_model(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=VirtualModelFilter,
         filter_description=(
-            "Filter virtual models by workspace, project, name, default_model_entity, created_at, and updated_at."
+            "Filter virtual models by workspace, project, name, default_model_entity, guardrail_config, "
+            "created_at, and updated_at."
         ),
     ),
 )
@@ -285,6 +320,9 @@ async def list_virtual_models(
     Use ``workspace=-`` to list across all workspaces accessible to the caller.
     """
     filter_workspace = parsed_filter.remove("workspace") or workspace
+    # "uses this guardrail config" is a membership test across two storage representations, not the
+    # plain equality the scalar param parses to.
+    parsed_filter.operation = _rewrite_guardrail_filter(parsed_filter.operation)
     if exclude_autoprovisioned:
         # ``autoprovisioned`` lives under the entity ``data`` blob; reference it
         # directly so this does not depend on VirtualModelFilter exposing the field.
@@ -398,7 +436,9 @@ async def update_virtual_model(
     # being flattened to plain dicts by model_dump(), which would trigger a
     # pydantic serialization warning on model_copy.
     diff = {field: getattr(body, field) for field in body.model_fields_set}
-    updated = existing.model_copy(update=diff)
+    # model_copy skips validation, so the derived guardrail reference list would otherwise keep the
+    # pre-patch pipelines' value. Everything else re-derives it through VirtualModel's validator.
+    updated = existing.model_copy(update=diff).refresh_guardrail_config_ids()
     await _validate_middleware_configs(updated, registry)
 
     try:

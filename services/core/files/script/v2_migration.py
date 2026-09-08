@@ -44,11 +44,14 @@ from pathlib import Path
 from typing import Any, Literal
 
 from huggingface_hub import HfApi
-from nemo_platform import ConflictError, NeMoPlatform, NotFoundError
+from nemo_platform import NeMoPlatform, NotFoundError
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import ConflictError as ClientConflictError
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest, ListFilesetsQueryParams
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -130,11 +133,8 @@ def _resolve_runtime_config(args: argparse.Namespace) -> RuntimeConfig:
     )
     files_workspace = args.files_workspace
 
-    missing: list[str] = []
     if not datastore_url:
-        missing.append("DATASTORE_URL (or --datastore-url)")
-    if missing:
-        raise ValueError(f"Missing required configuration: {', '.join(missing)}")
+        raise ValueError("Missing required configuration: DATASTORE_URL (or --datastore-url)")
 
     if not dataset_prefix.endswith("/"):
         dataset_prefix = f"{dataset_prefix}/"
@@ -354,15 +354,16 @@ def _ensure_workspace(sdk: NeMoPlatform, workspace: str, dry_run: bool) -> Liter
     """
     Ensure that the target workspace exists, and create it if it doesn't.
     """
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     if dry_run:
         return "dry_run"
     try:
-        sdk.workspaces.retrieve(workspace)
+        workspaces.get_workspace(name=workspace).data()
         return "exists"
-    except NotFoundError:
+    except ClientNotFoundError:
         try:
-            sdk.workspaces.create(name=workspace)
-        except ConflictError:
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace)).data()
+        except ClientConflictError:
             # Another actor may have created the workspace concurrently.
             return "exists"
         return "created"
@@ -375,7 +376,7 @@ def _get_existing_target_paths(sdk: NeMoPlatform, workspace: str, fileset: str) 
     If the fileset does not exist yet, return an empty set.
     """
     try:
-        files = sdk.files.list(fileset=fileset, workspace=workspace).data
+        files = client_from_platform(sdk, FilesClient).list_files(name=fileset, workspace=workspace).data().data
         return {f.path for f in files}
     except NotFoundError:
         return set()
@@ -475,13 +476,13 @@ def apply_plan(
                             local_dir=str(local_root / repo_id),
                             repo_type="dataset",
                         )
-                        sdk.files.upload(
-                            local_path=local_file,
-                            fileset=fileset,
-                            workspace=workspace,
-                            remote_path=target_path,
-                            fileset_auto_create=False,
-                        )
+                        with open(local_file, "rb") as fh:
+                            client_from_platform(sdk, FilesClient).upload_file(
+                                content=fh,
+                                name=fileset,
+                                workspace=workspace,
+                                path=target_path,
+                            )
                         artifact_result["status"] = "uploaded"
                         uploaded += 1
                         # Keep this set up to date for duplicate target paths in the same plan.

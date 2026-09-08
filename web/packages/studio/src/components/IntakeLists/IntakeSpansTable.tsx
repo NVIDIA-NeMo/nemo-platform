@@ -9,13 +9,13 @@ import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
-import { useListSpans } from '@nemo/sdk/generated/platform/api';
 import {
   SpanKind,
   type ListSpansMode,
   type SpanFilter,
   type SpanSortField,
 } from '@nemo/sdk/generated/platform/schema';
+import { useListSpans } from '@nemo/sdk/generated/platform/spans';
 import { Anchor, Text } from '@nvidia/foundations-react-core';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
 import {

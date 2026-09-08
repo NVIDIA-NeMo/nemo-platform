@@ -18,6 +18,8 @@ interface DeploymentsTabProps {
   onChat: (deployment: AgentDeployment) => void;
   onDelete: (deployment: AgentDeployment) => void;
   onViewLogs: (deployment: AgentDeployment) => void;
+  /** Deploying requires a Platform-managed agent config (Fabric integration). */
+  canDeploy: boolean;
 }
 
 /** Deployments list with per-deployment actions. */
@@ -30,6 +32,7 @@ export const DeploymentsTab: FC<DeploymentsTabProps> = ({
   onChat,
   onDelete,
   onViewLogs,
+  canDeploy,
 }) => (
   <Stack gap="5" className="w-full">
     <DetailPanel title="Deployments" flush>
@@ -39,6 +42,7 @@ export const DeploymentsTab: FC<DeploymentsTabProps> = ({
             agentName={agentName}
             isDeploying={isDeploying}
             onDeploy={onDeploy}
+            canDeploy={canDeploy}
             message="No deployments for this agent."
           />
         </div>

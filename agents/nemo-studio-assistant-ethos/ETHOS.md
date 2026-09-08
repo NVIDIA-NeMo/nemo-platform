@@ -55,7 +55,7 @@ The mission is grounded in the current deployment proof of concept and its imple
 - Context management: Fabric receives OpenAI-compatible chat messages and supplies the system prompt and packaged skills to Deep Agents
 - State management: Fabric owns runtime session state, workspace files, and artifacts
 - Guardrails: API-only operation; no CLI or arbitrary subprocess route; ambiguous workspace or destructive target requires clarification
-- Observability: Structured application logs for fast-path selection, tool failures, model requests, retries, health probes, and final workflow errors; agent-specific telemetry exporters are disabled
+- Observability: NeMo Relay captures complete ATIF trajectories locally and sends them to NeMo Intake with the stable `nemo-studio-assistant` agent name; structured application logs remain available for deployment and export failures
 - Verification: Consequential multi-step requests should read back final state when the SDK supports it; unit tests validate config translation, MCP exposure, and mutation approval
 - Runtime: NeMo Fabric server using the Deep Agents adapter, consumed through OpenAI-compatible chat completions
 - Notes: Fabric does not preserve the former NAT-only deterministic fast path or `/generate/full` evaluation contract
@@ -110,11 +110,11 @@ Unacceptable regressions, even alongside a headline win:
 ## Constraints
 
 - Approved surface: NeMo Platform Python SDK (`nemo_api`) over the packaged MCP server only. No direct third-party API calls, no CLI, no shell, no arbitrary subprocesses.
-- Model access: cloud models through the deployment's configured platform base URL and inference gateway only. Do not add a provider that bypasses it. The deployed model today is `nvidia-nemotron-3-5-lightning-30b-a3b`, recorded in `agent.yaml`.
+- Model access: cloud models through the deployment's configured platform base URL and inference gateway only. Do not add a provider that bypasses it. `agent.yaml` uses `${NEMO_DEFAULT_MODEL}`, which is resolved from the user's active NeMo context before registration.
 - Secrets: managed by the platform. Never inline a credential into config, prompt, or log output.
-- Telemetry: agent-specific telemetry exporters stay disabled until a reviewed pipeline exists. Diagnosis uses container and platform logs.
+- Telemetry: NeMo Relay exports complete ATIF trajectories to the reviewed NeMo Intake endpoint configured in `agent.yaml`; container and platform logs remain the fallback for startup or export failures.
 - Blast radius: an ambiguous workspace or destructive target requires clarification. Missing context is never permission to pick a target.
-- Requires approval from the owner before shipping: broadening destructive capabilities, changing deployment mode, enabling a telemetry exporter, or adding a tool with write access beyond the current SDK surface.
+- Requires approval from the owner before shipping: broadening destructive capabilities, changing deployment mode, changing telemetry destinations or captured data, or adding a tool with write access beyond the current SDK surface.
 
 ## Evaluation Setup
 
@@ -138,7 +138,7 @@ Manual Studio validation is documented in `agents/nemo-studio-assistant/tests/sm
 | total latency | Wall-clock time from Studio request to terminal state. | Includes upstream model time the agent does not control. Do not attribute a latency regression to the agent without separating model time. |
 | health probe traffic | Container liveness and readiness requests. | Operational noise. Never count these as user traffic or as agent invocations. |
 | unit test pass rate | Result of `test_nemo_studio_assistant.py`, which covers config translation, MCP exposure, and mutation approval. | Evidence about wiring and contracts. Not evidence about production answer quality; there is no automated end-to-end eval suite. |
-| absent agent telemetry spans | Agent-specific exporters are deliberately disabled until a reviewed pipeline exists. | Their absence is not a defect and not evidence of a silent failure. Diagnose from container and platform logs instead. |
+| ATIF trajectory export | Completed assistant trajectories exported by NeMo Relay to Intake under the stable `nemo-studio-assistant` agent name. | Use Intake's session, trace, and span hierarchy to inspect completed runs. Use container and platform logs when startup or export fails before a trajectory is ingested. |
 
 ## Change Scope
 
