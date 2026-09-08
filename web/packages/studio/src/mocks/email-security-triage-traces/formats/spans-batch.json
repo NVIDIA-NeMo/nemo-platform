@@ -48,7 +48,7 @@
       "kind": "AGENT",
       "status": "error",
       "started_at": "2026-08-31T21:50:23Z",
-      "ended_at": "2026-08-31T21:50:29Z",
+      "ended_at": "2026-08-31T21:52:23Z",
       "input": "{\"user_message\": \"is this legit?\", \"emails\": [{\"from\": \"security-alerts@okta-verify.support\", \"subject\": \"Unusual sign-in blocked - confirm it was you\", \"body\": \"We blocked a sign-in from Lagos, Nigeria. Confirm it was you within 24 hours at https://okta-verify.support/confirm or your account will be locked.\"}]}",
       "output": null,
       "attributes": {

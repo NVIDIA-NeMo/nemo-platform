@@ -60,6 +60,13 @@ const hexId = (seed: string, width: number): string =>
 
 const isAgentStep = (step: AtifStep): step is AtifStepAgent => step.source === 'agent';
 
+/** Pulls the configured timeout out of an `AgentTimeoutError` message, e.g. "... after 120.0 seconds". */
+const timeoutSeconds = (error: { type?: string; message?: string } | undefined): number | null => {
+  if (error?.type !== 'AgentTimeoutError' || !error.message) return null;
+  const match = /after ([\d.]+) seconds/.exec(error.message);
+  return match ? Number(match[1]) : null;
+};
+
 /** ATIF messages may be content parts; the sample set only ever uses plain strings. */
 const messageText = (step: AtifStep): string =>
   typeof step.message === 'string' ? step.message : '';
@@ -83,7 +90,11 @@ const toSpans = (trace: AtifIngestRequest): ConvertedSpan[] => {
   const prompt = userStep ? messageText(userStep) : null;
 
   const started = new Date(Date.parse(steps[0].timestamp ?? ''));
-  const ended = plus(steps[steps.length - 1].timestamp ?? '', STEP_SECONDS);
+  const timeout = agentSteps.length === 0 ? timeoutSeconds(error) : null;
+  const ended =
+    timeout !== null
+      ? plus(steps[0].timestamp ?? '', timeout)
+      : plus(steps[steps.length - 1].timestamp ?? '', STEP_SECONDS);
 
   const spans: ConvertedSpan[] = [
     {
@@ -154,10 +165,7 @@ const toChatCompletions = (trace: AtifIngestRequest): ChatCompletionsIngestReque
       cost_usd: metrics.cost_usd,
       request: {
         model,
-        messages: [
-          { role: 'system', content: 'You triage suspicious email. Answer with one word.' },
-          { role: 'user', content: prompt },
-        ],
+        messages: [{ role: 'user', content: prompt }],
       },
       response: {
         id: `chatcmpl-${hexId(`${session}:${step.step_id}`, 12)}`,

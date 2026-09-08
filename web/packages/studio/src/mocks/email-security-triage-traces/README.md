@@ -82,8 +82,9 @@ The span and OTLP files carry `gen_ai.agent.name`, so they attach to the agent. 
 ingest has no agent field at all, so those two calls land as queryable spans that no agent page
 will show — that is the format's limitation, not a defect in the sample.
 
-Importing both an ATIF trace and its converted twin creates two unrelated sessions describing the
-same run: the converted files derive their own IDs rather than reusing the ATIF session IDs.
+`toSpans` and `toChatCompletions` reuse the source `session_id`, so importing both an ATIF trace
+and its converted twin groups them under the same session in Intake — only `span_id`/`trace_id`
+are derived.
 
 ## Insights
 
