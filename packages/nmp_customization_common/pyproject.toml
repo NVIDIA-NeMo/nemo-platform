@@ -35,6 +35,8 @@ nemo-platform-plugin = { workspace = true }
 dev = [
     "pytest>=8.3.4",
     "pytest-asyncio>=0.25.3",
+    "pandas",
+    "pyarrow",
 ]
 
 [tool.pytest.ini_options]

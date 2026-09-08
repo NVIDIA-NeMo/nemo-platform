@@ -7,6 +7,12 @@ docker-bake.hcl
 Dockerfile.bake
 **/Dockerfile*
 .dockerignore
+# Local secrets. Compose auto-loads a `.env` beside its compose file, so images built
+# from the repo root would otherwise bake one in (the scaled-evals stack keeps its
+# credential encryption key there). Exact name only: the Studio image builds from
+# checked-in `web/packages/studio/env/.env.<name>` files.
+.env
+**/.env
 **/__pycache__
 **/node_modules
 web/packages/sdk/generated/

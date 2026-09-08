@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { AGENTS_ENABLED, MONITOR_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import { agentsRoutes, getAgentMonitorRoute } from '@studio/routes/utils';
-import { DatabaseCheck } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -64,6 +64,8 @@ export const agentRoutes: RouteObject[] = agentsRoutes([
   },
 ]);
 
+const NavIcon = ENTITY_ICONS.agentMonitorRuns;
+
 export const getAgentSideNavItems = (workspace: string) =>
   AGENTS_ENABLED
     ? [
@@ -71,7 +73,7 @@ export const getAgentSideNavItems = (workspace: string) =>
           ? [
               {
                 id: 'agent-monitor',
-                slotIcon: <DatabaseCheck className={iconColorClass} />,
+                slotIcon: <NavIcon className={iconColorClass} />,
                 slotLabel: 'Monitor',
                 href: getAgentMonitorRoute(workspace),
               },

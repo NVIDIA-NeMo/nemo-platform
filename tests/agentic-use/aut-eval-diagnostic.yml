@@ -5,14 +5,14 @@
 #
 # One-time plugin bootstrap (per environment):
 #   uv pip install -e packages/nemo_platform_plugin -e plugins/nemo-agents
-#   uv run _nemo agents evaluate run --help
+#   uv run _nemo agents evaluate --help
 #
 # Build dataset:
 #   python tests/agentic-use/build_aut_eval_dataset.py \
 #     --manifest manifests/baseline_supported.txt
 #
 # Diagnostic eval only:
-#   uv run _nemo --base-url http://localhost:18080 agents evaluate run --spec '{
+#   uv run _nemo --base-url http://localhost:18080 agents evaluate --spec '{
 #     "agent": "<your-agent-name>",
 #     "eval_config": "tests/agentic-use/aut-eval-diagnostic.yml",
 #     "output": "./eval-out",

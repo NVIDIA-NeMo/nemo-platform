@@ -3,7 +3,7 @@
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
+import { useGetExperiment } from '@nemo/sdk/generated/platform/experiments';
 import { Button, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import {
@@ -158,6 +158,8 @@ export const ExperimentDetailRoute: FC = () => {
               </div>
               {group && (
                 <ExperimentDataView
+                  // The route does not remount between experiments; without this the next inherits this one's columns.
+                  key={group.id}
                   group={group}
                   paretoVisible={paretoVisible}
                   trendVisible={trendVisible}

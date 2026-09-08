@@ -4,16 +4,20 @@
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
 import {
   customizationGetAutomodelJobStatus,
-  customizationGetRlJobStatus,
-  customizationGetUnslothJobStatus,
   getCustomizationGetAutomodelJobStatusQueryKey,
+} from '@nemo/sdk/generated/customizer/automodel-jobs';
+import {
+  customizationGetRlJobStatus,
   getCustomizationGetRlJobStatusQueryKey,
-  getCustomizationGetUnslothJobStatusQueryKey,
-} from '@nemo/sdk/generated/customizer/api';
+} from '@nemo/sdk/generated/customizer/rl-jobs';
 import type {
   PlatformJobStatusResponse,
   PlatformJobStepStatusResponse,
 } from '@nemo/sdk/generated/customizer/schema';
+import {
+  customizationGetUnslothJobStatus,
+  getCustomizationGetUnslothJobStatusQueryKey,
+} from '@nemo/sdk/generated/customizer/unsloth-jobs';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import type { CustomizationBackend } from '@studio/util/customizationBackend';
 import { skipToken, useQuery } from '@tanstack/react-query';

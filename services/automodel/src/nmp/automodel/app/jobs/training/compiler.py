@@ -29,8 +29,10 @@ from nmp.automodel.app.constants import (
 )
 from nmp.automodel.app.jobs.training.schemas import (
     DistillationConfig,
+    EmbeddingConfig,
     LoRAConfig,
     ModelConfig,
+    TrainingRecipe,
     TrainingStepConfig,
 )
 from nmp.automodel.config import config
@@ -59,6 +61,30 @@ def _resolve_is_embedding_model(me: ModelEntity) -> bool:
         return is_embedding_model(me.name)
 
     return me.spec.is_embedding_model or False
+
+
+def _resolve_checkpoint_head_type(me: ModelEntity) -> str:
+    """Resolve the persisted checkpoint head while supporting legacy model specs."""
+    if me.spec is None:
+        return "embedding" if is_embedding_model(me.name) else "unknown"
+
+    fields_set = getattr(me.spec, "model_fields_set", getattr(me.spec, "__fields_set__", set()))
+    if "head_type" in fields_set:
+        return me.spec.head_type or "unknown"
+    return "embedding" if _resolve_is_embedding_model(me) else "unknown"
+
+
+def _resolve_training_recipe(me: ModelEntity, requested: str) -> TrainingRecipe:
+    """Resolve an explicit/automatic job recipe independently of backbone architecture."""
+    if requested != "auto":
+        return TrainingRecipe(requested)
+
+    head_type = _resolve_checkpoint_head_type(me)
+    if head_type == "embedding":
+        return TrainingRecipe.BI_ENCODER
+    if head_type == "cross_encoder":
+        return TrainingRecipe.CROSS_ENCODER
+    return TrainingRecipe.SFT
 
 
 def _resolve_v4_compatible(me: ModelEntity) -> bool:
@@ -127,10 +153,14 @@ def compile_training_step(
         raise ValueError("DPO training is not supported by nmp-automodel")
     trust_remote_code = me.trust_remote_code or False
     chat_template = me.spec.chat_template if me.spec else None
-    is_embedding_model = _resolve_is_embedding_model(me)
+    checkpoint_head_type = _resolve_checkpoint_head_type(me)
     override_custom_impl = _resolve_custom_implementation_override(me)
     v4_compatible = _resolve_v4_compatible(me)
     training = job_spec.training
+    training_recipe = _resolve_training_recipe(me, training.recipe)
+    training = training.with_resolved_recipe(training_recipe.value)
+    if isinstance(training, DistillationTraining) and training_recipe != TrainingRecipe.SFT:
+        raise ValueError("Knowledge distillation only supports the sft recipe.")
     p = training.parallelism
     num_gpus_per_node = p.num_gpus_per_node
 
@@ -139,7 +169,7 @@ def compile_training_step(
             job_spec,
             DEFAULT_MODEL_PATH,
             trust_remote_code=trust_remote_code,
-            is_embedding_model=is_embedding_model,
+            checkpoint_head_type=checkpoint_head_type,
             chat_template=chat_template,
             override_custom_impl=override_custom_impl,
             v4_compatible=v4_compatible,
@@ -147,7 +177,7 @@ def compile_training_step(
         dataset=TrainingStepConfig.DatasetConfig(
             path=DEFAULT_DATASET_PATH,
         ),
-        training=_translate_training_config(training, me, teacher_me=teacher_me),
+        training=_translate_training_config(training, me, teacher_me=teacher_me, recipe=training_recipe),
         schedule=TrainingStepConfig.ScheduleConfig(
             epochs=training.epochs,
             max_steps=training.max_steps,
@@ -182,6 +212,7 @@ def compile_training_step(
         ),
         integrations=job_spec.integrations,
         output_model=job_spec.output.name,
+        embedding=_translate_embedding_config(training),
     )
 
     container = ContainerSpec(
@@ -234,7 +265,7 @@ def _translate_model_config(
     job_spec: CustomizationJobOutput,
     path: str,
     trust_remote_code: bool = False,
-    is_embedding_model: bool = False,
+    checkpoint_head_type: str = "unknown",
     chat_template: str | None = None,
     override_custom_impl: bool = False,
     v4_compatible: bool = False,
@@ -248,7 +279,8 @@ def _translate_model_config(
         precision=training.precision,
         attn_implementation=training.attn_implementation,
         trust_remote_code=trust_remote_code,
-        is_embedding_model=is_embedding_model,
+        checkpoint_head_type=checkpoint_head_type,
+        is_embedding_model=checkpoint_head_type == "embedding",
         chat_template=chat_template,
         override_custom_impl=override_custom_impl,
         v4_compatible=v4_compatible,
@@ -259,6 +291,7 @@ def _translate_training_config(
     training: AnyTraining,
     me: ModelEntity,
     teacher_me: ModelEntity | None = None,
+    recipe: TrainingRecipe = TrainingRecipe.SFT,
 ) -> TrainingStepConfig.TrainingConfig:
     """Translate API training method to internal TrainingConfig.
 
@@ -286,10 +319,20 @@ def _translate_training_config(
 
     return TrainingStepConfig.TrainingConfig(
         training_type=training_type,
+        recipe=recipe,
         finetuning_type=training.finetuning_type,
         lora=lora,
         kd=kd,
     )
+
+
+def _translate_embedding_config(training: AnyTraining) -> EmbeddingConfig | None:
+    raw = getattr(training, "embedding", None)
+    if raw is None:
+        return None
+    if isinstance(raw, EmbeddingConfig):
+        return raw
+    return EmbeddingConfig.model_validate(raw.model_dump(mode="python"))
 
 
 def _translate_lora_config(api_lora: LoRAParams, me: ModelEntity) -> LoRAConfig:

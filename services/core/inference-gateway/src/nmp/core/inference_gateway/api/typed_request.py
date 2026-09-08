@@ -11,7 +11,8 @@ from typing import Any
 import anthropic.types.message_create_params as anthropic_params
 import openai.types.chat.completion_create_params as openai_chat_params
 import openai.types.responses.response_create_params as openai_responses_params
-from nemo_platform_plugin.inference_middleware import InferenceRequest, TypedRequest
+from nemo_platform_plugin.inference_middleware import InferenceRequest
+from nemo_platform_plugin.inference_middleware_types import TypedRequest
 from pydantic import TypeAdapter, ValidationError
 
 logger = logging.getLogger(__name__)

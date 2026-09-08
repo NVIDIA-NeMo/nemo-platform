@@ -3,7 +3,7 @@
 
 import { formatTimeInSeconds, getDifferenceInMilliseconds } from '@nemo/common/src/utils/date';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/api';
+import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/safe-synthesizer';
 import type { GenerateJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import * as useDatastoreFileContentModule from '@studio/api/datasets/useDatastoreFileContent';

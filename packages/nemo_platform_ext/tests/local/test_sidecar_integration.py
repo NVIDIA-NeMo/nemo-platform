@@ -108,19 +108,22 @@ def patched_registry(
 
 
 @pytest.mark.integration
-def test_embedded_sidecar_auto_resolved_from_service_dependency(
+def test_embedded_sidecar_starts_alongside_selected_services(
     patched_registry: tuple[threading.Event, threading.Event],
     tmp_path: Path,
 ) -> None:
-    """start_embedded_services(models) auto-resolves the adapters sidecar via
-    SERVICE_SIDECAR_DEPENDENCIES and starts it during app lifespan."""
+    """A sidecar requested next to a service starts during app lifespan.
+
+    Sidecars are never derived from the selected services, so ``adapters`` has
+    to be named explicitly even when ``models`` is running.
+    """
     started, stopped = patched_registry
 
     cfg = ServiceRunConfig(
         mode=services.ServiceMode.EMBEDDED,
         services=("models",),
         controllers=(),
-        # sidecars=None triggers auto-resolution
+        sidecars=("adapters",),
         transport="tcp",
         scope="integ-embedded-auto",
         state_dir=tmp_path / "state",
@@ -196,6 +199,7 @@ def test_run_services_daemon_mode_starts_sidecar_in_process(
         mode=services.ServiceMode.DAEMON,
         services=("models",),
         controllers=(),
+        sidecars=("adapters",),
         transport="tcp",
         scope="integ-daemon",
         state_dir=tmp_path / "state",

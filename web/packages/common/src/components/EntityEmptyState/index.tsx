@@ -3,8 +3,9 @@
 
 import {
   ENTITY_EMPTY_STATES,
-  type EntityKey,
+  type EmptyStateEntityKey,
 } from '@nemo/common/src/components/EntityEmptyState/registry';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   Button,
@@ -21,7 +22,7 @@ import { useNavigate } from 'react-router';
 export type EntityEmptyStateVariant = 'first-use' | 'no-results';
 
 export interface EntityEmptyStateBaseProps {
-  entity: EntityKey;
+  entity: EmptyStateEntityKey;
   className?: string;
   /** Resolves `<workspace>` in the CLI command and skill prompt. Omitted leaves the placeholder. */
   workspace?: string;
@@ -53,9 +54,9 @@ const resolveWorkspace = (text: string | undefined, workspace: string | undefine
 
 /**
  * The single canonical empty state for Studio lists, tables, and panels. Copy,
- * iconography, CLI command, and skill prompt come from the entity registry; the
- * variant selects which affordances render. See the `ui-design` skill's
- * `empty-states` reference.
+ * CLI command, and skill prompt come from the entity registry, and the glyph
+ * comes from the canonical `ENTITY_ICONS` map; the variant selects which
+ * affordances render. See the `ui-design` skill's `empty-states` reference.
  */
 export const EntityEmptyState: FC<EntityEmptyStateProps> = ({
   entity,
@@ -86,7 +87,8 @@ export const EntityEmptyState: FC<EntityEmptyStateProps> = ({
     );
   }
 
-  const { icon: Icon, heading, subheading, createAction } = descriptor;
+  const { heading, subheading, createAction } = descriptor;
+  const Icon = ENTITY_ICONS[entity];
   const cliCommand = resolveWorkspace(descriptor.cliCommand, workspace);
   const skillPrompt = resolveWorkspace(descriptor.skillPrompt, workspace);
   const handleCreate =

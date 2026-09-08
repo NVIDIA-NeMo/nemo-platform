@@ -6,7 +6,7 @@ import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { getAgentsListAgentsQueryKey } from '@nemo/sdk/generated/agents/api';
+import { getAgentsListAgentsQueryKey } from '@nemo/sdk/generated/agents/agents';
 import {
   Button,
   Stack,

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { DATA_DESIGNER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import { gateDataDesignerRoutes, getDataDesignerJobListRoute } from '@studio/routes/utils';
-import { Form } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -74,12 +74,14 @@ export const dataDesignerRoutes: RouteObject[] = gateDataDesignerRoutes([
   },
 ]);
 
+const NavIcon = ENTITY_ICONS.dataDesignerJobs;
+
 export const getDataDesignerSideNavItems = (workspace: string) =>
   DATA_DESIGNER_ENABLED
     ? [
         {
           id: 'data-designer',
-          slotIcon: <Form className={iconColorClass} />,
+          slotIcon: <NavIcon className={iconColorClass} />,
           slotLabel: 'Data Designer',
           href: getDataDesignerJobListRoute(workspace),
         },

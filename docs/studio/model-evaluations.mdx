@@ -1,0 +1,31 @@
+---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+title: "NeMo Studio Model Evaluations"
+description: "Review model evaluation job results and per-row scores."
+---
+
+Use **Models > Model Evaluations** in the NeMo Studio workspace sidebar to review evaluation jobs run against models in the workspace.
+
+<Note>
+
+Model Evaluations is enabled by default. An administrator can disable it by setting `studio.feature_flags.evaluator_enabled: false` in the platform configuration and restarting Studio, which also removes agent- and customization-scoped evaluation entry points.
+
+</Note>
+
+This page is read-only: it lists evaluation jobs and their results. Start an evaluation from an agent's **Evaluations** tab, a Custom Model's **Evaluate this Model** action, or the `nemo evaluation` CLI or API.
+
+## Evaluation Results List
+
+The list shows each evaluation job's name, status, and creation time. Search by name or filter by status. Select a row to open the job's detail page.
+
+## Evaluation Result Detail
+
+The detail page shows the job's details, a **Scores** panel with aggregate metrics, per-row results for the evaluated dataset, and a collapsible **Logs** panel. Scores and row results are computed once the job reaches a terminal state; if the job failed, results aren't available.
+
+## Related Topics
+
+- [Model Configuration](/documentation/evaluate-models/metrics/model-configuration)
+- [NeMo Studio Custom Models](/documentation/studio/customization)
+- [NeMo Studio Agents](/documentation/studio/agents)

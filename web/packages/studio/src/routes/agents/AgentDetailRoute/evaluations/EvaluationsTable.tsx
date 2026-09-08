@@ -6,10 +6,16 @@ import {
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
+import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
+import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
+import { useLiveSeconds } from '@nemo/common/src/hooks/useLiveSeconds';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { formatDurationMs } from '@nemo/common/src/utils/date';
-import { deleteEvaluation, getListEvaluationsQueryKey } from '@nemo/sdk/generated/platform/api';
+import { formatDurationMs, formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
+import {
+  deleteEvaluation,
+  getListEvaluationsQueryKey,
+} from '@nemo/sdk/generated/platform/evaluations';
 import { Button, Flex, Text } from '@nvidia/foundations-react-core';
 import { type EvalJobRow, evalDurationMs, evalJobDetailRoute } from '@studio/api/evaluation/utils';
 import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
@@ -24,19 +30,81 @@ import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { FlaskConical, Trash } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
+
+interface AgentEvalTableRow {
+  id: string;
+  evaluation: AgentEvaluationRow | null;
+  job: EvalJobRow | null;
+}
+
+const isTerminalJob = (job: EvalJobRow): boolean =>
+  PlatformJobTerminalStatuses.some((status) => status === job.status);
+
+const timestampMs = (value?: string): number => {
+  const time = utcToLocalDate(value)?.getTime();
+  return time != null && Number.isFinite(time) ? time : 0;
+};
+
+const createdAtMs = (row: AgentEvalTableRow): number =>
+  timestampMs(row.job?.created_at ?? row.evaluation?.created_at);
+
+const preferredJob = (a: EvalJobRow, b: EvalJobRow): EvalJobRow => {
+  if (isTerminalJob(a) !== isTerminalJob(b)) return isTerminalJob(a) ? b : a;
+  return timestampMs(b.created_at) >= timestampMs(a.created_at) ? b : a;
+};
+
+const mergeRows = (evaluations: AgentEvaluationRow[], jobs: EvalJobRow[]): AgentEvalTableRow[] => {
+  const jobByEvaluation: Record<string, EvalJobRow> = {};
+  for (const job of jobs) {
+    if (!job.evaluationName) continue;
+    const claimed = jobByEvaluation[job.evaluationName];
+    jobByEvaluation[job.evaluationName] = claimed ? preferredJob(claimed, job) : job;
+  }
+
+  const published = new Set(evaluations.map((evaluation) => evaluation.name));
+  const rows: AgentEvalTableRow[] = evaluations.map((evaluation) => ({
+    id: `eval:${evaluation.name}`,
+    evaluation,
+    job: jobByEvaluation[evaluation.name] ?? null,
+  }));
+  for (const job of jobs) {
+    if (job.evaluationName && published.has(job.evaluationName)) continue;
+    rows.push({ id: `job:${job.id}`, evaluation: null, job });
+  }
+
+  return rows.sort((a, b) => createdAtMs(b) - createdAtMs(a));
+};
+
+/** Elapsed time for one row: a live counter while its job runs, the recorded duration once it does
+ *  not.
+ *
+ *  A completed job's own `updated_at` is not an end time — the job row is written at create and on
+ *  rerun only, never on a status transition — so the duration has to come from the evaluation. */
+const DurationCell: FC<{ job: EvalJobRow | null; durationMs?: number }> = ({ job, durationMs }) => {
+  const runningJob = job && !isTerminalJob(job) ? job : null;
+  // `enabled` is what actually stops the timer: the hook's interval effect keys off its *locked*
+  // start date, so clearing `startDate` alone leaves a row that finished mid-poll ticking (and
+  // re-rendering the table) once a second forever.
+  const liveSeconds = useLiveSeconds({
+    startDate: utcToLocalDate(runningJob?.created_at),
+    enabled: runningJob != null,
+  });
+  if (runningJob) return <Text>{formatTimeInSeconds(liveSeconds) || '0s'}</Text>;
+  return <Text>{formatDurationMs(durationMs, { hideMsAboveMinute: true })}</Text>;
+};
 
 interface EvaluationsTableProps {
   workspace: string;
   /** The agent these evaluations belong to, seeded into a re-run started from a row. */
   agentName?: string;
   evaluations: AgentEvaluationRow[];
-  /** All evaluator jobs for the agent (any status), used to link a published evaluation back to
-   *  the job that produced it. Absent until the reverse join finds a match. */
+  /** All evaluator jobs for the agent (any status). Supplies the status, live duration and job link
+   *  for a published evaluation, and stands in as a whole row for a run that has yet to publish. */
   jobs: EvalJobRow[];
 }
 
-/** Every published evaluation for the agent, ungrouped. */
+/** Every evaluation for the agent, ungrouped, from the moment its run is submitted. */
 export const EvaluationsTable: FC<EvaluationsTableProps> = ({
   workspace,
   agentName,
@@ -50,49 +118,94 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
   // The evaluation a "New evaluation from this configuration" click is re-running, or null when
   // the form is closed.
   const [rerunSource, setRerunSource] = useState<AgentEvaluationRow | null>(null);
-  // Reverse of JobsTable's job -> evaluation link: a completed job carries the evaluation it
-  // published to, so index by that name to recover the job from an evaluation row.
-  const jobByEvaluation = useMemo(() => {
-    const map: Record<string, EvalJobRow> = {};
-    for (const job of jobs) if (job.evaluationName) map[job.evaluationName] = job;
-    return map;
-  }, [jobs]);
+  const rows = useMemo(() => mergeRows(evaluations, jobs), [evaluations, jobs]);
+  // StudioDataView is `dataMode="manual"`, so it renders exactly the rows it is handed and leaves
+  // paging to the caller. Both source lists are already in memory, so slice here rather than
+  // refetching a page.
+  const { pageIndex, pageSize } = dataViewState.pagination.state;
+  const pageRows = useMemo(
+    () => rows.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize),
+    [rows, pageIndex, pageSize]
+  );
 
   const handleDelete = useCallback(
-    async (rows: AgentEvaluationRow[]) => {
+    async (rowsToDelete: AgentEvaluationRow[]) => {
       const results = await Promise.allSettled(
-        rows.map((row) => deleteEvaluation(workspace, row.name))
+        rowsToDelete.map((row) => deleteEvaluation(workspace, row.name))
       );
       await queryClient.invalidateQueries({ queryKey: getListEvaluationsQueryKey(workspace) });
 
-      const failed = rows.filter((_, index) => results[index]?.status === 'rejected');
+      const failed = rowsToDelete.filter((_, index) => results[index]?.status === 'rejected');
       if (failed.length) {
         setDeleteRows(failed);
         throw new Error(
-          `${failed.length} of ${rows.length} evaluation${rows.length !== 1 ? 's' : ''} could not be deleted. Retry to attempt only those.`
+          `${failed.length} of ${rowsToDelete.length} evaluation${rowsToDelete.length !== 1 ? 's' : ''} could not be deleted. Retry to attempt only those.`
         );
       }
     },
     [workspace, queryClient]
   );
 
-  const makeColumns: ComponentProps<typeof StudioDataView<AgentEvaluationRow>>['makeColumns'] =
+  // Always the evaluation's own results, never the job that produced them — the Job cell links
+  // there. The route is nested under an experiment, so a row whose experiment has not resolved has
+  // nowhere to go.
+  const destinationFor = useCallback(
+    (row: AgentEvalTableRow): string | undefined => {
+      const experimentName = row.evaluation ? primaryExperimentName(row.evaluation) : undefined;
+      return row.evaluation && experimentName
+        ? getEvaluationDetailRoute(workspace, experimentName, row.evaluation.name)
+        : undefined;
+    },
+    [workspace]
+  );
+
+  const makeColumns: ComponentProps<typeof StudioDataView<AgentEvalTableRow>>['makeColumns'] =
     useCallback(
       ({ accessor }, { rowSelectionColumn, rowActionsColumn }) => [
         rowSelectionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
-        accessor('name', {
+        accessor((row) => row.evaluation?.name ?? row.job?.evaluationName ?? undefined, {
+          id: 'name',
           header: 'Evaluation',
-          cell: ({ row }) => <Text title={row.original.name}>{row.original.name}</Text>,
+          cell: ({ row }) => {
+            const name = row.original.evaluation?.name ?? row.original.job?.evaluationName;
+            return <Text title={name ?? undefined}>{name ?? '—'}</Text>;
+          },
         }),
-        accessor('test_case_count', {
-          header: 'Test cases',
-          cell: ({ row }) => <Text>{row.original.test_case_count ?? 0}</Text>,
+        accessor((row) => (row.evaluation ? primaryExperimentName(row.evaluation) : undefined), {
+          id: 'experiment',
+          header: 'Experiment',
+          size: 200,
+          cell: ({ row }) => {
+            const { evaluation } = row.original;
+            const name = evaluation ? primaryExperimentName(evaluation) : undefined;
+            return <Text title={name}>{name ?? '—'}</Text>;
+          },
         }),
-        accessor('aggregate_scores', {
+        accessor((row) => row.job?.status ?? (row.evaluation ? 'completed' : undefined), {
+          id: 'status',
+          header: 'Status',
+          cell: ({ row }) => {
+            const { job, evaluation } = row.original;
+            if (job) return <StatusBadge status={job.status} />;
+            return evaluation ? <StatusBadge status="completed" /> : <Text>—</Text>;
+          },
+        }),
+        accessor((row) => row.evaluation?.test_case_count, {
+          id: 'test_case_count',
+          header: 'Test Cases',
+          size: 100,
+          cell: ({ row }) => {
+            const count = row.original.evaluation?.test_case_count;
+            return <Text>{count ? count : '—'}</Text>;
+          },
+        }),
+        accessor((row) => row.evaluation?.aggregate_scores, {
+          id: 'aggregate_scores',
           header: 'Scores',
           enableSorting: false,
           cell: ({ row }) => {
-            const scores = evaluatorScores(row.original);
+            const { evaluation } = row.original;
+            const scores = evaluation ? evaluatorScores(evaluation) : [];
             if (scores.length === 0) return <Text>—</Text>;
             return (
               <Flex gap="density-xs" className="flex-wrap">
@@ -113,56 +226,74 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
             );
           },
         }),
-        accessor((original) => original.tokens?.mean, {
+        accessor((row) => row.evaluation?.tokens?.mean, {
           id: 'tokens',
-          header: 'Avg tokens',
+          header: 'Avg Tokens',
           enableSorting: false,
           cell: ({ row }) => {
-            const mean = row.original.tokens?.mean;
+            const mean = row.original.evaluation?.tokens?.mean;
             return <Text>{mean != null ? Math.round(mean).toLocaleString() : '—'}</Text>;
           },
         }),
-        accessor((original) => original.tokens?.sum, {
+        accessor((row) => row.evaluation?.tokens?.sum, {
           id: 'total_tokens',
-          header: 'Total tokens',
+          header: 'Total Tokens',
           enableSorting: false,
           cell: ({ row }) => {
-            const sum = row.original.tokens?.sum;
+            const sum = row.original.evaluation?.tokens?.sum;
             return <Text>{sum != null ? Math.round(sum).toLocaleString() : '—'}</Text>;
           },
         }),
-        accessor((original) => evalDurationMs(original.metadata), {
-          id: 'eval_duration',
-          header: 'Duration',
-          enableSorting: false,
-          cell: ({ getValue }) => <Text>{formatDurationMs(getValue<number | undefined>())}</Text>,
-        }),
-        accessor((row) => evalDurationMs(row.metadata), {
+        accessor((row) => evalDurationMs(row.evaluation?.metadata), {
           id: 'duration',
           header: 'Duration',
           enableSorting: false,
-          cell: ({ getValue }) => (
-            <Text>
-              {formatDurationMs(getValue<number | undefined>(), { hideMsAboveMinute: true })}
-            </Text>
+          // Keyed by job: an evaluation row outlives the job it shows, and `useLiveSeconds` locks
+          // its start date once, so a rerun would otherwise tick from the previous job's start.
+          cell: ({ row }) => (
+            <DurationCell
+              key={row.original.job?.id}
+              job={row.original.job}
+              durationMs={evalDurationMs(row.original.evaluation?.metadata)}
+            />
           ),
         }),
-        accessor('created_at', {
+        accessor(createdAtMs, {
+          id: 'created_at',
           header: 'Created',
-          cell: ({ row }) =>
-            row.original.created_at ? <RelativeTime datetime={row.original.created_at} /> : '—',
+          cell: ({ row }) => {
+            const datetime = row.original.job?.created_at ?? row.original.evaluation?.created_at;
+            return datetime ? <RelativeTime datetime={datetime} /> : '—';
+          },
+        }),
+        accessor((row) => row.job?.name, {
+          id: 'job',
+          header: 'Job',
+          cell: ({ row }) => {
+            const { job } = row.original;
+            if (!job) return <Text>—</Text>;
+            return (
+              <Link
+                to={evalJobDetailRoute(workspace, job)}
+                className="text-primary underline"
+                title={job.name}
+              >
+                {job.name}
+              </Link>
+            );
+          },
         }),
         rowActionsColumn({
           rowActions: (row) => {
-            const job = jobByEvaluation[row.name];
+            const { evaluation, job } = row;
             const actions = [
               // Only offered for a row that carries a reusable eval config; without one the form
               // would open on an evaluation it has to reject.
-              ...(evaluationFilesetName(row)
+              ...(evaluation && evaluationFilesetName(evaluation)
                 ? [
                     {
                       children: 'New evaluation from this configuration',
-                      onSelect: () => setRerunSource(row),
+                      onSelect: () => setRerunSource(evaluation),
                     },
                   ]
                 : []),
@@ -179,38 +310,44 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({
           },
         }),
       ],
-      [jobByEvaluation, navigate, workspace]
+      [navigate, workspace]
     );
 
   return (
     <>
-      <StudioDataView<AgentEvaluationRow>
+      <StudioDataView<AgentEvalTableRow>
         dataViewState={dataViewState}
         makeColumns={makeColumns}
         onRowClick={(row) => {
-          const experimentName = primaryExperimentName(row);
-          if (experimentName) {
-            navigate(getEvaluationDetailRoute(workspace, experimentName, row.name));
-          }
+          const destination = destinationFor(row);
+          if (destination) navigate(destination);
         }}
         renderBulkActions={({ selectedRows }) => (
           <Button
             kind="tertiary"
             aria-label="Delete selected evaluations"
-            onClick={() => setDeleteRows(selectedRows)}
+            onClick={() =>
+              setDeleteRows(selectedRows.flatMap((row) => (row.evaluation ? [row.evaluation] : [])))
+            }
           >
             <Trash /> Delete
           </Button>
         )}
         attributes={{
-          DataViewRoot: { data: evaluations },
+          DataViewRoot: {
+            data: pageRows,
+            totalCount: rows.length,
+            reactTableOptions: {
+              enableRowSelection: (row) => row.original.evaluation != null,
+            },
+          },
           DataViewTableContent: {
             renderEmptyState: () => (
               <TableEmptyState
                 className="py-density-3xl"
                 icon={<FlaskConical className="size-16" />}
-                header="No published evaluations yet"
-                emptyMessage="Results appear here once a run finishes and its telemetry is ingested."
+                header="No evaluations yet"
+                emptyMessage="Runs appear here as soon as they are submitted, before any results are published."
               />
             ),
           },

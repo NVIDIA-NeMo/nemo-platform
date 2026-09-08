@@ -5,11 +5,15 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
+from _pytest.mark.structures import Mark, MarkDecorator
 from nemo_platform import NeMoPlatform
 
 from tests.auth_idp.providers import ProviderConfig
 
 AuthIdpBackend = Literal["compose", "kubernetes", "external"]
+type JsonScalar = str | int | float | bool | None
+type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
+type JsonObject = dict[str, JsonValue]
 
 
 @dataclass(frozen=True)
@@ -18,13 +22,19 @@ class AuthIdpCase:
     provider: ProviderConfig
     backend: AuthIdpBackend
     capabilities: frozenset[str]
-    marks: tuple[object, ...] = ()
+    marks: tuple[Mark | MarkDecorator, ...] = ()
 
 
 @dataclass(frozen=True)
 class TokenSet:
     access_token: str
-    claims: dict[str, object]
+    claims: JsonObject
+
+
+@dataclass(frozen=True)
+class DeploymentWorkloadRuntimeConfig:
+    env: tuple[dict[str, str], ...] = ()
+    config_files: tuple[JsonObject, ...] = ()
 
 
 class AuthIdpRuntime(Protocol):
@@ -47,6 +57,12 @@ class AuthIdpRuntime(Protocol):
         raise NotImplementedError
 
     def exchange_workload_token(self, subject_token: str) -> TokenSet:
+        raise NotImplementedError
+
+    def workload_platform_token(self) -> TokenSet:
+        raise NotImplementedError
+
+    def deployment_workload_runtime_config(self) -> DeploymentWorkloadRuntimeConfig:
         raise NotImplementedError
 
     def e2e_setup_sdk(self) -> NeMoPlatform:

@@ -15,11 +15,25 @@ from tests.auth_idp.runtime_compose import (
     TOKEN_EXCHANGE_TIMEOUT_SECONDS,
     ComposeAuthIdpRuntime,
 )
-from tests.auth_idp.runtime_contract import AuthIdpCase
+from tests.auth_idp.runtime_contract import AuthIdpCase, JsonObject
 
 
-def _jwt(claims: dict[str, object]) -> str:
-    def encode(value: dict[str, object]) -> str:
+def test_compose_deployment_workload_runtime_config_targets_compose_gateway() -> None:
+    runtime = ComposeAuthIdpRuntime.__new__(ComposeAuthIdpRuntime)
+
+    config = runtime.deployment_workload_runtime_config()
+
+    assert config.config_files == ()
+    assert config.env == (
+        {"name": "NMP_BASE_URL", "value": "https://nemo-gateway:8080"},
+        {"name": "NMP_CLIENT_SSL_CERT_FILE", "value": "/etc/nmp/gateway-tls/tls.crt"},
+        {"name": "SSL_CERT_FILE", "value": "/etc/nmp/gateway-tls/tls.crt"},
+        {"name": "REQUESTS_CA_BUNDLE", "value": "/etc/nmp/gateway-tls/tls.crt"},
+    )
+
+
+def _jwt(claims: JsonObject) -> str:
+    def encode(value: JsonObject) -> str:
         payload = json.dumps(value, separators=(",", ":")).encode("utf-8")
         return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
@@ -74,9 +88,9 @@ def test_compose_workload_exchange_posts_token_exchange_grant(monkeypatch) -> No
     runtime = ComposeAuthIdpRuntime(case, "https://127.0.0.1:18080")
     subject_token = _jwt({"sub": "svc-nemo"})
     exchanged_token = _jwt({"sub": "svc-nemo", "groups": "nemo-workloads"})
-    captured: dict[str, object] = {}
+    captured: dict[str, str | float | dict[str, str]] = {}
 
-    def fake_post(url: str, *, data: dict[str, str], timeout: float, verify: str | bool) -> httpx.Response:
+    def fake_post(url: str, *, data: dict[str, str], timeout: float, verify: str) -> httpx.Response:
         captured.update({"url": url, "data": data, "timeout": timeout, "verify": verify})
         request = httpx.Request("POST", url)
         return httpx.Response(200, json={"access_token": exchanged_token, "token_type": "Bearer"}, request=request)

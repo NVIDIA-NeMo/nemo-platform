@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useFilesDeleteFileset } from '@nemo/sdk/generated/platform/api';
+import { useFilesDeleteFileset } from '@nemo/sdk/generated/platform/files';
 import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Button } from '@nvidia/foundations-react-core';
 import { useMutateMany } from '@studio/api/common/useMutateMany';

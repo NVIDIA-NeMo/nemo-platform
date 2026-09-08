@@ -24,6 +24,14 @@ DEFAULT_MAX_ROLLOUT_BYTES = 268_435_456  # 256 MiB
 DEFAULT_HOST_TTL_S = 14_400  # 4 hours
 DEFAULT_HOST_READY_TIMEOUT_S = 15 * 60
 DEFAULT_ROLLOUT_TIMEOUT_S = 30 * 60
+# A batch is split into bounded POSTs so request duration and response size track the chunk rather
+# than the batch. Tune the two together: concurrency offsets the split.
+DEFAULT_ROLLOUT_CHUNK_SIZE = 8
+DEFAULT_ROLLOUT_MAX_IN_FLIGHT = 8
+# Applied to transport failures only. An error the host itself reported is deterministic, so
+# retrying it just spends generation time to fail the same way.
+DEFAULT_ROLLOUT_MAX_ATTEMPTS = 3
+DEFAULT_ROLLOUT_RETRY_BACKOFF_S = 5.0
 
 FORBIDDEN_BOOTSTRAP_ENV_PREFIXES = ("OPENSANDBOX_",)
 FORBIDDEN_BOOTSTRAP_ENV_KEYS = frozenset(
@@ -197,6 +205,10 @@ class SandboxConfig(BaseModel):
     runtime_http_port: int = Field(default=DEFAULT_RUNTIME_HTTP_PORT, ge=1, le=65535)
     ready_timeout_s: float = Field(default=float(DEFAULT_HOST_READY_TIMEOUT_S), gt=0)
     rollout_timeout_s: float = Field(default=float(DEFAULT_ROLLOUT_TIMEOUT_S), gt=0)
+    rollout_chunk_size: int = Field(default=DEFAULT_ROLLOUT_CHUNK_SIZE, gt=0)
+    rollout_max_in_flight: int = Field(default=DEFAULT_ROLLOUT_MAX_IN_FLIGHT, gt=0)
+    rollout_max_attempts: int = Field(default=DEFAULT_ROLLOUT_MAX_ATTEMPTS, ge=1)
+    rollout_retry_backoff_s: float = Field(default=DEFAULT_ROLLOUT_RETRY_BACKOFF_S, ge=0)
     host_provider_options: dict[str, Any] = Field(default_factory=dict)
     entrypoint: list[str] | None = None
 
@@ -263,6 +275,7 @@ def build_bootstrap_env(
     max_request_bytes: int,
     max_response_bytes: int,
     dataset_path: str | None = None,
+    rollout_deadline_s: float | None = None,
     extra: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """Build the bootstrap environment injected into the job sandbox.
@@ -281,6 +294,10 @@ def build_bootstrap_env(
         "NMP_MAX_REQUEST_BYTES": str(max_request_bytes),
         "NMP_MAX_RESPONSE_BYTES": str(max_response_bytes),
     }
+    if rollout_deadline_s is not None:
+        # The host gives up just before the client would, so a stuck batch comes back as a
+        # readable error instead of the client's own socket timeout.
+        env["NMP_ROLLOUT_DEADLINE_S"] = str(rollout_deadline_s)
     if dataset_path is not None:
         env["NMP_DATASET_PATH"] = dataset_path
     if extra:

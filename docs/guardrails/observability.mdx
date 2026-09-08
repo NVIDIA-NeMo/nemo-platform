@@ -86,7 +86,7 @@ Create a VirtualModel that applies this configuration:
 
 ```bash
 nemo inference virtual-models create guarded-tracing \
-  --default-model-entity default/nvidia-nemotron-3-nano-30b-a3b \
+  --default-model-entity default/nvidia-nemotron-3.5-lightning-30b-a3b \
   --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/tracing-config"}]'
 ```
 
@@ -96,7 +96,7 @@ nemo inference virtual-models create guarded-tracing \
 ```python
 client.inference.virtual_models.create(
     name="guarded-tracing",
-    default_model_entity="default/nvidia-nemotron-3-nano-30b-a3b",
+    default_model_entity="default/nvidia-nemotron-3.5-lightning-30b-a3b",
     request_middleware=[
         {
             "name": "nemo-guardrails",

@@ -24,6 +24,7 @@ not-for:
   - eval-author-task-create (use to create and prove one Harbor task from an actionable audit gap)
   - eval-author-inspect-trace (use after this skill selects the trace sub-flow)
   - nemo-intake (use to instrument agents, ingest telemetry, or query Intake outside Eval Author)
+  - mlflow-to-atif (use to convert MLflow traces into canonical ATIF files)
   - nemo-experimentalist (use to run insight-driven optimization end to end, which drives the Eval Author agent itself)
   - nemo-evaluator (use to run an existing benchmark rather than work on a repository's own suite)
 compatibility: >-

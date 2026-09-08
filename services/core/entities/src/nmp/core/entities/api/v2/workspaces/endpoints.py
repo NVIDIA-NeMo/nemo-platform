@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status
 from nmp.common.api.common import DeleteResponse, GenericSortField, Page, PaginationData
-from nmp.common.api.filter import ComparisonOperation, FilterOperator
+from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
 from nmp.common.auth.models import Principal
 from nmp.core.entities.api.dependencies import AuthClientDep, EntityRepository, WorkspaceRepository
 from nmp.core.entities.api.v2.utils import (
@@ -49,6 +49,22 @@ from sqlalchemy.exc import IntegrityError
 router = APIRouter()
 API_TAG = "Entity Store"
 logger = logging.getLogger(__name__)
+
+_ACTIVE_WORKSPACE_FILTER = ComparisonOperation(
+    operator=FilterOperator.EQ,
+    field="deletion_stage",
+    value=None,
+)
+
+
+def _exclude_deleting_workspaces(filter_op: FilterOperation | None) -> FilterOperation:
+    """AND the caller filter with deletion_stage IS NULL so list matches GET/DELETE."""
+    if filter_op is None:
+        return _ACTIVE_WORKSPACE_FILTER
+    return LogicalOperation(
+        operator=FilterOperator.AND,
+        operations=[filter_op, _ACTIVE_WORKSPACE_FILTER],
+    )
 
 
 def _principal_for_role_binding(principal: Principal) -> str | None:
@@ -265,6 +281,9 @@ async def create_workspace(
     description=textwrap.dedent("""
         List all workspaces with pagination.
 
+        Workspaces marked for deletion (non-null deletion_stage) are omitted so the
+        list matches GET/DELETE, which treat those workspaces as not found.
+
         When authentication is enabled, only workspaces the principal has access to
         are returned. Service principals and platform admins have access to all workspaces.
 
@@ -291,8 +310,7 @@ async def list_workspaces(
     # Get accessible workspaces for access control
     accessible_workspaces = await get_accessible_workspaces(entity_repository)
 
-    # Build combined filter for workspace access and user's filter
-    combined_filter = add_workspace_filtering(accessible_workspaces, filter, field="name")
+    combined_filter = _exclude_deleting_workspaces(add_workspace_filtering(accessible_workspaces, filter, field="name"))
 
     workspaces, total = await repository.list_workspaces(
         page=page,

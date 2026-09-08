@@ -34,7 +34,7 @@ RUN pip install --no-cache-dir "nemo-gym==0.5.0"
 COPY packages/sandboxed_gym/pyproject.toml /opt/sandboxed_gym/pyproject.toml
 COPY packages/sandboxed_gym/README.md /opt/sandboxed_gym/README.md
 COPY packages/sandboxed_gym/src /opt/sandboxed_gym/src
-RUN pip install --no-cache-dir --no-deps /opt/sandboxed_gym && pip install --no-cache-dir "pydantic>=2.10.0"
+RUN pip install --no-cache-dir "/opt/sandboxed_gym[runtime]"
 
 # Build the per-server venvs now rather than on first run. Gym creates one venv per agent, model and
 # resources server the config selects, which is ~3 GB and several minutes -- paid once here instead

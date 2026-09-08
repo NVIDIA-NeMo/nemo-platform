@@ -164,6 +164,14 @@ def test_no_arguments_defaults_to_all_services_and_default_controllers():
     assert resolved.controllers.issuperset({"jobs", "models", "entities"})
 
 
+def test_service_group_all_does_not_start_controllers():
+    """Helm API pods use --service-group=all with no controllers; do not auto-start them."""
+    resolved = resolve(service_group="all")
+
+    assert "entities" in resolved.services
+    assert resolved.controllers == set()
+
+
 def test_service_group_core_resolves_core_services_only():
     resolved = resolve(service_group="core")
 

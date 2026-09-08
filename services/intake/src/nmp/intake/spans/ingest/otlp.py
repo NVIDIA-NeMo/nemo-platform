@@ -4,9 +4,11 @@
 """OTLP/HTTP trace ingest for ClickHouse-backed Intake spans."""
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from nmp.common.entities.client import EntityClient
+from nmp.common.service.dependencies import get_entity_client
 from nmp.intake.config import IntakeConfig
 from nmp.intake.spans.api.dependencies import DenormalizerDep, SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import (
@@ -14,12 +16,15 @@ from nmp.intake.spans.domain import (
     SpanStatus,
     TraceBatch,
 )
+from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
+from nmp.intake.spans.ingest.evaluation_context_validation import validate_evaluation_context
 from nmp.intake.spans.span_attribute_catalog import SpanAttributeField, spec_for_field
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import json_dumps_preserve, normalize_span_kind, stable_id, utc_now
 from pydantic import BaseModel, Field
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
+EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
 API_TAG = "Ingest"
 
 # Bag key the evaluation id lands under on a built span (from the attribute catalog). The ingest loop
@@ -79,6 +84,7 @@ async def ingest_otlp_traces(
     workspace: str,
     request: Request,
     service: SpansServiceDep,
+    entity_client: EntityClientDep,
     denormalizer: DenormalizerDep,
     content_length: int | None = Header(default=None),
 ) -> IngestResponse:
@@ -128,6 +134,22 @@ async def ingest_otlp_traces(
                 evaluation_name = span_domain.attributes_string.get(_EVALUATION_NAME_BAG_KEY)
                 if evaluation_name:
                     evaluation_names.add(evaluation_name)
+
+    rejected_names: set[str] = set()
+    for evaluation_name in sorted(evaluation_names):
+        try:
+            await validate_evaluation_context(
+                workspace=workspace,
+                context=EvaluationContext(evaluation_name=evaluation_name),
+                entity_client=entity_client,
+            )
+        except HTTPException as exc:
+            rejected_names.add(evaluation_name)
+            errors.append(f"evaluation {evaluation_name!r}: {exc.detail}")
+    if rejected_names:
+        # One entry per evaluation, not per span: thousands of spans can share one bad name.
+        evaluation_names -= rejected_names
+        spans = [span for span in spans if span.attributes_string.get(_EVALUATION_NAME_BAG_KEY) not in rejected_names]
 
     await service.ingest_batch(TraceBatch(spans=spans))
     # A single OTLP batch can carry spans for several evaluations (associated via the

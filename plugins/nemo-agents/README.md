@@ -192,14 +192,28 @@ has to be one an index can serve:
 
 ```bash
 uv build --package nemo-platform --wheel --out-dir dist && \
-NEMO_AGENTS_WHEEL="$(ls -t dist/nemo_platform-*.whl | head -1)" nemo agents package \
+NEMO_AGENTS_WHEEL=LATEST nemo agents package \
   --agent plugins/nemo-agents/examples/nemo-agent-config/calculator-agent/agent.yaml \
   --tag calculator-agent:local
 ```
 
+`LATEST` resolves to the newest wheel in the checkout's `dist`, so the variable
+survives the rebuild each commit forces — the version carries the commit, so a
+wheel built before your last commit no longer describes your tree. An absolute
+path still works and takes precedence, so a file actually named `LATEST` is
+never mistaken for the sentinel. If the wheel's version differs from the one
+this host runs, the build says so and continues: the wheel is installed instead
+of the pin, so the pin never has to resolve.
+
 It is an environment variable rather than a flag because packaging also runs as
-a platform job, and a flag would only ever reach the CLI. Setting it in the jobs
-execution profile's `env` makes packaging from Studio work the same way.
+a platform job, and a flag would only ever reach the CLI. The subprocess job
+inherits it, so exporting it before `nemo services run` covers Studio-triggered
+builds too:
+
+```bash
+export NEMO_AGENTS_WHEEL=LATEST
+uv run nemo services run --service-group all --controllers jobs --port 8080
+```
 
 Packaging copies the wheel into the build context for the duration of the build
 and removes it afterward. It does not overwrite an existing file with that name.
@@ -329,10 +343,10 @@ The job downloads the agent's spec fileset into a temporary build context,
 writes `agent.yaml` from the stored config, and runs the same Fabric build the
 CLI runs.
 
-From the CLI the same job is `nemo agents package-agent submit`. It is
-deliberately *not* named `package`: the generated job sub-group mounts onto the
-same Typer app that already owns `nemo agents package`, and would shadow the
-local packaging flags above.
+From the CLI the same job is `nemo agents package-agent`. It is deliberately
+*not* named `package`: the generated job command mounts onto the same Typer app
+that already owns `nemo agents package`, and would shadow the local packaging
+flags above.
 
 | Limitation | Detail |
 |---|---|
@@ -781,6 +795,11 @@ http://127.0.0.1:8080/apis/agents/v2/workspaces/default/agents/react-agent/-/v1/
 
 You can call it directly with any OpenAI-compatible client using the same path.
 
+Requests without ``X-Nemo-Session-Id`` use a one-shot Fabric runtime that is
+stopped when the response or response stream completes. To retain runtime
+context across turns, send a stable session ID in that header; the registered
+runtime then follows the Platform session lifecycle.
+
 The agent is still running — continue to the [Evaluation](#evaluation) section
 below, or see [Cleanup](#cleanup-optional) to tear everything down.
 
@@ -830,7 +849,7 @@ specific VirtualModel registered in your workspace, then run:
 
 ```bash
 export NEMO_DEFAULT_MODEL=nvidia-nemotron-3-super-120b-a12b   # or any registered VirtualModel
-nemo agents evaluate run \
+nemo agents evaluate \
     --eval-config plugins/nemo-agents/examples/calculator-agent/src/calculator_agent/calculator-eval.yml \
     --agent calculator-agent
 ```

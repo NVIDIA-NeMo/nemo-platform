@@ -15,7 +15,7 @@ import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfi
 import {
   getGuardrailsGetGuardrailConfigQueryKey,
   useGuardrailsDeleteConfig,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/guardrails';
 import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { GuardrailsDataView } from '@studio/components/dataViews/GuardrailsDataView';

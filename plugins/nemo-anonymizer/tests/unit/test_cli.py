@@ -150,7 +150,8 @@ def test_run_job_uses_flat_remote_submit(monkeypatch) -> None:
     assert nested_result.exit_code == 2
     assert "unexpected extra argument" in nested_result.output
     assert help_result.exit_code == 0, help_result.output
-    assert "Submit to a cluster." in help_result.output
+    assert "Run test job." in help_result.output
+    assert "Pass the spec via --spec" in help_result.output
     assert "Run locally, in-process." not in help_result.output
 
 

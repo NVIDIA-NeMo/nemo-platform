@@ -46,6 +46,7 @@ from nemo_agents_plugin.entities import (
 from nemo_agents_plugin.fabric.gateway_credentials import platform_gateway_credential_env
 from nemo_agents_plugin.runner.backend import DeploymentInfo, LocalLog, LogLocation, NotYetAvailable, RunnerBackend
 from nemo_agents_plugin.runner.fabric_artifact_staging import stage_fabric_ethos_dir
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
 # Match characters not safe for filesystem paths.  Deployment names are
@@ -230,6 +231,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         image: str | None = None,
         deployment_mode: DeploymentMode = "subprocess",
         created_by: str | None = None,
+        auth_context: AuthContext | None = None,
         resources: ComputeResources | None = None,
         secrets: dict[str, str] | None = None,
         use_image_entrypoint: bool = False,
@@ -241,7 +243,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         # resources (compute spec) and secrets (secret-env refs) only apply to
         # container modes; subprocess runs in-process on the platform host with no
         # resource isolation and injects no managed secrets.
-        del image, deployment_mode, created_by, resources, secrets, use_image_entrypoint
+        del image, deployment_mode, created_by, auth_context, resources, secrets, use_image_entrypoint
         if config.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
             return await self._create_fabric_deployment(workspace, name, config, port, agent=agent)
 

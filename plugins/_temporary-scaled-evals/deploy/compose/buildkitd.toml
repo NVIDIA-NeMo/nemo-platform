@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Rootless buildkitd configuration for the compose dev stack.
+#
+# Rootless OCI bridge/CNI creation is not permitted inside Docker Desktop
+# ("failed to create bridge buildkit0: operation not permitted"). In this
+# configuration "host" means the unprivileged BuildKit container's dedicated
+# Docker network namespace, not the Docker host network. The service publishes
+# no TCP port and is not attached to the control-plane network.
+[dns]
+  # BuildKit otherwise replaces Docker's embedded resolver with the daemon's
+  # external fallback resolvers, which may be blocked on corporate networks.
+  nameservers = ["127.0.0.11"]
+
+[worker.oci]
+  networkMode = "host"

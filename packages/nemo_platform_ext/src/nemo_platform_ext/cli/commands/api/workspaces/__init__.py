@@ -196,6 +196,9 @@ def list_workspaces(
 ) -> None:
     """List all workspaces with pagination.
 
+    Workspaces marked for deletion (non-null deletion_stage) are omitted so the list
+    matches GET/DELETE, which treat those workspaces as not found.
+
     When authentication is enabled, only workspaces the principal has access to are
     returned. Service principals and platform admins have access to all workspaces.
 

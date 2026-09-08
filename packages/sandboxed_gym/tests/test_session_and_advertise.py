@@ -5,12 +5,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import MagicMock
 
+import sandboxed_gym.orchestrator as orchestrator_module
 from sandboxed_gym.broker import EpisodeBrokerServer
 from sandboxed_gym.config import BrokerEndpoint, EpisodeBrokerConfig
 from sandboxed_gym.host.models import GymHostHandle
-from sandboxed_gym.orchestrator import SandboxedGymSession
+from sandboxed_gym.orchestrator import SandboxedGymOrchestrator, SandboxedGymSession
 from sandboxed_gym.serve_config import SandboxedGymServeConfig
 
 
@@ -78,3 +80,51 @@ def test_session_descriptor_orchestrator_mode():
     assert desc.broker_token == "btok"
     assert desc.rollout_auth_token == "secret"
     assert desc.health_url == "http://host/health"
+
+
+def test_host_sdk_lifecycle_uses_one_event_loop(monkeypatch):
+    loops = []
+    host = GymHostHandle(
+        host_id="h1",
+        health_url="http://host/health",
+        rollout_url="http://host/rollouts/run",
+        headers={},
+    )
+
+    class HostProvider:
+        async def create_host(self, spec):
+            loops.append(asyncio.get_running_loop())
+            return host
+
+        async def wait_ready(self, handle, timeout_s):
+            loops.append(asyncio.get_running_loop())
+
+        async def destroy_host(self, handle):
+            loops.append(asyncio.get_running_loop())
+
+    broker_server = MagicMock()
+    broker_server.start.return_value = BrokerEndpoint(
+        url="http://broker.svc:8741",
+        host="broker.svc",
+        port=8741,
+        token="btok",
+    )
+    monkeypatch.setattr(orchestrator_module, "EpisodeBrokerServer", lambda config: broker_server)
+    monkeypatch.setattr(orchestrator_module, "get_host_provider", lambda name, options: HostProvider())
+    cfg = SandboxedGymServeConfig.model_validate(
+        {
+            "job_id": "job-1",
+            "sandbox": {
+                "image": "runtime:dev",
+                "network_policy": {"egress_allow": []},
+                "environment_pvc_claim": "env",
+                "workspace_pvc_claim": "work",
+            },
+        }
+    )
+
+    session = SandboxedGymOrchestrator().start(cfg)
+    session.shutdown()
+
+    assert len(loops) == 3
+    assert loops[0] is loops[1] is loops[2]

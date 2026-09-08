@@ -103,6 +103,67 @@ async def test_default_scoring_emits_weighted_average_and_subscores() -> None:
 
 
 @pytest.mark.asyncio
+async def test_default_scoring_clamps_scores_to_unit_scale() -> None:
+    metric = TunableRagEvaluatorMetric(
+        model=_make_model(),
+        default_scoring=True,
+        default_score_weights={"coverage": 0.5, "correctness": 0.3, "relevance": 0.2},
+    )
+
+    async def fake_inference(model, request, max_retries, client=None):  # noqa: ANN001
+        return _judge_response(
+            {
+                "coverage_score": 100.0,
+                "correctness_score": 10.0,
+                "relevance_score": -2.0,
+                "reasoning": "judge ignored the 0-1 scale",
+            }
+        )
+
+    metric._inference_fn = fake_inference  # noqa: SLF001
+
+    result = await compute_scores(
+        metric,
+        {"inputs": {"instruction": "q"}, "reference": {"answer": "a"}},
+        {"output_text": "a"},
+    )
+
+    values = {output.name: output.value for output in result.outputs}
+    assert values["coverage_score"] == 1.0
+    assert values["correctness_score"] == 1.0
+    assert values["relevance_score"] == 0.0
+    assert values["average_score"] == pytest.approx(0.8)
+
+
+@pytest.mark.asyncio
+async def test_default_scoring_rejects_non_finite_scores() -> None:
+    metric = TunableRagEvaluatorMetric(model=_make_model(), default_scoring=True)
+
+    async def fake_inference(model, request, max_retries, client=None):  # noqa: ANN001
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"coverage_score": NaN, "correctness_score": 1.0, "relevance_score": 1.0, "reasoning": "bad"}'
+                    }
+                }
+            ]
+        }
+
+    metric._inference_fn = fake_inference  # noqa: SLF001
+
+    result = await compute_scores(
+        metric,
+        {"inputs": {"instruction": "q"}, "reference": {"answer": "a"}},
+        {"output_text": "a"},
+    )
+
+    values = {output.name: output.value for output in result.outputs}
+    assert values["average_score"] == 0.0
+    assert "unusable" in str(values["reasoning"]).lower()
+
+
+@pytest.mark.asyncio
 async def test_max_retries_comes_from_run_config_online() -> None:
     from nemo_evaluator_sdk.values.params import RunConfig, RunConfigOnline
 

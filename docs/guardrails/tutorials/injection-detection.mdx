@@ -30,7 +30,7 @@ This tutorial demonstrates how to configure basic YARA rules that are part of th
 You can view the default rules in the [yara_rules directory](https://github.com/NVIDIA-NeMo/Guardrails/tree/develop/nemoguardrails/library/injection_detection/yara_rules).
 The default rules support SQL injection, cross-site scripting (XSS), Jinja template injection, and Python code that uses shells, networking, and more.
 
-For the main model, this tutorial uses the [Nemotron 3 Nano 30B-A3B](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b) NIM.
+For the main model, this tutorial uses the [Nemotron 3.5 Lightning 30B-A3B](https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b) NIM.
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ Before you begin:
 
 This tutorial uses the following NIM, available on `build.nvidia.com`:
 
-- `main` model: `nvidia/nemotron-3-nano-30b-a3b`
+- `main` model: `nvidia/nemotron-3.5-lightning-30b-a3b`
 
 ---
 
@@ -110,7 +110,7 @@ Create a VirtualModel that routes inference through the guardrails middleware. S
 
 ```bash
 nemo inference virtual-models create guarded-injection-detect \
-  --default-model-entity default/nvidia-nemotron-3-nano-30b-a3b \
+  --default-model-entity default/nvidia-nemotron-3.5-lightning-30b-a3b \
   --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/injection-detection-config"}]'
 ```
 
@@ -120,7 +120,7 @@ nemo inference virtual-models create guarded-injection-detect \
 ```python
 client.inference.virtual_models.create(
     name="guarded-injection-detect",
-    default_model_entity="default/nvidia-nemotron-3-nano-30b-a3b",
+    default_model_entity="default/nvidia-nemotron-3.5-lightning-30b-a3b",
     response_middleware=[
         {
             "name": "nemo-guardrails",
@@ -163,7 +163,7 @@ print(response.model_dump_json(indent=2))
 {
   "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
   "object": "chat.completion",
-  "model": "nvidia/nemotron-3-nano-30b-a3b",
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
   "choices": [
     {
       "index": 0,
@@ -205,7 +205,7 @@ print(response.model_dump_json(indent=2))
 {
   "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
   "object": "chat.completion",
-  "model": "nvidia/nemotron-3-nano-30b-a3b",
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
   "choices": [
     {
       "index": 0,
@@ -252,7 +252,7 @@ Create a VirtualModel for the inline config:
 ```python
 client.inference.virtual_models.create(
     name="guarded-injection-inline",
-    default_model_entity="default/nvidia-nemotron-3-nano-30b-a3b",
+    default_model_entity="default/nvidia-nemotron-3.5-lightning-30b-a3b",
     response_middleware=[
         {
             "name": "nemo-guardrails",
@@ -281,7 +281,7 @@ print(response.model_dump_json(indent=2))
 {
   "id": "chatcmpl-9b2c6b21-7f5f-4a3c-9c77-2a4b2e4b6b2a",
   "object": "chat.completion",
-  "model": "nvidia/nemotron-3-nano-30b-a3b",
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
   "choices": [
     {
       "index": 0,

@@ -24,6 +24,13 @@ class OptimizerType(str, Enum):
     ADAM_WITH_FLAT_LR = "adam_with_flat_lr"
 
 
+class TrainingRecipe(str, Enum):
+    AUTO = "auto"
+    SFT = "sft"
+    BI_ENCODER = "bi_encoder"
+    CROSS_ENCODER = "cross_encoder"
+
+
 class LoRAConfig(BaseModel):
     """Internal LoRA configuration with implementation details.
 
@@ -76,7 +83,11 @@ class ModelConfig(BaseModel):
     )
     is_embedding_model: bool = Field(
         default=False,
-        description="Whether the model is an embedding model",
+        description="Deprecated compatibility alias for checkpoint_head_type == 'embedding'.",
+    )
+    checkpoint_head_type: str = Field(
+        default="unknown",
+        description="Task-specific head persisted in the source checkpoint.",
     )
     chat_template: Optional[str] = Field(
         default=None,
@@ -170,6 +181,7 @@ class TrainingStepConfig(BaseModel):
 
     class TrainingConfig(BaseModel):
         training_type: TrainingType
+        recipe: TrainingRecipe = TrainingRecipe.AUTO
         finetuning_type: Optional[FinetuningType] = None
         lora: Optional[LoRAConfig] = None
         kd: Optional[DistillationConfig] = None
@@ -188,7 +200,7 @@ class TrainingStepConfig(BaseModel):
 
     class OptimizerConfig(BaseModel):
         optimizer_type: Optional[OptimizerType] = Field(default=None)
-        optimizer_name: str = "Adam"
+        optimizer_name: str = "auto"
         lr_decay_style: str = "cosine"
         learning_rate: float = 1e-4
         min_learning_rate: Optional[float] = None
@@ -227,6 +239,10 @@ class TrainingStepConfig(BaseModel):
         default=DEFAULT_SEED, description="Random seed for ensuring reproducibility in all random processes."
     )
     training_timeout: Optional[int] = None
+    embedding: Optional[EmbeddingConfig] = Field(
+        default=None,
+        description="Retrieval collator and dataset knobs for bi_encoder / cross_encoder recipes.",
+    )
 
 
 class GPUInfo(BaseModel):

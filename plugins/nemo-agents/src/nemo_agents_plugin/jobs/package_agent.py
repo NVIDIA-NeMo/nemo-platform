@@ -136,8 +136,9 @@ class PackageAgentInput(BaseModel):
         pattern=IMAGE_REPOSITORY_PATTERN,
         description=(
             "Push the built image to this registry (e.g. 'nvcr.io/my-org'). The host executing "
-            "the push must already be authenticated to it — the local machine for `run`, the "
-            "platform's job-execution host for `submit`/the REST API. Credentials are never "
+            "the push must already be authenticated to it: the local machine for direct CLI "
+            "invocation, or the platform's job-execution host for remote execution or the REST API. "
+            "Credentials are never "
             "accepted over this API."
         ),
     )
@@ -199,6 +200,7 @@ class PackageAgentJob(NemoJob):
     job_collection_path: ClassVar[str | None] = "/jobs/package"
     description: ClassVar[str] = "Build a container image for an agent stored on the platform."
     container: ClassVar[str] = "cpu-tasks"
+    generate_legacy_verbs: ClassVar[bool] = False
     input_spec_schema: ClassVar[type[BaseModel] | None] = PackageAgentInput
     spec_schema: ClassVar[type[BaseModel] | None] = PackageAgentSpec
 

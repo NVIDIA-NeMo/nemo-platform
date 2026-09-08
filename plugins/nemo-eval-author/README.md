@@ -16,11 +16,12 @@ copied skill tree, not published as a package API.
 ## Prerequisites
 
 Discovery imports nothing beyond the standard library and Harbor itself, so it
-runs on whatever Python the customer already has. Audit validation needs PyYAML
-to read the marked YAML block and jsonschema to enforce
-`schemas/audit.schema.json`. Trace inspection requires the supported `nemo` CLI,
-an explicit workspace, and read access to a configured local or remote NeMo
-Platform instance.
+runs on whatever Python the customer already has. Audit generation and
+validation need PyYAML to read YAML and jsonschema to enforce
+`schemas/audit.schema.json`; audit measurement and reporting use
+`skills/eval-author-audit/requirements.txt`. Trace inspection requires the
+supported `nemo` CLI, an explicit workspace, and read access to a configured
+local or remote NeMo Platform instance.
 
 `tests/test_skill_contract.py` holds to the same boundary and imports nothing
 from the platform, so `pytest`, `pyyaml`, and `jsonschema` are enough to run it.
@@ -46,8 +47,12 @@ visible and worth committing: a teammate who reads it skips the discovery pass.
 exact read commands. Findings use `behavior`, `issue`, `recovery`, and
 `uncertainty` categories.
 
-The bundled scripts write no files. They report to stdout, and the skill tells
-the agent where to save. Trace inspection contains instructions only.
+Discovery scripts write no files. Audit scripts write only the requested
+`.eval-author/` artifacts and report JSON summaries to stdout. Trace inspection
+contains instructions only.
+Capability measurement can also consume a local skill-authored judgment sidecar
+for non-tool evidence; deterministic tool requirements still come from ATIF
+traces.
 
 ## Why skills instead of an agent
 

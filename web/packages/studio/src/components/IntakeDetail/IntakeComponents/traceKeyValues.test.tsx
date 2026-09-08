@@ -4,6 +4,7 @@
 import {
   buildEvaluationContextEntries,
   buildSessionHighlightMetrics,
+  buildTraceHighlightMetrics,
   buildTraceSummaryEntries,
 } from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
 import { mockSessionById, mockTraceById } from '@studio/mocks/intake/telemetry';
@@ -45,6 +46,15 @@ describe('traceKeyValues', () => {
       'total_tokens',
       'cost_usd',
     ]);
+  });
+
+  it('builds trace headline metrics from trace totals', () => {
+    const trace = mockTraceById('trace-agent-run-003');
+    expect(trace).toBeDefined();
+
+    const metrics = buildTraceHighlightMetrics(trace!);
+
+    expect(metrics.map(({ value }) => value)).toEqual(['2', '9s 130ms', '1,194', '$0.0021']);
   });
 
   it('includes evaluation context entries when present', () => {

@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 import typer
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.types import JobLogsQueryParams
 
 from nemo_platform_ext.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
@@ -22,6 +23,7 @@ from nemo_platform_ext.cli.core.formatters import (
     validate_stream_output_format,
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
+from nemo_platform_ext.cli.core.job_log_renderer import render_job_logs
 from nemo_platform_ext.cli.core.job_watch_renderer import JobWatchRenderResult, render_job_watch_events
 from nemo_platform_ext.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
 from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
@@ -275,6 +277,7 @@ def get_logs_jobs(
     limit: Annotated[int | None, typer.Option("--limit", help="Maximum number of logs to return")] = None,
     page_cursor: Annotated[str | None, typer.Option("--page-cursor", help="Page cursor")] = None,
     step_id: Annotated[str | None, typer.Option("--step-id", help="Filter logs by step name")] = None,
+    tail: Annotated[int | None, typer.Option("--tail", help="Number of newest log lines to return")] = None,
     task_id: Annotated[str | None, typer.Option("--task-id", help="Filter logs by task ID")] = None,
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
@@ -302,6 +305,7 @@ def get_logs_jobs(
         limit=limit,
         page_cursor=page_cursor,
         step_id=step_id,
+        tail=tail,
         task_id=task_id,
     )
 
@@ -720,3 +724,34 @@ def watch_platform_job(
         raise typer.Exit(130)
     if watch_result is not JobWatchRenderResult.SUCCEEDED:
         raise typer.Exit(1)
+
+
+@app.command("tail")
+@collect_warnings
+@handle_errors
+def tail_platform_job(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="Name of the platform job whose logs to tail")],
+    lines: Annotated[int, typer.Option("-n", "--lines", min=1, max=10_000, help="Number of lines to show")] = 100,
+    workspace: Annotated[str | None, typer.Option("--workspace", help="Workspace containing the job")] = None,
+    attempt_id: Annotated[int | None, typer.Option("--attempt-id", help="Filter logs to an attempt ID")] = None,
+    step_id: Annotated[str | None, typer.Option("--step-id", help="Filter logs to a step ID")] = None,
+    task_id: Annotated[str | None, typer.Option("--task-id", help="Filter logs to a task ID")] = None,
+) -> None:
+    """Print the newest lines from a platform job log."""
+    state: CLIContext = ctx.obj
+    client = state.get_client()
+    jobs_client = client_from_platform(client, JobsClient)
+    if workspace is None:
+        workspace = client._get_workspace_path_param()
+
+    query_params: JobLogsQueryParams = {"tail": lines}
+    if attempt_id is not None:
+        query_params["attempt_id"] = attempt_id
+    if step_id is not None:
+        query_params["step_id"] = step_id
+    if task_id is not None:
+        query_params["task_id"] = task_id
+
+    response = jobs_client.list_job_logs(workspace=workspace, name=name, query_params=query_params)
+    render_job_logs(response.page().items)

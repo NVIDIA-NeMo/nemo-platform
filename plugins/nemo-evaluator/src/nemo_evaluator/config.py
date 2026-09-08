@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from nemo_platform_plugin.config import NemoConfig
+from nemo_platform_plugin.config import NemoConfig, get_platform_config
 from pydantic import Field
 
 
@@ -116,3 +116,4 @@ def get_config() -> EvaluatorConfig:
 
 
 config = get_config()
+platform_config = get_platform_config()

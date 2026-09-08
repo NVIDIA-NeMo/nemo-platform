@@ -9,7 +9,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
-import { useJobsGetJob, useJobsListJobResults } from '@nemo/sdk/generated/platform/api';
+import { useJobsGetJob, useJobsListJobResults } from '@nemo/sdk/generated/platform/jobs';
 import { Flex, Grid, PageHeader, Panel, Spinner, Stack } from '@nvidia/foundations-react-core';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -30,7 +30,11 @@ export const JobDetailRoute: FC = () => {
     },
   });
 
-  const { data: logs, isLoading: isLoadingLogs } = useJobLogs({
+  const {
+    data: logs,
+    isLoading: isLoadingLogs,
+    loadProgress,
+  } = useJobLogs({
     workspace,
     name: jobName,
     jobStatus: job?.status,
@@ -117,6 +121,7 @@ export const JobDetailRoute: FC = () => {
           <LogViewer
             logs={logs ?? []}
             isLoading={isLoadingLogs}
+            loadProgress={loadProgress}
             downloadFilename={`job-${jobName}-logs.txt`}
           />
         </Panel>

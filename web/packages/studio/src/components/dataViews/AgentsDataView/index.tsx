@@ -18,13 +18,15 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import {
   agentsListDeployments,
-  getAgentsListAgentsQueryKey,
   getAgentsListDeploymentsQueryKey,
-  useAgentsDeleteAgent,
   useAgentsDeleteDeployment,
-  useAgentsListAgents,
   useAgentsListDeployments,
-} from '@nemo/sdk/generated/agents/api';
+} from '@nemo/sdk/generated/agents/agent-deployments';
+import {
+  getAgentsListAgentsQueryKey,
+  useAgentsDeleteAgent,
+  useAgentsListAgents,
+} from '@nemo/sdk/generated/agents/agents';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
 import { Button, type DropdownEntry, Text } from '@nvidia/foundations-react-core';

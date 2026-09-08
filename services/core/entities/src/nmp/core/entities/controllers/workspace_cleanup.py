@@ -105,6 +105,11 @@ class WorkspaceCleanup(HeartbeatMixin, Controller):
                 self.emit_heartbeat()
                 await self._cleanup_deployments(workspace)
                 self.emit_heartbeat()
+                # Models and adapters can hold fileset refs in this workspace.
+                # Delete them before filesets so same-workspace teardown is not
+                # blocked by the fileset DELETE 409 referential guard.
+                await self._cleanup_models_and_adapters(workspace)
+                self.emit_heartbeat()
                 await self._cleanup_filesets(workspace)
                 self.emit_heartbeat()
 
@@ -180,6 +185,44 @@ class WorkspaceCleanup(HeartbeatMixin, Controller):
 
         except Exception as e:
             logger.error(f"Failed to list deployments for workspace {workspace.name}: {e}")
+            raise
+
+    @tracer.start_as_current_span("workspace_cleanup/cleanup_models_and_adapters")
+    async def _cleanup_models_and_adapters(self, workspace: Workspace) -> None:
+        logger.info(f"Cleaning up models and adapters for workspace: {workspace.name}")
+        try:
+            models_client = client_from_platform(self._nmp_sdk, AsyncModelsClient)
+            adapters_response = await models_client.list_adapters(workspace=workspace.name)
+            adapters = [adapter async for adapter in adapters_response.items()]
+            models_response = await models_client.list_models(workspace=workspace.name)
+            models = [model async for model in models_response.items()]
+
+            for adapter in adapters:
+                try:
+                    logger.info(f"Deleting adapter: {adapter.name}")
+                    await models_client.delete_adapter(
+                        name=adapter.name,
+                        workspace=workspace.name,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to delete adapter {adapter.name}: {e}")
+                finally:
+                    self.emit_heartbeat()
+
+            for model in models:
+                try:
+                    logger.info(f"Deleting model: {model.name}")
+                    await models_client.delete_model(
+                        name=model.name,
+                        workspace=workspace.name,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to delete model {model.name}: {e}")
+                finally:
+                    self.emit_heartbeat()
+
+        except Exception as e:
+            logger.error(f"Failed to list models or adapters for workspace {workspace.name}: {e}")
             raise
 
     @tracer.start_as_current_span("workspace_cleanup/cleanup_filesets")

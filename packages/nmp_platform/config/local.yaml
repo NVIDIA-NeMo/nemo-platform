@@ -7,7 +7,7 @@
 #   export NMP_BASE_URL=http://127.0.0.1:8080
 #   uv run nemo services run --host 127.0.0.1 --port 8080
 #
-# Use default service set (omit --services) or --service-group all. Then:
+# Use default service set (omit --services) or --service-group all --controller-group all. Then:
 #   nemo auth login --unsigned-token
 #   uv run nemo-platform run task --task nmp.platform_seed
 
@@ -126,6 +126,11 @@ evaluator:
 
 safe_synthesizer: {}
 
+# Retrieval jobs mix CPU and GPU container steps; cpu/default is subprocess locally, so
+# point them at the Docker-backed gpu profile (cpu/gpu and gpu/gpu). Not needed on Kubernetes/CI.
+data_designer:
+  job_executor_profile: gpu
+
 # Audit jobs need real Docker containers (auditor-tasks image with garak). cpu/default is
 # diverted to the subprocess backend above for local dev, so point auditor jobs at the
 # dedicated cpu/auditor Docker profile registered under jobs.executors instead. Not needed
@@ -171,12 +176,15 @@ models:
         enabled: true
         docker_executor: local-docker
         default_executor: local-docker
-        # LoRA adapter-download sidecar for deployments with lora_enabled. The
-        # docker backend has no separate args field (unlike k8s) and keeps the
-        # image ENTRYPOINT — nmp-customizer-tasks is `/opt/venv/bin/python`, so
-        # the module goes in lora_sidecar_command (runs `python -m <module>`).
+        # LoRA adapter-download sidecar for deployments with lora_enabled. Both
+        # backends override the image ENTRYPOINT with lora_sidecar_command: k8s
+        # maps it to the pod container `command`, and the docker backend maps it
+        # to docker's `entrypoint` (with lora_sidecar_args -> docker `command`).
+        # So the command must be a complete executable list, not a bare `-m`
+        # fragment — `python` resolves on the nmp-customizer-tasks PATH
+        # (/opt/venv/bin).
         lora_sidecar_image_name: nmp-customizer-tasks
-        lora_sidecar_command: ["-m", "nmp.core.models.sidecars.adapters.main"]
+        lora_sidecar_command: ["python", "-m", "nmp.core.models.sidecars.adapters.main"]
 
 # Inference gateway configuration - uses default values
 inference_gateway: {}

@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Phase-1 GKE bring-up for the scaled-evals plugin.
+# See README.md for the GCP prerequisites, which are not created here.
+#
+# Renders with ${SE_*} placeholders still in it. Use apply.sh, which substitutes
+# them from the untracked local.env:
+#
+#   ./apply.sh --render          # render, substituted, touching nothing
+#   ./apply.sh                   # create secrets, then apply
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: nemo-platform-scaled-evals
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - sandbox-rbac.yaml
+  - postgres.yaml
+  - registry-auth.yaml
+  - api.yaml
+  - workers.yaml
+
+commonLabels:
+  app.kubernetes.io/name: nemo-platform-scaled-evals
+  app.kubernetes.io/part-of: nemo-platform
+
+images:
+  - name: scaled-evals-app
+    newName: ${SE_APP_IMAGE}
+    # Immutable, so a rollout always names the code it runs. Bump
+    # SE_APP_IMAGE_TAG in local.env after pushing a new image rather than
+    # reusing a floating tag.
+    newTag: ${SE_APP_IMAGE_TAG}
+
+# Shared by the API and both workers, exactly as in the compose stack. Rendered
+# into a hashed ConfigMap so a settings change rolls the pods.
+configMapGenerator:
+  - name: scaled-evals-env
+    envs:
+      - settings.env
+  # Mounted as a file rather than envFrom: dispatch reads it and substitutes the
+  # values into the Harbor config for each evaluation.
+  - name: scaled-evals-sandbox-target
+    files:
+      - sandbox.env
+  - name: scaled-evals-registry-auth-script
+    files:
+      - registry-auth-refresh.py

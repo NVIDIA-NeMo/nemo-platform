@@ -3,7 +3,10 @@
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { logger } from '@nemo/common/src/utils/logger';
-import { entitiesCreateWorkspace, entitiesGetWorkspace } from '@nemo/sdk/generated/platform/api';
+import {
+  entitiesCreateWorkspace,
+  entitiesGetWorkspace,
+} from '@nemo/sdk/generated/platform/entity-store';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useAuthProfile } from '@studio/providers/auth';
 import { isAxiosError } from 'axios';

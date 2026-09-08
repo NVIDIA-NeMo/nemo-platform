@@ -26,6 +26,11 @@ from nemo_data_designer_plugin.functions._types import (
     PreviewSpec,
     ProcessorOutputFrame,
 )
+from nemo_data_designer_plugin.jobs.retrieval_spec import (
+    RetrievalGenerateJobConfig,
+    RetrievalPrepareJobConfig,
+    RetrievalRunJobConfig,
+)
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig
 from nemo_data_designer_plugin.sdk import http
 from nemo_data_designer_plugin.sdk.errors import (
@@ -304,21 +309,7 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
         """
         config = config_builder.build()
         request = DataDesignerJobConfig(config=config, num_records=num_records)
-        try:
-            resp = self._client().post(
-                self._url("/jobs/create", workspace),
-                headers=self._headers(),
-                json={"spec": request.model_dump(mode="json")},
-            )
-            resp.raise_for_status()
-            job = resp.json()
-            logger.info(f"  |-- job name: {job['name']}")
-            job_client = DataDesignerJobResource(job_name=job["name"], platform=self._platform, workspace=workspace)
-            if wait_until_done:
-                job_client.wait_until_done()
-            return job_client
-        except Exception as e:
-            raise _get_error(e) from e
+        return self._submit_named_job("create", request, workspace=workspace, wait_until_done=wait_until_done)
 
     def get_job_resource(self, job_name: str, workspace: str | None = None) -> DataDesignerJobResource:
         """Get a high-level resource for an existing data generation job.
@@ -383,6 +374,65 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
             sdk=self._platform,
             workspace=resolved_workspace,
         )
+
+    def retrieval_generate(
+        self,
+        spec: RetrievalGenerateJobConfig,
+        *,
+        workspace: str | None = None,
+        wait_until_done: bool = False,
+    ) -> DataDesignerJobResource:
+        """Submit a Stage 0 retrieval SDG job."""
+        return self._submit_named_job("retrieval-generate", spec, workspace=workspace, wait_until_done=wait_until_done)
+
+    def retrieval_prepare(
+        self,
+        spec: RetrievalPrepareJobConfig,
+        *,
+        workspace: str | None = None,
+        wait_until_done: bool = False,
+    ) -> DataDesignerJobResource:
+        """Submit a Stage 1 retrieval prepare job."""
+        return self._submit_named_job("retrieval-prepare", spec, workspace=workspace, wait_until_done=wait_until_done)
+
+    def retrieval_run(
+        self,
+        spec: RetrievalRunJobConfig,
+        *,
+        workspace: str | None = None,
+        wait_until_done: bool = False,
+    ) -> DataDesignerJobResource:
+        """Submit generate then prepare as one multi-step jobs-service workflow."""
+        return self._submit_named_job("retrieval-run", spec, workspace=workspace, wait_until_done=wait_until_done)
+
+    def _submit_named_job(
+        self,
+        job_name: str,
+        spec: BaseModel,
+        *,
+        workspace: str | None,
+        wait_until_done: bool,
+    ) -> DataDesignerJobResource:
+        try:
+            resp = self._client().post(
+                self._url(f"/jobs/{job_name}", workspace),
+                headers=self._headers(),
+                json={"spec": spec.model_dump(mode="json")},
+            )
+            resp.raise_for_status()
+            job = resp.json()
+            logger.info(f"  |-- job name: {job['name']}")
+            job_client = DataDesignerJobResource(
+                job_name=job["name"],
+                platform=self._platform,
+                workspace=workspace,
+                job_collection=job_name,
+            )
+            if wait_until_done:
+                job_client.wait_until_done()
+            return job_client
+        except Exception as e:
+            raise _get_error(e) from e
 
 
 @with_logging
@@ -471,23 +521,7 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
         """
         config = config_builder.build()
         request = DataDesignerJobConfig(config=config, num_records=num_records)
-        try:
-            resp = await self._client().post(
-                self._url("/jobs/create", workspace),
-                headers=self._headers(),
-                json={"spec": request.model_dump(mode="json")},
-            )
-            resp.raise_for_status()
-            job = resp.json()
-            logger.info(f"  |-- job name: {job['name']}")
-            job_client = AsyncDataDesignerJobResource(
-                job_name=job["name"], platform=self._platform, workspace=workspace
-            )
-            if wait_until_done:
-                await job_client.wait_until_done()
-            return job_client
-        except Exception as e:
-            raise _get_error(e) from e
+        return await self._submit_named_job("create", request, workspace=workspace, wait_until_done=wait_until_done)
 
     async def get_job_resource(self, job_name: str, workspace: str | None = None) -> AsyncDataDesignerJobResource:
         """Get a high-level resource for an existing data generation job.
@@ -537,6 +571,66 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
             async_sdk=self._platform,
             workspace=resolved_workspace,
         )
+
+    async def retrieval_generate(
+        self,
+        spec: RetrievalGenerateJobConfig,
+        *,
+        workspace: str | None = None,
+        wait_until_done: bool = False,
+    ) -> AsyncDataDesignerJobResource:
+        return await self._submit_named_job(
+            "retrieval-generate", spec, workspace=workspace, wait_until_done=wait_until_done
+        )
+
+    async def retrieval_prepare(
+        self,
+        spec: RetrievalPrepareJobConfig,
+        *,
+        workspace: str | None = None,
+        wait_until_done: bool = False,
+    ) -> AsyncDataDesignerJobResource:
+        return await self._submit_named_job(
+            "retrieval-prepare", spec, workspace=workspace, wait_until_done=wait_until_done
+        )
+
+    async def retrieval_run(
+        self,
+        spec: RetrievalRunJobConfig,
+        *,
+        workspace: str | None = None,
+        wait_until_done: bool = False,
+    ) -> AsyncDataDesignerJobResource:
+        return await self._submit_named_job("retrieval-run", spec, workspace=workspace, wait_until_done=wait_until_done)
+
+    async def _submit_named_job(
+        self,
+        job_name: str,
+        spec: BaseModel,
+        *,
+        workspace: str | None,
+        wait_until_done: bool,
+    ) -> AsyncDataDesignerJobResource:
+        try:
+            resp = await self._client().post(
+                self._url(f"/jobs/{job_name}", workspace),
+                headers=self._headers(),
+                json={"spec": spec.model_dump(mode="json")},
+            )
+            resp.raise_for_status()
+            job = resp.json()
+            logger.info(f"  |-- job name: {job['name']}")
+            job_client = AsyncDataDesignerJobResource(
+                job_name=job["name"],
+                platform=self._platform,
+                workspace=workspace,
+                job_collection=job_name,
+            )
+            if wait_until_done:
+                await job_client.wait_until_done()
+            return job_client
+        except Exception as e:
+            raise _get_error(e) from e
 
 
 def _get_error(e: BaseException) -> DataDesignerClientError:

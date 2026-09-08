@@ -52,6 +52,26 @@ def test_evaluate_suite_config_validation() -> None:
     assert cfg.concurrency == 4
 
 
+def test_evaluate_suite_documented_submit_shape_validates() -> None:
+    from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteSubmitConfig
+
+    cfg = EvaluateSuiteSubmitConfig.model_validate(
+        {
+            "evals": "/path/to/my-agent/tests/agentic",
+            "agent": "/path/to/my-agent",
+            "output": "/path/to/my-agent/runs/batch-smoke",
+            "anthropic_api_key_secret": "anthropic-api-key",
+            "anthropic_base_url": "https://inference-api.nvidia.com",
+        }
+    )
+
+    assert cfg.evals == "/path/to/my-agent/tests/agentic"
+    assert cfg.agent == "/path/to/my-agent"
+    assert cfg.output == "/path/to/my-agent/runs/batch-smoke"
+    assert cfg.anthropic_api_key_secret == "anthropic-api-key"
+    assert cfg.anthropic_base_url == "https://inference-api.nvidia.com"
+
+
 def test_optimize_skills_config_validation() -> None:
     from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsConfig
 
@@ -166,6 +186,7 @@ async def test_evaluate_suite_compile_injects_anthropic_secret_when_set() -> Non
         agent="/abs/agent",
         output="/abs/out",
         anthropic_api_key_secret="anthropic-api-key",
+        anthropic_base_url="https://inference-api.nvidia.com",
     )
     platform_spec = await EvaluateSuiteJob.compile(
         workspace="default",
@@ -177,6 +198,7 @@ async def test_evaluate_suite_compile_injects_anthropic_secret_when_set() -> Non
     step = next(iter(platform_spec["steps"]))
     env = {e["name"]: e for e in step["environment"]}
     assert env["ANTHROPIC_API_KEY"]["from_secret"]["name"] == "anthropic-api-key"
+    assert env["ANTHROPIC_BASE_URL"]["value"] == "https://inference-api.nvidia.com"
 
 
 @pytest.mark.asyncio
@@ -217,6 +239,7 @@ async def test_optimize_skills_compile_injects_anthropic_secret_when_set() -> No
         evals="/abs/evals",
         agent="/abs/agent",
         anthropic_api_key_secret="anthropic-api-key",
+        anthropic_base_url="https://inference-api.nvidia.com",
     )
     platform_spec = await OptimizeSkillsJob.compile(
         workspace="default",
@@ -228,6 +251,7 @@ async def test_optimize_skills_compile_injects_anthropic_secret_when_set() -> No
     step = next(iter(platform_spec["steps"]))
     env = {e["name"]: e for e in step["environment"]}
     assert env["ANTHROPIC_API_KEY"]["from_secret"]["name"] == "anthropic-api-key"
+    assert env["ANTHROPIC_BASE_URL"]["value"] == "https://inference-api.nvidia.com"
 
 
 @pytest.mark.asyncio
@@ -282,6 +306,28 @@ async def test_analyze_compile_produces_single_subprocess_step() -> None:
     executor = step["executor"]
     assert executor.get("provider") == "subprocess"
     assert executor.get("command") == ["python", "-m", "nemo_agents_plugin.tasks.analyze"]
+
+
+@pytest.mark.asyncio
+async def test_analyze_compile_injects_anthropic_env_when_set() -> None:
+    from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchConfig, AnalyzeBatchJob
+
+    spec = AnalyzeBatchConfig(
+        batch="/abs/batch",
+        anthropic_api_key_secret="anthropic-api-key",
+        anthropic_base_url="https://inference-api.nvidia.com",
+    )
+    platform_spec = await AnalyzeBatchJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=MagicMock(),
+        job_name=None,
+        async_sdk=MagicMock(),
+    )
+    step = next(iter(platform_spec["steps"]))
+    env = {e["name"]: e for e in step["environment"]}
+    assert env["ANTHROPIC_API_KEY"]["from_secret"]["name"] == "anthropic-api-key"
+    assert env["ANTHROPIC_BASE_URL"]["value"] == "https://inference-api.nvidia.com"
 
 
 @pytest.mark.asyncio

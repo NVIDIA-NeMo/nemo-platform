@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  useEvaluatorGetEvalResult,
-  useEvaluatorGetEvaluateJobResult,
-} from '@nemo/sdk/generated/evaluator/api';
+import { useEvaluatorGetEvalResult } from '@nemo/sdk/generated/evaluator/evaluator-plugin-eval-results-routes';
+import { useEvaluatorGetEvaluateJobResult } from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import type { DatasetEvalRow } from '@studio/components/evaluation/Jobs/datasetEval/DatasetEvalRowResultsPanel';
 import { useQuery } from '@tanstack/react-query';

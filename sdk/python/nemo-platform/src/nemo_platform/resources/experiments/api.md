@@ -7,6 +7,7 @@ Types:
 
 ```python
 from nemo_platform.types.experiments import (
+    ColumnLayout,
     ExperimentFilter,
     ExperimentRequest,
     ExperimentResponse,

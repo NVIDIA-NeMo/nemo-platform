@@ -14,13 +14,14 @@ import time
 import uuid
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
 import docker.types
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig, Mount
+from nemo_platform_plugin.auth import AuthContext as PluginAuthContext
 from nemo_platform_plugin.capabilities import CapabilityUnavailableError, probe_docker
 from nemo_platform_plugin.client.errors import NemoClientError
 from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundError
@@ -46,14 +47,15 @@ from nemo_platform_plugin.jobs.types import (
 )
 from nmp.common.auth import (
     AuthContext,
-    WorkloadDelegationEntity,
     WorkloadDelegationError,
-    create_opaque_docker_proof_token,
+    WorkloadDelegationScope,
+    build_docker_opaque_workload_delegation,
     docker_delegation_name,
+    get_workload_delegation_audience,
 )
 from nmp.common.config import get_platform_config, nmp_user_data_dir
 from nmp.common.docker.gpu_pool import GPUAllocationError
-from nmp.common.entities import SYSTEM_WORKSPACE, EntityStoreError
+from nmp.common.entities import EntityStoreError
 from nmp.common.jobs.constants import (
     CONFIG_TASK_STORAGE_PATH_ENVVAR,
     DEFAULT_CONFIG_STORAGE_PATH,
@@ -124,10 +126,9 @@ from nmp.core.jobs.controllers.backends.exceptions import (
 from nmp.core.jobs.controllers.backends.workload_tokens import (
     build_token_archive,
     create_authenticated_workload_delegation_store,
-    workload_delegation_expires_at,
 )
 from opentelemetry import trace
-from pydantic import Field, ValidationError
+from pydantic import Field
 
 import docker
 
@@ -188,13 +189,6 @@ class DockerTimestampParseResult:
     parsed: datetime.datetime | None
     parse_error: str | None
     is_zero: bool
-
-
-@dataclass(frozen=True, slots=True)
-class DockerWorkloadProofToken:
-    token: str = field(repr=False)
-    expires_at: datetime.datetime
-    opaque_subject_token_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -297,92 +291,48 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
             raise ValueError("Docker job step requires a step_spec")
         return step.step_spec
 
-    @staticmethod
-    def _workload_delegation_audience() -> str:
-        try:
-            from nmp.common.config import get_auth_config
-
-            oidc_config = get_auth_config().oidc
-        except (RuntimeError, ValidationError):
-            logger.warning(
-                "Could not resolve auth config for Docker workload delegation audience; using the default audience",
-                exc_info=True,
-            )
-            return "nemo-platform"
-        return oidc_config.workload_audience or oidc_config.audience or "nemo-platform"
-
-    def _provision_docker_workload_proof_token(self, delegation_name: str) -> DockerWorkloadProofToken:
-        token, token_hash = create_opaque_docker_proof_token(delegation_name)
-        expires_at = workload_delegation_expires_at(
-            ttl_seconds_active=self._execution_profile_config.ttl_seconds_active
-        )
-        return DockerWorkloadProofToken(
-            token=token,
-            expires_at=expires_at,
-            opaque_subject_token_hash=token_hash,
-        )
-
-    def _build_docker_workload_delegation(
-        self,
-        *,
-        step: PlatformJobStepWithContext,
-        delegation_name: str,
-        proof_token: DockerWorkloadProofToken,
-    ) -> WorkloadDelegationEntity:
-        if step.auth_context is None:
-            raise JobStorageError("Docker workload identity requires a job auth_context for on-behalf-of delegation")
-
-        auth_context = AuthContext.model_validate(step.auth_context.model_dump(mode="python", exclude_none=True))
-        return WorkloadDelegationEntity(
-            name=delegation_name,
-            workspace=SYSTEM_WORKSPACE,
-            workload_subject=delegation_name,
-            workload_audience=self._workload_delegation_audience(),
-            workload_workspace=step.workspace,
-            job_id=step.job,
-            attempt_id=step.attempt_id,
-            step_id=step.id,
-            auth_context=auth_context,
-            opaque_subject_token_hash=proof_token.opaque_subject_token_hash,
-            expires_at=proof_token.expires_at,
-        )
-
     def _prepare_workload_identity_for_step(
         self,
         *,
         step: PlatformJobStepWithContext,
         workload_identity_volume_name: str,
     ) -> str:
-        delegation_name = docker_delegation_name(
-            workload_workspace=step.workspace,
+        if step.auth_context is None:
+            raise JobStorageError("Docker workload identity requires a job auth_context for on-behalf-of delegation")
+
+        auth_context = PluginAuthContext.model_validate(step.auth_context.model_dump(mode="python", exclude_none=True))
+        delegation, proof_token = build_docker_opaque_workload_delegation(
+            scope=WorkloadDelegationScope(
+                workload_workspace=step.workspace,
+                workload_kind="job",
+                workload_instance_id=step.job,
+            ),
+            workload_audience=get_workload_delegation_audience(),
+            workload_generation=f"{step.attempt_id}/{step.id}",
             job_id=step.job,
             attempt_id=step.attempt_id,
             step_id=step.id,
-        )
-        proof_token = self._provision_docker_workload_proof_token(delegation_name)
-        delegation = self._build_docker_workload_delegation(
-            step=step,
-            delegation_name=delegation_name,
-            proof_token=proof_token,
+            auth_context=auth_context,
+            ttl_seconds_active=self._execution_profile_config.ttl_seconds_active,
         )
         self._workload_delegation_store.register(
             delegation,
-            require_opaque_subject_token_hash=delegation.opaque_subject_token_hash is not None,
+            require_opaque_subject_token_hash=True,
         )
 
         token_written = False
         try:
-            self._write_workload_identity_subject_token(workload_identity_volume_name, proof_token.token)
+            self._write_workload_identity_subject_token(workload_identity_volume_name, proof_token)
             token_written = True
         finally:
             if not token_written:
                 self._try_revoke_workload_delegation(
-                    delegation_name,
+                    delegation.name,
                     reason="token provisioning failure",
                     cause=sys.exception(),
                 )
 
-        return delegation_name
+        return delegation.name
 
     def _try_revoke_workload_delegation(
         self,

@@ -30,6 +30,12 @@ def test_data_designer_authz_derivation_has_no_problems() -> None:
     assert contrib.endpoints[f"{jobs}/{{name}}"]["delete"].permissions == ["data-designer.delete"]
     preview = "/apis/data-designer/v2/workspaces/{workspace}/preview"
     assert contrib.endpoints[preview]["post"].permissions == ["data-designer.preview"]
+    retrieval_preview = "/apis/data-designer/v2/workspaces/{workspace}/retrieval-preview"
+    assert contrib.endpoints[retrieval_preview]["post"].permissions == ["data-designer.retrieval-preview"]
+    for job_name in ("retrieval-generate", "retrieval-prepare", "retrieval-run"):
+        retrieval_job = f"/apis/data-designer/v2/workspaces/{{workspace}}/jobs/{job_name}"
+        assert contrib.endpoints[retrieval_job]["post"].permissions == ["data-designer.create"]
+        assert contrib.endpoints[retrieval_job]["get"].permissions == ["data-designer.list"]
 
     # Every mounted route carries a valid rule (none falls through to deny).
     assert contrib.endpoints

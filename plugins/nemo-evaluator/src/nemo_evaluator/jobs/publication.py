@@ -154,10 +154,9 @@ async def _publish(
     # Measured before the publish so the two durations stay disjoint — for a result that carries only
     # a start time, reading this afterwards would fold the whole publish into the run's own length.
     eval_duration_sec = _eval_duration_sec(result)
-    # The Evaluation must pre-exist — ATIF ingest rejects an unknown one per trial, so without this
-    # a typo would surface as N failed writes after a partial publish instead of one clear stop.
-    # This reads the entity store, so it says nothing about whether Intake's span storage is up;
-    # that surfaces on the first ingest below, and re-publish is idempotent, so it needs no probe.
+    # Read for the entity itself, which ``_record_durations`` stamps onto below. This reads the
+    # entity store, so it says nothing about whether Intake's span storage is up; that surfaces on
+    # the first ingest, and re-publish is idempotent, so it needs no probe.
     evaluation = await platform.evaluations.retrieve(spec.evaluation_id, workspace=workspace)
     publish_started = time.monotonic()
     report = await publish_to_intake(

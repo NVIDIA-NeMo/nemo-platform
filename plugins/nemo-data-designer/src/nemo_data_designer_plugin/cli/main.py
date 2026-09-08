@@ -26,6 +26,7 @@ class DataDesignerCLI(NemoCLI):
     def get_cli(self) -> typer.Typer:
         from data_designer.cli.main import agent_app
         from data_designer.cli.runtime import ensure_cli_default_model_settings
+        from nemo_data_designer_plugin.cli.retrieval import retrieval_app
         from nemo_data_designer_plugin.cli.validate import validate_command
 
         ensure_cli_default_model_settings()
@@ -41,6 +42,7 @@ class DataDesignerCLI(NemoCLI):
         personas_app.command("make-fileset")(make_fileset_command)
 
         app.add_typer(personas_app, name="personas")
+        app.add_typer(retrieval_app, name="retrieval")
         app.add_typer(agent_app, name="agent")
 
         return app

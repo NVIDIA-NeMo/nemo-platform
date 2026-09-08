@@ -11,11 +11,11 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
 import { formatEvaluatorScore, snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
+import { useGetEvaluation } from '@nemo/sdk/generated/platform/evaluations';
 import {
   listEvaluationSessions,
-  useGetEvaluation,
   useListEvaluationSessions,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/experiments';
 import type {
   EvaluationSessionResponsesPage,
   EvaluationSessionFilter,

@@ -27,6 +27,12 @@ def test_filter_has_purpose_field():
     assert f.purpose == FilesetPurpose.DATASET
 
 
+def test_environment_fileset_purpose_is_supported():
+    f = FilesetFilter(purpose=FilesetPurpose.ENVIRONMENT)
+    assert f.purpose == FilesetPurpose.ENVIRONMENT
+    assert f.purpose.value == "environment"
+
+
 def test_filter_defaults_to_none():
     f = FilesetFilter()
     assert f.name is None

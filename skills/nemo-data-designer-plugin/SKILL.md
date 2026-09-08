@@ -34,6 +34,7 @@ Read **only** the workflow file that matches the selected mode, then follow it:
 - When the dataset requires person data (names, demographics, addresses), read `references/person-sampling.md`.
 - If a dataset script that matches the dataset description already exists, ask the user whether to edit it or create a new one.
 - For commands and context specific to this NeMo Platform plugin (e.g., sourcing model configs from IGW providers or in-script `ModelConfig`s, installing or publishing Nemotron Personas locales, platform-side resource pointers), read `references/nemo-platform-plugin-additions.md`.
+- For Nemotron retrieval SDG Stage 0/1 (`retrieval-generate` / `retrieval-prepare`), read `references/retrieval-sdg.md`. Do not use `create` for that pipeline.
 
 # Usage Tips and Common Pitfalls
 

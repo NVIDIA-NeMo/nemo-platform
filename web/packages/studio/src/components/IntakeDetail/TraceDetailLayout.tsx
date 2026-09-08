@@ -32,6 +32,7 @@ export const TraceDetailLayout: FC<TraceDetailLayoutProps> = ({ navigation, chil
     defaultLeftWidth={SIDEBAR_MIN_WIDTH_PX}
     minLeftWidth={SIDEBAR_MIN_WIDTH_PX}
     minRightWidth={DETAIL_MIN_WIDTH_PX}
+    resizeStep={16}
     separatorLabel="Resize trace trajectory sidebar"
     variant="plain"
     className="min-w-0 items-start"

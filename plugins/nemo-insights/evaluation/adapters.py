@@ -179,26 +179,25 @@ class BenchmarkAdapter:
         version = policy_version(policy)
         tasks = load_tasks(data_dir, domain)
         agent_llm = str(cfg["agent_llm"])
-        # Register this run as an Experiment on the oracle workspace (where the UI
-        # reads it). The realistic side needs only the span tag, not the entity.
-        if oracle_workspace is not None:
-            group_id = ensure_experiment_group(base_url, oracle_workspace, base)
+        experiment_metadata = {
+            "agent_llm": agent_llm,
+            "user_llm": str(cfg.get("user_llm", "")),
+            "num_trials": cfg.get("num_trials"),
+            "seed": cfg.get("seed"),
+            "task_split_name": cfg.get("task_split_name"),
+            "num_tasks": cfg.get("num_tasks"),
+            "created_at": created_at,
+        }
+        for tagged_workspace in [realistic_workspace] + ([oracle_workspace] if oracle_workspace else []):
+            group_id = ensure_experiment_group(base_url, tagged_workspace, base)
             create_experiment(
                 base_url,
-                oracle_workspace,
+                tagged_workspace,
                 name=run_id,
                 experiment_group_id=group_id,
                 dataset_name=dataset_name,
                 dataset_version=version,
-                metadata={
-                    "agent_llm": agent_llm,
-                    "user_llm": str(cfg.get("user_llm", "")),
-                    "num_trials": cfg.get("num_trials"),
-                    "seed": cfg.get("seed"),
-                    "task_split_name": cfg.get("task_split_name"),
-                    "num_tasks": cfg.get("num_tasks"),
-                    "created_at": created_at,
-                },
+                metadata=experiment_metadata,
             )
         session_ids: set[str] = set()
         client = httpx.Client(timeout=30.0)

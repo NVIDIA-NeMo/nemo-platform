@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import { gateAnonymizerRoutes, getWorkspaceAnonymizerRoute } from '@studio/routes/utils';
-import { UserPen } from 'lucide-react';
 import { lazy, type FC } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -50,12 +50,14 @@ export const anonymizerRoutes: RouteObject[] = gateAnonymizerRoutes([
   },
 ]);
 
+const NavIcon = ENTITY_ICONS.anonymizerJobs;
+
 export const getAnonymizerSideNavItems = (workspace: string) =>
   ANONYMIZER_ENABLED
     ? [
         {
           id: 'anonymizer',
-          slotIcon: <UserPen className={iconColorClass} />,
+          slotIcon: <NavIcon className={iconColorClass} />,
           slotLabel: 'Anonymizer',
           href: getWorkspaceAnonymizerRoute(workspace),
         },

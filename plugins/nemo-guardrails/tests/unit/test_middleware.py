@@ -2188,7 +2188,7 @@ def _make_virtual_model(
     workspace: str = "ws",
     name: str = "vm-1",
 ) -> Any:
-    from nemo_platform_plugin.inference_middleware import MiddlewareCall, VirtualModel
+    from nemo_platform_plugin.inference_middleware_models import MiddlewareCall, VirtualModel
 
     return VirtualModel(
         workspace=workspace,

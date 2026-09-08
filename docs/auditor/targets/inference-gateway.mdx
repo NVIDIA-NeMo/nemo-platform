@@ -43,9 +43,9 @@ Audit a NIM endpoint registered as the `nvidia-inference-api` provider in the `d
 ```python
 target = client.auditor.targets.create(
     workspace="default",
-    name="nemotron-3-nano-30b",
+    name="nemotron-3.5-lightning-30b",
     type="nim.NVOpenAIChat",
-    model="nvidia/nvidia/nemotron-3-nano-30b-a3b",
+    model="nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
     options={
         "nim": {
             "max_tokens": 1024,

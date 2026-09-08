@@ -34,6 +34,12 @@ from nemo_agents_plugin.fabric.invocation import (
     invoke_agent_config_request_once,
 )
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeTimeoutError
+from nemo_agents_plugin.jobs.execute_extensions import (
+    NOOP_EXECUTE_AGENT_EXTENSION_KIND,
+    ExecuteAgentAfterInvokeContext,
+    run_execute_agent_after_invoke_extension,
+    validate_execute_agent_extension_config,
+)
 from nemo_agents_plugin.tasks.execute.workdir import (
     AgentWorkdir,
     materialize_agent_workdir,
@@ -130,6 +136,15 @@ _RESERVED_ENV_VAR_NAMES = frozenset(
 )
 
 
+class ExecuteAgentExtensionConfig(BaseModel):
+    kind: str = Field(description="Trusted extension kind registered by an installed NeMo plugin.")
+    config: dict[str, Any] = Field(default_factory=dict, description="Extension-owned configuration.")
+
+
+def _make_noop_extension_config() -> ExecuteAgentExtensionConfig:
+    return ExecuteAgentExtensionConfig(kind=NOOP_EXECUTE_AGENT_EXTENSION_KIND)
+
+
 class ExecuteAgentJobConfig(BaseModel):
     model_config = {"json_schema_mode_override": "validation"}
 
@@ -157,6 +172,10 @@ class ExecuteAgentJobConfig(BaseModel):
         default=DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
         gt=0,
         description="Maximum time to wait for Fabric to return an execution result.",
+    )
+    extension: ExecuteAgentExtensionConfig | None = Field(
+        default=None,
+        description="Optional trusted plugin extension to run during the execute-agent lifecycle.",
     )
 
     @field_validator("agent")
@@ -201,12 +220,14 @@ class ExecuteAgentStepConfig(BaseModel):
     # the job is not kept in sync with the underlying environment entities.
     compute: ComputeSpecInline | None = None
     secrets: dict[str, str] = Field(default_factory=dict)
+    extension: ExecuteAgentExtensionConfig = Field(default_factory=_make_noop_extension_config)
 
 
 class ExecuteAgentJob(NemoJob):
     name: ClassVar[str] = "execute"
     description: ClassVar[str] = "Execute an agent to completion as a scheduled platform job."
     container: ClassVar[str] = "cpu-tasks"
+    generate_legacy_verbs: ClassVar[bool] = False
     input_spec_schema: ClassVar[type[BaseModel]] = ExecuteAgentJobConfig
     spec_schema: ClassVar[type[BaseModel]] = ExecuteAgentStepConfig
 
@@ -215,7 +236,7 @@ class ExecuteAgentJob(NemoJob):
         return AgentsConfig.get().deployments.default_image or get_qualified_image(DEFAULT_AGENT_EXECUTION_IMAGE_NAME)
 
     @classmethod
-    async def to_spec(  # type: ignore[override]
+    async def to_spec(
         cls,
         input_spec: BaseModel,
         *,
@@ -272,6 +293,9 @@ class ExecuteAgentJob(NemoJob):
             sdk = cast(AsyncNeMoPlatform, async_sdk)
             workdir = await validate_agent_workdir(request.workdir, sdk.files, default_workspace=workspace)
 
+        extension = request.extension or _make_noop_extension_config()
+        validate_execute_agent_extension_config(extension.kind, extension.config)
+
         return ExecuteAgentStepConfig(
             request=request,
             agent=ResolvedAgentConfig(
@@ -283,10 +307,11 @@ class ExecuteAgentJob(NemoJob):
             workdir=workdir,
             compute=resolved_env.compute_spec,
             secrets=merged.secrets,
+            extension=extension,
         )
 
     @classmethod
-    async def compile(  # type: ignore[override]
+    async def compile(
         cls,
         *,
         workspace: str,
@@ -389,8 +414,22 @@ class ExecuteAgentJob(NemoJob):
         output_workdir_ref = ctx.results.save(OUTPUT_WORKDIR_RESULT_NAME, fabric_dirs.workspace)
         output_artifacts_ref = ctx.results.save(OUTPUT_ARTIFACTS_RESULT_NAME, fabric_dirs.artifacts)
         status = "completed" if result.status in SUCCESSFUL_FABRIC_STATUSES else "failed"
+        if status == "completed":
+            try:
+                run_execute_agent_after_invoke_extension(
+                    step_config.extension.kind,
+                    ExecuteAgentAfterInvokeContext(
+                        ctx=ctx,
+                        config=step_config.extension.config,
+                        agent_name=step_config.agent.name,
+                        fabric_result=result,
+                    ),
+                )
+            except Exception:
+                logger.exception("Execute-agent extension failed.")
+                raise
 
-        return {
+        output = {
             "status": status,
             "agent": f"{step_config.agent.workspace}/{step_config.agent.name}",
             "fabric_status": result.status,
@@ -402,6 +441,7 @@ class ExecuteAgentJob(NemoJob):
             "output_artifacts": output_artifacts_ref.model_dump(),
             "fabric_run_result": fabric_run_result_ref.model_dump(),
         }
+        return output
 
     def _save_fabric_error_results(
         self,

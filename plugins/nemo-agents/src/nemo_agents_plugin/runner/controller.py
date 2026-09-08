@@ -553,6 +553,7 @@ class AgentDeploymentController(NemoController):
                 image=dep.image or None,
                 deployment_mode=dep.deployment_mode,
                 created_by=dep.created_by,
+                auth_context=dep.auth_context,
                 resources=dep.compute.resources if dep.compute is not None else None,
                 secrets=dep.secrets or None,
                 use_image_entrypoint=dep.use_image_entrypoint,
@@ -677,6 +678,8 @@ class AgentDeploymentController(NemoController):
         healthy = bool(dep.endpoint) and await backend.health_check(dep.endpoint)
 
         if healthy:
+            if info is not None:
+                info.status = "running"
             dep.status = "running"
             self._starting_since.pop((dep.workspace, dep.name), None)
             await self._observe_runtime_instance(dep)

@@ -10,7 +10,7 @@ import { MemoryRouter } from 'react-router';
 
 const makeEval = (overrides: Partial<AgentEvaluationRow> & { name: string }): AgentEvaluationRow =>
   ({
-    experimentName: null,
+    experiments: [],
     created_at: '2024-12-17T16:08:56.880768',
     metadata: {},
     ...overrides,

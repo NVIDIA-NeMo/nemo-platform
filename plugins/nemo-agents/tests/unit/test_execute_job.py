@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -32,6 +33,7 @@ from nemo_agents_plugin.jobs.execute import (
     INPUT_WORKDIR_RESULT_NAME,
     OUTPUT_ARTIFACTS_RESULT_NAME,
     OUTPUT_WORKDIR_RESULT_NAME,
+    ExecuteAgentExtensionConfig,
     ExecuteAgentJob,
     ExecuteAgentJobConfig,
     ExecuteAgentStepConfig,
@@ -225,6 +227,55 @@ async def test_to_spec_validates_and_canonicalizes_base_workdir() -> None:
     assert step_config.workdir is not None
     assert step_config.workdir.base_workdir == "default/source#project/"
     sdk.files.list.assert_awaited_once_with(remote_path="default/source#project/")
+
+
+@pytest.mark.asyncio
+async def test_to_spec_rejects_a_bad_extension_config_at_create_time() -> None:
+    """The noop extension takes no config, so this is a create-time 422, not a mid-job failure."""
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _agent()
+
+    with pytest.raises(ValueError, match="noop"):
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(
+                agent="calc",
+                input="hello",
+                extension=ExecuteAgentExtensionConfig(kind="noop", config={"agent": "research-agent"}),
+            ),
+            workspace="default",
+            entity_client=entity_client,
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_to_spec_resolves_trusted_extension() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _agent()
+
+    with patch(
+        "nemo_agents_plugin.jobs.execute.validate_execute_agent_extension_config",
+    ) as resolve:
+        spec = await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(
+                agent="calc",
+                input="hello",
+                extension=ExecuteAgentExtensionConfig(kind="example.extension", config={"raw": True}),
+            ),
+            workspace="default",
+            entity_client=entity_client,
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    assert step_config.extension == ExecuteAgentExtensionConfig(
+        kind="example.extension",
+        config={"raw": True},
+    )
+    assert step_config.request.extension == step_config.extension
+    resolve.assert_called_once_with("example.extension", {"raw": True})
 
 
 @pytest.mark.asyncio
@@ -825,6 +876,77 @@ def test_run_threads_custom_timeout_to_fabric(ctx: JobContext) -> None:
     assert result["status"] == "completed"
 
 
+def test_run_invokes_success_extension(ctx: JobContext) -> None:
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+        extension=ExecuteAgentExtensionConfig(kind="example.extension", config={"agent": "research-agent"}),
+    )
+    sdk = MagicMock()
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="succeeded", output={"answer": "done"})
+
+    def _after_invoke(kind: str, context: Any) -> None:
+        assert kind == "example.extension"
+        assert context.config == {"agent": "research-agent"}
+        assert context.agent_name == "calc"
+        assert context.fabric_result.output == {"answer": "done"}
+
+    with (
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        patch("nemo_agents_plugin.jobs.execute.run_execute_agent_after_invoke_extension", _after_invoke),
+    ):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)
+
+    assert result["status"] == "completed"
+    assert "extension" not in result
+
+
+def test_run_skips_extension_for_failed_fabric_result(ctx: JobContext) -> None:
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+        extension=ExecuteAgentExtensionConfig(kind="example.extension"),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="failed", error={"message": "adapter failed"})
+
+    with (
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        patch("nemo_agents_plugin.jobs.execute.run_execute_agent_after_invoke_extension") as after_invoke,
+    ):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert result["status"] == "failed"
+    after_invoke.assert_not_called()
+
+
+def test_run_extension_exception_is_logged(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+        extension=ExecuteAgentExtensionConfig(kind="example.extension"),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="succeeded", output={"answer": "done"})
+
+    def _after_invoke(kind: str, context: Any) -> None:
+        raise RuntimeError("extension exploded")
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        patch("nemo_agents_plugin.jobs.execute.run_execute_agent_after_invoke_extension", _after_invoke),
+        pytest.raises(RuntimeError, match="extension exploded"),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Execute-agent extension failed." in caplog.text
+
+
 def test_run_rejects_non_fabric_step_config(ctx: JobContext) -> None:
     spec = ExecuteAgentStepConfig(
         request=ExecuteAgentJobConfig(agent="calc", input="hello"),
@@ -1112,6 +1234,7 @@ def test_execute_job_create_route_stores_canonical_step_config() -> None:
         "environment": None,
         "workdir": {"base_workdir": "source#project", "artifact_mounts": []},
         "timeout_seconds": DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
+        "extension": None,
     }
     assert body.spec["workdir"] == {"base_workdir": "default/source#project/", "artifact_mounts": []}
     assert body.platform_spec.steps[0].name == "execute-agent"

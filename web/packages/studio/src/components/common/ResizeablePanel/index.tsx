@@ -14,7 +14,8 @@ import {
   useState,
 } from 'react';
 
-const DEFAULT_RESIZE_STEP_PX = 16;
+const DEFAULT_RESIZE_STEP_PX = 24;
+const DIVIDER_WIDTH_PX = 12;
 
 interface PanelBounds {
   readonly containerLeft: number;
@@ -53,16 +54,27 @@ export const ResizeablePanel: FC<ResizeablePanelProps> = ({
   className,
 }) => {
   const [leftWidth, setLeftWidth] = useState(Math.max(minLeftWidth, defaultLeftWidth));
-  const [resolvedMaxLeftWidth, setResolvedMaxLeftWidth] = useState(minLeftWidth);
+  const [resolvedMaxLeftWidth, setResolvedMaxLeftWidth] = useState(
+    maxLeftWidth ?? Number.MAX_SAFE_INTEGER
+  );
   const [isDragging, setIsDragging] = useState(false);
+  const [isStacked, setIsStacked] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const separatorRef = useRef<HTMLDivElement>(null);
   const dragBoundsRef = useRef<PanelBounds | null>(null);
 
   const measurePanelBounds = useCallback((): PanelBounds => {
     const containerRect = containerRef.current?.getBoundingClientRect();
-    const separatorWidth = separatorRef.current?.offsetWidth ?? 0;
-    const availableWidth = (containerRect?.width ?? 0) - minRightWidth - separatorWidth;
+    const containerWidth = containerRect?.width ?? 0;
+    if (containerWidth <= 0) {
+      return {
+        containerLeft: containerRect?.left ?? 0,
+        maxLeftWidth: Math.max(minLeftWidth, maxLeftWidth ?? Number.MAX_SAFE_INTEGER),
+      };
+    }
+
+    const separatorWidth = separatorRef.current?.offsetWidth ?? DIVIDER_WIDTH_PX;
+    const availableWidth = containerWidth - minRightWidth - separatorWidth;
     return {
       containerLeft: containerRect?.left ?? 0,
       maxLeftWidth: Math.max(
@@ -126,9 +138,10 @@ export const ResizeablePanel: FC<ResizeablePanelProps> = ({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? resizeStep * 2 : resizeStep;
     let nextWidth: number | undefined;
-    if (event.key === 'ArrowLeft') nextWidth = leftWidth - resizeStep;
-    if (event.key === 'ArrowRight') nextWidth = leftWidth + resizeStep;
+    if (event.key === 'ArrowLeft') nextWidth = leftWidth - step;
+    if (event.key === 'ArrowRight') nextWidth = leftWidth + step;
     if (event.key === 'Home') nextWidth = minLeftWidth;
     if (event.key === 'End') nextWidth = resolvedMaxLeftWidth;
     if (nextWidth === undefined) return;
@@ -137,13 +150,28 @@ export const ResizeablePanel: FC<ResizeablePanelProps> = ({
     setLeftWidth(Math.max(minLeftWidth, Math.min(resolvedMaxLeftWidth, nextWidth)));
   };
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      const separatorWidth = separatorRef.current?.offsetWidth ?? DIVIDER_WIDTH_PX;
+      const stacked = entry.contentRect.width < minLeftWidth + minRightWidth + separatorWidth;
+      setIsStacked(stacked);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [minLeftWidth, minRightWidth]);
+
   const plain = variant === 'plain';
 
   return (
-    <div ref={containerRef} className={cn('flex h-full w-full', className)}>
+    <div
+      ref={containerRef}
+      className={cn('flex w-full', isStacked ? 'flex-col' : 'h-full', className)}
+    >
       <div
         // eslint-disable-next-line no-restricted-syntax
-        style={{ width: leftWidth }}
+        style={{ width: isStacked ? '100%' : leftWidth }}
         className={cn(
           'shrink-0',
           !plain &&
@@ -154,55 +182,57 @@ export const ResizeablePanel: FC<ResizeablePanelProps> = ({
         {slotLeft}
       </div>
 
-      <div
-        ref={separatorRef}
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={separatorLabel}
-        aria-valuemin={minLeftWidth}
-        aria-valuemax={resolvedMaxLeftWidth}
-        aria-valuenow={leftWidth}
-        tabIndex={0}
-        className={cn(
-          'group relative shrink-0 cursor-col-resize items-center justify-center focus-visible:outline-none',
-          plain
-            ? 'flex w-[var(--spacing-density-md)]'
-            : 'flex w-3 border-y border-base bg-surface-raised',
-          !plain && isDragging && 'bg-surface-hover',
-          separatorClassName
-        )}
-        onMouseDown={handleMouseDown}
-        onKeyDown={handleKeyDown}
-      >
-        {plain ? (
-          <span
-            className={cn(
-              'flex h-10 w-1 items-center justify-center rounded-full bg-border-base transition-colors group-hover:bg-border-strong group-focus-visible:bg-border-brand',
-              isDragging && 'bg-border-brand'
-            )}
-          >
-            <GripVertical aria-hidden className="size-3 max-w-none text-secondary" />
-          </span>
-        ) : (
-          <>
-            <div
+      {!isStacked ? (
+        <div
+          ref={separatorRef}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={separatorLabel}
+          aria-valuemin={minLeftWidth}
+          aria-valuemax={Math.round(resolvedMaxLeftWidth)}
+          aria-valuenow={Math.round(leftWidth)}
+          tabIndex={0}
+          className={cn(
+            'group relative shrink-0 cursor-col-resize items-center justify-center focus-visible:outline-none',
+            plain
+              ? 'flex w-[var(--spacing-density-md)]'
+              : 'flex w-3 border-y border-base bg-surface-raised',
+            !plain && isDragging && 'bg-surface-hover',
+            separatorClassName
+          )}
+          onMouseDown={handleMouseDown}
+          onKeyDown={handleKeyDown}
+        >
+          {plain ? (
+            <span
               className={cn(
-                'absolute inset-y-0 left-[5px] w-px bg-border-base transition-colors',
-                'group-hover:bg-border-strong',
+                'flex h-10 w-1 items-center justify-center rounded-full bg-border-base transition-colors group-hover:bg-border-strong group-focus-visible:bg-border-brand',
                 isDragging && 'bg-border-brand'
               )}
-            />
-            <GripVertical
-              className={cn(
-                'relative z-10 size-3 text-content-secondary transition-opacity',
-                'opacity-0 group-hover:opacity-100',
-                isDragging && 'opacity-100 text-content-brand'
-              )}
-              aria-hidden
-            />
-          </>
-        )}
-      </div>
+            >
+              <GripVertical aria-hidden className="size-3 max-w-none text-secondary" />
+            </span>
+          ) : (
+            <>
+              <div
+                className={cn(
+                  'absolute inset-y-0 left-[5px] w-px bg-border-base transition-colors',
+                  'group-hover:bg-border-strong',
+                  isDragging && 'bg-border-brand'
+                )}
+              />
+              <GripVertical
+                className={cn(
+                  'relative z-10 size-3 text-content-secondary transition-opacity',
+                  'opacity-0 group-hover:opacity-100',
+                  isDragging && 'opacity-100 text-content-brand'
+                )}
+                aria-hidden
+              />
+            </>
+          )}
+        </div>
+      ) : null}
 
       <div
         className={cn(

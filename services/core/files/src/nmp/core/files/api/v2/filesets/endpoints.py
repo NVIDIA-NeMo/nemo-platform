@@ -5,6 +5,7 @@
 
 import logging
 from dataclasses import dataclass
+from typing import ClassVar
 
 from fastapi import (
     APIRouter,
@@ -17,14 +18,17 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.errors import NemoClientError
 from nmp.common.api.common import GenericSortField, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.entities.client import (
+    EntityBase,
     EntityClient,
     EntityConflictError,
     EntityNotFoundError,
+    EntityStoreError,
 )
 from nmp.common.files.storage_config import LocalStorageConfig, S3StorageConfig
 from nmp.common.observability import BaseContext, scoped_app_ctx
@@ -88,11 +92,96 @@ from starlette.status import (
     HTTP_409_CONFLICT,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_502_BAD_GATEWAY,
+    HTTP_503_SERVICE_UNAVAILABLE,
     HTTP_507_INSUFFICIENT_STORAGE,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_REFERENCE_COUNT_PAGE_SIZE = 1
+
+
+def _sanitize_for_log(value: object) -> str:
+    """Strip line breaks from a value before logging."""
+    return str(value).replace("\r", "").replace("\n", "")
+
+
+_HTTP_EXCEPTION_DETAIL = {
+    "content": {
+        "application/json": {
+            "schema": {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            }
+        }
+    }
+}
+
+
+class _ModelFilesetReference(EntityBase):
+    """Minimal model projection used for fileset reference checks."""
+
+    __entity_type__: ClassVar[str] = "model"
+    fileset: str | None = None
+
+
+class _AdapterFilesetReference(EntityBase):
+    """Minimal adapter projection used for fileset reference checks."""
+
+    __entity_type__: ClassVar[str] = "adapter"
+    fileset: str
+
+
+async def _count_fileset_references(
+    entity_store: EntityClient,
+    entity_type: type[_ModelFilesetReference] | type[_AdapterFilesetReference],
+    fileset_ref: str,
+    *,
+    workspace: str = "-",
+) -> int:
+    """Count references using pagination metadata without fetching every entity."""
+    result = await entity_store.list(
+        entity_type,
+        workspace=workspace,
+        filter_obj={"fileset": fileset_ref},
+        page_size=_REFERENCE_COUNT_PAGE_SIZE,
+    )
+    return result.pagination.total_results
+
+
+async def _count_entity_fileset_references(
+    entity_store: EntityClient,
+    entity_type: type[_ModelFilesetReference] | type[_AdapterFilesetReference],
+    workspace: str,
+    name: str,
+) -> int:
+    """Count qualified, legacy URI, and same-workspace bare references."""
+    qualified_ref = f"{workspace}/{name}"
+    qualified_count = await _count_fileset_references(entity_store, entity_type, qualified_ref)
+    legacy_uri_count = await _count_fileset_references(entity_store, entity_type, f"fileset://{qualified_ref}")
+    bare_count = await _count_fileset_references(
+        entity_store,
+        entity_type,
+        name,
+        workspace=workspace,
+    )
+    legacy_bare_count = await _count_fileset_references(
+        entity_store,
+        entity_type,
+        f"fileset://{name}",
+        workspace=workspace,
+    )
+    return qualified_count + legacy_uri_count + bare_count + legacy_bare_count
+
+
+def _format_fileset_dependents(workspace: str, name: str, model_count: int, adapter_count: int) -> str:
+    """Format a referential-integrity error without leaking entity names."""
+    return (
+        f"Cannot delete fileset '{workspace}/{name}' because {model_count} model entity reference(s) "
+        f"and {adapter_count} adapter entity reference(s) still use it. "
+        "Relink or delete the dependent entities first."
+    )
 
 
 def _get_cache_lock_manager(
@@ -352,6 +441,16 @@ async def retrieve_fileset(
     "/v2/workspaces/{workspace}/filesets/{name}",
     summary="Delete Fileset",
     status_code=HTTP_200_OK,
+    responses={
+        HTTP_409_CONFLICT: {
+            "description": "Fileset is referenced by a model or adapter entity",
+            **_HTTP_EXCEPTION_DETAIL,
+        },
+        HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "Fileset references could not be verified",
+            **_HTTP_EXCEPTION_DETAIL,
+        },
+    },
 )
 async def delete_fileset(
     workspace: str,
@@ -363,12 +462,51 @@ async def delete_fileset(
     """
     Delete Fileset.
 
-    Permanently deletes a fileset from the platform.
+    Permanently deletes an unreferenced fileset from the platform.
+    Referencing model or adapter entities must be relinked or deleted first.
     Returns metadata about the deleted fileset.
     For local storage backends, this also deletes the underlying files.
     """
     logger.info(f"DELETE /filesets/{name} - workspace={workspace}")
     fileset = await get_fileset(workspace, name, entity_store)
+
+    try:
+        # Referential checks and deletion are separate Entity Store requests. Model
+        # consumers revalidate the fileset before use so a concurrent write cannot
+        # turn into a late job-runtime failure.
+        reference_store = entity_store.as_service("files", internal=True)
+        model_count = await _count_entity_fileset_references(
+            reference_store,
+            _ModelFilesetReference,
+            workspace,
+            name,
+        )
+        adapter_count = await _count_entity_fileset_references(
+            reference_store,
+            _AdapterFilesetReference,
+            workspace,
+            name,
+        )
+    except (EntityStoreError, NemoClientError) as exc:
+        # EntityClient.list() raises NemoHTTPError / NemoTransportError (both
+        # NemoClientError). EntityStoreError is reserved for grouped-count parsing.
+        logger.error(
+            "Cannot verify dependents for fileset '%s/%s': %s",
+            _sanitize_for_log(workspace),
+            _sanitize_for_log(name),
+            exc,
+        )
+        raise HTTPException(
+            HTTP_503_SERVICE_UNAVAILABLE,
+            f"Cannot delete fileset '{workspace}/{name}' because its model and adapter references "
+            "could not be verified. Retry when the Entities service is available.",
+        ) from exc
+
+    if model_count or adapter_count:
+        raise HTTPException(
+            HTTP_409_CONFLICT,
+            _format_fileset_dependents(workspace, name, model_count, adapter_count),
+        )
 
     # Delete underlying source storage data. This is a no-op for external backends
     # like NGC/HuggingFace, and removes files for backends we own (local/S3).

@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { isNotFoundError } from '@nemo/common/src/api/common/utils';
-import { agentsCreateAgent, agentsGetAgent } from '@nemo/sdk/generated/agents/api';
+import { agentsCreateAgent, agentsGetAgent } from '@nemo/sdk/generated/agents/agents';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import {
   filesCreateFileset,
   filesDeleteFileset,
   filesRetrieveFileset,
   filesUploadFile,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/files';
 import {
   AGENT_CONFIG_FILENAME,
   FABRIC_CONFIG_FORMAT,

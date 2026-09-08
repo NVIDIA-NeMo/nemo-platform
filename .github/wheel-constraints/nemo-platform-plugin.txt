@@ -1,5 +1,6 @@
 # Partial dependency constraints for the CI wheel install-smoke-test.
-# Pins the DIRECT external deps of the built nemo-platform-plugin wheel to vetted versions for
+# Pins the DIRECT external deps of the built nemo-platform-plugin wheel (plus any pre-release
+# transitive, which uv resolves only when named) to vetted versions for
 # reproducibility; deep transitives resolve normally and cannot self-conflict.
 # Regenerate with: script/compile-wheel-constraints.sh <dir-with-built-wheels>
 #

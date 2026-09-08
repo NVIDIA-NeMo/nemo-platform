@@ -26,14 +26,16 @@ from nemo_platform_plugin.inference_middleware import (
     InferenceMiddlewareError,
     InferenceRequest,
     InferenceResponse,
-    MiddlewareCall,
     MiddlewareConfigNotFoundError,
     ModelProviderInferenceTarget,
     NemoInferenceMiddleware,
     OpenAICompatibleInferenceTarget,
+)
+from nemo_platform_plugin.inference_middleware_models import (
+    MiddlewareCall,
     VirtualModelInferenceConfig,
 )
-from nemo_platform_plugin.inference_middleware import (
+from nemo_platform_plugin.inference_middleware_models import (
     VirtualModel as PluginVirtualModel,
 )
 from nmp.common.config import get_platform_config
@@ -703,7 +705,7 @@ def _sdk_vm_to_plugin_vm(vm: SDKVirtualModel) -> PluginVirtualModel:
             MiddlewareCall(
                 name=c.name or "",
                 config_type=c.config_type or "",
-                config=dict(c.config) if c.config else None,
+                config=dict(c.config) if c.config is not None else None,
                 config_id=c.config_id,
             )
             for c in calls

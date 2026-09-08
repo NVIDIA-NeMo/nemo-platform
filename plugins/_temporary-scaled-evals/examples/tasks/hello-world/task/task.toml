@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+version = "1.0"
+
+[metadata]
+author_name = "NVIDIA"
+author_email = "nemo-platform@nvidia.com"
+difficulty = "easy"
+category = "software-engineering"
+tags = [ "smoke", "filesystem",]
+expert_time_estimate_min = 1.0
+junior_time_estimate_min = 1.0
+
+[verifier]
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0

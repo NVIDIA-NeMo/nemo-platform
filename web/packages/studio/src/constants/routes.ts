@@ -60,7 +60,6 @@ export const ROUTES = {
     dashboard: `/workspaces/:${P.workspace}/dashboard`,
     jobs: `/workspaces/:${P.workspace}/jobs`,
     jobDetail: `/workspaces/:${P.workspace}/jobs/:${P.jobName}`,
-    promptTuningForm: `/workspaces/:${P.workspace}/customizations/prompt-tuned/new`,
     newCustomizationJob: `/workspaces/:${P.workspace}/customizations/fine-tuned/new`,
     baseModels: `/workspaces/:${P.workspace}/base-models`,
     /** Base models list with a specific model panel open (model name in path) */

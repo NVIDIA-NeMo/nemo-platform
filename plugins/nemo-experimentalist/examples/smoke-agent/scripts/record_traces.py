@@ -26,7 +26,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_nat
     HarborNativeOutcomeEvaluator,
 )
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
-from nemo_platform import AsyncNeMoPlatform, NotFoundError
+from nemo_platform import AsyncNeMoPlatform, ConflictError, NotFoundError
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
@@ -35,6 +35,24 @@ AGENT_NAME = "smoke-agent"
 AGENT_VERSION = "1.0.0"
 POLL_ATTEMPTS = 30
 POLL_DELAY_SECONDS = 2.0
+
+
+async def _ensure_evaluation(client: AsyncNeMoPlatform, *, workspace: str, name: str) -> None:
+    """Register the Evaluation these spans name, or Intake drops them."""
+    try:
+        group = await client.experiments.create(workspace=workspace, name=name)
+    except ConflictError:
+        group = await client.experiments.retrieve(name, workspace=workspace)
+    try:
+        await client.evaluations.create(
+            workspace=workspace,
+            name=name,
+            experiment_ids=[group.id],
+            dataset_name=name,
+            dataset_version="v1",
+        )
+    except ConflictError:
+        pass
 
 
 async def _upload_trials(
@@ -111,6 +129,7 @@ async def run(args: argparse.Namespace) -> dict[str, str]:
                 body=CreateWorkspaceRequest(name=args.workspace, description="smoke-agent traces for Insights"),
             )
         ).data()
+        await _ensure_evaluation(client, workspace=args.workspace, name=args.group)
         options = HarborEvaluatorConfig(
             job_name=f"smoke-{args.group}-{args.split}-record",
             jobs_dir=Path("results"),

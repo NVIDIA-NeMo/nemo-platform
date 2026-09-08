@@ -12,6 +12,7 @@ from nemo_agents_plugin.entities import NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_
 from nemo_agents_plugin.utils import (
     inject_default_model,
     inject_fabric_gateway_url,
+    inject_fabric_trace_agent_name,
     inject_gateway_url,
     inject_nemo_trace_fields,
 )
@@ -72,8 +73,8 @@ class _NemoAgentsSpecConfigHandler:
         workspace: str,
         agent_name: str,
     ) -> dict[str, Any]:
-        del agent_name
-        return self._normalize(inject_fabric_gateway_url(config, workspace))
+        resolved = self._normalize(inject_fabric_gateway_url(config, workspace))
+        return inject_fabric_trace_agent_name(resolved, agent_name)
 
     @staticmethod
     def _normalize(config: dict[str, Any]) -> dict[str, Any]:

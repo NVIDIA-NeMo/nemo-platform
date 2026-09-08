@@ -3,8 +3,8 @@
 
 import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSelect/parseFilesetLocation';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
-import { useDataDesignerListCreateJobResults } from '@nemo/sdk/generated/data-designer/api';
-import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
+import { useDataDesignerListCreateJobResults } from '@nemo/sdk/generated/data-designer/data-designer';
+import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/files';
 import type { FilesetFileOutput } from '@nemo/sdk/generated/platform/schema';
 import { useDataDesignerJobFromRoute } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerJobFromRoute';
 import { useMemo } from 'react';

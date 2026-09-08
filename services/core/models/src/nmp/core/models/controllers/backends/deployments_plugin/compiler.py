@@ -22,10 +22,12 @@ from nemo_deployments_plugin.entities import (
     Volume,
     VolumeBackendConfig,
     VolumeMount,
+    WorkloadIdentitySpec,
 )
 from nemo_deployments_plugin.secrets import platform_ngc_secret_ref
 from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nmp.common.auth import get_workload_identity_token_audience, is_workload_identity_token_exchange_enabled
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
@@ -107,6 +109,16 @@ def _busybox_image(config: DeploymentsPluginConfig) -> str:
     return _image(config.busybox_image, config.busybox_image_tag)
 
 
+def _weights_permissions_init_container(config: DeploymentsPluginConfig, volume_name: str) -> Container:
+    """chmod the model store so a non-root server can read the puller's 0600 HF cache."""
+    return Container(
+        name="weights-permissions-init",
+        image=_busybox_image(config),
+        command=["sh", "-c", f"chmod -R a+rX {_WEIGHTS_MOUNT}"],
+        volumeMounts=[VolumeMount(name=volume_name, mountPath=_WEIGHTS_MOUNT)],
+    )
+
+
 def _weighted(resolved: ResolvedPluginDeployment, engine: str) -> bool:
     is_files = resolved.weights_type == ModelWeightsType.FILES_SERVICE
     if engine == ENGINE_VLLM:
@@ -114,6 +126,23 @@ def _weighted(resolved: ResolvedPluginDeployment, engine: str) -> bool:
     if engine == ENGINE_NIM:
         return is_files
     return is_files or bool(resolved.model_entity and resolved.model_entity.fileset)
+
+
+def _model_deployment_workload_id(resolved: ResolvedPluginDeployment) -> str:
+    return f"{resolved.deployment.name}/v{resolved.deployment.entity_version}"
+
+
+def _workload_identity_for_model(resolved: ResolvedPluginDeployment) -> WorkloadIdentitySpec | None:
+    if resolved.deployment.auth_context is None:
+        return None
+    if not is_workload_identity_token_exchange_enabled():
+        return None
+    return WorkloadIdentitySpec(
+        enabled=True,
+        workloadKind="model_deployment",
+        workloadId=_model_deployment_workload_id(resolved),
+        tokenAudience=get_workload_identity_token_audience(),
+    )
 
 
 def _env(values: dict[str, str]) -> list[EnvVar]:
@@ -234,6 +263,7 @@ def compile_model_deployment(
         else None
     )
     backend_config = k8s_backend if k8s_backend is not None and k8s_backend.k8s is not None else None
+    workload_identity = _workload_identity_for_model(resolved)
     volume = None
     scratch_volume = None
     puller_config = None
@@ -278,6 +308,7 @@ def compile_model_deployment(
             restartPolicy="OnFailure",
             backoffLimit=config.max_restart_count,
             backendConfig=backend_config or DeploymentBackendConfig(),
+            workloadIdentity=workload_identity,
         )
 
     tool_call_inits = tool_call_plugin_init_containers(
@@ -319,7 +350,12 @@ def compile_model_deployment(
     mounts: list[VolumeMount] = []
     if weighted:
         mounts.append(VolumeMount(name=names.volume, mountPath=_WEIGHTS_MOUNT, readOnly=True))
-    init_containers: list[Container] = list(tool_call_inits or [])
+    init_containers: list[Container] = []
+    # Skip when k8s pins a shared uid; otherwise the root puller's 0600 HF cache is unreadable.
+    security_context = backend_config.k8s.security_context if backend_config and backend_config.k8s else None
+    if weighted and (security_context is None or security_context.run_as_user is None):
+        init_containers.append(_weights_permissions_init_container(config, names.volume))
+    init_containers.extend(tool_call_inits or [])
     server_config_containers: list[Container]
     readiness_probe = Probe(httpGet=HTTPGetAction(path=resolve_health_path(engine, resolved.view), port=8000))
     vllm_command = ["vllm", "serve"] if engine == ENGINE_VLLM else None
@@ -356,11 +392,11 @@ def compile_model_deployment(
         if engine == ENGINE_NIM:
             apply_k8s_nim_operator_container_overrides(server, readiness_probe, resolved.view)
         if resolved.runtime == Runtime.DOCKER:
-            # Docker v1 is single-container today; emit a second container so the
-            # shape matches the locked design for when the plugin docker backend
-            # accepts multi-container DeploymentConfigs. In practice the backend
-            # fails fast on docker + LoRA before reaching create (see
-            # DeploymentsPluginServiceBackend.create_model_deployment).
+            # Docker emits the sidecar as a second container in the server
+            # DeploymentConfig (rather than a k8s-style native/init sidecar).
+            # The docker backend starts it sharing the server's network
+            # namespace and volumes; its command/args must be a valid
+            # executable (see lora_sidecar_command in config).
             server_config_containers = [server, lora]
         else:
             server_config_containers = [server]
@@ -389,6 +425,7 @@ def compile_model_deployment(
         labels=_labels(resolved, engine, "server"),
         restartPolicy="Always",
         backendConfig=backend_config or DeploymentBackendConfig(),
+        workloadIdentity=workload_identity,
     )
     if engine == ENGINE_NIM:
         apply_nim_override_config(

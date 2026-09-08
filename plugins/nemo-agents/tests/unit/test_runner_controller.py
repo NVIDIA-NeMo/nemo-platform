@@ -32,6 +32,7 @@ from nemo_agents_plugin.entities import (
 )
 from nemo_agents_plugin.runner.backend import DeploymentInfo
 from nemo_agents_plugin.runner.controller import AgentDeploymentController
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntityConflictError
 
@@ -589,12 +590,35 @@ async def test_start_deployment_forwards_image_entrypoint_mode() -> None:
 
     await ctrl._start_deployment(dep)
 
-    kwargs = backend.create_deployment.await_args.kwargs
+    await_args = backend.create_deployment.await_args
+    assert await_args is not None
+    kwargs = await_args.kwargs
     assert kwargs["image"] == "hand-built-agent:latest"
     assert kwargs["deployment_mode"] == "docker"
     assert kwargs["use_image_entrypoint"] is True
     assert dep.endpoint == ""
     assert dep.plugin_deployment == "dep-1"
+
+
+@pytest.mark.asyncio
+async def test_start_deployment_forwards_auth_context_to_backend() -> None:
+    ctrl, backend = _make_controller()
+    backend.allocate_port = MagicMock(return_value=0)
+    backend.create_deployment = AsyncMock(return_value=DeploymentInfo(name="dep-1", status="starting"))
+    auth_context = AuthContext(principal_id="user:alice", principal_groups=["research"])
+    dep = AgentDeployment(
+        name="dep-1",
+        workspace="default",
+        agent="calc",
+        status="pending",
+        deployment_mode="docker",
+    ).with_auth_context(auth_context)
+
+    await ctrl._start_deployment(dep)
+
+    await_args = backend.create_deployment.await_args
+    assert await_args is not None
+    assert await_args.kwargs["auth_context"] == auth_context
 
 
 # ---------------------------------------------------------------------------
@@ -642,7 +666,8 @@ async def test_check_health_marks_failed_when_subprocess_exited() -> None:
 async def test_check_health_marks_running_when_healthy() -> None:
     """Backward behaviour: a healthy process flips to ``running``."""
     ctrl, backend = _make_controller()
-    backend.get_deployment_status = AsyncMock(return_value=DeploymentInfo(name="dep-1", status="starting"))
+    info = DeploymentInfo(name="dep-1", status="starting")
+    backend.get_deployment_status = AsyncMock(return_value=info)
     backend.health_check = AsyncMock(return_value=True)
     dep = AgentDeployment(
         name="dep-1",
@@ -656,6 +681,12 @@ async def test_check_health_marks_running_when_healthy() -> None:
     await ctrl._check_health(dep)
 
     assert dep.status == "running"
+    assert info.status == "running"
+
+    ctrl._reconcile_deployment_sessions_after_restart = AsyncMock()  # type: ignore[method-assign]
+    ctrl._observe_runtime_instance = AsyncMock()  # type: ignore[method-assign]
+    await ctrl._verify_running(dep)
+    ctrl._reconcile_deployment_sessions_after_restart.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

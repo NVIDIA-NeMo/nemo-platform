@@ -19,6 +19,7 @@ from nemo_automodel.components.training.step_scheduler import StepScheduler
 from nemo_automodel.recipes.llm.kd import KnowledgeDistillationRecipeForNextTokenPrediction
 from nemo_automodel.recipes.llm.train_ft import TrainFinetuneRecipeForNextTokenPrediction
 from nemo_automodel.recipes.retrieval.train_bi_encoder import TrainBiEncoderRecipe
+from nemo_automodel.recipes.retrieval.train_cross_encoder import TrainCrossEncoderRecipe
 from nmp.automodel.tasks.training.progress import JobsServiceProgressReporter
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.callbacks import DatasetQualifier, TrainingProgressCallback
@@ -344,13 +345,11 @@ def _is_kd_config(cfg: Any) -> bool:
     return cfg.get("teacher_model") is not None or cfg.get("kd_ratio") is not None
 
 
-def _is_biencoder_config(cfg: Any) -> bool:
-    """Check if config is for biencoder/embedding model training.
-
-    Detects biencoder configs by checking if model._target_ contains 'biencoder'.
+def _model_target_contains(cfg: Any, needle: str) -> bool:
+    """Check a resolved model target's module/name for a recipe marker.
 
     Note: ConfigNode automatically resolves _target_ to the actual function/class,
-    so we check the function's __module__ or __qualname__ for 'biencoder'.
+    so inspect the function's module and qualified name.
     """
     try:
         model_cfg = cfg.get("model", {})
@@ -365,16 +364,20 @@ def _is_biencoder_config(cfg: Any) -> bool:
         # Check its module path or qualified name
         module = getattr(target, "__module__", "") or ""
         qualname = getattr(target, "__qualname__", "") or ""
-        return "biencoder" in module.lower() or "biencoder" in qualname.lower()
+        needle = needle.lower()
+        return needle in module.lower() or needle in qualname.lower()
     except (AttributeError, TypeError):
         return False
 
 
 def create_automodel_recipe(cfg: Any) -> AutomodelRecipeWrapper:
     """Create a progress-reporting wrapper for the recipe implied by *cfg*."""
-    if _is_biencoder_config(cfg):
+    if _model_target_contains(cfg, "biencoder"):
         logger.info("Detected biencoder config, using embedding model recipe")
         base_recipe = TrainBiEncoderRecipe(cfg)
+    elif _model_target_contains(cfg, "crossencoder"):
+        logger.info("Detected cross-encoder config, using reranking recipe")
+        base_recipe = TrainCrossEncoderRecipe(cfg)
     elif _is_kd_config(cfg):
         logger.info("Detected Knowledge Distillation config, using KD recipe")
         base_recipe = KnowledgeDistillationRecipeForNextTokenPrediction(cfg)

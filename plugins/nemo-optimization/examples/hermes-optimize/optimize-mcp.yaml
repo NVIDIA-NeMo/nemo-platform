@@ -80,7 +80,8 @@ optimizer:
     temperature:
       type: fabric
       path: models.default.temperature
-      values: [0.0, 0.2, 0.5]
+      low: 0.0
+      high: 0.5
     top_p:
       type: fabric
       path: models.default.top_p

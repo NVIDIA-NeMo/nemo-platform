@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { RlGRPOTrainingFinetuningType } from '@nemo/sdk/generated/customizer/schema';
 import {
   FORM_DEFAULTS,
+  RL_DPO_TRAINING_DEFAULTS,
+  RL_GRPO_TRAINING_DEFAULTS,
   customizationFormSchema,
   formToAutomodelCreate,
-  formToRlCreate,
   formToUnslothCreate,
   type CustomizationFormFields,
 } from '@studio/util/forms/customization';
@@ -32,15 +34,16 @@ const validUnsloth = (): CustomizationFormFields => {
   return data;
 };
 
-/** A fully-valid GRPO form value (model, dataset and reward environment filled). */
+/** A fully-valid GRPO form value (model + dataset + reward environment filled). */
 const validGrpo = (): CustomizationFormFields => {
   const data = structuredClone(FORM_DEFAULTS);
   data.backend = 'rl';
   data.outputName = 'my-output';
-  data.rl.model = 'default/qwen3-1.7b';
-  data.rl.dataset = 'default/train-ds';
+  data.rl.model = 'default/qwen3-0.6b';
+  data.rl.dataset = 'default/gym-data';
+  data.rl.training = structuredClone(RL_GRPO_TRAINING_DEFAULTS);
   data.grpo.trainingType = 'grpo';
-  data.grpo.environmentFileset = 'default/ascii-tree-env';
+  data.grpo.environmentFileset = 'default/gym-env';
   return data;
 };
 
@@ -269,66 +272,94 @@ describe('formToUnslothCreate', () => {
   });
 });
 
-describe('formToRlCreate (GRPO)', () => {
-  /**
-   * react-hook-form materialises these parent objects as soon as their nested sliders
-   * register, so an untouched group reaches the mapper as all-undefined rather than
-   * absent. The backend rejects a reward_shaping carrying no penalty, so forwarding it
-   * fails a submit the user never configured.
-   */
-  it('omits reward groups the user never filled in', () => {
-    const spec = formToRlCreate(validGrpo()).spec;
-    const training = spec.training as unknown as Record<string, unknown>;
-    expect(training.reward_shaping).toBeUndefined();
-    expect(training.reward_scaling).toBeUndefined();
+describe('GRPO defaults', () => {
+  const training = RL_GRPO_TRAINING_DEFAULTS as {
+    learning_rate: number;
+    adam_eps: number;
+    val_check_interval: number;
+  };
+
+  // The inherited 1e-4 is SFT-scale and collapses a full-weight policy in a few dozen
+  // steps; the platform GRPO fixtures train at 5e-6. One value covers both finetuning
+  // types -- the backend's lora.alpha/rank scaling raises the adapter's effective rate.
+  it('trains at an RL-scale learning rate, not the inherited SFT default', () => {
+    expect(training.learning_rate).toBe(5e-6);
+    expect(training.learning_rate).toBeLessThan(2e-5);
   });
 
-  it('omits a reward group whose fields are all cleared', () => {
+  // Backend default is 1e-5, overridden to Torch's 1e-8 in the shared block. Fixed
+  // for GRPO only; DPO keeps the shared value so its numerics do not shift.
+  it('matches the backend adam_eps default without touching the shared value', () => {
+    expect(training.adam_eps).toBe(1e-5);
+    expect((RL_DPO_TRAINING_DEFAULTS as { adam_eps: number }).adam_eps).toBe(1e-8);
+  });
+
+  // The backend floors (1.0, 2.0) to "validate every step"; at or above 2 the value
+  // is unambiguously a step count.
+  it('sets a validation cadence clear of the fraction/step-count discontinuity', () => {
+    expect(training.val_check_interval).toBeGreaterThanOrEqual(2);
+    expect(Number.isInteger(training.val_check_interval)).toBe(true);
+  });
+
+  it('ships a rollout batch that is a multiple of the global batch size', () => {
+    const { grpo, rl } = validGrpo();
+    const rollout = grpo.num_prompts_per_step! * grpo.num_generations_per_prompt;
+    expect(rollout % rl.training.batch_size!).toBe(0);
+  });
+});
+
+describe('GRPO form validation', () => {
+  it('accepts the default GRPO form', () => {
+    expect(messages(validGrpo())).toEqual([]);
+  });
+
+  it('requires a reward environment fileset', () => {
     const data = validGrpo();
-    data.grpo.reward_shaping = {
-      overlong_buffer_length: undefined,
-      overlong_buffer_penalty: undefined,
-      max_response_length: undefined,
-      stop_properly_penalty_coef: undefined,
-    };
-    const training = formToRlCreate(data).spec.training as unknown as Record<string, unknown>;
-    expect(training.reward_shaping).toBeUndefined();
+    data.grpo.environmentFileset = '';
+    expect(messages(data)).toContain('A reward environment fileset is required for GRPO training');
   });
 
-  it('keeps a reward group once any field is set', () => {
+  it('rejects max new tokens above the max sequence length', () => {
     const data = validGrpo();
-    data.grpo.reward_shaping = { stop_properly_penalty_coef: 0.5 };
-    const training = formToRlCreate(data).spec.training as unknown as Record<string, unknown>;
-    expect(training.reward_shaping).toEqual({ stop_properly_penalty_coef: 0.5 });
+    data.rl.training.max_seq_length = 2048;
+    data.grpo.max_new_tokens = 4096;
+    expect(messages(data).join(' ')).toContain('cannot exceed the max sequence length');
   });
 
-  it('sends the batch multiplier only while dynamic sampling is on', () => {
-    const off = validGrpo();
-    off.grpo.use_dynamic_sampling = false;
-    off.grpo.batch_multiplier = 1.5;
-    expect(
-      (formToRlCreate(off).spec.training as unknown as Record<string, unknown>).batch_multiplier
-    ).toBeUndefined();
-
-    const on = validGrpo();
-    on.grpo.use_dynamic_sampling = true;
-    on.grpo.batch_multiplier = 1.5;
-    expect(
-      (formToRlCreate(on).spec.training as unknown as Record<string, unknown>).batch_multiplier
-    ).toBe(1.5);
-  });
-
-  it('drops empty LoRA module lists rather than sending them as filters', () => {
+  // The backend only catches this after the job is accepted and scheduled onto GPUs.
+  it('rejects a rollout batch that is not a multiple of the global batch size', () => {
     const data = validGrpo();
-    data.grpo.finetuning_type = 'lora';
-    data.grpo.lora = { ...data.grpo.lora, target_modules: [], exclude_modules: ['*out_proj*'] };
-    const lora = (formToRlCreate(data).spec.training as unknown as Record<string, unknown>)
-      .lora as Record<string, unknown>;
-    expect(lora.target_modules).toBeUndefined();
-    expect(lora.exclude_modules).toEqual(['*out_proj*']);
+    data.rl.training.batch_size = 32;
+    data.grpo.num_prompts_per_step = 9;
+    data.grpo.num_generations_per_prompt = 8;
+    expect(messages(data).join(' ')).toContain('must be a multiple of the global batch size (32)');
   });
 
-  it('omits integrations when every field is blank', () => {
-    expect(formToRlCreate(validGrpo()).spec.integrations).toBeUndefined();
+  it('accepts a rollout batch that is an exact multiple', () => {
+    const data = validGrpo();
+    data.rl.training.batch_size = 32;
+    data.grpo.num_prompts_per_step = 8;
+    data.grpo.num_generations_per_prompt = 8;
+    expect(messages(data)).toEqual([]);
+  });
+
+  // _build_lora_cfg turns use_triton off itself when tp > 1, so blocking the
+  // combination here would refuse a job the backend runs fine.
+  it.each([1, 2])('accepts Triton LoRA kernels at tensor parallel size %i', (tp) => {
+    const data = validGrpo();
+    data.grpo.finetuning_type = RlGRPOTrainingFinetuningType.lora;
+    data.grpo.lora.use_triton = true;
+    data.rl.training.parallelism = { ...data.rl.training.parallelism, tensor_parallel_size: tp };
+    expect(messages(data)).toEqual([]);
+  });
+
+  // Clearing the input leaves the field undefined and the backend derives it, so the
+  // rule still has to be checked: 32 / 5 floors to 6, giving 30 against a batch of 32.
+  it('rejects a derived rollout batch that is not a multiple of the batch size', () => {
+    const data = validGrpo();
+    data.rl.training.batch_size = 32;
+    data.grpo.num_generations_per_prompt = 5;
+    data.grpo.num_prompts_per_step = undefined as unknown as number;
+    expect(messages(data).join(' ')).toContain('must be a multiple of the global batch size (32)');
   });
 });

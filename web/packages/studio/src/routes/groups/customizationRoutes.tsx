@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -9,18 +10,12 @@ import {
   gateCustomizationRoutes,
   getWorkspaceCustomizationJobListRoute,
 } from '@studio/routes/utils';
-import { Metronome } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
 const NewCustomizationRoute = lazy(() =>
   import('@studio/routes/NewCustomizationRoute/index').then((module) => ({
     default: module.NewCustomizationRoute,
-  }))
-);
-const PromptTuningFormRoute = lazy(() =>
-  import('@studio/routes/PromptTuningFormRoute/index').then((module) => ({
-    default: module.PromptTuningFormRoute,
   }))
 );
 const CustomizationJobListRoute = lazy(() =>
@@ -41,11 +36,6 @@ export const customizationRoutes: RouteObject[] = gateCustomizationRoutes([
     errorElement: <RouteErrorPanel title="Customizer" />,
   },
   {
-    path: ROUTES.workspace.promptTuningForm,
-    element: <PromptTuningFormRoute />,
-    errorElement: <RouteErrorPanel title="Customizer" />,
-  },
-  {
     path: ROUTES.workspace.customizationJobList,
     element: <CustomizationJobListRoute />,
     errorElement: <RouteErrorPanel title="Customizer" />,
@@ -57,12 +47,14 @@ export const customizationRoutes: RouteObject[] = gateCustomizationRoutes([
   },
 ]);
 
+const NavIcon = ENTITY_ICONS.customModels;
+
 export const getCustomizationSideNavItems = (workspace: string) =>
   CUSTOMIZER_ENABLED
     ? [
         {
           id: 'custom-models',
-          slotIcon: <Metronome className={iconColorClass} />,
+          slotIcon: <NavIcon className={iconColorClass} />,
           slotLabel: 'Fine-tune',
           href: getWorkspaceCustomizationJobListRoute(workspace),
         },
