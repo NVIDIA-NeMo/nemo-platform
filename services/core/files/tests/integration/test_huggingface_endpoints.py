@@ -13,6 +13,8 @@ HuggingFace storage backends.
 import httpx
 from huggingface_hub import HfApi, hf_hub_download, hf_hub_url, snapshot_download
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import FilesetOutput
 from nmp.core.files.testing.utils import create_fileset
 
@@ -42,10 +44,10 @@ class TestHuggingFaceClientLibrary:
 
         # Upload all files
         for path, content in test_files.items():
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=content,
-                remote_path=path,
-                fileset=fileset.name,
+                path=path,
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
@@ -73,10 +75,10 @@ class TestHuggingFaceClientLibrary:
         test_content = b"This is a test file for single download"
         test_path = "single_file.txt"
 
-        sdk.files.upload_content(
+        client_from_platform(sdk, FilesClient).upload_file(
             content=test_content,
-            remote_path=test_path,
-            fileset=fileset.name,
+            path=test_path,
+            name=fileset.name,
             workspace=fileset.workspace,
         )
 
@@ -104,10 +106,10 @@ class TestHuggingFaceClientLibrary:
         }
 
         for path, content in test_files.items():
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=content,
-                remote_path=path,
-                fileset=fileset.name,
+                path=path,
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
@@ -132,10 +134,10 @@ class TestHuggingFaceClientLibrary:
         test_content = b"Content for hf_hub_url test"
         test_path = "url_test_file.txt"
 
-        sdk.files.upload_content(
+        client_from_platform(sdk, FilesClient).upload_file(
             content=test_content,
-            remote_path=test_path,
-            fileset=fileset.name,
+            path=test_path,
+            name=fileset.name,
             workspace=fileset.workspace,
         )
 
@@ -167,10 +169,10 @@ class TestHfFileDownload:
         """Test HEAD request returns correct headers."""
         with create_fileset(sdk) as fileset:
             content = b"test content"
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=content,
-                remote_path="data.txt",
-                fileset=fileset.name,
+                path="data.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
@@ -188,10 +190,10 @@ class TestHfFileDownload:
     def test_revision_is_ignored(self, sdk: NeMoPlatform, client: httpx.Client, hf_auth_headers):
         """Test that revision parameter is ignored (we don't version filesets)."""
         with create_fileset(sdk) as fileset:
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=b"content",
-                remote_path="data.txt",
-                fileset=fileset.name,
+                path="data.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
@@ -210,10 +212,10 @@ class TestHfFileDownload:
     def test_range_request(self, sdk: NeMoPlatform, client: httpx.Client, hf_auth_headers):
         """Test Range header is respected."""
         with create_fileset(sdk) as fileset:
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=b"0123456789",
-                remote_path="data.txt",
-                fileset=fileset.name,
+                path="data.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
@@ -250,10 +252,10 @@ class TestHfFileDownload:
         """
         with create_fileset(sdk) as fileset:
             content = b"model weights"
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=content,
-                remote_path="model.bin",
-                fileset=fileset.name,
+                path="model.bin",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
@@ -272,10 +274,10 @@ class TestHfRepoInfo:
     def test_get_repo_info_at_revision(self, sdk: NeMoPlatform, client: httpx.Client, hf_auth_headers):
         """Test getting repository info with explicit revision."""
         with create_fileset(sdk) as fileset:
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=b"content",
-                remote_path="file.txt",
-                fileset=fileset.name,
+                path="file.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
@@ -296,10 +298,10 @@ class TestHfRepoInfo:
     def test_get_tree(self, sdk: NeMoPlatform, client: httpx.Client, hf_auth_headers):
         """Test getting file tree."""
         with create_fileset(sdk) as fileset:
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=b"content",
-                remote_path="file.txt",
-                fileset=fileset.name,
+                path="file.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
@@ -318,10 +320,10 @@ class TestHfRepoInfo:
     def test_paths_info(self, sdk: NeMoPlatform, client: httpx.Client, hf_auth_headers):
         """Test paths-info endpoint."""
         with create_fileset(sdk) as fileset:
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=b"content",
-                remote_path="exists.txt",
-                fileset=fileset.name,
+                path="exists.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
@@ -344,10 +346,10 @@ class TestCommitHashConsistency:
     def test_commit_hash_stable_for_same_fileset(self, sdk: NeMoPlatform, client: httpx.Client, hf_auth_headers):
         """Test same fileset returns same commit hash."""
         with create_fileset(sdk) as fileset:
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=b"content",
-                remote_path="file.txt",
-                fileset=fileset.name,
+                path="file.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 
@@ -365,10 +367,10 @@ class TestCommitHashConsistency:
     def test_etag_stable_for_same_file(self, sdk: NeMoPlatform, client: httpx.Client, hf_auth_headers):
         """Test same file returns same ETag."""
         with create_fileset(sdk) as fileset:
-            sdk.files.upload_content(
+            client_from_platform(sdk, FilesClient).upload_file(
                 content=b"content",
-                remote_path="file.txt",
-                fileset=fileset.name,
+                path="file.txt",
+                name=fileset.name,
                 workspace=fileset.workspace,
             )
 

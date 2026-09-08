@@ -51,6 +51,8 @@ from nemo_platform.types.inference import ModelProvider
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.client.errors import NemoTransportError as APIConnectionError
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.inference_middleware import BackendFormat
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.models.client import ModelsClient
@@ -472,29 +474,30 @@ def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NeMoPlatform) -> None
     fileset_name = short_unique_name("eval-data")
     workspace = str(evaluator_sdk.workspace)
     submitted_jobs: list[tuple[str, list[float], EvaluatorJobResource]] = []
-    evaluator_sdk.files.filesets.create(name=fileset_name, workspace=workspace)
+    files = client_from_platform(evaluator_sdk, FilesClient)
+    files.create_fileset(body=CreateFilesetRequest(name=fileset_name), workspace=workspace)
     try:
-        evaluator_sdk.files.upload_content(
+        files.upload_file(
             content=json.dumps(
                 [
                     {"expected": "alpha", "output": "alpha"},
                     {"expected": "beta", "output": "wrong"},
                 ]
-            ),
-            remote_path="part-a.json",
-            fileset=fileset_name,
+            ).encode(),
+            path="part-a.json",
+            name=fileset_name,
             workspace=workspace,
         )
-        evaluator_sdk.files.upload_content(
-            content=json.dumps([{"expected": "gamma", "output": "gamma"}]),
-            remote_path="part-b.json",
-            fileset=fileset_name,
+        files.upload_file(
+            content=json.dumps([{"expected": "gamma", "output": "gamma"}]).encode(),
+            path="part-b.json",
+            name=fileset_name,
             workspace=workspace,
         )
-        evaluator_sdk.files.upload_content(
-            content=json.dumps([{"expected": "ignored", "output": "ignored"}]),
-            remote_path="other.json",
-            fileset=fileset_name,
+        files.upload_file(
+            content=json.dumps([{"expected": "ignored", "output": "ignored"}]).encode(),
+            path="other.json",
+            name=fileset_name,
             workspace=workspace,
         )
 
@@ -519,7 +522,7 @@ def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NeMoPlatform) -> None
         for _, _, job in submitted_jobs:
             _cleanup_evaluator_job(evaluator_sdk, job.name)
         with suppress(Exception):
-            evaluator_sdk.files.filesets.delete(fileset_name, workspace=workspace)
+            files.delete_fileset(name=fileset_name, workspace=workspace)
 
 
 def test_run_config_limits_samples(evaluator_sdk: NeMoPlatform) -> None:
