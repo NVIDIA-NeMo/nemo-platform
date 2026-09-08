@@ -390,11 +390,49 @@ def test_a_heartbeat_only_body_names_the_host_as_the_failure() -> None:
     session = _session()
 
     with pytest.raises(RolloutTransportError) as excinfo:
-        session._decode_results(b"    ")
+        session._decode_results(b"    ", 42.0)
 
     assert excinfo.value.origin == "sandbox"
     assert not excinfo.value.retryable
     assert "OOMKilled" in str(excinfo.value)
+
+
+def test_an_empty_body_names_both_causes_rather_than_picking_one() -> None:
+    """Zero bytes is produced by a dead host *and* by a request the proxy truncated.
+
+    A heartbeatless image cut at the proxy's cap and a host OOMKilled mid-batch both land here.
+    Without a Content-Length the body ends at the close either way, so the client cannot tell them
+    apart and must not claim to.
+    """
+    session = _session()
+
+    with pytest.raises(RolloutTransportError) as excinfo:
+        session._decode_results(b"", 180.0)
+
+    message = str(excinfo.value)
+    assert "OOMKill" in message
+    assert "sandbox.image" in message
+
+
+def test_an_empty_body_mid_range_does_not_blame_the_image_alone() -> None:
+    session = _session()
+
+    with pytest.raises(RolloutTransportError) as excinfo:
+        session._decode_results(b"", 60.0)
+
+    assert "OOMKill" in str(excinfo.value)
+
+
+def test_an_empty_body_that_arrived_fast_blames_the_sandbox_alone() -> None:
+    session = _session()
+
+    with pytest.raises(RolloutTransportError) as excinfo:
+        session._decode_results(b"", 2.0)
+
+    message = str(excinfo.value)
+    assert excinfo.value.origin == "sandbox"
+    assert "OOMKilled" in message
+    assert "sandbox.image" not in message
 
 
 def test_a_malformed_non_empty_body_is_a_contract_failure() -> None:

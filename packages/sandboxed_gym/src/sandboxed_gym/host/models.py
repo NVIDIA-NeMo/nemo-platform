@@ -26,6 +26,8 @@ DEFAULT_HOST_READY_TIMEOUT_S = 15 * 60
 DEFAULT_ROLLOUT_TIMEOUT_S = 30 * 60
 # A batch is split into bounded POSTs so request duration and response size track the chunk rather
 # than the batch. Tune the two together: concurrency offsets the split.
+#: A request that failed faster than this cannot have been cut for staying open too long.
+MIN_PROXY_CUTOFF_S = 30.0
 DEFAULT_ROLLOUT_CHUNK_SIZE = 8
 DEFAULT_ROLLOUT_MAX_IN_FLIGHT = 8
 # Applied to transport failures only. An error the host itself reported is deterministic, so

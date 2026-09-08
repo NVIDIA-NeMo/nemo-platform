@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import tempfile
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,7 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTas
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
 from nemo_evaluator_sdk.values.results import AggregateScore
 from pydantic import BaseModel, ConfigDict, Field
+from sandboxed_gym.host.models import MIN_PROXY_CUTOFF_S
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +130,7 @@ class SandboxedGymAgentTaskRunner:
             headers[PROXY_AUTH_HEADER] = self._config.auth_token
         return headers
 
-    def _decode_body(self, response: httpx.Response) -> Any:
+    def _decode_body(self, response: httpx.Response, elapsed: float | None = None) -> Any:
         """Decode a 2xx rollout body, naming the host when there is nothing decodable in it.
 
         The host commits its 200 before the batch finishes and pads the open connection with
@@ -147,12 +149,28 @@ class SandboxedGymAgentTaskRunner:
             raise RuntimeError(
                 f"sandboxed Gym host returned a body that is not UTF-8 from {self._config.rollout_url}: {exc}"
             ) from exc
+        if not text:
+            if elapsed is not None and elapsed < MIN_PROXY_CUTOFF_S:
+                raise RuntimeError(
+                    f"sandboxed Gym host at {self._config.rollout_url} answered and then sent "
+                    f"nothing in {elapsed:.1f}s -- too fast to have been cut in transit, so it "
+                    f"died before it could write; check whether the sandbox was OOMKilled or "
+                    f"evicted"
+                )
+            raise RuntimeError(
+                f"sandboxed Gym host at {self._config.rollout_url} sent no body at all"
+                + (f" in {elapsed:.1f}s" if elapsed is not None else "")
+                + " -- nothing was ever written. Either it died before writing anything (check the "
+                "sandbox for an OOMKill or an eviction), or its image predates the rollout "
+                "heartbeat and the proxy cut the silent request at its own cap. Without a "
+                "Content-Length the body ends at the close, so this client cannot tell them apart"
+            )
         if not text.strip():
             raise RuntimeError(
                 f"sandboxed Gym host at {self._config.rollout_url} answered and then stopped "
-                f"without sending a `results` envelope ({len(response.content)} byte(s) of heartbeat "
-                f"only); it most likely died mid-batch -- check whether the sandbox was OOMKilled "
-                f"or evicted"
+                f"without sending a `results` envelope ({len(response.content)} byte(s) of "
+                f"heartbeat, then silence); it most likely died mid-batch -- check whether the "
+                f"sandbox was OOMKilled or evicted"
             )
         try:
             # The host heartbeats leading whitespace while a batch runs; json tolerates it.
@@ -168,12 +186,14 @@ class SandboxedGymAgentTaskRunner:
 
     async def _collect(self, examples: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """POST the examples and return the host's rollout records."""
+        started = time.monotonic()
         async with httpx.AsyncClient(timeout=self._config.timeout_s) as client:
             response = await client.post(
                 self._config.rollout_url,
                 json={"examples": examples},
                 headers=self._request_headers(),
             )
+        elapsed = time.monotonic() - started
         if response.status_code >= 400:
             # The body is the host's own error envelope; it names which example or server failed,
             # which the status code alone does not.
@@ -181,7 +201,7 @@ class SandboxedGymAgentTaskRunner:
                 f"sandboxed Gym host returned {response.status_code} from {self._config.rollout_url}: "
                 f"{response.text[:2000]}"
             )
-        body = self._decode_body(response)
+        body = self._decode_body(response, elapsed)
         error = body.get("error") if isinstance(body, Mapping) else None
         if error is not None:
             # The host commits its 200 before the batch finishes, so that it can hold the

@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 from sandboxed_gym.broker import EpisodeBrokerServer
 from sandboxed_gym.config import BrokerEndpoint
 from sandboxed_gym.host.models import (
+    MIN_PROXY_CUTOFF_S,
     GymHostEgressRule,
     GymHostHandle,
     GymHostSpec,
@@ -44,10 +45,6 @@ from sandboxed_gym.serve_config import (
 LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
-#: Below this a request cannot have been cut for staying open too long, so the host went away
-#: instead. Only used to choose which hint an error carries.
-MIN_PROXY_CUTOFF_S = 30.0
 
 
 class RolloutTransportError(RuntimeError):
@@ -509,7 +506,7 @@ class SandboxedGymSession:
                 retryable=False,
                 origin="client",
             )
-        return self._decode_results(payload)
+        return self._decode_results(payload, time.monotonic() - started)
 
     def _in_transit_error(
         self, detail: str, chunk: list[dict[str, Any]], started: float, *, retryable: bool
@@ -555,7 +552,7 @@ class SandboxedGymSession:
             origin="proxy",
         )
 
-    def _decode_results(self, payload: bytes) -> list[Any]:
+    def _decode_results(self, payload: bytes, elapsed: float | None = None) -> list[Any]:
         try:
             # Strict, and caught rather than avoided: errors="replace" would let a body with one
             # corrupt byte still parse, handing the caller U+FFFD where the host wrote data.
@@ -566,15 +563,31 @@ class SandboxedGymSession:
                 retryable=False,
                 origin="sandbox",
             ) from exc
+        if not body:
+            if elapsed is not None and elapsed < MIN_PROXY_CUTOFF_S:
+                raise RolloutTransportError(
+                    f"the sandboxed Gym host answered and then sent nothing in {elapsed:.1f}s -- "
+                    f"too fast to have been cut in transit, so it died before it could write; "
+                    f"check whether the sandbox was OOMKilled or evicted",
+                    retryable=False,
+                    origin="sandbox",
+                )
+            raise RolloutTransportError(
+                "the sandboxed Gym host sent no body at all"
+                + (f" in {elapsed:.1f}s" if elapsed is not None else "")
+                + " -- nothing was ever written. Either it died before writing anything (check the "
+                "sandbox for an OOMKill or an eviction), or its image predates the rollout "
+                "heartbeat and the proxy cut the silent request at its own cap (check "
+                "sandbox.image). A dropped connection and a truncated one are indistinguishable "
+                "to this client",
+                retryable=False,
+                origin="sandbox",
+            )
         if not body.strip():
-            # Heartbeats and nothing else: the host committed its 200, padded the connection while
-            # it worked, and then went away without ever writing the envelope -- an OOMKill or an
-            # evicted pod mid-batch. Reported as the sandbox failing rather than as malformed JSON,
-            # which is what `json.loads` alone would have called it.
             raise RolloutTransportError(
                 f"the sandboxed Gym host answered and then stopped without sending a result "
-                f"envelope ({len(payload)} byte(s) of heartbeat only); it most likely died "
-                f"mid-batch -- check whether the sandbox was OOMKilled or evicted",
+                f"envelope ({len(payload)} byte(s) of heartbeat, then silence); it most likely "
+                f"died mid-batch -- check whether the sandbox was OOMKilled or evicted",
                 retryable=False,
                 origin="sandbox",
             )
