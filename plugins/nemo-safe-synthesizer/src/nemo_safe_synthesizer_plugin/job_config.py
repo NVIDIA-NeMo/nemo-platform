@@ -3,6 +3,7 @@
 
 """Safe Synthesizer job config shared by API handlers and task containers."""
 
+import logging
 from typing import Any
 
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
@@ -11,6 +12,10 @@ from nemo_safe_synthesizer.config.job import SafeSynthesizerParameters as SafeSy
 from nemo_safe_synthesizer.config.replace_pii import PiiReplacerConfig
 from pydantic import Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_PRETRAINED_MODEL = "HuggingFaceTB/SmolLM3-3B"
 
 
 class SafeSynthesizerParameters(SafeSynthesizerParametersInternal):
@@ -92,15 +97,25 @@ class SafeSynthesizerJobConfig(SafeSynthesizerJobConfigInternal):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_pretrained_model_source(cls, data: Any) -> Any:
+    def _prefer_pretrained_model_job(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
-        if not data.get("pretrained_model_job"):
+        pretrained_model_job = data.get("pretrained_model_job")
+        if not pretrained_model_job:
             return data
         config_data = data.get("config")
         training_data = config_data.get("training") if isinstance(config_data, dict) else None
-        if isinstance(training_data, dict) and training_data.get("pretrained_model") is not None:
-            raise ValueError("Use either 'pretrained_model_job' or 'config.training.pretrained_model', not both.")
+        if not isinstance(training_data, dict):
+            return data
+        pretrained_model = training_data.get("pretrained_model")
+        if pretrained_model is not None and pretrained_model != DEFAULT_PRETRAINED_MODEL:
+            logger.warning(
+                "Both 'pretrained_model_job' (%s) and 'config.training.pretrained_model' (%s) were supplied; "
+                "reusing the adapter from 'pretrained_model_job' and ignoring 'config.training.pretrained_model'.",
+                pretrained_model_job,
+                pretrained_model,
+            )
+        training_data.pop("pretrained_model", None)
         return data
 
 

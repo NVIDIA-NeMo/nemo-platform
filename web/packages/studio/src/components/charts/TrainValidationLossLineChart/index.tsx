@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  ChartTooltipRow,
+  ChartTooltipSurface,
+} from '@nemo/common/src/components/charts/ChartTooltip';
+import { Text } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/Empty';
 import type { CustomizationMetricValue } from '@studio/types/customization';
 import { type ComponentProps, useMemo } from 'react';
@@ -244,28 +248,24 @@ function CustomTooltip({ active, payload, label }: TooltipProps<number, string>)
   const dataPoint = payload[0]?.payload;
 
   return (
-    <Stack
-      gap="2"
-      className="bg-component-tooltip border border-component-tooltip shadow-sm rounded-lg p-3"
+    <ChartTooltipSurface
+      label={`Step ${label}${dataPoint?.epoch !== undefined ? ` • Epoch ${dataPoint.epoch}` : ''}`}
     >
-      <Text kind="label/semibold/md">
-        Step {label}
-        {dataPoint?.epoch !== undefined ? ` • Epoch ${dataPoint.epoch}` : ''}
-      </Text>
-      <Stack gap="1">
-        <Text kind="body/regular/sm" className="text-accent-blue">
-          Training Loss:{' '}
-          {dataPoint?.trainLoss !== undefined
-            ? `${dataPoint.trainLoss.toFixed(6)}${dataPoint.trainLossInterpolated ? ' (estimated)' : ''}`
-            : '—'}
-        </Text>
-        <Text kind="body/regular/sm" className="text-accent-yellow">
-          Validation Loss:{' '}
-          {dataPoint?.valLoss !== undefined
-            ? `${dataPoint.valLoss.toFixed(6)}${dataPoint.valLossInterpolated ? ' (estimated)' : ''}`
-            : '—'}
-        </Text>
-      </Stack>
-    </Stack>
+      <ChartTooltipRow
+        color="var(--border-color-accent-blue)"
+        label="Training Loss"
+        value={formatLoss(dataPoint?.trainLoss, dataPoint?.trainLossInterpolated)}
+      />
+      <ChartTooltipRow
+        color="var(--border-color-accent-yellow)"
+        label="Validation Loss"
+        value={formatLoss(dataPoint?.valLoss, dataPoint?.valLossInterpolated)}
+      />
+    </ChartTooltipSurface>
   );
 }
+
+const formatLoss = (value: number | undefined, interpolated: boolean | undefined): string => {
+  if (value === undefined) return '—';
+  return `${value.toFixed(6)}${interpolated ? ' (estimated)' : ''}`;
+};

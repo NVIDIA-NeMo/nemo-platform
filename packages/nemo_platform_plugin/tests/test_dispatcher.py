@@ -156,7 +156,9 @@ class TestExitCodes:
             name = "non-dict"
 
             def run(self, config: dict) -> dict:
-                return "hello"  # type: ignore[return-value]
+                # Intentionally violate the typed contract to pin the dispatcher
+                # behavior for bad runtime returns without hiding it behind a cast.
+                return "hello"  # ty: ignore[invalid-return-type]
 
         rc = run_task(_Job, sdk=_DEFAULT_SDK)
 
@@ -355,7 +357,7 @@ class TestExitCodes:
         class _Job(NemoJob):
             name = "needs-sdk"
 
-            def run(self, config: dict, *, sdk) -> dict:  # ty: ignore[invalid-method-override]
+            def run(self, config: dict, *, sdk) -> dict:
                 return {"status": "completed"}
 
         with pytest.raises(LocalRunError, match="sdk"):
@@ -385,7 +387,7 @@ class TestExitCodes:
         class _Job(NemoJob):
             name = "weird-required-param"
 
-            def run(self, config: dict, *, foo) -> dict:  # ty: ignore[invalid-method-override]
+            def run(self, config: dict, *, foo) -> dict:
                 return {"status": "completed", "foo": foo}
 
         with pytest.raises(LocalRunError, match="foo"):
@@ -400,7 +402,7 @@ class TestSignatureDI:
         class _Job(NemoJob):
             name = "ctx-job"
 
-            def run(self, config: dict, *, ctx: JobContext) -> dict:  # ty: ignore[invalid-method-override]
+            def run(self, config: dict, *, ctx: JobContext) -> dict:
                 captured["ctx"] = ctx
                 return {"status": "completed"}
 
@@ -419,7 +421,7 @@ class TestSignatureDI:
         class _Job(NemoJob):
             name = "sdk-job"
 
-            def run(self, config: dict, *, sdk) -> dict:  # ty: ignore[invalid-method-override]
+            def run(self, config: dict, *, sdk) -> dict:
                 captured["sdk"] = sdk
                 return {"status": "completed"}
 
@@ -471,7 +473,7 @@ class TestStepConfigPlumbing:
         class _Job(NemoJob):
             name = "echo"
 
-            def run(self, config: dict, *, ctx: JobContext) -> dict:  # ty: ignore[invalid-method-override]
+            def run(self, config: dict, *, ctx: JobContext) -> dict:
                 captured["config"] = config
                 return {"status": "completed"}
 
@@ -505,7 +507,7 @@ class TestCtxOverride:
         class _Job(NemoJob):
             name = "ctx-override"
 
-            def run(self, config: dict, *, ctx: JobContext) -> dict:  # ty: ignore[invalid-method-override]
+            def run(self, config: dict, *, ctx: JobContext) -> dict:
                 captured["ctx"] = ctx
                 return {"status": "completed"}
 
@@ -555,7 +557,7 @@ class TestCtxOverride:
         class _Job(NemoJob):
             name = "results-sink"
 
-            def run(self, config: dict, *, ctx: JobContext) -> dict:  # ty: ignore[invalid-method-override]
+            def run(self, config: dict, *, ctx: JobContext) -> dict:
                 captured["results"] = ctx.results
                 return {"status": "completed"}
 
@@ -609,7 +611,7 @@ class TestBuildCtxFromEnv:
     def test_results_use_submitted_job_id_not_class_name(self, tmp_path: Path, monkeypatch) -> None:
         # Regression: ``PlatformJobResults`` must be keyed off the *submitted*
         # platform job name (``NEMO_JOB_ID``) so ``ResultManager.create_result``
-        # can ``jobs_sdk.jobs.retrieve(name=...)`` it. Earlier versions passed
+        # can retrieve it via the typed Jobs client. Earlier versions passed
         # ``job_cls.name`` (the NemoJob class identifier like ``"evaluate"``)
         # which points at a non-existent job record.
         captured: dict[str, str] = {}

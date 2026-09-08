@@ -45,10 +45,11 @@ class CreateJob(NemoJob):
         async_sdk: object,
         is_local: bool,
     ) -> BaseModel:  # DataDesignerStepConfig
+        del entity_client, is_local
         async_sdk = cast(AsyncNeMoPlatform, async_sdk)
         input_spec = cast(DataDesignerJobConfig, input_spec)
 
-        dd_ctx = create_data_designer_context(is_local, async_sdk, workspace)
+        dd_ctx = create_data_designer_context(async_sdk, workspace)
         errors, model_configs, model_providers = await resolve_runnable_config(dd_ctx, input_spec.config)
         raise_if_errors(errors)
 
@@ -70,6 +71,8 @@ class CreateJob(NemoJob):
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
+        del workspace, entity_client, job_name, async_sdk, options
+
         return PlatformJobSpec(
             steps=[
                 PlatformJobStep(
@@ -89,6 +92,6 @@ class CreateJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform, is_local: bool = False) -> dict:
+    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform) -> dict:
         step_config = DataDesignerStepConfig.model_validate(config)
-        return run_step_config_result(step_config, ctx, sdk, is_local)
+        return run_step_config_result(step_config, ctx, sdk)

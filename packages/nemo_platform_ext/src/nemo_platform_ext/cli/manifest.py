@@ -33,7 +33,17 @@ TOP_LEVEL_COMMAND_ORDER: dict[PanelName, tuple[str, ...]] = {
     "Setup": ("setup", "auth", "services", "skills"),
     "CLI functions": ("chat", "docs", "wait", "agent", "plugins"),
     "Core plugins": ("files", "inference", "jobs", "models", "secrets", "workspaces"),
-    "Functional plugins": ("agents", "data-designer", "guardrail", "audit", "anonymizer", "evaluator"),
+    "Functional plugins": (
+        "agents",
+        "data-designer",
+        "guardrail",
+        "auditor",
+        "anonymizer",
+        "evaluator",
+        "customization",
+        "insights",
+        "safe-synthesizer",
+    ),
 }
 
 

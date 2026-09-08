@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Awaitable, Callable, TypeVar
 
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform.types import PlatformJobStatus
 from nemo_platform_plugin.jobs.archive import safe_extract_tar
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)

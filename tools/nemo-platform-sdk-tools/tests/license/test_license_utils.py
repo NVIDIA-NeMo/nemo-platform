@@ -263,7 +263,7 @@ class TestFormatLicenses:
 
         requirements = output_lockfile.read_text(encoding="utf-8")
         assert requirements.splitlines()[1] == (
-            "#    uv export --no-dev --package nmp-unsloth --extra training --group nmp-api "
+            "#    uv export --frozen --no-dev --package nmp-unsloth --extra training --group nmp-api "
             "--group nmp-task-runtime --quiet --output-file third_party/requirements-main.txt"
         )
         assert str(tmp_path) not in requirements

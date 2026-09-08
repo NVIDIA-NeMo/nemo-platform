@@ -26,8 +26,10 @@ from nemo_agents_plugin.entities import (
     AgentEnvironmentInline,
     AgentEnvironmentSpec,
     AgentSession,
+    ComputeResources,
     ComputeSpecInline,
     EnvironmentSpecInline,
+    McpFulfillment,
     SessionStatus,
     agent_config_file_ref,
     ethos_file_ref,
@@ -41,6 +43,7 @@ from nemo_agents_plugin.schema import (
     CreateEnvironmentRequest,
     CreateEnvironmentSpecRequest,
 )
+from nemo_platform_plugin.auth import AuthContext
 from pydantic import ValidationError
 
 NOW = datetime.now(timezone.utc)
@@ -178,6 +181,25 @@ class TestAgentDeploymentEntity:
         assert data["agent"] == "calc"
         assert data["status"] == "running"
 
+    def test_data_fields_include_private_auth_context(self) -> None:
+        auth_context = AuthContext(
+            principal_id="user:alice",
+            principal_email="alice@example.com",
+            principal_groups=["research"],
+        )
+        d = AgentDeployment(name="dep", workspace="default", agent="calc").with_auth_context(auth_context)
+
+        data = d._get_data_fields()
+
+        assert d.auth_context == auth_context
+        assert data["_auth_context"]["principal_id"] == "user:alice"
+        assert data["_auth_context"]["principal_email"] == "alice@example.com"
+
+    def test_auth_context_schema_is_nullable(self) -> None:
+        schema = AgentDeployment.model_json_schema(mode="serialization")
+
+        assert schema["properties"]["auth_context"]["nullable"] is True
+
 
 # ---------------------------------------------------------------------------
 # Entity: AgentSession
@@ -206,18 +228,60 @@ class TestAgentSessionEntity:
         session = AgentSession(name="session", workspace="default", deployment_id="deployment-id")
 
         assert session.status is SessionStatus.ACTIVE
+        assert session.first_active_at is None
         assert session.last_active_at is None
         assert session.expires_at is None
 
-    def test_closed_status(self) -> None:
+    @pytest.mark.parametrize("status", list(SessionStatus))
+    def test_lifecycle_status(self, status: SessionStatus) -> None:
         session = AgentSession(
             name="session",
             workspace="default",
             deployment_id="deployment-id",
-            status=SessionStatus.CLOSED,
+            status=status,
         )
 
-        assert session.status is SessionStatus.CLOSED
+        assert session.status is status
+
+    @pytest.mark.parametrize(
+        ("current_status", "new_status"),
+        [
+            (SessionStatus.ACTIVE, SessionStatus.EXPIRED),
+            (SessionStatus.ACTIVE, SessionStatus.LOST),
+            (SessionStatus.ACTIVE, SessionStatus.CLOSED),
+            (SessionStatus.EXPIRED, SessionStatus.CLOSED),
+            (SessionStatus.LOST, SessionStatus.CLOSED),
+        ],
+    )
+    def test_allowed_status_transitions(
+        self,
+        current_status: SessionStatus,
+        new_status: SessionStatus,
+    ) -> None:
+        assert current_status.can_transition_to(new_status)
+
+    @pytest.mark.parametrize("status", list(SessionStatus))
+    def test_same_status_transition_is_idempotent(self, status: SessionStatus) -> None:
+        assert status.can_transition_to(status)
+
+    @pytest.mark.parametrize(
+        ("current_status", "new_status"),
+        [
+            (SessionStatus.EXPIRED, SessionStatus.ACTIVE),
+            (SessionStatus.EXPIRED, SessionStatus.LOST),
+            (SessionStatus.LOST, SessionStatus.ACTIVE),
+            (SessionStatus.LOST, SessionStatus.EXPIRED),
+            (SessionStatus.CLOSED, SessionStatus.ACTIVE),
+            (SessionStatus.CLOSED, SessionStatus.EXPIRED),
+            (SessionStatus.CLOSED, SessionStatus.LOST),
+        ],
+    )
+    def test_disallowed_status_transitions(
+        self,
+        current_status: SessionStatus,
+        new_status: SessionStatus,
+    ) -> None:
+        assert not current_status.can_transition_to(new_status)
 
     def test_invalid_status_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -235,10 +299,12 @@ class TestAgentSessionEntity:
             name="session",
             workspace="default",
             deployment_id="deployment-id",
+            first_active_at=NOW,
             last_active_at=NOW,
             expires_at=NOW,
         )
 
+        assert session.first_active_at == NOW
         assert session.last_active_at == NOW
         assert session.expires_at == NOW
 
@@ -319,7 +385,9 @@ class TestCreateDeploymentRequest:
     def test_environment_inline(self) -> None:
         req = CreateDeploymentRequest(
             agent="calc",
-            environment={"compute_spec": {"resources": {"limits": {"cpu": "2"}}}},
+            environment=AgentEnvironmentInline.model_validate(
+                {"compute_spec": {"resources": {"limits": {"cpu": "2"}}}}
+            ),
         )
         assert isinstance(req.environment, AgentEnvironmentInline)
         assert isinstance(req.environment.compute_spec, ComputeSpecInline)
@@ -340,7 +408,9 @@ class TestEnvironmentEntities:
         cs = AgentComputeSpec(
             name="c1",
             workspace="default",
-            resources={"limits": {"cpu": "2", "nvidia.com/gpu": "1"}, "requests": {"cpu": "1"}},
+            resources=ComputeResources.model_validate(
+                {"limits": {"cpu": "2", "nvidia.com/gpu": "1"}, "requests": {"cpu": "1"}}
+            ),
         )
         assert cs.resources.limits == {"cpu": "2", "nvidia.com/gpu": "1"}
         assert cs.resources.requests == {"cpu": "1"}
@@ -351,7 +421,7 @@ class TestEnvironmentEntities:
             workspace="default",
             env={"FOO": "bar"},
             secrets={"TOKEN": "default/token"},
-            mcp={"search": {"url": "http://x", "secrets": {"KEY": "default/key"}}},
+            mcp={"search": McpFulfillment(url="http://x", secrets={"KEY": "default/key"})},
         )
         assert es.env == {"FOO": "bar"}
         assert es.secrets == {"TOKEN": "default/token"}
@@ -367,8 +437,8 @@ class TestEnvironmentEntities:
         inline = AgentEnvironment(
             name="env2",
             workspace="default",
-            environment_spec={"env": {"A": "1"}},
-            compute_spec={"resources": {"limits": {"cpu": "1"}}},
+            environment_spec=EnvironmentSpecInline.model_validate({"env": {"A": "1"}}),
+            compute_spec=ComputeSpecInline.model_validate({"resources": {"limits": {"cpu": "1"}}}),
         )
         assert isinstance(inline.environment_spec, EnvironmentSpecInline)
         assert isinstance(inline.compute_spec, ComputeSpecInline)
@@ -393,7 +463,7 @@ class TestAgentDeploymentEnvironmentSnapshot:
             workspace="default",
             agent="calc",
             environment="default/env1",
-            compute=ComputeSpecInline(resources={"limits": {"cpu": "2"}}),
+            compute=ComputeSpecInline(resources=ComputeResources.model_validate({"limits": {"cpu": "2"}})),
         )
         assert d.environment == "default/env1"
         assert isinstance(d.compute, ComputeSpecInline)
@@ -412,6 +482,9 @@ class TestCreateEnvironmentRequests:
         assert req.env == {"FOO": "bar"}
 
     def test_create_compute_spec_request(self) -> None:
-        req = CreateComputeSpecRequest(name="c1", resources={"limits": {"cpu": "2"}})
+        req = CreateComputeSpecRequest(
+            name="c1",
+            resources=ComputeResources.model_validate({"limits": {"cpu": "2"}}),
+        )
         assert req.name == "c1"
         assert req.resources.limits == {"cpu": "2"}

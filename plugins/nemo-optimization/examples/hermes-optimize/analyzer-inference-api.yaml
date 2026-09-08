@@ -4,7 +4,7 @@
 # Analyzer LLM settings for the path-only MCP example (inference-api key).
 # The agent checkout's configs/common.yaml targets integrate.api.nvidia.com,
 # which 401s for many NVIDIA_API_KEY values that work on inference-api.
-model: nvidia/meta/llama-3.1-8b-instruct
+model: nvidia/nvidia/nemotron-3-nano-30b-a3b
 base_url: https://inference-api.nvidia.com/v1
 api_key_env: NVIDIA_API_KEY
 temperature: 0.0

@@ -28,6 +28,9 @@ def test_service_routes_include_safe_synthesizer_jobs_path():
     assert "/v2/workspaces/{workspace}/jobs" in spec["paths"]
     assert "/v2/workspaces/{workspace}/jobs/{job}/results/adapter/download" in spec["paths"]
     assert "GenerateJobRequest" in spec["components"]["schemas"]
+    request_properties = spec["components"]["schemas"]["GenerateJobRequest"]["properties"]
+    assert "profile" in request_properties
+    assert "options" in request_properties
 
 
 def test_service_authz_derives_from_job_routes():

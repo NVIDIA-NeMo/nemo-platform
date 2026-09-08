@@ -3,6 +3,7 @@
 
 """Unit tests for ModelProviderReconciler."""
 
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -291,6 +292,50 @@ async def test_get_available_models_from_provider_non_compliant_missing_data(rec
     mock_models_sdk.inference.gateway.provider.get = AsyncMock(
         return_value={"object": "list"}  # Missing 'data'
     )
+
+    model_provider = ModelProvider(
+        name="test-provider",
+        workspace="test-ns",
+        host_url="https://test-provider.com",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    result = await reconciler._discover_models(model_provider)
+
+    assert isinstance(result, DiscoveryNonCompliant)
+
+
+@pytest.mark.asyncio
+async def test_get_available_models_from_provider_parses_json_string_response(reconciler, mock_models_sdk):
+    """A valid JSON body served without an application/json Content-Type (e.g. some
+    Ollama versions) arrives as a raw string from the SDK. Discovery should still
+    parse it instead of treating it as non-compliant."""
+    mock_models_sdk.inference.gateway.provider.get = AsyncMock(
+        return_value=json.dumps(
+            {
+                "object": "list",
+                "data": [{"id": "llama3:latest", "object": "model", "created": 1715357716, "owned_by": "library"}],
+            }
+        )
+    )
+
+    model_provider = ModelProvider(
+        name="test-provider",
+        workspace="test-ns",
+        host_url="http://localhost:11434/v1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    result = await reconciler._discover_models(model_provider)
+
+    assert isinstance(result, DiscoverySuccess)
+    assert result.models == [{"id": "llama3:latest", "root": None, "parent": None}]
+
+
+@pytest.mark.asyncio
+async def test_get_available_models_from_provider_non_compliant_unparsable_string(reconciler, mock_models_sdk):
+    """A non-JSON string response (genuinely non-compliant) is still rejected."""
+    mock_models_sdk.inference.gateway.provider.get = AsyncMock(return_value="<html>not json</html>")
 
     model_provider = ModelProvider(
         name="test-provider",

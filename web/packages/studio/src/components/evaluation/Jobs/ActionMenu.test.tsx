@@ -12,7 +12,7 @@ const TEST_WORKSPACE = 'test-workspace';
 
 // Mock the delete API
 const mockDeleteJob = vi.fn();
-vi.mock('@nemo/sdk/generated/evaluator/api', async (importOriginal) => {
+vi.mock('@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes', async (importOriginal) => {
   const original = await importOriginal();
   return {
     // @ts-expect-error expect issue here with spread

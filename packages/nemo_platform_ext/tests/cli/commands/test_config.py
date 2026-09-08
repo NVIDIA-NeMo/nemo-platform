@@ -143,6 +143,57 @@ def test_use_nonexistent_context(config_file: Path):
     assert "not found" in result.output
 
 
+def test_delete_context_removes_only_context_by_default(config_file: Path):
+    result = runner.invoke(app, "config delete-context production")
+    assert_exit_code(result, 0)
+    assert result.output.strip() == "Deleted context 'production'"
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    assert {context["name"] for context in data["contexts"]} == {"local"}
+    assert {cluster["name"] for cluster in data["clusters"]} == {"local", "production"}
+    assert {user["name"] for user in data["users"]} == {"local", "production"}
+    assert data["current_context"] == "local"
+
+
+def test_delete_current_context_clears_current_context(config_file: Path):
+    result = runner.invoke(app, "config delete-context local")
+    assert_exit_code(result, 0)
+    assert result.output.strip() == "Deleted context 'local'\nCurrent context cleared"
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    assert {context["name"] for context in data["contexts"]} == {"production"}
+    assert data.get("current_context") is None
+
+
+def test_delete_context_prune_orphans_removes_unreferenced_records(config_file: Path):
+    result = runner.invoke(app, "config delete-context production --prune-orphans")
+    assert_exit_code(result, 0)
+    assert "Deleted context 'production'" in result.output
+    assert "Pruned clusters: production" in result.output
+    assert "Pruned users: production" in result.output
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    assert {context["name"] for context in data["contexts"]} == {"local"}
+    assert {cluster["name"] for cluster in data["clusters"]} == {"local"}
+    assert {user["name"] for user in data["users"]} == {"local"}
+
+
+def test_delete_context_rejects_unknown_context(config_file: Path):
+    _ = config_file
+    result = runner.invoke(app, "config delete-context missing")
+    assert_exit_code(result, 1)
+    assert "Context 'missing' not found" in result.output
+    assert "Available contexts:" in result.output
+    assert "local" in result.output
+    assert "production" in result.output
+
+
 def test_set_workspace(config_file: Path):
     result = runner.invoke(app, "config set --workspace new-workspace")
     assert_exit_code(result, 0)
@@ -265,6 +316,77 @@ def test_set_base_url_does_not_affect_other_contexts(config_file: Path):
     assert a_cluster["base_url"] == "https://a-updated.example.com/"
 
 
+def test_set_certificate_authority_updates_selected_context_cluster(config_file: Path):
+    result = runner.invoke(app, "config set --context production --certificate-authority /tmp/nemo-ca.pem")
+    assert_exit_code(result, 0)
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    local_cluster = next(c for c in data["clusters"] if c["name"] == "local")
+    production_cluster = next(c for c in data["clusters"] if c["name"] == "production")
+    assert "certificate_authority" not in local_cluster
+    assert production_cluster["certificate_authority"] == str(Path("/tmp/nemo-ca.pem").resolve())
+
+
+def test_set_certificate_authority_persists_relative_path_as_absolute(
+    config_file: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, "config set --context production --certificate-authority ./ca.crt")
+    assert_exit_code(result, 0)
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    production_cluster = next(c for c in data["clusters"] if c["name"] == "production")
+    assert production_cluster["certificate_authority"] == str((tmp_path / "ca.crt").resolve())
+
+
+def test_set_certificate_authority_expands_home_relative_path(config_file: Path):
+    result = runner.invoke(app, "config set --context production --certificate-authority ~/nemo-ca.pem")
+    assert_exit_code(result, 0)
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    production_cluster = next(c for c in data["clusters"] if c["name"] == "production")
+    assert production_cluster["certificate_authority"] == str((Path.home() / "nemo-ca.pem").resolve())
+
+
+def test_set_certificate_authority_empty_string_clears_value(config_file: Path):
+    result = runner.invoke(app, "config set --context production --certificate-authority /tmp/nemo-ca.pem")
+    assert_exit_code(result, 0)
+
+    result = runner.invoke(app, ["config", "set", "--context", "production", "--certificate-authority", ""])
+    assert_exit_code(result, 0)
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    production_cluster = next(c for c in data["clusters"] if c["name"] == "production")
+    assert "certificate_authority" not in production_cluster
+
+
+def test_set_new_context_can_set_certificate_authority(config_file: Path):
+    result = runner.invoke(
+        app,
+        "config set --context local-tls --base-url https://localhost:8443 --certificate-authority /tmp/local-ca.pem",
+    )
+    assert_exit_code(result, 0)
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    context = next(c for c in data["contexts"] if c["name"] == "local-tls")
+    cluster = next(c for c in data["clusters"] if c["name"] == context["cluster"])
+    assert cluster["base_url"] == "https://localhost:8443/"
+    assert cluster["certificate_authority"] == str(Path("/tmp/local-ca.pem").resolve())
+
+
 def test_set_new_named_context_does_not_switch(config_file: Path):
     result = runner.invoke(app, "config set --context new-ctx --base-url https://new.example.com")
     assert_exit_code(result, 0)
@@ -378,7 +500,6 @@ def test_set_rejects_invalid_base_url(config_file: Path, invalid_url: str):
     "command_name",
     [
         "delete-cluster",
-        "delete-context",
         "delete-user",
         "get-clusters",
         "get-contexts",
@@ -401,20 +522,24 @@ def test_config_help_emphasizes_core_flow():
     assert "config view" in result.output
     assert "config view --minify" not in result.output
     assert "config use-context" in result.output
+    assert "config delete-context" in result.output
     assert "Advanced:" not in result.output
 
     view_match = re.search(r"^\s*view\s+", result.output, re.MULTILINE)
     set_match = re.search(r"^\s*set\s+", result.output, re.MULTILINE)
     current_context_match = re.search(r"^\s*current-context\s+", result.output, re.MULTILINE)
     use_context_match = re.search(r"^\s*use-context\s+", result.output, re.MULTILINE)
+    delete_context_match = re.search(r"^\s*delete-context\s+", result.output, re.MULTILINE)
 
     assert view_match is not None
     assert set_match is not None
     assert current_context_match is not None
     assert use_context_match is not None
+    assert delete_context_match is not None
     assert view_match.start() < set_match.start()
     assert set_match.start() < current_context_match.start()
     assert current_context_match.start() < use_context_match.start()
+    assert use_context_match.start() < delete_context_match.start()
 
 
 def test_view_help_uses_all_contexts_option():

@@ -311,26 +311,6 @@ jobs:
       networking:
         # Docker network for the job container | default: 'host'
         job_container_network: host
-      # Docker workload identity subject-token issuer configuration.
-      workload_identity:
-        # Enable Docker workload identity token-file injection. Defaults to auth.oidc.workload_token_exchange_enabled.
-        enabled:
-        # OAuth token endpoint used by the Docker demo issuer. Defaults to auth.oidc.token_endpoint.
-        token_endpoint:
-        # OAuth client ID used by the Docker demo issuer. Defaults to auth.oidc.workload_client_id or auth.oidc.client_id.
-        client_id:
-        # OAuth client secret for the Docker demo issuer.
-        client_secret:
-        # Username for the Docker demo issuer password grant.
-        username:
-        # Controller environment variable that contains the Docker demo issuer password grant shared secret. | default: 'AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD'
-        password_env_var: AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD
-        # OAuth scope for the Docker demo issuer.
-        scope:
-        # Fallback subject-token lifetime when the Docker demo issuer response omits expires_in.
-        subject_token_ttl_seconds: 600
-        # Seconds before subject-token expiry when the Docker refresher issues a replacement token. | default: 60
-        refresh_margin_seconds: 60
     # Default Kubernetes execution profile configuration
     kubernetes_job:
       # default: 1800
@@ -405,10 +385,12 @@ jobs:
       scheduler_name: ''
       # Container image that contains the jobs-launcher binary. | default: 'nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest'
       launcher_image: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
-      # Requested expirationSeconds for the projected service account token used as the workload identity subject token. | default: 600
-      workload_identity_token_expiration_seconds: 600
-      # Audience for the projected service account token. Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
-      workload_identity_token_audience:
+      # Kubernetes workload identity configuration.
+      workload_identity:
+        # Requested expirationSeconds for the projected service account token used as the workload identity subject token. | default: 600
+        token_expiration_seconds: 600
+        # Audience for the projected service account token. Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
+        token_audience:
     # Default Volcano execution profile configuration
     volcano_job:
       # default: 1800
@@ -483,10 +465,12 @@ jobs:
       scheduler_name: volcano
       # Container image that contains the jobs-launcher binary. | default: 'nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest'
       launcher_image: nvcr.io/nvidia/nemo-microservices/jobs-launcher:latest
-      # Requested expirationSeconds for the projected service account token used as the workload identity subject token. | default: 600
-      workload_identity_token_expiration_seconds: 600
-      # Audience for the projected service account token. Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
-      workload_identity_token_audience:
+      # Kubernetes workload identity configuration.
+      workload_identity:
+        # Requested expirationSeconds for the projected service account token used as the workload identity subject token. | default: 600
+        token_expiration_seconds: 600
+        # Audience for the projected service account token. Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then 'nemo-platform'.
+        token_audience:
       # The Volcano queue to submit the job to. | default: 'default'
       queue: default
       # maxRetry indicates the maximum number of retries allowed by the job | default: 0

@@ -17,7 +17,7 @@ Round-trip tests against the real preview/jobs endpoints live in
 
 from collections.abc import AsyncIterator
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import data_designer.config as dd
 import httpx
@@ -255,3 +255,34 @@ async def test_http_error_translates_5xx_to_generic_client_error(
     assert exc_info.value.status_code == 500
     # 5xx is *not* a config validation error — make sure we didn't accidentally widen the 422 branch.
     assert not isinstance(exc_info.value, DataDesignerConfigValidationError)
+
+
+def test_create_posts_to_named_create_job(
+    resource: DataDesignerResource, config_builder: dd.DataDesignerConfigBuilder
+) -> None:
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"name": "dd-job-1"}
+    mock_client = MagicMock()
+    mock_client.post.return_value = mock_resp
+    with patch.object(resource, "_client", return_value=mock_client):
+        job = resource.create(config_builder, num_records=10, workspace="ws")
+    url = mock_client.post.call_args.args[0]
+    assert url.endswith("/jobs/create")
+    assert job._job_name == "dd-job-1"
+    assert job._job_collection == "create"
+
+
+@pytest.mark.asyncio
+async def test_async_create_posts_to_named_create_job(
+    async_resource: AsyncDataDesignerResource, config_builder: dd.DataDesignerConfigBuilder
+) -> None:
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"name": "dd-job-2"}
+    mock_client = MagicMock()
+    mock_client.post = AsyncMock(return_value=mock_resp)
+    with patch.object(async_resource, "_client", return_value=mock_client):
+        job = await async_resource.create(config_builder, num_records=10, workspace="ws")
+    url = mock_client.post.call_args.args[0]
+    assert url.endswith("/jobs/create")
+    assert job._job_name == "dd-job-2"
+    assert job._job_collection == "create"

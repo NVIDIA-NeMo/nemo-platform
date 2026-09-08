@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import AsyncClient
+from nmp.common.api.filter import ComparisonOperation, FilterOperator
 from nmp.common.auth import get_auth_client
 from nmp.common.auth.client import AuthClient
 from nmp.common.auth.models import Principal
@@ -250,3 +251,113 @@ class TestWorkspaceDeletionBehavior:
         finally:
             # Clean up override
             app.dependency_overrides.clear()
+
+
+def _workspace_names_and_total(list_response) -> tuple[set[str], int]:
+    body = list_response.json()
+    names = {ws["name"] for ws in body["data"]}
+    return names, body["pagination"]["total_results"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestWorkspaceListExcludesDeleting:
+    """List must not return workspaces the single-entity GET path already treats as gone."""
+
+    async def test_list_excludes_pending_workspace_after_delete(self, client: AsyncClient):
+        workspace_name = "list-hide-pending"
+        created = await client.post(
+            "/apis/entities/v2/workspaces",
+            json={"name": workspace_name, "description": "Pending deletion list test"},
+        )
+        assert created.status_code == 201
+
+        listed_before = await client.get("/apis/entities/v2/workspaces", params={"page_size": 100})
+        assert listed_before.status_code == 200
+        names_before, total_before = _workspace_names_and_total(listed_before)
+        assert workspace_name in names_before
+
+        deleted = await client.delete(f"/apis/entities/v2/workspaces/{workspace_name}")
+        assert deleted.status_code == 200
+
+        listed_after = await client.get("/apis/entities/v2/workspaces", params={"page_size": 100})
+        assert listed_after.status_code == 200
+        names_after, total_after = _workspace_names_and_total(listed_after)
+        assert workspace_name not in names_after
+        assert total_after == total_before - 1
+
+        get_response = await client.get(f"/apis/entities/v2/workspaces/{workspace_name}")
+        assert get_response.status_code == 404
+
+    async def test_list_still_shows_live_sibling_after_delete(self, client: AsyncClient):
+        keep_name = "list-keep-sibling"
+        delete_name = "list-delete-sibling"
+        for name in (keep_name, delete_name):
+            created = await client.post(
+                "/apis/entities/v2/workspaces",
+                json={"name": name, "description": "Sibling list test"},
+            )
+            assert created.status_code == 201
+
+        deleted = await client.delete(f"/apis/entities/v2/workspaces/{delete_name}")
+        assert deleted.status_code == 200
+
+        listed = await client.get("/apis/entities/v2/workspaces", params={"page_size": 100})
+        assert listed.status_code == 200
+        names, _ = _workspace_names_and_total(listed)
+        assert keep_name in names
+        assert delete_name not in names
+
+    async def test_cleanup_filter_still_finds_pending_workspace(self, client: AsyncClient, repos):
+        workspace_name = "cleanup-filter-pending"
+        created = await client.post(
+            "/apis/entities/v2/workspaces",
+            json={"name": workspace_name, "description": "Cleanup query contract"},
+        )
+        assert created.status_code == 201
+
+        deleted = await client.delete(f"/apis/entities/v2/workspaces/{workspace_name}")
+        assert deleted.status_code == 200
+
+        workspace_repo: WorkspaceRepositoryInterface = repos["workspace"]
+        pending, _ = await workspace_repo.list_workspaces(
+            filter_op=ComparisonOperation(
+                operator=FilterOperator.EQ,
+                field="deletion_stage",
+                value=WorkspaceDeletionStage.PENDING,
+            ),
+            page_size=1,
+        )
+        assert any(ws.name == workspace_name for ws in pending)
+
+    @pytest.mark.parametrize(
+        "stage",
+        [WorkspaceDeletionStage.DELETING, WorkspaceDeletionStage.FAILED],
+    )
+    async def test_list_excludes_deleting_and_failed_workspaces(
+        self,
+        client: AsyncClient,
+        repos,
+        stage: WorkspaceDeletionStage,
+    ):
+        workspace_name = f"list-hide-{stage.value}"
+        created = await client.post(
+            "/apis/entities/v2/workspaces",
+            json={"name": workspace_name, "description": f"{stage.value} list test"},
+        )
+        assert created.status_code == 201
+
+        workspace_repo: WorkspaceRepositoryInterface = repos["workspace"]
+        marked = await workspace_repo.mark_workspace_for_deletion(
+            name=workspace_name,
+            deletion_stage=stage,
+        )
+        assert marked is True
+
+        listed = await client.get("/apis/entities/v2/workspaces", params={"page_size": 100})
+        assert listed.status_code == 200
+        names, _ = _workspace_names_and_total(listed)
+        assert workspace_name not in names
+
+        get_response = await client.get(f"/apis/entities/v2/workspaces/{workspace_name}")
+        assert get_response.status_code == 404

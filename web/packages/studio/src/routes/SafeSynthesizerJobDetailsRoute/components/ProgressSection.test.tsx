@@ -12,30 +12,30 @@ vi.mock('lucide-react', async () => {
   return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
 });
 
-// Mock CodeSnippet to avoid act() warnings from async Shiki highlighting.
+// Mock the highlighted code region to avoid act() warnings from async Shiki
+// highlighting. LogViewer composes the snippet from primitives, so only
+// CodeSnippetCode needs standing in for — the actions row stays real.
 vi.mock('@nvidia/foundations-react-core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nvidia/foundations-react-core')>();
   return {
     ...actual,
-    CodeSnippet: ({
+    CodeSnippetCode: ({
       value,
-      slotActions,
-      attributes,
+      className,
+      ref,
     }: {
       value?: string;
-      slotActions?: React.ReactNode;
-      attributes?: { CodeSnippetCode?: { ref?: React.Ref<HTMLElement>; className?: string } };
-    }) => {
-      const codeProps = attributes?.CodeSnippetCode;
-      return (
-        <div data-testid="nv-code-snippet">
-          {slotActions}
-          <pre ref={codeProps?.ref as React.Ref<HTMLPreElement>} className={codeProps?.className}>
-            {value}
-          </pre>
-        </div>
-      );
-    },
+      className?: string;
+      ref?: React.Ref<HTMLElement>;
+    }) => (
+      <pre
+        data-testid="nv-code-snippet-code"
+        ref={ref as React.Ref<HTMLPreElement>}
+        className={className}
+      >
+        {value}
+      </pre>
+    ),
   };
 });
 

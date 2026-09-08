@@ -51,7 +51,7 @@ from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Literal
+from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_trial_adapter import _trial_from_harbor_result
@@ -59,7 +59,6 @@ from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask, AgentEvalTaskset
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
 from nemo_evaluator_sdk.metrics.protocol import Metric
-from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_FORMAT_OTLP
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 logger = logging.getLogger(__name__)
@@ -67,7 +66,6 @@ logger = logging.getLogger(__name__)
 # Default reward key inside Harbor's ``verifier_result.rewards`` mapping.
 DEFAULT_REWARD_KEY = "reward"
 # Harbor trace format selected as the trial's standard trace evidence.
-_TRACE_FORMATS = frozenset({EVIDENCE_FORMAT_OTLP, EVIDENCE_FORMAT_ATIF})
 # Filename that marks a directory as a Harbor task, and the template dir to skip.
 _TASK_CONFIG_FILENAME = "task.toml"
 _TASK_TEMPLATE_DIRNAME = "task_template"
@@ -218,18 +216,15 @@ class HarborAgentTaskRunner:
         job_dir: str | Path | None = None,
         run_job: RunJob | None = None,
         reward_key: str = DEFAULT_REWARD_KEY,
-        trace_format: Literal["otlp", "atif"] = EVIDENCE_FORMAT_ATIF,
     ) -> None:
         if config is None and job_dir is None:
             raise ValueError("provide either a HarborRuntimeConfig or an explicit job_dir")
-        _validate_trace_format(trace_format)
         self._config = config
         self._dataset_path = Path(dataset_path) if dataset_path is not None else None
         self._task_names = task_names
         self._job_dir = Path(job_dir) if job_dir is not None else None
         self._run_job = run_job
         self._reward_key = config.reward_key if config is not None else reward_key
-        self._trace_format: Literal["otlp", "atif"] = trace_format
 
     def runner_info(self) -> RunnerInfo:
         """Identify this runner and the Harbor settings that shape its results.
@@ -254,7 +249,6 @@ class HarborAgentTaskRunner:
                 "jobs_dir": str(config.jobs_dir) if config is not None else None,
                 "job_name": config.job_name if config is not None else None,
                 "reward_key": self._reward_key,
-                "trace_format": self._trace_format,
             },
         )
 
@@ -349,7 +343,6 @@ class HarborAgentTaskRunner:
                 job_dir,
                 tasks,
                 reward_key=self._reward_key,
-                trace_format=self._trace_format,
             )
 
         if self._job_dir is None:  # unreachable: __init__ guarantees config or job_dir
@@ -360,7 +353,6 @@ class HarborAgentTaskRunner:
             self._job_dir,
             tasks,
             reward_key=self._reward_key,
-            trace_format=self._trace_format,
         )
 
 
@@ -1122,7 +1114,6 @@ def build_trials_from_job_dir(
     tasks: Sequence[AgentEvalTask],
     *,
     reward_key: str = DEFAULT_REWARD_KEY,
-    trace_format: Literal["otlp", "atif"] = EVIDENCE_FORMAT_ATIF,
 ) -> list[AgentEvalTrial]:
     """Adapt Harbor's per-trial ``result.json`` files into :class:`AgentEvalTrial` objects.
 
@@ -1133,7 +1124,6 @@ def build_trials_from_job_dir(
     ``metadata`` and standard evidence descriptors pointing at the trial's
     on-disk artifacts.
     """
-    _validate_trace_format(trace_format)
     job_path = Path(job_dir)
     known_task_ids = {task.id for task in tasks}
     trials: list[AgentEvalTrial] = []
@@ -1152,7 +1142,6 @@ def build_trials_from_job_dir(
                 result_path.parent,
                 data,
                 reward_key=reward_key,
-                trace_format=trace_format,
             )
         )
 
@@ -1166,22 +1155,6 @@ def build_trials_from_job_dir(
             "No Harbor trial results under %s matched the requested tasks; nothing will be scored.", job_path
         )
     return trials
-
-
-def _validate_trace_format(trace_format: str) -> None:
-    """Validate the trace format accepted by Harbor trial adaptation.
-
-    Args:
-        trace_format: Requested standard trace encoding.
-
-    Returns:
-        None when ``trace_format`` is supported.
-
-    Raises:
-        ValueError: If ``trace_format`` is not one of the supported encodings.
-    """
-    if trace_format not in _TRACE_FORMATS:
-        raise ValueError(f"trace_format must be one of {sorted(_TRACE_FORMATS)}, got {trace_format!r}")
 
 
 def _harbor_task_dirs(dataset_path: Path) -> list[Path]:
@@ -1286,7 +1259,6 @@ async def run_harbor_eval(
     task_names: Sequence[str] | None = None,
     metrics: Sequence[Metric] | None = None,
     run_config: AgentEvalRunConfig | None = None,
-    trace_format: Literal["otlp", "atif"] = EVIDENCE_FORMAT_ATIF,
 ) -> AgentEvalResult:
     """Run a Harbor dataset natively and score it — the minimal-plumbing entry point.
 
@@ -1304,7 +1276,7 @@ async def run_harbor_eval(
     if metrics is not None:
         tasks = [task.model_copy(update={"metrics": list(metrics)}) for task in tasks]
 
-    runner = HarborAgentTaskRunner(config=config, task_names=task_names, trace_format=trace_format)
+    runner = HarborAgentTaskRunner(config=config, task_names=task_names)
     return await AgentEvaluator().run(
         tasks=tasks,
         target=runner,

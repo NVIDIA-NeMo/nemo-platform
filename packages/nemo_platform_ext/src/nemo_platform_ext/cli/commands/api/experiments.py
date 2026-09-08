@@ -39,6 +39,13 @@ def create_experiments(
     ctx: typer.Context,
     name: Annotated[str | None, typer.Argument(help="Workspace-unique experiment name. (required)")] = None,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
+    column_layout: Annotated[
+        str | None,
+        typer.Option(
+            "--column-layout",
+            help="A saved table layout for a group's evaluations list: column order and which columns are hidden.Column ids are Studio's and cannot be enumerated here — the table builds a column per evaluator and metadata key found in the rows — so ids are stored and echoed back unvalidated.Visibility is stored as the _hidden_ ids rather than a map over every column, so a column that appears later (a new evaluator, a new metadata key) shows up by default. (JSON string)",
+        ),
+    ] = None,
     default_sort: Annotated[
         str | None,
         typer.Option(
@@ -117,6 +124,8 @@ def create_experiments(
         input_payload["workspace"] = workspace
     if name is not None:
         input_payload["name"] = name
+    if column_layout is not None:
+        input_payload["column_layout"] = read_payload("column_layout", column_layout)
     if default_sort is not None:
         input_payload["default_sort"] = default_sort
     if description is not None:
@@ -335,6 +344,13 @@ def update_experiments(
             help="Name of this Experiment's baseline Evaluation. The Evaluation must already be a live member of the Experiment. Set null to clear the selected baseline.",
         ),
     ] = None,
+    column_layout: Annotated[
+        str | None,
+        typer.Option(
+            "--column-layout",
+            help="A saved table layout for a group's evaluations list: column order and which columns are hidden.Column ids are Studio's and cannot be enumerated here — the table builds a column per evaluator and metadata key found in the rows — so ids are stored and echoed back unvalidated.Visibility is stored as the _hidden_ ids rather than a map over every column, so a column that appears later (a new evaluator, a new metadata key) shows up by default. (JSON string)",
+        ),
+    ] = None,
     default_sort: Annotated[
         str | None,
         typer.Option(
@@ -409,6 +425,8 @@ def update_experiments(
         input_payload["body_name"] = body_name
     if baseline_evaluation_name is not None:
         input_payload["baseline_evaluation_name"] = baseline_evaluation_name
+    if column_layout is not None:
+        input_payload["column_layout"] = read_payload("column_layout", column_layout)
     if default_sort is not None:
         input_payload["default_sort"] = default_sort
     if description is not None:

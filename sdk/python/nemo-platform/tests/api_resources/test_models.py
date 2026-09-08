@@ -94,6 +94,7 @@ class TestModels:
                 "vocab_size": 0,
                 "chat_template": "chat_template",
                 "context_size": 0,
+                "head_type": "causal_lm",
                 "is_chat": True,
                 "is_embedding_model": True,
                 "linear_layers": [
@@ -289,6 +290,7 @@ class TestModels:
                 "vocab_size": 0,
                 "chat_template": "chat_template",
                 "context_size": 0,
+                "head_type": "causal_lm",
                 "is_chat": True,
                 "is_embedding_model": True,
                 "linear_layers": [
@@ -577,6 +579,7 @@ class TestAsyncModels:
                 "vocab_size": 0,
                 "chat_template": "chat_template",
                 "context_size": 0,
+                "head_type": "causal_lm",
                 "is_chat": True,
                 "is_embedding_model": True,
                 "linear_layers": [
@@ -772,6 +775,7 @@ class TestAsyncModels:
                 "vocab_size": 0,
                 "chat_template": "chat_template",
                 "context_size": 0,
+                "head_type": "causal_lm",
                 "is_chat": True,
                 "is_embedding_model": True,
                 "linear_layers": [

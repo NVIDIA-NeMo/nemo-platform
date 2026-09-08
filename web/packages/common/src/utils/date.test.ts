@@ -69,6 +69,19 @@ describe('formatDurationMs', () => {
     expect(formatDurationMs(0)).toBe('0ms');
     expect(formatDurationMs(-5)).toBe('0ms');
   });
+
+  describe('hideMsAboveMinute', () => {
+    it('drops the ms component once the total reaches a minute', () => {
+      expect(formatDurationMs(612_013, { hideMsAboveMinute: true })).toBe('10m 12s');
+      expect(formatDurationMs(3_661_013, { hideMsAboveMinute: true })).toBe('1h 1m 1s');
+      expect(formatDurationMs(60_034, { hideMsAboveMinute: true })).toBe('1m');
+    });
+
+    it('keeps ms for sub-minute durations', () => {
+      expect(formatDurationMs(12_034, { hideMsAboveMinute: true })).toBe('12s 34ms');
+      expect(formatDurationMs(999, { hideMsAboveMinute: true })).toBe('999ms');
+    });
+  });
 });
 
 describe('utcToLocalDate', () => {

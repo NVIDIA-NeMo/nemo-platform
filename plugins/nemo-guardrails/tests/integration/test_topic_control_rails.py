@@ -21,6 +21,7 @@ from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 from .utils import (
     GUARDRAILS_PLUGIN_NAME,
     RailType,
+    detach_guardrail_config,
     make_guardrails_test_data_names,
     make_served_model,
 )
@@ -123,6 +124,9 @@ class TestTopicControl:
 
     @staticmethod
     def _delete_config_if_present(harness: IGWLoopbackHarness, config_name: str) -> None:
+        # The service refuses to delete a config a VirtualModel still applies; harness
+        # cleanup removes those routes, but it runs after this teardown.
+        detach_guardrail_config(harness, config_name)
         try:
             harness.sdk.guardrail.configs.delete(name=config_name, workspace=harness.workspace)
         except nemo_platform.NotFoundError:

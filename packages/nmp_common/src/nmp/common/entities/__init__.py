@@ -19,6 +19,7 @@ from nmp.common.entities.client import (
     EntityValidationError,
     ListResponse,
     PaginationInfo,
+    SyncEntityClient,
 )
 
 # Constants for validation
@@ -57,6 +58,7 @@ __all__ = [
     # Unified client (recommended - primary implementation)
     "EntityBase",
     "EntityClient",
+    "SyncEntityClient",
     "EntityStoreError",
     "EntityNotFoundError",
     "EntityConflictError",

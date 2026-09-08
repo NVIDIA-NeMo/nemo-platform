@@ -11,7 +11,7 @@ from data_designer.config.dataset_metadata import DatasetMetadata
 from data_designer_nemo.columns import validate_no_custom_columns
 from data_designer_nemo.seed import validate_seed_source_for_execution_context
 from nemo_platform_plugin.functions.frames import Done, Error, Heartbeat
-from pydantic import BaseModel, Field, ValidationInfo, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 LogLevel = Literal["debug", "info", "warn", "warning", "error"]
 
@@ -22,15 +22,10 @@ class PreviewSpec(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_config_for_platform(cls, data: Any, info: ValidationInfo) -> Any:
+    def validate_config_for_platform(cls, data: Any) -> Any:
         validate_no_custom_columns(data)
-        validate_seed_source_for_execution_context(data, is_local=_is_local_context(info))
+        validate_seed_source_for_execution_context(data)
         return data
-
-
-def _is_local_context(info: ValidationInfo) -> bool:
-    context = info.context
-    return isinstance(context, dict) and context.get("is_local") is True
 
 
 class LogFrame(BaseModel):

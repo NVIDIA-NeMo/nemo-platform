@@ -6,9 +6,10 @@
 This directory contains a local Authentik-backed NeMo Platform example. Use it
 to validate three user-visible flows:
 
-- log in to NeMo with Authentik
-- call NeMo APIs through the Authentik gateway
-- run a NeMo job whose workload exchanges a real Authentik workload subject token
+- log in to NeMo Platform with Authentik
+- call NeMo Platform APIs through the Authentik gateway
+- run a NeMo Platform job whose workload exchanges a managed workload proof token for a
+  delegated NeMo Platform access token
 
 All credentials in this example are for local development only.
 
@@ -32,9 +33,9 @@ Runtime details live separately:
 ## Test Harness
 
 `run.sh` is the automation entrypoint for CI-style validation and repeatable
-local test runs. It can run the local Compose stack, run the Compose auth-idp
-contract tests, run the Kubernetes auth-idp contract tests, and clean up local
-resources.
+local test runs. It can start durable Compose or Kubernetes auth-idp
+environments, run the Compose or Kubernetes auth-idp contract tests, and clean
+up local resources.
 
 ```bash
 contrib/auth/authentik/run.sh --help
@@ -43,17 +44,46 @@ contrib/auth/authentik/run.sh --help
 Common commands:
 
 ```bash
-contrib/auth/authentik/run.sh compose
-contrib/auth/authentik/run.sh k8s
+contrib/auth/authentik/run.sh up compose
+contrib/auth/authentik/run.sh up k8s
+contrib/auth/authentik/run.sh test compose
+contrib/auth/authentik/run.sh test k8s
 contrib/auth/authentik/run.sh prepare-local
-contrib/auth/authentik/run.sh run-local
-contrib/auth/authentik/run.sh down
+contrib/auth/authentik/run.sh down compose
+contrib/auth/authentik/run.sh down k8s
+contrib/auth/authentik/run.sh clean
 ```
+
+`up compose` and `up k8s` also create user NeMo CLI contexts named
+`authentik-compose` and `authentik-k8s`. The contexts include the
+local gateway URL, default workspace, and gateway certificate authority so users
+can switch to them with `nemo config use-context`.
+
+Use `--key KEY` with `up` to run a second durable instance. The key derives
+managed names such as `authentik-compose-KEY`, `authentik-k8s-KEY`,
+`authentik-e2e-KEY`, and `nmp-authentik-KEY`, and keyed `up` commands choose
+an available local gateway port by default. Use the same key with `down` to
+remove that instance:
+
+```bash
+contrib/auth/authentik/run.sh up compose --key dev
+contrib/auth/authentik/run.sh down compose --key dev
+```
+
+`up k8s` uses `https://127.0.0.1:18082` by default for a stable manual URL.
+`test k8s` chooses an available local port by default so it can run while other
+local k8s auth-idp workflows are using that stable port. Set
+`NMP_AUTHENTIK_K8S_GATEWAY_PORT` to force a specific test port. The `test`
+actions do not add user NeMo CLI contexts.
 
 The harness keeps generated local inputs in `contrib/auth/authentik/.generated`
 so Compose and Kubernetes test runs can reuse the same workload-token signing
-key. Diagnostics are written under `docker/logs/authentik-*` by default, or
-under `E2E_SERVICES_LOG_DIR` when that environment variable is set.
+key. Durable `up` actions record lifecycle state under
+`contrib/auth/authentik/.generated/instances` by default so `down` and `clean`
+can remove recorded instances later. Override that path with
+`NEMO_AUTHENTIK_STATE_DIR`. Diagnostics are written under
+`docker/logs/authentik-*` by default, or under `E2E_SERVICES_LOG_DIR` when that
+environment variable is set.
 
 For manual startup and walkthroughs, prefer the shared tutorial above.
 
@@ -88,8 +118,10 @@ The 2-minute CLI access-token lifetime is a local demo/testing setting so token
 refresh is easy to observe. Do not use it as a production default; use a longer
 value such as `hours=1` outside the refresh demonstration.
 
-In the Docker Compose runtime, Authentik issues the demo workload subject token,
-but it does not accept the RFC 8693 token exchange grant directly. The Docker
-backend refreshes the Authentik subject token file, the SDK posts that token to
-the NeMo auth service, and the gateway trusts the NeMo auth service JWKS for
-exchanged workload access tokens.
+In the Docker Compose runtime, Authentik idP authenticates users and controller
+service principals, but managed Docker job OBO uses a NeMo Platform-owned
+opaque workload proof token. The Docker backend writes that proof token into the
+job token file, the SDK posts it to the NeMo Platform auth service, and the
+gateway trusts the NeMo Platform auth service JWKS for exchanged workload access
+tokens. Docker OBO does not depend on IdP `jti` claims or IdP-issued workload
+subject tokens.

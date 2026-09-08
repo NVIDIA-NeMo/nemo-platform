@@ -66,9 +66,11 @@ def _make_anonymizer(
     model_configs_yaml: str,
     dd_providers: list[DDModelProvider] | None,
 ) -> Anonymizer:
+    if not model_configs_yaml:
+        raise RuntimeError("Anonymizer preview requires resolved model_configs.")
     with preserve_root_logging():
         return Anonymizer(
-            model_configs=model_configs_yaml or None,
+            model_configs=model_configs_yaml,
             model_providers=dd_providers,
         )
 
@@ -89,7 +91,10 @@ def _to_jsonable_records(df: pd.DataFrame) -> list[dict[str, Any]]:
             safe[col] = safe[col].apply(
                 lambda v: None if (v is None or (isinstance(v, float) and math.isnan(v))) else v
             )
-    return json.loads(safe.to_json(orient="records", date_format="iso", default_handler=str))
+    records_json = safe.to_json(orient="records", date_format="iso", default_handler=str)
+    if records_json is None:
+        return []
+    return json.loads(records_json)
 
 
 def _get_original_text_column(df: pd.DataFrame, *, fallback: str) -> str:

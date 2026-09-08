@@ -19,6 +19,11 @@ Current assumptions:
 - Harbor is a required dependency for measurement. Use `requirements.txt` when
   running `measure.py` outside a repository environment that already provides
   Harbor.
+- Capability measurement may also consume a local skill-authored judgment
+  sidecar with `--capability-judgments`. That sidecar is for non-tool evidence
+  only; deterministic tool requirements still come from the ATIF trace. The
+  sidecar's required `trace_sha256` binds its judgments to the exact ATIF bytes
+  that were inspected, and measurement rejects a digest mismatch.
 - Reports are written under encoded path components:
   `<out-dir>/task=<task-id>/run=<run-id>/<method>/coverage.json` and
   `details.json`. The raw `task_id` and `run_id` remain in the JSON payloads.
@@ -50,10 +55,54 @@ Current assumptions:
   version before Harbor models are updated. If that happens, prefer contributing
   or adopting a permissive Harbor consumer reader before maintaining a local ATIF
   parser here.
-- The only implemented measurement method is `tool_calls`. It covers audit items
-  with `kind: tool` by matching each tool item `name` against Harbor trajectory
-  `ToolCall.function_name` values.
-- Capability, flow, failure-case, boundary, policy, and LLM-judged coverage are
-  intentionally out of scope for the current measurement method. Add those as
-  separate methods that emit the same shared `coverage.json` shape plus their own
-  method-specific `details.json`.
+- Failure-case coverage and richer deterministic predicates such as argument,
+  output, state, verifier, and ordering checks remain out of scope. For
+  capability coverage, keep additional gates inside the composite capability
+  method unless aggregation learns prerequisite-aware merging.
+
+## Script Inventory
+
+| Script | Use it to |
+|---|---|
+| `scripts/audit_spec/generate.py` | Create, reconcile, replace, or preview `.eval-author/audit.md` from `ETHOS.md` and reviewed item proposals |
+| `scripts/audit_spec/measure.py` | Measure one ATIF trace or Harbor trial directory against `audit.md` and write coverage/details files for each selected method |
+| `scripts/audit_spec/report.py` | Aggregate per-trace `coverage.json` files into one coverage report with uncovered audit items |
+| `scripts/audit_spec/validate.py` | Validate the marked audit-spec block in `audit.md` |
+
+Private shared helpers live in `scripts/audit_spec/_schema.py`,
+`scripts/audit_spec/_markdown.py`, and
+`scripts/audit_spec/measurements/trace_tools.py`. Measurement methods live under
+`scripts/audit_spec/measurements/`; v1 ships
+`scripts/audit_spec/measurements/tool_calls.py` and
+`scripts/audit_spec/measurements/capabilities.py`.
+
+## Schemas And Examples
+
+| Artifact | Path |
+|---|---|
+| Shared coverage schema | `schemas/audit_coverage.schema.json` |
+| Capability judgment input schema | `schemas/audit_capability_judgments.schema.json` |
+| Aggregate coverage report schema | `schemas/audit_coverage_report.schema.json` |
+| Capability details schema | `schemas/audit_capabilities_details.schema.json` |
+| Tool-call details schema | `schemas/audit_tool_calls_details.schema.json` |
+| Tool-call coverage example | `examples/schemas/tool_calls.coverage.json` |
+| Tool-call details example | `examples/schemas/tool_calls.details.json` |
+| Capability judgment input example | `examples/schemas/capability_judgments.json` |
+| Capability coverage example | `examples/schemas/capabilities.coverage.json` |
+| Capability details example | `examples/schemas/capabilities.details.json` |
+| Aggregate coverage report example | `examples/schemas/coverage_report.json` |
+
+## Measurement Methods
+
+| Method | Covers | Evidence |
+|---|---|---|
+| `tool_calls` | `tool` items | Matches each tool item's `name` against ATIF `steps[].tool_calls[].function_name`, including embedded subagent trajectories |
+| `capabilities` | `capability` items | Requires every declared `required_tools` value and every `tool_call` evidence predicate to appear in the trace; non-tool evidence can be satisfied by a structured skill-authored judgment sidecar |
+
+`capabilities` treats deterministic requirements as hard gates. A supplied
+judgment can satisfy non-tool evidence kinds such as `user_intent`, `output`,
+`outcome`, `policy_boundary`, and `verifier`, but it cannot cover a capability
+when required tools or `tool_call` evidence are missing. Missing judgments are
+reported as `unjudged` and leave the capability uncovered. Judgments bound to a
+different trace digest are rejected before reports are written. Unknown evidence
+kinds remain `unsupported`.

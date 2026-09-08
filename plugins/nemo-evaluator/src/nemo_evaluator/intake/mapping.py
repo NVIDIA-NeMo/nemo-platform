@@ -29,13 +29,24 @@ Design constraints (see AALGO-289):
 
 from __future__ import annotations
 
+import logging
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 
+from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_FORMAT_OTLP, EVIDENCE_TRACE
+from nemo_evaluator_sdk.values.otlp import (
+    fill_missing_start_times,
+    root_span_id,
+    set_root_span_attributes,
+    set_root_span_error,
+    set_span_attributes,
+)
 from nemo_platform.types.intake.evaluation_context_param import EvaluationContextParam
 from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
 from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
@@ -43,6 +54,9 @@ from nemo_platform.types.intake.ingest.atif_agent_param import AtifAgentParam
 from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
 from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
 from nemo_platform.types.intake.ingest.atif_step_agent_param import AtifStepAgentParam
+from nemo_platform.types.intake.ingest.atif_step_param import AtifStepParam
+
+logger = logging.getLogger(__name__)
 
 # --- Shared conventions -----------------------------------------------------
 
@@ -53,11 +67,11 @@ ATIF_SCHEMA_VERSION: Literal["ATIF-v1.7"] = "ATIF-v1.7"
 #: Agent has a version field today, and ATIF requires one (design doc §3.9 #6).
 DEFAULT_AGENT_VERSION = "unknown"
 
-# Evidence-descriptor keys. ATIF is carried as a ``format`` on ``kind="trace"``,
-# *not* as a distinct ``kind``. These are string literals until D1 (AALGO-281)
-# promotes them to shared descriptor-key constants on the SDK evidence types.
-EVIDENCE_KIND_TRACE = "trace"
-TRACE_FORMAT_ATIF = "atif"
+# Span attribute keys Intake reads identity back from; see its span attribute catalog. The
+# session id has two accepted keys and this is the one that wins.
+_SESSION_ID_ATTRIBUTE = "gen_ai.conversation.id"
+_EVALUATION_NAME_ATTRIBUTE = "nemo.evaluation.name"
+_TEST_CASE_NAME_ATTRIBUTE = "nemo.test_case.name"
 
 
 def session_id_for(run_id: str, trial_id: str) -> str:
@@ -80,6 +94,122 @@ def run_task_to_evaluation_context(trial: AgentEvalTrial, *, evaluation_name: st
     return {"evaluation_name": evaluation_name, "test_case_name": trial.task_id}
 
 
+async def atif_steps_from_trial(trial: AgentEvalTrial, *, started_at: datetime) -> list[AtifStepParam] | None:
+    """Return the trial's real ATIF steps, or None when it carries no ATIF trajectory.
+
+    Reads the ATIF view by name rather than the trial's primary trace, which may be an OTLP
+    one. Only runners whose agent emits ATIF attach one; Harbor's
+    ``oracle`` and ``nop`` never do, and an unreadable or malformed trajectory is treated the
+    same as an absent one so a publish is never lost to bad evidence.
+
+    The SDK's read model is deliberately more permissive than Intake's ingest schema, so steps that
+    parse here can still be rejected there; :func:`nemo_evaluator.intake.publish.publish_to_intake`
+    retries without them rather than enumerating every divergence.
+    """
+    evidence = trial.evidence
+    if evidence is None:
+        return None
+    try:
+        handle = await evidence.trace(EVIDENCE_TRACE, format=EVIDENCE_FORMAT_ATIF)
+    except KeyError:
+        # Absent is the normal case for a runner whose agent emits no ATIF, and is
+        # distinct from a trace that exists but will not read.
+        return None
+    try:
+        steps = await handle.steps()
+    except (OSError, ValueError) as error:
+        logger.warning("Ignoring unreadable ATIF trace for trial %s: %s", trial.id, error)
+        return None
+
+    payload: list[AtifStepParam] = []
+    for index, step in enumerate(steps):
+        dumped = step.model_dump(mode="json", exclude_none=True)
+        # Ingest requires one-based sequential ids, while the SDK read model leaves step_id optional.
+        dumped["step_id"] = index + 1
+        # Intake keys spans on start_time and falls back to its own ingest clock for a step with
+        # no timestamp, which would make re-publish duplicate instead of replace.
+        dumped.setdefault("timestamp", started_at.isoformat())
+        payload.append(cast(AtifStepParam, dumped))
+    return payload
+
+
+async def otlp_ingest_for_trial(
+    trial: AgentEvalTrial,
+    *,
+    session_id: str,
+    evaluation_name: str,
+    measurements: TrialMeasurements,
+    started_at: datetime,
+) -> tuple[bytes, str] | None:
+    """Return the trial's OTLP payload stamped with evaluation identity, and its root span id.
+
+    ``None`` when the trial has no readable OTLP trace, or when its spans have no single root
+    carrying a usable id: a trial-level score needs one span standing for the whole run.
+
+    ``started_at`` fills in any span that recorded no start time of its own, because Intake
+    otherwise stores it against the ingest clock and start time is part of the key its spans
+    table replaces on — so a re-publish would insert rather than replace.
+
+    Identity is written onto spans rather than resource attributes because Intake merges the
+    layers as ``{**resource, **span}``. An agent that records its own ``gen_ai.conversation.id``
+    would otherwise win, and the session id is what Intake's ``ReplacingMergeTree`` is keyed on,
+    so a re-publish would insert duplicates instead of replacing.
+    """
+    evidence = trial.evidence
+    if evidence is None:
+        return None
+    try:
+        handle = await evidence.trace(EVIDENCE_TRACE, format=EVIDENCE_FORMAT_OTLP)
+    except KeyError:
+        return None
+    try:
+        request = await handle.export_request()
+    except (OSError, ValueError) as error:
+        logger.warning("Ignoring unreadable OTLP trace for trial %s: %s", trial.id, error)
+        return None
+
+    span_id = root_span_id(request)
+    if span_id is None:
+        logger.warning(
+            "Ignoring OTLP trace for trial %s: it has no single root span with a usable id to score.", trial.id
+        )
+        return None
+
+    set_span_attributes(
+        request,
+        {
+            _SESSION_ID_ATTRIBUTE: session_id,
+            _EVALUATION_NAME_ATTRIBUTE: evaluation_name,
+            _TEST_CASE_NAME_ATTRIBUTE: trial.task_id,
+        },
+    )
+    set_root_span_attributes(request, _trial_totals(trial, measurements))
+    if trial.error is not None:
+        set_root_span_error(request, message=trial.error.message)
+    fill_missing_start_times(request, start_time_unix_nano=int(started_at.timestamp() * 1_000_000_000))
+    return request.SerializeToString(), span_id
+
+
+def _trial_totals(trial: AgentEvalTrial, measurements: TrialMeasurements) -> dict[str, str | int | float]:
+    """The trial-level totals and error that ATIF conveyed outside the step list."""
+    # Read as numbers by Intake. ATIF carried these as ``final_metrics``; under OTLP they go on
+    # the root span, which is the span that stands for the whole trial.
+    totals: dict[str, str | int | float] = {}
+    for value, attribute in (
+        (measurements.prompt_tokens, "gen_ai.usage.input_tokens"),
+        (measurements.completion_tokens, "gen_ai.usage.output_tokens"),
+        (measurements.cache_read_tokens, "gen_ai.usage.cached_tokens"),
+        (measurements.cost_usd, "gen_ai.usage.cost"),
+    ):
+        if value is not None:
+            totals[attribute] = value
+    if trial.error is not None:
+        totals["exception.type"] = trial.error.type
+        if trial.error.message is not None:
+            totals["exception.message"] = trial.error.message
+    return totals
+
+
 def trial_to_atif_ingest(
     trial: AgentEvalTrial,
     *,
@@ -91,16 +221,17 @@ def trial_to_atif_ingest(
     model_name: str | None = None,
     final_metrics: AtifFinalMetricsParam | None = None,
     ended_at: datetime | None = None,
+    steps: Sequence[AtifStepParam] | None = None,
 ) -> AtifCreateParams:
     """Build the ATIF ingest params for a single Trial.
 
-    Until ATIF normalization of trace evidence lands (D2, AALGO-282), this emits
-    a minimal single-step trajectory carrying the trial's final output text, so
-    the session/score path works end to end. Real ``steps[]`` reconstructed from
-    ``trial.evidence`` arrive with D2.
+    ``steps`` carries the trial's real ATIF trajectory when it has one (see
+    :func:`atif_steps_from_trial`). Without it this falls back to a minimal single-step
+    trajectory holding the trial's final output text, which is all a runner that emits no
+    trajectory — Harbor's ``oracle``, for one — can offer.
 
-    ``started_at`` (the run's start time) is stamped on the step because it is what
-    makes re-ingest idempotent. Intake's ``spans`` table is a ``ReplacingMergeTree``
+    ``started_at`` (the run's start time) stamps any step that carries no timestamp of its own,
+    because that is what makes re-ingest idempotent. Intake's ``spans`` table is a ``ReplacingMergeTree``
     keyed on ``(workspace, session_id, start_time, id)``, and a step with no timestamp
     falls back to the server's per-request ingest clock — so the same trajectory sent
     twice lands as two rows that never collapse. An explicit timestamp makes the root
@@ -131,7 +262,7 @@ def trial_to_atif_ingest(
         "schema_version": ATIF_SCHEMA_VERSION,
         "session_id": session_id_for(run_id, trial.id),
         "agent": agent,
-        "steps": [step],
+        "steps": list(steps) if steps else [step],
         "evaluation_context": run_task_to_evaluation_context(trial, evaluation_name=evaluation_name),
     }
     if trial.error is not None:

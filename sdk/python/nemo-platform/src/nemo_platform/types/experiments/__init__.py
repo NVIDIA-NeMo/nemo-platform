@@ -17,7 +17,9 @@
 
 from __future__ import annotations
 
+from .column_layout import ColumnLayout as ColumnLayout
 from .pareto_config import ParetoConfig as ParetoConfig
+from .column_layout_param import ColumnLayoutParam as ColumnLayoutParam
 from .experiment_response import ExperimentResponse as ExperimentResponse
 from .pareto_config_param import ParetoConfigParam as ParetoConfigParam
 from .experiment_list_params import ExperimentListParams as ExperimentListParams

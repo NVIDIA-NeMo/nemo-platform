@@ -40,6 +40,8 @@ from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.testing import MockProviderResponse, add_mock_provider, short_unique_name
 
 pytestmark = [
@@ -334,13 +336,14 @@ def _cleanup_anonymizer_job(sdk: NeMoPlatform, job_name: str) -> None:
 
 @pytest.fixture(scope="module")
 def anonymizer_workspace(sdk: NeMoPlatform) -> Iterator[str]:
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     name = short_unique_name("e2e-anon")
-    sdk.workspaces.create(name=name)
+    workspaces.create_workspace(body=CreateWorkspaceRequest(name=name)).data()
     try:
         yield name
     finally:
         with suppress(Exception):
-            sdk.workspaces.delete(name)
+            workspaces.delete_workspace(name=name).data()
 
 
 @pytest.fixture(scope="module")
@@ -367,7 +370,7 @@ def anonymizer_fileset(
         name=name,
         workspace=anonymizer_sdk.workspace,
         path=CSV_REMOTE_PATH,
-        content=_input_csv(),
+        content=_input_csv().encode(),
     )
 
     parquet_path = tmp_path_factory.mktemp("anonymizer-inputs") / "records.parquet"
@@ -389,7 +392,7 @@ def anonymizer_fileset(
         name=name,
         workspace=anonymizer_sdk.workspace,
         path=NOT_CSV_REMOTE_PATH,
-        content="not,a,supported,input\n",
+        content=b"not,a,supported,input\n",
     )
     try:
         yield name

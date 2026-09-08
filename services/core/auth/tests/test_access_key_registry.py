@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateResponse, AccessKeyEntityType
-from nmp.common.auth.jwt import TokenClaims
+from nmp.common.auth.token_claims import TokenClaims
 from nmp.common.entities import EntityConflictError, EntityNotFoundError
 from nmp.core.auth.app.access_keys import AccessKeyNotFoundError, AccessKeyRegistry, AccessKeyStateConflictError
 from nmp.core.auth.entities import AccessKeyEntity

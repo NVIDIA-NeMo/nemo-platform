@@ -37,6 +37,8 @@ from nemo_platform_plugin.models.types import (
 )
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.core.auth.app.bundle import build_authorization_data as _real_build_authorization_data
 from nmp.core.files.service import FilesService
 from nmp.core.models.config import config as models_config
@@ -309,7 +311,9 @@ def viewer_workspace(sdk: NeMoPlatform):
     viewer_email = unique_email("viewer")
 
     admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-    admin_sdk.workspaces.create(name=workspace)
+    client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+        body=CreateWorkspaceRequest(name=workspace)
+    ).data()
     grant_workspace_role(
         admin_sdk,
         workspace=workspace,
@@ -522,7 +526,9 @@ class TestEditorModelsAccess:
         model_name = short_unique_name("model")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -544,7 +550,9 @@ class TestEditorModelsAccess:
         model_name = short_unique_name("model")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -563,7 +571,9 @@ class TestEditorModelsAccess:
         provider_name = short_unique_name("prov")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -585,7 +595,9 @@ class TestEditorModelsAccess:
         config_name = short_unique_name("cfg")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -613,7 +625,9 @@ class TestProviderSecretPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -635,7 +649,9 @@ class TestProviderSecretPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, SecretsClient).create_secret(
             body=PlatformSecretCreateRequest(name="my-api-key", value=SecretStr("test-value")),
             workspace=workspace,
@@ -663,7 +679,9 @@ class TestProviderSecretPermissions:
         provider_name = short_unique_name("prov")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, SecretsClient).create_secret(
             body=PlatformSecretCreateRequest(name="my-api-key", value=SecretStr("test-value")),
             workspace=workspace,
@@ -691,7 +709,9 @@ class TestProviderSecretPermissions:
             user_email = unique_email("nosecrets")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             client_from_platform(admin_sdk, SecretsClient).create_secret(
                 body=PlatformSecretCreateRequest(name="should-be-denied", value=SecretStr("test")),
                 workspace=workspace,
@@ -727,7 +747,9 @@ class TestProviderSecretPermissions:
             user_email = unique_email("nosecrets")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             client_from_platform(admin_sdk, SecretsClient).create_secret(
                 body=PlatformSecretCreateRequest(name="should-be-denied", value=SecretStr("test")),
                 workspace=workspace,
@@ -760,7 +782,9 @@ class TestProviderDeploymentRefPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -783,7 +807,9 @@ class TestProviderDeploymentRefPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -807,7 +833,9 @@ class TestProviderDeploymentRefPermissions:
             user_email = unique_email("noread")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -832,7 +860,9 @@ class TestProviderDeploymentRefPermissions:
             user_email = unique_email("noread")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -861,7 +891,9 @@ class TestDeploymentConfigPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -886,7 +918,9 @@ class TestDeploymentConfigPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -912,7 +946,9 @@ class TestDeploymentConfigPermissions:
         config_name = short_unique_name("cfg")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
@@ -945,7 +981,9 @@ class TestDeploymentConfigPermissions:
         config_name = short_unique_name("cfg")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
@@ -978,7 +1016,9 @@ class TestDeploymentConfigPermissions:
             user_email = unique_email("noread")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -1006,7 +1046,9 @@ class TestDeploymentConfigPermissions:
             config_name = short_unique_name("cfg")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             admin_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=config_name,
@@ -1045,7 +1087,9 @@ class TestDeploymentPermissions:
         config_name = short_unique_name("cfg")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
@@ -1076,7 +1120,9 @@ class TestDeploymentPermissions:
         deploy_name = short_unique_name("dep")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
@@ -1112,7 +1158,9 @@ class TestDeploymentPermissions:
             config_name = short_unique_name("cfg")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             admin_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=config_name,
@@ -1145,7 +1193,9 @@ class TestDeploymentPermissions:
             deploy_name = short_unique_name("dep")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             admin_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=config_name,
@@ -1187,7 +1237,9 @@ class TestFilesetPermissions:
         fileset_name = short_unique_name("fs")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, FilesClient).create_fileset(
             workspace=workspace, body=CreateFilesetRequest(name=fileset_name)
         )
@@ -1219,7 +1271,9 @@ class TestFilesetPermissions:
         fileset_name = short_unique_name("fs")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, ModelsClient).create_model(
             workspace=workspace, body=CreateModelEntityRequest(name=model_name)
         ).data()
@@ -1255,7 +1309,9 @@ class TestFilesetPermissions:
         fileset_name = short_unique_name("adpfs")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, ModelsClient).create_model(
             workspace=workspace, body=CreateModelEntityRequest(name=model_name)
         ).data()
@@ -1295,7 +1351,9 @@ class TestFilesetPermissions:
         editor_email = unique_email("editor")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         grant_workspace_role(
             admin_sdk,
             workspace=workspace,
@@ -1316,7 +1374,9 @@ class TestFilesetPermissions:
         model_name = short_unique_name("mdl")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, ModelsClient).create_model(
             workspace=workspace, body=CreateModelEntityRequest(name=model_name)
         ).data()
@@ -1341,7 +1401,9 @@ class TestFilesetPermissions:
         model_name = short_unique_name("mdl")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, ModelsClient).create_model(
             workspace=workspace, body=CreateModelEntityRequest(name=model_name)
         ).data()
@@ -1371,7 +1433,9 @@ class TestFilesetPermissions:
             user_email = unique_email("nofileset")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             grant_workspace_role(
                 admin_sdk,
                 workspace=workspace,
@@ -1408,7 +1472,9 @@ class TestTrustRemoteCodePermission:
         fileset_name = short_unique_name("fs")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, FilesClient).create_fileset(
             workspace=workspace,
             body=CreateFilesetRequest(name=fileset_name, storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"}),
@@ -1442,7 +1508,9 @@ class TestTrustRemoteCodePermission:
             fileset_name = short_unique_name("fs")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             client_from_platform(admin_sdk, FilesClient).create_fileset(
                 workspace=workspace,
                 body=CreateFilesetRequest(
@@ -1475,7 +1543,9 @@ class TestTrustRemoteCodePermission:
         fileset_name = short_unique_name("fs")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.workspaces.create(name=workspace)
+        client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace)
+        ).data()
         client_from_platform(admin_sdk, ModelsClient).create_model(
             workspace=workspace, body=CreateModelEntityRequest(name=model_name)
         ).data()
@@ -1512,7 +1582,9 @@ class TestTrustRemoteCodePermission:
             fileset_name = short_unique_name("fs")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             client_from_platform(admin_sdk, ModelsClient).create_model(
                 workspace=workspace, body=CreateModelEntityRequest(name=model_name)
             ).data()
@@ -1551,7 +1623,10 @@ class TestTrustRemoteCodePermission:
             new_fs = short_unique_name("fs2")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            files = client_from_platform(admin_sdk, FilesClient)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             # Model created with a trusted fileset (on allow list) so it has trust_remote_code=True.
             files = client_from_platform(admin_sdk, FilesClient)
             files.create_fileset(
@@ -1598,7 +1673,9 @@ class TestTrustRemoteCodePermission:
             fileset_name = short_unique_name("fs")
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-            admin_sdk.workspaces.create(name=workspace)
+            client_from_platform(admin_sdk, WorkspacesClient).create_workspace(
+                body=CreateWorkspaceRequest(name=workspace)
+            ).data()
             client_from_platform(admin_sdk, FilesClient).create_fileset(
                 workspace=workspace,
                 body=CreateFilesetRequest(

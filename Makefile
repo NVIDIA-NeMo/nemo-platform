@@ -364,6 +364,26 @@ LINT_FIX_VERIFY ?= 0
 lint-fix: ## Auto-fix lint issues (set LINT_FIX_VERIFY=1 to also run CI lint checks)
 	LINT_FIX_VERIFY=$(LINT_FIX_VERIFY) $(FLOX_EXEC) bash tools/lint/lint-fix.sh
 
+.PHONY: test-github-scripts
+test-github-scripts: verify-node-version ## Run unit tests for GitHub JavaScript scripts
+	@test -x web/node_modules/.bin/eslint || { \
+		echo "Studio dependencies are required. Run make bootstrap-studio first."; \
+		exit 1; \
+	}
+	$(FLOX_NODE_EXEC) node --test .github/scripts/tests/*.test.cjs
+
+.PHONY: lint-github-scripts
+lint-github-scripts: verify-node-version ## Lint and format-check GitHub JavaScript scripts
+	@test -x web/node_modules/.bin/eslint || { \
+		echo "Studio dependencies are required. Run make bootstrap-studio first."; \
+		exit 1; \
+	}
+	$(FLOX_NODE_EXEC) web/node_modules/.bin/eslint --config .github/eslint.config.mjs .github/scripts --max-warnings 0
+	$(FLOX_NODE_EXEC) web/node_modules/.bin/prettier --check .github/scripts
+
+.PHONY: check-github-scripts
+check-github-scripts: test-github-scripts lint-github-scripts ## Test, lint, and format-check GitHub JavaScript scripts
+
 .PHONY: vendor
 vendor: ## Vendor packages into the SDK and generate wrapper metadata
 	$(UV) run --no-sync nemo-platform-sdk-tools vendor all-from-configs \

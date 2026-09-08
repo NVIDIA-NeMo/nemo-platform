@@ -16,7 +16,7 @@ import httpx
 from typing_extensions import Self
 
 from nemo_platform_ext.auth.helpers import decode_jwt_claims
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_ext.client.tls import httpx_tls_config_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ def refresh_token_grant(
     refresh_token: str,
     *,
     scope: str | None = None,
+    certificate_authority: str | None = None,
     timeout: float = 30.0,
 ) -> dict:
     """Execute OAuth refresh_token grant and return token response JSON."""
@@ -56,7 +57,12 @@ def refresh_token_grant(
     if scope:
         data["scope"] = scope
 
-    response = httpx.post(token_endpoint, data=data, timeout=timeout, verify=client_verify_from_env())
+    response = httpx.post(
+        token_endpoint,
+        data=data,
+        timeout=timeout,
+        **httpx_tls_config_from_env(certificate_authority),
+    )
 
     if response.status_code != 200:
         error_data: dict[str, str] = {}
@@ -136,6 +142,7 @@ class OIDCTokenProvider:
     tokens: TokenSet = field(default_factory=lambda: TokenSet(access_token=""))
     refresh_margin_seconds: float = DEFAULT_REFRESH_MARGIN_SECONDS
     refresh_scope: str | None = None
+    certificate_authority: str | None = None
     load_tokens: Callable[[], TokenSet | None] | None = None
     refresh_lock: Callable[[], AbstractContextManager[None]] | None = None
     on_tokens_refreshed: Callable[[TokenSet], None] | None = None
@@ -205,6 +212,7 @@ class OIDCTokenProvider:
                     client_id=self.client_id,
                     refresh_token=self.tokens.refresh_token,
                     scope=self.refresh_scope,
+                    certificate_authority=self.certificate_authority,
                 )
             except TokenRefreshError as exc:
                 if exc.error != "invalid_grant":
@@ -228,6 +236,7 @@ class OIDCTokenProvider:
                     client_id=self.client_id,
                     refresh_token=self.tokens.refresh_token,
                     scope=self.refresh_scope,
+                    certificate_authority=self.certificate_authority,
                 )
 
             new_access_token = token_data["access_token"]

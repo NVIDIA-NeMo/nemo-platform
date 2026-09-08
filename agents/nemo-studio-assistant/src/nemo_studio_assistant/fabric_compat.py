@@ -4,6 +4,7 @@
 """Compatibility fixes for the Fabric Deep Agents runtime bundled in the image."""
 
 import inspect
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -84,3 +85,41 @@ def apply_deepagents_skill_path_compatibility() -> None:
 
     resolve_skills._nemo_studio_virtual_paths = True  # type: ignore[attr-defined]
     adapter.resolve_skills = resolve_skills
+
+
+def apply_deepagents_mcp_env_compatibility() -> None:
+    """Preserve the adapter environment when Fabric starts stdio MCP tools."""
+    from nemo_fabric_adapters.deepagents import adapter as adapter_module
+
+    adapter: Any = adapter_module
+    original = adapter._mcp_connection
+    if getattr(original, "_nemo_studio_inherits_env", False):
+        return
+
+    def mcp_connection(name: str, spec: Any) -> dict[str, Any]:
+        connection = original(name, spec)
+        if connection.get("transport") == "stdio":
+            connection["env"] = {**os.environ, **connection.get("env", {})}
+        return connection
+
+    mcp_connection._nemo_studio_inherits_env = True  # type: ignore[attr-defined]
+    adapter._mcp_connection = mcp_connection
+
+
+def apply_platform_skill_translation_compatibility() -> None:
+    """Translate packaged relative skill roots to Deep Agents virtual paths."""
+    from nemo_agents_plugin.fabric import translator as translator_module
+
+    translator: Any = translator_module
+    original = translator._skills_config
+    if getattr(original, "_nemo_studio_virtual_paths", False):
+        return
+
+    def skills_config(config: Any) -> Any:
+        translated = original(config)
+        if translated is not None:
+            translated.paths = [str(path) if Path(path).is_absolute() else f"/{path}" for path in translated.paths]
+        return translated
+
+    skills_config._nemo_studio_virtual_paths = True  # type: ignore[attr-defined]
+    translator._skills_config = skills_config

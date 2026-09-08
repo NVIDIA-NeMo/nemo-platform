@@ -88,6 +88,19 @@ static_resources:
                                 value: https
                               append_action: OVERWRITE_IF_EXISTS_OR_ADD
                         - match:
+                            prefix: "/apis/auth/ext-authz"
+                          route:
+                            cluster: nemo
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - match:
                             path: "/apis/auth/jwks"
                           route:
                             cluster: nemo
@@ -243,13 +256,16 @@ static_resources:
                           uri: {{ printf "http://%s:%v" $apiServiceName .Values.api.service.port | quote }}
                           cluster: nemo
                           timeout: 5s
-                        path_prefix: "/apis/auth/authenticate"
+                        path_prefix: "/apis/auth/ext-authz"
                         authorization_response:
                           allowed_upstream_headers:
                             patterns:
                               - exact: x-nmp-principal-id
                               - exact: x-nmp-principal-email
                               - exact: x-nmp-principal-groups
+                              - exact: x-nmp-principal-on-behalf-of
+                              - exact: x-nmp-principal-on-behalf-of-email
+                              - exact: x-nmp-principal-on-behalf-of-groups
                               - exact: x-nmp-scopes
                           allowed_client_headers:
                             patterns:

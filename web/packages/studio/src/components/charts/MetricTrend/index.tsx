@@ -7,7 +7,15 @@ import { useNvColorMode } from '@studio/components/DagCanvas/useNvColorMode';
 import { StackedSkeleton } from '@studio/components/StackedSkeleton';
 import { Triangle } from 'lucide-react';
 import { FC, useId, useMemo, useState } from 'react';
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Area,
+  AreaChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 export interface MetricTrendPoint {
   /** X-axis label for the point, shown in the tooltip. */
@@ -103,6 +111,9 @@ export const MetricTrend: FC<MetricTrendProps> = ({
   const lineColor = isNegative ? 'var(--text-color-accent-red)' : 'var(--text-color-brand)';
   const colorMode = useNvColorMode();
   const gradient = colorMode === 'dark' ? AREA_GRADIENT.dark : AREA_GRADIENT.light;
+  // A single datapoint has no line to draw, so an AreaChart shows only a lone dot. Render a
+  // flat ReferenceLine across the surface instead, per the design.
+  const isSingle = active?.points.length === 1;
 
   return (
     <Flex align="center" gap="density-2xl" className={className}>
@@ -159,7 +170,14 @@ export const MetricTrend: FC<MetricTrendProps> = ({
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="label" hide />
-                <YAxis domain={['dataMin', 'dataMax']} hide />
+                <YAxis
+                  domain={
+                    isSingle
+                      ? [active.points[0].value - 1, active.points[0].value + 1]
+                      : ['dataMin', 'dataMax']
+                  }
+                  hide
+                />
                 <Tooltip
                   cursor={{ stroke: 'var(--border-color-base)', strokeWidth: 1 }}
                   formatter={(value: number) => [formatValue(value), active.label]}
@@ -179,9 +197,17 @@ export const MetricTrend: FC<MetricTrendProps> = ({
                   stroke={lineColor}
                   strokeWidth={2}
                   fill={`url(#${gradientId})`}
-                  dot={active.points.length <= 2}
+                  dot={!isSingle && active.points.length <= 2}
                   isAnimationActive={false}
                 />
+                {isSingle && (
+                  <ReferenceLine
+                    y={active.points[0].value}
+                    stroke={lineColor}
+                    strokeWidth={2}
+                    ifOverflow="extendDomain"
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           )}

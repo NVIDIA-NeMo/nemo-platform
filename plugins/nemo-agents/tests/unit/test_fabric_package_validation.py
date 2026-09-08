@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest import mock
 from unittest.mock import AsyncMock, MagicMock
 
 import nemo_agents_plugin.container.builder as builder
@@ -335,6 +336,8 @@ class TestFabricBuilderValidationHook:
             agent_author="Agent Author",
             template_path="Dockerfile.fabric.j2",
             metadata=image_metadata,
+            wheel_filename="",
+            contract_version=mock.ANY,
         )
         docker_build.assert_called_once_with(
             context_dir=tmp_path.resolve(),

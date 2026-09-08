@@ -13,7 +13,7 @@ from nemo_insights_plugin.analyst.agent import (
     Analyst,
     build_analyst_agent,
 )
-from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
+from nemo_insights_plugin.analyst.analyst_backend import AnalystBackend, make_analyst_backend
 from nemo_insights_plugin.analyst.deps import AnalystDeps
 from nemo_insights_plugin.analyst.observability import (
     ANALYST_OBSERVABILITY_ENV,
@@ -82,6 +82,48 @@ async def run_analyst(
         model_refs: Optional explicit default/fast Model Entity IDs. Unset uses
             the active Platform CLI context.
     """
+    try:
+        result, backend = await run_analyst_change_set(
+            agent=agent,
+            ethos=ethos,
+            workspace=workspace,
+            base_url=base_url,
+            client=client,
+            insights_output=insights_output,
+            local_only=local_only,
+            verbose=verbose,
+            since=since,
+            evaluation_id=evaluation_id,
+            analyst_evaluation=analyst_evaluation,
+            enable_observability=enable_observability,
+            model_refs=model_refs,
+        )
+        return await backend.persist_result(workspace=workspace, agent=agent, result=result)
+    finally:
+        await client.close()
+
+
+async def run_analyst_change_set(
+    *,
+    agent: str,
+    ethos: str | None = None,
+    workspace: str,
+    base_url: str | None,
+    client: AsyncNeMoPlatform,
+    insights_output: str | Path | None = None,
+    local_only: bool = False,
+    verbose: bool = False,
+    since: datetime | None = None,
+    evaluation_id: str | None = None,
+    analyst_evaluation: AnalystEvaluationContext | None = None,
+    enable_observability: bool = True,
+    model_refs: ConfiguredModelRefs | None = None,
+) -> tuple[AnalystResult, AnalystBackend]:
+    """Build and run the analyst agent without persisting its change-set.
+
+    The caller owns *client* and is responsible for closing it; this function
+    never does.
+    """
     observability = None
     model_clients: ConfiguredModelClients | None = None
     insights_output_path = str(insights_output) if insights_output else None
@@ -115,17 +157,16 @@ async def run_analyst(
                 ethos=ethos,
             )
             result = await _run_agent(analyst, verbose=verbose)
-        return await backend.persist_result(workspace=workspace, agent=agent, result=result)
+        return result, backend
     finally:
+        # *client* is deliberately absent here: it belongs to the caller, who
+        # closes it once this function's work — and its own — is done.
         try:
             if observability is not None:
                 observability.shutdown()
         finally:
-            try:
-                if model_clients is not None:
-                    await model_clients.aclose()
-            finally:
-                await client.close()
+            if model_clients is not None:
+                await model_clients.aclose()
 
 
 def _analyst_observability_enabled() -> bool:

@@ -18,14 +18,14 @@ harness:
 models:
   default:
     provider: nvidia
-    model: nvidia/meta/llama-3.3-70b-instruct
+    model: nvidia/nvidia/nemotron-3-nano-30b-a3b
     base_url: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_API_KEY
     temperature: 0.0
     top_p: 1.0
   judge:
     provider: nvidia
-    model: nvidia/meta/llama-3.1-8b-instruct
+    model: nvidia/nvidia/nemotron-3-nano-30b-a3b
     base_url: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_API_KEY
     temperature: 0.0
@@ -80,7 +80,8 @@ optimizer:
     temperature:
       type: fabric
       path: models.default.temperature
-      values: [0.0, 0.2, 0.5]
+      low: 0.0
+      high: 0.5
     top_p:
       type: fabric
       path: models.default.top_p

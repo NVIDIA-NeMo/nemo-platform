@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from httpx import Response
 from nmp.common.auth.access_keys import public_jwk_from_private_key_pem, validate_access_key_token
-from nmp.common.auth.jwt import TokenClaims
+from nmp.common.auth.token_claims import TokenClaims
 from nmp.common.config import AuthConfig
 from nmp.common.config.base import AccessKeyConfig, TokenSigningConfig
 from nmp.core.auth.config import AuthServiceConfig

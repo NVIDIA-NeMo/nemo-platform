@@ -40,11 +40,23 @@ Set specific values:
 
 ```bash
 nemo config set --base-url https://nmp.example.com
+nemo config set --context local-tls --base-url https://localhost:8443 --certificate-authority /path/to/ca.crt
 nemo config set --workspace my-workspace
 nemo config set --access-token -
 ```
 
+The saved cluster entry uses the `certificate_authority` key.
+
 When setting an access token, you'll be prompted to enter it securely (input is hidden).
+
+Delete a context without deleting its referenced cluster or user records:
+
+```bash
+nemo config delete-context local-tls
+```
+
+To also remove cluster and user records that are no longer referenced by any
+context, pass `--prune-orphans`.
 
 ## Environment variables
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -18,6 +19,7 @@ from nemo_agents_plugin.entities import (
     AgentEnvironment,
     AgentEnvironmentInline,
     AgentEnvironmentSpec,
+    AgentInline,
     ComputeResources,
     ComputeSpecInline,
     EnvironmentSpecInline,
@@ -31,6 +33,7 @@ from nemo_agents_plugin.jobs.execute import (
     INPUT_WORKDIR_RESULT_NAME,
     OUTPUT_ARTIFACTS_RESULT_NAME,
     OUTPUT_WORKDIR_RESULT_NAME,
+    ExecuteAgentExtensionConfig,
     ExecuteAgentJob,
     ExecuteAgentJobConfig,
     ExecuteAgentStepConfig,
@@ -224,6 +227,55 @@ async def test_to_spec_validates_and_canonicalizes_base_workdir() -> None:
     assert step_config.workdir is not None
     assert step_config.workdir.base_workdir == "default/source#project/"
     sdk.files.list.assert_awaited_once_with(remote_path="default/source#project/")
+
+
+@pytest.mark.asyncio
+async def test_to_spec_rejects_a_bad_extension_config_at_create_time() -> None:
+    """The noop extension takes no config, so this is a create-time 422, not a mid-job failure."""
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _agent()
+
+    with pytest.raises(ValueError, match="noop"):
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(
+                agent="calc",
+                input="hello",
+                extension=ExecuteAgentExtensionConfig(kind="noop", config={"agent": "research-agent"}),
+            ),
+            workspace="default",
+            entity_client=entity_client,
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_to_spec_resolves_trusted_extension() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _agent()
+
+    with patch(
+        "nemo_agents_plugin.jobs.execute.validate_execute_agent_extension_config",
+    ) as resolve:
+        spec = await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(
+                agent="calc",
+                input="hello",
+                extension=ExecuteAgentExtensionConfig(kind="example.extension", config={"raw": True}),
+            ),
+            workspace="default",
+            entity_client=entity_client,
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    assert step_config.extension == ExecuteAgentExtensionConfig(
+        kind="example.extension",
+        config={"raw": True},
+    )
+    assert step_config.request.extension == step_config.extension
+    resolve.assert_called_once_with("example.extension", {"raw": True})
 
 
 @pytest.mark.asyncio
@@ -824,6 +876,77 @@ def test_run_threads_custom_timeout_to_fabric(ctx: JobContext) -> None:
     assert result["status"] == "completed"
 
 
+def test_run_invokes_success_extension(ctx: JobContext) -> None:
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+        extension=ExecuteAgentExtensionConfig(kind="example.extension", config={"agent": "research-agent"}),
+    )
+    sdk = MagicMock()
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="succeeded", output={"answer": "done"})
+
+    def _after_invoke(kind: str, context: Any) -> None:
+        assert kind == "example.extension"
+        assert context.config == {"agent": "research-agent"}
+        assert context.agent_name == "calc"
+        assert context.fabric_result.output == {"answer": "done"}
+
+    with (
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        patch("nemo_agents_plugin.jobs.execute.run_execute_agent_after_invoke_extension", _after_invoke),
+    ):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)
+
+    assert result["status"] == "completed"
+    assert "extension" not in result
+
+
+def test_run_skips_extension_for_failed_fabric_result(ctx: JobContext) -> None:
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+        extension=ExecuteAgentExtensionConfig(kind="example.extension"),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="failed", error={"message": "adapter failed"})
+
+    with (
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        patch("nemo_agents_plugin.jobs.execute.run_execute_agent_after_invoke_extension") as after_invoke,
+    ):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert result["status"] == "failed"
+    after_invoke.assert_not_called()
+
+
+def test_run_extension_exception_is_logged(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+        extension=ExecuteAgentExtensionConfig(kind="example.extension"),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="succeeded", output={"answer": "done"})
+
+    def _after_invoke(kind: str, context: Any) -> None:
+        raise RuntimeError("extension exploded")
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        patch("nemo_agents_plugin.jobs.execute.run_execute_agent_after_invoke_extension", _after_invoke),
+        pytest.raises(RuntimeError, match="extension exploded"),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Execute-agent extension failed." in caplog.text
+
+
 def test_run_rejects_non_fabric_step_config(ctx: JobContext) -> None:
     spec = ExecuteAgentStepConfig(
         request=ExecuteAgentJobConfig(agent="calc", input="hello"),
@@ -1111,6 +1234,7 @@ def test_execute_job_create_route_stores_canonical_step_config() -> None:
         "environment": None,
         "workdir": {"base_workdir": "source#project", "artifact_mounts": []},
         "timeout_seconds": DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
+        "extension": None,
     }
     assert body.spec["workdir"] == {"base_workdir": "default/source#project/", "artifact_mounts": []}
     assert body.platform_spec.steps[0].name == "execute-agent"
@@ -1160,3 +1284,142 @@ def test_execute_job_create_route_maps_reserved_secret_env_to_422() -> None:
 
     assert response.status_code == 422, response.text
     assert "reserved job env var name" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Inline agent definitions
+# ---------------------------------------------------------------------------
+
+
+def test_job_config_accepts_an_inline_agent_definition() -> None:
+    config = ExecuteAgentJobConfig(
+        agent=AgentInline(config=_agent_config(), config_format="nemo-agents-spec-v1"), input="hello"
+    )
+
+    assert isinstance(config.agent, AgentInline)
+    assert config.agent.config_format == "nemo-agents-spec-v1"
+
+
+def test_job_config_still_rejects_a_malformed_agent_ref() -> None:
+    """The ref pattern moved into a validator; the string arm must keep enforcing it."""
+    with pytest.raises(ValueError, match="must be an entity name or a 'workspace/name' ref"):
+        ExecuteAgentJobConfig(agent="not a valid ref!", input="hello")
+
+
+@pytest.mark.asyncio
+async def test_to_spec_resolves_an_inline_agent_without_touching_the_entity_store() -> None:
+    entity_client = AsyncMock()
+
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(
+            agent=AgentInline(config=_agent_config(), config_format="nemo-agents-spec-v1"), input="hello"
+        ),
+        workspace="research",
+        entity_client=entity_client,
+        async_sdk=_sdk_with_files(),
+        is_local=False,
+    )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    # Name comes from the config; the run is attributed to the job's workspace.
+    assert step_config.agent.name == "calc"
+    assert step_config.agent.workspace == "research"
+    assert step_config.agent.config_format == "nemo-agents-spec-v1"
+    entity_client.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_to_spec_snapshots_the_inline_config_like_an_entity_backed_one() -> None:
+    """Provenance parity: the resolved config is stored on the step either way."""
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(
+            agent=AgentInline(config=_agent_config(), config_format="nemo-agents-spec-v1"), input="hello"
+        ),
+        workspace="default",
+        entity_client=AsyncMock(),
+        async_sdk=_sdk_with_files(),
+        is_local=False,
+    )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    assert (
+        step_config.agent.config["models"]["default"]["base_url"]
+        == "http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_to_spec_rejects_a_malformed_inline_agent_config() -> None:
+    with pytest.raises(ValueError, match="Inline agent config is invalid"):
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(
+                agent=AgentInline(config={"config_format": "nemo-agents-spec-v1"}, config_format="nemo-agents-spec-v1"),
+                input="x",
+            ),
+            workspace="default",
+            entity_client=AsyncMock(),
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_to_spec_rejects_a_non_fabric_inline_config_format() -> None:
+    with pytest.raises(ValueError, match="is not supported"):
+        await ExecuteAgentJob.to_spec(
+            ExecuteAgentJobConfig(
+                agent=AgentInline(config={"workflow": {}}, config_format="nat-workflow-v1"), input="x"
+            ),
+            workspace="default",
+            entity_client=AsyncMock(),
+            async_sdk=_sdk_with_files(),
+            is_local=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_to_spec_merges_an_environment_into_an_inline_agent() -> None:
+    """Inline configs go through the same environment merge as entity-backed ones."""
+    spec = await ExecuteAgentJob.to_spec(
+        ExecuteAgentJobConfig(
+            agent=AgentInline(config=_agent_config(), config_format="nemo-agents-spec-v1"),
+            input="hello",
+            environment=AgentEnvironmentInline(
+                environment_spec=EnvironmentSpecInline(env={"FEATURE_FLAG": "on"}),
+            ),
+        ),
+        workspace="default",
+        entity_client=AsyncMock(),
+        async_sdk=_sdk_with_files(),
+        is_local=False,
+    )
+
+    step_config = ExecuteAgentStepConfig.model_validate(spec)
+    assert step_config.agent.config["environment"]["env"]["FEATURE_FLAG"] == "on"
+
+
+def test_agent_inline_matches_the_agent_entity_shape() -> None:
+    """AgentInline is the Agent entity's fields without identity, so Agent inherits it."""
+    assert issubclass(Agent, AgentInline)
+    for field, info in AgentInline.model_fields.items():
+        entity_field = Agent.model_fields[field]
+        assert entity_field.is_required() == info.is_required(), field
+        assert entity_field.default == info.default, field
+
+
+def test_inline_agent_rejects_a_non_fabric_config_format_at_request_time() -> None:
+    """The narrowing lives on the job, not on the shared AgentInline model."""
+    with pytest.raises(ValueError, match="only support 'nemo-agents-spec-v1'"):
+        ExecuteAgentJobConfig(agent=AgentInline(config={"workflow": {}}), input="hello")
+
+
+def test_inline_agent_rejects_an_empty_config() -> None:
+    with pytest.raises(ValueError, match="require a non-empty config"):
+        ExecuteAgentJobConfig(agent=AgentInline(config={}, config_format="nemo-agents-spec-v1"), input="hello")
+
+
+def test_agent_entity_may_still_hold_a_nat_workflow_config() -> None:
+    """AgentInline stays permissive so the entity keeps its legacy default."""
+    entity = Agent(name="legacy", workspace="default", config={"workflow": {}})
+
+    assert entity.config_format == "nat-workflow-v1"

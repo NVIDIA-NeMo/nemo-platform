@@ -49,11 +49,14 @@ async def get_owned_session_by_id(
     effective_principal_id: str,
 ) -> AgentSession:
     """Resolve a session ID owned by the request's effective principal."""
+    filter_obj = {"id": session_id}
+    if effective_principal_id:
+        filter_obj["created_by"] = effective_principal_id
     try:
         session = await entity_client.find_one(
             AgentSession,
             workspace=workspace,
-            filter_obj={"id": session_id, "created_by": effective_principal_id},
+            filter_obj=filter_obj,
         )
     except NemoEntityNotFoundError as exc:
         raise session_id_not_found(workspace, session_id) from exc
@@ -78,7 +81,12 @@ def _is_owned_session(
     effective_principal_id: str,
 ) -> bool:
     """Return whether a session belongs to the request workspace and principal."""
-    return session.workspace == workspace and session.created_by == effective_principal_id
+    if session.workspace != workspace:
+        return False
+    # No-auth mode has no request principal. Entity writes still use the
+    # platform service client and therefore carry a service ``created_by``;
+    # workspace scoping is the applicable boundary in that mode.
+    return not effective_principal_id or session.created_by == effective_principal_id
 
 
 def session_not_found(workspace: str, name: str) -> HTTPException:

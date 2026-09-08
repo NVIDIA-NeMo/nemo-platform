@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import {
-  filesCreateFileset,
-  modelsCreateDeployment,
-  modelsCreateDeploymentConfig,
-  modelsCreateModel,
-} from '@nemo/sdk/generated/platform/api';
+import { filesCreateFileset } from '@nemo/sdk/generated/platform/files';
+import { modelsCreateDeploymentConfig } from '@nemo/sdk/generated/platform/model-deployment-configs';
+import { modelsCreateDeployment } from '@nemo/sdk/generated/platform/model-deployments';
+import { modelsCreateModel } from '@nemo/sdk/generated/platform/models';
+import { Engine } from '@nemo/sdk/generated/platform/schema';
 import {
   defaultWizardValues,
   WORKSPACE_PICKER_FILESET,
@@ -21,7 +20,10 @@ import { act, renderHook } from '@testing-library/react';
 import { type ReactNode } from 'react';
 
 vi.mock('@nemo/common/src/providers/toast/useToast');
-vi.mock('@nemo/sdk/generated/platform/api');
+vi.mock('@nemo/sdk/generated/platform/files');
+vi.mock('@nemo/sdk/generated/platform/model-deployment-configs');
+vi.mock('@nemo/sdk/generated/platform/model-deployments');
+vi.mock('@nemo/sdk/generated/platform/models');
 
 const mockUseToast = vi.mocked(useToast);
 const mockFilesCreateFileset = vi.mocked(filesCreateFileset);
@@ -83,10 +85,11 @@ describe('useCreateDeploymentBySource — workspace source', () => {
 
     expect(mockModelsCreateDeploymentConfig).toHaveBeenCalledWith(workspace, {
       name: 'my-deploy-config',
-      engine: 'nim',
+      engine: 'vllm',
       model_spec: {
         model_namespace: 'other-ws',
         model_name: 'existing-model',
+        lora_enabled: true,
       },
       executor_config: {
         gpu: 2,
@@ -125,10 +128,11 @@ describe('useCreateDeploymentBySource — workspace source', () => {
 
     expect(mockModelsCreateDeploymentConfig).toHaveBeenCalledWith(workspace, {
       name: 'my-deploy-config',
-      engine: 'nim',
+      engine: 'vllm',
       model_spec: {
         model_namespace: workspace,
         model_name: 'my-deploy',
+        lora_enabled: true,
       },
       executor_config: {
         gpu: 2,
@@ -142,6 +146,56 @@ describe('useCreateDeploymentBySource — workspace source', () => {
     });
 
     expect(onSuccess).toHaveBeenCalled();
+  });
+
+  it('sends the selected engine and image overrides', async () => {
+    const { result } = renderHook(() => useCreateDeploymentBySource(workspace), { wrapper });
+
+    await act(async () => {
+      await result.current.createDeploymentFromWizard(
+        baseWorkspaceValues({
+          workspacePickerType: WORKSPACE_PICKER_MODEL,
+          modelRef: 'ws/m',
+          engine: Engine.nim,
+          imageName: '  nvcr.io/nim/meta/llama-3.1-8b-instruct  ',
+          imageTag: ' 1.8.5 ',
+        }),
+        vi.fn()
+      );
+    });
+
+    expect(mockModelsCreateDeploymentConfig).toHaveBeenCalledWith(
+      workspace,
+      expect.objectContaining({
+        engine: 'nim',
+        executor_config: {
+          gpu: 2,
+          image_name: 'nvcr.io/nim/meta/llama-3.1-8b-instruct',
+          image_tag: '1.8.5',
+        },
+      })
+    );
+  });
+
+  it('omits blank image fields so the engine default is used', async () => {
+    const { result } = renderHook(() => useCreateDeploymentBySource(workspace), { wrapper });
+
+    await act(async () => {
+      await result.current.createDeploymentFromWizard(
+        baseWorkspaceValues({
+          workspacePickerType: WORKSPACE_PICKER_MODEL,
+          modelRef: 'ws/m',
+          engine: Engine.vllm,
+          imageName: '   ',
+          imageTag: '',
+        }),
+        vi.fn()
+      );
+    });
+
+    const [, request] = mockModelsCreateDeploymentConfig.mock.calls.at(-1)!;
+    expect(request.executor_config).toEqual({ gpu: 2 });
+    expect(request.executor_config).not.toHaveProperty('image_name');
   });
 
   it('surfaces submit errors and does not call onSuccess', async () => {

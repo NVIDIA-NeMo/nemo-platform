@@ -23,6 +23,14 @@ HARNESS_ADAPTER_IDS = {
     "hermes": "nvidia.fabric.hermes",
 }
 
+# A harness kind carrying this prefix is already a fully-qualified Fabric
+# adapter id and is passed through verbatim. Plugin-owned adapters ship their
+# own descriptor to <sys.prefix>/share/nemo-fabric/adapters/ and are resolved
+# there by Fabric at runtime, so nemo-agents does not need a short-name entry
+# for each one. A bad id therefore surfaces as a Fabric resolution error rather
+# than a translation error here.
+FABRIC_ADAPTER_ID_PREFIX = "nvidia.fabric."
+
 PLATFORM_RUNTIME_ENV_VARS = ("NEMO_BASE_URL", "NMP_BASE_URL", "NMP_WORKSPACE")
 
 
@@ -34,10 +42,10 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
     """Translate Platform-owned agent config into a typed in-memory FabricConfig."""
     selected_harness_name, harness = _select_harness(config, harness_name)
     model = _resolve_model(config, selected_harness_name, harness)
-    model_payload = bind_platform_gateway_model_credential(_model_payload(model))
+    model_payloads = _model_payloads(config, model)
     runtime_env = {
         **_platform_runtime_env(),
-        **platform_gateway_credential_env({"models": {"default": model_payload}}),
+        **_gateway_credential_env(model_payloads),
     }
     _validate_untranslated_shared_fields(config)
 
@@ -48,9 +56,7 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
             resolution="preinstalled",
             settings=harness.settings,
         ),
-        models={
-            "default": fabric.ModelConfig(**model_payload),
-        },
+        models={key: fabric.ModelConfig(**payload) for key, payload in model_payloads.items()},
         instructions=_instructions_config(config),
         runtime=fabric.RuntimeConfig(**config.runtime.model_dump(exclude_none=True)),
         environment=_environment_config(config, runtime_env),
@@ -110,10 +116,15 @@ def _select_harness(config: AgentConfig, harness_name: str | None) -> tuple[str,
 
 
 def _adapter_id_for_harness(harness: HarnessConfig) -> str:
+    if harness.kind.startswith(FABRIC_ADAPTER_ID_PREFIX):
+        return harness.kind
     adapter_id = HARNESS_ADAPTER_IDS.get(harness.kind)
     if adapter_id is None:
         available = ", ".join(sorted(HARNESS_ADAPTER_IDS))
-        raise FabricTranslationError(f"Unsupported harness kind {harness.kind!r}. Supported harness kinds: {available}")
+        raise FabricTranslationError(
+            f"Unsupported harness kind {harness.kind!r}. Supported harness kinds: {available}; "
+            f"or a fully-qualified Fabric adapter id starting with {FABRIC_ADAPTER_ID_PREFIX!r}."
+        )
     return adapter_id
 
 
@@ -127,6 +138,38 @@ def _resolve_model(config: AgentConfig, harness_name: str, harness: HarnessConfi
             f"Harness {harness_name!r} does not define a model and no models.default is configured."
         )
     return model
+
+
+def _model_payloads(config: AgentConfig, selected: ModelConfig) -> dict[str, dict[str, Any]]:
+    """Translate every configured model, keyed as the Platform config keys them.
+
+    ``FabricConfig.models`` and the adapter contract's ``AgentConfig.models`` are
+    both keyed maps, so the whole map is forwarded rather than just the harness's
+    primary model. An adapter that reads a secondary key (the Insights analyst
+    reads ``fast`` for context summarization) would otherwise see it silently
+    missing and fall back to ``default``.
+
+    ``selected`` is always published as ``default`` — that is the key adapters
+    treat as the primary model, and ``harness.model`` outranks ``models.default``
+    when both are set.
+    """
+    payloads = {
+        key: bind_platform_gateway_model_credential(_model_payload(model)) for key, model in config.models.items()
+    }
+    payloads["default"] = bind_platform_gateway_model_credential(_model_payload(selected))
+    return payloads
+
+
+def _gateway_credential_env(model_payloads: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """Union the runtime-only IGW credential env over every forwarded model.
+
+    Each Platform-gateway-routed model needs its ``api_key_env`` present in the
+    child process, not just the primary one.
+    """
+    env: dict[str, str] = {}
+    for payload in model_payloads.values():
+        env.update(platform_gateway_credential_env({"models": {"default": payload}}))
+    return env
 
 
 def _model_payload(model: ModelConfig) -> dict[str, Any]:
@@ -193,15 +236,21 @@ def _apply_telemetry(fabric_config: Any, config: AgentConfig, model: ModelConfig
     )
 
 
+def _telemetry_agent_name(config: AgentConfig) -> str:
+    """Return the name traces should be tagged with for this agent."""
+    return config.telemetry.agent_name or config.name
+
+
 def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict[str, Any]:
     telemetry = config.telemetry
+    agent_name = _telemetry_agent_name(config)
     observability: dict[str, Any] = {"version": 3}
 
     if telemetry.atif is not None:
         atif = dict(telemetry.atif)
         if telemetry.output_dir is not None:
             atif.setdefault("output_directory", telemetry.output_dir)
-        atif.setdefault("agent_name", config.name)
+        atif.setdefault("agent_name", agent_name)
         atif.setdefault("model_name", model.model)
         observability["atif"] = atif
 
@@ -211,7 +260,7 @@ def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict
     if telemetry.opentelemetry is not None:
         observability["opentelemetry"] = _relay_opentelemetry_config(
             telemetry.opentelemetry,
-            agent_name=config.name,
+            agent_name=agent_name,
         )
 
     return observability

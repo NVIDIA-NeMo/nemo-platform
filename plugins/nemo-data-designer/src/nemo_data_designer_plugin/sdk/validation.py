@@ -95,8 +95,7 @@ async def validate_config(
 
     config = config_builder.build()
 
-    is_local = False
-    dd_ctx = create_data_designer_context(is_local, async_sdk, workspace)
+    dd_ctx = create_data_designer_context(async_sdk, workspace)
 
     # First run the same resolution that the job and function execute.
     runnable_errors, _model_configs, model_providers = await resolve_runnable_config(dd_ctx, config)

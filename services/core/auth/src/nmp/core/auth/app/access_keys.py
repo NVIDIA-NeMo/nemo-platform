@@ -26,8 +26,8 @@ from nmp.common.auth.access_keys import (
     AccessKeyIssuerService,
     AccessKeyValidationError,
 )
-from nmp.common.auth.jwt import TokenClaims
 from nmp.common.auth.models import Principal
+from nmp.common.auth.token_claims import TokenClaims
 from nmp.common.config import AuthConfig
 from nmp.common.entities import EntityClient, EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client

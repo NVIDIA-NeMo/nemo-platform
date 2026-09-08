@@ -7,6 +7,9 @@ from typing import Generator
 
 import pytest
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.hello_world.service import HelloWorldService
 from nmp.testing import create_test_client
 
@@ -81,7 +84,9 @@ class TestMessagesEndpoints:
     def test_list_messages_filters_by_workspace(self, sdk: NeMoPlatform):
         """Test GET /apis/hello-world/v2/workspaces/{workspace_id}/messages only returns messages for that workspace."""
         # Create additional workspace for filtering test
-        sdk.workspaces.create(name="workspace-2")
+        client_from_platform(sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name="workspace-2")
+        ).data()
 
         # Create message in default workspace
         sdk._client.post(

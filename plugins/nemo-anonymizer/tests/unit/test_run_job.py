@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import data_designer.config as dd
@@ -55,6 +56,24 @@ def _restore_task_loggers(snapshot: dict[str, tuple[list[logging.Handler], int, 
         logger.propagate = propagate
 
 
+async def _to_run_spec(
+    request: AnonymizerRequest,
+    *,
+    async_sdk: AsyncNeMoPlatform | None = None,
+) -> AnonymizerStepConfig:
+    resolved_async_sdk = (
+        async_sdk if async_sdk is not None else cast(AsyncNeMoPlatform, AsyncMock(spec=AsyncNeMoPlatform))
+    )
+    spec = await RunJob.to_spec(
+        request,
+        workspace="team-a",
+        entity_client=object(),
+        async_sdk=resolved_async_sdk,
+        is_local=False,
+    )
+    return cast(AnonymizerStepConfig, spec)
+
+
 @pytest.mark.asyncio
 async def test_run_job_rejects_selected_models_without_model_configs(
     monkeypatch: pytest.MonkeyPatch,
@@ -62,18 +81,12 @@ async def test_run_job_rejects_selected_models_without_model_configs(
     request = AnonymizerRequest(
         config=AnonymizerConfig(replace=Redact()),
         data=AnonymizerInputSpec(source="https://example.com/input.csv", text_column="text"),
-        selected_models=SelectedModelsOverrides(detection={"entity_detector": "local"}),
+        selected_models=SelectedModelsOverrides(detection={"entity_detector": "detector"}),
     )
     monkeypatch.setattr(RunJob, "_validate_anonymizer_config", classmethod(lambda cls, config: None))
 
     with pytest.raises(PlatformJobCompilationError, match="selected_models requires model_configs"):
-        await RunJob.to_spec(
-            request,
-            workspace="team-a",
-            entity_client=object(),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-            is_local=False,
-        )
+        await _to_run_spec(request)
 
 
 @pytest.mark.asyncio
@@ -93,13 +106,7 @@ async def test_run_job_wraps_shared_provider_config_errors(
     )
 
     with pytest.raises(PlatformJobCompilationError, match="bad provider"):
-        await RunJob.to_spec(
-            request,
-            workspace="team-a",
-            entity_client=object(),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-            is_local=False,
-        )
+        await _to_run_spec(request)
 
 
 @pytest.mark.asyncio
@@ -113,116 +120,64 @@ async def test_run_submit_requires_model_configs(
     monkeypatch.setattr(RunJob, "_validate_anonymizer_config", classmethod(lambda cls, config: None))
 
     with pytest.raises(PlatformJobCompilationError, match="model_configs are required"):
-        await RunJob.to_spec(
-            request,
-            workspace="team-a",
-            entity_client=object(),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-            is_local=False,
-        )
+        await _to_run_spec(request)
 
 
 @pytest.mark.asyncio
-async def test_run_local_allows_missing_model_configs(
-    tmp_path: Path,
+async def test_run_job_uses_igw_provider_registry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    csv = tmp_path / "input.csv"
-    csv.write_text("text\nhello\n")
+    igw_registry = ModelProviderRegistry(
+        providers=[NDDModelProvider(name="provider", endpoint="http://platform.example/apis/models/provider")],
+    )
+    igw_lookup = AsyncMock(return_value=igw_registry)
     request = AnonymizerRequest(
         config=AnonymizerConfig(replace=Redact()),
-        data=AnonymizerInputSpec(source=str(csv), text_column="text"),
+        data=AnonymizerInputSpec(source="https://example.com/input.csv", text_column="text"),
+        model_configs=[dd.ModelConfig(alias="detector", model="test/model", provider="provider")],
     )
     monkeypatch.setattr(RunJob, "_validate_anonymizer_config", classmethod(lambda cls, config: None))
-
-    step_config = await RunJob.to_spec(
-        request,
-        workspace="team-a",
-        entity_client=object(),
-        async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-        is_local=True,
-    )
-
-    assert isinstance(step_config, AnonymizerStepConfig)
-    assert step_config.model_configs_yaml == ""
-    assert step_config.dd_model_providers == []
-    round_tripped = AnonymizerStepConfig.model_validate(step_config.model_dump())
-    assert isinstance(round_tripped.request.config.replace, Redact)
-
-
-@pytest.mark.asyncio
-async def test_run_local_model_configs_uses_injected_async_sdk(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    csv = tmp_path / "input.csv"
-    csv.write_text("text\nhello\n")
-    local_first_registry = ModelProviderRegistry(
-        providers=[NDDModelProvider(name="local-provider", endpoint="http://localhost:8000")],
-    )
-    local_first_lookup = AsyncMock(return_value=local_first_registry)
-    request = AnonymizerRequest(
-        config=AnonymizerConfig(replace=Redact()),
-        data=AnonymizerInputSpec(source=str(csv), text_column="text"),
-        model_configs=[dd.ModelConfig(alias="detector", model="local/model", provider="local-provider")],
-    )
-    monkeypatch.setattr(RunJob, "_validate_anonymizer_config", classmethod(lambda cls, config: None))
-    monkeypatch.setattr(context_module, "make_local_first_model_provider_registry", local_first_lookup)
+    monkeypatch.setattr(context_module, "make_model_provider_registry", igw_lookup)
     async_sdk = AsyncMock(spec=AsyncNeMoPlatform)
 
-    step_config = await RunJob.to_spec(
-        request,
-        workspace="team-a",
-        entity_client=object(),
-        async_sdk=async_sdk,
-        is_local=True,
-    )
+    step_config = await _to_run_spec(request, async_sdk=async_sdk)
 
-    local_first_lookup.assert_awaited_once()
-    assert local_first_lookup.await_args is not None
-    assert local_first_lookup.await_args.kwargs["sdk"] is async_sdk
+    igw_lookup.assert_awaited_once()
+    assert igw_lookup.await_args is not None
+    assert igw_lookup.await_args.kwargs["sdk"] is async_sdk
     assert isinstance(step_config, AnonymizerStepConfig)
     assert len(step_config.dd_model_providers) == 1
-    assert step_config.dd_model_providers[0]["name"] == "local-provider"
+    assert step_config.dd_model_providers[0]["name"] == "provider"
 
 
 @pytest.mark.asyncio
-async def test_run_local_serialized_step_config_can_be_revalidated(
+async def test_run_serialized_step_config_can_be_revalidated(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    csv = tmp_path / "input.csv"
-    csv.write_text("text\nhello\n")
     request = AnonymizerRequest(
         config=AnonymizerConfig(replace=Redact()),
-        data=AnonymizerInputSpec(source=str(csv), text_column="text"),
+        data=AnonymizerInputSpec(source="https://example.com/input.csv", text_column="text"),
+        model_configs=[dd.ModelConfig(alias="detector", model="test/model", provider="provider")],
     )
     monkeypatch.setattr(RunJob, "_validate_anonymizer_config", classmethod(lambda cls, config: None))
+    monkeypatch.setattr(context_module, "make_model_provider_registry", AsyncMock(return_value=None))
     monkeypatch.setattr(run_module, "run_step_config", lambda *args, **kwargs: 0)
 
-    step_config = await RunJob.to_spec(
-        request,
-        workspace="team-a",
-        entity_client=object(),
-        async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-        is_local=True,
-    )
+    step_config = await _to_run_spec(request)
 
     ctx = _make_job_context(tmp_path)
     assert RunJob().run(
         step_config.model_dump(),
         ctx=ctx,
         sdk=Mock(spec=NeMoPlatform),
-        is_local=True,
     ) == {"exit_code": 0}
 
 
-def test_run_step_config_local_uses_ctx_results(
+def test_run_step_config_uses_ctx_results(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    csv = tmp_path / "input.csv"
-    csv.write_text("text\nhello\n")
     captured: dict[str, object] = {}
 
     class FakeFrame:
@@ -262,9 +217,9 @@ def test_run_step_config_local_uses_ctx_results(
     step_config = AnonymizerStepConfig(
         request=AnonymizerRequest(
             config=AnonymizerConfig(replace=Redact()),
-            data=AnonymizerInputSpec(source=str(csv), text_column="text"),
+            data=AnonymizerInputSpec(source="https://example.com/input.csv", text_column="text"),
         ),
-        model_configs_yaml="",
+        model_configs_yaml="model_configs:\n- alias: detector\n  model: test/model\n  provider: provider\n",
         dd_model_providers=[],
     )
 
@@ -277,12 +232,13 @@ def test_run_step_config_local_uses_ctx_results(
             task_run_module.run_step_config(
                 step_config,
                 ctx=ctx,
-                is_local=True,
+                sdk=Mock(spec=NeMoPlatform),
             )
             == 0
         )
     finally:
         _restore_task_loggers(logging_snapshot)
+    assert captured["model_configs"] == "model_configs:\n- alias: detector\n  model: test/model\n  provider: provider\n"
     assert captured["artifact_path"] == ctx.storage.persistent / "anonymizer-artifacts"
     artifacts_dir = ctx.storage.persistent / "artifacts"
     assert (artifacts_dir / "dataset.parquet").read_text() == "dataset"
@@ -295,12 +251,10 @@ def test_run_step_config_local_uses_ctx_results(
 
 
 def test_run_step_config_remote_requires_sdk(tmp_path: Path) -> None:
-    csv = tmp_path / "input.csv"
-    csv.write_text("text\nhello\n")
     step_config = AnonymizerStepConfig(
         request=AnonymizerRequest(
             config=AnonymizerConfig(replace=Redact()),
-            data=AnonymizerInputSpec(source=str(csv), text_column="text"),
+            data=AnonymizerInputSpec(source="https://example.com/input.csv", text_column="text"),
         ),
         model_configs_yaml="",
         dd_model_providers=[],
@@ -309,9 +263,33 @@ def test_run_step_config_remote_requires_sdk(tmp_path: Path) -> None:
     logging_snapshot = _snapshot_task_loggers()
 
     try:
-        assert task_run_module.run_step_config(step_config, ctx=ctx, is_local=False) == 1
+        assert task_run_module.run_step_config(step_config, ctx=ctx) == 1
     finally:
         _restore_task_loggers(logging_snapshot)
+
+
+def test_run_step_config_requires_resolved_model_configs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    step_config = AnonymizerStepConfig(
+        request=AnonymizerRequest(
+            config=AnonymizerConfig(replace=Redact()),
+            data=AnonymizerInputSpec(source="https://example.com/input.csv", text_column="text"),
+        ),
+        model_configs_yaml="",
+        dd_model_providers=[],
+    )
+    anonymizer = Mock(side_effect=AssertionError("Anonymizer should not be constructed"))
+    monkeypatch.setattr(task_run_module, "Anonymizer", anonymizer)
+    ctx = _make_job_context(tmp_path)
+    logging_snapshot = _snapshot_task_loggers()
+
+    try:
+        assert task_run_module.run_step_config(step_config, ctx=ctx, sdk=Mock(spec=NeMoPlatform)) == 1
+    finally:
+        _restore_task_loggers(logging_snapshot)
+    anonymizer.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -329,10 +307,4 @@ async def test_run_submit_rejects_local_file(
     monkeypatch.setattr(RunJob, "_validate_anonymizer_config", classmethod(lambda cls, config: None))
 
     with pytest.raises(PlatformJobCompilationError, match="local path"):
-        await RunJob.to_spec(
-            request,
-            workspace="team-a",
-            entity_client=object(),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-            is_local=False,
-        )
+        await _to_run_spec(request)

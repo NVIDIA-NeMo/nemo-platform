@@ -37,6 +37,12 @@ export interface SelectItemOption {
   render?: ReactNode;
   /** Optional group key — options sharing one render under a single section header. */
   group?: string;
+  /**
+   * Text the local typeahead matches against instead of `label`. Use it to make an option
+   * findable by more than its own name — e.g. an evaluation that should also match its
+   * experiment's name, so typing the experiment narrows the list to that one section.
+   */
+  searchText?: string;
 }
 
 export interface ControlledSearchableSelectProps
@@ -148,7 +154,9 @@ export const ControlledSearchableSelect = ({
     }
     // Client-side filtering
     const searchLower = debouncedSearch.toLowerCase();
-    return options.filter((option) => option.label.toLowerCase().includes(searchLower));
+    return options.filter((option) =>
+      (option.searchText ?? option.label).toLowerCase().includes(searchLower)
+    );
   }, [options, debouncedSearch, onSearchChange]);
 
   // Handle infinite scroll
@@ -242,7 +250,7 @@ export const ControlledSearchableSelect = ({
           status={status || (error ? 'error' : undefined)}
           {...selectProps}
         />
-        <SelectContent className="w-(--radix-popper-anchor-width)">
+        <SelectContent>
           <SelectListbox>
             <Block className="p-2 w-full sticky top-0 bg-surface z-10">
               <TextInput

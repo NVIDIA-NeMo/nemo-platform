@@ -111,3 +111,4 @@ class ListDataDesignerJobsQueryParams(TypedDict, total=False):
 class DataDesignerJobLogsQueryParams(TypedDict, total=False):
     limit: NotRequired[int]
     page_cursor: NotRequired[str]
+    tail: NotRequired[int]

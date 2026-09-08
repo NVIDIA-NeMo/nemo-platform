@@ -17,6 +17,8 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    base_branches:
+      - "^release/.*$"
   path_filters:
     - "!sdk/**"
   path_instructions:

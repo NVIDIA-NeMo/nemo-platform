@@ -68,15 +68,12 @@ from __future__ import annotations
 
 import logging
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any, ClassVar
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin._base import _NamedPlugin
+from nemo_platform_plugin.job_context import JobContext
 from pydantic import BaseModel
-
-if TYPE_CHECKING:
-    from nemo_platform_plugin.job_context import JobContext
-
 
 logger = logging.getLogger(__name__)
 
@@ -185,10 +182,8 @@ class NemoJob(_NamedPlugin):
     # Spec schemas — canonical ``spec_schema``; optional ``input_spec_schema``
     # ------------------------------------------------------------------ #
 
-    # ``spec_schema`` and ``input_spec_schema`` use a string type hint so the
-    # pydantic import cost is deferred to consumers that actually use them.
-    spec_schema: ClassVar["type[BaseModel] | None"] = None
-    input_spec_schema: ClassVar["type[BaseModel] | None"] = None
+    spec_schema: ClassVar[type[BaseModel] | None] = None
+    input_spec_schema: ClassVar[type[BaseModel] | None] = None
 
     # ------------------------------------------------------------------ #
     # API routes                                                         #
@@ -206,14 +201,14 @@ class NemoJob(_NamedPlugin):
     # Plugin-owned options (inert; see class docstring)                  #
     # ------------------------------------------------------------------ #
 
-    backend_options_schemas: ClassVar[dict[str, "type[BaseModel]"]] = {}
+    backend_options_schemas: ClassVar[dict[str, type[BaseModel]]] = {}
 
     # ------------------------------------------------------------------ #
     # Lifecycle                                                          #
     # ------------------------------------------------------------------ #
 
     @abstractmethod
-    def run(self, *args: Any, **kwargs: Any) -> dict:
+    def run(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Execute the job with the given config and return results.
 
         The abstract signature uses ``(*args, **kwargs) -> Any`` so concrete
@@ -237,13 +232,13 @@ class NemoJob(_NamedPlugin):
     @classmethod
     async def to_spec(
         cls,
-        input_spec: "BaseModel",
+        input_spec: BaseModel,
         *,
         workspace: str,
         entity_client: object,
         async_sdk: AsyncNeMoPlatform,
         is_local: bool,
-    ) -> "BaseModel":
+    ) -> BaseModel:
         """Transform *input_spec* into a canonical :attr:`spec_schema` instance.
 
         ``async classmethod`` because it runs in the API process — where
@@ -283,12 +278,12 @@ class NemoJob(_NamedPlugin):
         cls,
         *,
         workspace: str,
-        spec: "BaseModel",
+        spec: BaseModel,
         entity_client: object,
         job_name: str | None,
         async_sdk: AsyncNeMoPlatform,
         profile: str | None = None,
-        options: dict | None = None,
+        options: dict[str, Any] | None = None,
     ) -> object:
         """Compile the canonical spec into a ``PlatformJobSpec``.
 
@@ -328,7 +323,7 @@ class NemoJob(_NamedPlugin):
 
     def report_progress(
         self,
-        ctx: "JobContext",
+        ctx: JobContext,
         *,
         work_done: int | None = None,
         work_total: int | None = None,

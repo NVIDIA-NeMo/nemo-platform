@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, ClassVar, Protocol, runtime_checkable
+from typing import ClassVar, Protocol, runtime_checkable
 
 import typer
 from nemo_platform_plugin.service import RouterSpec
@@ -16,12 +17,17 @@ class CustomizationContributorDiscoveryError(RuntimeError):
     """Raised when customization contributor discovery fails."""
 
 
+CustomizationSDKResourceFactory = Callable[..., object]
+
+
 @dataclass(frozen=True, slots=True)
 class CustomizationContributorSDKResources:
     """Sync/async resource classes mounted under ``client.customization.<name>``."""
 
-    sync_resource: type[Any] | None = None
-    async_resource: type[Any] | None = None
+    # The customization hub owns the concrete context type and validates the
+    # constructed resource shape before exposing a contributor SDK resource.
+    sync_resource: CustomizationSDKResourceFactory | None = None
+    async_resource: CustomizationSDKResourceFactory | None = None
 
     def __post_init__(self) -> None:
         if self.sync_resource is None and self.async_resource is None:
@@ -50,9 +56,10 @@ class CustomizationContributor(Protocol):
         """Return SDK resource classes for ``client.customization.<name>``.
 
         Return :class:`CustomizationContributorSDKResources` with sync and/or async
-        resource classes (each accepts a :class:`~nemo_platform.NeMoPlatform` or
-        :class:`~nemo_platform.AsyncNeMoPlatform` in ``__init__``). Return ``None``
-        when the backend has no Python SDK surface. Do not register a separate
-        ``nemo.sdk`` entry point — the customization hub composes contributors.
+        resource classes. The Customizer hub owns the top-level
+        ``client.customization`` SDK entry and passes each backend resource a
+        typed Customizer SDK context containing the typed Customizer client, the
+        typed Jobs client, and the active workspace. Do not register a separate
+        ``nemo.sdk`` entry point; the Customizer hub composes contributors.
         """
         ...

@@ -17,7 +17,7 @@ import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import {
   getEntitiesListWorkspacesQueryKey,
   useEntitiesCreateWorkspace,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/entity-store';
 import { FormField, Stack, TextArea, TextInput } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
 import { workspaceCreateSchema } from '@studio/constants/zod';

@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -26,11 +27,13 @@ from urllib.parse import urlparse
 import httpx
 import typer
 import yaml as _yaml
-from nemo_platform import NeMoPlatform
+from nemo_platform import APIConnectionError, APIStatusError, APITimeoutError, NeMoPlatform
 from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.common.config import nmp_user_data_dir
 from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, PlatformAppConfig
 from pydantic import SecretStr
@@ -47,7 +50,7 @@ from nemo_platform_ext.cli.core.errors import handle_errors
 from nemo_platform_ext.cli.docker_preflight import DOCKER_PREFLIGHT_MESSAGE, require_docker_for_default_local
 from nemo_platform_ext.cli.telemetry import emit
 from nemo_platform_ext.cli.telemetry.events import OnboardingStepEvent, TaskStatusEnum
-from nemo_platform_ext.client.tls import client_verify_from_env
+from nemo_platform_ext.client.tls import HttpxTLSConfig, httpx_tls_config_from_env
 from nemo_platform_ext.config.config import Config
 from nemo_platform_ext.config.models import DEFAULT_BASE_URL, ConfigFile, ConfigParams, LocalServicesConfig, NoAuthUser
 from nemo_platform_ext.local.install import services_extra_install_command
@@ -198,15 +201,19 @@ class ProbeConfig:
 
 
 # NVIDIA's gateway routes by model name before checking auth, so a fake model
-# returns 404 without ever validating the key.  We use a real, stable model so
-# the gateway reaches the auth layer and returns 401/403 for bad credentials.
-_NVIDIA_BUILD_PROBE_MODEL = "meta/llama-3.1-8b-instruct"
+# returns 404 without ever validating the key. We use a supported model so the
+# gateway reaches the auth layer and returns 401/403 for bad credentials.
+_NVIDIA_BUILD_PROBE_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
 _PROBE_CONFIGS: dict[str, ProbeConfig] = {
     "nvidia-build": ProbeConfig(
         "POST",
         "v1/chat/completions",
-        {"model": _NVIDIA_BUILD_PROBE_MODEL, "messages": [], "max_tokens": 1},
+        {
+            "model": _NVIDIA_BUILD_PROBE_MODEL,
+            "messages": [{"role": "user", "content": "Respond with 'OK'"}],
+            "max_tokens": 1,
+        },
     ),
     "openai": ProbeConfig("GET", "models"),
     "anthropic": ProbeConfig("GET", "v1/models"),
@@ -241,7 +248,17 @@ _AUTO_ENV_VARS: tuple[tuple[str, str], ...] = (
 
 _KEY_VALIDATION_TIMEOUT = 10.0
 _KEY_REJECTED_STATUS_CODES = (401, 403)
+_TERMINAL_PROBE_STATUS_CODES = (404, 405, 410)
 _KEY_REJECTED_MESSAGE = "API key validation failed. The provider rejected the credentials."
+
+# Catalog listing is not entitlement-scoped; only a successful chat request counts.
+_MODEL_PROBE_TIMEOUT = 20.0
+_MODEL_PROBE_MAX_ATTEMPTS = 8
+_MODEL_PROBE_BUDGET_SECONDS = 90.0
+# Gateway 404s until the model's VirtualModel exists; retries are shared and capped.
+_MODEL_ROUTE_READY_SECONDS = 10.0
+_MODEL_ROUTE_RETRY_INTERVAL = 1.0
+_MODEL_ROUTE_MAX_RETRIES = 10
 
 _MODEL_DISCOVERY_ROUND_SECONDS = 30
 _MODEL_DISCOVERY_MAX_ROUNDS = 2
@@ -314,17 +331,22 @@ def _bootstrap_config_if_missing(base_url: str, workspace: str) -> None:
 _PLATFORM_REACHABILITY_PATHS = ("/status", "/cluster-info")
 
 
-def _check_platform_reachable(base_url: str, timeout: float = 5.0) -> bool:
+def _check_platform_reachable(
+    base_url: str,
+    timeout: float = 5.0,
+    *,
+    certificate_authority: str | None = None,
+) -> bool:
     """Return True if a platform health endpoint responds.
 
     Local ``nemo services run`` publishes ``/status``. Hosted deployments may
     only expose ``/cluster-info`` on ingress, so try both.
     """
-    verify = client_verify_from_env()
+    tls_config = httpx_tls_config_from_env(certificate_authority)
     root = base_url.rstrip("/")
     for path in _PLATFORM_REACHABILITY_PATHS:
         try:
-            resp = httpx.get(f"{root}{path}", timeout=timeout, verify=verify)
+            resp = httpx.get(f"{root}{path}", timeout=timeout, **tls_config)
             if resp.status_code == 200:
                 return True
         except Exception:
@@ -336,6 +358,8 @@ def _check_platform_reachable_with_retries(
     base_url: str,
     retries: int = _POST_START_REACHABLE_RETRIES,
     delay: float = _POST_START_REACHABLE_DELAY,
+    *,
+    certificate_authority: str | None = None,
 ) -> bool:
     """Check platform reachability with retries.
 
@@ -344,14 +368,14 @@ def _check_platform_reachable_with_retries(
     A single-shot check can hit this window and falsely report failure.
     """
     for attempt in range(retries):
-        if _check_platform_reachable(base_url):
+        if _check_platform_reachable(base_url, certificate_authority=certificate_authority):
             return True
         if attempt < retries - 1:
             _pause(delay)
     return False
 
 
-def _prompt_remote_base_url(*, default_url: str = "") -> str:
+def _prompt_remote_base_url(*, default_url: str = "", certificate_authority: str | None = None) -> str:
     """Prompt until the user provides a reachable remote Platform URL."""
     while True:
         base_url = prompt_text(
@@ -365,7 +389,7 @@ def _prompt_remote_base_url(*, default_url: str = "") -> str:
             continue
 
         base_url = base_url.rstrip("/")
-        if _check_platform_reachable_with_retries(base_url):
+        if _check_platform_reachable_with_retries(base_url, certificate_authority=certificate_authority):
             return base_url
 
         console.print(f"{CROSS} Unable to connect to NeMo Platform at {base_url}.")
@@ -463,16 +487,21 @@ def _platform_request_headers(cli_context: CLIContext) -> dict[str, str] | None:
     return {key: value for key, value in headers.items() if isinstance(key, str) and isinstance(value, str)}
 
 
-def _hosted_platform_without_status(base_url: str, *, timeout: float, verify: str | bool) -> bool:
+def _hosted_platform_without_status(base_url: str, *, timeout: float, tls_config: HttpxTLSConfig) -> bool:
     """Return True when ``/cluster-info`` confirms a hosted platform that omits ``/status``."""
     try:
-        resp = httpx.get(f"{base_url.rstrip('/')}/cluster-info", timeout=timeout, verify=verify)
+        resp = httpx.get(f"{base_url.rstrip('/')}/cluster-info", timeout=timeout, **tls_config)
     except Exception:
         return False
     return resp.status_code == 200
 
 
-def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool, str]:
+def _check_controller_health(
+    base_url: str,
+    timeout: float = 5.0,
+    *,
+    certificate_authority: str | None = None,
+) -> tuple[bool, str]:
     """Query ``/status`` and assess controller health.
 
     Returns ``(True, "")`` when controllers are populated and all healthy.
@@ -482,13 +511,13 @@ def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool,
     If ``controllers.status`` is empty on the first call (startup timing race),
     waits ``_CONTROLLER_HEALTH_RETRY_DELAY`` seconds and retries once.
     """
-    verify = client_verify_from_env()
+    tls_config = httpx_tls_config_from_env(certificate_authority)
     root = base_url.rstrip("/")
     for attempt in range(2):
         try:
-            resp = httpx.get(f"{root}/status", timeout=timeout, verify=verify)
+            resp = httpx.get(f"{root}/status", timeout=timeout, **tls_config)
             if resp.status_code == 404:
-                if _hosted_platform_without_status(root, timeout=timeout, verify=verify):
+                if _hosted_platform_without_status(root, timeout=timeout, tls_config=tls_config):
                     return True, "Hosted deployment does not publish /status."
                 return False, "Unexpected status 404 from /status endpoint."
             if resp.status_code != 200:
@@ -518,13 +547,13 @@ def _check_controller_health(base_url: str, timeout: float = 5.0) -> tuple[bool,
     return False, "No controllers reported status. Controller threads may have crashed before registering."
 
 
-def _verify_platform_health(base_url: str) -> bool:
+def _verify_platform_health(base_url: str, *, certificate_authority: str | None = None) -> bool:
     """Final health gate before declaring setup complete.
 
     Returns True if the platform is healthy (caller prints the success banner).
     Returns False after printing red or yellow diagnostics to the console.
     """
-    ok, detail = _check_controller_health(base_url)
+    ok, detail = _check_controller_health(base_url, certificate_authority=certificate_authority)
     if ok:
         if detail:
             if "does not publish /status" in detail.lower():
@@ -791,6 +820,146 @@ def _get_all_model_entity_ids(
     return sorted(set(entity_ids))
 
 
+_NON_CHAT_MODEL_MARKERS = (
+    "embed",
+    "embedding",
+    "vision",
+    "guard",
+    "rerank",
+    "fuyu",
+    "reward",
+    "translate",
+)
+
+
+def _is_usable_chat_model_entity(entity_id: str) -> bool:
+    """Return whether an entity ID looks like a chat LLM rather than a specialist model."""
+    haystack = entity_id.lower().replace("_", "-")
+    return not any(marker in haystack for marker in _NON_CHAT_MODEL_MARKERS)
+
+
+def _pick_default_chat_entity(entity_ids: list[str]) -> str | None:
+    """Pick the first discovered chat model, skipping embedding/vision/guard/rerank names.
+
+    ``entity_ids`` is already scoped to a provider's ``served_models``.
+    """
+    for entity_id in entity_ids:
+        if _is_usable_chat_model_entity(entity_id):
+            return entity_id
+    return None
+
+
+_MODEL_SIZE_PATTERN = re.compile(r"(?<![a-z0-9.])(\d+(?:\.\d+)?)b(?![a-z0-9])")
+
+
+def _model_parameter_size(entity_id: str) -> float | None:
+    """Return the largest ``Nb`` parameter count parsed from an entity name."""
+    name = _display_model_name(entity_id).lower().replace("_", "-")
+    sizes = [float(match) for match in _MODEL_SIZE_PATTERN.findall(name)]
+    return max(sizes) if sizes else None
+
+
+def _is_preferred_vendor(entity_id: str) -> bool:
+    """Return whether the entity name identifies an NVIDIA-published model."""
+    name = _display_model_name(entity_id).lower().replace("_", "-")
+    return name.startswith(("nvidia-", "nvidia/", "nv-", "nv/")) or "nemotron" in name
+
+
+def _order_candidates_by_size(entity_ids: list[str], *, largest_first: bool) -> list[str]:
+    """Order NVIDIA models first, then by parsed size; unnamed sizes sort last."""
+
+    def sort_key(entity_id: str) -> tuple[bool, bool, float, str]:
+        size = _model_parameter_size(entity_id)
+        ranked = 0.0 if size is None else (-size if largest_first else size)
+        return (not _is_preferred_vendor(entity_id), size is None, ranked, entity_id)
+
+    return sorted(entity_ids, key=sort_key)
+
+
+def _probe_model_entity(client: NeMoPlatform, workspace: str, entity_id: str) -> bool:
+    """Return True when a short chat request against *entity_id* succeeds.
+
+    Retries route 404s; timeouts skip; connection errors raise.
+    """
+    route_ready_deadline = time.monotonic() + _MODEL_ROUTE_READY_SECONDS
+    retries = 0
+    while True:
+        try:
+            client.inference.gateway.openai.post(
+                "v1/chat/completions",
+                workspace=workspace,
+                body={
+                    "model": entity_id,
+                    "messages": [{"role": "user", "content": "Respond with 'OK'"}],
+                    "max_tokens": 16,
+                },
+            )
+        except APITimeoutError:
+            logger.debug("Model probe for '%s' timed out", entity_id, exc_info=True)
+            console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} (timed out)")
+            return False
+        except APIConnectionError:
+            raise
+        except APIStatusError as exc:
+            detail = str(exc.body or exc.response.text or exc)
+            entitlement_miss = "not found for account" in detail.lower()
+            if (
+                exc.status_code == 404
+                and not entitlement_miss
+                and retries < _MODEL_ROUTE_MAX_RETRIES
+                and time.monotonic() < route_ready_deadline
+            ):
+                retries += 1
+                _pause(_MODEL_ROUTE_RETRY_INTERVAL)
+                continue
+            console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} (HTTP {exc.status_code})")
+            return False
+        except Exception as exc:
+            logger.debug("Model probe for '%s' failed", entity_id, exc_info=True)
+            console.print(f"  {WARN} Skipping {_display_model_name(entity_id)} ({exc})")
+            return False
+        return True
+
+
+def _select_usable_model_pair(client: NeMoPlatform, workspace: str, entity_ids: list[str]) -> ModelPair | None:
+    """Choose the largest and smallest models that answer a chat request.
+
+    Returns ``None`` when nothing answers, including when the gateway is
+    unreachable, so setup does not persist an unusable default.
+    """
+    candidates = [entity_id for entity_id in entity_ids if _is_usable_chat_model_entity(entity_id)]
+    if not candidates:
+        return None
+
+    usable: dict[str, bool] = {}
+    probe_client = client.with_options(max_retries=0, timeout=_MODEL_PROBE_TIMEOUT)
+    started = time.monotonic()
+    deadline = started + _MODEL_PROBE_BUDGET_SECONDS
+
+    def first_usable(ordered: list[str]) -> str | None:
+        attempts = 0
+        for entity_id in ordered:
+            if entity_id not in usable:
+                if attempts >= _MODEL_PROBE_MAX_ATTEMPTS or time.monotonic() >= deadline:
+                    return None
+                attempts += 1
+                usable[entity_id] = _probe_model_entity(probe_client, workspace, entity_id)
+            if usable[entity_id]:
+                return entity_id
+        return None
+
+    console.print("  Verifying models with a short inference request...")
+    try:
+        default_model = first_usable(_order_candidates_by_size(candidates, largest_first=True))
+        if default_model is None:
+            return None
+        fast_model = first_usable(_order_candidates_by_size(candidates, largest_first=False)) or default_model
+    except APIConnectionError as exc:
+        console.print(f"  {WARN} Could not verify models ({exc}).")
+        return None
+    return ModelPair(default=default_model, fast=fast_model)
+
+
 def _get_all_model_choices(
     client: NeMoPlatform,
     workspace: str,
@@ -968,6 +1137,8 @@ def _wait_for_platform(
     poll_interval: float = _SERVICE_STARTUP_POLL_INTERVAL,
     log_path: Path | None = None,
     proc: subprocess.Popen | None = None,
+    *,
+    certificate_authority: str | None = None,
 ) -> bool:
     """Poll until the platform health endpoint responds. Returns True on success.
 
@@ -988,7 +1159,7 @@ def _wait_for_platform(
             svc = _last_startup_service(log_path)
             hint = f" — loaded {svc}" if svc else ""
             status.update(f"[bold cyan]Waiting for platform... ({elapsed}s){hint}")
-            if _check_platform_reachable(base_url, timeout=1.0):
+            if _check_platform_reachable(base_url, timeout=1.0, certificate_authority=certificate_authority):
                 return True
             _pause(poll_interval)
     return False
@@ -1091,6 +1262,8 @@ def _maybe_start_services(
     auto: bool,
     start_services: bool | None,
     timeout: int = _SERVICE_STARTUP_TIMEOUT_SECONDS,
+    *,
+    certificate_authority: str | None = None,
 ) -> Literal["ready", "connect_remote", "start_local"]:
     """Start services if requested, restarting if already running.
 
@@ -1108,7 +1281,7 @@ def _maybe_start_services(
             param_hint="--start-services",
         )
 
-    already_running = _check_platform_reachable(base_url)
+    already_running = _check_platform_reachable(base_url, certificate_authority=certificate_authority)
 
     if already_running and start_services is not True:
         if _is_local_base_url(base_url) or auto:
@@ -1166,7 +1339,11 @@ def _maybe_start_services(
         console.print("  Restarting platform services...")
         _kill_existing_services(base_url)
         deadline = time.time() + _KILL_WAIT_TIMEOUT
-        while time.time() < deadline and _check_platform_reachable(base_url, timeout=1.0):
+        while time.time() < deadline and _check_platform_reachable(
+            base_url,
+            timeout=1.0,
+            certificate_authority=certificate_authority,
+        ):
             _pause(1)
     else:
         console.print("  Starting platform services...")
@@ -1175,7 +1352,13 @@ def _maybe_start_services(
 
     log = log_path_for(compute_scope(port=_resolve_services_port(base_url)))
 
-    if not _wait_for_platform(base_url, timeout=timeout, log_path=log, proc=proc):
+    if not _wait_for_platform(
+        base_url,
+        timeout=timeout,
+        log_path=log,
+        proc=proc,
+        certificate_authority=certificate_authority,
+    ):
         exit_code = proc.poll()
         startup_conflict = _detect_startup_port_conflict(base_url, log) if exit_code is not None else None
         if startup_conflict is not None:
@@ -1558,26 +1741,42 @@ def _agent_config_path() -> Traversable | None:
     return None
 
 
-def _agent_exists(base_url: str, workspace: str, headers: dict[str, str] | None = None) -> bool:
+def _agent_exists(
+    base_url: str,
+    workspace: str,
+    headers: dict[str, str] | None = None,
+    *,
+    certificate_authority: str | None = None,
+) -> bool:
     """Return True if the demo agent already exists on the platform."""
+    tls_config = httpx_tls_config_from_env(certificate_authority)
     try:
         resp = httpx.get(
             f"{base_url.rstrip('/')}/apis/agents/v2/workspaces/{workspace}/agents/{_DEMO_AGENT_NAME}",
             headers=headers,
             timeout=10.0,
+            **tls_config,
         )
         return resp.status_code == 200
     except Exception:
         return False
 
 
-def _agents_api_ready(base_url: str, workspace: str, headers: dict[str, str] | None = None) -> bool:
+def _agents_api_ready(
+    base_url: str,
+    workspace: str,
+    headers: dict[str, str] | None = None,
+    *,
+    certificate_authority: str | None = None,
+) -> bool:
     """Return True if the agents API is responding."""
+    tls_config = httpx_tls_config_from_env(certificate_authority)
     try:
         resp = httpx.get(
             f"{base_url.rstrip('/')}/apis/agents/v2/workspaces/{workspace}/agents",
             headers=headers,
             timeout=3.0,
+            **tls_config,
         )
         return resp.status_code == 200
     except Exception:
@@ -1590,6 +1789,8 @@ def _deploy_demo_agent(
     config_path: Traversable,
     default_model: str,
     headers: dict[str, str] | None = None,
+    *,
+    certificate_authority: str | None = None,
 ) -> bool:
     """Deploy the demo agent and emit one ``agent_deployed`` event.
 
@@ -1597,7 +1798,14 @@ def _deploy_demo_agent(
     deployment reaches running, ERROR when it fails, times out, or raises.
     """
     try:
-        deployed = _deploy_demo_agent_impl(base_url, workspace, config_path, default_model, headers=headers)
+        deployed = _deploy_demo_agent_impl(
+            base_url,
+            workspace,
+            config_path,
+            default_model,
+            headers=headers,
+            certificate_authority=certificate_authority,
+        )
     except Exception:
         emit.emit_event(
             OnboardingStepEvent(step="agent_deployed", task_status=TaskStatusEnum.ERROR, agent_deployed=False)
@@ -1614,14 +1822,17 @@ def _deploy_demo_agent_impl(
     config_path: Traversable,
     default_model: str,
     headers: dict[str, str] | None = None,
+    *,
+    certificate_authority: str | None = None,
 ) -> bool:
     """Create and deploy the demo calculator agent. Returns True on success."""
     # Optional plugin: import here so ``nemo setup`` works without nemo-agents installed.
     from nemo_agents_plugin.utils import expand_env_vars
 
     api_base = base_url.rstrip("/")
+    tls_config = httpx_tls_config_from_env(certificate_authority)
 
-    if not _agent_exists(base_url, workspace, headers=headers):
+    if not _agent_exists(base_url, workspace, headers=headers, certificate_authority=certificate_authority):
         config_dict = _yaml.safe_load(config_path.read_text(encoding="utf-8"))
         config_dict = expand_env_vars(config_dict, vars_dict={"NEMO_DEFAULT_MODEL": default_model})
         payload = {"name": _DEMO_AGENT_NAME, "description": "Demo calculator agent", "config": config_dict}
@@ -1630,6 +1841,7 @@ def _deploy_demo_agent_impl(
             headers=headers,
             json=payload,
             timeout=30.0,
+            **tls_config,
         )
         resp.raise_for_status()
         console.print(f"  {CHECK} Created agent '{_DEMO_AGENT_NAME}'")
@@ -1641,6 +1853,7 @@ def _deploy_demo_agent_impl(
         headers=headers,
         json={"agent": _DEMO_AGENT_NAME},
         timeout=30.0,
+        **tls_config,
     )
     if resp.status_code == 409:
         console.print(f"  {CHECK} Agent '{_DEMO_AGENT_NAME}' already deployed")
@@ -1664,6 +1877,7 @@ def _deploy_demo_agent_impl(
                     f"{api_base}/apis/agents/v2/workspaces/{workspace}/deployments/{deployment_name}",
                     headers=headers,
                     timeout=3.0,
+                    **tls_config,
                 )
                 if dep_resp.status_code == 200:
                     dep_status = dep_resp.json().get("status", "")
@@ -1687,6 +1901,8 @@ def _maybe_deploy_agent(
     deploy_agent: bool | None,
     default_model: str | None = None,
     headers: dict[str, str] | None = None,
+    *,
+    certificate_authority: str | None = None,
 ) -> bool:
     """Optionally deploy the demo calculator agent.
 
@@ -1741,7 +1957,12 @@ def _maybe_deploy_agent(
         while time.monotonic() < deadline:
             elapsed = int(time.monotonic() - start)
             spinner.update(f"[bold cyan]Waiting for agents API... ({elapsed}s)")
-            if _agents_api_ready(base_url, workspace, headers=headers):
+            if _agents_api_ready(
+                base_url,
+                workspace,
+                headers=headers,
+                certificate_authority=certificate_authority,
+            ):
                 api_ready = True
                 break
             _pause(_AGENT_API_READINESS_POLL_INTERVAL)
@@ -1757,6 +1978,7 @@ def _maybe_deploy_agent(
             config_path,
             default_model=default_model,
             headers=headers,
+            certificate_authority=certificate_authority,
         )
     except Exception as exc:
         console.print(f"  {WARN} Agent deployment failed: {exc}")
@@ -1877,9 +2099,10 @@ def _validate_api_key(
     """Probe the provider with the API key to detect auth failures early.
 
     Makes a single lightweight request to an auth-required endpoint.
-    Returns ``passed=False`` only on a definitive 401/403 rejection.
-    Network errors and unknown providers are treated as *passed* to avoid
-    blocking setup when the provider is unreachable.
+    Returns ``passed=False`` on a definitive credential rejection or when the
+    configured probe target is unavailable. Network errors and unknown
+    providers are treated as *passed* to avoid blocking setup during transient
+    failures.
     """
     if not api_key:
         return KeyValidationResult(passed=True, message="")
@@ -1913,6 +2136,14 @@ def _validate_api_key(
         )
         if resp.status_code in _KEY_REJECTED_STATUS_CODES:
             return KeyValidationResult(passed=False, message=_KEY_REJECTED_MESSAGE)
+        if resp.status_code in _TERMINAL_PROBE_STATUS_CODES:
+            return KeyValidationResult(
+                passed=False,
+                message=(
+                    f"Provider validation failed (HTTP {resp.status_code}). "
+                    "The configured probe endpoint or model is unavailable."
+                ),
+            )
         if 200 <= resp.status_code < 300:
             return KeyValidationResult(passed=True, message="")
         return KeyValidationResult(
@@ -1939,17 +2170,25 @@ def _select_model_pair(
         console.print(f"  {WARN} No models discovered yet. You can select models later.")
         return None
 
-    first_model = display_models[0][0]
+    entity_ids = [entity_id for entity_id, _ in display_models]
+    if _pick_default_chat_entity(entity_ids) is None:
+        console.print(f"  {WARN} No usable chat models discovered yet. You can select models later.")
+        return None
+
+    suggested = _select_usable_model_pair(client, workspace, entity_ids)
+    if suggested is None:
+        console.print(f"  {WARN} None of the discovered models served a test request; choose a model explicitly.")
+
     default_model = prompt_select(
         "Choose your default model (used for quality-critical agent work):",
         choices=display_models,
-        default=first_model,
-        hint="Press Enter to accept the default.",
+        default=suggested.default if suggested else None,
+        hint="Press Enter to accept the default." if suggested else "Choose a model you can access.",
     )
     fast = prompt_select(
         "Choose your fast model (used for latency-sensitive agent work):",
         choices=display_models,
-        default=default_model,
+        default=suggested.fast if suggested else default_model,
         hint="Press Enter to reuse the default model.",
     )
     return ModelPair(default=default_model, fast=fast)
@@ -2183,30 +2422,43 @@ def setup_command(
     effective_timeout = _SERVICE_STARTUP_TIMEOUT_SECONDS if ready_timeout is None else ready_timeout
     if effective_timeout <= 0:
         raise typer.BadParameter("--ready-timeout must be greater than 0", param_hint="--ready-timeout")
+    certificate_authority = cli_context.get_sdk_context().cluster.certificate_authority
     try:
         configured_base_url = base_url
-        service_result = _maybe_start_services(base_url, auto, start_services, timeout=effective_timeout)
+        service_result = _maybe_start_services(
+            base_url,
+            auto,
+            start_services,
+            timeout=effective_timeout,
+            certificate_authority=certificate_authority,
+        )
         if service_result == "start_local":
             _configure_local_connection(cli_context, workspace)
             base_url = DEFAULT_BASE_URL
+            certificate_authority = cli_context.get_sdk_context().cluster.certificate_authority
             service_result = _maybe_start_services(
                 base_url,
                 auto,
                 start_services=True,
                 timeout=effective_timeout,
+                certificate_authority=certificate_authority,
             )
         if service_result == "connect_remote":
-            base_url = _prompt_remote_base_url(default_url=configured_base_url)
+            base_url = _prompt_remote_base_url(
+                default_url=configured_base_url,
+                certificate_authority=certificate_authority,
+            )
             _bootstrap_config_if_missing(base_url, workspace)
             cli_context.reset_sdk_context()
             workspace = _resolve_setup_workspace(ctx, cli_context, workspace)
             _configure_remote_connection(cli_context, base_url, workspace)
             _ensure_platform_auth(cli_context)
+            certificate_authority = cli_context.get_sdk_context().cluster.certificate_authority
     except UserCancelled:
         console.print(f"\n{WARN} Setup cancelled.")
         raise typer.Exit(0) from None
 
-    if not _check_platform_reachable_with_retries(base_url):
+    if not _check_platform_reachable_with_retries(base_url, certificate_authority=certificate_authority):
         console.print(f"\n{CROSS} Cannot reach platform at {base_url}")
         raise typer.Exit(1)
 
@@ -2218,20 +2470,22 @@ def setup_command(
     # 'default-cluster' does not exist" when _save_model_pair runs.
     _bootstrap_config_if_missing(base_url, workspace)
     cli_context.reset_sdk_context()
+    certificate_authority = cli_context.get_sdk_context().cluster.certificate_authority
 
     client = cli_context.get_client()
+    workspaces = client_from_platform(client, WorkspacesClient)
 
     try:
-        client.workspaces.retrieve(workspace)
+        workspaces.get_workspace(name=workspace).data()
     except Exception:
         try:
-            client.workspaces.create(name=workspace)
+            workspaces.create_workspace(body=CreateWorkspaceRequest(name=workspace)).data()
             console.print(f"  {CHECK} Created workspace '{workspace}'")
         except Exception as create_err:
             # Distinguish a race (workspace appeared between retrieve and create)
             # from a real failure (permissions, server error).
             try:
-                client.workspaces.retrieve(workspace)
+                workspaces.get_workspace(name=workspace).data()
             except Exception:
                 raise create_err from None
 
@@ -2250,6 +2504,7 @@ def setup_command(
                 skills_agents=skills_agents_list,
                 skills_scope=skills_scope,
                 skills_from=skills_from_list,
+                certificate_authority=certificate_authority,
             )
         else:
             _run_interactive_mode(
@@ -2262,6 +2517,7 @@ def setup_command(
                 skills_agents=skills_agents_list,
                 skills_scope=skills_scope,
                 skills_from=skills_from_list,
+                certificate_authority=certificate_authority,
             )
     except typer.Exit as exc:
         # A clean user-cancel raises typer.Exit(0); that is a normal end of the
@@ -2288,6 +2544,7 @@ def _run_auto_mode(
     skills_agents: list[str] | None = None,
     skills_scope: Scope | None = None,
     skills_from: list[str] | None = None,
+    certificate_authority: str | None = None,
 ) -> None:
     """Non-interactive provider registration from environment variables."""
     console.print("[bold]Auto-detecting provider from environment...[/bold]\n")
@@ -2322,21 +2579,32 @@ def _run_auto_mode(
         )
     )
 
-    default_model = os.environ.get("NEMO_DEFAULT_MODEL", "").strip()
-    if not default_model and entity_ids:
-        default_model = entity_ids[0]
-    fast_model = os.environ.get("NEMO_FAST_MODEL", "").strip() or default_model
+    # An explicit NEMO_DEFAULT_MODEL is taken as given; anything auto-selected
+    # has to answer a real inference request first.
+    default_override = os.environ.get("NEMO_DEFAULT_MODEL", "").strip()
+    fast_override = os.environ.get("NEMO_FAST_MODEL", "").strip()
+    if default_override:
+        model_pair = ModelPair(default=default_override, fast=fast_override or default_override)
+    elif entity_ids:
+        selected = _select_usable_model_pair(client, workspace, entity_ids)
+        model_pair = ModelPair(default=selected.default, fast=fast_override or selected.fast) if selected else None
+    else:
+        model_pair = None
 
-    if default_model:
-        model_pair = ModelPair(default=default_model, fast=fast_model)
+    if model_pair:
         _save_model_pair(cli_context, model_pair)
         console.print(f"  {CHECK} Default model: {model_pair.default}")
         console.print(f"  {CHECK} Fast model: {model_pair.fast}")
     else:
-        if fast_model:
+        if fast_override:
             console.print(f"  {WARN} NEMO_FAST_MODEL is ignored until a default model is available")
-        console.print(f"  {WARN} No default model set (no models discovered yet)")
-        console.print("  Run [cyan]nemo setup[/cyan] again after models sync, or set the models via env vars:")
+        if entity_ids:
+            console.print(f"  {WARN} No default model set (none of the discovered models served a test request)")
+            console.print("  The provider advertises models this account cannot run. Check the account's")
+            console.print("  model entitlements, or pick a model yourself:")
+        else:
+            console.print(f"  {WARN} No default model set (no models discovered yet)")
+            console.print("  Run [cyan]nemo setup[/cyan] again after models sync, or set the models via env vars:")
         console.print("    [cyan]export NEMO_DEFAULT_MODEL=<model>[/cyan]")
         console.print("    [cyan]export NEMO_FAST_MODEL=<model>[/cyan]")
 
@@ -2352,14 +2620,15 @@ def _run_auto_mode(
         workspace,
         auto=True,
         deploy_agent=deploy_agent,
-        default_model=default_model,
+        default_model=model_pair.default if model_pair else "",
         headers=_platform_request_headers(cli_context),
+        certificate_authority=certificate_authority,
     )
 
-    if not _verify_platform_health(base_url):
+    if not _verify_platform_health(base_url, certificate_authority=certificate_authority):
         raise typer.Exit(1)
 
-    if default_model:
+    if model_pair:
         console.print(f"\n{CHECK} [green]Setup complete![/green]")
     else:
         console.print(f"\n{WARN} [yellow]Setup complete with warnings.[/yellow]")
@@ -2377,6 +2646,7 @@ def _run_interactive_mode(
     skills_agents: list[str] | None = None,
     skills_scope: Scope | None = None,
     skills_from: list[str] | None = None,
+    certificate_authority: str | None = None,
 ) -> None:
     """Walk the user through provider selection, credential entry, and model choice."""
     try:
@@ -2451,6 +2721,7 @@ def _run_interactive_mode(
             deploy_agent=deploy_agent,
             default_model=default_model,
             headers=_platform_request_headers(cli_context),
+            certificate_authority=certificate_authority,
         )
 
         _print_onboarding(
@@ -2459,6 +2730,7 @@ def _run_interactive_mode(
             default_model,
             fast_model=model_pair.fast if model_pair else None,
             demo_deployed=demo_deployed,
+            certificate_authority=certificate_authority,
         )
 
     except UserCancelled:
@@ -2528,9 +2800,10 @@ def _print_onboarding(
     *,
     fast_model: str | None = None,
     demo_deployed: bool = False,
+    certificate_authority: str | None = None,
 ) -> None:
     """Print setup summary, then present goal-oriented onboarding paths."""
-    if not _verify_platform_health(base_url):
+    if not _verify_platform_health(base_url, certificate_authority=certificate_authority):
         raise typer.Exit(1)
 
     console.print(f"\n{CHECK} [green bold]Setup complete![/green bold]")

@@ -52,8 +52,13 @@ from nemo_deployments_plugin.entities import (
     ResourceRequirements,
     SecretRef,
     VolumeMount,
+    WorkloadIdentitySpec,
 )
-from nemo_platform_plugin.auth import platform_auth_enabled
+from nemo_platform_plugin.auth import AuthContext, platform_auth_enabled
+from nemo_platform_plugin.auth.workload_identity import (
+    get_workload_identity_token_audience,
+    is_workload_identity_token_exchange_enabled,
+)
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entities.base import parse_qualified_name
@@ -90,6 +95,7 @@ _RESERVED_ENV_VAR_NAMES = frozenset(
         _NAT_CONFIG_ENV,
     }
 )
+_IMAGE_ENTRYPOINT_RESERVED_ENV_VAR_NAMES = _RESERVED_ENV_VAR_NAMES | {"PORT"}
 
 
 # On delete, wait up to this long for the deployments controller to tear down the
@@ -273,7 +279,12 @@ class ReservedSecretEnvVarError(ValueError):
     """A secret env var name collides with a platform-generated container env var."""
 
 
-def _secret_env_vars(secrets: dict[str, str] | None, *, workspace: str) -> list[EnvVar]:
+def _secret_env_vars(
+    secrets: dict[str, str] | None,
+    *,
+    workspace: str,
+    reserved_env_var_names: frozenset[str] = _RESERVED_ENV_VAR_NAMES,
+) -> list[EnvVar]:
     """Compile resolved secret references into secret-backed container env vars.
 
     ``secrets`` maps ENV_VAR_NAME -> "workspace/secret-name" (an unqualified
@@ -288,12 +299,12 @@ def _secret_env_vars(secrets: dict[str, str] | None, *, workspace: str) -> list[
     """
     if not secrets:
         return []
-    reserved = sorted(name for name in secrets if name in _RESERVED_ENV_VAR_NAMES)
+    reserved = sorted(name for name in secrets if name in reserved_env_var_names)
     if reserved:
         raise ReservedSecretEnvVarError(
             "Environment secret variable name(s) collide with platform-reserved container env vars: "
             f"{', '.join(reserved)}. Rename the secret env var(s) to avoid "
-            f"{', '.join(sorted(_RESERVED_ENV_VAR_NAMES))}."
+            f"{', '.join(sorted(reserved_env_var_names))}."
         )
     env_vars: list[EnvVar] = []
     for env_name, ref in secrets.items():
@@ -310,6 +321,8 @@ def _fabric_config_mount_path(config_mount_path: str) -> str:
 
 
 def _fabric_server_cli_args(*, config_path: str, port: int) -> list[str]:
+    # If this launch path forwards an idle-timeout override, the gateway must
+    # use the same deployment-sourced value when computing ``expires_at``.
     return [
         "-m",
         _FABRIC_SERVER_MODULE,
@@ -329,6 +342,45 @@ def executor_for_mode(config: DeploymentsRunnerConfig, mode: DeploymentMode) -> 
     if mode == "k8s":
         return config.k8s_executor or config.default_executor
     return config.default_executor
+
+
+def executor_backend(name: str | None) -> str | None:
+    """Return the backend key the deployments plugin would run *name* on.
+
+    An unset name is not "no executor": ``ExecutorRegistry.resolve`` falls back to
+    the deployments plugin's own ``default_executor``, so resolving it here is what
+    makes the mode check see the executor that will actually run.
+    """
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    config = DeploymentsConfig.get()
+    resolved = name or config.default_executor
+    if not resolved:
+        return None
+    for entry in config.executors:
+        if entry.name == resolved:
+            return entry.backend
+    return None
+
+
+def require_executor_matches_mode(executor: str | None, mode: DeploymentMode) -> None:
+    """Refuse a container mode that would run somewhere other than it names.
+
+    ``executor_for_mode`` falls back to ``default_executor``, so asking for k8s
+    where none is configured silently lands on docker: the deployment reports
+    running while nothing exists in the cluster, and a k8s-only failure cannot
+    reproduce. The backend keys and the deployment modes share a vocabulary, so
+    the mismatch is checkable here rather than discoverable by counting pods.
+    """
+    backend = executor_backend(executor)
+    if backend is None or backend == mode:
+        return
+    alternative = f", or deploy with deployment_mode {backend!r}" if backend in CONTAINER_DEPLOYMENT_MODES else ""
+    raise ValueError(
+        f"deployment_mode {mode!r} resolved to executor {executor!r}, which runs on "
+        f"{backend!r}. Set 'deployments.{mode}_executor' to an executor whose backend "
+        f"is {mode!r}{alternative}."
+    )
 
 
 _HTTP_PROTOCOLS = frozenset({"http", "https"})
@@ -373,6 +425,8 @@ def build_deployment_config(
     config_files: list[ConfigFile] | None = None,
     resources: ComputeResources | None = None,
     secrets: dict[str, str] | None = None,
+    use_image_entrypoint: bool = False,
+    workload_identity_enabled: bool = False,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -380,10 +434,12 @@ def build_deployment_config(
     NAT workflow configs start ``nat start fastapi`` with workflow YAML at
     *config_mount_path*. Fabric configs start
     ``python -m nemo_agents_plugin.fabric.server`` with ``agent.yaml`` beside the
-    NAT config directory. Docker mode materializes config from env because the
-    docker backend ignores ``config_files``; k8s mounts ``config_files`` via
-    ConfigMap subPath. The main container binds ``0.0.0.0`` and exposes a
-    readiness probe on ``/health``.
+    NAT config directory. When ``use_image_entrypoint`` is true, the generated
+    DeploymentConfig leaves command/args empty so the image ENTRYPOINT/CMD runs
+    instead. Docker mode materializes config from env because the docker backend
+    ignores ``config_files``; k8s mounts ``config_files`` via ConfigMap subPath.
+    The main container binds ``0.0.0.0`` and exposes a readiness probe on
+    ``/health``.
 
     The caller is responsible for rebasing inference ``base_url`` values in
     *agent_config* to a container-reachable gateway before calling this helper.
@@ -413,7 +469,10 @@ def build_deployment_config(
     # Secret-backed env vars from the resolved environment: emitted as
     # secret_ref (never plaintext). The deployments-plugin substrate resolves
     # them (docker) or mounts a managed Secret via envFrom (k8s).
-    env.extend(_secret_env_vars(secrets, workspace=workspace))
+    reserved_env_var_names = (
+        _IMAGE_ENTRYPOINT_RESERVED_ENV_VAR_NAMES if use_image_entrypoint else _RESERVED_ENV_VAR_NAMES
+    )
+    env.extend(_secret_env_vars(secrets, workspace=workspace, reserved_env_var_names=reserved_env_var_names))
     volume_mounts: list[VolumeMount] = []
     init_containers: list[Container] = []
 
@@ -441,7 +500,11 @@ def build_deployment_config(
         )
         env.append(EnvVar(name="PYTHONPATH", value=_PLUGIN_WHEELS_MOUNT))
 
-    if is_fabric:
+    if use_image_entrypoint:
+        server_command = []
+        server_args = []
+        env.append(EnvVar(name="PORT", value=str(port)))
+    elif is_fabric:
         server_command = ["python"]
         server_args = _fabric_server_cli_args(config_path=config_path, port=port)
     else:
@@ -478,6 +541,17 @@ def build_deployment_config(
         }
     )
 
+    workload_identity = (
+        WorkloadIdentitySpec(
+            enabled=True,
+            workloadKind="agent_deployment",
+            workloadId=name,
+            tokenAudience=get_workload_identity_token_audience(),
+        )
+        if workload_identity_enabled
+        else None
+    )
+
     # Request the auth-proxy sidecar via the DeploymentConfig flags; the
     # deployments plugin compiles and injects it (and no-ops when auth is off).
     return DeploymentConfig(
@@ -493,6 +567,7 @@ def build_deployment_config(
             "auth_proxy_sidecar": auth_proxy_identity is not None,
             "auth_proxy_sidecar_identity": auth_proxy_identity,
             "auth_proxy_sidecar_on_behalf_of": auth_proxy_on_behalf_of,
+            "workload_identity": workload_identity,
         }
     )
 
@@ -521,8 +596,10 @@ class DeploymentsRunnerBackend(RunnerBackend):
         image: str | None = None,
         deployment_mode: DeploymentMode = "docker",
         created_by: str | None = None,
+        auth_context: AuthContext | None = None,
         resources: ComputeResources | None = None,
         secrets: dict[str, str] | None = None,
+        use_image_entrypoint: bool = False,
     ) -> DeploymentInfo:
         """Create DeploymentConfig + Deployment entities for the agent container."""
         del port  # Host port is allocated by the deployments executor, not agents.
@@ -532,6 +609,12 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 status="failed",
                 error=f"DeploymentsRunnerBackend does not support deployment_mode={deployment_mode!r}.",
             )
+
+        try:
+            require_executor_matches_mode(executor_for_mode(self._config, deployment_mode), deployment_mode)
+        except ValueError as exc:
+            logger.error("Refusing to deploy agent %r: %s", name, exc)
+            return DeploymentInfo(name=name, status="failed", error=str(exc))
 
         resolved_image = image or self._config.default_image
         if not resolved_image:
@@ -629,6 +712,8 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 config_files=staged_config_files,
                 resources=resources,
                 secrets=secrets,
+                use_image_entrypoint=use_image_entrypoint,
+                workload_identity_enabled=auth_context is not None and is_workload_identity_token_exchange_enabled(),
             )
         except ReservedSecretEnvVarError as exc:
             logger.error("Refusing to deploy agent %r: %s", name, exc)
@@ -642,7 +727,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 executor=executor_for_mode(self._config, deployment_mode),
                 desired_state="READY",
                 status="PENDING",
-            )
+            ).with_auth_context(auth_context)
             await entities.create(deployment)
         except Exception:
             # Avoid orphaning the config if Deployment create fails.

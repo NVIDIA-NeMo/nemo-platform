@@ -578,7 +578,9 @@ class TestCheckTaskStaleness:
     def test_disabled_when_lifecycle_is_none(self):
         backend = _make_backend()
         step = _make_step()
-        step.step_spec.lifecycle = None
+        step_spec = step.step_spec
+        assert step_spec is not None
+        step.step_spec = step_spec.model_copy(update={"lifecycle": None})
 
         assert backend.check_step_is_stale(step) is False
 

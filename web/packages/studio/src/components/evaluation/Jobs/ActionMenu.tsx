@@ -3,7 +3,7 @@
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { logger } from '@nemo/common/src/utils/logger';
-import { useEvaluatorDeleteEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
+import { useEvaluatorDeleteEvaluateJob } from '@nemo/sdk/generated/evaluator/evaluator-plugin-jobs-routes';
 import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Button,

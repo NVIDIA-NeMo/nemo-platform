@@ -212,7 +212,7 @@ SFT and LoRA both learn from examples of the right answer. Reinforcement learnin
 
 DPO trains on preference pairs. Each example is a prompt with a **chosen** response and a **rejected** one, and training pushes the model toward the chosen style without needing a separate reward model. Use it when you have human or model-generated preference data and want to shape tone, formatting, or helpfulness.
 
-The main control is `ref_policy_kl_penalty` (β), which sets how far the policy may drift from the model it started as.
+The main control is `ref_policy_kl_penalty` (β), which sets how far the policy may drift from the model it started as. See [DPO Customization](/documentation/customizer-reference/tutorials/dpo-customization-job).
 
 ### Group Relative Policy Optimization
 

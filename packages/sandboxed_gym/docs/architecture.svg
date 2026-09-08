@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="510" viewBox="0 0 680 510" role="img">
+<title>Evaluator and sandboxed-gym: the task runner owns the host lifetime</title>
+<desc>Inside run_tasks the Gym task runner starts an orchestrator session, which provisions the outer sandbox through a host provider; the runner posts rollouts to it and tears the session down in finally. The episode tier is not built.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <style>
+    text { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .th { font-size: 14px; font-weight: 500; } .ts { font-size: 12px; font-weight: 400; }
+    .zone { fill: none; stroke: #B4B2A9; stroke-width: 0.5; stroke-dasharray: 4 4; }
+    .zlab { fill: #5F5E5A; }
+    .arr { stroke: #888780; stroke-width: 0.5; fill: none; }
+    .teal-box { fill: #E1F5EE; stroke: #0F6E56; stroke-width: 0.5; }
+    .teal-t { fill: #085041; } .teal-s { fill: #0F6E56; }
+    .coral-box { fill: #FAECE7; stroke: #993C1D; stroke-width: 0.5; }
+    .coral-t { fill: #712B13; } .coral-s { fill: #993C1D; }
+    .un { fill: none; stroke: #B4B2A9; stroke-width: 0.5; stroke-dasharray: 3 3; }
+    .un-t { fill: #5F5E5A; } .un-s { fill: #888780; }
+  </style>
+</defs>
+<rect x="0" y="0" width="680" height="510" fill="#FFFFFF"/>
+
+<rect class="zone" x="40" y="64" width="600" height="176" rx="8"/>
+<text class="ts zlab" x="52" y="82">Eval job pod — trusted</text>
+
+<rect class="teal-box" x="56" y="92" width="178" height="52" rx="4"/>
+<text class="th teal-t" x="145" y="114" text-anchor="middle">Gym task runner</text>
+<text class="ts teal-s" x="145" y="132" text-anchor="middle">owns the host lifetime</text>
+
+<rect class="teal-box" x="56" y="164" width="178" height="52" rx="4"/>
+<text class="th teal-t" x="145" y="186" text-anchor="middle">Host provider</text>
+<text class="ts teal-s" x="145" y="204" text-anchor="middle">docker · opensandbox</text>
+
+<rect class="teal-box" x="444" y="92" width="180" height="52" rx="4"/>
+<text class="th teal-t" x="534" y="114" text-anchor="middle">Episode broker</text>
+<text class="ts teal-s" x="534" y="132" text-anchor="middle">token · policy · caps</text>
+
+<rect class="teal-box" x="444" y="164" width="180" height="52" rx="4"/>
+<text class="th teal-t" x="534" y="186" text-anchor="middle">OpenSandbox driver</text>
+<text class="ts teal-s" x="534" y="204" text-anchor="middle">opensandbox SDK</text>
+
+<rect class="zone" x="40" y="300" width="284" height="170" rx="8"/>
+<text class="ts zlab" x="52" y="318">Outer sandbox — untrusted</text>
+<rect class="coral-box" x="56" y="330" width="252" height="52" rx="4"/>
+<text class="th coral-t" x="182" y="352" text-anchor="middle">Gym host server</text>
+<text class="ts coral-s" x="182" y="370" text-anchor="middle">health · /rollouts/run</text>
+<rect class="coral-box" x="56" y="392" width="252" height="48" rx="4"/>
+<text class="th coral-t" x="182" y="412" text-anchor="middle">NeMo-Gym 0.5.0</text>
+<text class="ts coral-s" x="182" y="430" text-anchor="middle">agent · model · env servers</text>
+
+<rect class="zone" x="356" y="300" width="284" height="170" rx="8"/>
+<text class="ts zlab" x="368" y="318">Episode sandboxes — not built</text>
+<rect class="un" x="372" y="330" width="252" height="52" rx="4"/>
+<text class="th un-t" x="498" y="352" text-anchor="middle">Episode sandbox × N</text>
+<text class="ts un-s" x="498" y="370" text-anchor="middle">never provisioned yet</text>
+<rect class="un" x="372" y="392" width="252" height="48" rx="4"/>
+<text class="th un-t" x="498" y="412" text-anchor="middle">User environment FileSet</text>
+<text class="ts un-s" x="498" y="430" text-anchor="middle">M2b — nothing delivers one</text>
+
+<line class="arr" x1="145" y1="144" x2="145" y2="164" marker-end="url(#arrow)"/>
+<line class="arr" x1="220" y1="216" x2="220" y2="330" marker-end="url(#arrow)"/>
+<path class="arr" d="M234 118 H270 V330" marker-end="url(#arrow)"/>
+<path class="arr" d="M308 330 V250 H430 V118 H444" marker-end="url(#arrow)"/>
+<line class="arr" x1="534" y1="144" x2="534" y2="164" marker-end="url(#arrow)"/>
+<line class="arr" x1="498" y1="216" x2="498" y2="330" marker-end="url(#arrow)"/>
+
+<text class="ts zlab" x="212" y="262" text-anchor="end">starts · tears down</text>
+<text class="ts zlab" x="278" y="272">posts rollouts</text>
+<text class="ts zlab" x="316" y="294">asks for episodes</text>
+<text class="ts zlab" x="506" y="266">would create</text>
+
+<rect class="teal-box" x="40" y="478" width="12" height="12" rx="2"/>
+<text class="ts zlab" x="58" y="488">Trusted</text>
+<rect class="coral-box" x="128" y="478" width="12" height="12" rx="2"/>
+<text class="ts zlab" x="146" y="488">Untrusted — validated live on Docker</text>
+<rect class="un" x="380" y="478" width="12" height="12" rx="2"/>
+<text class="ts zlab" x="398" y="488">Not built or never exercised</text>
+</svg>

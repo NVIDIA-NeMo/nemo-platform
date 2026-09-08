@@ -439,6 +439,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response
@@ -847,6 +855,13 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/SafeSynthesizerJobConfig'
+        profile:
+          title: Profile
+          type: string
+        options:
+          title: Options
+          additionalProperties: true
+          type: object
         ownership:
           title: Ownership
           additionalProperties: true

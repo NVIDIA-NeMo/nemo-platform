@@ -29,7 +29,6 @@ def run() -> int:
         step_config=step_config,
         ctx=ctx,
         sdk=sdk,
-        is_local=False,
     )
 
 

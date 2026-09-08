@@ -71,8 +71,10 @@ test_runtimes:
       - platform_access_keys
       - workspace_rbac
       - workload_job
+      - managed_workload_job_obo
+      - workload_deployment
+      - managed_workload_deployment_obo
       - device_flow
-      - docker_subject_token_refresh
   - id: authentik-kubernetes
     backend: kubernetes
     command: k8s
@@ -86,5 +88,8 @@ test_runtimes:
       - platform_access_keys
       - workspace_rbac
       - workload_job
+      - managed_workload_job_obo
+      - workload_deployment
+      - managed_workload_deployment_obo
       - device_flow
       - kubernetes_token_review

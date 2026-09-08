@@ -74,6 +74,7 @@ class TelemetryConfig(BaseModel):
     provider: str | None = None
     output_dir: str | None = None
     project: str | None = None
+    agent_name: str | None = None
     atif: dict[str, Any] | None = None
     atof: dict[str, Any] | None = None
     opentelemetry: dict[str, Any] | None = None

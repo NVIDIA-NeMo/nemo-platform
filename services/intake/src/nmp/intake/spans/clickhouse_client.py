@@ -14,6 +14,7 @@ from typing import Any
 from clickhouse_connect.driver.external import ExternalData
 from fastapi import HTTPException, Request
 from nmp.intake.config import IntakeConfig
+from nmp.intake.readiness import CLICKHOUSE_UNAVAILABLE_MESSAGE
 from nmp.intake.spans.clickhouse_migrations import parse_clickhouse_url, run_clickhouse_migrations
 
 logger = logging.getLogger(__name__)
@@ -153,7 +154,7 @@ async def get_clickhouse_client(request: Request) -> AsyncIterator[ClickHouseSpa
         await bootstrap_schema(service_client)
     except Exception as exc:
         logger.exception("ClickHouse spans storage is unavailable")
-        raise HTTPException(status_code=503, detail="ClickHouse spans storage unavailable") from exc
+        raise HTTPException(status_code=503, detail=CLICKHOUSE_UNAVAILABLE_MESSAGE) from exc
     yield service_client
 
 

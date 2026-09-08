@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Both service accounts impersonate the same GCP service account, supplied as
+# ${SE_GCP_SERVICE_ACCOUNT} from the untracked local.env. The matching Workload
+# Identity bindings are a GCP prerequisite, not created here — see README.md.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scaled-evals-control-plane
+  annotations:
+    iam.gke.io/gcp-service-account: ${SE_GCP_SERVICE_ACCOUNT}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scaled-evals-gar-registry-auth
+  annotations:
+    iam.gke.io/gcp-service-account: ${SE_GCP_SERVICE_ACCOUNT}
+---
+# The refresh job rewrites one named secret and nothing else.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: scaled-evals-gar-registry-auth-secret-writer
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["scaled-evals-gar-registry-auth"]
+    verbs: ["get", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scaled-evals-gar-registry-auth-secret-writer
+subjects:
+  - kind: ServiceAccount
+    name: scaled-evals-gar-registry-auth
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: scaled-evals-gar-registry-auth-secret-writer

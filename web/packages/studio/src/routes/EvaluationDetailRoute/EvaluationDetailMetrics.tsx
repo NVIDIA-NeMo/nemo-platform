@@ -3,13 +3,19 @@
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
+import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { formatDurationMs } from '@nemo/common/src/utils/date';
-import { useGetEvaluation } from '@nemo/sdk/generated/platform/api';
-import { Divider, Flex, Text, Tooltip } from '@nvidia/foundations-react-core';
+import { useGetEvaluation } from '@nemo/sdk/generated/platform/evaluations';
+import { Divider, Flex, Tooltip } from '@nvidia/foundations-react-core';
+import { evalJobDetailRoute } from '@studio/api/evaluation/utils';
 import { ChangesetBadge } from '@studio/components/ChangesetBadge';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { useEvaluationJob } from '@studio/routes/EvaluationDetailRoute/useEvaluationJob';
 import { tooltipClassName } from '@studio/styles/common';
-import { type FC, type ReactNode } from 'react';
+import { type FC } from 'react';
+import { Link } from 'react-router';
+
+const JOB_NAME_MAX_LENGTH = 20;
 
 interface EvaluationDetailMetricsProps {
   evaluationName: string;
@@ -18,12 +24,10 @@ interface EvaluationDetailMetricsProps {
 export const EvaluationDetailMetrics: FC<EvaluationDetailMetricsProps> = ({ evaluationName }) => {
   const workspace = useWorkspaceFromPath();
   const { data: experiment, isLoading } = useGetEvaluation(workspace, evaluationName);
-
-  const avgCost =
-    experiment?.cost_usd?.mean != null ? `$${experiment.cost_usd.mean.toFixed(3)}` : undefined;
+  const { job, status } = useEvaluationJob(workspace, evaluationName, experiment);
 
   // formatDurationMs returns '—' for null/undefined, which is also KVPair's default empty value.
-  const avgLatency = formatDurationMs(experiment?.latency_ms?.mean);
+  const avgDuration = formatDurationMs(experiment?.latency_ms?.mean);
 
   const tokenSum = experiment?.tokens?.sum;
   const totalTokens =
@@ -34,22 +38,16 @@ export const EvaluationDetailMetrics: FC<EvaluationDetailMetricsProps> = ({ eval
         })
       : undefined;
 
-  const modelNames = experiment?.model_names ?? [];
-  const modelNamesJoined = modelNames.length > 0 ? modelNames.join(', ') : undefined;
-  const modelNamesValue: ReactNode = modelNamesJoined ? (
-    modelNames.length > 1 ? (
-      // Truncate + tooltip for the multi-model case to keep the header KV row compact.
-      <Tooltip slotContent={modelNamesJoined} className={tooltipClassName} side="bottom">
-        <Text className="cursor-default truncate max-w-[200px] block">{modelNamesJoined}</Text>
-      </Tooltip>
-    ) : (
-      modelNamesJoined
-    )
-  ) : undefined;
-
   return (
     <Flex align="stretch" justify="between" gap="density-3xl">
       <Flex align="stretch" gap="density-3xl">
+        <KVPair
+          label="Status"
+          value={status ? <StatusBadge status={status} /> : undefined}
+          loading={isLoading}
+          orientation="vertical"
+        />
+        <Divider orientation="vertical" className="grow-0 self-stretch" />
         {experiment?.source_link ? (
           <>
             <KVPair
@@ -83,6 +81,23 @@ export const EvaluationDetailMetrics: FC<EvaluationDetailMetricsProps> = ({ eval
         />
         <Divider orientation="vertical" className="grow-0 self-stretch" />
         <KVPair
+          label="Job"
+          value={
+            job ? (
+              <Tooltip slotContent={job.name} className={tooltipClassName} side="bottom">
+                <Link to={evalJobDetailRoute(workspace, job)} className="text-primary underline">
+                  {job.name.length > JOB_NAME_MAX_LENGTH
+                    ? `${job.name.slice(0, JOB_NAME_MAX_LENGTH)}…`
+                    : job.name}
+                </Link>
+              </Tooltip>
+            ) : undefined
+          }
+          loading={isLoading}
+          orientation="vertical"
+        />
+        <Divider orientation="vertical" className="grow-0 self-stretch" />
+        <KVPair
           label="Created"
           value={
             experiment?.created_at ? <RelativeTime datetime={experiment.created_at} /> : undefined
@@ -101,13 +116,14 @@ export const EvaluationDetailMetrics: FC<EvaluationDetailMetricsProps> = ({ eval
         />
       </Flex>
       <Flex align="stretch" gap="density-3xl">
-        <KVPair label="Models" value={modelNamesValue} loading={isLoading} orientation="vertical" />
-        <Divider orientation="vertical" className="grow-0 self-stretch" />
-        <KVPair label="Avg Cost" value={avgCost} loading={isLoading} orientation="vertical" />
-        <Divider orientation="vertical" className="grow-0 self-stretch" />
         <KVPair label="Tokens" value={totalTokens} loading={isLoading} orientation="vertical" />
         <Divider orientation="vertical" className="grow-0 self-stretch" />
-        <KVPair label="Avg Latency" value={avgLatency} loading={isLoading} orientation="vertical" />
+        <KVPair
+          label="Avg Duration"
+          value={avgDuration}
+          loading={isLoading}
+          orientation="vertical"
+        />
       </Flex>
     </Flex>
   );

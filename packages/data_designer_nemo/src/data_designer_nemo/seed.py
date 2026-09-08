@@ -8,7 +8,6 @@ import data_designer.config as dd
 from data_designer.config.seed_source import SeedSource
 from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
-from data_designer_nemo.fileset_filesystem_provider import is_local_directory
 from data_designer_nemo.secret_resolver import validate_secret
 from filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
 from nemo_platform import AsyncNeMoPlatform
@@ -37,28 +36,20 @@ async def validate_seed(
     dd_config: dd.DataDesignerConfig,
     workspace: str,
     sdk: AsyncNeMoPlatform,
-    is_local: bool,
 ) -> str | None:
     if (seed_source := _get_seed_source(dd_config)) is None:
         return None
 
-    _validate_seed_type_for_execution_context(
-        seed_source.seed_type,
-        is_local=is_local,
-    )
+    _validate_seed_type_for_execution_context(seed_source.seed_type)
 
     if isinstance(seed_source, dd.HuggingFaceSeedSource):
         # In local execution context, a HF seed source token will always "resolve"
         # because the composite secret resolver includes a plaintext resolver.
         # In remote execution context, a HF seed source token must be a reference
         # to a Nemo Platform secret (if provided).
-        if not is_local and (token := seed_source.token) is not None:
+        if (token := seed_source.token) is not None:
             await validate_secret(sdk, token, workspace)
         return None
-
-    if is_local and isinstance(seed_source, dd.DirectorySeedSource | dd.FileContentsSeedSource):
-        if is_local_directory(seed_source.path):
-            return None
 
     if isinstance(seed_source, FilesetFileSeedSource | dd.DirectorySeedSource | dd.FileContentsSeedSource):
         return await _validate_seed_from_files_service(seed_source, workspace, sdk)
@@ -135,7 +126,7 @@ def _no_files_error_message(fileset: str, fragment: str | None) -> str:
     return msg
 
 
-def validate_seed_source_for_execution_context(data: Any, *, is_local: bool) -> None:
+def validate_seed_source_for_execution_context(data: Any) -> None:
     """Raises if a raw request seed source is unsupported for the execution context.
 
     This function is used in Pydantic validators defined on the preview and job request models,
@@ -166,18 +157,13 @@ def validate_seed_source_for_execution_context(data: Any, *, is_local: bool) -> 
         return
 
     try:
-        _validate_seed_type_for_execution_context(seed_type, is_local=is_local)
+        _validate_seed_type_for_execution_context(seed_type)
     except NDDInvalidConfigError as exc:
         raise ValueError(str(exc)) from exc
 
 
-def _validate_seed_type_for_execution_context(seed_type: str, *, is_local: bool) -> None:
+def _validate_seed_type_for_execution_context(seed_type: str) -> None:
     """Raises if a seed source type is unsupported in this execution context."""
-    if is_local:
-        if seed_type == _DATAFRAME_SEED_TYPE:
-            raise NDDInvalidConfigError(LOCAL_DATAFRAME_SEED_ERROR_MESSAGE)
-        return
-
     if seed_type not in _SUPPORTED_SEED_TYPES:
         raise NDDInvalidConfigError(_UNSUPPORTED_SEED_TYPES_MESSAGE)
 

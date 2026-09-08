@@ -8,6 +8,7 @@ import type { TraceStatisticsRange } from '@studio/components/AgentTraceStatisti
 import { bucketAdverbForRange } from '@studio/components/AgentTraceStatistics/utils';
 import { INTAKE_ENABLED, OPTIMIZER_ENABLED } from '@studio/constants/environment';
 import { AgentSummaryPanel } from '@studio/routes/agents/AgentDetailRoute/overview/AgentSummaryPanel';
+import { GetStartedPanel } from '@studio/routes/agents/AgentDetailRoute/overview/GetStartedPanel';
 import { OpenInsightsPanel } from '@studio/routes/agents/AgentDetailRoute/overview/OpenInsightsPanel';
 import { toRecentExperiments } from '@studio/routes/agents/AgentDetailRoute/overview/recentExperiments';
 import { RecentExperimentsPanel } from '@studio/routes/agents/AgentDetailRoute/overview/RecentExperimentsPanel';
@@ -55,6 +56,7 @@ export const OverviewTab: FC<OverviewTabProps> = ({
     enabled: INTAKE_ENABLED,
   });
   const experiments = useMemo(() => toRecentExperiments(evals), [evals]);
+  const awaitingTelemetry = !isPending && (summary === null || summary.totalTraces === 0);
   const {
     insights,
     totalCount: insightCount,
@@ -73,7 +75,9 @@ export const OverviewTab: FC<OverviewTabProps> = ({
   return (
     <Flex gap="density-2xl" align="start" wrap="wrap" className="w-full pb-6">
       <Stack gap="density-2xl" className="min-w-0 flex-1 basis-[32rem]">
-        {INTAKE_ENABLED && (
+        {awaitingTelemetry ? (
+          <GetStartedPanel workspace={workspace} agentName={agent?.name} />
+        ) : (
           <AgentTraceStatistics
             summary={summary}
             buckets={buckets}
@@ -103,6 +107,7 @@ export const OverviewTab: FC<OverviewTabProps> = ({
             totalCount={insightCount}
             isPending={insightsPending}
             error={insightsError}
+            awaitingTelemetry={awaitingTelemetry}
             onOpenInsight={(insight) => navigate(getOptimizerInsightRoute(workspace, insight.id))}
             onViewAll={() => navigate(getOptimizerRoute(workspace))}
           />

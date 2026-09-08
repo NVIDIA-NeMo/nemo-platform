@@ -37,6 +37,9 @@ from nemo_platform.types.inference.middleware_call_param import MiddlewareCallPa
 from nemo_platform.types.inference.virtual_model_inference_config_param import (
     VirtualModelInferenceConfigParam,
 )
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 log = logging.getLogger(__name__)
 
@@ -84,11 +87,10 @@ def seed_benchmark(
     generated_dir.mkdir(parents=True, exist_ok=True)
 
     log.info("Creating workspace %s", WORKSPACE)
-    client.workspaces.create(
-        name=WORKSPACE,
-        description="Local IGW guardrails benchmark workspace",
+    client_from_platform(client, WorkspacesClient).create_workspace(
         exist_ok=True,
-    )
+        body=CreateWorkspaceRequest(name=WORKSPACE, description="Local IGW guardrails benchmark workspace"),
+    ).data()
 
     log.info("Registering app mock provider %s", APP_PROVIDER)
     client.inference.providers.create(

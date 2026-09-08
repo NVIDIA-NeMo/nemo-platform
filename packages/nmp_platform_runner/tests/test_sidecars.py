@@ -56,7 +56,8 @@ def _patch_runner_discovery(
     monkeypatch.setattr(server, "order_services_by_dependencies", lambda service_instances: service_instances)
 
 
-def test_models_service_resolves_adapters_sidecar_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_models_service_does_not_pull_in_adapters_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``adapters`` is a NIM sidecar, so the platform never starts it implicitly."""
     _patch_runner_discovery(monkeypatch)
 
     resolved = runner_config.resolve_run_configuration(
@@ -64,7 +65,7 @@ def test_models_service_resolves_adapters_sidecar_dependency(monkeypatch: pytest
     )
 
     assert resolved.services == {"models"}
-    assert resolved.sidecars == {"adapters"}
+    assert resolved.sidecars == set()
 
 
 def test_explicit_sidecar_can_run_without_services(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -120,7 +121,7 @@ def test_create_app_starts_and_stops_dummy_sidecar_with_lifespan() -> None:
     assert stopped.wait(timeout=1.0)
 
 
-def test_build_platform_app_loads_dependent_sidecar_into_lifespan(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_platform_app_loads_explicit_sidecar_into_lifespan(monkeypatch: pytest.MonkeyPatch) -> None:
     started = threading.Event()
     stopped = threading.Event()
     _patch_runner_discovery(monkeypatch, sidecars={"adapters": _sidecar_with_events(started, stopped)})
@@ -132,7 +133,10 @@ def test_build_platform_app_loads_dependent_sidecar_into_lifespan(monkeypatch: p
     ):
         platform_config.return_value.seed_on_startup = False
         platform_config.return_value.redirect_root_to_studio = False
-        app = server.build_platform_app(runner_config.PlatformAppConfig(services=["models"], controllers=[]), env={})
+        app = server.build_platform_app(
+            runner_config.PlatformAppConfig(services=["models"], controllers=[], sidecars=["adapters"]),
+            env={},
+        )
         from fastapi.testclient import TestClient
 
         with TestClient(app) as client:

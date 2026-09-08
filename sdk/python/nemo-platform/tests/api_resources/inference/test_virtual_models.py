@@ -201,6 +201,7 @@ class TestVirtualModels:
                     "like": "$like",
                     "nin": ["string"],
                 },
+                "guardrail_config": "guardrail_config",
                 "name": {
                     "eq": "$eq",
                     "in_": ["string"],
@@ -581,6 +582,7 @@ class TestAsyncVirtualModels:
                     "like": "$like",
                     "nin": ["string"],
                 },
+                "guardrail_config": "guardrail_config",
                 "name": {
                     "eq": "$eq",
                     "in_": ["string"],

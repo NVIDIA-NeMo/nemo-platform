@@ -35,6 +35,9 @@ from nemo_evaluator.api.schemas import (
 )
 from nemo_evaluator_sdk import ExactMatchMetric
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 pytestmark = [
     pytest.mark.integration,
@@ -55,7 +58,9 @@ def doc_client(subprocess_platform: str) -> NeMoPlatform:
     per-call workspace and relies on this default.
     """
     client = NeMoPlatform(base_url=subprocess_platform, workspace=WORKSPACE, max_retries=2)
-    client.workspaces.create(name=WORKSPACE, exist_ok=True)
+    client_from_platform(client, WorkspacesClient).create_workspace(
+        exist_ok=True, body=CreateWorkspaceRequest(name=WORKSPACE)
+    ).data()
     return client
 
 

@@ -81,6 +81,10 @@ def _make_cli_cls() -> type[_MinimalPluginCLI]:
     return _MinimalPluginCLI
 
 
+def _make_sdk_resource(_owner: object) -> object:
+    return object()
+
+
 class _MinimalPluginJob(NemoJob):
     name = "test-job"
     description = "A test job"
@@ -209,6 +213,21 @@ class TestDiscoverEntryPoints:
             result = discover_entry_points("nemo.jobs")
 
         assert result == {"alpha.job": alpha_job}
+
+    def test_orders_entry_points_by_name_regardless_of_discovery_order(self) -> None:
+        # importlib.metadata.entry_points() order reflects distribution discovery
+        # order on sys.path, which differs across environments (e.g. macOS vs
+        # Linux). Callers like typer.core.TyperGroup preserve registration order
+        # rather than sorting, so discover_entry_points() must sort itself to
+        # keep CLI/doc generation reproducible across environments.
+        unsloth = _make_ep("unsloth.jobs", object())
+        automodel = _make_ep("automodel.jobs", object())
+        rl = _make_ep("rl.jobs", object())
+
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[unsloth, automodel, rl]):
+            result = discover_entry_points("nemo.jobs")
+
+        assert list(result.keys()) == ["automodel.jobs", "rl.jobs", "unsloth.jobs"]
 
 
 # ---------------------------------------------------------------------------
@@ -508,14 +527,14 @@ class TestDiscoverSDK:
         mock_eps.assert_called_once_with(group="nemo.sdk")
 
     def test_accepts_sync_only_container(self) -> None:
-        container = NemoPluginSDKResources(sync_resource=object)  # ty: ignore[invalid-argument-type]
+        container = NemoPluginSDKResources(sync_resource=_make_sdk_resource)
         ep = _make_ep("example", container)
         with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
             result = discover_sdk()
         assert result["example"] is container
 
     def test_accepts_async_only_container(self) -> None:
-        container = NemoPluginSDKResources(async_resource=object)  # ty: ignore[invalid-argument-type]
+        container = NemoPluginSDKResources(async_resource=_make_sdk_resource)
         ep = _make_ep("example", container)
         with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
             result = discover_sdk()
@@ -527,7 +546,7 @@ class TestDiscoverSDK:
 
     def test_skips_entry_that_is_not_a_container(self) -> None:
         bad = _make_ep("bad", SimpleNamespace(sync_resource=object))
-        good = _make_ep("good", NemoPluginSDKResources(sync_resource=object))  # ty: ignore[invalid-argument-type]
+        good = _make_ep("good", NemoPluginSDKResources(sync_resource=_make_sdk_resource))
         with patch("nemo_platform_plugin.discovery.entry_points", return_value=[bad, good]):
             result = discover_sdk()
         assert "bad" not in result

@@ -40,6 +40,32 @@ class TestSelfCheck:
     )
 
     @classmethod
+    def _messages_with_tool_history(cls) -> list[dict[str, Any]]:
+        return [
+            {"role": "user", "content": "Look up the weather in New York."},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"city":"New York"}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call-1",
+                "content": "Sunny, 75 degrees Fahrenheit.",
+            },
+            {"role": "user", "content": cls.USER_INPUT},
+        ]
+
+    @classmethod
     def _build_self_check_input_prompt(cls) -> dict[str, Any]:
         return {
             "task": "self_check_input",
@@ -201,6 +227,51 @@ class TestSelfCheck:
             harness.assert_request_messages_contain(test_data_names.main_model_served_name, self.USER_INPUT)
             assert response["choices"][0]["message"]["content"] == self.BACKEND_RESPONSE
 
+    def test_input_rail_checks_current_user_after_tool_history(
+        self,
+        igw_plugin_harness: IGWPluginHarness,
+    ) -> None:
+        harness = igw_plugin_harness
+        test_data_names = make_guardrails_test_data_names(workspace=harness.workspace)
+        harness.mock_chat_completions(
+            test_data_names.main_model_entity_ref,
+            responses=[ChatCompletion(body=chat_completion(content=self._unsafe_input_self_check_response()))],
+        )
+        harness.add_provider(
+            workspace=harness.workspace,
+            name=test_data_names.model_provider_name,
+            served_models={test_data_names.main_model_served_name: test_data_names.main_model_served_name},
+        )
+        guardrail_config = make_guardrail_config(
+            harness.workspace,
+            test_data_names.guardrail_config_name,
+            data=self._config_data(rail_types=[RailType.INPUT], main_base_url=harness.nim_base_url),
+        )
+
+        with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
+            harness.add_virtual_model(
+                workspace=harness.workspace,
+                name=test_data_names.request_virtual_model_name,
+                default_model_entity=test_data_names.main_model_entity_ref,
+                request_middleware=[make_middleware_call(guardrail_config)],
+            )
+            response = harness.chat_completions(
+                workspace=harness.workspace,
+                body={
+                    "model": test_data_names.request_virtual_model_name,
+                    "messages": self._messages_with_tool_history(),
+                },
+            )
+
+        harness.assert_called_once(test_data_names.main_model_entity_ref)
+        harness.assert_no_calls_to(test_data_names.main_model_served_name)
+        harness.assert_request_messages_contain(
+            test_data_names.main_model_entity_ref,
+            self._expected_input_rail_prompt(self.USER_INPUT),
+        )
+        assert response["choices"][0]["finish_reason"] == "content_filter"
+        assert response["choices"][0]["message"]["content"] == self.BLOCKED_REFUSAL_TEXT
+
     @pytest.mark.parametrize(
         "expected_blocked_response",
         [
@@ -276,6 +347,54 @@ class TestSelfCheck:
             assert response["choices"][0]["message"]["content"] == self.BLOCKED_REFUSAL_TEXT
         else:
             assert response["choices"][0]["message"]["content"] == self.BACKEND_RESPONSE
+
+    def test_output_rail_checks_response_after_tool_history(
+        self,
+        igw_plugin_harness: IGWPluginHarness,
+    ) -> None:
+        harness = igw_plugin_harness
+        test_data_names = make_guardrails_test_data_names(workspace=harness.workspace)
+        harness.mock_chat_completions(
+            test_data_names.main_model_served_name,
+            responses=[ChatCompletion(body=chat_completion(content=self.BACKEND_RESPONSE))],
+        )
+        harness.mock_chat_completions(
+            test_data_names.main_model_entity_ref,
+            responses=[ChatCompletion(body=chat_completion(content=self._unsafe_output_self_check_response()))],
+        )
+        harness.add_provider(
+            workspace=harness.workspace,
+            name=test_data_names.model_provider_name,
+            served_models={test_data_names.main_model_served_name: test_data_names.main_model_served_name},
+        )
+        guardrail_config = make_guardrail_config(
+            harness.workspace,
+            test_data_names.guardrail_config_name,
+            data=self._config_data(rail_types=[RailType.OUTPUT], main_base_url=harness.nim_base_url),
+        )
+
+        with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
+            harness.add_virtual_model(
+                workspace=harness.workspace,
+                name=test_data_names.request_virtual_model_name,
+                default_model_entity=test_data_names.main_model_entity_ref,
+                response_middleware=[make_middleware_call(guardrail_config)],
+            )
+            response = harness.chat_completions(
+                workspace=harness.workspace,
+                body={
+                    "model": test_data_names.request_virtual_model_name,
+                    "messages": self._messages_with_tool_history(),
+                },
+            )
+
+        harness.assert_call_order([test_data_names.main_model_served_name, test_data_names.main_model_entity_ref])
+        harness.assert_request_messages_contain(
+            test_data_names.main_model_entity_ref,
+            self._expected_output_rail_prompt(self.BACKEND_RESPONSE),
+        )
+        assert response["choices"][0]["finish_reason"] == "content_filter"
+        assert response["choices"][0]["message"]["content"] == self.BLOCKED_REFUSAL_TEXT
 
     @pytest.mark.parametrize(
         "input_blocked,output_blocked,expected_blocked_response",

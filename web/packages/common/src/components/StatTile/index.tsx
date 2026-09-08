@@ -21,6 +21,12 @@ export interface StatTileProps {
   trailingLabelStatus?: StatTileStatus;
   hint?: string;
   hintStatus?: StatTileStatus;
+  /**
+   * The tile's own health, independent of `trailingLabelStatus`/`hintStatus`: only this tints the
+   * border, so a value's delta direction (e.g. loss falling) never reads as a threshold breach.
+   * `success`/`neutral` keep the default border — only `warning`/`error` stand out.
+   */
+  status?: StatTileStatus;
   className?: string;
   bordered?: boolean;
   variant?: StatTileVariant;
@@ -35,6 +41,11 @@ const STATUS_CLASS_NAME: Record<StatTileStatus, string> = {
   neutral: MUTED_CLASS_NAME,
 };
 
+const BORDER_STATUS_CLASS_NAME: Partial<Record<StatTileStatus, string>> = {
+  warning: 'border-(--border-color-feedback-warning)',
+  error: 'border-(--border-color-feedback-danger)',
+};
+
 export const StatTile: FC<StatTileProps> = ({
   label,
   value,
@@ -42,6 +53,7 @@ export const StatTile: FC<StatTileProps> = ({
   trailingLabelStatus,
   hint,
   hintStatus,
+  status,
   className,
   bordered = true,
   variant = 'default',
@@ -87,7 +99,11 @@ export const StatTile: FC<StatTileProps> = ({
 
   return (
     <Panel
-      className={cn(isMetric ? 'w-full' : 'max-w-sm', className)}
+      className={cn(
+        isMetric ? 'w-full' : 'max-w-sm',
+        status && BORDER_STATUS_CLASS_NAME[status],
+        className
+      )}
       elevation="high"
       data-testid="stat-tile-surface"
     >

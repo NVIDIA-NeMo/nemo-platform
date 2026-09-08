@@ -2,27 +2,37 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections.abc import Iterator
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from nemo_platform import NeMoPlatform
 
 from tests.auth.integration.jobs_auth_helpers import job_exists_in_pages, managed_admin_workspace
 
 
 class _StubWorkspaces:
+    """Recording fake matching the typed WorkspacesClient shape."""
+
     def __init__(self) -> None:
         self.created: list[str] = []
         self.deleted: list[str] = []
 
-    def create(self, *, name: str) -> None:
-        self.created.append(name)
+    def create_workspace(self, *, body, **kwargs) -> SimpleNamespace:
+        self.created.append(body.name)
+        return SimpleNamespace(data=lambda: None)
 
-    def delete(self, name: str) -> None:
+    def delete_workspace(self, *, name, **kwargs) -> SimpleNamespace:
         self.deleted.append(name)
+        return SimpleNamespace(data=lambda: None)
 
 
-class _StubSDK:
-    def __init__(self) -> None:
-        self.workspaces = _StubWorkspaces()
+def _stub_client_from_platform(monkeypatch: pytest.MonkeyPatch) -> _StubWorkspaces:
+    from tests.auth.integration import jobs_auth_helpers
+
+    stub = _StubWorkspaces()
+    monkeypatch.setattr(jobs_auth_helpers, "client_from_platform", lambda *args, **kwargs: stub)
+    return stub
 
 
 class _StubJob:
@@ -39,25 +49,29 @@ class _StubJobsResponse:
             yield _StubJob(name)
 
 
-def test_managed_admin_workspace_deletes_workspace_after_success() -> None:
-    sdk = _StubSDK()
+def test_managed_admin_workspace_deletes_workspace_after_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stub = _stub_client_from_platform(monkeypatch)
 
-    with managed_admin_workspace(sdk, "workspace-a") as workspace_name:
+    with managed_admin_workspace(cast(NeMoPlatform, object()), "workspace-a") as workspace_name:
         assert workspace_name == "workspace-a"
 
-    assert sdk.workspaces.created == ["workspace-a"]
-    assert sdk.workspaces.deleted == ["workspace-a"]
+    assert stub.created == ["workspace-a"]
+    assert stub.deleted == ["workspace-a"]
 
 
-def test_managed_admin_workspace_deletes_workspace_after_failure() -> None:
-    sdk = _StubSDK()
+def test_managed_admin_workspace_deletes_workspace_after_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stub = _stub_client_from_platform(monkeypatch)
 
     with pytest.raises(RuntimeError, match="boom"):
-        with managed_admin_workspace(sdk, "workspace-b"):
+        with managed_admin_workspace(cast(NeMoPlatform, object()), "workspace-b"):
             raise RuntimeError("boom")
 
-    assert sdk.workspaces.created == ["workspace-b"]
-    assert sdk.workspaces.deleted == ["workspace-b"]
+    assert stub.created == ["workspace-b"]
+    assert stub.deleted == ["workspace-b"]
 
 
 def test_job_exists_in_pages_checks_later_pages() -> None:

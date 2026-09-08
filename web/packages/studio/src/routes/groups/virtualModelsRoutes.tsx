@@ -2,17 +2,35 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ENTITY_ICONS } from '@nemo/common/src/constants/entityIcons';
 import { GUARDRAILS_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import { gateGuardrailsRoutes, getWorkspaceVirtualModelsRoute } from '@studio/routes/utils';
-import { Waypoints } from 'lucide-react';
 import { lazy } from 'react';
-import type { RouteObject } from 'react-router';
+import { Navigate, type RouteObject } from 'react-router';
 
 const VirtualModelsListRoute = lazy(() =>
   import('@studio/routes/VirtualModelsListRoute').then((module) => ({
     default: module.VirtualModelsListRoute,
+  }))
+);
+
+const VirtualModelDetailRoute = lazy(() =>
+  import('@studio/routes/virtualModels/VirtualModelDetailRoute').then((m) => ({
+    default: m.VirtualModelDetailRoute,
+  }))
+);
+
+const VirtualModelDetailsTab = lazy(() =>
+  import('@studio/routes/virtualModels/VirtualModelDetailsTab').then((m) => ({
+    default: m.VirtualModelDetailsTab,
+  }))
+);
+
+const VirtualModelChatTab = lazy(() =>
+  import('@studio/routes/virtualModels/VirtualModelChatTab').then((m) => ({
+    default: m.VirtualModelChatTab,
   }))
 );
 
@@ -22,14 +40,35 @@ export const virtualModelsRoutes: RouteObject[] = gateGuardrailsRoutes([
     element: <VirtualModelsListRoute />,
     errorElement: <RouteErrorPanel title="Virtual Models" />,
   },
+  {
+    path: ROUTES.workspace.virtualModelDetail,
+    element: <VirtualModelDetailRoute />,
+    errorElement: <RouteErrorPanel title="Virtual Models" />,
+    children: [
+      {
+        index: true,
+        element: <Navigate to="details" replace />,
+      },
+      {
+        path: ROUTES.workspace.virtualModelDetails,
+        element: <VirtualModelDetailsTab />,
+      },
+      {
+        path: ROUTES.workspace.virtualModelChat,
+        element: <VirtualModelChatTab />,
+      },
+    ],
+  },
 ]);
+
+const NavIcon = ENTITY_ICONS.virtualModels;
 
 export const getVirtualModelsSideNavItems = (workspace: string) =>
   GUARDRAILS_ENABLED
     ? [
         {
           id: 'virtual-models',
-          slotIcon: <Waypoints className={iconColorClass} />,
+          slotIcon: <NavIcon className={iconColorClass} />,
           slotLabel: 'Virtual Models',
           href: getWorkspaceVirtualModelsRoute(workspace),
         },

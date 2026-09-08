@@ -20,7 +20,24 @@ from nemo_platform_plugin.entities import EntityStoreError as EntityStoreError
 from nemo_platform_plugin.entities import EntityValidationError as EntityValidationError
 from nemo_platform_plugin.entities import ListResponse as ListResponse
 from nemo_platform_plugin.entities import PaginationInfo as PaginationInfo
+from nemo_platform_plugin.entities import SyncEntityClient as _PluginSyncEntityClient
 from nemo_platform_plugin.entities import parse_qualified_name as parse_qualified_name
+
+
+def _service_principal_headers(service_name: str, *, internal: bool) -> dict[str, str]:
+    from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
+
+    headers: dict[str, str] = {
+        "X-NMP-Principal-Id": f"service:{service_name}",
+        # ``with_options`` merges defaults. Explicitly clear any delegation
+        # inherited from a request-scoped client so this is true elevation.
+        "X-NMP-Principal-On-Behalf-Of": "",
+        "X-NMP-Principal-On-Behalf-Of-Email": "",
+        "X-NMP-Principal-On-Behalf-Of-Groups": "",
+    }
+    if internal:
+        headers.update(MARK_INTERNAL_REQUEST_HEADERS)
+    return headers
 
 
 class EntityClient(_PluginEntityClient):
@@ -45,21 +62,18 @@ class EntityClient(_PluginEntityClient):
         Returns:
             A new EntityClient backed by an SDK with service principal headers.
         """
-        from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
-
-        headers: dict[str, str] = {
-            "X-NMP-Principal-Id": f"service:{service_name}",
-            # ``with_options`` merges defaults. Explicitly clear any delegation
-            # inherited from a request-scoped client so this is true elevation.
-            "X-NMP-Principal-On-Behalf-Of": "",
-            "X-NMP-Principal-On-Behalf-Of-Email": "",
-            "X-NMP-Principal-On-Behalf-Of-Groups": "",
-        }
-        if internal:
-            headers.update(MARK_INTERNAL_REQUEST_HEADERS)
         # with_options merges headers into the client's defaults and shares the
         # underlying httpx transport (connection pool, auth), so this is cheap.
         # It clones via copy.copy, so the platform URL resolver carries over and
         # no request-router fixup is needed the way the Stainless path required.
-        service_client = self._client.with_options(headers=headers)
+        service_client = self._client.with_options(headers=_service_principal_headers(service_name, internal=internal))
         return EntityClient(service_client)
+
+
+class SyncEntityClient(_PluginSyncEntityClient):
+    """Synchronous entity client with platform-specific capabilities."""
+
+    def as_service(self, service_name: str, *, internal: bool = False) -> "SyncEntityClient":
+        """Return a copy with service principal credentials baked in."""
+        service_client = self._client.with_options(headers=_service_principal_headers(service_name, internal=internal))
+        return SyncEntityClient(service_client)

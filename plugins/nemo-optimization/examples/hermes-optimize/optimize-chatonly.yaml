@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # --optimize-config: chat-only Hermes package (proven CLI smoke).
-# Pass an absolute path to `nemo agents optimize run`.
+# Stage this bundle with:
+#   nemo agents optimize prepare-fileset --source examples/hermes-optimize --optimize-config optimize-chatonly.yaml --fileset hermes-optimize-chatonly --workspace default
+# Then launch it with:
+#   nemo agents optimize --optimize-config-fileset default/hermes-optimize-chatonly --optimize-config optimize-chatonly.yaml --workspace default
 #
 # See README.md in this directory for install + run steps.
 schema_version: fabric.agent/v1alpha1
@@ -20,14 +23,14 @@ models:
   default:
     provider: nvidia
     # inference-api.nvidia.com model ids are often prefixed (e.g. nvidia/meta/...).
-    model: nvidia/meta/llama-3.1-8b-instruct
+    model: nvidia/nvidia/nemotron-3-nano-30b-a3b
     base_url: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_API_KEY
     temperature: 0.0
     top_p: 1.0
   judge:
     provider: nvidia
-    model: nvidia/meta/llama-3.1-8b-instruct
+    model: nvidia/nvidia/nemotron-3-nano-30b-a3b
     base_url: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_API_KEY
     temperature: 0.0

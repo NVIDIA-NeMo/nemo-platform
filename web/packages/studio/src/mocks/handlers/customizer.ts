@@ -23,14 +23,18 @@ export const customizerHandlers = [
   http.get(
     `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/:workspace/:backend/jobs/:name/status`,
     async ({ params }) => {
-      const { customizationJobSteps } = await import('@studio/mocks/customizer/customization-jobs');
+      const { customizationJobSteps, failedGrpoCustomizationJob, failedGrpoJobSteps } =
+        await import('@studio/mocks/customizer/customization-jobs');
+      const hasFailed = params.name === failedGrpoCustomizationJob.name;
       return HttpResponse.json({
         id: 'job-status',
         name: params.name,
-        status: 'completed',
+        status: hasFailed ? 'error' : 'completed',
         status_details: {},
-        error_details: {},
-        steps: customizationJobSteps,
+        // Mirrors the backend: the job copies the failing step's generic text, and the mapped
+        // cause stays down on the task.
+        error_details: hasFailed ? { message: 'One or more tasks are in error state' } : {},
+        steps: hasFailed ? failedGrpoJobSteps : customizationJobSteps,
         created_at: '2025-06-25T21:41:02.067430',
         updated_at: '2025-06-25T21:41:02.147000',
       });

@@ -10,6 +10,9 @@ that services are up. Add more substantive tests in separate files.
 import uuid
 
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 
 
 def test_health_ready(sdk: NeMoPlatform):
@@ -27,16 +30,17 @@ def test_health_live(sdk: NeMoPlatform):
 
 def test_create_and_delete_workspace(sdk: NeMoPlatform):
     """Workspace create and delete round-trips through the platform."""
+    workspaces = client_from_platform(sdk, WorkspacesClient)
     name = f"e2e-smoke-{uuid.uuid4().hex[:8]}"
-    ws = sdk.workspaces.create(name=name)
+    ws = workspaces.create_workspace(body=CreateWorkspaceRequest(name=name)).data()
     try:
         assert ws.name == name
     finally:
-        sdk.workspaces.delete(name)
+        workspaces.delete_workspace(name=name).data()
 
 
 def test_list_workspaces(sdk: NeMoPlatform, workspace: str):
     """Listing workspaces returns at least the test workspace."""
-    page = sdk.workspaces.list()
-    names = [w.name for w in page.data]
+    page = client_from_platform(sdk, WorkspacesClient).list_workspaces()
+    names = [w.name for w in page.items()]
     assert workspace in names

@@ -18,6 +18,7 @@ import pytest
 import typer
 from click.core import ParameterSource
 from click.exceptions import Exit as ClickExit
+from nemo_platform import APIConnectionError, APIStatusError, APITimeoutError
 from nemo_platform.resources.inference.providers import ProvidersResource
 from nemo_platform_ext.cli.commands.setup import (
     _AGENT_API_READINESS_POLL_INTERVAL,
@@ -36,6 +37,8 @@ from nemo_platform_ext.cli.commands.setup import (
     KeyValidationResult,
     ModelPair,
     _agent_config_path,
+    _agent_exists,
+    _agents_api_ready,
     _agents_plugin_available,
     _auto_setup,
     _bootstrap_config_if_missing,
@@ -51,6 +54,7 @@ from nemo_platform_ext.cli.commands.setup import (
     _ensure_port_available_for_start,
     _filter_agents_by_scope,
     _find_project_root,
+    _is_preferred_vendor,
     _kill_existing_services,
     _last_startup_service,
     _load_persisted_data_dir,
@@ -58,8 +62,12 @@ from nemo_platform_ext.cli.commands.setup import (
     _maybe_deploy_agent,
     _maybe_install_skills,
     _maybe_start_services,
+    _model_parameter_size,
+    _order_candidates_by_size,
     _parse_csv_flag,
+    _pick_default_chat_entity,
     _print_onboarding,
+    _probe_model_entity,
     _prompt_custom_provider,
     _register_provider_interactive,
     _render_onboarding_card,
@@ -69,6 +77,7 @@ from nemo_platform_ext.cli.commands.setup import (
     _run_interactive_mode,
     _save_data_dir,
     _select_model_pair,
+    _select_usable_model_pair,
     _services_log_suggests_port_conflict,
     _start_services_background,
     _validate_api_key,
@@ -197,7 +206,7 @@ class TestCheckPlatformReachable:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         with (
-            patch(f"{SETUP_MOD}.client_verify_from_env", return_value="/tmp/custom-ca.pem"),
+            patch(f"{SETUP_MOD}.httpx_tls_config_from_env", return_value={"verify": "/tmp/custom-ca.pem"}),
             patch(f"{SETUP_MOD}.httpx.get", return_value=mock_resp) as mock_get,
         ):
             assert _check_platform_reachable("http://localhost:8080") is True
@@ -205,6 +214,48 @@ class TestCheckPlatformReachable:
             "http://localhost:8080/status",
             timeout=5.0,
             verify="/tmp/custom-ca.pem",
+        )
+
+    def test_uses_context_certificate_authority_when_env_unset(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}.httpx.get", return_value=mock_resp) as mock_get,
+        ):
+            assert (
+                _check_platform_reachable(
+                    "https://nemo.example.com",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/status",
+            timeout=5.0,
+            verify="/ctx/ca.pem",
+        )
+
+    def test_env_certificate_authority_overrides_context_certificate_authority(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        with (
+            patch.dict("os.environ", {"NMP_CLIENT_SSL_CERT_FILE": "/env/ca.pem"}, clear=True),
+            patch(f"{SETUP_MOD}.httpx.get", return_value=mock_resp) as mock_get,
+        ):
+            assert (
+                _check_platform_reachable(
+                    "https://nemo.example.com",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/status",
+            timeout=5.0,
+            verify="/env/ca.pem",
         )
 
     def test_reachable_via_cluster_info_when_status_missing(self):
@@ -223,7 +274,7 @@ class TestCheckPlatformReachable:
             raise AssertionError(f"unexpected url: {url}")
 
         with (
-            patch(f"{SETUP_MOD}.client_verify_from_env", return_value="/tmp/custom-ca.pem"),
+            patch(f"{SETUP_MOD}.httpx_tls_config_from_env", return_value={"verify": "/tmp/custom-ca.pem"}),
             patch(f"{SETUP_MOD}.httpx.get", side_effect=_get),
         ):
             assert _check_platform_reachable("https://nemo-platform-freeplay.dev.aire.nvidia.com") is True
@@ -295,6 +346,21 @@ class TestCheckPlatformReachableWithRetries:
     def test_defaults_match_constants(self):
         assert _POST_START_REACHABLE_RETRIES == 6
         assert _POST_START_REACHABLE_DELAY == 2.0
+
+    def test_passes_certificate_authority_to_single_probe(self):
+        with patch(f"{SETUP_MOD}._check_platform_reachable", return_value=True) as mock_reachable:
+            assert (
+                _check_platform_reachable_with_retries(
+                    "https://nemo.example.com",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        mock_reachable.assert_called_once_with(
+            "https://nemo.example.com",
+            certificate_authority="/ctx/ca.pem",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2075,8 +2141,8 @@ class TestInteractiveModelPairSelection:
                 f"{self._MOD}._get_all_model_choices",
                 return_value=[
                     (
-                        "default/meta-llama-3-1-8b-instruct",
-                        "meta-llama-3-1-8b-instruct (nvidia-build)",
+                        "default/nvidia-nemotron-3.5-lightning-30b-a3b",
+                        "nvidia-nemotron-3.5-lightning-30b-a3b (nvidia-build)",
                     )
                 ],
             ),
@@ -2109,7 +2175,7 @@ class TestInteractiveModelPairSelection:
         provider_a = MagicMock()
         provider_a.name = "nvidia-build"
         provider_a.served_models = [
-            MagicMock(model_entity_id="default/meta-llama-3-1-8b-instruct"),
+            MagicMock(model_entity_id="default/nvidia-nemotron-3.5-lightning-30b-a3b"),
         ]
         provider_b = MagicMock()
         provider_b.name = "my-ollama-custom"
@@ -2143,6 +2209,347 @@ class TestInteractiveModelPairSelection:
         assert fast_call.args[0] == "Choose your fast model (used for latency-sensitive agent work):"
         assert fast_call.kwargs["default"] == "default/qwen2.5:1.5b"
         assert fast_call.kwargs["hint"] == "Press Enter to reuse the default model."
+
+    def test_picker_has_no_unverified_default(self):
+        client = MagicMock()
+        choices = [
+            ("default/ai21labs-jamba-1-5-large-instruct", "Jamba"),
+            ("default/nvidia/nemotron-nano-9b-v2", "Nemotron Nano"),
+        ]
+
+        with (
+            patch(f"{self._MOD}._get_all_model_choices", return_value=choices),
+            patch(f"{self._MOD}._select_usable_model_pair", return_value=None),
+            patch(
+                f"{self._MOD}.prompt_select",
+                side_effect=["default/nvidia/nemotron-nano-9b-v2", "default/nvidia/nemotron-nano-9b-v2"],
+            ) as mock_prompt_select,
+        ):
+            result = _select_model_pair(client, "default", provider_name="nvidia-build")
+
+        assert result == ModelPair(
+            default="default/nvidia/nemotron-nano-9b-v2",
+            fast="default/nvidia/nemotron-nano-9b-v2",
+        )
+        default_call, fast_call = mock_prompt_select.call_args_list
+        assert default_call.kwargs["default"] is None
+        assert default_call.kwargs["hint"] == "Choose a model you can access."
+        assert fast_call.kwargs["default"] == "default/nvidia/nemotron-nano-9b-v2"
+
+    def test_returns_none_when_only_specialist_models_are_available(self):
+        client = MagicMock()
+        provider = MagicMock()
+        provider.name = "nvidia-build"
+        provider.served_models = [
+            MagicMock(model_entity_id="default/adept-fuyu-8b"),
+            MagicMock(model_entity_id="default/nvidia-nv-embedqa-e5-v5"),
+            MagicMock(model_entity_id="default/llama-3.1-nemoguard-8b-content-safety"),
+        ]
+        client.inference.providers.list.return_value = MagicMock(data=[provider])
+
+        with (
+            patch(f"{self._MOD}.prompt_select") as mock_prompt_select,
+            patch(f"{self._MOD}.console.print") as mock_print,
+        ):
+            result = _select_model_pair(client, "default", provider_name="nvidia-build")
+
+        assert result is None
+        mock_prompt_select.assert_not_called()
+        printed = " ".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+        assert "No usable chat models discovered yet" in printed
+
+
+class TestPickDefaultChatEntity:
+    def test_skips_embedding_vision_guard_and_rerank(self):
+        assert (
+            _pick_default_chat_entity(
+                [
+                    "default/adept-fuyu-8b",
+                    "default/nvidia-nv-embedqa-e5-v5",
+                    "default/llama-nemoguard-8b",
+                    "default/nv-rerankqa-mistral-4b",
+                    "default/nvidia-nemotron-3.5-lightning-30b-a3b",
+                ]
+            )
+            == "default/nvidia-nemotron-3.5-lightning-30b-a3b"
+        )
+
+    def test_returns_none_when_nothing_qualifies(self):
+        assert _pick_default_chat_entity(["default/adept-fuyu-8b", "default/nv-embedqa"]) is None
+
+
+def _probe_error(status_code: int, text: str = "", body: object | None = None) -> APIStatusError:
+    """Build the SDK error the gateway raises for a non-2xx probe response."""
+    request = httpx.Request("POST", "http://localhost:8080/v1/chat/completions")
+    return APIStatusError("probe failed", response=httpx.Response(status_code, text=text, request=request), body=body)
+
+
+def _client_answering(outcomes: dict[str, object]) -> MagicMock:
+    """Return a client whose gateway probe answers per model entity ID.
+
+    A value that is an exception is raised; anything else is returned as the
+    successful response.
+    """
+    client = MagicMock()
+
+    def post(trailing_uri: str, *, workspace: str, body: dict) -> object:
+        outcome = outcomes[str(body["model"])]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    client.with_options.return_value.inference.gateway.openai.post.side_effect = post
+    return client
+
+
+class TestModelSizeOrdering:
+    @pytest.mark.parametrize(
+        ("entity_id", "expected"),
+        [
+            ("default/meta-llama-3-3-70b-instruct", 70.0),
+            ("default/nvidia-nemotron-3.5-lightning-30b-a3b", 30.0),
+            ("default/openai-gpt-oss-120b", 120.0),
+            ("default/meta-llama-3-1-8b-instruct", 8.0),
+            ("default/nvidia-nemotron-nano-1.5b-v2", 1.5),
+            ("default/ai21labs-jamba-1-5-large-instruct", None),
+        ],
+    )
+    def test_parses_parameter_count_from_entity_name(self, entity_id, expected):
+        assert _model_parameter_size(entity_id) == expected
+
+    def test_orders_nvidia_first_then_by_size(self):
+        candidates = [
+            "default/meta-llama-3-3-70b-instruct",
+            "default/nvidia-nemotron-3.5-lightning-30b-a3b",
+            "default/ai21labs-jamba-1-5-large-instruct",
+            "default/nvidia-nemotron-nano-9b-v2",
+        ]
+
+        assert _order_candidates_by_size(candidates, largest_first=True) == [
+            "default/nvidia-nemotron-3.5-lightning-30b-a3b",
+            "default/nvidia-nemotron-nano-9b-v2",
+            "default/meta-llama-3-3-70b-instruct",
+            "default/ai21labs-jamba-1-5-large-instruct",
+        ]
+        assert _order_candidates_by_size(candidates, largest_first=False) == [
+            "default/nvidia-nemotron-nano-9b-v2",
+            "default/nvidia-nemotron-3.5-lightning-30b-a3b",
+            "default/meta-llama-3-3-70b-instruct",
+            "default/ai21labs-jamba-1-5-large-instruct",
+        ]
+
+    def test_prefers_nvidia_slash_ids(self):
+        nvidia = "default/nvidia/mistral-nemo-minitron-8b-instruct"
+        meta = "default/meta/llama-3.3-70b-instruct"
+
+        assert _is_preferred_vendor("default/nvidia/llama-3.1-8b-instruct") is True
+        assert _order_candidates_by_size([meta, nvidia], largest_first=True) == [nvidia, meta]
+
+
+class TestModelProbe:
+    @pytest.mark.parametrize(
+        ("outcome", "expected"),
+        [
+            (MagicMock(), True),
+            (_probe_error(404, body={"detail": "Function not found for account"}), False),
+            (_probe_error(403), False),
+            (_probe_error(502, '{"detail": "Backend returned 404: Function ... not found for account"}'), False),
+            (_probe_error(503, "upstream busy"), False),
+        ],
+    )
+    def test_classifies_gateway_responses(self, outcome, expected):
+        client = _client_answering({"default/model": outcome})
+
+        assert _probe_model_entity(client.with_options(), "default", "default/model") is expected
+
+    def test_retries_a_404_until_the_route_is_published(self):
+        """The gateway 404s a discovered model until its VirtualModel exists."""
+        client = MagicMock()
+        client.inference.gateway.openai.post.side_effect = [_probe_error(404), _probe_error(404), MagicMock()]
+
+        with patch(f"{SETUP_MOD}._pause"):
+            usable = _probe_model_entity(client, "default", "default/model")
+
+        assert usable is True
+        assert client.inference.gateway.openai.post.call_count == 3
+
+    def test_does_not_retry_an_entitlement_404(self):
+        client = MagicMock()
+        client.inference.gateway.openai.post.side_effect = _probe_error(
+            404, body={"detail": "Function not found for account"}
+        )
+
+        assert _probe_model_entity(client, "default", "default/model") is False
+        assert client.inference.gateway.openai.post.call_count == 1
+
+    def test_skips_timeouts_so_later_candidates_can_be_tried(self):
+        client = _client_answering(
+            {"default/model": APITimeoutError(request=httpx.Request("POST", "http://localhost:8080"))}
+        )
+
+        assert _probe_model_entity(client.with_options(), "default", "default/model") is False
+
+    def test_reraises_when_the_gateway_is_unreachable(self):
+        client = _client_answering(
+            {"default/model": APIConnectionError(request=httpx.Request("POST", "http://localhost:8080"))}
+        )
+
+        with pytest.raises(APIConnectionError):
+            _probe_model_entity(client.with_options(), "default", "default/model")
+
+    def test_sends_a_short_chat_request_for_the_candidate(self):
+        client = _client_answering({"default/model": MagicMock()})
+        gateway = client.with_options()
+
+        _probe_model_entity(gateway, "default", "default/model")
+
+        gateway.inference.gateway.openai.post.assert_called_once()
+        _, kwargs = gateway.inference.gateway.openai.post.call_args
+        assert kwargs["workspace"] == "default"
+        assert kwargs["body"]["model"] == "default/model"
+        assert kwargs["body"]["messages"][0]["role"] == "user"
+
+
+class TestUsableModelPairSelection:
+    @pytest.fixture(autouse=True)
+    def _no_sleep(self) -> Iterator[None]:
+        """Probes pause between 404 retries; selection tests should not sleep."""
+        with patch(f"{SETUP_MOD}._pause"):
+            yield
+
+    def test_picks_largest_usable_as_default_and_smallest_as_fast(self):
+        entity_ids = [
+            "default/nvidia-nemotron-3.5-lightning-30b-a3b",
+            "default/nvidia-nemotron-nano-9b-v2",
+        ]
+        client = _client_answering({entity_id: MagicMock() for entity_id in entity_ids})
+
+        assert _select_usable_model_pair(client, "default", entity_ids) == ModelPair(
+            default="default/nvidia-nemotron-3.5-lightning-30b-a3b",
+            fast="default/nvidia-nemotron-nano-9b-v2",
+        )
+
+    def test_skips_a_model_the_account_cannot_serve(self):
+        entity_ids = [
+            "default/ai21labs-jamba-1-5-large-instruct",
+            "default/meta-llama-3-3-70b-instruct",
+        ]
+        client = _client_answering(
+            {
+                "default/meta-llama-3-3-70b-instruct": _probe_error(
+                    502, '{"detail": "Backend returned 404: Function not found for account"}'
+                ),
+                "default/ai21labs-jamba-1-5-large-instruct": MagicMock(),
+            }
+        )
+
+        assert _select_usable_model_pair(client, "default", entity_ids) == ModelPair(
+            default="default/ai21labs-jamba-1-5-large-instruct",
+            fast="default/ai21labs-jamba-1-5-large-instruct",
+        )
+
+    def test_saves_nothing_when_no_candidate_serves_a_request(self):
+        entity_ids = ["default/one-8b-instruct", "default/two-70b-instruct"]
+        client = _client_answering({entity_id: _probe_error(404) for entity_id in entity_ids})
+
+        assert _select_usable_model_pair(client, "default", entity_ids) is None
+
+    def test_stops_probing_after_the_attempt_budget(self):
+        entity_ids = [f"default/model-{index}b-instruct" for index in range(1, 12)]
+        client = _client_answering({entity_id: _probe_error(404) for entity_id in entity_ids})
+
+        assert _select_usable_model_pair(client, "default", entity_ids) is None
+        post = client.with_options.return_value.inference.gateway.openai.post
+        probed = {str(probe.kwargs["body"]["model"]) for probe in post.call_args_list}
+        assert len(probed) == setup_commands._MODEL_PROBE_MAX_ATTEMPTS
+
+    def test_skips_a_timed_out_candidate_and_keeps_probing(self):
+        entity_ids = [
+            "default/nvidia-nemotron-3-ultra-550b-a55b",
+            "default/nvidia-nemotron-nano-9b-v2",
+        ]
+        timeout = APITimeoutError(request=httpx.Request("POST", "http://localhost:8080"))
+        client = _client_answering(
+            {
+                "default/nvidia-nemotron-3-ultra-550b-a55b": timeout,
+                "default/nvidia-nemotron-nano-9b-v2": MagicMock(),
+            }
+        )
+
+        assert _select_usable_model_pair(client, "default", entity_ids) == ModelPair(
+            default="default/nvidia-nemotron-nano-9b-v2",
+            fast="default/nvidia-nemotron-nano-9b-v2",
+        )
+
+    def test_waits_out_the_reconcile_lag_before_rejecting_candidates(self):
+        """Cold start: the first probe 404s because the model has no route yet."""
+        entity_ids = ["default/nvidia-nemotron-nano-9b-v2"]
+        client = MagicMock()
+        client.with_options.return_value.inference.gateway.openai.post.side_effect = [
+            _probe_error(404),
+            MagicMock(),
+        ]
+
+        assert _select_usable_model_pair(client, "default", entity_ids) == ModelPair(
+            default="default/nvidia-nemotron-nano-9b-v2",
+            fast="default/nvidia-nemotron-nano-9b-v2",
+        )
+
+    def test_each_candidate_gets_a_route_readiness_window(self):
+        large = "default/nvidia-model-70b-instruct"
+        small = "default/nvidia-model-8b-instruct"
+        client = MagicMock()
+        attempts = {large: 0, small: 0}
+        clock = {"now": 0.0}
+
+        def post(trailing_uri: str, *, workspace: str, body: dict) -> object:
+            entity_id = str(body["model"])
+            attempts[entity_id] += 1
+            if entity_id == large:
+                if attempts[large] == setup_commands._MODEL_ROUTE_MAX_RETRIES + 1:
+                    clock["now"] = setup_commands._MODEL_ROUTE_READY_SECONDS + 1
+                raise _probe_error(404)
+            if attempts[entity_id] == 1:
+                raise _probe_error(404)
+            return MagicMock()
+
+        client.with_options.return_value.inference.gateway.openai.post.side_effect = post
+
+        with patch(f"{SETUP_MOD}.time.monotonic", side_effect=lambda: clock["now"]):
+            assert _select_usable_model_pair(client, "default", [large, small]) == ModelPair(
+                default=small,
+                fast=small,
+            )
+
+        assert attempts[large] == setup_commands._MODEL_ROUTE_MAX_RETRIES + 1
+        assert attempts[small] == 2
+        assert clock["now"] > setup_commands._MODEL_ROUTE_READY_SECONDS
+
+    def test_stops_probing_after_the_time_budget(self):
+        entity_ids = [f"default/model-{index}b-instruct" for index in range(1, 6)]
+        timeout = APITimeoutError(request=httpx.Request("POST", "http://localhost:8080"))
+        client = _client_answering({entity_id: timeout for entity_id in entity_ids})
+        clock = iter([0.0, 0.0, 0.0, 91.0])
+
+        with patch(f"{SETUP_MOD}.time.monotonic", side_effect=lambda: next(clock)):
+            assert _select_usable_model_pair(client, "default", entity_ids) is None
+
+        post = client.with_options.return_value.inference.gateway.openai.post
+        assert post.call_count == 1
+
+    def test_saves_nothing_when_the_gateway_is_unreachable(self):
+        entity_ids = ["default/nvidia-nemotron-nano-9b-v2", "default/meta-llama-3-3-70b-instruct"]
+        unreachable = APIConnectionError(request=httpx.Request("POST", "http://localhost:8080"))
+        client = _client_answering({entity_id: unreachable for entity_id in entity_ids})
+
+        assert _select_usable_model_pair(client, "default", entity_ids) is None
+
+    def test_ignores_non_chat_entities(self):
+        entity_ids = ["default/nvidia-nv-embedqa-e5-v5", "default/adept-fuyu-8b"]
+        client = _client_answering({})
+
+        assert _select_usable_model_pair(client, "default", entity_ids) is None
+        client.with_options.return_value.inference.gateway.openai.post.assert_not_called()
 
 
 class TestAutoModelPairSelection:
@@ -2254,6 +2661,70 @@ class TestAutoModelPairSelection:
             ModelPair(default="default/a-model", fast="default/a-model"),
         )
 
+    def test_skips_unusable_first_discovered_model(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="nvidia-build"),
+            patch(
+                f"{SETUP_MOD}._get_all_model_entity_ids",
+                return_value=[
+                    "default/adept-fuyu-8b",
+                    "default/nvidia-nv-embedqa-e5-v5",
+                    "default/nvidia-nemotron-3.5-lightning-30b-a3b",
+                ],
+            ),
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+        ):
+            _run_auto_mode(
+                cli_context,
+                MagicMock(),
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        save_pair.assert_called_once_with(
+            cli_context,
+            ModelPair(
+                default="default/nvidia-nemotron-3.5-lightning-30b-a3b",
+                fast="default/nvidia-nemotron-3.5-lightning-30b-a3b",
+            ),
+        )
+
+    def test_does_not_save_default_when_only_unusable_models_qualify(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="nvidia-build"),
+            patch(
+                f"{SETUP_MOD}._get_all_model_entity_ids",
+                return_value=[
+                    "default/adept-fuyu-8b",
+                    "default/nvidia-nv-embedqa-e5-v5",
+                    "default/llama-3.1-nemoguard-8b-content-safety",
+                ],
+            ),
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+        ):
+            _run_auto_mode(
+                cli_context,
+                MagicMock(),
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        save_pair.assert_not_called()
+
     def test_fast_override_without_default_warns_and_is_not_saved(self):
         cli_context = MagicMock()
         with (
@@ -2308,6 +2779,87 @@ class TestAutoModelPairSelection:
         assert "[green]Setup complete![/green]" in printed
         assert "Setup complete with warnings" not in printed
 
+    def test_discovered_models_are_probed_before_being_saved(self):
+        cli_context = MagicMock()
+        client = MagicMock()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="nvidia-build"),
+            patch(f"{SETUP_MOD}._get_all_model_entity_ids", return_value=["default/a-model"]),
+            patch(
+                f"{SETUP_MOD}._select_usable_model_pair",
+                return_value=ModelPair(default="default/a-model", fast="default/a-model"),
+            ) as select_pair,
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+        ):
+            _run_auto_mode(
+                cli_context,
+                client,
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        select_pair.assert_called_once_with(client, "default", ["default/a-model"])
+        save_pair.assert_called_once_with(cli_context, ModelPair(default="default/a-model", fast="default/a-model"))
+
+    def test_no_model_is_saved_when_none_serve_a_request(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="nvidia-build"),
+            patch(
+                f"{SETUP_MOD}._get_all_model_entity_ids",
+                return_value=["default/ai21labs-jamba-1-5-large-instruct"],
+            ),
+            patch(f"{SETUP_MOD}._select_usable_model_pair", return_value=None),
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+            patch(f"{SETUP_MOD}.console.print") as print_message,
+        ):
+            _run_auto_mode(
+                cli_context,
+                MagicMock(),
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        save_pair.assert_not_called()
+        printed = " ".join(str(c) for c in print_message.call_args_list)
+        assert "none of the discovered models served a test request" in printed
+
+    def test_explicit_default_model_is_not_probed(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict("os.environ", {"NEMO_DEFAULT_MODEL": "default/quality"}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="nvidia-build"),
+            patch(f"{SETUP_MOD}._get_all_model_entity_ids", return_value=["default/a-model"]),
+            patch(f"{SETUP_MOD}._select_usable_model_pair") as select_pair,
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+        ):
+            _run_auto_mode(
+                cli_context,
+                MagicMock(),
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        select_pair.assert_not_called()
+        save_pair.assert_called_once_with(cli_context, ModelPair(default="default/quality", fast="default/quality"))
+
 
 # ---------------------------------------------------------------------------
 # API key validation
@@ -2337,13 +2889,29 @@ class TestValidateApiKey:
             result = _validate_api_key(provider_name, host_url, "test-key")
         assert result.passed is expected_passed
 
-    @pytest.mark.parametrize("status_code", [404, 429, 500, 502])
+    def test_nvidia_build_uses_supported_nemotron_probe_model(self):
+        mock_resp = MagicMock(status_code=200)
+        with patch(f"{self._MOD}.httpx.request", return_value=mock_resp) as mock_req:
+            _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "test-key")
+
+        assert mock_req.call_args.kwargs["json"]["model"] == "nvidia/nemotron-3.5-lightning-30b-a3b"
+
+    @pytest.mark.parametrize("status_code", [429, 500, 502])
     def test_non_2xx_non_rejection_returns_warning(self, status_code):
         mock_resp = MagicMock(status_code=status_code)
         with patch(f"{self._MOD}.httpx.request", return_value=mock_resp):
             result = _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "test-key")
         assert result.passed is True
         assert f"HTTP {status_code}" in result.message
+
+    @pytest.mark.parametrize("status_code", [404, 405, 410])
+    def test_terminal_probe_response_fails_validation(self, status_code):
+        mock_resp = MagicMock(status_code=status_code)
+        with patch(f"{self._MOD}.httpx.request", return_value=mock_resp):
+            result = _validate_api_key("nvidia-build", "https://integrate.api.nvidia.com", "test-key")
+        assert result.passed is False
+        assert f"HTTP {status_code}" in result.message
+        assert "unavailable" in result.message
 
     @pytest.mark.parametrize(
         "provider_name,api_key,side_effect,expected_passed",
@@ -2813,6 +3381,98 @@ class TestWaitForModelsEarlyExit:
 
 
 # ---------------------------------------------------------------------------
+# Direct agent API helper TLS
+# ---------------------------------------------------------------------------
+
+
+class TestAgentApiTLS:
+    _MOD = "nemo_platform_ext.cli.commands.setup"
+
+    def test_agent_exists_uses_context_certificate_authority_when_env_unset(self):
+        resp = MagicMock()
+        resp.status_code = 200
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{self._MOD}.httpx.get", return_value=resp) as mock_get,
+        ):
+            assert (
+                _agent_exists(
+                    "https://nemo.example.com",
+                    "default",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/apis/agents/v2/workspaces/default/agents/calculator-agent",
+            headers=None,
+            timeout=10.0,
+            verify="/ctx/ca.pem",
+        )
+
+    def test_agents_api_ready_uses_context_certificate_authority_when_env_unset(self):
+        resp = MagicMock()
+        resp.status_code = 200
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{self._MOD}.httpx.get", return_value=resp) as mock_get,
+        ):
+            assert (
+                _agents_api_ready(
+                    "https://nemo.example.com",
+                    "default",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/apis/agents/v2/workspaces/default/agents",
+            headers=None,
+            timeout=3.0,
+            verify="/ctx/ca.pem",
+        )
+
+    def test_deploy_demo_agent_uses_context_certificate_authority_for_httpx_calls(self, tmp_path, spinner_console):
+        config = tmp_path / "calculator-agent.yml"
+        config.write_text("llms: {}\n", encoding="utf-8")
+        exists_resp = MagicMock()
+        exists_resp.status_code = 404
+        create_resp = MagicMock()
+        create_resp.status_code = 200
+        create_resp.raise_for_status = MagicMock()
+        deploy_resp = MagicMock()
+        deploy_resp.status_code = 200
+        deploy_resp.raise_for_status = MagicMock()
+        deploy_resp.json.return_value = {"name": "calculator-agent-abc12345"}
+        status_resp = MagicMock()
+        status_resp.status_code = 200
+        status_resp.json.return_value = {"status": "running"}
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{self._MOD}.httpx.get", side_effect=[exists_resp, status_resp]) as mock_get,
+            patch(f"{self._MOD}.httpx.post", side_effect=[create_resp, deploy_resp]) as mock_post,
+            patch(f"{self._MOD}._pause"),
+            patch(f"{self._MOD}.time.monotonic", side_effect=[0, 0, 1, 2]),
+        ):
+            assert (
+                _deploy_demo_agent(
+                    "https://nemo.example.com",
+                    "default",
+                    config,
+                    default_model="m",
+                    certificate_authority="/ctx/ca.pem",
+                )
+                is True
+            )
+
+        assert [call.kwargs.get("verify") for call in mock_get.call_args_list] == ["/ctx/ca.pem", "/ctx/ca.pem"]
+        assert [call.kwargs.get("verify") for call in mock_post.call_args_list] == ["/ctx/ca.pem", "/ctx/ca.pem"]
+
+
+# ---------------------------------------------------------------------------
 # Progress spinner tests — _deploy_demo_agent
 # ---------------------------------------------------------------------------
 
@@ -3137,6 +3797,7 @@ def _make_setup_command_ctx(
     *,
     base_url: str = "http://localhost:8080",
     workspace: str = "default",
+    certificate_authority: str | None = None,
     workspace_source: ParameterSource = ParameterSource.DEFAULT,
 ) -> tuple[MagicMock, MagicMock]:
     """Build a typer Context + CLIContext pair for invoking ``setup_command``."""
@@ -3147,7 +3808,7 @@ def _make_setup_command_ctx(
     cli_context.get_base_url.return_value = base_url
     cli_context.get_sdk_context.return_value = Context(
         context_name="default",
-        cluster=Cluster(name="default-cluster", base_url=base_url),
+        cluster=Cluster(name="default-cluster", base_url=base_url, certificate_authority=certificate_authority),
         user=NoAuthUser(name="default-user"),
         workspace=workspace,
         preferences={},
@@ -3264,10 +3925,34 @@ class TestSetupCommandRemoteFlow:
         with _patch_setup_command(remote_url="https://remote.example.com") as mocks:
             setup_command(ctx)
 
-        mocks.prompt_remote.assert_called_once_with(default_url="http://localhost:8080")
+        mocks.prompt_remote.assert_called_once_with(
+            default_url="http://localhost:8080",
+            certificate_authority=None,
+        )
         mocks.configure_remote.assert_called_once_with(cli_context, "https://remote.example.com", "default")
         mocks.ensure_auth.assert_called_once_with(cli_context)
         assert mocks.run_interactive.call_args.args[3] == "https://remote.example.com"
+
+    def test_saved_certificate_authority_flows_through_setup_probes(self):
+        ctx, _cli_context = _make_setup_command_ctx(
+            base_url="https://nemo.example.com",
+            certificate_authority="/ctx/ca.pem",
+        )
+        with _patch_setup_command(maybe_start_services="ready") as mocks:
+            setup_command(ctx)
+
+        mocks.maybe_start_services.assert_called_once_with(
+            "https://nemo.example.com",
+            False,
+            None,
+            timeout=_SERVICE_STARTUP_TIMEOUT_SECONDS,
+            certificate_authority="/ctx/ca.pem",
+        )
+        mocks.check_reachable.assert_called_once_with(
+            "https://nemo.example.com",
+            certificate_authority="/ctx/ca.pem",
+        )
+        assert mocks.run_interactive.call_args.kwargs["certificate_authority"] == "/ctx/ca.pem"
 
     def test_remote_choice_preserves_active_workspace_when_flag_omitted(self):
         ctx, cli_context = _make_setup_command_ctx(workspace="team-a")
@@ -3305,6 +3990,7 @@ class TestSetupCommandRemoteFlow:
             False,
             start_services=True,
             timeout=_SERVICE_STARTUP_TIMEOUT_SECONDS,
+            certificate_authority=None,
         )
         mocks.configure_local.assert_called_once_with(cli_context, "default")
         assert mocks.run_interactive.call_args.args[3] == DEFAULT_BASE_URL
@@ -3338,6 +4024,44 @@ class TestCheckControllerHealth:
             ok, msg = _check_controller_health("http://localhost:8080")
         assert ok is True
         assert msg == ""
+
+    def test_uses_context_certificate_authority_when_env_unset(self):
+        resp = _status_response(healthy=True, controller_status={"models_controller": True})
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}.httpx.get", return_value=resp) as mock_get,
+        ):
+            ok, msg = _check_controller_health(
+                "https://nemo.example.com",
+                certificate_authority="/ctx/ca.pem",
+            )
+
+        assert ok is True
+        assert msg == ""
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/status",
+            timeout=5.0,
+            verify="/ctx/ca.pem",
+        )
+
+    def test_env_certificate_authority_overrides_context_certificate_authority(self):
+        resp = _status_response(healthy=True, controller_status={"models_controller": True})
+        with (
+            patch.dict("os.environ", {"NMP_CLIENT_SSL_CERT_FILE": "/env/ca.pem"}, clear=True),
+            patch(f"{SETUP_MOD}.httpx.get", return_value=resp) as mock_get,
+        ):
+            ok, msg = _check_controller_health(
+                "https://nemo.example.com",
+                certificate_authority="/ctx/ca.pem",
+            )
+
+        assert ok is True
+        assert msg == ""
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/status",
+            timeout=5.0,
+            verify="/env/ca.pem",
+        )
 
     def test_unhealthy_controller(self):
         resp = _status_response(healthy=False, controller_status={"models_controller": False})
@@ -3450,9 +4174,17 @@ class TestCheckControllerHealth:
 
 class TestVerifyPlatformHealth:
     def test_healthy_returns_true(self):
-        with patch(f"{SETUP_MOD}._check_controller_health", return_value=(True, "")):
+        with patch(f"{SETUP_MOD}._check_controller_health", return_value=(True, "")) as mock_health:
             result = _verify_platform_health("http://localhost:8080")
         assert result is True
+        mock_health.assert_called_once_with("http://localhost:8080", certificate_authority=None)
+
+    def test_passes_certificate_authority_to_controller_health(self):
+        with patch(f"{SETUP_MOD}._check_controller_health", return_value=(True, "")) as mock_health:
+            result = _verify_platform_health("https://nemo.example.com", certificate_authority="/ctx/ca.pem")
+
+        assert result is True
+        mock_health.assert_called_once_with("https://nemo.example.com", certificate_authority="/ctx/ca.pem")
 
     def test_missing_status_endpoint_returns_true_with_info(self):
         with (

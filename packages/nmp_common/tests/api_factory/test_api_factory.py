@@ -14,8 +14,6 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from nemo_platform.types.jobs import PlatformJobResponse as PlatformJob
-from nemo_platform.types.shared.platform_job_status import PlatformJobStatus
 from nemo_platform_plugin.client.errors import (
     ConflictError as ClientConflictError,
 )
@@ -45,6 +43,8 @@ from nemo_platform_plugin.jobs.api_factory import (
     job_route_factory,
 )
 from nemo_platform_plugin.jobs.exceptions import PlatformJobDependencyUnavailableError
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
+from nemo_platform_plugin.jobs.types import PlatformJobResponse as PlatformJob
 from nmp.common.errors.sdk_exception_handlers import register_sdk_exception_handlers
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.schemas import (
@@ -138,7 +138,7 @@ def test_validate_job_spec():
             )
         ]
     )
-    assert _validate_job_spec(valid_job) is None
+    assert _validate_job_spec(valid_job) == valid_job
 
     # Invalid job spec, because the config provided into the step's config is not json serializeable
     invalid_job = PlatformJobSpec(
@@ -385,7 +385,7 @@ def mock_service_with_job_routes():
 
 def create_mock_platform_job(
     job_id: str,
-    status: PlatformJobStatus = "completed",
+    status: PlatformJobStatus | str = PlatformJobStatus.COMPLETED,
     created_at: str = "2023-01-01T10:00:00Z",
 ) -> PlatformJob:
     """Helper function to create a mock PlatformJob for testing."""
@@ -395,11 +395,23 @@ def create_mock_platform_job(
         name=f"Job {job_id}",
         source="test_service",
         project="test-project",
-        status=status,
+        status=PlatformJobStatus(status),
         created_at=created_at,  # ty: ignore[invalid-argument-type] # type is coerced
         updated_at=created_at,  # ty: ignore[invalid-argument-type] # type is coerced
         spec={"foo": "test", "bar": 1},
-        platform_spec={"steps": []},  # ty: ignore[invalid-argument-type] # type is coerced
+        platform_spec=PlatformJobSpec(
+            steps=[
+                PlatformJobStep(
+                    name="foo_step",
+                    executor=CPUExecutionProviderSpec(
+                        provider="cpu",
+                        profile="default",
+                        container=ContainerSpec(image="foo_image"),
+                    ),
+                    config={},
+                )
+            ]
+        ),
         ownership={},
         attempt_id=f"attempt-{job_id}",
         fileset=f"fileset-{job_id}",
@@ -513,6 +525,29 @@ def test_get_job_logs_with_page_cursor(mock_service_with_job_routes):
         workspace="default",
         name="test-job-123",
         query_params={"page_cursor": "cursor_abc_123"},
+    )
+
+
+def test_get_job_logs_with_tail(mock_service_with_job_routes):
+    """Test get_job_logs with tail parameter."""
+    app, mock_jobs = mock_service_with_job_routes
+    client = TestClient(app)
+
+    mock_log_page = create_mock_log_page(num_logs=2, total=10, prev_page="prev_cursor_123")
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
+
+    response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?tail=2")
+
+    assert response.status_code == 200
+    response_data = response.json()
+    assert len(response_data["data"]) == 2
+    assert response_data["total"] == 10
+    assert response_data["prev_page"] == "prev_cursor_123"
+
+    mock_jobs.list_job_logs.assert_called_once_with(
+        workspace="default",
+        name="test-job-123",
+        query_params={"tail": 2},
     )
 
 
@@ -1715,7 +1750,9 @@ class TestCompilePlatformSpec:
         def compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk):
             return expected
 
-        result = await _compile_platform_spec(compiler, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock())
+        result = await _compile_platform_spec(
+            compiler, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock(), None, None
+        )
         assert result is expected
 
     @pytest.mark.anyio
@@ -1727,7 +1764,9 @@ class TestCompilePlatformSpec:
         async def compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk):
             return expected
 
-        result = await _compile_platform_spec(compiler, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock())
+        result = await _compile_platform_spec(
+            compiler, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock(), None, None
+        )
         assert result is expected
 
     @pytest.mark.anyio
@@ -1740,7 +1779,9 @@ class TestCompilePlatformSpec:
 
         spec = FooJobConfig(foo="a", bar=1)
         with pytest.raises(HTTPException) as exc_info:
-            await _compile_platform_spec(bad_compiler, "ws", spec, spec, MagicMock(), "name", "my_svc", MagicMock())
+            await _compile_platform_spec(
+                bad_compiler, "ws", spec, spec, MagicMock(), "name", "my_svc", MagicMock(), None, None
+            )
         assert exc_info.value.status_code == 422
         assert "my_svc" in exc_info.value.detail
         assert "missing field" in exc_info.value.detail
@@ -1766,6 +1807,8 @@ class TestCompilePlatformSpec:
                 "name",
                 "my_svc",
                 MagicMock(),
+                None,
+                None,
             )
         assert exc_info.value.status_code == 503
         assert "my_svc" in exc_info.value.detail
@@ -1795,7 +1838,9 @@ class TestCompilePlatformSpec:
 
         spec = FooJobConfig(foo="a", bar=1)
         with pytest.raises(HTTPException) as exc_info:
-            await _compile_platform_spec(compiler_bad_config, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock())
+            await _compile_platform_spec(
+                compiler_bad_config, "ws", spec, spec, MagicMock(), "name", "svc", MagicMock(), None, None
+            )
         assert exc_info.value.status_code == 422
         assert "not json serializable" in exc_info.value.detail.lower()
 

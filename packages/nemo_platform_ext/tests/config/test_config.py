@@ -35,6 +35,7 @@ def temp_config_file(tmp_path: Path) -> Path:
             {
                 "name": "local-cluster",
                 "base_url": "http://localhost:8000",
+                "certificate_authority": "/tmp/local-ca.pem",
             },
         ],
         "users": [
@@ -131,6 +132,7 @@ class TestConfigFromFile:
         assert config.context_name == "local"
         assert config.cluster.name == "local-cluster"
         assert str(config.cluster.base_url) == "http://localhost:8000/"
+        assert config.cluster.certificate_authority == "/tmp/local-ca.pem"
         assert config.workspace == "local-workspace"
         assert config.preferences.output_format == "table"
         assert config.preferences.timestamp_format == "relative"
@@ -226,6 +228,45 @@ class TestConfigFromSDK:
 
         assert config.context_name == "production"
         assert config.workspace == "sdk-workspace"
+
+    def test_sdk_override_certificate_authority(self, temp_config_file: Path, tmp_path: Path):
+        """Test SDK params overriding cluster certificate authority."""
+        ca_bundle = str(tmp_path / "override-ca.pem")
+        params: ConfigParams = {"current_context": "local", "certificate_authority": ca_bundle}
+
+        config = get_context(config_path=temp_config_file, overrides=params)
+
+        assert config.context_name == "local"
+        assert config.cluster.certificate_authority == ca_bundle
+
+    def test_sdk_certificate_authority_override_does_not_mutate_stored_cluster(
+        self, temp_config_file: Path, tmp_path: Path
+    ):
+        """Test runtime certificate authority override does not mutate loaded config."""
+        ca_bundle = str(tmp_path / "override-ca.pem")
+        params: ConfigParams = {"current_context": "local", "certificate_authority": ca_bundle}
+        config = Config.load(config_path=temp_config_file, overrides=params)
+
+        resolved = config.resolve()
+        stored_cluster = next(cluster for cluster in config._config_file.clusters if cluster.name == "local-cluster")
+
+        assert resolved.cluster.certificate_authority == ca_bundle
+        assert stored_cluster.certificate_authority == "/tmp/local-ca.pem"
+
+        config.certificate_authority = None
+        assert config.resolve().cluster.certificate_authority == "/tmp/local-ca.pem"
+
+    def test_reload_preserves_certificate_authority_override(self, temp_config_file: Path, tmp_path: Path):
+        """Test reload preserves runtime certificate authority override."""
+        ca_bundle = str(tmp_path / "override-ca.pem")
+        params: ConfigParams = {"current_context": "local", "certificate_authority": ca_bundle}
+        config = Config.load(config_path=temp_config_file, overrides=params)
+
+        config.reload()
+
+        resolved = config.resolve()
+        assert resolved.context_name == "local"
+        assert resolved.cluster.certificate_authority == ca_bundle
 
     def test_sdk_override_preferences(self, temp_config_file: Path):
         """Test SDK params overriding preferences."""
@@ -434,6 +475,25 @@ class TestConfigWithoutFile:
         assert str(config.cluster.base_url) == "https://api.sdk.com/"
         assert config.workspace == "sdk-workspace"
         assert config.preferences.output_format == "table"
+
+    def test_config_from_sdk_params_only_with_certificate_authority(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Test SDK certificate authority override without a config file."""
+        default_config_path = tmp_path / "missing-config.yaml"
+        monkeypatch.delenv("NMP_CONFIG_FILE", raising=False)
+        monkeypatch.setattr(Config, "get_default_config_path", classmethod(lambda _cls: default_config_path))
+        ca_bundle = str(tmp_path / "sdk-ca.pem")
+        params: ConfigParams = {
+            "base_url": "https://api.sdk.com",
+            "certificate_authority": ca_bundle,
+        }
+
+        config = Config.load(overrides=params)
+        resolved = config.resolve()
+
+        assert str(resolved.cluster.base_url) == "https://api.sdk.com/"
+        assert resolved.cluster.certificate_authority == ca_bundle
 
     def test_config_without_file_no_auth(self, tmp_path: Path):
         """Test configuration without auth (NoAuth) and without config file."""

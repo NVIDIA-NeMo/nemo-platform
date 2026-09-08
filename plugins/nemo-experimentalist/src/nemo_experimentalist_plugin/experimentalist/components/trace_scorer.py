@@ -286,7 +286,13 @@ class GoalTreeTrajectoryScorer(Agent, roles.TrajectoryScorer):
             config=goal_config,
             framework_skills_dirs=self._framework_skills_dirs,
         )
-        updated_tree = await generator.update(goal_tree, analysis, round_num, dataset, ethos=ethos)
+        try:
+            updated_tree = await generator.update(goal_tree, analysis, round_num, dataset, ethos=ethos)
+        except Exception as exc:  # noqa: BLE001 - refinement is optional; the previous tree still scores
+            logger.warning(
+                f"[TRAJ] Failed to refine goal tree for round {round_num + 1}; keeping the previous one: {exc}"
+            )
+            return
         next_goal_path.parent.mkdir(parents=True, exist_ok=True)
         next_goal_path.write_text(updated_tree.to_json())
 

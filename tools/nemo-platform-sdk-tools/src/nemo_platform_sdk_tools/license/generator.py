@@ -559,6 +559,7 @@ def generate_lockfile_without_dev_dependencies(
     cmd = [
         "uv",
         "export",
+        "--frozen",
         "--no-dev",
     ]
 

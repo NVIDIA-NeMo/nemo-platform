@@ -6,11 +6,9 @@ import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
-import {
-  useCustomizationCreateAutomodelJob,
-  useCustomizationCreateRlJob,
-  useCustomizationCreateUnslothJob,
-} from '@nemo/sdk/generated/customizer/api';
+import { useCustomizationCreateAutomodelJob } from '@nemo/sdk/generated/customizer/automodel-jobs';
+import { useCustomizationCreateRlJob } from '@nemo/sdk/generated/customizer/rl-jobs';
+import { useCustomizationCreateUnslothJob } from '@nemo/sdk/generated/customizer/unsloth-jobs';
 import {
   Banner,
   Button,
@@ -29,6 +27,7 @@ import { GrpoParametersSection } from '@studio/components/NewCustomizationForm/G
 import { LoraParametersSection } from '@studio/components/NewCustomizationForm/LoraParametersSection';
 import { ModelSelectionSection } from '@studio/components/NewCustomizationForm/ModelSelectionSection';
 import { RewardEnvironmentSection } from '@studio/components/NewCustomizationForm/RewardEnvironmentSection';
+import { RlIntegrationsSection } from '@studio/components/NewCustomizationForm/RlIntegrationsSection';
 import { TrainingMethodSection } from '@studio/components/NewCustomizationForm/TrainingMethodSection';
 import { getWorkspaceCustomizationJobDetailsRoute } from '@studio/routes/utils';
 import {
@@ -228,6 +227,12 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
                       <>
                         <Divider />
                         <DpoParametersSection />
+                      </>
+                    )}
+                    {backend === 'rl' && (
+                      <>
+                        <Divider />
+                        <RlIntegrationsSection />
                       </>
                     )}
                     <Divider />

@@ -14,14 +14,18 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from nemo_evaluator.config import config
+from nemo_evaluator.config import config, platform_config
 from nemo_evaluator.jobs.agent_spec import AgentEvalSpec, AgentTarget, GymRunnerTarget, ModelTarget
+from nemo_evaluator.jobs.environment_stage import EnvironmentStageSpec
+from nemo_evaluator.jobs.gym_sandbox import GYM_SANDBOX_PLAN_ENVVAR, resolve_sandbox_plan
 from nemo_evaluator.jobs.secret_env import build_task_environment
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
+    EnvironmentVariable,
     PlatformJobSpec,
     PlatformJobStep,
+    SubprocessExecutionProviderSpec,
 )
 from nemo_platform_plugin.jobs.image import get_qualified_image
 
@@ -32,12 +36,28 @@ AGENT_EVAL_STEP_NAME = "agent-evaluate"
 AGENT_EVAL_IMAGE = "nmp-cpu-tasks"
 GYM_AGENT_EVAL_IMAGE = "nmp-gym-tasks"
 AGENT_EVAL_ENTRYPOINT = ["python", "-m"]
+GYM_AGENT_EVAL_ENTRYPOINT = ["/app/.venv/bin/python", "-m"]
 AGENT_EVAL_COMMAND = ["nemo_evaluator.tasks.agent_evaluate"]
+ENVIRONMENT_STAGE_STEP_NAME = "stage-environment"
+ENVIRONMENT_STAGE_COMMAND = ["nemo_evaluator.tasks.stage_environment"]
 
 
-def compile_agent_eval_job(spec: AgentEvalSpec, *, profile: str | None = None) -> PlatformJobSpec:
+def compile_agent_eval_job(
+    spec: AgentEvalSpec,
+    *,
+    profile: str | None = None,
+    use_subprocess: bool = False,
+) -> PlatformJobSpec:
     """Compile a canonical agent-evaluation spec into a plugin-native platform job."""
-    return PlatformJobSpec(steps=[_agent_eval_step(spec, profile)])
+    steps = []
+    # FileSet environments are downloaded onto job storage; that step must finish before the
+    # Gym host mounts the same tree read-only.
+    if isinstance(spec.target, GymRunnerTarget) and spec.target.environment is not None:
+        steps.append(_environment_stage_step(spec.target, profile, use_subprocess=use_subprocess))
+
+    steps.append(_agent_eval_step(spec, profile, use_subprocess=use_subprocess))
+
+    return PlatformJobSpec(steps=steps)
 
 
 def _secret_refs(spec: AgentEvalSpec) -> Iterator[tuple[str, str]]:
@@ -46,6 +66,12 @@ def _secret_refs(spec: AgentEvalSpec) -> Iterator[tuple[str, str]]:
         for bundle in task.metrics:
             for env_name, secret_ref in bundle.secrets.items():
                 yield env_name, secret_ref.root
+
+    # A runner target may need credentials of its own -- a Gym environment's model API key reaches
+    # it through the OS environment, not through an endpoint spec.
+    if isinstance(spec.target, GymRunnerTarget):
+        for env_name, secret_ref in spec.target.env_secrets.items():
+            yield env_name, secret_ref.root
 
     endpoint = None
     if isinstance(spec.target, ModelTarget):
@@ -56,24 +82,94 @@ def _secret_refs(spec: AgentEvalSpec) -> Iterator[tuple[str, str]]:
         yield endpoint.api_key_env, endpoint.api_key_secret.root
 
 
-def _agent_eval_step(spec: AgentEvalSpec, profile: str | None) -> PlatformJobStep:
+def _agent_eval_step(spec: AgentEvalSpec, profile: str | None, *, use_subprocess: bool) -> PlatformJobStep:
+    """Build the evaluation step, including the sandbox plan when Gym runs sandboxed."""
     is_gym_target = isinstance(spec.target, GymRunnerTarget)
     image = (
         config.gym_tasks_image
         if is_gym_target and config.gym_tasks_image is not None
         else get_qualified_image(GYM_AGENT_EVAL_IMAGE if is_gym_target else AGENT_EVAL_IMAGE)
     )
+    executor = _executor(
+        profile=profile,
+        image=image,
+        entrypoint=GYM_AGENT_EVAL_ENTRYPOINT if is_gym_target else AGENT_EVAL_ENTRYPOINT,
+        command=AGENT_EVAL_COMMAND,
+        use_subprocess=use_subprocess,
+    )
     return PlatformJobStep(
         name=AGENT_EVAL_STEP_NAME,
-        executor=CPUExecutionProviderSpec(
-            profile=profile or "default",
-            provider="cpu",
-            container=ContainerSpec(
-                image=image,
-                entrypoint=AGENT_EVAL_ENTRYPOINT,
-                command=AGENT_EVAL_COMMAND,
-            ),
-        ),
+        executor=executor,
         config=spec.model_dump(mode="json"),
-        environment=build_task_environment(_secret_refs(spec)),
+        environment=_environment(spec),
+    )
+
+
+def _environment(spec: AgentEvalSpec) -> list[EnvironmentVariable]:
+    """The step's environment: secret refs, plus the sandbox plan when Gym runs sandboxed.
+
+    Resolving the plan here rather than in the job is what makes the operator's configuration reach
+    the run at all -- see :class:`nemo_evaluator.jobs.gym_sandbox.SandboxPlan`. It also moves the
+    sandbox-capability gates to submit time, so a deployment that cannot sandbox is refused with a
+    message naming the setting instead of failing partway through an evaluation.
+    """
+    environment = build_task_environment(_secret_refs(spec))
+    if not isinstance(spec.target, GymRunnerTarget):
+        return environment
+    plan = resolve_sandbox_plan(
+        config,
+        spec.target,
+        sandbox_server_protocol=platform_config.sandbox_server_protocol,
+    )
+    if plan is None:
+        return environment
+    environment.append(EnvironmentVariable(name=GYM_SANDBOX_PLAN_ENVVAR, value=plan.model_dump_json()))
+    return environment
+
+
+def _environment_stage_step(
+    target: GymRunnerTarget,
+    profile: str | None,
+    *,
+    use_subprocess: bool,
+) -> PlatformJobStep:
+    """Download a custom Gym environment into the job PVC before evaluation."""
+    assert target.environment is not None
+    image = config.gym_tasks_image or get_qualified_image(GYM_AGENT_EVAL_IMAGE)
+    stage_spec = EnvironmentStageSpec(environment=target.environment)
+    return PlatformJobStep(
+        name=ENVIRONMENT_STAGE_STEP_NAME,
+        executor=_executor(
+            profile=profile,
+            image=image,
+            entrypoint=GYM_AGENT_EVAL_ENTRYPOINT,
+            command=ENVIRONMENT_STAGE_COMMAND,
+            use_subprocess=use_subprocess,
+        ),
+        config=stage_spec.model_dump(mode="json"),
+        environment=build_task_environment(()),
+    )
+
+
+def _executor(
+    *,
+    profile: str | None,
+    image: str,
+    entrypoint: list[str],
+    command: list[str],
+    use_subprocess: bool,
+) -> CPUExecutionProviderSpec | SubprocessExecutionProviderSpec:
+    """Select the command form appropriate for the resolved execution profile."""
+    resolved_profile = profile or "default"
+    if use_subprocess:
+        return SubprocessExecutionProviderSpec(
+            profile=resolved_profile,
+            provider="subprocess",
+            command=[*AGENT_EVAL_ENTRYPOINT, *command],
+        )
+
+    return CPUExecutionProviderSpec(
+        profile=resolved_profile,
+        provider="cpu",
+        container=ContainerSpec(image=image, entrypoint=entrypoint, command=command),
     )

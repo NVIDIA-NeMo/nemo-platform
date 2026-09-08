@@ -10,8 +10,8 @@ import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { useLiveSeconds } from '@nemo/common/src/hooks/useLiveSeconds';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { formatDurationMs, formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
-import { evaluatorCancelAgentEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
-import { useGetEvaluation } from '@nemo/sdk/generated/platform/api';
+import { evaluatorCancelAgentEvaluateJob } from '@nemo/sdk/generated/evaluator/evaluator-plugin-agent-eval-jobs-routes';
+import { useGetEvaluation } from '@nemo/sdk/generated/platform/evaluations';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   Block,

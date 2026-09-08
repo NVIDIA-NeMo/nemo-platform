@@ -263,3 +263,22 @@ async def test_per_run_observability_opt_out_skips_setup(monkeypatch: pytest.Mon
     )
 
     assert client.closed
+
+
+async def test_ethos_reaches_the_analyst_through_the_change_set_entry_point(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``run_analyst`` delegates, so the Ethos has to survive the hand-off."""
+    seen: dict[str, object] = {}
+    _stub_pipeline(monkeypatch, seen)
+
+    await run_module.run_analyst(
+        agent="agent",
+        ethos="# Ethos\n\nBe careful.",
+        workspace="workspace",
+        base_url="https://platform",
+        client=cast(AsyncNeMoPlatform, FakeClient()),
+    )
+
+    build_kwargs = cast(dict[str, object], seen["build_kwargs"])
+    assert build_kwargs["ethos"] == "# Ethos\n\nBe careful."

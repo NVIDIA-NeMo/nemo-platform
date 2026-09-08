@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for discovered plugin resources, clone isolation, and transport auth.
+"""Tests for typed resource dispatch and transport auth.
 
-Covers three behaviours that only surface through the compatibility layer:
+Covers two behaviours that only surface through the compatibility layer:
 
 - ``sdk.inference.*`` must hand back a resource client matching the owning
   client's sync/async flavour.
-- ``with_options()`` clones must not reuse resources bound to the original.
 - Raw calls through the exposed ``_client`` transport must stay authenticated.
 """
 
@@ -18,27 +17,6 @@ import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
 BASE = "http://test:8000"
-
-
-class _Resource:
-    """Stand-in for a discovered plugin SDK resource."""
-
-    def __init__(self, platform: object) -> None:
-        self.platform = platform
-
-
-@pytest.fixture
-def discovered(monkeypatch: pytest.MonkeyPatch):
-    """Register a fake ``thing`` resource on the plugin SDK discovery surface."""
-
-    class Resources:
-        sync_resource = _Resource
-        async_resource = _Resource
-
-    monkeypatch.setattr(
-        "nemo_platform_plugin.discovery.discover_sdk",
-        lambda: {"thing": Resources()},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -82,44 +60,80 @@ def test_inference_resources_transport_matches_flavour(client_factory, transport
     assert isinstance(client.inference.virtual_models._http, transport_type)
 
 
-# ---------------------------------------------------------------------------
-# with_options() clone isolation
-# ---------------------------------------------------------------------------
+def test_convenience_properties_return_sync_clients_for_sync_client() -> None:
+    from nemo_platform_plugin.agents.client import AgentsClient
+    from nemo_platform_plugin.auditor.client import AuditorClient
+    from nemo_platform_plugin.data_designer.client import DataDesignerClient
+    from nemo_platform_plugin.evaluator.client import EvaluatorClient
+    from nemo_platform_plugin.files.client import FilesClient
+    from nemo_platform_plugin.guardrail.client import GuardrailClient
+    from nemo_platform_plugin.iron_swarm.client import IronSwarmClient
+    from nemo_platform_plugin.jobs.client import JobsClient
+    from nemo_platform_plugin.models.client import ModelsClient
+    from nemo_platform_plugin.projects.client import ProjectsClient
+    from nemo_platform_plugin.secrets.client import SecretsClient
+    from nemo_platform_plugin.workspaces.client import WorkspacesClient
+
+    client = NemoClient(base_url=BASE)
+    expected_resources = [
+        ("files", FilesClient),
+        ("models", ModelsClient),
+        ("workspaces", WorkspacesClient),
+        ("secrets", SecretsClient),
+        ("jobs", JobsClient),
+        ("agents", AgentsClient),
+        ("auditor", AuditorClient),
+        ("guardrail", GuardrailClient),
+        ("evaluator", EvaluatorClient),
+        ("projects", ProjectsClient),
+        ("data_designer", DataDesignerClient),
+        ("iron_swarm", IronSwarmClient),
+    ]
+
+    for attr, expected_type in expected_resources:
+        resource = getattr(client, attr)
+        assert isinstance(resource, expected_type)
+        assert isinstance(resource._http, httpx.Client)
+
+
+def test_convenience_properties_return_async_clients_for_async_client() -> None:
+    from nemo_platform_plugin.agents.client import AsyncAgentsClient
+    from nemo_platform_plugin.auditor.client import AsyncAuditorClient
+    from nemo_platform_plugin.data_designer.client import AsyncDataDesignerClient
+    from nemo_platform_plugin.evaluator.client import AsyncEvaluatorClient
+    from nemo_platform_plugin.files.client import AsyncFilesClient
+    from nemo_platform_plugin.guardrail.client import AsyncGuardrailClient
+    from nemo_platform_plugin.iron_swarm.client import AsyncIronSwarmClient
+    from nemo_platform_plugin.jobs.client import AsyncJobsClient
+    from nemo_platform_plugin.models.client import AsyncModelsClient
+    from nemo_platform_plugin.projects.client import AsyncProjectsClient
+    from nemo_platform_plugin.secrets.client import AsyncSecretsClient
+    from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
+
+    client = AsyncNemoClient(base_url=BASE)
+    expected_resources = [
+        ("files", AsyncFilesClient),
+        ("models", AsyncModelsClient),
+        ("workspaces", AsyncWorkspacesClient),
+        ("secrets", AsyncSecretsClient),
+        ("jobs", AsyncJobsClient),
+        ("agents", AsyncAgentsClient),
+        ("auditor", AsyncAuditorClient),
+        ("guardrail", AsyncGuardrailClient),
+        ("evaluator", AsyncEvaluatorClient),
+        ("projects", AsyncProjectsClient),
+        ("data_designer", AsyncDataDesignerClient),
+        ("iron_swarm", AsyncIronSwarmClient),
+    ]
+
+    for attr, expected_type in expected_resources:
+        resource = getattr(client, attr)
+        assert isinstance(resource, expected_type)
+        assert isinstance(resource._http, httpx.AsyncClient)
 
 
 @pytest.mark.parametrize("client_factory", [NemoClient, AsyncNemoClient])
-def test_with_options_does_not_reuse_cached_resources(client_factory, discovered) -> None:
-    client = client_factory(base_url=BASE)
-    original = client.thing
-
-    clone = client.with_headers({"X-Trace": "1"})
-
-    assert clone.thing is not original
-    assert clone.thing.platform is clone
-    assert original.platform is client
-
-
-@pytest.mark.parametrize("client_factory", [NemoClient, AsyncNemoClient])
-def test_cloned_resource_sees_overridden_options(client_factory, discovered) -> None:
-    """The whole point of the clone: overrides must reach the resource."""
-    client = client_factory(base_url=BASE)
-    _ = client.thing  # prime the cache before cloning
-
-    clone = client.with_headers({"X-Trace": "1"})
-
-    assert clone.thing.platform.default_headers == {"X-Trace": "1"}
-    assert client.thing.platform.default_headers == {}
-
-
-@pytest.mark.parametrize("client_factory", [NemoClient, AsyncNemoClient])
-def test_resource_is_cached_within_one_client(client_factory, discovered) -> None:
-    client = client_factory(base_url=BASE)
-
-    assert client.thing is client.thing
-
-
-@pytest.mark.parametrize("client_factory", [NemoClient, AsyncNemoClient])
-def test_unknown_attribute_still_raises(client_factory, discovered) -> None:
+def test_unknown_attribute_still_raises(client_factory) -> None:
     client = client_factory(base_url=BASE)
 
     with pytest.raises(AttributeError, match="nope"):
@@ -132,7 +146,7 @@ def test_unknown_attribute_still_raises(client_factory, discovered) -> None:
 
 
 def test_raw_client_calls_are_authenticated() -> None:
-    """Plugin resources using platform._client bypass send() but keep auth."""
+    """Plugin resources using owner._client bypass send() but keep auth."""
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:

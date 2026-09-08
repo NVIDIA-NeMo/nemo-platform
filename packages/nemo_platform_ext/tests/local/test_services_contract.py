@@ -307,8 +307,8 @@ def test_embedded_mode_starts_sidecar_thread_via_full_resolution_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """End-to-end: start_embedded_services(models) resolves the adapters sidecar
-    and the sidecar thread actually runs when the app lifespan starts."""
+    """End-to-end: an explicitly requested sidecar threads through the full
+    resolution path and actually runs when the app lifespan starts."""
     started = threading.Event()
     stopped = threading.Event()
 
@@ -318,6 +318,7 @@ def test_embedded_mode_starts_sidecar_thread_via_full_resolution_path(
         mode=services.ServiceMode.EMBEDDED,
         services=("models",),
         controllers=(),
+        sidecars=("adapters",),
         transport="tcp",
         scope="sidecar-e2e",
         state_dir=tmp_path / "state",

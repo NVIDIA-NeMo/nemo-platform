@@ -18,7 +18,7 @@ import {
   getModelsGetProviderQueryKey,
   getModelsListProvidersQueryKey,
   useModelsUpsertProvider,
-} from '@nemo/sdk/generated/platform/api';
+} from '@nemo/sdk/generated/platform/model-providers';
 import { ModelProvider } from '@nemo/sdk/generated/platform/schema';
 import { Stack } from '@nvidia/foundations-react-core';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';

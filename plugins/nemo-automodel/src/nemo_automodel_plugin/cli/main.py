@@ -13,7 +13,7 @@ from nemo_automodel_plugin.jobs.jobs import AutomodelJob
 
 
 class AutomodelContributorCLI:
-    """Passed to ``add_job_commands`` to override job submit/run with job-file args."""
+    """Passed to ``add_job_commands`` to override job submit with job-file args."""
 
     def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
         if job_cls is AutomodelJob:

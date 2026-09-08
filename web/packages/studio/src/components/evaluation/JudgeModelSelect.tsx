@@ -20,6 +20,8 @@ export interface JudgeModelSelectProps<TFieldValues extends FieldValues = FieldV
   required?: boolean;
   placeholder?: string;
   slotLabel?: string;
+  /** Error to show instead of the field's own, for a problem derived outside the form state. */
+  slotError?: string;
   requiredMessage?: string;
   dropdownSide?: 'top' | 'bottom';
   formFieldName: Path<TFieldValues>;
@@ -36,6 +38,7 @@ export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>
   required = false,
   placeholder = 'Select a judge model',
   slotLabel = 'Judge Model',
+  slotError,
   requiredMessage = 'Judge model is required',
   dropdownSide,
   formFieldName,
@@ -78,8 +81,8 @@ export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>
   return (
     <FormField
       slotLabel={slotLabel}
-      status={fieldState.error ? 'error' : undefined}
-      slotError={fieldState.error?.message}
+      status={slotError || fieldState.error ? 'error' : undefined}
+      slotError={slotError ?? fieldState.error?.message}
       required={required}
     >
       <ModelSelectV2

@@ -53,7 +53,6 @@ async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pyte
             PreviewSpec(config=_config(), num_records=2),
             ctx=FunctionContext(workspace="team-a"),
             async_sdk=AsyncNeMoPlatform(base_url="http://testserver", workspace="default"),
-            is_local=True,
         )
     ]
 
@@ -85,7 +84,6 @@ async def test_preview_function_runs_model_health_check_off_event_loop(monkeypat
             PreviewSpec(config=_config(), num_records=2),
             ctx=FunctionContext(workspace="team-a"),
             async_sdk=AsyncNeMoPlatform(base_url="http://testserver", workspace="default"),
-            is_local=True,
         )
     ]
 

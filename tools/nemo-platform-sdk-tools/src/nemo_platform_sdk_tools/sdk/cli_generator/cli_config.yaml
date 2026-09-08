@@ -172,6 +172,8 @@ config:
   additional_methods:
     watch:
       override: jobs/watch.py
+    tail:
+      override: jobs/tail.py
   methods:
     create:
       wait:
@@ -350,6 +352,11 @@ config:
       override: files/list.py
     delete:
       override: files/delete.py
+
+# The body is binary protobuf, which cannot be passed as a shell argument. Producers
+# use an OTLP exporter or the SDK's create(body=...) instead.
+- resource: [intake, ingest, otlp]
+  skip: true
 
 - resource: [intake, ingest, spans]
   methods:

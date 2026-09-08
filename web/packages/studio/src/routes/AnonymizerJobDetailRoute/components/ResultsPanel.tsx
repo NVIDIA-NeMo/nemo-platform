@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { triggerDownload } from '@nemo/common/src/utils/file';
-import { anonymizerDownloadRunJobResult } from '@nemo/sdk/generated/anonymizer/api';
+import { anonymizerDownloadRunJobResult } from '@nemo/sdk/generated/anonymizer/anonymizer';
 import type { PlatformJobResultResponse } from '@nemo/sdk/generated/anonymizer/schema';
 import { Banner, Button, Flex, Panel, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
 import { Download } from 'lucide-react';

@@ -184,7 +184,7 @@ export const GeneralParametersSection = () => {
                     }}
                     defaultValue={1.0}
                     min={0.01}
-                    max={10}
+                    max={1000}
                     step={0.01}
                     disabled={disabled}
                   />

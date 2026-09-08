@@ -5,6 +5,7 @@ import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFil
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import type { Trace } from '@nemo/sdk/generated/platform/schema';
 import { Badge } from '@nvidia/foundations-react-core';
+import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
 import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import type { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import {
@@ -24,7 +25,18 @@ export interface IntakeTraceColumnOptions {
   startedAtSort?: boolean;
   /** Expose a Started At datetime filter (workspace browse table). */
   startedAtFilter?: boolean;
+  /** Expose a Session ID text filter in the workspace browse table. */
+  sessionIdFilter?: boolean;
+  /** Expose a Status filter in the workspace browse table. */
+  statusFilter?: boolean;
 }
+
+const TRACE_STATUS_FILTER_OPTIONS = [
+  { value: 'success', label: 'Success' },
+  { value: 'error', label: 'Error' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'unknown', label: 'Unknown' },
+];
 
 /**
  * Shared trace table columns for Intake browse (`IntakeTracesTable`) and insight evidence
@@ -35,6 +47,8 @@ export const makeIntakeTraceColumns =
     traceIdFilter = false,
     startedAtSort = false,
     startedAtFilter = false,
+    sessionIdFilter = false,
+    statusFilter = false,
   }: IntakeTraceColumnOptions = {}): MakeIntakeTraceColumns =>
   ({ accessor }) => [
     accessor('id', {
@@ -52,6 +66,37 @@ export const makeIntakeTraceColumns =
           }
         : undefined,
       cell: ({ row }) => getTraceDisplayName(row.original),
+    }),
+    accessor('session_id', {
+      id: 'session_id',
+      header: 'Session',
+      size: 280,
+      enableSorting: false,
+      meta: sessionIdFilter
+        ? {
+            filter: {
+              type: 'text' as const,
+              label: 'Session ID',
+              placeholder: 'Filter by session ID',
+            },
+          }
+        : undefined,
+    }),
+    accessor('status', {
+      id: 'status',
+      header: 'Status',
+      size: 120,
+      enableSorting: false,
+      meta: statusFilter
+        ? {
+            filter: {
+              type: 'single-select' as const,
+              label: 'Status',
+              options: TRACE_STATUS_FILTER_OPTIONS,
+            },
+          }
+        : undefined,
+      cell: ({ row }) => <IntakeTelemetryStatusBadge status={row.original.status} />,
     }),
     accessor('input', {
       id: 'input',

@@ -19,7 +19,7 @@ from nemo_platform import (
 )
 from nmp.common.config import AuthConfig
 
-from .jwt import TokenClaims
+from .token_claims import TokenClaims
 from .token_resolver import ResolvedBearerToken
 
 logger = logging.getLogger(__name__)

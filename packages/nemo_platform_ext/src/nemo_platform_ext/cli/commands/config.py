@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import shlex
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -96,6 +97,13 @@ def set_config(
         str | None,
         typer.Option("--base-url", help="NeMo Platform API base URL"),
     ] = None,
+    certificate_authority: Annotated[
+        str | None,
+        typer.Option(
+            "--certificate-authority",
+            help="Path to a PEM certificate authority bundle for the cluster",
+        ),
+    ] = None,
     api_key: Annotated[
         str | None,
         typer.Option("--api-key", help="API key for authentication", hide_input=True),
@@ -143,6 +151,7 @@ def set_config(
       nemo config set --base-url https://api.example.com
       nemo config set --context staging --base-url https://nmp.staging.example.com
       nemo config set --context production --base-url https://nmp.example.com --activate
+      nemo config set --context local-tls --base-url https://localhost:8443 --certificate-authority /path/to/ca.crt
       nemo config set --workspace my-workspace --output-format json
       nemo config set --api-key YOUR_API_KEY
       nemo config set --api-key -        # prompts for API key securely
@@ -174,7 +183,16 @@ def set_config(
 
     # Check if any options were provided
     has_options = any(
-        [base_url, api_key, access_token, workspace, output_format, timestamp_format, truncate is not None]
+        [
+            base_url,
+            certificate_authority is not None,
+            api_key,
+            access_token,
+            workspace,
+            output_format,
+            timestamp_format,
+            truncate is not None,
+        ]
     )
 
     if not has_options and not activate:
@@ -192,6 +210,10 @@ def set_config(
     params: ConfigParams = {}
     if base_url:
         params["base_url"] = base_url
+    if certificate_authority is not None:
+        params["certificate_authority"] = (
+            str(Path(certificate_authority).expanduser().resolve()) if certificate_authority else None
+        )
     token = access_token or api_key
     if token:
         params["access_token"] = token
@@ -244,6 +266,35 @@ def use_context(
     config = Config.load()
     config.set_current_context(context_name)
     typer.echo(f"Switched to context '{context_name}'")
+
+
+@app.command("delete-context")
+@handle_errors
+def delete_context(
+    context_name: Annotated[str, typer.Argument(help="Context name to delete", autocompletion=_complete_context_names)],
+    prune_orphans: Annotated[
+        bool,
+        typer.Option(
+            "--prune-orphans",
+            help="Also delete cluster and user records no longer referenced by any context",
+        ),
+    ] = False,
+) -> None:
+    """Delete a context from the configuration file.
+
+    By default this follows kubectl's convention and deletes only the context;
+    referenced cluster and user records are kept.
+    """
+    from nemo_platform_ext.config.config import Config
+
+    result = Config.delete_context(context_name, prune_orphans=prune_orphans)
+    typer.echo(f"Deleted context '{result.context_name}'")
+    if result.current_context_cleared:
+        typer.echo("Current context cleared")
+    if result.pruned_clusters:
+        typer.echo(f"Pruned clusters: {', '.join(result.pruned_clusters)}")
+    if result.pruned_users:
+        typer.echo(f"Pruned users: {', '.join(result.pruned_users)}")
 
 
 @app.command("view")
@@ -325,6 +376,7 @@ _CONFIG_COMMAND_ORDER = {
     "set": 1,
     "current-context": 2,
     "use-context": 3,
+    "delete-context": 4,
 }
 app.registered_commands.sort(
     key=lambda command: _CONFIG_COMMAND_ORDER.get(command.name or "", len(_CONFIG_COMMAND_ORDER))

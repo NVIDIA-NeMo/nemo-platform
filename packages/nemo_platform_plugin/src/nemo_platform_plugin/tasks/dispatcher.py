@@ -197,7 +197,7 @@ def _build_ctx_from_env(sdk: Any) -> JobContext:
 
     ``PlatformJobResults.job_name`` is the *submitted* platform job name, not
     the job class name — :class:`~nemo_platform_plugin.jobs.result_manager.ResultManager`
-    uses it to look up the job via ``jobs_sdk.jobs.retrieve`` so each
+    uses it to look up the job via the typed Jobs client so each
     ``ctx.results.save()`` registers against the correct job record. The
     backends inject this as ``NEMO_JOB_ID = step.job``; the NemoJob class
     identifier (e.g. ``"evaluate"``) would point at a non-existent job and

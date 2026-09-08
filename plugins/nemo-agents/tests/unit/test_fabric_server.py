@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
+from collections.abc import AsyncGenerator
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -18,6 +21,8 @@ from nemo_agents_plugin.fabric import server
 from nemo_agents_plugin.fabric.runtime import (
     FabricRuntimeExecutionError,
     FabricRuntimeResult,
+    FabricRuntimeStartError,
+    FabricRuntimeStream,
     FabricRuntimeTimeoutError,
 )
 from nemo_agents_plugin.fabric.server import SESSION_ID_HEADER, FabricServingSettings, create_fabric_serving_app
@@ -28,13 +33,26 @@ from nemo_agents_plugin.fabric.session_manager import (
     FabricSessionStopError,
 )
 from nemo_agents_plugin.fabric.session_registry import FabricSessionNotFoundError, FabricSessionRegistry
+from starlette.requests import ClientDisconnect
 
 
 class _FakeStreamContext:
-    def __init__(self, stream: Any = None, enter_error: BaseException | None = None) -> None:
+    def __init__(
+        self,
+        stream: Any = None,
+        enter_error: BaseException | None = None,
+        *,
+        exit_checkpoint: bool = False,
+        exit_waiter: asyncio.Event | None = None,
+        exit_error: BaseException | None = None,
+    ) -> None:
         self.stream = stream
         self.enter_error = enter_error
+        self.exit_checkpoint = exit_checkpoint
+        self.exit_waiter = exit_waiter
+        self.exit_error = exit_error
         self.exit_calls = 0
+        self.exit_completions = 0
 
     async def __aenter__(self) -> Any:
         if self.enter_error is not None:
@@ -43,6 +61,13 @@ class _FakeStreamContext:
 
     async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.exit_calls += 1
+        if self.exit_checkpoint:
+            await asyncio.sleep(0)
+        if self.exit_waiter is not None:
+            await self.exit_waiter.wait()
+        if self.exit_error is not None:
+            raise self.exit_error
+        self.exit_completions += 1
 
 
 class _FakeFabricStream:
@@ -51,20 +76,30 @@ class _FakeFabricStream:
         records: list[dict[str, Any]] | None = None,
         *,
         result: FabricRuntimeResult | None = None,
+        block_after_records: bool = False,
+        close_checkpoint: bool = False,
     ) -> None:
         self._records = records or []
         self._result = result or FabricRuntimeResult(status="succeeded", response="done")
+        self._block_after_records = block_after_records
+        self._close_checkpoint = close_checkpoint
         self.aclose_calls = 0
+        self.aclose_completions = 0
 
     async def records(self) -> Any:
         for record in self._records:
             yield record
+        if self._block_after_records:
+            await asyncio.Event().wait()
 
     async def result(self) -> FabricRuntimeResult:
         return self._result
 
     async def aclose(self) -> None:
         self.aclose_calls += 1
+        if self._close_checkpoint:
+            await asyncio.sleep(0)
+        self.aclose_completions += 1
 
 
 @pytest.fixture()
@@ -113,6 +148,61 @@ def _sse_line_payload(line: str) -> dict[str, object]:
     return json.loads(line.removeprefix("data: "))
 
 
+def test_shutdown_removes_a_staged_agent_root(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+) -> None:
+    mounted = tmp_path / "mounted"
+    mounted.mkdir()
+    config_path = _write_agent_config(mounted)
+    mounted.chmod(0o555)
+    app = create_fabric_serving_app(config_path)
+    try:
+        with TestClient(app) as client:
+            assert client.get("/health").status_code == 200
+            staged = Path(app.state.base_dir)
+
+            assert staged != mounted
+            assert (staged / "agent.yaml").exists()
+
+        assert not staged.exists()
+        assert config_path.exists()
+    finally:
+        mounted.chmod(0o755)
+
+
+def test_failed_startup_removes_a_staged_agent_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mounted = tmp_path / "mounted"
+    mounted.mkdir()
+    config_path = _write_agent_config(mounted)
+    mounted.chmod(0o555)
+    staged: list[Path] = []
+    real_resolve = server.resolve_runtime_base_dir
+
+    def record(path: Path) -> Any:
+        base_dir = real_resolve(path)
+        staged.append(base_dir.path)
+        return base_dir
+
+    async def fail(config: AgentConfig, *, base_dir: Path) -> object:
+        raise AgentConfigLoadError("invalid agent")
+
+    monkeypatch.setattr(server, "resolve_runtime_base_dir", record)
+    monkeypatch.setattr(server, "_validate_agent_config", fail)
+    app = create_fabric_serving_app(config_path)
+    try:
+        with pytest.raises(AgentConfigLoadError), TestClient(app):
+            pass
+
+        assert len(staged) == 1
+        assert not staged[0].exists()
+    finally:
+        mounted.chmod(0o755)
+
+
 def test_startup_loads_and_validates_agent_config(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
@@ -122,9 +212,15 @@ def test_startup_loads_and_validates_agent_config(
 
     with TestClient(app) as client:
         response = client.get("/health")
+        repeated_response = client.get("/health")
 
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        health = response.json()
+        assert health["status"] == "ok"
+        assert uuid.UUID(health["runtime_instance_id"])
+        assert repeated_response.json()["runtime_instance_id"] == health["runtime_instance_id"]
+        assert datetime.fromisoformat(health["runtime_started_at"]).tzinfo is not None
+        assert repeated_response.json()["runtime_started_at"] == health["runtime_started_at"]
         assert app.state.agent_config.name == "test-agent"
         assert app.state.base_dir == tmp_path
         assert app.state.validation_result is not None
@@ -178,6 +274,7 @@ def test_shutdown_stops_all_registered_runtimes(
         async def register_runtime() -> None:
             await registry.register(cast(Any, runtime), session_id="session-1")
 
+        assert client.portal is not None
         client.portal.call(register_runtime)
 
     assert runtime.stop_calls == 1
@@ -234,23 +331,20 @@ def test_rejects_invalid_serving_settings() -> None:
         FabricServingSettings(session_cleanup_interval_seconds=0)
 
 
-def test_chat_completion_without_session_id_opens_and_returns_session(
+def test_chat_completion_without_session_id_invokes_once_without_creating_session(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config_path = _write_agent_config(tmp_path)
     app = create_fabric_serving_app(config_path)
-    resolve_calls: list[str | None] = []
-    invocation_calls: list[tuple[Any, Any]] = []
-    runtime = object()
+    invocation_calls: list[Any] = []
 
-    async def resolve_session(session_id: str | None) -> Any:
-        resolve_calls.append(session_id)
-        return SimpleNamespace(session_id="session-1", runtime=runtime)
+    async def resolve_session(session_id: str) -> Any:
+        pytest.fail(f"headerless request resolved session {session_id!r}")
 
-    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
-        invocation_calls.append((session, request))
+    async def invoke_once(request: Any) -> FabricRuntimeResult:
+        invocation_calls.append(request)
         return FabricRuntimeResult(
             status="succeeded",
             output={"response": "hello", "usage": {"total_tokens": 3}},
@@ -260,14 +354,20 @@ def test_chat_completion_without_session_id_opens_and_returns_session(
 
     with TestClient(app) as client:
         monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
-        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_once", invoke_once)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
         )
+        repeated_response = client.post(
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "again"}]},
+        )
 
     assert response.status_code == 200
-    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert repeated_response.status_code == 200
+    assert SESSION_ID_HEADER not in response.headers
+    assert SESSION_ID_HEADER not in repeated_response.headers
     assert response.json() == {
         "id": "invocation-1",
         "object": "chat.completion",
@@ -281,11 +381,9 @@ def test_chat_completion_without_session_id_opens_and_returns_session(
         ],
         "usage": {"total_tokens": 3},
     }
-    assert resolve_calls == [None]
-    resolved_session, invocation_request = invocation_calls[0]
-    assert resolved_session.runtime is runtime
-    assert invocation_request.input == "hello"
-    assert invocation_request.caller_context == {"session_id": "session-1"}
+    assert [request.input for request in invocation_calls] == ["hello", "again"]
+    assert all(request.caller_context == {} for request in invocation_calls)
+    assert asyncio.run(app.state.session_registry.count()) == 0
 
 
 def test_chat_completion_with_session_id_reuses_session(
@@ -295,9 +393,9 @@ def test_chat_completion_with_session_id_reuses_session(
 ) -> None:
     config_path = _write_agent_config(tmp_path)
     app = create_fabric_serving_app(config_path)
-    resolve_calls: list[str | None] = []
+    resolve_calls: list[str] = []
 
-    async def resolve_session(session_id: str | None) -> Any:
+    async def resolve_session(session_id: str) -> Any:
         resolve_calls.append(session_id)
         return SimpleNamespace(session_id="session-1", runtime=object())
 
@@ -321,6 +419,7 @@ def test_chat_completion_with_session_id_reuses_session(
 @pytest.mark.parametrize(
     ("error", "status_code"),
     [
+        (FabricRuntimeStartError("startup failed"), 503),
         (FabricRuntimeTimeoutError("timed out"), 504),
         (FabricRuntimeExecutionError("invoke failed"), 502),
     ],
@@ -334,23 +433,46 @@ def test_chat_completion_maps_runtime_errors(
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
 
-    async def resolve_session(session_id: str | None) -> Any:
-        return SimpleNamespace(session_id="session-1", runtime=object())
-
-    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
+    async def invoke_once(request: Any) -> FabricRuntimeResult:
         raise error
 
     with TestClient(app) as client:
-        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
-        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_once", invoke_once)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
         )
 
     assert response.status_code == status_code
-    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert SESSION_ID_HEADER not in response.headers
     assert response.json() == {"detail": str(error)}
+
+
+def test_session_chat_completion_runtime_error_returns_session_header(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_fabric_serving_app(_write_agent_config(tmp_path))
+
+    async def resolve_session(session_id: str) -> Any:
+        return SimpleNamespace(session_id=session_id, runtime=object())
+
+    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
+        raise FabricRuntimeTimeoutError("timed out")
+
+    with TestClient(app) as client:
+        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
+        response = client.post(
+            "/v1/chat/completions",
+            headers={SESSION_ID_HEADER: "session-1"},
+            json={"messages": [{"role": "user", "content": "hello"}]},
+        )
+
+    assert response.status_code == 504
+    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert response.json() == {"detail": "timed out"}
 
 
 @pytest.mark.parametrize(
@@ -369,7 +491,7 @@ def test_chat_completion_maps_session_resolution_errors(
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
 
-    async def resolve_session(session_id: str | None) -> Any:
+    async def resolve_session(session_id: str) -> Any:
         raise error
 
     with TestClient(app) as client:
@@ -385,41 +507,44 @@ def test_chat_completion_maps_session_resolution_errors(
     assert response.json() == {"detail": str(error)}
 
 
-def test_streaming_chat_completion_maps_stream_start_errors(
+@pytest.mark.parametrize(
+    ("error", "status_code"),
+    [
+        (FabricRuntimeStartError("startup failed"), 503),
+        (FabricRuntimeExecutionError("stream failed"), 502),
+    ],
+)
+def test_streaming_chat_completion_without_session_maps_stream_start_errors(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
     monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    status_code: int,
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
 
-    async def resolve_session(session_id: str | None) -> Any:
-        return SimpleNamespace(session_id="session-1", runtime=object())
-
-    def stream_session(session: Any, request: Any) -> _FakeStreamContext:
-        return _FakeStreamContext(enter_error=FabricRuntimeExecutionError("stream failed"))
+    def stream_once(request: Any) -> _FakeStreamContext:
+        return _FakeStreamContext(enter_error=error)
 
     with TestClient(app) as client:
-        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
-        monkeypatch.setattr(app.state.session_manager, "stream_session", stream_session)
+        monkeypatch.setattr(app.state.session_manager, "stream_once", stream_once)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}], "stream": True},
         )
 
-    assert response.status_code == 502
-    assert response.headers[SESSION_ID_HEADER] == "session-1"
-    assert response.json() == {"detail": "stream failed"}
+    assert response.status_code == status_code
+    assert SESSION_ID_HEADER not in response.headers
+    assert response.json() == {"detail": str(error)}
 
 
-def test_streaming_chat_completion_returns_openai_sse_response(
+def test_streaming_chat_completion_without_session_uses_one_shot_stream(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
-    resolve_calls: list[str | None] = []
-    stream_calls: list[tuple[Any, Any]] = []
-    runtime = object()
+    stream_calls: list[Any] = []
     fabric_stream = _FakeFabricStream(
         [
             {"kind": "scope", "scope_category": "start", "name": "request"},
@@ -430,17 +555,12 @@ def test_streaming_chat_completion_returns_openai_sse_response(
     )
     stream_context = _FakeStreamContext(fabric_stream)
 
-    async def resolve_session(session_id: str | None) -> Any:
-        resolve_calls.append(session_id)
-        return SimpleNamespace(session_id="session-1", runtime=runtime)
-
-    def stream_session(session: Any, request: Any) -> _FakeStreamContext:
-        stream_calls.append((session, request))
+    def stream_once(request: Any) -> _FakeStreamContext:
+        stream_calls.append(request)
         return stream_context
 
     with TestClient(app) as client:
-        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
-        monkeypatch.setattr(app.state.session_manager, "stream_session", stream_session)
+        monkeypatch.setattr(app.state.session_manager, "stream_once", stream_once)
         with client.stream(
             "POST",
             "/v1/chat/completions",
@@ -450,12 +570,10 @@ def test_streaming_chat_completion_returns_openai_sse_response(
 
     assert response.status_code == 200
     assert "text/event-stream" in response.headers["content-type"]
-    assert response.headers[SESSION_ID_HEADER] == "session-1"
-    assert resolve_calls == [None]
-    resolved_session, invocation_request = stream_calls[0]
-    assert resolved_session.runtime is runtime
+    assert SESSION_ID_HEADER not in response.headers
+    invocation_request = stream_calls[0]
     assert invocation_request.input == "hello"
-    assert invocation_request.caller_context == {"session_id": "session-1"}
+    assert invocation_request.caller_context == {}
     assert stream_context.exit_calls == 1
     assert fabric_stream.aclose_calls == 0
 
@@ -472,9 +590,9 @@ def test_streaming_chat_completion_reuses_supplied_session_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
-    resolve_calls: list[str | None] = []
+    resolve_calls: list[str] = []
 
-    async def resolve_session(session_id: str | None) -> Any:
+    async def resolve_session(session_id: str) -> Any:
         resolve_calls.append(session_id)
         return SimpleNamespace(session_id="session-1", runtime=object())
 
@@ -513,7 +631,7 @@ async def test_streaming_chat_completion_emits_sse_error_and_closes_stream() -> 
         event
         async for event in server._iter_streaming_chat_completion(
             stream_context,
-            fabric_stream,
+            cast(FabricRuntimeStream, fabric_stream),
             completion_id="chatcmpl-test",
             model="test-model",
         )
@@ -536,14 +654,14 @@ async def test_streaming_chat_completion_closes_stream_on_generator_close() -> N
     stream_context = _FakeStreamContext(fabric_stream)
     events = server._iter_streaming_chat_completion(
         stream_context,
-        fabric_stream,
+        cast(FabricRuntimeStream, fabric_stream),
         completion_id="chatcmpl-test",
         model="test-model",
     )
 
     assert _sse_payload(await events.__anext__())["choices"] == [{"index": 0, "delta": {"role": "assistant"}}]
 
-    await events.aclose()
+    await cast(AsyncGenerator[str], events).aclose()
 
     assert fabric_stream.aclose_calls == 1
     assert stream_context.exit_calls == 1
@@ -555,15 +673,241 @@ async def test_streaming_chat_completion_closes_stream_before_first_event() -> N
     stream_context = _FakeStreamContext(fabric_stream)
     events = server._iter_streaming_chat_completion(
         stream_context,
-        fabric_stream,
+        cast(FabricRuntimeStream, fabric_stream),
         completion_id="chatcmpl-test",
         model="test-model",
     )
 
-    await events.aclose()
+    await cast(AsyncGenerator[str], events).aclose()
 
     assert fabric_stream.aclose_calls == 1
     assert stream_context.exit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_response_closes_stream_after_client_disconnect() -> None:
+    fabric_stream = _FakeFabricStream([{"data": {"choices": [{"delta": {"content": "partial"}}]}}])
+    stream_context = _FakeStreamContext(fabric_stream)
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+
+    async def receive() -> Any:
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.4"}})
+    with pytest.raises(ClientDisconnect):
+        await response(scope, receive, cast(Any, send))
+
+    assert fabric_stream.aclose_calls == 1
+    assert stream_context.exit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_response_cleanup_failure_does_not_mask_client_disconnect(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cleanup_error = RuntimeError("cleanup failed")
+    fabric_stream = _FakeFabricStream()
+    stream_context = _FakeStreamContext(fabric_stream, exit_error=cleanup_error)
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+
+    async def receive() -> Any:
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.4"}})
+    with caplog.at_level("ERROR"):
+        with pytest.raises(ClientDisconnect):
+            await response(scope, receive, cast(Any, send))
+
+    assert "Fabric stream cleanup failed for completion chatcmpl-test." in caplog.text
+    assert iterator._closed
+    await iterator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_streaming_response_completes_cleanup_after_asgi_cancellation() -> None:
+    fabric_stream = _FakeFabricStream(
+        [{"data": {"choices": [{"delta": {"content": "partial"}}]}}],
+        block_after_records=True,
+        close_checkpoint=True,
+    )
+    stream_context = _FakeStreamContext(fabric_stream, exit_checkpoint=True)
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+    body_sent = asyncio.Event()
+
+    async def receive() -> Any:
+        await body_sent.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body" and message.get("body"):
+            body_sent.set()
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.3"}})
+    await asyncio.wait_for(response(scope, receive, cast(Any, send)), timeout=1)
+
+    assert fabric_stream.aclose_calls == 1
+    assert fabric_stream.aclose_completions == 1
+    assert stream_context.exit_calls == 1
+    assert stream_context.exit_completions == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_response_bounds_cleanup_wait_without_cancelling_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cleanup_release = asyncio.Event()
+    fabric_stream = _FakeFabricStream()
+    stream_context = _FakeStreamContext(fabric_stream, exit_waiter=cleanup_release)
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+    monkeypatch.setattr(server, "_FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS", 0.01)
+
+    async def receive() -> Any:
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.4"}})
+    with caplog.at_level("WARNING"):
+        with pytest.raises(ClientDisconnect):
+            await response(scope, receive, cast(Any, send))
+
+    assert stream_context.exit_calls == 1
+    assert stream_context.exit_completions == 0
+    assert "cleanup will continue in the background" in caplog.text
+
+    cleanup_release.set()
+    assert iterator._close_task is not None
+    await iterator._close_task
+
+    assert stream_context.exit_completions == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_response_bounds_cleanup_after_direct_task_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cleanup_release = asyncio.Event()
+    fabric_stream = _FakeFabricStream(
+        [{"data": {"choices": [{"delta": {"content": "partial"}}]}}],
+        block_after_records=True,
+    )
+    stream_context = _FakeStreamContext(fabric_stream, exit_waiter=cleanup_release)
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+    body_sent = asyncio.Event()
+    monkeypatch.setattr(server, "_FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS", 0.01)
+
+    async def receive() -> Any:
+        await asyncio.Event().wait()
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body" and message.get("body"):
+            body_sent.set()
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.4"}})
+    response_task = asyncio.create_task(response(scope, receive, cast(Any, send)))
+    await body_sent.wait()
+    response_task.cancel()
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(response_task, timeout=1)
+
+    assert stream_context.exit_calls == 1
+    assert stream_context.exit_completions == 0
+    assert "cleanup will continue in the background" in caplog.text
+
+    cleanup_release.set()
+    assert iterator._close_task is not None
+    await iterator._close_task
+
+    assert stream_context.exit_completions == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_response_logs_cleanup_failure_after_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cleanup_release = asyncio.Event()
+    cleanup_error = RuntimeError("cleanup failed")
+    fabric_stream = _FakeFabricStream()
+    stream_context = _FakeStreamContext(
+        fabric_stream,
+        exit_waiter=cleanup_release,
+        exit_error=cleanup_error,
+    )
+    iterator = server._iter_streaming_chat_completion(
+        stream_context,
+        cast(FabricRuntimeStream, fabric_stream),
+        completion_id="chatcmpl-test",
+        model="test-model",
+    )
+    response = server._FabricStreamingResponse(iterator, media_type="text/event-stream")
+    monkeypatch.setattr(server, "_FABRIC_STREAM_CLEANUP_TIMEOUT_SECONDS", 0.01)
+
+    async def receive() -> Any:
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    scope = cast(Any, {"type": "http", "asgi": {"spec_version": "2.4"}})
+    with caplog.at_level("WARNING"):
+        with pytest.raises(ClientDisconnect):
+            await response(scope, receive, cast(Any, send))
+
+        cleanup_release.set()
+        assert iterator._close_task is not None
+        with pytest.raises(RuntimeError, match="cleanup failed"):
+            await iterator._close_task
+        await asyncio.sleep(0)
+
+    assert "Background Fabric stream cleanup failed for completion chatcmpl-test." in caplog.text
+    assert iterator._closed
+    await iterator.aclose()
 
 
 def test_chat_completion_maps_failed_run_result(
@@ -573,25 +917,21 @@ def test_chat_completion_maps_failed_run_result(
 ) -> None:
     app = create_fabric_serving_app(_write_agent_config(tmp_path))
 
-    async def resolve_session(session_id: str | None) -> Any:
-        return SimpleNamespace(session_id="session-1", runtime=object())
-
-    async def invoke_session(session: Any, request: Any) -> FabricRuntimeResult:
+    async def invoke_once(request: Any) -> FabricRuntimeResult:
         return FabricRuntimeResult(
             status="failed",
             error={"stage": "invoke", "message": "adapter failed"},
         )
 
     with TestClient(app) as client:
-        monkeypatch.setattr(app.state.session_manager, "resolve_session", resolve_session)
-        monkeypatch.setattr(app.state.session_manager, "invoke_session", invoke_session)
+        monkeypatch.setattr(app.state.session_manager, "invoke_once", invoke_once)
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
         )
 
     assert response.status_code == 502
-    assert response.headers[SESSION_ID_HEADER] == "session-1"
+    assert SESSION_ID_HEADER not in response.headers
     assert response.json() == {"detail": "adapter failed"}
 
 
@@ -627,6 +967,23 @@ def test_chat_completion_request_serializes_full_transcript() -> None:
 
     assert invocation_request.input == ("system: Be concise.\n\nassistant: How can I help?\n\nuser: Say hello.")
     assert invocation_request.caller_context == {"session_id": "session-1"}
+
+
+def test_stateless_chat_completion_request_serializes_full_transcript_without_session_context() -> None:
+    request = ChatCompletionRequest.model_validate(
+        {
+            "messages": [
+                {"role": "system", "content": "Be concise."},
+                {"role": "assistant", "content": "How can I help?"},
+                {"role": "user", "content": "Say hello."},
+            ]
+        }
+    )
+
+    invocation_request = server._to_fabric_invocation_request(request, session_id=None)
+
+    assert invocation_request.input == ("system: Be concise.\n\nassistant: How can I help?\n\nuser: Say hello.")
+    assert invocation_request.caller_context == {}
 
 
 def test_close_session_stops_registered_runtime(

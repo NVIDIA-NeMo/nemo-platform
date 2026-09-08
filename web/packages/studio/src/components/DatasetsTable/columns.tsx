@@ -118,6 +118,7 @@ export function makeDatasetsTableColumns({
               { value: '', label: 'All' },
               { value: FilesetPurpose.generic, label: 'Generic' },
               { value: FilesetPurpose.dataset, label: 'Dataset' },
+              { value: FilesetPurpose.environment, label: 'Environment' },
               { value: FilesetPurpose.model, label: 'Model' },
             ],
           },

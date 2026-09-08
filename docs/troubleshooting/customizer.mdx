@@ -49,5 +49,6 @@ Batch and sequence-length fields differ by backend. Use the fully qualified path
 **Deployment fails:**
 
 - Verify the base model and adapter exist: `client.models.retrieve(name=MODEL_NAME, workspace="default")` -- the LoRA adapter appears in the base model's `adapters` list, not as a separate model entity
-- Check deployment logs: `client.inference.deployments.get_logs(name=deployment.name, workspace="default")`
+- Check job logs: `client.jobs.get_logs(name=job.name, workspace="default")`
+- Check deployment status: `client.inference.deployments.retrieve(name=DEPLOYMENT_NAME, workspace="default")`
 - Ensure sufficient GPU resources for the model size

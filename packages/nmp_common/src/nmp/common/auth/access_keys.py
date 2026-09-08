@@ -31,9 +31,9 @@ from nemo_platform_plugin.auth.access_keys.types import (
 from nmp.common.config import AuthConfig, get_platform_config
 
 from .jwks import DEFAULT_JWKS_CACHE_LIFESPAN, AsyncJWKSClient, signing_jwk_from_jwks
-from .jwt import TokenClaims, groups_from_claim, scopes_from_claim
 from .models import Principal
 from .signing_keys import RSASigningKey, RSASigningKeyCache
+from .token_claims import TokenClaims, groups_from_claim, scopes_from_claim
 
 ACCESS_KEY_TOKEN_TYPE = "access_key"
 ACCESS_KEY_JWKS_PATH = "/apis/auth/jwks"

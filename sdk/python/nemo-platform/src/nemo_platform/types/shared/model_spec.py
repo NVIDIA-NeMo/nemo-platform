@@ -16,6 +16,7 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 from typing import List, Optional
+from typing_extensions import Literal
 
 from ..._models import BaseModel
 from .mo_e_config import MoEConfig
@@ -76,11 +77,14 @@ class ModelSpec(BaseModel):
     context_size: Optional[int] = None
     """Context window size"""
 
+    head_type: Optional[Literal["causal_lm", "embedding", "cross_encoder", "unknown"]] = None
+    """Task-specific head persisted in the checkpoint."""
+
     is_chat: Optional[bool] = None
     """Whether this is a chat model"""
 
     is_embedding_model: Optional[bool] = None
-    """Whether this is an embedding model"""
+    """Deprecated compatibility alias for head_type == 'embedding'."""
 
     linear_layers: Optional[List[LinearLayerSpec]] = None
     """List of all linear/Conv1D layers with their dimensions.

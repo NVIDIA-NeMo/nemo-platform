@@ -7,8 +7,8 @@ import {
 } from '@studio/api/datasets/useDatasetFileContent';
 import axios from 'axios';
 
-vi.mock('@nemo/sdk/generated/platform/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@nemo/sdk/generated/platform/api')>();
+vi.mock('@nemo/sdk/generated/platform/files', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@nemo/sdk/generated/platform/files')>();
   return {
     ...actual,
     filesHeadFile: vi.fn().mockResolvedValue(undefined),
@@ -119,7 +119,7 @@ describe('useDatasetFileContent gate', () => {
   });
 
   it('enforces the cap before downloading a parquet blob on fullContent loads', async () => {
-    const { filesDownloadFile } = await import('@nemo/sdk/generated/platform/api');
+    const { filesDownloadFile } = await import('@nemo/sdk/generated/platform/files');
     vi.mocked(filesDownloadFile).mockClear();
     const headSpy = vi.spyOn(axios, 'head').mockResolvedValueOnce({ headers: {} } as never);
 
@@ -135,7 +135,7 @@ describe('useDatasetFileContent gate', () => {
   });
 
   it('serializes parquet rows with BigInt columns as JSONL text', async () => {
-    const { filesDownloadFile } = await import('@nemo/sdk/generated/platform/api');
+    const { filesDownloadFile } = await import('@nemo/sdk/generated/platform/files');
     vi.mocked(filesDownloadFile).mockResolvedValueOnce(new Blob(['parquet-bytes']));
 
     const { queryFn } = datasetFileContentQueryOptions({

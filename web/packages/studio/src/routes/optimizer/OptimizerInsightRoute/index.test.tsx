@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
-import {
-  getListEvaluationsQueryKey,
-  getListExperimentsQueryKey,
-} from '@nemo/sdk/generated/platform/api';
+import { getListEvaluationsQueryKey } from '@nemo/sdk/generated/platform/evaluations';
+import { getListExperimentsQueryKey } from '@nemo/sdk/generated/platform/experiments';
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import type { Insight } from '@studio/api/optimizer';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';

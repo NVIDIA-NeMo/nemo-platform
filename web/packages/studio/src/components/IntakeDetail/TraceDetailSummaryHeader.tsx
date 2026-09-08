@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
-import type { Session } from '@nemo/sdk/generated/platform/schema';
+import type { Session, Trace } from '@nemo/sdk/generated/platform/schema';
 import { Flex, Stack, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { IntakeTelemetryStatusBadge } from '@studio/components/IntakeDetail/IntakeComponents/IntakeTelemetryStatusBadge';
 import type {
   HighlightMetric,
   HighlightMetricDetail,
 } from '@studio/components/IntakeDetail/IntakeComponents/keyValueTypes';
-import { buildSessionHighlightMetrics } from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
+import {
+  buildSessionHighlightMetrics,
+  buildTraceHighlightMetrics,
+} from '@studio/components/IntakeDetail/IntakeComponents/traceKeyValues';
 import { type FC, type ReactNode, useMemo } from 'react';
 
 const TraceSummaryMetricItem: FC<{
@@ -123,4 +126,9 @@ interface SessionSummaryHeaderProps {
 export const SessionSummaryHeader: FC<SessionSummaryHeaderProps> = ({ session }) => {
   const metrics = useMemo(() => buildSessionHighlightMetrics(session), [session]);
   return <SummaryHeader telemetry={session} metrics={metrics} />;
+};
+
+export const TraceSummaryHeader: FC<{ trace: Trace }> = ({ trace }) => {
+  const metrics = useMemo(() => buildTraceHighlightMetrics(trace), [trace]);
+  return <SummaryHeader telemetry={trace} metrics={metrics} />;
 };

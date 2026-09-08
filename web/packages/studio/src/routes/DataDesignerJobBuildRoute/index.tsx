@@ -4,8 +4,8 @@
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@nemo/common/src/constants/api';
-import { useDataDesignerCreateJob } from '@nemo/sdk/generated/data-designer/api';
-import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
+import { useDataDesignerCreateJob } from '@nemo/sdk/generated/data-designer/data-designer';
+import { useModelsListProviders } from '@nemo/sdk/generated/platform/model-providers';
 import { Flex, Stack } from '@nvidia/foundations-react-core';
 import { findTemplate } from '@studio/components/CreateFilesetStart/templates';
 import { usePreview } from '@studio/components/NewDataDesignerJobForm/usePreview';

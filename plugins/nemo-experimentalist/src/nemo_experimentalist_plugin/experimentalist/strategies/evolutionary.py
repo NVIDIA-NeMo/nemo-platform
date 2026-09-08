@@ -464,7 +464,15 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                 scorer = self._trajectory_scorer(ctx, config)
                 # round_num - 1: the counter has already advanced past the round this
                 # analysis describes, and the scorer names its state after that round.
-                scored = await scorer.run(ctx, candidates=candidates, round_num=round_num - 1, analysis=analysis)
+                # Best-effort: trajectory scoring is optional enrichment on top of the
+                # validation channel, so a failure here (an unreadable trace, an LLM error
+                # the scorer could not absorb) must never end a run that has already spent
+                # hours producing validation rewards.
+                try:
+                    scored = await scorer.run(ctx, candidates=candidates, round_num=round_num - 1, analysis=analysis)
+                except Exception as exc:  # noqa: BLE001 - see above
+                    logger.warning("[TRAJ] trajectory scoring failed (run continues): %s", exc)
+                    scored = {}
                 for candidate in candidates:
                     if (record := scored.get(candidate.id)) is not None:
                         await ctx.record_reward(candidate, channel="validation-trajectory", result=record)

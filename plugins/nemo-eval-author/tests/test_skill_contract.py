@@ -4,9 +4,9 @@
 """Contract tests for the bundled Eval Author skills.
 
 ``eval-author`` is the core skill: it owns the standard, the vocabulary, the
-boundaries, and the routing. ``eval-author-discover`` and ``eval-author-audit``
-bundle scripts. ``eval-author-inspect-trace`` uses the provider's supported
-commands. Sub-flows defer the standard to the core.
+boundaries, and the routing. ``eval-author-discover``, ``eval-author-audit``,
+and ``eval-author-task-create`` bundle scripts. ``eval-author-inspect-trace``
+uses the provider's supported commands. Sub-flows defer the standard to the core.
 
 These tests are that enforcement:
 
@@ -44,8 +44,9 @@ import os
 import re
 import subprocess
 import sys
+import types
 from collections.abc import Callable
-from importlib.util import find_spec
+from importlib.util import find_spec, module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -57,12 +58,16 @@ _SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
 _CORE_DIR = _SKILLS_DIR / "eval-author"
 _DISCOVER_DIR = _SKILLS_DIR / "eval-author-discover"
 _AUDIT_DIR = _SKILLS_DIR / "eval-author-audit"
+_TASK_CREATE_DIR = _SKILLS_DIR / "eval-author-task-create"
 _INSPECT_DIR = _SKILLS_DIR / "eval-author-inspect-trace"
-_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR, _INSPECT_DIR)
-_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _INSPECT_DIR)
+_MLFLOW_TO_ATIF_DIR = _SKILLS_DIR / "mlflow-to-atif"
+_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR, _MLFLOW_TO_ATIF_DIR)
+_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR)
 _DISCOVER_SCRIPTS_DIR = _DISCOVER_DIR / "scripts"
 _AUDIT_SPEC_DIR = _AUDIT_DIR / "scripts" / "audit_spec"
-_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR)
+_TASK_CREATE_SCRIPTS_DIR = _TASK_CREATE_DIR / "scripts"
+_MLFLOW_TO_ATIF_SCRIPTS_DIR = _MLFLOW_TO_ATIF_DIR / "scripts"
+_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR, _TASK_CREATE_SCRIPTS_DIR, _MLFLOW_TO_ATIF_SCRIPTS_DIR)
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
@@ -73,10 +78,16 @@ _AUDIT_TEMPLATE = _AUDIT_DIR / "templates" / "audit.md"
 _AUDIT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit.schema.json"
 _AUDIT_COVERAGE_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_coverage.schema.json"
 _AUDIT_COVERAGE_REPORT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_coverage_report.schema.json"
+_AUDIT_CAPABILITY_JUDGMENTS_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_capability_judgments.schema.json"
+_AUDIT_CAPABILITIES_DETAILS_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_capabilities_details.schema.json"
 _AUDIT_TOOL_CALLS_DETAILS_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_tool_calls_details.schema.json"
-_AUDIT_COVERAGE_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.coverage.json"
+_AUDIT_TOOL_CALLS_COVERAGE_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.coverage.json"
+_AUDIT_CAPABILITIES_COVERAGE_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "capabilities.coverage.json"
+_AUDIT_CAPABILITY_JUDGMENTS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "capability_judgments.json"
 _AUDIT_COVERAGE_REPORT_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "coverage_report.json"
 _AUDIT_TOOL_CALLS_DETAILS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.details.json"
+_AUDIT_CAPABILITIES_DETAILS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "capabilities.details.json"
+_MLFLOW_TO_ATIF = _MLFLOW_TO_ATIF_SCRIPTS_DIR / "convert_mlflow_to_atif.py"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -359,6 +370,52 @@ def _write_audit(tmp_path: Path, transform: Callable[[str], str] | None = None) 
     return audit
 
 
+def _without_user_intent_evidence(text: str) -> str:
+    """Make the template capability coverable by deterministic tool-call evidence only."""
+    return text.replace(
+        "      - kind: user_intent\n        description: User is trying to recover account access.\n",
+        "",
+        1,
+    )
+
+
+def _write_capability_judgments(
+    path: Path,
+    *,
+    trace: Path | None = None,
+    capability: str = "account_recovery",
+    evidence_index: int = 0,
+    kind: str = "user_intent",
+    description: str = "User is trying to recover account access.",
+    status: str = "satisfied",
+    confidence: str = "high",
+) -> None:
+    """Write a skill-authored capability judgment sidecar."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "nemo.eval_author.audit_capability_judgments.v1",
+                "trace_sha256": _digest(trace) if trace is not None else "sha256:" + ("0" * 64),
+                "judged_by": "eval-author-audit skill",
+                "judgments": [
+                    {
+                        "capability": capability,
+                        "evidence_index": evidence_index,
+                        "kind": kind,
+                        "description": description,
+                        "status": status,
+                        "confidence": confidence,
+                        "rationale": "The trace shows the user asking for help recovering account access.",
+                        "supporting_trace_refs": ["$.steps[0].message"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def _run_script(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run a bundled script and return the completed process."""
     return subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, check=False)
@@ -384,6 +441,71 @@ def _write_task(task_dir: Path, *, name: str = "smoke/generated") -> None:
     )
     (task_dir / "instruction.md").write_text("Look up the total hours for Ada.\n", encoding="utf-8")
     (task_dir / "tests" / "test.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+
+
+def _load_mlflow_to_atif() -> Any:
+    """Load the standalone converter so boundary behavior can be tested without a child process."""
+    spec = spec_from_file_location("test_convert_mlflow_to_atif", _MLFLOW_TO_ATIF)
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _mlflow_export() -> dict[str, Any]:
+    """Return a small synthetic MLflow export with one retriever child."""
+    return {
+        "traces": [
+            {
+                "info": {
+                    "trace_id": "tr-fixture",
+                    "trace_metadata": {
+                        "mlflow.traceInputs": '{"question":"Where is Paris?"}',
+                        "mlflow.traceOutputs": '{"answer":"France"}',
+                    },
+                    "assessments": [
+                        {
+                            "assessment_id": "assessment-1",
+                            "assessment_name": "correctness",
+                            "feedback": {"value": 1.0},
+                        }
+                    ],
+                },
+                "data": {
+                    "spans": [
+                        {
+                            "trace_id": "tr-fixture",
+                            "span_id": "root-span",
+                            "parent_span_id": None,
+                            "name": "answer",
+                            "start_time_unix_nano": 1_000_000_000,
+                            "end_time_unix_nano": 3_000_000_000,
+                            "status": {"code": "STATUS_CODE_OK"},
+                            "attributes": {
+                                "mlflow.spanType": '"CHAIN"',
+                                "mlflow.spanInputs": '{"question":"Where is Paris?"}',
+                                "mlflow.spanOutputs": '{"answer":"France"}',
+                            },
+                        },
+                        {
+                            "trace_id": "tr-fixture",
+                            "span_id": "tool-span",
+                            "parent_span_id": "root-span",
+                            "name": "lookup",
+                            "start_time_unix_nano": 2_000_000_000,
+                            "end_time_unix_nano": 2_500_000_000,
+                            "status": {"code": "STATUS_CODE_OK"},
+                            "attributes": {
+                                "mlflow.spanType": '"RETRIEVER"',
+                                "mlflow.spanInputs": '{"query":"Paris"}',
+                                "mlflow.spanOutputs": '{"documents":["Paris is in France."]}',
+                            },
+                        },
+                    ]
+                },
+            }
+        ]
+    }
 
 
 @pytest.fixture
@@ -447,6 +569,7 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     core_tools = set(_frontmatter_and_body(_CORE_DIR)[0]["allowed-tools"])
     discover_tools = set(_frontmatter_and_body(_DISCOVER_DIR)[0]["allowed-tools"])
     audit_tools = set(_frontmatter_and_body(_AUDIT_DIR)[0]["allowed-tools"])
+    task_create_tools = set(_frontmatter_and_body(_TASK_CREATE_DIR)[0]["allowed-tools"])
     inspect_tools = set(_frontmatter_and_body(_INSPECT_DIR)[0]["allowed-tools"])
 
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
@@ -455,6 +578,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     )
     assert {"Bash", "Write"} <= audit_tools, (
         f"{_AUDIT_DIR.name} generates and validates audit files; it has {sorted(audit_tools)}"
+    )
+    assert {"Bash", "Write"} <= task_create_tools, (
+        f"{_TASK_CREATE_DIR.name} generates and proves task drafts; it has {sorted(task_create_tools)}"
     )
     assert {"Bash", "Write"} <= inspect_tools, (
         f"{_INSPECT_DIR.name} runs provider commands and saves a report; it has {sorted(inspect_tools)}"
@@ -562,8 +688,409 @@ def test_every_bundled_path_the_skill_names_exists() -> None:
         assert (_DISCOVER_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
 
 
-def test_every_audit_spec_path_the_skill_names_exists() -> None:
-    _, body = _frontmatter_and_body(_AUDIT_DIR)
+def test_task_create_script_the_skill_names_exists() -> None:
+    _, body = _frontmatter_and_body(_TASK_CREATE_DIR)
+    relative = "scripts/task_pipeline.py"
+    assert relative in body
+    assert (_TASK_CREATE_DIR / relative).is_file()
+
+
+def test_mlflow_to_atif_script_the_skill_names_exists() -> None:
+    _, body = _frontmatter_and_body(_MLFLOW_TO_ATIF_DIR)
+    relative = "scripts/convert_mlflow_to_atif.py"
+    assert relative in body
+    assert (_MLFLOW_TO_ATIF_DIR / relative).is_file()
+
+
+def test_mlflow_to_atif_converts_export_to_private_v17_trajectory(tmp_path: Path) -> None:
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(_mlflow_export()), encoding="utf-8")
+    output = tmp_path / "atif"
+
+    result = _run_script(
+        _MLFLOW_TO_ATIF,
+        "--input",
+        str(source),
+        "--output-dir",
+        str(output),
+        "--agent-name",
+        "fixture-agent",
+        "--agent-version",
+        "1.0.0",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    assert summary["converted"] == 1
+    assert summary["schema_version"] == "ATIF-v1.7"
+    assert summary["validated_with_harbor"] is False
+    target = Path(summary["files"][0])
+    trajectory = json.loads(target.read_text(encoding="utf-8"))
+    assert trajectory["schema_version"] == "ATIF-v1.7"
+    assert trajectory["trajectory_id"] == "tr-fixture"
+    assert trajectory["agent"] == {"name": "fixture-agent", "version": "1.0.0"}
+    assert [step["source"] for step in trajectory["steps"]] == ["user", "agent", "agent"]
+    assert trajectory["steps"][0]["extra"]["mlflow_to_atif"]["canonical_role"] == "human_instruction"
+    tool_step = trajectory["steps"][1]
+    assert tool_step["llm_call_count"] == 0
+    assert tool_step["tool_calls"][0] == {
+        "tool_call_id": "tool-span",
+        "function_name": "lookup",
+        "arguments": {"query": "Paris"},
+        "extra": {"mlflow": {"span_type": "RETRIEVER"}},
+    }
+    assert tool_step["observation"]["results"][0]["source_call_id"] == "tool-span"
+    assert trajectory["steps"][2]["message"] == "France"
+    assert trajectory["extra"]["mlflow"]["info"]["assessments"][0]["assessment_id"] == "assessment-1"
+    assert [span["span_id"] for span in trajectory["extra"]["mlflow"]["spans"]] == ["root-span", "tool-span"]
+    assert trajectory["extra"]["mlflow_to_atif"]["loss_codes"] == [
+        "mlflow_span_tree_linearized",
+        "orchestration_parent_not_emitted_as_step",
+    ]
+    if os.name == "posix":
+        assert output.stat().st_mode & 0o777 == 0o700
+        assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_mlflow_to_atif_accepts_one_bare_trace_to_dict_value(tmp_path: Path) -> None:
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(_mlflow_export()["traces"][0]), encoding="utf-8")
+
+    result = _run_script(
+        _MLFLOW_TO_ATIF,
+        "--input",
+        str(source),
+        "--output-dir",
+        str(tmp_path / "atif"),
+        "--agent-name",
+        "fixture-agent",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["converted"] == 1
+
+
+def test_mlflow_to_atif_matches_current_mlflow_external_and_native_trace_ids(tmp_path: Path) -> None:
+    payload = _mlflow_export()
+    external_trace_id = "tr-06429b3cbfa8ac4aee6168aedf62e3fe"
+    payload["traces"][0]["info"]["trace_id"] = external_trace_id
+    for span in payload["traces"][0]["data"]["spans"]:
+        span["trace_id"] = "BkKbPL+orEruYWiu32Lj/g=="
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = _run_script(
+        _MLFLOW_TO_ATIF,
+        "--input",
+        str(source),
+        "--output-dir",
+        str(tmp_path / "atif"),
+        "--agent-name",
+        "fixture-agent",
+    )
+
+    assert result.returncode == 0, result.stderr
+    target = Path(json.loads(result.stdout)["files"][0])
+    assert json.loads(target.read_text(encoding="utf-8"))["trajectory_id"] == external_trace_id
+
+
+@pytest.mark.parametrize(
+    "trace_input",
+    [
+        {"messages": []},
+        {"messages": [{"role": "user", "content": "valid"}, {"content": "missing a role"}]},
+    ],
+)
+def test_mlflow_to_atif_rejects_empty_or_malformed_chat_input(tmp_path: Path, trace_input: dict[str, Any]) -> None:
+    payload = _mlflow_export()
+    payload["traces"][0]["data"]["spans"][0]["attributes"]["mlflow.spanInputs"] = json.dumps(trace_input)
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = _run_script(
+        _MLFLOW_TO_ATIF,
+        "--input",
+        str(source),
+        "--output-dir",
+        str(tmp_path / "atif"),
+        "--agent-name",
+        "fixture-agent",
+    )
+
+    assert result.returncode == 1
+    assert "empty or malformed message list" in result.stderr
+    assert not (tmp_path / "atif").exists()
+
+
+@pytest.mark.parametrize(
+    ("output_mode", "expected_state", "expected_loss_code"),
+    [
+        ("missing", "missing", "missing_tool_output_rendered_as_empty_string"),
+        ("null", "null", "null_tool_output_rendered_as_empty_string"),
+    ],
+)
+def test_mlflow_to_atif_distinguishes_missing_and_null_tool_outputs(
+    tmp_path: Path,
+    output_mode: str,
+    expected_state: str,
+    expected_loss_code: str,
+) -> None:
+    payload = _mlflow_export()
+    attributes = payload["traces"][0]["data"]["spans"][1]["attributes"]
+    if output_mode == "missing":
+        attributes.pop("mlflow.spanOutputs")
+    else:
+        attributes["mlflow.spanOutputs"] = "null"
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = _run_script(
+        _MLFLOW_TO_ATIF,
+        "--input",
+        str(source),
+        "--output-dir",
+        str(tmp_path / "atif"),
+        "--agent-name",
+        "fixture-agent",
+    )
+
+    assert result.returncode == 0, result.stderr
+    target = Path(json.loads(result.stdout)["files"][0])
+    trajectory = json.loads(target.read_text(encoding="utf-8"))
+    tool_result = trajectory["steps"][1]["observation"]["results"][0]
+    assert tool_result["content"] == ""
+    assert tool_result["extra"]["mlflow"]["output_state"] == expected_state
+    assert expected_loss_code in trajectory["extra"]["mlflow_to_atif"]["loss_codes"]
+
+
+def test_mlflow_to_atif_rejects_incomplete_paginated_export(tmp_path: Path) -> None:
+    payload = _mlflow_export()
+    payload["next_page_token"] = "fetch-another-page"
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = _run_script(
+        _MLFLOW_TO_ATIF,
+        "--input",
+        str(source),
+        "--output-dir",
+        str(tmp_path / "atif"),
+        "--agent-name",
+        "fixture-agent",
+    )
+
+    assert result.returncode == 1
+    assert "fetch all pages" in result.stderr
+    assert not (tmp_path / "atif").exists()
+
+
+@pytest.mark.parametrize(
+    ("parent_ids", "expected_error"),
+    [
+        ((None, "missing-span"), "unresolved parent span ID"),
+        (("tool-span", "root-span"), "parent graph contains a cycle"),
+    ],
+)
+def test_mlflow_to_atif_rejects_invalid_parent_graphs(
+    tmp_path: Path,
+    parent_ids: tuple[str | None, str],
+    expected_error: str,
+) -> None:
+    payload = _mlflow_export()
+    spans = payload["traces"][0]["data"]["spans"]
+    for span, parent_id in zip(spans, parent_ids, strict=True):
+        span["parent_span_id"] = parent_id
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = _run_script(
+        _MLFLOW_TO_ATIF,
+        "--input",
+        str(source),
+        "--output-dir",
+        str(tmp_path / "atif"),
+        "--agent-name",
+        "fixture-agent",
+    )
+
+    assert result.returncode == 1
+    assert expected_error in result.stderr
+    assert not (tmp_path / "atif").exists()
+
+
+def test_mlflow_to_atif_rejects_info_and_span_trace_id_mismatch(tmp_path: Path) -> None:
+    payload = _mlflow_export()
+    for span in payload["traces"][0]["data"]["spans"]:
+        span["trace_id"] = "a-different-trace"
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = _run_script(
+        _MLFLOW_TO_ATIF,
+        "--input",
+        str(source),
+        "--output-dir",
+        str(tmp_path / "atif"),
+        "--agent-name",
+        "fixture-agent",
+    )
+
+    assert result.returncode == 1
+    assert "info trace ID does not match its spans" in result.stderr
+    assert not (tmp_path / "atif").exists()
+
+
+def test_mlflow_to_atif_requires_recoverable_human_input(tmp_path: Path) -> None:
+    payload = _mlflow_export()
+    payload["traces"][0]["info"]["trace_metadata"].pop("mlflow.traceInputs")
+    payload["traces"][0]["data"]["spans"][0]["attributes"].pop("mlflow.spanInputs")
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = _run_script(
+        _MLFLOW_TO_ATIF,
+        "--input",
+        str(source),
+        "--output-dir",
+        str(tmp_path / "atif"),
+        "--agent-name",
+        "fixture-agent",
+    )
+
+    assert result.returncode == 1
+    assert "no recoverable root input" in result.stderr
+    assert not (tmp_path / "atif").exists()
+
+
+def test_mlflow_to_atif_refuses_to_overwrite_existing_output(tmp_path: Path) -> None:
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(_mlflow_export()), encoding="utf-8")
+    args = (
+        "--input",
+        str(source),
+        "--output-dir",
+        str(tmp_path / "atif"),
+        "--agent-name",
+        "fixture-agent",
+    )
+
+    first = _run_script(_MLFLOW_TO_ATIF, *args)
+    second = _run_script(_MLFLOW_TO_ATIF, *args)
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 1
+    assert "refusing to overwrite" in second.stderr
+
+
+def test_mlflow_to_atif_no_overwrite_survives_concurrent_writer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    converter = _load_mlflow_to_atif()
+    output = tmp_path / "atif"
+    trajectory = {"trajectory_id": "race"}
+    target = output / converter._safe_filename("race")
+    real_link = converter.os.link
+
+    def publish_competing_file(source: Path, destination: Path) -> None:
+        Path(destination).write_text("concurrent writer\n", encoding="utf-8")
+        real_link(source, destination)
+
+    monkeypatch.setattr(converter.os, "link", publish_competing_file)
+
+    with pytest.raises(FileExistsError):
+        converter._write_trajectories([trajectory], output_dir=output, overwrite=False)
+
+    assert target.read_text(encoding="utf-8") == "concurrent writer\n"
+    assert sorted(path.name for path in output.iterdir()) == [target.name]
+
+
+@pytest.mark.parametrize("tracking_uri", ["http://mlflow.example.com", "http://192.0.2.10:5000"])
+def test_mlflow_to_atif_rejects_remote_cleartext_tracking_uri(
+    monkeypatch: pytest.MonkeyPatch,
+    tracking_uri: str,
+) -> None:
+    converter = _load_mlflow_to_atif()
+    monkeypatch.delenv("MLFLOW_TRACKING_INSECURE_TLS", raising=False)
+
+    with pytest.raises(ValueError, match="must use HTTPS"):
+        converter._validate_mlflow_transport(tracking_uri)
+
+
+def test_mlflow_to_atif_rejects_disabled_tls_verification(monkeypatch: pytest.MonkeyPatch) -> None:
+    converter = _load_mlflow_to_atif()
+    monkeypatch.setenv("MLFLOW_TRACKING_INSECURE_TLS", "true")
+
+    with pytest.raises(ValueError, match="is not allowed"):
+        converter._validate_mlflow_transport("https://mlflow.example.com")
+
+
+def test_mlflow_to_atif_fetches_all_client_pages_without_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
+    converter = _load_mlflow_to_atif()
+    calls: list[dict[str, Any]] = []
+
+    class Page(list):
+        def __init__(self, values: list[dict[str, Any]], token: str | None) -> None:
+            super().__init__(values)
+            self.token = token
+
+    class Client:
+        def __init__(self, tracking_uri: str) -> None:
+            assert tracking_uri == "https://mlflow.example.com"
+
+        def search_traces(self, **kwargs: Any) -> Page:
+            assert os.environ["MLFLOW_ALLOW_HTTP_REDIRECTS"] == "false"
+            calls.append(kwargs)
+            if kwargs["page_token"] is None:
+                return Page([{"info": {"trace_id": "one"}, "data": {"spans": []}}], "next")
+            return Page([{"info": {"trace_id": "two"}, "data": {"spans": []}}], None)
+
+    fake_mlflow = types.SimpleNamespace(MlflowClient=Client)
+    monkeypatch.setattr(converter.importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(converter.importlib, "import_module", lambda name: fake_mlflow)
+    monkeypatch.delenv("MLFLOW_TRACKING_INSECURE_TLS", raising=False)
+    monkeypatch.setenv("MLFLOW_ALLOW_HTTP_REDIRECTS", "true")
+    args = types.SimpleNamespace(
+        tracking_uri="https://mlflow.example.com",
+        experiment_id="experiment",
+        since=converter.datetime(2026, 1, 1, tzinfo=converter.timezone.utc),
+        until=converter.datetime(2026, 1, 2, tzinfo=converter.timezone.utc),
+    )
+
+    result = converter._fetch_mlflow(args)
+
+    assert [trace["info"]["trace_id"] for trace in result["traces"]] == ["one", "two"]
+    assert [call["page_token"] for call in calls] == [None, "next"]
+    assert os.environ["MLFLOW_ALLOW_HTTP_REDIRECTS"] == "true"
+
+
+@_needs_harbor
+def test_mlflow_to_atif_output_validates_with_harbor(tmp_path: Path) -> None:
+    source = tmp_path / "mlflow.json"
+    source.write_text(json.dumps(_mlflow_export()), encoding="utf-8")
+
+    result = _run_script(
+        _MLFLOW_TO_ATIF,
+        "--input",
+        str(source),
+        "--output-dir",
+        str(tmp_path / "atif"),
+        "--agent-name",
+        "fixture-agent",
+        "--validate-with-harbor",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
+    assert summary["schema_version"] == "ATIF-v1.7"
+    assert summary["validated_with_harbor"] is True
+
+
+def test_every_audit_spec_path_the_skill_or_reference_readme_names_exists() -> None:
+    _, skill_body = _frontmatter_and_body(_AUDIT_DIR)
+    readme_body = (_AUDIT_DIR / "scripts" / "audit_spec" / "README.md").read_text(encoding="utf-8")
+    docs = f"{skill_body}\n{readme_body}"
+    assert "scripts/audit_spec/README.md" in skill_body
     for relative in (
         "scripts/audit_spec/README.md",
         "scripts/audit_spec/generate.py",
@@ -572,19 +1099,26 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
         "scripts/audit_spec/validate.py",
         "scripts/audit_spec/_schema.py",
         "scripts/audit_spec/_markdown.py",
+        "scripts/audit_spec/measurements/capabilities.py",
+        "scripts/audit_spec/measurements/trace_tools.py",
         "scripts/audit_spec/measurements/tool_calls.py",
         "schemas/audit.schema.json",
+        "schemas/audit_capability_judgments.schema.json",
+        "schemas/audit_capabilities_details.schema.json",
         "schemas/audit_coverage.schema.json",
         "schemas/audit_coverage_report.schema.json",
         "schemas/audit_tool_calls_details.schema.json",
+        "examples/schemas/capability_judgments.json",
+        "examples/schemas/capabilities.coverage.json",
+        "examples/schemas/capabilities.details.json",
         "examples/schemas/coverage_report.json",
         "examples/schemas/tool_calls.coverage.json",
         "examples/schemas/tool_calls.details.json",
         "requirements.txt",
         "templates/audit.md",
     ):
-        assert relative in body, f"SKILL.md no longer documents {relative}"
-        assert (_AUDIT_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+        assert relative in docs, f"audit docs no longer document {relative}"
+        assert (_AUDIT_DIR / relative).exists(), f"audit docs name {relative}, which is missing on disk"
 
 
 def test_audit_skill_reads_schema_before_drafting_items() -> None:
@@ -666,6 +1200,8 @@ def test_audit_json_schema_is_valid() -> None:
     (
         _AUDIT_COVERAGE_JSON_SCHEMA,
         _AUDIT_COVERAGE_REPORT_JSON_SCHEMA,
+        _AUDIT_CAPABILITY_JUDGMENTS_JSON_SCHEMA,
+        _AUDIT_CAPABILITIES_DETAILS_JSON_SCHEMA,
         _AUDIT_TOOL_CALLS_DETAILS_JSON_SCHEMA,
     ),
 )
@@ -678,9 +1214,12 @@ def test_audit_measurement_json_schemas_are_valid(schema_path: Path) -> None:
 @pytest.mark.parametrize(
     ("schema_path", "example_path"),
     (
-        (_AUDIT_COVERAGE_JSON_SCHEMA, _AUDIT_COVERAGE_EXAMPLE),
+        (_AUDIT_COVERAGE_JSON_SCHEMA, _AUDIT_TOOL_CALLS_COVERAGE_EXAMPLE),
+        (_AUDIT_COVERAGE_JSON_SCHEMA, _AUDIT_CAPABILITIES_COVERAGE_EXAMPLE),
         (_AUDIT_COVERAGE_REPORT_JSON_SCHEMA, _AUDIT_COVERAGE_REPORT_EXAMPLE),
+        (_AUDIT_CAPABILITY_JUDGMENTS_JSON_SCHEMA, _AUDIT_CAPABILITY_JUDGMENTS_EXAMPLE),
         (_AUDIT_TOOL_CALLS_DETAILS_JSON_SCHEMA, _AUDIT_TOOL_CALLS_DETAILS_EXAMPLE),
+        (_AUDIT_CAPABILITIES_DETAILS_JSON_SCHEMA, _AUDIT_CAPABILITIES_DETAILS_EXAMPLE),
     ),
 )
 def test_audit_measurement_schema_examples_validate(schema_path: Path, example_path: Path) -> None:
@@ -690,6 +1229,40 @@ def test_audit_measurement_schema_examples_validate(schema_path: Path, example_p
     example = json.loads(example_path.read_text(encoding="utf-8"))
 
     Draft202012Validator(schema).validate(example)
+
+
+def test_audit_capabilities_details_schema_rejects_invalid_measurement_status_pair() -> None:
+    from jsonschema import Draft202012Validator
+    from jsonschema.exceptions import ValidationError
+
+    schema = json.loads(_AUDIT_CAPABILITIES_DETAILS_JSON_SCHEMA.read_text(encoding="utf-8"))
+    example = json.loads(_AUDIT_CAPABILITIES_DETAILS_EXAMPLE.read_text(encoding="utf-8"))
+    example["capability_results"]["account_recovery"]["evidence_results"][1]["status"] = "unjudged"
+
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(example)
+
+
+@pytest.mark.parametrize(
+    ("covered", "missing_reasons"),
+    (
+        (True, ["missing_required_tool"]),
+        (False, []),
+    ),
+)
+def test_audit_capabilities_details_schema_rejects_inconsistent_covered_reasons(
+    covered: bool, missing_reasons: list[str]
+) -> None:
+    from jsonschema import Draft202012Validator
+    from jsonschema.exceptions import ValidationError
+
+    schema = json.loads(_AUDIT_CAPABILITIES_DETAILS_JSON_SCHEMA.read_text(encoding="utf-8"))
+    example = json.loads(_AUDIT_CAPABILITIES_DETAILS_EXAMPLE.read_text(encoding="utf-8"))
+    example["capability_results"]["account_recovery"]["covered"] = covered
+    example["capability_results"]["account_recovery"]["missing_reasons"] = missing_reasons
+
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(example)
 
 
 def test_audit_file_with_matching_source_digest_validates(tmp_path: Path) -> None:
@@ -1493,6 +2066,459 @@ def test_audit_measure_reports_missing_tool_calls_as_not_covered(tmp_path: Path)
 
 
 @_needs_harbor
+def test_audit_measure_omits_whitespace_only_optional_trace_identifiers(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    trace.write_text(
+        json.dumps(
+            {
+                "schema_version": "ATIF-v1.7",
+                "session_id": "   ",
+                "trajectory_id": "   ",
+                "agent": {"name": "example-agent", "version": "1.0.0"},
+                "steps": [
+                    {"step_id": 1, "source": "user", "message": "Help me recover my account."},
+                    {
+                        "step_id": 2,
+                        "source": "agent",
+                        "message": "I will inspect the account.",
+                        "tool_calls": [
+                            {"tool_call_id": "   ", "function_name": "  customer.lookup  ", "arguments": {}}
+                        ],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    assert summary["run_id"].startswith("trace-sha256-")
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", summary["run_id"])
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+
+    assert details["covered"] == ["customer.lookup"]
+    assert details["matches"]["customer.lookup"] == [
+        {
+            "step_id": 2,
+            "tool": "customer.lookup",
+            "trajectory_path": "$",
+        }
+    ]
+
+
+@_needs_harbor
+def test_audit_measure_reports_capability_coverage_from_tool_call_evidence(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, _without_user_intent_evidence)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    coverage = json.loads((measurement_dir / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert summary["methods"] == ["capabilities"]
+    assert summary["measurements"][0]["item_kind"] == "capability"
+    assert summary["measurements"][0]["covered"] == ["account_recovery"]
+    assert coverage["method"] == {"name": "capabilities"}
+    assert coverage["item_kind"] == "capability"
+    assert coverage["item_kind_count"] == 1
+    assert coverage["covered"] == ["account_recovery"]
+    assert details["schema"] == "nemo.eval_author.audit_capabilities_details.v1"
+    assert details["covered"] == ["account_recovery"]
+    assert details["missing"] == []
+    assert details["judgment_input"] == {"provided": False, "judgment_count": 0}
+    assert details["tool_call_counts"] == {"customer.lookup": 1}
+    assert capability["covered"] is True
+    assert capability["missing_reasons"] == []
+    assert capability["required_tool_results"] == [
+        {
+            "tool": "customer.lookup",
+            "status": "satisfied",
+            "matches": [
+                {
+                    "step_id": 2,
+                    "tool": "customer.lookup",
+                    "tool_call_id": "root-call-1",
+                    "trajectory_id": "root-trajectory",
+                    "trajectory_path": "$",
+                }
+            ],
+        }
+    ]
+    assert capability["evidence_results"] == [
+        {
+            "kind": "tool_call",
+            "evidence_index": 0,
+            "description": "Agent grounds the request in customer profile data.",
+            "tool": "customer.lookup",
+            "measurement": "deterministic",
+            "status": "satisfied",
+            "matches": [
+                {
+                    "step_id": 2,
+                    "tool": "customer.lookup",
+                    "tool_call_id": "root-call-1",
+                    "trajectory_id": "root-trajectory",
+                    "trajectory_path": "$",
+                }
+            ],
+        }
+    ]
+
+
+@_needs_harbor
+def test_audit_measure_reports_capability_missing_required_tool(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, _without_user_intent_evidence)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["ticket.create"])
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    coverage = json.loads((measurement_dir / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert summary["measurements"][0]["covered"] == []
+    assert coverage["covered"] == []
+    assert details["covered"] == []
+    assert details["missing"] == ["account_recovery"]
+    assert details["tool_call_counts"] == {"ticket.create": 1}
+    assert capability["covered"] is False
+    assert capability["required_tool_results"][0]["status"] == "missing"
+    assert capability["evidence_results"][0]["status"] == "missing"
+    assert capability["missing_reasons"] == ["missing_required_tool", "missing_tool_call_evidence"]
+
+
+@_needs_harbor
+def test_audit_measure_dedupes_capability_required_tools(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: _without_user_intent_evidence(text).replace(
+            "    required_tools:\n      - customer.lookup\n",
+            "    required_tools:\n      - customer.lookup\n      - customer.lookup\n",
+            1,
+        ),
+    )
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert len(capability["required_tool_results"]) == 1
+    assert capability["required_tool_results"][0]["tool"] == "customer.lookup"
+    assert capability["covered"] is True
+
+
+@_needs_harbor
+def test_audit_measure_reports_capability_unjudged_evidence_without_covering(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    coverage = json.loads((measurement_dir / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert summary["measurements"][0]["covered"] == []
+    assert coverage["covered"] == []
+    assert details["covered"] == []
+    assert details["missing"] == ["account_recovery"]
+    assert details["judgment_input"] == {"provided": False, "judgment_count": 0}
+    assert capability["covered"] is False
+    assert capability["required_tool_results"][0]["status"] == "satisfied"
+    assert capability["evidence_results"][0] == {
+        "kind": "user_intent",
+        "evidence_index": 0,
+        "description": "User is trying to recover account access.",
+        "measurement": "judgment_required",
+        "status": "unjudged",
+    }
+    assert capability["evidence_results"][1]["status"] == "satisfied"
+    assert capability["evidence_results"][1]["measurement"] == "deterministic"
+    assert capability["missing_reasons"] == ["unjudged_evidence"]
+
+
+@_needs_harbor
+def test_audit_measure_uses_capability_judgments_for_non_tool_evidence(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments, trace=trace)
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    coverage = json.loads((measurement_dir / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert summary["measurements"][0]["covered"] == ["account_recovery"]
+    assert coverage["covered"] == ["account_recovery"]
+    assert details["covered"] == ["account_recovery"]
+    assert details["missing"] == []
+    assert details["judgment_input"] == {
+        "provided": True,
+        "schema": "nemo.eval_author.audit_capability_judgments.v1",
+        "trace_sha256": _digest(trace),
+        "judged_by": "eval-author-audit skill",
+        "judgment_count": 1,
+    }
+    assert capability["covered"] is True
+    assert capability["missing_reasons"] == []
+    assert capability["evidence_results"][0] == {
+        "kind": "user_intent",
+        "evidence_index": 0,
+        "description": "User is trying to recover account access.",
+        "measurement": "judged",
+        "status": "satisfied",
+        "confidence": "high",
+        "rationale": "The trace shows the user asking for help recovering account access.",
+        "supporting_trace_refs": ["$.steps[0].message"],
+    }
+    assert capability["evidence_results"][1]["measurement"] == "deterministic"
+    assert capability["evidence_results"][1]["status"] == "satisfied"
+
+
+@_needs_harbor
+def test_audit_measure_capability_judgment_does_not_override_missing_tool_evidence(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace)
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments, trace=trace)
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    coverage = json.loads((measurement_dir / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert coverage["covered"] == []
+    assert details["covered"] == []
+    assert capability["covered"] is False
+    assert capability["required_tool_results"][0]["status"] == "missing"
+    assert capability["evidence_results"][0]["status"] == "satisfied"
+    assert capability["evidence_results"][0]["measurement"] == "judged"
+    assert capability["evidence_results"][1]["status"] == "missing"
+    assert capability["evidence_results"][1]["measurement"] == "deterministic"
+    assert capability["missing_reasons"] == ["missing_required_tool", "missing_tool_call_evidence"]
+
+
+@_needs_harbor
+def test_audit_measure_rejects_stale_capability_judgments_without_writing(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments, trace=trace, description="Old user-intent wording.")
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "description does not match audit evidence description" in report["error"]
+    assert not out_dir.exists()
+
+
+@_needs_harbor
+def test_audit_measure_rejects_capability_judgments_from_another_trace(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    judged_trace = tmp_path / "judged-trajectory.json"
+    _write_atif_trace(judged_trace, tool_calls=["customer.lookup"])
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments, trace=judged_trace)
+    measured_trace = tmp_path / "measured-trajectory.json"
+    _write_atif_trace(measured_trace, tool_calls=["customer.lookup"], trajectory_id="different-trajectory")
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(measured_trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "does not match measured trace" in report["error"]
+    assert not out_dir.exists()
+
+
+@_needs_harbor
+def test_audit_measure_batches_tool_call_and_capability_methods(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, _without_user_intent_evidence)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "tool_calls,capabilities",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    assert summary["methods"] == ["tool_calls", "capabilities"]
+    assert summary["measurements"][0]["item_kind"] == "tool"
+    assert summary["measurements"][1]["item_kind"] == "capability"
+    assert (_measurement_dir(out_dir, "account-recovery", "root-trajectory") / "coverage.json").exists()
+    assert (
+        _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities") / "coverage.json"
+    ).exists()
+
+
+@_needs_harbor
 def test_audit_measure_reads_harbor_trial_metadata(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     trial_dir = tmp_path / "job" / "account-recovery__abc"
@@ -1678,6 +2704,66 @@ def test_audit_measure_rejects_unknown_measurement_method_before_trace_load(tmp_
     assert not out_dir.exists()
 
 
+def test_audit_measure_rejects_capability_judgments_without_capability_method(tmp_path: Path) -> None:
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments)
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(tmp_path / "missing-audit.md"),
+        "--trace",
+        str(tmp_path / "missing-trace.json"),
+        "--measure",
+        "tool_calls",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "--capability-judgments requires --measure capabilities" in report["error"]
+    assert not out_dir.exists()
+
+
+def test_audit_measure_rejects_tool_call_capability_judgments_before_trace_load(tmp_path: Path) -> None:
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(
+        judgments,
+        evidence_index=1,
+        kind="tool_call",
+        description="Agent grounds the request in customer profile data.",
+    )
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(tmp_path / "missing-audit.md"),
+        "--trace",
+        str(tmp_path / "missing-trace.json"),
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "capability judgments failed its JSON Schema" in report["error"]
+    assert "tool_call" in report["error"]
+    assert not out_dir.exists()
+
+
 @pytest.mark.parametrize("measure_value", ("", ",,"))
 def test_audit_measure_rejects_empty_measure_selection_before_trace_load(tmp_path: Path, measure_value: str) -> None:
     out_dir = tmp_path / ".eval-author" / "audit-measurements"
@@ -1722,7 +2808,7 @@ def test_audit_measure_reports_write_failures_as_environment_json(
         measure_module.MeasurementMethod(
             name="tool_calls",
             details_schema="test.details",
-            measure=lambda audit, trajectory: {
+            measure=lambda audit, trajectory, inputs: {
                 "item_kind": "tool",
                 "covered": [],
                 "details": {"schema": "test.details"},
@@ -1778,7 +2864,7 @@ def test_audit_measure_reports_unknown_method_item_kind_as_measurement_json(
         measure_module.MeasurementMethod(
             name="boundary",
             details_schema="test.details",
-            measure=lambda audit, trajectory: {"item_kind": "boundary", "covered": [], "details": {}},
+            measure=lambda audit, trajectory, inputs: {"item_kind": "boundary", "covered": [], "details": {}},
         ),
     )
 
@@ -1902,6 +2988,50 @@ def test_audit_report_aggregates_coverage_and_formats_generation_gaps(tmp_path: 
     assert (
         "identity is not verified" in gaps_by_name["account_recovery_unverified_identity"]["audit_item"]["description"]
     )
+
+
+def test_audit_report_aggregates_capability_coverage(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    coverage_dir = tmp_path / ".eval-author" / "audit-measurements"
+    tool_coverage_path = _measurement_dir(coverage_dir, "account-recovery", "trial-001") / "coverage.json"
+    capability_coverage_path = (
+        _measurement_dir(coverage_dir, "account-recovery", "trial-001", method="capabilities") / "coverage.json"
+    )
+    _write_coverage(tool_coverage_path, audit=audit, covered=["customer.lookup"])
+    _write_coverage(
+        capability_coverage_path,
+        audit=audit,
+        item_kind="capability",
+        method="capabilities",
+        covered=["account_recovery"],
+    )
+    out = tmp_path / ".eval-author" / "audit-coverage-report.json"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_REPORT,
+        "--audit",
+        str(audit),
+        "--coverage-dir",
+        str(coverage_dir),
+        "--out",
+        str(out),
+    )
+
+    report = json.loads(out.read_text(encoding="utf-8"))
+    gaps_by_name = {item["name"]: item for item in report["uncovered_items"]}
+
+    assert code == 0, stderr or summary
+    assert summary["measured_kinds"] == ["capability", "tool"]
+    assert summary["covered_count"] == 2
+    assert summary["uncovered"] == ["account_recovery_unverified_identity"]
+    assert report["covered"] == ["customer.lookup", "account_recovery"]
+    assert report["coverage"]["by_kind"]["capability"] == {
+        "item_count": 1,
+        "covered_count": 1,
+        "uncovered_count": 0,
+    }
+    assert "account_recovery" not in gaps_by_name
+    assert gaps_by_name["account_recovery_unverified_identity"]["reason"] == "not_measured_by_any_method"
 
 
 def test_audit_report_dedupes_generation_needed_tools(tmp_path: Path) -> None:

@@ -46,7 +46,8 @@ def main(argv: list[str] | None = None) -> int:
         "  python -m nmp.customization_common.tasks.file_io --service-source automodel --service-name customizer\n"
         "  python -m nmp.customization_common.tasks.model_entity --service-name customizer\n\n"
         "GPU training uses backend-specific training images:\n"
-        "  python -m nmp.automodel.tasks.training\n",
+        "  python -m nmp.automodel.tasks.training\n"
+        "  python -m nmp.automodel.tasks.retrieval_mine\n",
     )
     parser.add_argument(
         "--list",

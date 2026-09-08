@@ -214,7 +214,7 @@ class TestRun:
                 ).model_dump(mode="json"),
             )
 
-        assert result == {"image": "my-agent-abc123:26.08.21", "agent": "my-agent"}
+        assert result == {"image": "my-agent-abc123:26.08.21", "agent": "my-agent", "published": ""}
         assert captured["workspace"] == "default"
         assert captured["rendered"] == FABRIC_CONFIG
         assert captured["staged_skill"], "agent.yaml must be written after staging clears the tree"
@@ -260,7 +260,11 @@ class TestRun:
 
         name, path = ctx.results.save.call_args.args
         assert name == PACKAGE_RESULT_NAME
-        assert json.loads(Path(path).read_text()) == {"image": "my-agent:1.0", "agent": "my-agent"}
+        assert json.loads(Path(path).read_text()) == {
+            "image": "my-agent:1.0",
+            "agent": "my-agent",
+            "published": "",
+        }
         assert result["status"] == "completed"
         assert result["image"] == "my-agent:1.0"
         assert result[PACKAGE_RESULT_NAME] == {"name": PACKAGE_RESULT_NAME}
@@ -477,3 +481,180 @@ class TestTagNamespace:
                     job_name=None,
                     async_sdk=MagicMock(),
                 )
+
+
+class TestPublish:
+    @staticmethod
+    def _run(spec: PackageAgentSpec, push: Any, *, image_id: str = "sha256:deadbeef", resolve_id: Any = None) -> dict:
+        async def _stage(**kwargs: Any) -> None:
+            return None
+
+        with (
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage),
+            patch("nemo_agents_plugin.container.builder.build_fabric_agent_image", lambda p, **k: "my-agent:1.0"),
+            patch("nemo_agents_plugin.container.builder.resolve_image_id", resolve_id or (lambda tag: image_id)),
+            patch("nemo_agents_plugin.container.publisher.docker_push", push),
+        ):
+            return PackageAgentJob().run(spec.model_dump(mode="json"))
+
+    def test_no_registry_skips_the_push(self) -> None:
+        push = MagicMock()
+        resolve_id = MagicMock()
+        result = self._run(
+            PackageAgentSpec(agent="my-agent", workspace="default", agent_config=FABRIC_CONFIG),
+            push,
+            resolve_id=resolve_id,
+        )
+
+        push.assert_not_called()
+        # No registry to push to, so there's nothing to resolve an image ID for either.
+        resolve_id.assert_not_called()
+        assert result["published"] == ""
+        assert result["image"] == "my-agent:1.0"
+
+    def test_registry_pushes_the_built_tag(self) -> None:
+        push = MagicMock(return_value="nvcr.io/my-org/my-agent:1.0")
+        result = self._run(
+            PackageAgentSpec(
+                agent="my-agent", workspace="default", agent_config=FABRIC_CONFIG, registry="nvcr.io/my-org"
+            ),
+            push,
+        )
+
+        assert push.call_args.kwargs["local_tag"] == "my-agent:1.0"
+        assert push.call_args.kwargs["registry"] == "nvcr.io/my-org"
+        assert result["published"] == "nvcr.io/my-org/my-agent:1.0"
+
+    def test_push_publishes_by_resolved_image_id_not_the_mutable_tag(self) -> None:
+        """Guards the tag/push race: a concurrent job could rebind the shared local tag
+
+        between build and push, so the push must address the image by the ID resolved
+        right after *this* job's own build — not by the (daemon-global) tag name.
+        """
+        push = MagicMock(return_value="nvcr.io/my-org/my-agent:1.0")
+        self._run(
+            PackageAgentSpec(
+                agent="my-agent", workspace="default", agent_config=FABRIC_CONFIG, registry="nvcr.io/my-org"
+            ),
+            push,
+            image_id="sha256:abc123",
+        )
+
+        assert push.call_args.kwargs["source_ref"] == "sha256:abc123"
+        # local_tag is still forwarded — used for the default push_tag / progress text.
+        assert push.call_args.kwargs["local_tag"] == "my-agent:1.0"
+
+    def test_explicit_push_tag_is_forwarded(self) -> None:
+        push = MagicMock(return_value="nvcr.io/my-org/nemo-agents/default/renamed:2.0")
+        self._run(
+            PackageAgentSpec(
+                agent="my-agent",
+                workspace="default",
+                agent_config=FABRIC_CONFIG,
+                registry="nvcr.io/my-org",
+                push_tag="nvcr.io/my-org/nemo-agents/default/renamed:2.0",
+            ),
+            push,
+        )
+
+        assert push.call_args.kwargs["push_tag"] == "nvcr.io/my-org/nemo-agents/default/renamed:2.0"
+
+    def test_push_failure_propagates(self) -> None:
+        from nemo_agents_plugin.container.errors import ImagePublishError
+
+        push = MagicMock(side_effect=ImagePublishError("Docker push failed: denied"))
+        with pytest.raises(ImagePublishError, match="denied"):
+            self._run(
+                PackageAgentSpec(
+                    agent="my-agent", workspace="default", agent_config=FABRIC_CONFIG, registry="nvcr.io/my-org"
+                ),
+                push,
+            )
+
+
+class TestPublishInputValidation:
+    def test_push_tag_without_registry_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="requires 'registry'"):
+            PackageAgentInput(agent="my-agent", push_tag="nvcr.io/my-org/x:1.0")
+
+    @pytest.mark.parametrize("field", ["registry", "push_tag"])
+    def test_control_characters_are_rejected(self, field: str) -> None:
+        payload: dict[str, Any] = {"registry": "nvcr.io/my-org", field: "nvcr.io/my-org\nRUN echo pwned"}
+        with pytest.raises(ValidationError):
+            PackageAgentInput(agent="my-agent", **payload)
+
+    def test_realistic_references_are_accepted(self) -> None:
+        spec = PackageAgentInput(
+            agent="my-agent", registry="localhost:5000/team", push_tag="localhost:5000/team/my-agent:1.0"
+        )
+
+        assert spec.registry == "localhost:5000/team"
+
+
+class TestPushTagWorkspaceScoping:
+    def test_push_tag_outside_the_workspace_namespace_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be nested under 'nvcr.io/my-org/nemo-agents/default/'"):
+            PackageAgentSpec(
+                agent="my-agent",
+                workspace="default",
+                agent_config=FABRIC_CONFIG,
+                registry="nvcr.io/my-org",
+                push_tag="nvcr.io/my-org/renamed:2.0",
+            )
+
+    def test_push_tag_under_another_workspace_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be nested under 'nvcr.io/my-org/nemo-agents/default/'"):
+            PackageAgentSpec(
+                agent="my-agent",
+                workspace="default",
+                agent_config=FABRIC_CONFIG,
+                registry="nvcr.io/my-org",
+                push_tag="nvcr.io/my-org/nemo-agents/other-workspace/my-agent:1.0",
+            )
+
+    def test_push_tag_under_a_different_registry_is_rejected(self) -> None:
+        """The workspace-namespace segment alone isn't enough — push_tag must also start
+
+        with the declared 'registry', or it could silently redirect to a different
+        registry the host happens to also be authenticated to.
+        """
+        with pytest.raises(ValidationError, match="must be nested under 'nvcr.io/my-org/nemo-agents/default/'"):
+            PackageAgentSpec(
+                agent="my-agent",
+                workspace="default",
+                agent_config=FABRIC_CONFIG,
+                registry="nvcr.io/my-org",
+                push_tag="other-registry.example.com/nemo-agents/default/renamed:2.0",
+            )
+
+    def test_push_tag_with_extra_nesting_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be nested under 'nvcr.io/my-org/nemo-agents/default/'"):
+            PackageAgentSpec(
+                agent="my-agent",
+                workspace="default",
+                agent_config=FABRIC_CONFIG,
+                registry="nvcr.io/my-org",
+                push_tag="nvcr.io/my-org/nemo-agents/default/nested/renamed:2.0",
+            )
+
+    def test_push_tag_scoped_to_the_workspace_is_accepted(self) -> None:
+        spec = PackageAgentSpec(
+            agent="my-agent",
+            workspace="default",
+            agent_config=FABRIC_CONFIG,
+            registry="nvcr.io/my-org",
+            push_tag="nvcr.io/my-org/nemo-agents/default/renamed:2.0",
+        )
+
+        assert spec.push_tag == "nvcr.io/my-org/nemo-agents/default/renamed:2.0"
+
+    def test_push_tag_without_workspace_is_not_checked(self) -> None:
+        """No workspace to scope against yet (e.g. constructing a bare PackageAgentInput)."""
+        spec = PackageAgentSpec(
+            agent="my-agent",
+            agent_config=FABRIC_CONFIG,
+            registry="nvcr.io/my-org",
+            push_tag="nvcr.io/my-org/renamed:2.0",
+        )
+
+        assert spec.push_tag == "nvcr.io/my-org/renamed:2.0"

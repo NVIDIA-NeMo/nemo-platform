@@ -16,6 +16,9 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 from nemo_platform import ConflictError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.core.models.config import ControllerConfig, ModelsConfig
 from nmp.core.models.controllers.backends.registry import BackendRegistry
 from nmp.testing import ClientContext
@@ -32,7 +35,9 @@ def ensure_workspace_exists(test_clients: ClientContext, workspace_id: str) -> N
         workspace_id: The workspace ID to ensure exists
     """
     try:
-        test_clients.sdk.workspaces.create(name=workspace_id, description=f"Test workspace: {workspace_id}")
+        client_from_platform(test_clients.sdk, WorkspacesClient).create_workspace(
+            body=CreateWorkspaceRequest(name=workspace_id, description=f"Test workspace: {workspace_id}")
+        ).data()
     except ConflictError:
         # Workspace already exists
         pass

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,7 @@ from nmp.customization_common.service.constants import (
 )
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.rl.app.constants import NMP_JOB_STORAGE_PVC_ENVVAR
-from nmp.rl.app.jobs.training.schemas import GRPOConfig, TrainingStepConfig
+from nmp.rl.app.jobs.training.schemas import BatchingStrategy, GRPOConfig, PolicyBackend, TrainingStepConfig
 from nmp.rl.entities.values import FinetuningType
 from nmp.rl.tasks.training.backends.nemo_rl.dpo_config import (
     _adapt_precision,
@@ -48,9 +49,11 @@ def _build_lora_cfg(customizer_config: TrainingStepConfig) -> dict[str, Any]:
     enabled = customizer_config.training.finetuning_type == FinetuningType.LORA
     lora = customizer_config.training.lora
     tp = customizer_config.parallelism.tensor_parallel_size
-    use_triton = True if lora is None else lora.use_triton
-    if tp > 1:
-        use_triton = False
+    # Triton is the faster LoRA path but only works at TP 1 (its kernel has no DTensor
+    # handling, and NeMo-RL asserts on the pairing). Unset means "pick for me"; explicit
+    # values pass through, with true + TP > 1 already rejected in GRPOTraining.
+    requested_triton = None if lora is None else lora.use_triton
+    use_triton = (tp == 1) if requested_triton is None else requested_triton
     target_modules = list(lora.target_modules) if lora and lora.target_modules else []
     exclude_modules = list(lora.exclude_modules) if lora and lora.exclude_modules else []
     return {
@@ -76,13 +79,14 @@ def _build_dtensor_cfg(
 ) -> dict[str, Any]:
     """Map parallelism and backend settings onto NeMo-RL's policy.dtensor_cfg.
 
-    LoRA, expert parallelism and ``automodel_kwargs`` are implemented only by
-    ``DTensorPolicyWorkerV2``, so requesting any of them sets ``_v2``.
+    ``_v2`` follows ``parallelism.policy_backend`` and nothing else. The V2-only features
+    (LoRA, expert parallelism, ``automodel_kwargs``) are rejected against ``dtensor`` in
+    :class:`GRPOTraining` rather than silently upgraded here.
     """
     parallelism = customizer_config.parallelism
     expert_parallel_size = parallelism.expert_parallel_size
     automodel_kwargs = grpo_hp.automodel_kwargs
-    needs_v2 = lora_cfg["enabled"] or expert_parallel_size > 1 or bool(automodel_kwargs)
+    use_v2 = parallelism.policy_backend is PolicyBackend.AUTOMODEL
 
     dtensor_cfg: dict[str, Any] = {
         "enabled": True,
@@ -112,9 +116,62 @@ def _build_dtensor_cfg(
         dtensor_cfg["automodel_kwargs"] = dict(automodel_kwargs)
     if lora_cfg["enabled"]:
         dtensor_cfg["lora_cfg"] = lora_cfg
-    if needs_v2:
+    if use_v2:
         dtensor_cfg["_v2"] = True
     return dtensor_cfg
+
+
+def _build_batching_config(
+    customizer_config: TrainingStepConfig,
+    grpo_hp: GRPOConfig,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return the ``(dynamic_batching, sequence_packing)`` blocks for ``policy``.
+
+    At most one is enabled; ``BatchingStrategy`` makes the combination NeMo-RL rejects
+    unrepresentable. The token budgets are computed here because NeMo-RL's recipes derive
+    them with OmegaConf interpolation, and this dict never passes through OmegaConf.
+    """
+    disabled: dict[str, Any] = {"enabled": False}
+    strategy = grpo_hp.batching_strategy
+    if strategy == BatchingStrategy.STATIC:
+        return dict(disabled), dict(disabled)
+
+    max_seq_length = customizer_config.model.max_seq_length
+    # Default is the peak STATIC already provisions for, so this is memory-neutral. It is
+    # also the floor for a valid config: a smaller budget leaves the longest rollout unable
+    # to fit in any micro-batch.
+    train_mb_tokens = grpo_hp.train_mb_tokens or (max_seq_length * customizer_config.batch.micro_batch_size)
+    if train_mb_tokens < max_seq_length:
+        raise ValueError(
+            f"train_mb_tokens ({train_mb_tokens}) is below max_seq_length ({max_seq_length}); a "
+            f"full-length rollout would not fit in any micro-batch."
+        )
+    # logprob_batch_size tracks micro_batch_size in cfg["policy"], so the budgets match.
+    budgets = {"train_mb_tokens": train_mb_tokens, "logprob_mb_tokens": train_mb_tokens}
+
+    if strategy == BatchingStrategy.SEQUENCE_PACKING:
+        # DTensorPolicyWorker rejects packing under context parallelism. It also rejects it
+        # for VLM and reward models, neither of which this backend compiles.
+        if customizer_config.parallelism.context_parallel_size > 1:
+            raise ValueError(
+                "batching_strategy='sequence_packing' is not supported with "
+                f"context_parallel_size ({customizer_config.parallelism.context_parallel_size}) > 1. "
+                "Use 'dynamic' or 'static'."
+            )
+        # No sequence_length_round: every reader of it indexes dynamic_batching
+        # (lm_policy, lm_value, worker_mixin), and SequencePackingConfig does not
+        # declare it. Emitting it here would be a dead key.
+        return dict(disabled), {
+            "enabled": True,
+            **budgets,
+            "algorithm": "modified_first_fit_decreasing",
+        }
+
+    return {
+        "enabled": True,
+        **budgets,
+        "sequence_length_round": grpo_hp.sequence_length_round,
+    }, dict(disabled)
 
 
 def _count_jsonl_rows(path: Path) -> int:
@@ -128,18 +185,33 @@ def _count_jsonl_rows(path: Path) -> int:
     return count
 
 
-def _read_manifest_config_paths(environment_path: str | None) -> list[str]:
-    """Read ``config_paths`` from the environment package manifest on job storage."""
+# Formats whose wheels/ is a complete closure, so the job can resolve without an index.
+# adapter-wheels-v1 ships wheels too, but its agent harness still installs from GitHub.
+OFFLINE_ENVIRONMENT_FORMATS = frozenset({"wheels-v1"})
+
+
+def _read_manifest(environment_path: str | None) -> dict:
+    """Load the environment package manifest from job storage, or {} when absent."""
     if not environment_path:
-        return []
+        return {}
     manifest_path = Path(environment_path) / "nemo-environment.yaml"
     if not manifest_path.is_file():
         logger.warning("No nemo-environment.yaml at %s; Gym will start with no config_paths", environment_path)
-        return []
+        return {}
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, dict) or not manifest.get("config_paths"):
-        return []
-    return list(manifest["config_paths"])
+    return manifest if isinstance(manifest, dict) else {}
+
+
+def _environment_is_offline(environment_path: str | None) -> bool:
+    """Whether the package promises a self-sufficient wheelhouse."""
+
+    return _read_manifest(environment_path).get("format") in OFFLINE_ENVIRONMENT_FORMATS
+
+
+def _read_manifest_config_paths(environment_path: str | None) -> list[str]:
+    """Read ``config_paths`` from the environment package manifest on job storage."""
+    manifest = _read_manifest(environment_path)
+    return list(manifest["config_paths"]) if manifest.get("config_paths") else []
 
 
 def _resolve_gym_paths(
@@ -207,13 +279,24 @@ def _build_nemo_gym_env_config(
     # FileNotFoundError on e.g. /opt/nemo-rl/configs/<agent>.yaml. So anchor them to wherever
     # the package is actually visible to the process that loads them: the sandbox mount in
     # mode B, the job-storage copy in mode A. Absolute entries are passed through untouched.
-    package_root = SANDBOX_ENVIRONMENT_PATH if sandboxed else (gym.environment_path or DEFAULT_ENVIRONMENT_PATH)
+    # Where the manifest is readable from THIS process, which is the job-storage copy in
+    # both modes. Distinct from package_root below, which is where the servers will see it.
+    manifest_root = gym.environment_path or DEFAULT_ENVIRONMENT_PATH
+    # What the Gym host will treat as the package root in mode B. NeMo-RL reads
+    # `sandboxed.environment_path` and only falls back to the mount, so anchoring
+    # config_paths to the bare constant would point them somewhere Gym never looks.
+    sandbox_root = gym.sandbox_environment_path or SANDBOX_ENVIRONMENT_PATH
+    package_root = sandbox_root if sandboxed else manifest_root
     config_paths = [
         path if Path(path).is_absolute() else str(Path(package_root) / path)
-        for path in _read_manifest_config_paths(gym.environment_path)
+        for path in _read_manifest_config_paths(manifest_root)
     ]
     if config_paths:
         nemo_gym["config_paths"] = config_paths
+
+    offline_environment = _environment_is_offline(manifest_root)
+    if offline_environment:
+        nemo_gym["environment_offline"] = True
 
     if sandboxed:
         # Fail loudly rather than substituting a default here: a wrong sandbox
@@ -282,7 +365,8 @@ def _build_nemo_gym_env_config(
         sandbox_cfg = NemoGymSandboxedConfig(
             sandboxed=True,
             host_provider="opensandbox",
-            environment_path=gym.sandbox_environment_path or SANDBOX_ENVIRONMENT_PATH,
+            environment_path=sandbox_root,
+            environment_offline=offline_environment,
             job_id=job_ctx.job_id,
             sandbox=sandbox,
         )
@@ -434,6 +518,7 @@ def compile_grpo_config(
     precision = _adapt_precision(customizer_config.model.precision)
     parallelism = customizer_config.parallelism
     lora_cfg = _build_lora_cfg(customizer_config)
+    dynamic_batching_cfg, sequence_packing_cfg = _build_batching_config(customizer_config, grpo_hp)
     chat_template = resolve_chat_template(
         model_path=model_path,
         model_name=customizer_config.model.name,
@@ -492,15 +577,20 @@ def compile_grpo_config(
             },
             "colocated": {"enabled": True, "resources": {"gpus_per_node": None, "num_nodes": None}},
         },
-        "sequence_packing": {"enabled": False},
-        "dynamic_batching": {"enabled": False},
+        "sequence_packing": sequence_packing_cfg,
+        "dynamic_batching": dynamic_batching_cfg,
         "make_sequence_length_divisible_by": parallelism.tensor_parallel_size,
     }
 
-    # NeMo-RL forwards this to the training model as HF config kwargs and to vLLM as
-    # `hf_overrides`, so one setting covers both.
+    # NeMo-RL forwards these to the training model as HF config kwargs and to vLLM as
+    # `hf_overrides`, so one setting covers both. The passthrough is copied rather than
+    # aliased so a caller's dict is not mutated, and router_aux_loss_coef is layered on top
+    # -- the job schema already rejects the case where both would write the same key.
+    hf_config_overrides: dict[str, Any] = deepcopy(grpo_hp.hf_config_overrides or {})
     if grpo_hp.router_aux_loss_coef is not None:
-        cfg["policy"]["hf_config_overrides"] = {"router_aux_loss_coef": float(grpo_hp.router_aux_loss_coef)}
+        hf_config_overrides["router_aux_loss_coef"] = float(grpo_hp.router_aux_loss_coef)
+    if hf_config_overrides:
+        cfg["policy"]["hf_config_overrides"] = hf_config_overrides
 
     cfg["data"] = {
         "max_input_seq_length": customizer_config.model.max_seq_length,
@@ -524,9 +614,10 @@ def compile_grpo_config(
     }
 
     logger.info(
-        "Compiled GRPO config: train_samples=%d, val_samples=%d, sandboxed=%s",
+        "Compiled GRPO config: train_samples=%d, val_samples=%d, sandboxed=%s, batching=%s",
         train_samples,
         val_samples,
         customizer_config.gym.sandboxed if customizer_config.gym else False,
+        grpo_hp.batching_strategy.value,
     )
     return cfg

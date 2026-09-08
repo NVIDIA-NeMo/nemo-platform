@@ -13,7 +13,10 @@ from urllib.parse import urlparse
 import httpx
 import pytest
 from nemo_platform import NeMoPlatform
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, client_verify_from_env
+from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, HttpxTLSConfig, httpx_tls_config_from_env
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.workspaces.client import WorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceQueryParams, CreateWorkspaceRequest
 
 from e2e.services_pool import E2EHarnessConfig, E2EServicesPool, RunningServices
 from tests.auth_idp.authentik_live import authentik_gateway_tls_ca_bundle, prepare_authentik_compose_inputs
@@ -23,6 +26,16 @@ from tests.auth_idp.runtime_contract import AuthIdpCase
 from tests.auth_idp.runtime_factory import iter_auth_idp_cases, parametrize_cases, runtime_class_for_case
 
 pytest_plugins = ("e2e.conftest",)
+
+
+def _auth_idp_case_for_item(item: pytest.Item) -> AuthIdpCase | None:
+    callspec = getattr(item, "callspec", None)
+    if callspec is None:
+        return None
+    case = callspec.params.get("auth_idp_case")
+    if isinstance(case, AuthIdpCase):
+        return case
+    return None
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -72,6 +85,11 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         runtime_markers = list(item.iter_markers("auth_idp_runtime"))
         if runtime_markers:
             item.add_marker(pytest.mark.xdist_group("idp-live"))
+        case = _auth_idp_case_for_item(item)
+        if case is not None and case.backend == "kubernetes" and item.get_closest_marker("timeout") is None:
+            from tests.auth_idp.runtime_kubernetes import PYTEST_TIMEOUT_SECONDS
+
+            item.add_marker(pytest.mark.timeout(PYTEST_TIMEOUT_SECONDS))
         if not runtime_markers:
             selected.append(item)
             continue
@@ -145,18 +163,18 @@ def _exchange_token_with_retries(
     token_endpoint: str,
     grant: dict[str, str],
     timeout: float = 60.0,
-    verify: str | bool | None = None,
+    tls_config: HttpxTLSConfig | None = None,
 ) -> str:
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
-    request_verify = client_verify_from_env() if verify is None else verify
+    request_tls_config: HttpxTLSConfig = httpx_tls_config_from_env() if tls_config is None else tls_config
     while time.monotonic() < deadline:
         try:
             response = httpx.post(
                 token_endpoint,
                 data=_token_request_body(grant),
                 timeout=30.0,
-                verify=request_verify,
+                **request_tls_config,
             )
             if response.status_code >= 500:
                 last_error = httpx.HTTPStatusError(
@@ -331,15 +349,15 @@ def auth_idp_runtime(
 def auth_idp_workspace(auth_idp_runtime) -> Iterator[str]:
     workspace_name = f"auth-idp-ws-{uuid.uuid4().hex[:8]}"
     sdk = auth_idp_runtime.e2e_setup_sdk()
-    sdk.workspaces.create(
-        name=workspace_name,
-        description="Workspace for auth-idp provider contract tests",
-        wait_role_propagation=True,
-    )
+    workspaces = client_from_platform(sdk, WorkspacesClient)
+    workspaces.create_workspace(
+        query_params=CreateWorkspaceQueryParams(wait_role_propagation=True),
+        body=CreateWorkspaceRequest(name=workspace_name, description="Workspace for auth-idp provider contract tests"),
+    ).data()
     try:
         yield workspace_name
     finally:
-        sdk.workspaces.delete(workspace_name)
+        workspaces.delete_workspace(name=workspace_name).data()
 
 
 @pytest.fixture(scope="module")
@@ -427,13 +445,13 @@ def workload_provider_sdk(authentik_stack: ProviderConfig, workload_provider_tok
 
 @pytest.fixture
 def authentik_workspace(authentik_e2e_setup_sdk: NeMoPlatform) -> Iterator[str]:
+    workspaces = client_from_platform(authentik_e2e_setup_sdk, WorkspacesClient)
     workspace_name = f"authentik-ws-{uuid.uuid4().hex[:8]}"
-    authentik_e2e_setup_sdk.workspaces.create(
-        name=workspace_name,
-        description="Workspace for Authentik live auth tests",
-        wait_role_propagation=True,
-    )
+    workspaces.create_workspace(
+        query_params=CreateWorkspaceQueryParams(wait_role_propagation=True),
+        body=CreateWorkspaceRequest(name=workspace_name, description="Workspace for Authentik live auth tests"),
+    ).data()
     try:
         yield workspace_name
     finally:
-        authentik_e2e_setup_sdk.workspaces.delete(workspace_name)
+        workspaces.delete_workspace(name=workspace_name).data()

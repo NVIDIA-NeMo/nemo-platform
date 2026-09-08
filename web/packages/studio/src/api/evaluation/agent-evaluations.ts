@@ -4,11 +4,13 @@
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import {
   evaluatorCreateAgentEvaluateJob,
-  evaluatorGetAgentEvalResult,
   evaluatorGetAgentEvaluateJob,
-  evaluatorListAgentEvalResults,
   evaluatorListAgentEvaluateJobs,
-} from '@nemo/sdk/generated/evaluator/api';
+} from '@nemo/sdk/generated/evaluator/evaluator-plugin-agent-eval-jobs-routes';
+import {
+  evaluatorGetAgentEvalResult,
+  evaluatorListAgentEvalResults,
+} from '@nemo/sdk/generated/evaluator/evaluator-plugin-agent-eval-results-routes';
 import type {
   AggregateRangeScore,
   AggregateRubricScore,
@@ -19,7 +21,7 @@ import type {
   AgentEvaluateJobsSortField,
   ResultFilter,
 } from '@nemo/sdk/generated/evaluator/schema';
-import { filesDownloadFile } from '@nemo/sdk/generated/platform/api';
+import { filesDownloadFile } from '@nemo/sdk/generated/platform/files';
 
 const PAGE_SIZE = 50;
 

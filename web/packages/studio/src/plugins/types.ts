@@ -9,8 +9,8 @@ import type { ComponentType, ReactNode } from 'react';
  * Passed by prop so plugins need no build dependency on the private `@nemo/sdk`.
  */
 export interface PluginSdk {
-  platform: typeof import('@nemo/sdk/generated/platform/api');
-  agents: typeof import('@nemo/sdk/generated/agents/api');
+  platform: typeof import('@nemo/sdk/generated/platform/index');
+  agents: typeof import('@nemo/sdk/generated/agents/index');
 }
 
 /** Navigate Studio's shared router; paths are absolute Studio routes. */

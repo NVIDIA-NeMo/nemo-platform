@@ -178,6 +178,23 @@ class TestDiscoverNmpConfig:
             verify="/tmp/nemo-ca.pem",
         )
 
+    @patch("nemo_platform_ext.auth.helpers.httpx.get")
+    def test_uses_context_certificate_authority(self, mock_get, tmp_path, monkeypatch):
+        response = MagicMock()
+        response.json.return_value = {"auth_enabled": False}
+        mock_get.return_value = response
+        context_ca = str(tmp_path / "context-ca.pem")
+        monkeypatch.delenv(NMP_CLIENT_SSL_CERT_FILE_ENVVAR, raising=False)
+
+        result = discover_nmp_config("https://nemo.example.com", certificate_authority=context_ca)
+
+        assert result.auth_enabled is False
+        mock_get.assert_called_once_with(
+            "https://nemo.example.com/apis/auth/discovery",
+            timeout=10.0,
+            verify=context_ca,
+        )
+
 
 class TestBuildEffectiveScope:
     def test_no_prefix_returns_unchanged(self):

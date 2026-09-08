@@ -62,26 +62,21 @@ harnesses:
 models:
   default:
     provider: nvidia
-    model: nvidia-nemotron-3-5-lightning-30b-a3b
+    model: ${NEMO_DEFAULT_MODEL}
     temperature: 0.0
 
 skills:
   paths:
-    - skills/auditor
-    - skills/benchmark-execution
-    - skills/entities
-    - skills/evaluator
-    - skills/files
-    - skills/guardrails
-    - skills/inference
-    - skills/secrets
-    - skills/workspace
+    - skills
 
 mcp:
   servers:
     nemo_studio:
       transport: stdio
       url: nemo-studio-assistant-mcp
+      env:
+        NMP_BASE_URL: http://host.docker.internal:8080
+        NMP_WORKSPACE: default
       exposure: harness_native
 
 tools:
@@ -92,7 +87,14 @@ environment:
   artifacts: ./artifacts
 
 telemetry:
-  enabled: false
+  enabled: true
   provider: relay
   output_dir: ./artifacts/relay
   project: nemo-studio-assistant
+  atif:
+    enabled: true
+    filename_template: trajectory-{session_id}.atif.json
+    storage:
+      - type: http
+        endpoint: http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif
+        timeout_millis: 3000

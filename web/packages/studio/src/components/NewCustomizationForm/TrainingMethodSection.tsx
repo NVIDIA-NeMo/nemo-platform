@@ -95,20 +95,18 @@ export const TrainingMethodSection = () => {
           onValueChange={(v) => {
             const next = v as 'dpo' | 'grpo';
             setValue('grpo.trainingType', next, { shouldValidate: true });
-            // rl.training is shared by both methods, and the two default sets differ
-            // only in max_steps, val_at_end and ref_policy_kl_penalty. Reset to the
-            // incoming method's defaults so DPO cannot inherit GRPO's step budget and
-            // skipped end validation, but carry over the fields that mean the same
-            // thing under either method so a switch does not discard the user's work.
+            // rl.training is shared, so reset to the incoming method's defaults, then
+            // carry over the fields that mean the same thing under either method.
             const current = getValues('rl.training');
             setValue(
               'rl.training',
               {
                 ...(next === 'grpo' ? RL_GRPO_TRAINING_DEFAULTS : RL_DPO_TRAINING_DEFAULTS),
                 parallelism: current.parallelism,
-                learning_rate: current.learning_rate,
                 batch_size: current.batch_size,
                 max_seq_length: current.max_seq_length,
+                // learning_rate is NOT carried over: the two methods now default two
+                // orders of magnitude apart, so each switch takes its own default.
               },
               { shouldValidate: true }
             );

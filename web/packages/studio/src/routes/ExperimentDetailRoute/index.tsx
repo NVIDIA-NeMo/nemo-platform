@@ -3,7 +3,7 @@
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { useGetExperiment } from '@nemo/sdk/generated/platform/api';
+import { useGetExperiment } from '@nemo/sdk/generated/platform/experiments';
 import { Button, Card, Flex, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { useOptimizerGetInsight } from '@studio/api/optimizer';
 import {
@@ -23,7 +23,7 @@ import { ExperimentMetrics } from '@studio/routes/ExperimentDetailRoute/Experime
 import { getExperimentRoute } from '@studio/routes/utils';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { ChartLine, ChartScatter, Pencil } from 'lucide-react';
+import { ChartLine, ChartScatter, Pencil, Star } from 'lucide-react';
 import { type FC, useEffect, useState } from 'react';
 
 export const ExperimentDetailRoute: FC = () => {
@@ -73,7 +73,21 @@ export const ExperimentDetailRoute: FC = () => {
       <Stack className="h-full overflow-auto" gap="density-2xl" padding="density-2xl">
         <PageHeader
           className="p-0"
-          slotHeading={experimentName}
+          slotHeading={
+            group?.is_favorite ? (
+              <Flex align="center" gap="density-sm">
+                <Star
+                  size={24}
+                  className="text-brand shrink-0"
+                  fill="currentColor"
+                  aria-label="Favorite"
+                />
+                {experimentName}
+              </Flex>
+            ) : (
+              experimentName
+            )
+          }
           slotDescription={group?.description || undefined}
           slotActions={
             <Button kind="secondary" disabled={!group} onClick={() => setEditOpen(true)}>
@@ -144,6 +158,8 @@ export const ExperimentDetailRoute: FC = () => {
               </div>
               {group && (
                 <ExperimentDataView
+                  // The route does not remount between experiments; without this the next inherits this one's columns.
+                  key={group.id}
                   group={group}
                   paretoVisible={paretoVisible}
                   trendVisible={trendVisible}

@@ -701,6 +701,36 @@ def _escape_mdx_line(line: str) -> str:
     return "".join(out)
 
 
+_DOCUMENTED_PLUGIN_CLIS = (
+    "agents",
+    "anonymizer",
+    "auditor",
+    "customization",
+    "data-designer",
+    "evaluator",
+    "insights",
+    "safe-synthesizer",
+)
+
+_PLUGIN_DOCS_DISCOVERY_ENV = {
+    # Nested CLI extensions do not have a surface-specific allowlist, so they
+    # inherit the global value.
+    "NEMO_PLUGIN_ALLOWLIST": "*",
+    "NEMO_PLUGIN_CLI_ALLOWLIST": ",".join(_DOCUMENTED_PLUGIN_CLIS),
+    # Plugin CLIs compose their help from these dependent discovery surfaces.
+    "NEMO_PLUGIN_JOBS_ALLOWLIST": "*",
+    "NEMO_PLUGIN_FUNCTIONS_ALLOWLIST": "*",
+    "NEMO_PLUGIN_CUSTOMIZATION_CONTRIBUTORS_ALLOWLIST": "*",
+}
+
+
+def _enable_plugin_cli_docs() -> None:
+    """Include supported plugin commands in generated CLI documentation."""
+    import os
+
+    os.environ.update(_PLUGIN_DOCS_DISCOVERY_ENV)
+
+
 def main() -> None:
     """Generate CLI documentation and print to stdout.
 
@@ -708,10 +738,9 @@ def main() -> None:
         docs_generator.py reference   # Full CLI reference
         docs_generator.py summary     # Index page summary snippet
     """
-    import os
     import sys
 
-    os.environ.setdefault("NEMO_PLUGIN_CLI_ALLOWLIST", "")
+    _enable_plugin_cli_docs()
 
     from nemo_platform_ext.cli.app import app
 

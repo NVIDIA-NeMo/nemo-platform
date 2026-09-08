@@ -12,8 +12,12 @@ nemo config set --base-url https://nmp.example.com
 # Keep contexts separate.
 nemo config set --context staging --base-url https://nmp.staging.example.com
 nemo config set --context production --base-url https://nmp.example.com --activate
+# Configure a local TLS endpoint.
+nemo config set --context local-tls --base-url https://localhost:8443 --certificate-authority /path/to/ca.crt
 # Switch the current context and inspect its configuration.
 nemo config use-context staging
 nemo config view
+# Delete a context without deleting its cluster or user records.
+nemo config delete-context staging
 
 NMP_BASE_URL and NMP_CURRENT_CONTEXT override saved configuration."""

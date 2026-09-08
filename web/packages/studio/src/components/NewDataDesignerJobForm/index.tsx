@@ -4,9 +4,9 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
-import { useDataDesignerCreateJob } from '@nemo/sdk/generated/data-designer/api';
+import { useDataDesignerCreateJob } from '@nemo/sdk/generated/data-designer/data-designer';
 import type { CreateJobRequest as DataDesignerJobRequest } from '@nemo/sdk/generated/data-designer/schema';
-import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
+import { useModelsListProviders } from '@nemo/sdk/generated/platform/model-providers';
 import { Button, CodeSnippet, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { JobBasics } from '@studio/components/NewDataDesignerJobForm/JobBasics';
 import { JobRequestGenerator } from '@studio/components/NewDataDesignerJobForm/JobRequestGenerator';

@@ -14,6 +14,10 @@ import pytest
 from fastapi import HTTPException
 from httpx import AsyncClient
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.jobs.client import AsyncJobsClient
+from nemo_platform_plugin.jobs.schemas import FileStorageType, PlatformJobResultCreateRequest
+from nemo_platform_plugin.jobs.types import PlatformJobTaskUpdate
 from nmp.common.entities import ALL_WORKSPACES, DEFAULT_WORKSPACE
 from nmp.common.entities.client import EntityValidationError
 from nmp.common.jobs.schemas import PlatformJobStatus
@@ -37,31 +41,13 @@ from nmp.core.jobs.app.dispatcher import (
 )
 from nmp.core.jobs.app.providers import ContainerSpec, GPUExecutionProvider, SubprocessExecutionProvider
 from nmp.core.jobs.app.schemas import (
+    PlatformJobSecret,
     PlatformJobSpec,
     PlatformJobStepSpec,
 )
 from nmp.core.jobs.app.test_helpers import TestConstants
 from pydantic import ValidationError
 from starlette.datastructures import QueryParams
-
-
-def to_sdk_create_params(request: CreatePlatformJobRequest) -> Dict[str, Any]:
-    """
-    Convert CreatePlatformJobRequest to SDK-compatible params.
-
-    TODO: Once SDK is regenerated, remove this helper and pass project=/output_location= directly.
-    """
-    data = request.model_dump(mode="json")  # JSON mode serializes nested objects properly
-    extra_body: Dict[str, Any] = {}
-    project = data.pop("project", None)
-    if project:
-        extra_body["project"] = project
-    output_location = data.pop("output_location", None)
-    if output_location:
-        extra_body["output_location"] = output_location
-    if extra_body:
-        data["extra_body"] = extra_body
-    return data
 
 
 def expected_translated_executor_dump() -> Dict[str, Any]:
@@ -85,38 +71,45 @@ def expected_translated_executor_dump() -> Dict[str, Any]:
 
 @pytest.mark.asyncio
 async def test_create_job_using_sdk(test_sdk: AsyncNeMoPlatform):
-    job = await test_sdk.jobs.create(
-        workspace=DEFAULT_WORKSPACE,
-        name="test-job",
-        source="testing",
-        spec={},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "basic",
-                    "executor": {
-                        "provider": "cpu",
-                        "profile": "default",
-                        # entrypoint+command are required so the cpu→subprocess
-                        # translation hop in the Jobs API (see
-                        # `translate_cpu_container_steps_to_subprocess`) can
-                        # produce a non-empty subprocess command. Real plugin
-                        # compilers always set both; mirroring that here keeps
-                        # the SDK round-trip path realistic.
-                        "container": {
-                            "image": "test-image",
-                            "entrypoint": ["python", "-m"],
-                            "command": ["nmp.testing.fake_task"],
-                        },
+    jobs = client_from_platform(test_sdk, AsyncJobsClient)
+    job = (
+        await jobs.create_job(
+            workspace=DEFAULT_WORKSPACE,
+            body=CreatePlatformJobRequest(
+                name="test-job",
+                source="testing",
+                spec={},
+                platform_spec=PlatformJobSpec.model_validate(
+                    {
+                        "steps": [
+                            {
+                                "name": "basic",
+                                "executor": {
+                                    "provider": "cpu",
+                                    "profile": "default",
+                                    # entrypoint+command are required so the cpu->subprocess
+                                    # translation hop in the Jobs API (see
+                                    # `translate_cpu_container_steps_to_subprocess`) can
+                                    # produce a non-empty subprocess command. Real plugin
+                                    # compilers always set both; mirroring that here keeps
+                                    # the SDK round-trip path realistic.
+                                    "container": {
+                                        "image": "test-image",
+                                        "entrypoint": ["python", "-m"],
+                                        "command": ["nmp.testing.fake_task"],
+                                    },
+                                },
+                            }
+                        ]
                     },
-                }
-            ]
-        },
-    )
+                ),
+            ),
+        )
+    ).data()
     assert job.id
-    response = await test_sdk.jobs.list(workspace=DEFAULT_WORKSPACE)
-    assert len(response.data) == 1
-    job_item = response.data[0]
+    response = (await jobs.list_jobs(workspace=DEFAULT_WORKSPACE)).page()
+    assert len(response.items) == 1
+    job_item = response.items[0]
     assert job_item.name == "test-job"
     assert len(job_item.platform_spec.steps) == 1
 
@@ -186,44 +179,53 @@ def test_step_name_validation(step_name: str, should_pass: bool):
 @pytest.mark.asyncio
 @pytest.mark.skip("This is an integration test that requires secrets service.")
 async def test_create_job_with_secrets(test_sdk: AsyncNeMoPlatform):
-    job = await test_sdk.jobs.create(
-        workspace=DEFAULT_WORKSPACE,
+    jobs = client_from_platform(test_sdk, AsyncJobsClient)
+    request = CreatePlatformJobRequest(
         name="test-job",
         source="testing",
         spec={},
-        platform_spec={
-            "steps": [
-                {
-                    "name": "basic",
-                    "executor": {
-                        "provider": "cpu",
-                        "profile": "default",
-                        "container": {"image": "test-image"},
-                    },
-                    "environment": [
-                        {"name": "MY_SECRET_ENV", "from_secret": {"name": "secret_name_1"}},
-                    ],
-                }
-            ],
-            "secrets": [{"name": "secret_name_1", "value": "secret_value_1"}],
-        },
+        platform_spec=PlatformJobSpec.model_validate(
+            {
+                "steps": [
+                    {
+                        "name": "basic",
+                        "executor": {
+                            "provider": "cpu",
+                            "profile": "default",
+                            "container": {
+                                "image": "test-image",
+                                "entrypoint": ["python", "-m"],
+                                "command": ["nmp.testing.fake_task"],
+                            },
+                        },
+                        "environment": [
+                            {"name": "MY_SECRET_ENV", "from_secret": {"name": "secret_name_1"}},
+                        ],
+                    }
+                ],
+                "secrets": [PlatformJobSecret(name="secret_name_1", value="secret_value_1")],
+            }
+        ),
     )
+    job = (await jobs.create_job(workspace=DEFAULT_WORKSPACE, body=request)).data()
     assert job.id
-    response = await test_sdk.jobs.list(workspace=DEFAULT_WORKSPACE)
-    assert len(response.data) == 1
-    job_item = response.data[0]
+    response = await jobs.list_jobs(workspace=DEFAULT_WORKSPACE)
+    page = response.page()
+    assert len(page.items) == 1
+    job_item = page.items[0]
     assert job_item.name == "test-job"
     assert len(job_item.platform_spec.steps) == 1
 
     # Assert that when created, we still got a secret reference back
-    assert job_item.platform_spec.secrets is not None
-    assert len(job_item.platform_spec.secrets) == 1
-    assert job_item.platform_spec.secrets[0].name == "secret_name_1"
+    secrets = job_item.platform_spec.secrets
+    assert secrets is not None
+    assert len(secrets) == 1
+    assert secrets[0].name == "secret_name_1"
     # We should not be returning the actual secret value in the job spec
-    assert job_item.platform_spec.secrets[0].value is None
+    assert secrets[0].value is None
     # The secret should have a ref_id (used for in-memory secret storage)
-    assert job_item.platform_spec.secrets[0].ref_id is not None
-    assert job_item.platform_spec.secrets[0].ref_id.startswith("job-")
+    assert secrets[0].ref_id is not None
+    assert secrets[0].ref_id.startswith("job-")
 
 
 @pytest.mark.asyncio
@@ -1014,35 +1016,42 @@ async def test_job_paging(test_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_job_result_crud(test_sdk: AsyncNeMoPlatform, sample_platform_job_request: CreatePlatformJobRequest):
-    sdk_job_resp = await test_sdk.jobs.create(
-        workspace=DEFAULT_WORKSPACE, **to_sdk_create_params(sample_platform_job_request)
-    )  # type: ignore
-    resp = await test_sdk.jobs.results.create(
-        name="result-name1",
-        workspace=DEFAULT_WORKSPACE,
-        job=sdk_job_resp.name,
-        artifact_url="default/test-fileset#myartifact",
-        artifact_storage_type="fileset",
-    )
+    jobs = client_from_platform(test_sdk, AsyncJobsClient)
+    sdk_job_resp = (await jobs.create_job(workspace=DEFAULT_WORKSPACE, body=sample_platform_job_request)).data()
+    resp = (
+        await jobs.create_job_result(
+            name="result-name1",
+            workspace=DEFAULT_WORKSPACE,
+            job=sdk_job_resp.name,
+            body=PlatformJobResultCreateRequest(
+                artifact_url="default/test-fileset#myartifact",
+                artifact_storage_type=FileStorageType.FILESET,
+            ),
+        )
+    ).data()
     assert resp.name == "result-name1"
     assert resp.job == sdk_job_resp.id
-    resp2 = await test_sdk.jobs.results.create(
-        name="result-name2",
-        workspace=DEFAULT_WORKSPACE,
-        job=sdk_job_resp.name,
-        artifact_url="default/test-fileset#myartifact",
-        artifact_storage_type="fileset",
-    )
+    resp2 = (
+        await jobs.create_job_result(
+            name="result-name2",
+            workspace=DEFAULT_WORKSPACE,
+            job=sdk_job_resp.name,
+            body=PlatformJobResultCreateRequest(
+                artifact_url="default/test-fileset#myartifact",
+                artifact_storage_type=FileStorageType.FILESET,
+            ),
+        )
+    ).data()
     assert resp2.name == "result-name2"
     assert resp2.job == sdk_job_resp.id
 
-    results = await test_sdk.jobs.results.list(sdk_job_resp.name, workspace=DEFAULT_WORKSPACE)
+    results = (await jobs.list_job_results(name=sdk_job_resp.name, workspace=DEFAULT_WORKSPACE)).data()
     assert len(results.data) == 2
     result2 = next(r for r in results.data if "result-name2" == r.name)
 
-    another_result_2 = await test_sdk.jobs.results.retrieve(
-        result2.name, workspace=DEFAULT_WORKSPACE, job=sdk_job_resp.name
-    )
+    another_result_2 = (
+        await jobs.get_job_result(name=result2.name, workspace=DEFAULT_WORKSPACE, job=sdk_job_resp.name)
+    ).data()
     assert result2 == another_result_2
     # The result's namespace is inherited from the parent job, not from the create request
     # Since the job uses the default namespace, the result should too
@@ -1065,24 +1074,28 @@ async def test_job_result_download(
     mock_result_manager._tmp_dir = tmp_dir
     mock_result_manager._path = tmp_file
 
-    sdk_job_resp = await test_sdk.jobs.create(
-        workspace=DEFAULT_WORKSPACE, **to_sdk_create_params(sample_platform_job_request)
-    )  # type: ignore
-    result = await test_sdk.jobs.results.create(
-        name="result-name1",
-        workspace=DEFAULT_WORKSPACE,
-        job=sdk_job_resp.name,
-        artifact_url="default/test-fileset#result_name1",
-        artifact_storage_type="fileset",
-    )
+    jobs = client_from_platform(test_sdk, AsyncJobsClient)
+    sdk_job_resp = (await jobs.create_job(workspace=DEFAULT_WORKSPACE, body=sample_platform_job_request)).data()
+    result = (
+        await jobs.create_job_result(
+            name="result-name1",
+            workspace=DEFAULT_WORKSPACE,
+            job=sdk_job_resp.name,
+            body=PlatformJobResultCreateRequest(
+                artifact_url="default/test-fileset#result_name1",
+                artifact_storage_type=FileStorageType.FILESET,
+            ),
+        )
+    ).data()
 
     with patch("nmp.common.jobs.result_manager.result_manager_factory", return_value=mock_result_manager):
-        download = await test_sdk.jobs.results.download(result.name, workspace=DEFAULT_WORKSPACE, job=sdk_job_resp.name)
+        download = await jobs.download_job_result(name=result.name, workspace=DEFAULT_WORKSPACE, job=sdk_job_resp.name)
+        download_bytes = await download.read()
 
     # make sure we deleted the temp files on the server
     assert not tmp_dir.exists()
     assert not tmp_file.exists()
-    assert await download.text() == testdata
+    assert download_bytes.decode() == testdata
 
     # make the artifact a folder this time
     tmp_dir.mkdir()
@@ -1091,15 +1104,16 @@ async def test_job_result_download(
     mock_result_manager._path = tmp_dir
 
     with patch("nmp.common.jobs.result_manager.result_manager_factory", return_value=mock_result_manager):
-        download = await test_sdk.jobs.results.download(result.name, workspace=DEFAULT_WORKSPACE, job=sdk_job_resp.name)
+        download = await jobs.download_job_result(name=result.name, workspace=DEFAULT_WORKSPACE, job=sdk_job_resp.name)
+        tar_content = await download.read()
 
     # ensure we're returning the appropriate tar file
-    assert "result-name1.tar.gz" in download.headers["content-disposition"]
+    assert "result-name1.tar.gz" in download.http_response.headers["content-disposition"]
     assert not tmp_dir.exists()
     assert not tmp_file.exists()
 
     # ensure the content of the tar includes the tmp_file
-    tar_bytes = BytesIO(await download.read())
+    tar_bytes = BytesIO(tar_content)
     with tarfile.open(fileobj=tar_bytes, mode="r:gz") as tar:
         extracted_file = tar.extractfile(tar.getmember("testdir/testfile.txt"))
         assert extracted_file
@@ -1118,9 +1132,8 @@ async def test_job_status_details_crud(
     patch = {"progress": 75}
 
     # Create a job
-    sdk_job_resp = await test_sdk.jobs.create(
-        workspace=DEFAULT_WORKSPACE, **to_sdk_create_params(sample_platform_job_request)
-    )  # type: ignore
+    jobs = client_from_platform(test_sdk, AsyncJobsClient)
+    sdk_job_resp = (await jobs.create_job(workspace=DEFAULT_WORKSPACE, body=sample_platform_job_request)).data()
     job_name = sdk_job_resp.name  # API URLs use job name, not ID
 
     ### Test patching a job status details
@@ -1164,14 +1177,18 @@ async def test_job_status_details_crud(
     assert step_status_details == {"message": "Step is now active"}
 
     # Now lets create a task associated with the step, and then update it's status
-    task_resp = await test_sdk.jobs.tasks.create_or_update(
-        "task-1",
-        workspace=DEFAULT_WORKSPACE,
-        job=job_name,
-        step="basic",
-        status="active",
-        status_details={"message": "Task is now active"},
-    )
+    task_resp = (
+        await jobs.update_job_step_task(
+            name="task-1",
+            workspace=DEFAULT_WORKSPACE,
+            job=job_name,
+            step="basic",
+            body=PlatformJobTaskUpdate(
+                status=PlatformJobStatus.ACTIVE,
+                status_details={"message": "Task is now active"},
+            ),
+        )
+    ).data()
     assert task_resp is not None
 
     # Now get the task and inspect it's status details (URL uses task name, not ID)
@@ -1310,7 +1327,7 @@ class MockRequest:
 async def test_get_platform_jobs_steps_list_filter(query_string, expected_checks):
     """Test the get_platform_jobs_steps_list_filter function with various filter parameters."""
     request = MockRequest(query_string)
-    result = get_platform_jobs_steps_list_filter(request)  # type: ignore[arg-type]
+    result = get_platform_jobs_steps_list_filter(request)  # ty: ignore[invalid-argument-type]
     assert expected_checks(result)
 
 
@@ -1319,7 +1336,7 @@ async def test_get_platform_jobs_steps_list_filter_invalid():
     """Test that invalid status raises an error."""
     request = MockRequest("filter[status]=INVALID_STATUS")
     with pytest.raises(HTTPException) as exc_info:
-        get_platform_jobs_steps_list_filter(request)  # type: ignore[arg-type]
+        get_platform_jobs_steps_list_filter(request)  # ty: ignore[invalid-argument-type]
     assert exc_info.value.detail is not None
     assert "filter.status" in str(exc_info.value.detail)
     assert "Expected one or more of" in str(exc_info.value.detail)
@@ -1535,9 +1552,8 @@ async def test_job_status_timestamps(
     sample_platform_job_request: CreatePlatformJobRequest,
 ):
     """Test that created_at and updated_at are present at job, step, and task levels in status response."""
-    sdk_job_resp = await test_sdk.jobs.create(
-        workspace=DEFAULT_WORKSPACE, **to_sdk_create_params(sample_platform_job_request)
-    )
+    jobs = client_from_platform(test_sdk, AsyncJobsClient)
+    sdk_job_resp = (await jobs.create_job(workspace=DEFAULT_WORKSPACE, body=sample_platform_job_request)).data()
     job_name = sdk_job_resp.name
 
     # Activate the step so the job is in a meaningful state
@@ -1548,13 +1564,15 @@ async def test_job_status_timestamps(
     assert response.status_code == 200
 
     # Create a task for the step
-    task_resp = await test_sdk.jobs.tasks.create_or_update(
-        "task-1",
-        workspace=DEFAULT_WORKSPACE,
-        job=job_name,
-        step="basic",
-        status="active",
-    )
+    task_resp = (
+        await jobs.update_job_step_task(
+            name="task-1",
+            workspace=DEFAULT_WORKSPACE,
+            job=job_name,
+            step="basic",
+            body=PlatformJobTaskUpdate(status=PlatformJobStatus.ACTIVE),
+        )
+    ).data()
     assert task_resp is not None
 
     # Fetch the status and verify timestamps are present at all levels

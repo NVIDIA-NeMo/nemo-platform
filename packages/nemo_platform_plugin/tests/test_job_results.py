@@ -161,7 +161,7 @@ def _platform_record(name: str = "metrics", url: str = "fileset://ws/fs#results/
 class TestPlatformJobResults:
     def test_platform_job_results_is_a_job_results(self) -> None:
         sdk = MagicMock()
-        with patch("nemo_platform_plugin.job_results.result_manager_factory") as factory:
+        with patch("nemo_platform_plugin.jobs.result_manager.result_manager_factory") as factory:
             factory.return_value = MagicMock()
             sink = PlatformJobResults(job_name="j", workspace="ws", sdk=sdk)
         assert isinstance(sink, JobResults)
@@ -172,7 +172,7 @@ class TestPlatformJobResults:
         local.write_text("{}")
         manager = MagicMock()
         manager.create_result.return_value = _platform_record(name="metrics", url="fileset://ws/fs#results/A1/metrics")
-        with patch("nemo_platform_plugin.job_results.result_manager_factory", return_value=manager) as factory:
+        with patch("nemo_platform_plugin.jobs.result_manager.result_manager_factory", return_value=manager) as factory:
             sink = PlatformJobResults(job_name="j", workspace="ws", sdk=sdk, attempt_id="A1")
             ref = sink.save("metrics", local, ignore_patterns=["cache.db"])
 
@@ -197,7 +197,7 @@ class TestPlatformJobResults:
         payload_dir.mkdir()
         manager = MagicMock()
         manager.create_result.return_value = _platform_record()
-        with patch("nemo_platform_plugin.job_results.result_manager_factory", return_value=manager):
+        with patch("nemo_platform_plugin.jobs.result_manager.result_manager_factory", return_value=manager):
             sink = PlatformJobResults(job_name="j", workspace="ws", sdk=sdk)
             sink.save("artifacts", payload_dir, ignore_patterns=["cache.db", "cache/"])
         call = manager.create_result.call_args
@@ -208,7 +208,7 @@ class TestPlatformJobResults:
         sdk = MagicMock()
         manager = MagicMock()
         manager.create_result.side_effect = RuntimeError("boom")
-        with patch("nemo_platform_plugin.job_results.result_manager_factory", return_value=manager):
+        with patch("nemo_platform_plugin.jobs.result_manager.result_manager_factory", return_value=manager):
             sink = PlatformJobResults(job_name="j", workspace="ws", sdk=sdk)
             with pytest.raises(RuntimeError, match="boom"):
                 sink.save("metrics", Path("/tmp/whatever"))

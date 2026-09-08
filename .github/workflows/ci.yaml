@@ -48,9 +48,11 @@ jobs:
       deps: ${{ steps.changes.outputs.deps }}
       fabric: ${{ steps.changes.outputs.fabric }}
       evaluator-sdk-closure: ${{ steps.changes.outputs.evaluator-sdk-closure }}
+      scaled-evals: ${{ steps.changes.outputs.scaled-evals }}
       e2e: ${{ steps.changes.outputs.e2e }}
       docs: ${{ steps.changes.outputs.docs }}
       web-studio: ${{ steps.changes.outputs.web-studio }}
+      github-scripts: ${{ steps.changes.outputs.github-scripts }}
       tools: ${{ steps.changes.outputs.tools }}
       docker: ${{ steps.changes.outputs.docker }}
       helm: ${{ steps.changes.outputs.helm }}
@@ -1038,6 +1040,37 @@ jobs:
             coverage.json
             coverage-html/
 
+  # The scaled-evals plugin stays out of `enabled-plugins`, so `python-unit-test` cannot
+  # import it and skips its tests. Installing it into that shared run is not an option:
+  # the platform then discovers the service and waits on a Postgres that is not there,
+  # which slowed the suite roughly sixfold and broke timing-sensitive daemon tests. Give
+  # it its own environment instead.
+  python-unit-test-scaled-evals:
+    name: Python unit tests (scaled-evals plugin)
+    needs: [changes]
+    if: >
+      !cancelled() &&
+      needs.changes.outputs.scaled-evals == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Run scaled-evals plugin tests
+        run: uv run --frozen --group scaled-evals pytest plugins/_temporary-scaled-evals/tests -v
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+
   # WHY THIS JOB EXISTS (it looks redundant, it isn't): `--extra fabric` appears nowhere else in this
   # file and there is no `--all-extras`, so no other job installs nemo-fabric. Every other Fabric test
   # either fakes `nemo_fabric` or `importorskip`s it, which means the hermetic suite keeps passing when
@@ -1312,11 +1345,11 @@ jobs:
           - provider: authentik
             runtime: authentik-compose
             backend: compose
-            command: compose
+            command: test compose
           - provider: authentik
             runtime: authentik-kubernetes
             backend: kubernetes
-            command: k8s
+            command: test k8s
     env:
       NMP_AUTHENTIK_K8S_RUNTIME: kind
       NMP_AUTHENTIK_K8S_NAMESPACE: nemo-authentik
@@ -1695,6 +1728,34 @@ jobs:
           path: |
             report.xml
             ${{ runner.temp }}/e2e-services-logs/
+
+  github-scripts:
+    name: GitHub JavaScript checks
+    needs: [changes]
+    if: >-
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.github-scripts == 'true'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install pnpm via corepack
+        run: npm i -g corepack@0.31.0 && corepack enable pnpm
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Test GitHub JavaScript scripts
+        run: node --test .github/scripts/tests/*.test.cjs
+      - name: Lint GitHub JavaScript scripts
+        run: web/node_modules/.bin/eslint --config .github/eslint.config.mjs .github/scripts --max-warnings 0
+      - name: Check GitHub JavaScript formatting
+        run: web/node_modules/.bin/prettier --check .github/scripts
 
   web-typecheck:
     name: Web typecheck
@@ -2190,6 +2251,7 @@ jobs:
       - policy-wasm
       - python-unit-test-tools
       - python-unit-test
+      - python-unit-test-scaled-evals
       - fabric-wheel-smoke
       - evaluator-sdk-closure-smoke
       # Enable if you want this required
@@ -2197,6 +2259,7 @@ jobs:
       - wheel-build
       - wheel-test
       - python-e2e-test
+      - github-scripts
       - web-typecheck
       - web-test
       - web-format

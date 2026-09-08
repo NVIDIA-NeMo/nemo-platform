@@ -13,6 +13,7 @@ from nmp.automodel.api.v2.jobs.schemas import (
     SFTTraining,
 )
 from nmp.automodel.app.jobs.training.compiler import compile_training_step
+from nmp.automodel.entities.values import OutputNameType
 from nmp.common.entities.utils import get_random_id
 
 
@@ -40,7 +41,7 @@ def _job_spec_with_integrations() -> CustomizationJobOutput:
             micro_batch_size=1,
             max_seq_length=2048,
         ),
-        output=OutputResponse(name="out", type="adapter", fileset="out-fs"),
+        output=OutputResponse(name="out", type=OutputNameType.ADAPTER, fileset="out-fs"),
         integrations=IntegrationsSpec.model_validate(
             {
                 "wandb": {
@@ -56,6 +57,7 @@ def test_compile_training_step_injects_wandb_secret() -> None:
     step = compile_training_step(_job_spec_with_integrations(), base_env=[], me=_make_model_entity())
 
     env = step["environment"] if isinstance(step, dict) else step.environment
+    assert env is not None
     assert {"name": "WANDB_API_KEY", "from_secret": {"name": "default/wandb-key"}} in env
 
 
@@ -64,6 +66,7 @@ def test_compile_training_step_no_integrations() -> None:
     step = compile_training_step(spec, base_env=[], me=_make_model_entity())
 
     env = step["environment"] if isinstance(step, dict) else step.environment
+    assert env is not None
     secret_envs = [item for item in env if item.get("name") == "WANDB_API_KEY"]
     assert secret_envs == []
 

@@ -13,7 +13,7 @@ import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
-import { useGuardrailsListGuardrailConfigs } from '@nemo/sdk/generated/platform/api';
+import { useGuardrailsListGuardrailConfigs } from '@nemo/sdk/generated/platform/guardrails';
 import type {
   GuardrailConfig,
   GuardrailConfigFilter,

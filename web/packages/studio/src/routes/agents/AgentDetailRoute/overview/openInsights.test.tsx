@@ -64,7 +64,7 @@ describe('Open insights on the agent overview', () => {
 
     renderDetail();
 
-    await screen.findByText('No open insights');
+    await screen.findByText(/Insights are filed by the analyst/);
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({ agent: agentName, status: 'open' })
     );
@@ -99,7 +99,7 @@ describe('Open insights on the agent overview', () => {
 
     renderDetail();
 
-    expect(await screen.findByText('No open insights')).toBeInTheDocument();
+    expect(await screen.findByText(/Insights are filed by the analyst/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'View all' })).not.toBeInTheDocument();
   });
 

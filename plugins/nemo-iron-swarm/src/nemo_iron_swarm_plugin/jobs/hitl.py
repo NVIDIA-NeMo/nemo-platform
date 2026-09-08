@@ -6,7 +6,7 @@
 The war-game job drives the synth service (interview rounds, then benign-suite review) and relays each
 checkpoint to the operator via the job's ``status_details`` — Studio renders it and PATCHes a response.
 :func:`drive_synth_hitl` is the transport-agnostic loop (``publish``/``await_response`` injected so it is
-unit-testable); :class:`StatusDetailsChannel` implements those over ``sdk.jobs`` for the real job.
+unit-testable); :class:`StatusDetailsChannel` implements those over the typed Jobs client for the real job.
 """
 
 from __future__ import annotations

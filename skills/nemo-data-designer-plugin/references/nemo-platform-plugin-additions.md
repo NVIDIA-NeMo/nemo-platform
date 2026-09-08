@@ -73,5 +73,6 @@ Requires an NGC API key secret already registered in NeMo Platform. To create th
 - `nemo inference providers list` / `nemo models list` — NeMo Platform-side inference providers and models.
 - `nemo secrets` — manage API keys used by `personas make-fileset` and other NeMo Platform-side flows.
 - `nemo files` — manage filesets, including persona filesets created above.
+- `nemo data-designer retrieval-generate` / `retrieval-prepare` — Nemotron retrieval SDG Stage 0/1. See `references/retrieval-sdg.md`.
 
 These are alternatives to the local `~/.data-designer/` configuration the upstream skill assumes. The local configurations will not work when using this plugin.

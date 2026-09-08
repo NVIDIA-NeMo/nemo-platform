@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from nemo_agents_plugin.entities import ComputeResources, DeploymentMode, DeploymentStatus, Endpoint
+from nemo_platform_plugin.auth import AuthContext
 
 
 @dataclass(frozen=True)
@@ -97,16 +98,20 @@ class RunnerBackend(ABC):
         image: str | None = None,
         deployment_mode: DeploymentMode = "subprocess",
         created_by: str | None = None,
+        auth_context: AuthContext | None = None,
         resources: ComputeResources | None = None,
         secrets: dict[str, str] | None = None,
+        use_image_entrypoint: bool = False,
     ) -> DeploymentInfo:
         """Start the agent process; returns status="starting".
 
         ``created_by`` is the principal id that created the deployment. When
-        platform auth is enabled, container-mode backends delegate the deployed
-        agent's platform calls to this principal (on-behalf-of) so its access is
-        scoped to what the creator can reach rather than the agents service
-        principal's full reach.
+        platform auth is enabled, container-mode backends delegate inference calls
+        through the auth-proxy sidecar with this principal as on-behalf-of.
+
+        ``auth_context`` is the full creator identity snapshot used by container
+        backends that request workload token exchange for direct platform SDK
+        calls from inside the deployed agent.
 
         ``resources`` is the snapshotted compute spec's k8s-style
         requests/limits. Container backends compile it into the execute
@@ -117,6 +122,10 @@ class RunnerBackend(ABC):
         resolved environment. Container backends compile these into secret-backed
         container env vars (never plaintext); the deployments-plugin substrate
         materializes/mounts them. Subprocess mode ignores it.
+
+        ``use_image_entrypoint`` is only meaningful for container backends. When
+        true, those backends preserve the image ENTRYPOINT/CMD instead of
+        injecting the platform-owned server command.
         """
         ...
 

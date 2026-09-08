@@ -166,7 +166,7 @@ nemo agents deployments wait --agent calculator-agent
 <details>
 <summary>Evaluate the agent</summary>
 ```bash
-nemo agents evaluate run \
+nemo agents evaluate \
   --eval-config plugins/nemo-agents/examples/calculator-agent/src/calculator_agent/calculator-eval.yml \
   --agent calculator-agent
 ```
@@ -175,8 +175,15 @@ nemo agents evaluate run \
 <details>
 <summary>Optimize the agent</summary>
 ```bash
-nemo agents optimize run \
-  --optimize-config plugins/nemo-agents/examples/calculator-agent/src/calculator_agent/calculator-optimize.yml \
+BUNDLE="$(pwd)/plugins/nemo-agents/examples/calculator-agent/src/calculator_agent"
+nemo agents optimize prepare-fileset \
+  --source "$BUNDLE" \
+  --optimize-config calculator-optimize.yml \
+  --fileset calculator-optimize \
+  --agent calculator-agent
+nemo agents optimize \
+  --optimize-config-fileset default/calculator-optimize \
+  --optimize-config calculator-optimize.yml \
   --agent calculator-agent
 ```
 </details>

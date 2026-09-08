@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from nmp.common.auth.access_key_lifecycle import ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD
 from nmp.common.auth.client import AuthClient
 from nmp.common.auth.dependencies import get_auth_client
-from nmp.common.auth.jwt import TokenClaims, UnsignedJWTRejectedError
+from nmp.common.auth.jwt import UnsignedJWTRejectedError
 from nmp.common.auth.middleware import (
     BYPASS_PREFIXES,
     HEALTH_ENDPOINTS,
@@ -24,6 +24,7 @@ from nmp.common.auth.middleware import (
     AuthorizationMiddleware,
 )
 from nmp.common.auth.models import Principal
+from nmp.common.auth.token_claims import ActorClaims, TokenClaims
 from nmp.common.auth.token_resolver import ResolvedBearerToken
 from nmp.common.config import AuthConfig, Configuration, PlatformConfig
 from nmp.common.config.base import OIDCConfig
@@ -173,6 +174,10 @@ class TestHealthEndpointsBypass:
         assert "/health/ready" in HEALTH_ENDPOINTS
         assert "/metrics" in HEALTH_ENDPOINTS
         assert "/apis/auth/discovery" in HEALTH_ENDPOINTS
+        assert "/apis/auth/authenticate" in HEALTH_ENDPOINTS
+        assert "/apis/auth/ext-authz" in HEALTH_ENDPOINTS
+        assert "/apis/auth/ext-authz/" in BYPASS_PREFIXES
+        assert "/apis/auth/authenticate/" not in BYPASS_PREFIXES
 
     def test_root_path_in_public_get_paths(self):
         assert "/" in PUBLIC_GET_PATHS
@@ -903,10 +908,17 @@ class TestBearerTokenAuth:
         @app.get("/whoami")
         async def whoami(auth_client: AuthClient = Depends(get_auth_client)):
             principal = auth_client.principal
+            effective_principal = principal.effective_principal
             return {
                 "principal": principal.id,
                 "email": principal.email,
                 "groups": principal.groups,
+                "on_behalf_of": principal.on_behalf_of,
+                "on_behalf_of_email": principal.on_behalf_of_email,
+                "on_behalf_of_groups": principal.on_behalf_of_groups,
+                "effective_principal": effective_principal.id,
+                "effective_email": effective_principal.email,
+                "effective_groups": effective_principal.groups,
             }
 
         Configuration.set_override(auth_config_enabled)
@@ -936,6 +948,130 @@ class TestBearerTokenAuth:
             "principal": "alice@example.com",
             "email": "alice@example.com",
             "groups": ["team-ml", "team-ai"],
+            "on_behalf_of": None,
+            "on_behalf_of_email": None,
+            "on_behalf_of_groups": None,
+            "effective_principal": "alice@example.com",
+            "effective_email": "alice@example.com",
+            "effective_groups": ["team-ml", "team-ai"],
+        }
+        resolver.assert_awaited_once()
+        mock_authorize.assert_called_once()
+        assert mock_authorize.call_args.kwargs["scopes"] == ["models:read"]
+
+    def test_bearer_token_with_actor_sets_delegated_auth_client_context(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.get("/whoami")
+        async def whoami(auth_client: AuthClient = Depends(get_auth_client)):
+            principal = auth_client.principal
+            effective_principal = principal.effective_principal
+            return {
+                "principal": principal.id,
+                "email": principal.email,
+                "groups": principal.groups,
+                "on_behalf_of": principal.on_behalf_of,
+                "on_behalf_of_email": principal.on_behalf_of_email,
+                "on_behalf_of_groups": principal.on_behalf_of_groups,
+                "effective_principal": effective_principal.id,
+                "effective_email": effective_principal.email,
+                "effective_groups": effective_principal.groups,
+            }
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+        client = TestClient(app, raise_server_exceptions=False)
+        claims = TokenClaims(
+            subject="creator@example.com",
+            email="creator@example.com",
+            groups=["workspace-editors"],
+            scopes=["models:read"],
+            raw_claims={},
+            actor=ActorClaims(
+                subject="system:serviceaccount:nemo-runs:job-runner",
+                groups=["system:serviceaccounts"],
+            ),
+        )
+        resolved = ResolvedBearerToken(claims=claims, token_kind="workload_access_token")
+
+        with patch(
+            "nmp.common.auth.middleware.resolve_bearer_token",
+            new=AsyncMock(return_value=resolved),
+        ) as resolver:
+            with patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize:
+                mock_authorize.return_value = MagicMock(allowed=True)
+                response = client.get("/whoami", headers={"Authorization": "Bearer workload-token"})
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "principal": "system:serviceaccount:nemo-runs:job-runner",
+            "email": None,
+            "groups": ["system:serviceaccounts"],
+            "on_behalf_of": "creator@example.com",
+            "on_behalf_of_email": "creator@example.com",
+            "on_behalf_of_groups": ["workspace-editors"],
+            "effective_principal": "creator@example.com",
+            "effective_email": "creator@example.com",
+            "effective_groups": ["workspace-editors"],
+        }
+        resolver.assert_awaited_once()
+        mock_authorize.assert_called_once()
+        assert mock_authorize.call_args.kwargs["scopes"] == ["models:read"]
+
+    def test_oidc_bearer_token_with_actor_uses_direct_auth_client_context(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.get("/whoami")
+        async def whoami(auth_client: AuthClient = Depends(get_auth_client)):
+            principal = auth_client.principal
+            effective_principal = principal.effective_principal
+            return {
+                "principal": principal.id,
+                "email": principal.email,
+                "groups": principal.groups,
+                "on_behalf_of": principal.on_behalf_of,
+                "on_behalf_of_email": principal.on_behalf_of_email,
+                "on_behalf_of_groups": principal.on_behalf_of_groups,
+                "effective_principal": effective_principal.id,
+                "effective_email": effective_principal.email,
+                "effective_groups": effective_principal.groups,
+            }
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+        client = TestClient(app, raise_server_exceptions=False)
+        claims = TokenClaims(
+            subject="creator@example.com",
+            email="creator@example.com",
+            groups=["workspace-editors"],
+            scopes=["models:read"],
+            raw_claims={"act": {"sub": "system:serviceaccount:nemo-runs:job-runner"}},
+            actor=ActorClaims(
+                subject="system:serviceaccount:nemo-runs:job-runner",
+                groups=["system:serviceaccounts"],
+            ),
+        )
+        resolved = ResolvedBearerToken(claims=claims, token_kind="oidc_access_token")
+
+        with patch(
+            "nmp.common.auth.middleware.resolve_bearer_token",
+            new=AsyncMock(return_value=resolved),
+        ) as resolver:
+            with patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize:
+                mock_authorize.return_value = MagicMock(allowed=True)
+                response = client.get("/whoami", headers={"Authorization": "Bearer oidc-token"})
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "principal": "creator@example.com",
+            "email": "creator@example.com",
+            "groups": ["workspace-editors"],
+            "on_behalf_of": None,
+            "on_behalf_of_email": None,
+            "on_behalf_of_groups": None,
+            "effective_principal": "creator@example.com",
+            "effective_email": "creator@example.com",
+            "effective_groups": ["workspace-editors"],
         }
         resolver.assert_awaited_once()
         mock_authorize.assert_called_once()
@@ -978,7 +1114,41 @@ class TestBearerTokenAuth:
         assert response.status_code == 200
         mock_authorize.assert_not_called()
 
-    def test_authenticate_prefixed_callout_path_bypasses_auth(self, auth_config_enabled):
+    def test_ext_authz_path_bypasses_auth(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.post("/apis/auth/ext-authz")
+        async def ext_authz():
+            return {"ok": True}
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            response = client.post("/apis/auth/ext-authz")
+
+        assert response.status_code == 200
+        mock_authorize.assert_not_called()
+
+    def test_ext_authz_prefixed_callout_path_bypasses_auth(self, auth_config_enabled):
+        app = FastAPI()
+
+        @app.delete("/apis/auth/ext-authz/apis/entities/v2/workspaces/default")
+        async def ext_authz_prefixed():
+            return {"ok": True}
+
+        Configuration.set_override(auth_config_enabled)
+        app.add_middleware(AuthorizationMiddleware, service_name="test-service")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            response = client.delete("/apis/auth/ext-authz/apis/entities/v2/workspaces/default")
+
+        assert response.status_code == 200
+        mock_authorize.assert_not_called()
+
+    def test_authenticate_prefixed_path_is_not_a_callout_bypass(self, auth_config_enabled):
         app = FastAPI()
 
         @app.delete("/apis/auth/authenticate/apis/entities/v2/workspaces/default")
@@ -990,10 +1160,11 @@ class TestBearerTokenAuth:
 
         client = TestClient(app, raise_server_exceptions=False)
         with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+            mock_authorize.return_value = MagicMock(allowed=True)
             response = client.delete("/apis/auth/authenticate/apis/entities/v2/workspaces/default")
 
         assert response.status_code == 200
-        mock_authorize.assert_not_called()
+        mock_authorize.assert_called_once()
 
 
 class TestPrincipalHeadersAuth:

@@ -236,7 +236,7 @@ class VirtualModelsResource(SyncAPIResource):
               excluded from the results.
 
           filter: Filter virtual models by workspace, project, name, default_model_entity,
-              created_at, and updated_at.
+              guardrail_config, created_at, and updated_at.
 
           page: Page number (1-indexed).
 
@@ -616,7 +616,7 @@ class AsyncVirtualModelsResource(AsyncAPIResource):
               excluded from the results.
 
           filter: Filter virtual models by workspace, project, name, default_model_entity,
-              created_at, and updated_at.
+              guardrail_config, created_at, and updated_at.
 
           page: Page number (1-indexed).
 
