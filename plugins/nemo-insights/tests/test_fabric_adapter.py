@@ -10,7 +10,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -183,7 +183,7 @@ async def test_fabric_adapter_logs_the_failure_with_its_traceback(monkeypatch, c
     await runtime.start({"config": _agent_config({"agent": "research-agent"})})
 
     with caplog.at_level("ERROR", logger="nemo_insights_plugin.fabric_adapter"):
-        result = await runtime.invoke(_request({"job_workspace": "workspace"}), cast(contract.RuntimeContext, None))
+        result = await runtime.invoke(_request({"job_workspace": "workspace"}), _runtime_context())
 
     assert result.status is contract.AgentRunStatus.FAILED
     assert result.error is not None
@@ -214,7 +214,7 @@ async def test_fabric_adapter_logs_the_whole_cause_chain(monkeypatch, caplog) ->
     await runtime.start({"config": _agent_config({"agent": "research-agent"})})
 
     with caplog.at_level("ERROR", logger="nemo_insights_plugin.fabric_adapter"):
-        await runtime.invoke(_request({"job_workspace": "workspace"}), cast(contract.RuntimeContext, None))
+        await runtime.invoke(_request({"job_workspace": "workspace"}), _runtime_context())
 
     assert originating in caplog.text, "root cause was dropped"
     assert raised in caplog.text
