@@ -172,6 +172,7 @@ def _exit_code_for(result: Any) -> int:
         return 1
     exit_code = result.get("exit_code")
     if isinstance(exit_code, int) and exit_code != 0:
+        logger.error("Job reported non-zero exit_code=%s; result: %s", exit_code, result)
         return 1
     return 0
 
