@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from nemo_platform_plugin.config import NMP_CONFIG_FILE_PATH_ENV_VAR, Configuration
 from nemo_platform_plugin.tasks import logging_setup
 from nemo_platform_plugin.tasks.logging_setup import (
     FALLBACK_LOG_FORMAT,
@@ -249,3 +251,55 @@ def test_provider_failure_is_reported_through_the_fallback(capsys: pytest.Captur
     stderr = capsys.readouterr().err
     assert "Task logging provider failed" in stderr
     assert "failed after attaching a handler" in stderr
+
+
+def test_resolve_log_config_reads_the_yaml_backed_platform_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A deployment configures logging in the platform config file, not the
+    environment. Instantiating the settings class directly would read only the
+    environment and silently leave such a deployment on the defaults."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("service:\n  LOG_FORMAT: json\n  LOG_LEVEL: DEBUG\n")
+    monkeypatch.setenv(NMP_CONFIG_FILE_PATH_ENV_VAR, str(config_file))
+    monkeypatch.delenv("LOG_FORMAT", raising=False)
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    Configuration.clear_cache()
+
+    try:
+        assert logging_setup._resolve_log_config() == ("DEBUG", "json")
+    finally:
+        Configuration.clear_cache()
+
+
+def test_environment_still_wins_over_the_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Containers with no config file get their settings from the environment
+    the jobs backends inject, so that source has to take precedence."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("service:\n  LOG_FORMAT: plain\n  LOG_LEVEL: ERROR\n")
+    monkeypatch.setenv(NMP_CONFIG_FILE_PATH_ENV_VAR, str(config_file))
+    monkeypatch.setenv("LOG_FORMAT", "json")
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    Configuration.clear_cache()
+
+    try:
+        assert logging_setup._resolve_log_config() == ("DEBUG", "json")
+    finally:
+        Configuration.clear_cache()
+
+
+def test_resolve_log_config_falls_back_when_the_config_file_is_unreadable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A malformed config file must not be the reason a task cannot log."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("this: is: not: valid: yaml:\n")
+    monkeypatch.setenv(NMP_CONFIG_FILE_PATH_ENV_VAR, str(config_file))
+    monkeypatch.delenv("LOG_FORMAT", raising=False)
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    Configuration.clear_cache()
+
+    try:
+        assert logging_setup._resolve_log_config() == ("INFO", "plain")
+    finally:
+        Configuration.clear_cache()

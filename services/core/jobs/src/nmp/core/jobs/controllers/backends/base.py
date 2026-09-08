@@ -26,6 +26,7 @@ from nmp.common.config.base import (
     NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR,
     PlatformConfig,
     determine_loopback_override,
+    get_common_service_config,
 )
 from nmp.common.jobs.constants import (
     CONFIG_TASK_STORAGE_PATH_ENVVAR,
@@ -321,6 +322,20 @@ def get_job_runtime_shared_envvars(
 
     if disable_warnings:
         envvars[NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR] = "1"
+
+    # A task container does not get the platform config file, so the deployment's
+    # logging settings would otherwise not reach it: a chart configured with
+    # ``service.log_format: json`` would still start its tasks on ``plain``.
+    # Resolve them here, where the file *is* readable, and pass the answer down.
+    # Best-effort - logging configuration is not worth failing a schedule over,
+    # and the task falls back to its own defaults.
+    try:
+        service_config = get_common_service_config()
+    except Exception:
+        logger.warning("Could not resolve logging settings for job runtime env.", exc_info=True)
+    else:
+        envvars["LOG_LEVEL"] = service_config.log_level
+        envvars["LOG_FORMAT"] = service_config.log_format
 
     return envvars
 

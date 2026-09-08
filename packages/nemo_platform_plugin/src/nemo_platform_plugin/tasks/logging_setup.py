@@ -131,15 +131,20 @@ def configure_task_logging() -> None:
 def _resolve_log_config() -> tuple[LogLevel, LogFormat]:
     """Read the level/format the platform is configured with.
 
-    ``CommonServiceConfig`` is owned by this package and reads the same
-    ``LOG_LEVEL`` / ``LOG_FORMAT`` environment the services use, so a task
-    honours whatever the deployment sets. Falls back to the field defaults
-    rather than failing: a task with misconfigured settings should still log.
+    Going through ``Configuration`` merges the platform config file when one
+    is reachable (local and subprocess runs, and any container where it is mounted),
+    and ``EnvironmentFirstSettings`` still lets the environment win - which is what
+    carries the setting into containers that have no config file, since the
+    jobs backends inject the platform's resolved ``LOG_LEVEL``/``LOG_FORMAT``
+    into every task.
+
+    Falls back to the field defaults rather than failing: a task with misconfigured
+    settings should still log.
     """
     try:
-        from nemo_platform_plugin.config import CommonServiceConfig
+        from nemo_platform_plugin.config import CommonServiceConfig, Configuration
 
-        service_config = CommonServiceConfig()
+        service_config = Configuration.get_service_config(CommonServiceConfig)
     except Exception:
         return "INFO", "plain"
     return service_config.log_level, service_config.log_format
