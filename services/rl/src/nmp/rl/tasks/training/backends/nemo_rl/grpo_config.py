@@ -521,19 +521,18 @@ def compile_grpo_config(
     # consolidated export Platform publishes. V1 forbids model_save_format on the
     # DTensorPolicyWorker, so these keys stay omitted when policy_backend=dtensor.
     #
-    # "every", not True or "final". NeMo-RL's update_checkpointer_config() setattrs this
-    # value straight onto Automodel's config, bypassing the normalizer that turns legacy
-    # bools into SaveConsolidatedMode -- so on an Automodel with the enum, a bool True
-    # matches neither member and silently disables consolidation. A str enum compares
-    # equal to "every", and the older bool-valued Automodel reads it as truthy, so this
-    # is the one value correct on both. "final" never fires: NeMo-RL calls save_model()
-    # without is_final_checkpoint, which then defaults to False on every save.
+    # Bool, not "every"/"final". docker-bake.hcl pins NEMO_RL_REF, whose Automodel
+    # submodule is 24b47e856 — CheckpointingConfig.save_consolidated is a bool there
+    # and Checkpointer._should_write_consolidated_safetensors() is
+    # ``self.config.save_consolidated and self._should_write_hf_metadata()``.
+    # Automodel main later replaced this with SaveConsolidatedMode; that is not
+    # what the training image ships.
     #
     # LoRA still gets save_consolidated: Automodel no-ops consolidation when is_peft,
     # but the key is V2-wide (same as the publisher expecting a consolidated tree).
     # model_save_format stays all_weights-only; LoRA already saves safetensors adapters.
     if parallelism.policy_backend is PolicyBackend.AUTOMODEL:
-        cfg["checkpointing"]["save_consolidated"] = "every"
+        cfg["checkpointing"]["save_consolidated"] = True
         if customizer_config.training.finetuning_type == FinetuningType.ALL_WEIGHTS:
             cfg["checkpointing"]["model_save_format"] = "safetensors"
     lora_cfg = _build_lora_cfg(customizer_config)

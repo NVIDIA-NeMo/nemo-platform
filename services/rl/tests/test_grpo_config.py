@@ -892,9 +892,8 @@ def test_automodel_all_weights_requests_consolidated_safetensors(
     checkpointing = compile_grpo_config(step, job_ctx)["checkpointing"]
 
     assert checkpointing["model_save_format"] == "safetensors"
-    # Not True/"final": NeMo-RL setattrs this past Automodel's bool->enum normalizer,
-    # and it never passes is_final_checkpoint.
-    assert checkpointing["save_consolidated"] == "every"
+    # Bool: bake-pinned Automodel 24b47e856 types save_consolidated as bool.
+    assert checkpointing["save_consolidated"] is True
 
 
 def test_dtensor_v1_omits_model_save_format(
@@ -926,7 +925,7 @@ def test_automodel_lora_still_requests_consolidated_export(
     )
     checkpointing = compile_grpo_config(step, job_ctx)["checkpointing"]
 
-    assert checkpointing["save_consolidated"] == "every"
+    assert checkpointing["save_consolidated"] is True
     assert "model_save_format" not in checkpointing
 
 
