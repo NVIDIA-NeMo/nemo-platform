@@ -654,31 +654,3 @@ export const getTrainingOptionBadges = (job: CustomizationJob | null | undefined
 
   return [];
 };
-
-/**
- * The number of steps completed during training.
- * Used for showing a max x-axis value in the loss line chart.
- */
-interface GetCustomizationTrainingStepsParams {
-  epochs: number;
-  trainingRecords: number;
-  batchSize: number;
-  hasValidationDataset?: boolean;
-}
-export const getCustomizationTrainingSteps = ({
-  epochs,
-  trainingRecords,
-  batchSize,
-  hasValidationDataset,
-}: GetCustomizationTrainingStepsParams): number => {
-  if (epochs === 0 || batchSize === 0 || trainingRecords === 0) {
-    return 0;
-  }
-  if (hasValidationDataset) {
-    // When both training and validation datasets are used
-    return epochs * Math.ceil(trainingRecords / batchSize);
-  } else {
-    // When only training dataset is used (90% split for training)
-    return epochs * Math.ceil(Math.ceil(trainingRecords * 0.9) / batchSize);
-  }
-};
