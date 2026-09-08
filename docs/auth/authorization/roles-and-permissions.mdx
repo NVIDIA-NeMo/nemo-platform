@@ -11,6 +11,15 @@ The authoritative reference for NeMo Platform roles and their permissions. For b
 
 NeMo Platform provides human-facing roles for interactive users and a separate workload role for job runtime identities:
 
+<Note>
+
+The same workspace roles can be granted to NeMo service-account principals such
+as `service-account:intake-reader`. Service accounts are not internal
+`service:<name>` principals; grant them the minimum role needed for their
+automation task.
+
+</Note>
+
 **Viewer** — For stakeholders who need visibility into resources but should not modify them.
 
 - View all resources in a workspace (models, datasets, jobs, evaluations)
