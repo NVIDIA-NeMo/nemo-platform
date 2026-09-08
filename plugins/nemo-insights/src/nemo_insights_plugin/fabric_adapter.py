@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
 from typing import Any
@@ -14,6 +15,9 @@ from nemo_fabric_adapters.common import lifecycle
 from nemo_insights_plugin.analyst.run import run_analyst_change_set
 from nemo_platform_plugin.nooa_model_client import ConfiguredModelRefs
 from nemo_platform_plugin.sdk_provider import get_async_task_sdk
+from nemo_platform_plugin.tasks.logging_setup import configure_task_logging
+
+logger = logging.getLogger(__name__)
 
 
 class AnalystAdapterConfigError(ValueError):
@@ -41,6 +45,9 @@ class InsightsAnalystRuntime:
         try:
             result = await self._run_analysis(request)
         except Exception as error:
+            # Log the full exception so it reaches this process's stderr, which
+            # is where the job reads a failed run's diagnostics from.
+            logger.exception("Insights analyst run failed.")
             return contract.AgentRunResult(
                 status=contract.AgentRunStatus.FAILED,
                 output={"response": str(error)},
@@ -154,6 +161,11 @@ def _fast_model_ref(
 
 def main() -> None:
     """Serve the persistent local-host lifecycle protocol."""
+    # Fabric spawns this as its own process and redirects its streams to the
+    # run's stdout/stderr artifacts. Nothing configures logging here, so
+    # without this the analyst's and Nooa's INFO output is dropped and those
+    # artifacts hold only bare WARNING+ lines from ``logging.lastResort``.
+    configure_task_logging()
     lifecycle.serve(InsightsAnalystRuntime, config_loader=contract.AgentConfig.from_mapping)
 
 

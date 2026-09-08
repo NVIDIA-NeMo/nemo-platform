@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -38,6 +39,7 @@ from nemo_agents_plugin.jobs.execute import (
     ExecuteAgentJobConfig,
     ExecuteAgentStepConfig,
     ResolvedAgentConfig,
+    _log_agent_stderr,
 )
 from nemo_agents_plugin.tasks.execute.workdir import (
     AgentWorkdir,
@@ -1423,3 +1425,367 @@ def test_agent_entity_may_still_hold_a_nat_workflow_config() -> None:
     entity = Agent(name="legacy", workspace="default", config={"workflow": {}})
 
     assert entity.config_format == "nat-workflow-v1"
+
+
+def test_run_failed_fabric_result_reports_the_reason_in_the_log(
+    ctx: JobContext, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A Fabric result that reports failure never raises, so this is the only
+    place the reason is stated. Without it the step exits non-zero having
+    logged nothing at all."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(
+            status="failed",
+            error={"stage": "invoke", "code": "insights_analyst_failed", "message": "LLM API error"},
+            runtime_id="runtime-1",
+            invocation_id="invocation-1",
+        )
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    logged = caplog.text
+    assert "LLM API error" in logged
+    assert "insights_analyst_failed" in logged
+    assert "runtime-1" in logged
+    assert "invocation-1" in logged
+
+
+def test_run_logs_the_agent_stderr_when_the_run_fails(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """Fabric captures the agent process's stderr to a file, so on failure the
+    real traceback reaches the container's own logs nowhere else."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        # Mirrors the layout Fabric creates: a runtime/invocation directory it
+        # names itself, under the artifacts dir.
+        invocation_dir = request.base_dir / "artifacts" / ".fabric" / "runtime-1" / "invocation-1"
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+        (invocation_dir / "stderr.txt").write_text("Traceback (most recent call last):\nValueError: the actual cause\n")
+        return FabricRuntimeResult(status="failed", error={"message": "agent failed"})
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "ValueError: the actual cause" in caplog.text
+
+
+def test_run_logs_the_agent_stderr_when_fabric_raises(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """Fabric produced no result, so the agent's stderr is the only account of
+    how far it got - which is the case telemetry cannot cover."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        invocation_dir = request.base_dir / "artifacts" / ".fabric" / "runtime-1" / "invocation-1"
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+        (invocation_dir / "stderr.txt").write_text("got as far as loading traces\n")
+        raise TimeoutError("fabric timed out")
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        pytest.raises(TimeoutError),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "got as far as loading traces" in caplog.text
+
+
+def test_run_does_not_log_agent_stderr_on_success(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """A healthy run's execution record belongs in telemetry, which carries it
+    live and structured; duplicating it into the job log is noise."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        invocation_dir = request.base_dir / "artifacts" / ".fabric" / "runtime-1" / "invocation-1"
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+        (invocation_dir / "stderr.txt").write_text("routine chatter nobody needs\n")
+        return FabricRuntimeResult(status="succeeded", response="done")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert result["status"] == "completed"
+    assert "routine chatter nobody needs" not in caplog.text
+
+
+def test_run_ignores_the_agent_stdout_file(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """``stdout.txt`` is the adapter's protocol channel - a single JSON response
+    already saved as ``fabric_run_result`` - not a log stream."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        invocation_dir = request.base_dir / "artifacts" / ".fabric" / "runtime-1" / "invocation-1"
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+        (invocation_dir / "stdout.txt").write_text('{"response":"the protocol payload"}\n')
+        (invocation_dir / "stderr.txt").write_text("the real diagnostics\n")
+        return FabricRuntimeResult(status="failed", error={"message": "agent failed"})
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "the real diagnostics" in caplog.text
+    assert "the protocol payload" not in caplog.text
+
+
+def test_run_logs_the_whole_agent_stderr_for_realistic_output(
+    ctx: JobContext, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The byte cap exists for the pathological case only; ordinary output,
+    however long, must arrive complete."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+    long_stderr = "\n".join(f"line {n}" for n in range(5000))
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        invocation_dir = request.base_dir / "artifacts" / ".fabric" / "runtime-1" / "invocation-1"
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+        (invocation_dir / "stderr.txt").write_text(long_stderr)
+        return FabricRuntimeResult(status="failed", error={"message": "agent failed"})
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "line 0" in caplog.text
+    assert "line 4999" in caplog.text
+
+
+def test_run_tolerates_a_failure_with_no_agent_stderr(ctx: JobContext) -> None:
+    """The dump runs on an already-failing path; it must not replace the error."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="failed", error={"message": "agent failed"})
+
+    with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert result["status"] == "failed"
+
+
+def test_log_agent_stderr_reports_an_empty_stream(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """An empty stderr is itself a finding: the agent logged nothing at all."""
+    (tmp_path / "stderr.txt").write_text("   \n")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "was empty" in caplog.text
+
+
+def test_log_agent_stderr_survives_a_missing_artifacts_directory() -> None:
+    """Never the reason a failing run fails differently."""
+    _log_agent_stderr(Path("/nonexistent/artifacts"))
+
+
+def test_run_logs_progress_through_a_successful_run(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """A healthy run should account for itself: which agent, that it was
+    invoked, and what came back."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello", timeout_seconds=300),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="succeeded", response="done")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Executing agent default/calc (timeout 300s)." in caplog.text
+    assert "Invoking agent default/calc." in caplog.text
+    assert "returned status=succeeded after" in caplog.text
+
+
+def test_run_names_the_agent_before_validating_its_config(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """A config that fails to parse must still say which agent it belonged to."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=ResolvedAgentConfig(
+            name="calc",
+            workspace="default",
+            config={"not": "a valid agent config"},
+            config_format="nemo-agents-spec-v1",
+        ),
+    )
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        pytest.raises(Exception),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Executing agent default/calc" in caplog.text
+
+
+def test_run_does_not_announce_workdir_staging_when_there_is_none(
+    ctx: JobContext, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Most runs stage nothing; the line would be noise."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="succeeded", response="done")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Staging workdir" not in caplog.text
+
+
+def test_run_logs_elapsed_time_when_fabric_raises(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """How long a run got before dying is part of diagnosing a timeout."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        raise TimeoutError("fabric timed out")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        pytest.raises(TimeoutError),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Fabric invocation failed for agent default/calc after" in caplog.text
+
+
+def test_log_agent_stderr_tails_a_stream_over_the_cap(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The artifacts dir is agent-writable, so an unbounded read here could
+    exhaust the task's memory while it reports a failure - destroying the very
+    diagnostics this produces."""
+    monkeypatch.setattr("nemo_agents_plugin.jobs.execute._MAX_LOGGED_STDERR_BYTES", 200)
+    (tmp_path / "stderr.txt").write_text("A" * 5000 + "\nthe failure is at the end\n")
+
+    with caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "the failure is at the end" in caplog.text, "the tail is what matters for a long run"
+    assert "earlier bytes omitted" in caplog.text
+    assert "A" * 1000 not in caplog.text, "the whole file was read despite the cap"
+
+
+def test_log_agent_stderr_caps_the_number_of_files(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An agent can write as many of these as it likes into its artifacts dir."""
+    monkeypatch.setattr("nemo_agents_plugin.jobs.execute._MAX_LOGGED_STDERR_FILES", 2)
+    for n in range(5):
+        run_dir = tmp_path / f"run-{n}"
+        run_dir.mkdir()
+        (run_dir / "stderr.txt").write_text(f"stream {n}\n")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "Found 5 agent stderr files" in caplog.text
+    assert "stream 0" in caplog.text
+    assert "stream 1" in caplog.text
+    assert "stream 4" not in caplog.text
+
+
+def test_log_agent_stderr_does_not_flag_truncation_when_it_fits(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A run under the cap must read as complete, with no misleading notice."""
+    (tmp_path / "stderr.txt").write_text("short and complete\n")
+
+    with caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "short and complete" in caplog.text
+    assert "omitted" not in caplog.text
+
+
+def test_log_agent_stderr_reports_byte_counts_not_character_counts(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cap is a byte budget, so the notice has to be in bytes: multibyte
+    UTF-8 would otherwise under-report by up to 4x."""
+    monkeypatch.setattr("nemo_agents_plugin.jobs.execute._MAX_LOGGED_STDERR_BYTES", 400)
+    # 2 bytes per character, so a character count would read as half of this.
+    (tmp_path / "stderr.txt").write_text("é" * 1000, encoding="utf-8")
+
+    with caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "last 400 bytes" in caplog.text
+    assert "1600 earlier bytes omitted" in caplog.text
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="mkfifo is not available on this platform")
+def test_log_agent_stderr_rejects_a_fifo_without_blocking(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A FIFO with no writer would block this task forever - while it is trying
+    to report a failure. The artifacts dir is agent-writable, so the file type
+    is not ours to trust."""
+    os.mkfifo(tmp_path / "stderr.txt")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "is not a regular file" in caplog.text
+
+
+def test_log_agent_stderr_refuses_to_follow_a_symlink(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """``st_size`` on a symlinked character device reads as 0, so it would pass
+    any size cap and then read without bound (``/dev/zero`` being the obvious
+    case). Refusing the symlink outright is what closes that."""
+    (tmp_path / "real.txt").write_text("some diagnostics\n")
+    (tmp_path / "stderr.txt").symlink_to(tmp_path / "real.txt")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "Could not read agent stderr" in caplog.text
+    assert "some diagnostics" not in caplog.text
