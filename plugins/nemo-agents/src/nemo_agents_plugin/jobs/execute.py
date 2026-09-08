@@ -16,6 +16,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple, cast
 
+import nemo_fabric as fabric
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.agent_config_formats import resolve_agent_config_for_deployment
 from nemo_agents_plugin.config import AgentsConfig
@@ -37,6 +38,7 @@ from nemo_agents_plugin.fabric.invocation import (
     invoke_agent_config_request_once,
 )
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeTimeoutError
+from nemo_agents_plugin.fabric.translator import translate_agent_config
 from nemo_agents_plugin.jobs.execute_extensions import (
     NOOP_EXECUTE_AGENT_EXTENSION_KIND,
     ExecuteAgentAfterInvokeContext,
@@ -403,11 +405,13 @@ class ExecuteAgentJob(NemoJob):
         logger.info("Executing agent %s (timeout %gs).", agent_ref, step_config.request.timeout_seconds)
 
         _validate_agent_config_format(step_config.agent.config_format)
-        if step_config.request.telemetry:
-            _configure_intake_telemetry(step_config.agent.config, workspace=ctx.workspace, sdk=sdk)
         agent_config = _validate_agent_config(step_config.agent.config)
 
         fabric_dirs = FabricDirectories.create(agent_config, ctx.storage.ephemeral)
+
+        if step_config.request.telemetry and _adapter_supports_relay(agent_config, fabric_dirs.base):
+            _configure_intake_telemetry(step_config.agent.config, workspace=ctx.workspace, sdk=sdk)
+            agent_config = _validate_agent_config(step_config.agent.config)
 
         if step_config.workdir is not None and _has_workdir_inputs(step_config.workdir):
             if sdk is None:
@@ -794,6 +798,31 @@ def _validate_agent_config_format(config_format: str) -> None:
             f"Config format {config_format!r} is not supported; "
             f"agents.execute jobs only support {FABRIC_AGENT_CONFIG_FORMAT!r}."
         )
+
+
+def _adapter_supports_relay(agent_config: AgentConfig, base_dir: Path) -> bool:
+    """Whether the agent's adapter declares that Relay can instrument it.
+
+    Adapters advertise this in their descriptor's ``telemetry.providers``; the
+    four bundled harnesses declare ``relay``, and an adapter that does not is
+    rejected outright by Fabric for configuring one. Auto-wiring has to ask
+    first, or it turns "this agent cannot be traced" into "this agent cannot
+    run".
+    """
+    try:
+        plan = fabric.Fabric().plan(translate_agent_config(agent_config), base_dir=base_dir)
+        descriptor = plan.to_dict().get("adapter_descriptor") or {}
+        providers = descriptor.get("descriptor", descriptor).get("telemetry", {}).get("providers", {})
+        supported = "relay" in providers
+    except Exception:
+        # Planning failures are the invocation's to report, with its own
+        # diagnostics; here they only mean we cannot know, so do not wire.
+        logger.warning("Could not read adapter telemetry support; the agent will run untraced.", exc_info=True)
+        return False
+
+    if not supported:
+        logger.info("Adapter does not support Relay telemetry; the agent will run untraced.")
+    return supported
 
 
 def _configure_intake_telemetry(

@@ -40,8 +40,9 @@ from nemo_agents_plugin.jobs.execute import (
     ExecuteAgentJobConfig,
     ExecuteAgentStepConfig,
     ResolvedAgentConfig,
-    _log_agent_stderr,
+    _adapter_supports_relay,
     _configure_intake_telemetry,
+    _log_agent_stderr,
 )
 from nemo_agents_plugin.tasks.execute.workdir import (
     AgentWorkdir,
@@ -1894,3 +1895,29 @@ def test_an_unrecognized_telemetry_section_is_left_alone(monkeypatch: pytest.Mon
     _configure_intake_telemetry(config, workspace="default", sdk=None)
 
     assert config["telemetry"] == {"enabled": True, "not_a_real_field": 1}
+
+
+def test_relay_support_is_read_from_the_adapter_descriptor(tmp_path: Path) -> None:
+    """The bundled harnesses advertise relay; auto-wiring is allowed to trust that."""
+    config = AgentConfig.model_validate(_fabric_agent_config())
+
+    assert _adapter_supports_relay(config, tmp_path) is True
+
+
+def test_an_adapter_without_relay_support_is_not_wired(tmp_path: Path) -> None:
+    """Fabric rejects a relay config outright, so wiring one would stop the agent running."""
+    config = AgentConfig.model_validate(
+        _fabric_agent_config(harnesses={"h": {"kind": "nvidia.fabric.insights-analyst"}})
+    )
+
+    assert _adapter_supports_relay(config, tmp_path) is False
+
+
+def test_an_unplannable_config_is_not_wired(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """We cannot know, so we do not wire; the invocation reports the real problem."""
+    config = AgentConfig.model_validate(_fabric_agent_config(harnesses={"h": {"kind": "codex"}}))
+
+    with caplog.at_level(logging.WARNING):
+        assert _adapter_supports_relay(config, tmp_path) is False
+
+    assert "Could not read adapter telemetry support" in caplog.text
