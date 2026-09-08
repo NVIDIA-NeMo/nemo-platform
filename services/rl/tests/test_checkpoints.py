@@ -197,6 +197,7 @@ def test_copy_full_weights_prefers_consolidated_export(tmp_path: Path):
 
 
 def test_copy_leaves_multi_rank_shards_in_place(tmp_path: Path):
+    """Two ranks writing one logical file each hold partial tensors needing stitching."""
     checkpoint = tmp_path / "step_20"
     model_dir = checkpoint / "policy" / "weights" / "model"
     _write_hf_shard(model_dir, "shard-00001-model-00001-of-00001.safetensors")
@@ -208,3 +209,20 @@ def test_copy_leaves_multi_rank_shards_in_place(tmp_path: Path):
     assert (output / "shard-00001-model-00001-of-00001.safetensors").is_file()
     assert (output / "shard-00002-model-00001-of-00001.safetensors").is_file()
     assert not (output / "model.safetensors").exists()
+
+
+def test_copy_leaves_multi_file_shards_in_place(tmp_path: Path):
+    """One rank, but a model spanning several HF files needs an index a sharded save
+    never writes, so renaming alone would not be loadable."""
+    checkpoint = tmp_path / "step_20"
+    model_dir = checkpoint / "policy" / "weights" / "model"
+    _write_hf_shard(model_dir, "shard-00001-model-00001-of-00002.safetensors")
+    _write_hf_shard(model_dir, "shard-00001-model-00002-of-00002.safetensors")
+
+    output = tmp_path / "output"
+    copy_hf_full_weights(checkpoint, model_dir, output)
+
+    assert (output / "shard-00001-model-00001-of-00002.safetensors").is_file()
+    assert (output / "shard-00001-model-00002-of-00002.safetensors").is_file()
+    assert not (output / "model-00001-of-00002.safetensors").exists()
+    assert not (output / "model.safetensors.index.json").exists()

@@ -72,8 +72,9 @@ _HF_SKIP_NAMES = {
     "fqn_to_dtype_mapping.json",
 }
 
-# shard-00001-model-00001-of-00001.safetensors -> model-00001-of-00001.safetensors
-_AUTOMODEL_SHARD_RE = re.compile(r"^shard-\d+-(model-\d+-of-\d+\.safetensors)$")
+# shard-00001-model-00001-of-00001.safetensors
+# -> group 1 the logical HF file, group 2 how many logical files the model spans.
+_AUTOMODEL_SHARD_RE = re.compile(r"^shard-\d+-(model-\d+-of-(\d+)\.safetensors)$")
 
 
 def find_lora_adapter_root(checkpoint_path: Path) -> Path | None:
@@ -164,35 +165,47 @@ def _flatten_hf_metadata(model_dir: Path, output_path: Path) -> None:
 
 
 def _promote_automodel_shards(output_path: Path) -> None:
-    """Rewrite Automodel ``shard-*-model-*-of-*.safetensors`` names to HuggingFace names.
+    """Rename Automodel's ``shard-`` file to the HuggingFace name, when that is sound.
 
-    Rank-local shards that share the same ``model-NNNN-of-NNNN`` suffix still need
-    Automodel consolidation and are left unchanged. A single file per suffix (the
-    one-GPU GRPO layout) is a complete tensor set and is renamed so Platform's
-    fileset checks (``model.safetensors`` / ``model-*.safetensors``) accept it.
+    Automodel names sharded saves ``shard-<rank>-model-<i>-of-<n>.safetensors``, where
+    the ``shard-`` prefix is the writing rank and ``model-<i>-of-<n>`` is the logical HF
+    file the tensors belong to. A pure rename only yields a loadable tree when one rank
+    wrote one logical file, which is the single-GPU case. With several ranks each file
+    holds partial tensors that have to be stitched, and with several logical files the
+    tree needs a ``model.safetensors.index.json`` that a sharded save never writes.
+    Both of those require Automodel's consolidation, so they are left untouched.
     """
     groups: dict[str, list[Path]] = {}
+    totals: set[int] = set()
     for path in _weight_safetensors(output_path):
         match = _AUTOMODEL_SHARD_RE.match(path.name)
         if match:
             groups.setdefault(match.group(1), []).append(path)
+            totals.add(int(match.group(2)))
     if not groups:
         return
-    if any(len(files) != 1 for files in groups.values()):
+
+    one_rank_per_file = all(len(files) == 1 for files in groups.values())
+    one_logical_file = len(groups) == 1 and totals == {1}
+    if not (one_rank_per_file and one_logical_file):
         logger.warning(
-            "Automodel wrote multi-rank shards under %s without a consolidated/ "
-            "export; publishing the shard files as-is. Multi-GPU all_weights GRPO "
-            "needs a consolidated HuggingFace tree to load with from_pretrained.",
+            "Automodel wrote %d shard file(s) across %d logical HuggingFace file(s) under "
+            "%s and there is no consolidated/ export; publishing the shard names as-is. "
+            "This tree will not load with from_pretrained -- enable "
+            "checkpointing.save_consolidated so Automodel stitches the shards and writes "
+            "model.safetensors.index.json.",
+            sum(len(files) for files in groups.values()),
+            len(groups),
             output_path,
         )
         return
-    for hf_name, (shard,) in groups.items():
-        target_name = "model.safetensors" if hf_name == "model-00001-of-00001.safetensors" else hf_name
-        target = output_path / target_name
-        if target.exists():
-            continue
-        logger.info("Publishing %s as %s", shard.name, target_name)
-        shard.rename(target)
+
+    (shard,) = next(iter(groups.values()))
+    target = output_path / "model.safetensors"
+    if target.exists():
+        return
+    logger.info("Publishing %s as %s", shard.name, target.name)
+    shard.rename(target)
 
 
 def _fix_fsdp2_architecture(model_path: Path) -> None:

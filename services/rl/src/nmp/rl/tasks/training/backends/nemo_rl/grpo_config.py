@@ -520,12 +520,20 @@ def compile_grpo_config(
     # V2 (Automodel) already serializes HF safetensors. Ask it to also write the
     # consolidated export Platform publishes. V1 forbids model_save_format on the
     # DTensorPolicyWorker, so these keys stay omitted when policy_backend=dtensor.
+    #
+    # "every", not True or "final". NeMo-RL's update_checkpointer_config() setattrs this
+    # value straight onto Automodel's config, bypassing the normalizer that turns legacy
+    # bools into SaveConsolidatedMode -- so on an Automodel with the enum, a bool True
+    # matches neither member and silently disables consolidation. A str enum compares
+    # equal to "every", and the older bool-valued Automodel reads it as truthy, so this
+    # is the one value correct on both. "final" never fires: NeMo-RL calls save_model()
+    # without is_final_checkpoint, which then defaults to False on every save.
     if (
         parallelism.policy_backend is PolicyBackend.AUTOMODEL
         and customizer_config.training.finetuning_type == FinetuningType.ALL_WEIGHTS
     ):
         cfg["checkpointing"]["model_save_format"] = "safetensors"
-        cfg["checkpointing"]["save_consolidated"] = True
+        cfg["checkpointing"]["save_consolidated"] = "every"
     lora_cfg = _build_lora_cfg(customizer_config)
     dynamic_batching_cfg, sequence_packing_cfg = _build_batching_config(customizer_config, grpo_hp)
     chat_template = resolve_chat_template(
