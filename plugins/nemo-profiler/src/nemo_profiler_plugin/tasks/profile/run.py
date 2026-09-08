@@ -106,7 +106,7 @@ def _profile_and_publish(
     column_roles: dict[str, str],
 ) -> int:
     # Uncapped by default: the profiler folds, so memory is flat in rows and an exhaustive read
-    # buys exact row counts, proven value enumerations and `rows_complete`. Reading through ranges
+    # buys exact example counts, proven value enumerations and `examples_complete`. Reading through ranges
     # does make that a *transfer* cost rather than a free one -- an uncapped run pulls every row
     # group over the wire -- so `row_budget` is the knob for a fileset too large to be worth it.
     logger.info("Profiling with a row budget of %s per partition", row_budget if row_budget else "unbounded")
