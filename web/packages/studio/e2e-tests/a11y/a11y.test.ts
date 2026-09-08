@@ -44,7 +44,7 @@ test.describe('Accessibility — Studio routes (axe / WCAG 2.x A+AA)', () => {
   });
 
   test('workspace dashboard has no axe violations', async ({ page }) => {
-    await page.goto('/workspaces/default/dashboard');
+    await page.goto('workspaces/default/dashboard');
     await page.waitForLoadState('networkidle');
 
     const results = await runAxeScan(page);
