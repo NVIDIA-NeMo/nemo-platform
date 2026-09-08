@@ -3,11 +3,12 @@
 
 """Plugin-native agent-evaluation job compiler.
 
-Parallels :mod:`nemo_evaluator.jobs.compiler` (row/model eval), emitting a single
-``cpu-tasks`` step that runs ``python -m nemo_evaluator.tasks.agent_evaluate`` in
-the platform task environment. Metric/endpoint secrets are surfaced as
-``from_secret`` environment variables; an agent *runner* target (e.g. Fabric)
-carries no endpoint secret of its own.
+Parallels :mod:`nemo_evaluator.jobs.compiler` (row/model eval), emitting an
+``agent-evaluate`` step in the platform task environment and, for FileSet-backed
+Gym targets, a preceding ``stage-environment`` step. Standard and sandboxed
+targets use ``cpu-tasks``; colocated Gym targets use ``gym-tasks``. Metric/endpoint
+secrets are surfaced as ``from_secret`` environment variables; an agent *runner*
+target (e.g. Fabric) carries no endpoint secret of its own.
 """
 
 from __future__ import annotations
