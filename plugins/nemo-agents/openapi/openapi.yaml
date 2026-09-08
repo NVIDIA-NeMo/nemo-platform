@@ -1043,6 +1043,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -1521,6 +1525,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -1807,6 +1815,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -2189,6 +2201,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -2667,6 +2683,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -2953,6 +2973,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -3335,6 +3359,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
