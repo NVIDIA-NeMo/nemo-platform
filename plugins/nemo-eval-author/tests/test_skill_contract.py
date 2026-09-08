@@ -1255,8 +1255,12 @@ def test_audit_skill_routes_missing_ethos_to_platform_skills() -> None:
     """Audit needs a real Ethos contract, not a placeholder denominator source."""
     _, body = _frontmatter_and_body(_AUDIT_DIR)
     preflight = body.split("## Scripts", 1)[0]
+    normalized_body = re.sub(r"\s+", " ", body)
     normalized_preflight = re.sub(r"\s+", " ", preflight)
 
+    assert "If the user provides `--ethos <path>`, validate and use that path" in normalized_preflight
+    assert "`<ethos_path>` before applying repository discovery" in normalized_preflight
+    assert "from `<ethos_path>` and reviewed audit items" in normalized_body
     assert "If no Ethos file exists, stop the audit flow" in normalized_preflight
     assert "needs a source of truth for how the agent is supposed to behave" in normalized_preflight
     assert "Code shows what the agent does today" in normalized_preflight
