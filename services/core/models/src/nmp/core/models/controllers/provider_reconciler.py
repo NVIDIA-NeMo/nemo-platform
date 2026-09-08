@@ -533,6 +533,20 @@ class ModelProviderReconciler:
             if "&adapters/" in served_model.model_entity_id:
                 continue
             ref = parse_entity_ref(served_model.model_entity_id)
+            # Back-reference this provider on the entity it serves. The external path
+            # already does this via _ensure_model_entity_for_provider; deployment-backed
+            # providers had no equivalent, so their base entity's model_providers stayed
+            # empty and every Studio surface gating on hasModelProvider hid a model that
+            # was in fact serving traffic.
+            #
+            # Safe for both branches: staging a link is idempotent (the external path's
+            # earlier stage_provider_link for the same entity merges into one write), and
+            # it never creates an entity, so the deployment-backed "no autocreation"
+            # contract is preserved. An entity that does not exist yet (a prompt-tuned
+            # variant still being registered by its training job) has its link dropped by
+            # ModelEntityCache._create and re-staged on the next tick, which is the
+            # intended self-healing behaviour.
+            self._entity_cache.stage_provider_link(ref.workspace, ref.name, provider_id)
             await self._ensure_passthrough_virtual_model(ref.workspace, ref.name, existing_vm_names)
             self._emit_heartbeat()
 
