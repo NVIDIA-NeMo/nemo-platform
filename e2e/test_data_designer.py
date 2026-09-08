@@ -5,6 +5,7 @@ import tempfile
 import time
 from collections.abc import Generator
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 import data_designer.config as dd
@@ -15,6 +16,7 @@ from data_designer_nemo.nemotron_personas import WORKSPACE, get_resource_name_fo
 from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError
 from nemo_platform import NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
@@ -149,11 +151,11 @@ def test_fileset_seed_data(sdk: NeMoPlatform, files_client: FilesClient, workspa
     remote_path = "data.parquet"
     with tempfile.NamedTemporaryFile(suffix=".parquet") as f:
         seed_data.to_parquet(f.name, index=False)
-        sdk.files.upload(
-            local_path=f.name,
-            remote_path=remote_path,
-            fileset=fileset_name,
+        client_from_platform(sdk, FilesClient).upload_file(
+            path=remote_path,
+            name=fileset_name,
             workspace=workspace,
+            content=Path(f.name).read_bytes(),
         )
 
     filepath = f"{workspace}/{fileset_name}#{remote_path}"

@@ -1109,37 +1109,34 @@ class TestFilesetImmutabilityForNonServicePrincipals:
         workspace = sdk_service.workspace or "default"
         name = test_fileset_name()
         # Service principal creates fileset with service_source and uploads a file.
-        created = (
-            client_from_platform(sdk_service, FilesClient)
-            .create_fileset(
-                workspace=workspace,
-                body=CreateFilesetRequest(
-                    name=name,
-                    description="Immutability test",
-                    custom_fields={"service_source": "customizer"},
-                ),
-            )
-            .data()
-        )
+        files = client_from_platform(sdk_service, FilesClient)
+        created = files.create_fileset(
+            workspace=workspace,
+            body=CreateFilesetRequest(
+                name=name,
+                description="Immutability test",
+                custom_fields={"service_source": "customizer"},
+            ),
+        ).data()
         assert created.custom_fields.get("service_source") == "customizer"
-        sdk_service.files.upload_content(
+        files.upload_file(
             content=b"from service",
-            remote_path="data.txt",
-            fileset=name,
+            path="data.txt",
+            name=name,
             workspace=workspace,
         )
-        files = sdk_service.files.list(fileset=name, workspace=workspace)
-        assert len(files.data) == 1
-        assert files.data[0].path == "data.txt"
+        file_list = sdk_service.files.list(fileset=name, workspace=workspace)
+        assert len(file_list.data) == 1
+        assert file_list.data[0].path == "data.txt"
         # Non-service principal must not be able to upload (fileset is immutable for them).
         with pytest.raises(PermissionDeniedError):
-            sdk_user.files.upload_content(
+            client_from_platform(sdk_user, FilesClient).upload_file(
                 content=b"from user",
-                remote_path="user.txt",
-                fileset=name,
+                path="user.txt",
+                name=name,
                 workspace=workspace,
             )
-        client_from_platform(sdk_service, FilesClient).delete_fileset(name=name, workspace=workspace)
+        files.delete_fileset(name=name, workspace=workspace)
 
     def test_non_service_principal_cannot_overwrite_or_remove_service_source_on_update(
         self, sdk_user_and_service: tuple[NeMoPlatform, NeMoPlatform]
