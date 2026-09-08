@@ -22,10 +22,11 @@ import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import ClassVar
+from urllib.parse import urlsplit
 
 import yaml
 from nemo_platform_plugin.config import NemoConfig
-from pydantic import Field
+from pydantic import Field, field_validator
 
 # Env var agent-hardener reads to locate the garak venv its agent_breaker attacker spawns. The plugin
 # exports it (to ``garak_python``) for both ``agent-hardener setup`` (provision) and ``agent-hardener run``.
@@ -172,6 +173,22 @@ class AgentHardenerConfig(NemoConfig):
             "to override."
         ),
     )
+
+    @field_validator("index_url")
+    @classmethod
+    def _require_https_index(cls, value: str | None) -> str | None:
+        """Reject a plaintext index: ~/.netrc or an embedded-URL credential would cross the wire in the clear."""
+        if not value:
+            return value
+        url = value.split("=", 1)[1] if "=" in value else value
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" and parsed.hostname not in {"localhost", "127.0.0.1"}:
+            raise ValueError(
+                "NEMO_AGENT_HARDENER_INDEX_URL must use https:// (a plaintext index would send its "
+                "credentials unencrypted). Use http://localhost or http://127.0.0.1 for local development."
+            )
+        return value
+
     index_strategy: str | None = Field(
         default=None,
         description=(

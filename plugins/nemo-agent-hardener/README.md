@@ -106,6 +106,9 @@ chmod 600 ~/.netrc
 export NEMO_AGENT_HARDENER_INDEX_URL="<index-url>"
 ```
 
+Must be `https://` — `setup` refuses a plaintext index so credentials never cross the wire unencrypted
+(`http://localhost`/`127.0.0.1` is allowed for local development).
+
 That's all you need. The index is *additional* to PyPI, so agent-hardener resolves from it and every
 dependency still comes from PyPI. (If a dependency fails to resolve, see the troubleshooting below —
 don't set `NEMO_AGENT_HARDENER_INDEX_STRATEGY` pre-emptively, it weakens dependency-confusion protection.)
