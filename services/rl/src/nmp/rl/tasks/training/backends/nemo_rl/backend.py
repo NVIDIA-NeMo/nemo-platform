@@ -34,7 +34,9 @@ from nmp.rl.entities.values import FinetuningType
 from nmp.rl.tasks.training.backends.nemo_rl.checkpoints import (
     LORA_ADAPTER_SEARCH_PATHS,
     convert_dcp_to_huggingface,
+    copy_consolidated_hf,
     copy_lora_adapter,
+    find_consolidated_hf_root,
     find_lora_adapter_root,
 )
 from nmp.rl.tasks.training.chat_templates import apply_chat_template_to_checkpoint
@@ -318,7 +320,15 @@ class NemoRLBackend(TrainingBackend):
                 ", ".join(str(path) for path in LORA_ADAPTER_SEARCH_PATHS),
             )
 
-        hf_checkpoint_path = convert_dcp_to_huggingface(checkpoint_path, output_path)
+        # DTensor V2 already wrote an HF tree, so publish it rather than converting. Only
+        # V1 leaves a DCP checkpoint for convert_dcp_to_huggingface to read.
+        consolidated_root = find_consolidated_hf_root(checkpoint_path)
+        if consolidated_root is not None:
+            logger.info("Publishing consolidated HF checkpoint from %s", consolidated_root)
+            copy_consolidated_hf(checkpoint_path, consolidated_root, output_path)
+            hf_checkpoint_path = output_path
+        else:
+            hf_checkpoint_path = convert_dcp_to_huggingface(checkpoint_path, output_path)
 
         # Apply chat template if available (full-weight / merged HF trees only)
         chat_template = None

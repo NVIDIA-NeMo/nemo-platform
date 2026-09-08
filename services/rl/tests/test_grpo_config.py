@@ -871,6 +871,36 @@ def test_lora_without_module_lists_matches_all_linear(
     assert lora_cfg["exclude_modules"] == []
 
 
+def test_automodel_asks_for_the_consolidated_checkpoint_export(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """V2 must be told to write an HF tree, or a finished run cannot be published.
+
+    Regression guard for nvbug 6740834: V2 defaults to safetensors SHARDS, which carry no
+    DCP .metadata, so training succeeded and the job then died in the DCP converter with
+    "No metadata file found". save_consolidated makes it emit the HF export the publisher
+    copies out.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, policy_backend=PolicyBackend.AUTOMODEL)
+
+    cfg = compile_grpo_config(step, job_ctx)
+
+    assert cfg["checkpointing"]["save_consolidated"] is True
+
+
+def test_dtensor_v1_does_not_ask_for_a_consolidated_export(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """V1 writes real DCP, which the converter reads; the key is V2-only."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, policy_backend=PolicyBackend.DTENSOR)
+
+    cfg = compile_grpo_config(step, job_ctx)
+
+    assert "save_consolidated" not in cfg["checkpointing"]
+
+
 def test_policy_backend_dtensor_omits_v2(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:

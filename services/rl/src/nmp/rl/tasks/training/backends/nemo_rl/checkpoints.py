@@ -45,6 +45,13 @@ LORA_ADAPTER_SEARCH_PATHS: tuple[Path, ...] = (
 # adapter tree would otherwise ship without one.
 RL_TOKENIZER_SUBPATH = Path("policy") / "tokenizer"
 
+# Where DTensor V2 writes a ready-to-publish HF tree when checkpointing.save_consolidated
+# is set. V2 saves safetensors SHARDS by default (model_save_format is V2-only), and those
+# carry no DCP .metadata, so convert_dcp_to_huggingface cannot read them -- an all-weights
+# run trained successfully and then failed at publication. V1 is unaffected: it writes real
+# DCP and this directory never exists.
+CONSOLIDATED_HF_SUBPATH = Path("policy") / "weights" / "model" / "consolidated"
+
 
 def find_lora_adapter_root(checkpoint_path: Path) -> Path | None:
     """Return the directory holding ``adapter_config.json``, or None if there is none."""
@@ -55,27 +62,52 @@ def find_lora_adapter_root(checkpoint_path: Path) -> Path | None:
     return None
 
 
-def copy_lora_adapter(checkpoint_path: Path, adapter_root: Path, output_path: Path) -> None:
-    """Copy an adapter tree to ``output_path``, adding the tokenizer when it is elsewhere.
+def find_consolidated_hf_root(checkpoint_path: Path) -> Path | None:
+    """Return the consolidated HF tree DTensor V2 writes, or None if there is none.
 
-    Only the adapter directory is copied: the checkpoint root also holds optimizer shards
-    and scheduler state, which are training artifacts rather than part of the published
-    model.
+    Keyed on config.json rather than the directory: Automodel creates the directory up
+    front and only then writes into it, so an interrupted save can leave it empty.
+    """
+    candidate = checkpoint_path / CONSOLIDATED_HF_SUBPATH
+    return candidate if (candidate / "config.json").is_file() else None
+
+
+def _copy_tree_with_tokenizer(checkpoint_path: Path, source_root: Path, output_path: Path) -> None:
+    """Copy one subtree of a checkpoint out for publication, adding the tokenizer if absent.
+
+    Only that subtree is copied: the checkpoint root also holds optimizer shards and
+    scheduler state, which are training artifacts rather than part of the published model.
     """
     output_path.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(adapter_root, output_path, dirs_exist_ok=True)
+    shutil.copytree(source_root, output_path, dirs_exist_ok=True)
 
     tokenizer_dir = checkpoint_path / RL_TOKENIZER_SUBPATH
     if (output_path / "tokenizer_config.json").is_file():
         return
     if not tokenizer_dir.is_dir():
         logger.warning(
-            "No tokenizer found at %s; the adapter tree is published without one",
+            "No tokenizer found at %s; %s is published without one",
             tokenizer_dir,
+            output_path,
         )
         return
     logger.info("Copying tokenizer from %s to %s", tokenizer_dir, output_path)
     shutil.copytree(tokenizer_dir, output_path, dirs_exist_ok=True)
+
+
+def copy_lora_adapter(checkpoint_path: Path, adapter_root: Path, output_path: Path) -> None:
+    """Copy an adapter tree to ``output_path``, adding the tokenizer when it is elsewhere."""
+    _copy_tree_with_tokenizer(checkpoint_path, adapter_root, output_path)
+
+
+def copy_consolidated_hf(checkpoint_path: Path, consolidated_root: Path, output_path: Path) -> None:
+    """Publish the consolidated HF tree as-is. Automodel already wrote a usable checkpoint.
+
+    Its consolidated export carries the weights, the index, config and generation config,
+    so there is nothing to convert -- only the tokenizer may need collecting from beside
+    the weights.
+    """
+    _copy_tree_with_tokenizer(checkpoint_path, consolidated_root, output_path)
 
 
 def convert_dcp_to_huggingface(

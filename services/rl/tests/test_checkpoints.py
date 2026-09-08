@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Locating and publishing LoRA adapters inside a NeMo-RL checkpoint."""
+"""Locating and publishing the model tree inside a NeMo-RL checkpoint."""
 
 from pathlib import Path
 
 from nmp.rl.tasks.training.backends.nemo_rl.checkpoints import (
+    copy_consolidated_hf,
     copy_lora_adapter,
+    find_consolidated_hf_root,
     find_lora_adapter_root,
 )
 
@@ -108,3 +110,66 @@ def test_copy_without_a_tokenizer_still_publishes_the_adapter(tmp_path: Path):
 
     assert (output / "adapter_config.json").is_file()
     assert not (output / "tokenizer_config.json").exists()
+
+
+def _write_consolidated(checkpoint: Path) -> Path:
+    """The tree DTensor V2 writes when checkpointing.save_consolidated is set."""
+    root = checkpoint / "policy" / "weights" / "model" / "consolidated"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "config.json").write_text('{"model_type": "qwen3"}')
+    (root / "model.safetensors.index.json").write_text('{"weight_map": {}}')
+    (root / "model-00001-of-00001.safetensors").write_text("weights")
+    return root
+
+
+def test_finds_the_consolidated_tree_dtensor_v2_writes(tmp_path: Path):
+    expected = _write_consolidated(tmp_path)
+    assert find_consolidated_hf_root(tmp_path) == expected
+
+
+def test_sharded_safetensors_alone_are_not_a_consolidated_tree(tmp_path: Path):
+    """Regression guard for nvbug 6740834.
+
+    V2 writes safetensors SHARDS by default, and those carry no DCP .metadata, so the
+    publisher's DCP converter died after a successful all-weights run. Shards on their own
+    must not be mistaken for a publishable tree -- the consolidated export is what counts.
+    """
+    model_dir = tmp_path / "policy" / "weights" / "model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "shard-00001-model-00001-of-00001.safetensors").write_text("weights")
+
+    assert find_consolidated_hf_root(tmp_path) is None
+
+
+def test_an_empty_consolidated_dir_is_not_published(tmp_path: Path):
+    """Automodel creates the directory before writing into it, so existence is not enough."""
+    (tmp_path / "policy" / "weights" / "model" / "consolidated").mkdir(parents=True)
+
+    assert find_consolidated_hf_root(tmp_path) is None
+
+
+def test_a_dcp_checkpoint_has_no_consolidated_tree(tmp_path: Path):
+    """DTensor V1 writes real DCP, which still goes through convert_dcp_to_huggingface."""
+    weights = tmp_path / "policy" / "weights"
+    weights.mkdir(parents=True)
+    (weights / ".metadata").write_text("dcp")
+
+    assert find_consolidated_hf_root(tmp_path) is None
+
+
+def test_copy_publishes_the_consolidated_tree_and_adds_the_tokenizer(tmp_path: Path):
+    checkpoint = tmp_path / "step_1"
+    root = _write_consolidated(checkpoint)
+    tokenizer = checkpoint / "policy" / "tokenizer"
+    tokenizer.mkdir(parents=True)
+    (tokenizer / "tokenizer_config.json").write_text("{}")
+    # A training artifact beside the weights, which must not reach the published model.
+    (checkpoint / "policy" / "weights" / "optimizer").mkdir(parents=True, exist_ok=True)
+
+    output = tmp_path / "published"
+    copy_consolidated_hf(checkpoint, root, output)
+
+    assert (output / "config.json").is_file()
+    assert (output / "model.safetensors.index.json").is_file()
+    assert (output / "tokenizer_config.json").is_file()
+    assert not (output / "optimizer").exists()

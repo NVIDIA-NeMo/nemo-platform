@@ -513,6 +513,12 @@ def compile_grpo_config(
         "checkpoint_must_save_by": None,
         "save_optimizer": True,
     }
+    if customizer_config.parallelism.policy_backend is PolicyBackend.AUTOMODEL:
+        # V2 defaults to safetensors SHARDS, which carry no DCP .metadata and so cannot be
+        # published: training succeeds and the job then dies converting the checkpoint. This
+        # asks for the HF export alongside them, which publish_checkpoint copies out.
+        # V2-only -- model_save_format's allowed value on V1 is None.
+        cfg["checkpointing"]["save_consolidated"] = True
 
     model_path = customizer_config.model.path
     precision = _adapt_precision(customizer_config.model.precision)
