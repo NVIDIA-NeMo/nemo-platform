@@ -778,7 +778,7 @@ async def test_compile_gym_environment_adds_staging_step_before_evaluation(mocke
     mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", None)
     mocker.patch(
         "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
-        return_value="registry.example/nmp-gym-tasks:test",
+        side_effect=lambda name: f"registry.example/{name}:test",
     )
     _enable_fileset_sandbox(mocker)
     spec = AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target())
@@ -794,10 +794,54 @@ async def test_compile_gym_environment_adds_staging_step_before_evaluation(mocke
     job_spec = PlatformJobSpec.model_validate(compiled)
     assert [step.name for step in job_spec.steps] == ["stage-environment", "agent-evaluate"]
     stage, evaluate = job_spec.steps
-    assert cast(Any, stage.executor).container.command == ["nemo_evaluator.tasks.stage_environment"]
+    stage_container = cast(Any, stage.executor).container
+    assert stage_container.image == "registry.example/nmp-cpu-tasks:test"
+    assert stage_container.entrypoint == ["python", "-m"]
+    assert stage_container.command == ["nemo_evaluator.tasks.stage_environment"]
     assert stage.config == {"environment": "dev/custom-gym"}
+    evaluate_container = cast(Any, evaluate.executor).container
+    assert evaluate_container.image == "registry.example/nmp-cpu-tasks:test"
+    assert evaluate_container.entrypoint == ["python", "-m"]
+    assert evaluate_container.command == ["nemo_evaluator.tasks.agent_evaluate"]
     evaluate_config = cast(dict[str, Any], evaluate.config)
     assert evaluate_config["target"]["environment"] == "dev/custom-gym"
+
+
+async def test_compile_sandboxed_gym_uses_cpu_tasks_and_ignores_colocated_image_override(
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image",
+        "registry.example/nmp-gym-tasks:colocated-only",
+    )
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        side_effect=lambda name: f"registry.example/{name}:test",
+    )
+    _enable_fileset_sandbox(mocker)
+    spec = AgentEvalSpec(
+        tasks=[_task_spec()],
+        target=GymRunnerTarget(
+            agent="simple_agent",
+            agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+            resources_server="mcqa",
+        ),
+    )
+
+    compiled = await AgentEvalJob.compile(
+        workspace="dev",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=None,
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    _assert_agent_eval_step_entrypoint(
+        job_spec,
+        expected_image="registry.example/nmp-cpu-tasks:test",
+        expected_entrypoint=("python", "-m"),
+    )
 
 
 async def test_compile_gym_environment_propagates_platform_sandbox_protocol(mocker: MockerFixture) -> None:

@@ -101,5 +101,6 @@ relocks dynamically:
    docker buildx bake nmp-gym-tasks-smoke-test
    ```
 
-6. Run the Evaluator agent-evaluation compiler tests, which verify that Gym
-   targets route to this image.
+6. Run the Evaluator agent-evaluation compiler tests, which verify that
+   colocated Gym targets route to this image while sandboxed Gym targets use
+   `nmp-cpu-tasks`.

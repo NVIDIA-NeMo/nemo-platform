@@ -20,7 +20,8 @@ class EvaluatorConfig(NemoConfig):
     gym_tasks_image: str | None = Field(
         default=None,
         description=(
-            "Optional fully qualified image reference for Gym agent-evaluation jobs. Override with "
+            "Optional fully qualified image reference for colocated Gym agent-evaluation jobs. Sandboxed Gym "
+            "jobs use the platform CPU tasks image and launch Gym in `sandbox_runtime_image`. Override with "
             "NEMO_EVALUATOR_GYM_TASKS_IMAGE; when set, this bypasses platform image registry/tag qualification."
         ),
     )

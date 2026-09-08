@@ -12,7 +12,7 @@ from nemo_evaluator.tasks.runner import run_task_main
 
 
 def main() -> int:
-    """Run the stage-environment job inside the Gym tasks container."""
+    """Run the stage-environment job inside the CPU tasks container."""
     return run_task_main(EnvironmentStageJob, service_name="evaluator")
 
 

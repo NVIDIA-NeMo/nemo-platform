@@ -166,10 +166,11 @@ class SandboxPlan(BaseModel):
 
     Every field here comes from :class:`EvaluatorConfig` -- that is, from the environment of the
     *evaluator service*, which is where the operator configures a deployment. The job runs somewhere
-    else entirely (the Gym tasks container), with no reason to carry those variables, so reading
-    them there would silently yield model defaults and quietly run an evaluation colocated that the
-    operator asked to be sandboxed. Resolving at compile time also means a deployment that cannot
-    sandbox is refused at submit, which is what :func:`require_sandbox_available` already claims.
+    else entirely (the CPU tasks container for sandboxed Gym), with no reason to carry those
+    variables, so reading them there would silently yield model defaults and quietly run an
+    evaluation colocated that the operator asked to be sandboxed. Resolving at compile time also
+    means a deployment that cannot sandbox is refused at submit, which is what
+    :func:`require_sandbox_available` already claims.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

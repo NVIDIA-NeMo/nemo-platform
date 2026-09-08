@@ -6,9 +6,10 @@ description: Job runner for Gym agent evaluations, part of NeMo Platform
 ---
 ## NeMo Platform Gym Tasks Container
 
-This container provides the Gym and Ray runtime for agent evaluation jobs. It is
-separate from the shared CPU tasks container so those dependencies remain
-isolated to Gym workloads.
+This container provides the Gym and Ray runtime for trusted deployments that run
+Gym directly inside an agent-evaluation task. Sandboxed Gym evaluations use the
+shared CPU tasks container to orchestrate a separate Gym host, keeping Gym and
+Ray outside the task container.
 
 ### Resources
 

@@ -224,6 +224,7 @@ overrides:
   hf-transfer: Apache-2.0 # HuggingFace transfer library https://github.com/huggingface/hf_transfer/blob/main/LICENSE
   jsonpath-rust-bindings: MIT # See https://github.com/besok/jsonpath-rust/blob/main/LICENSE
   milvus-lite: Apache-2.0 # https://github.com/milvus-io/milvus-lite/blob/main/LICENSE
+  opensandbox: Apache-2.0 # https://github.com/opensandbox-group/OpenSandbox/blob/main/LICENSE
   pymilvus: Apache-2.0 # https://github.com/milvus-io/pymilvus/blob/master/LICENSE
   openai-harmony: Apache-2.0 # https://github.com/openai/harmony/blob/main/LICENSE
   prv-accountant: MIT # https://github.com/microsoft/prv_accountant/blob/main/LICENSE
