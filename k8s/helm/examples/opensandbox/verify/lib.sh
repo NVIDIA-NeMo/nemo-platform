@@ -16,6 +16,7 @@ SANDBOX_IMAGE="${SANDBOX_IMAGE:-docker.io/library/busybox:1.36}"
 SANDBOX_TIMEOUT_S="${SANDBOX_TIMEOUT_S:-600}"
 
 PF_PID=""
+CURL_PID=""
 SANDBOX_ID=""
 BASE_URL=""
 API_KEY=""
@@ -41,9 +42,13 @@ json_field() {
 
 cleanup() {
   local ec=$?
+  if [[ -n "${CURL_PID}" ]] && kill -0 "${CURL_PID}" 2>/dev/null; then
+    kill "${CURL_PID}" 2>/dev/null || true
+    wait "${CURL_PID}" 2>/dev/null || true
+  fi
   if [[ -n "${SANDBOX_ID}" && -n "${BASE_URL}" && -n "${API_KEY}" ]]; then
     info "deleting sandbox ${SANDBOX_ID}"
-    curl -fsS -X DELETE \
+    curl -fsS --max-time 15 -X DELETE \
       -H "OPEN-SANDBOX-API-KEY: ${API_KEY}" \
       "${BASE_URL}/v1/sandboxes/${SANDBOX_ID}" >/dev/null 2>&1 || true
   fi
@@ -139,9 +144,69 @@ start_port_forward() {
   die "port-forward/health failed; see /tmp/osb-pf-${SERVER_SVC}.log"
 }
 
+batchsandbox_names() {
+  kubectl get batchsandboxes -n "${WORKLOAD_NS}" --no-headers \
+    -o custom-columns=NAME:.metadata.name 2>/dev/null | awk 'NF' | sort || true
+}
+
+# Prints unschedulable details and returns 0 if this sandbox cannot be scheduled.
+unschedulable_report() {
+  local sid="$1"
+  python3 - "${sid}" "${WORKLOAD_NS}" <<'PY'
+import json, subprocess, sys
+
+sid, ns = sys.argv[1], sys.argv[2]
+
+def kubectl_json(*args):
+    p = subprocess.run(["kubectl", *args], capture_output=True, text=True)
+    if p.returncode != 0:
+        return {}
+    try:
+        return json.loads(p.stdout or "{}")
+    except json.JSONDecodeError:
+        return {}
+
+hits, pod_names = [], []
+for p in kubectl_json("get", "pods", "-n", ns, "-o", "json").get("items", []):
+    name = p["metadata"]["name"]
+    owners = p["metadata"].get("ownerReferences") or []
+    if not (name.startswith(sid) or any(r.get("name") == sid for r in owners)):
+        continue
+    pod_names.append(name)
+    for c in (p.get("status") or {}).get("conditions") or []:
+        if c.get("type") == "PodScheduled" and c.get("status") == "False":
+            hits.append(f"{name}: {c.get('reason', '')} {c.get('message', '')}".strip())
+
+for e in kubectl_json("get", "events", "-n", ns, "-o", "json").get("items", []):
+    if e.get("reason") != "FailedScheduling":
+        continue
+    obj = (e.get("involvedObject") or {}).get("name") or ""
+    if obj.startswith(sid) or obj in pod_names:
+        hits.append(f"{obj}: FailedScheduling {e.get('message', '')}".strip())
+
+if not hits:
+    sys.exit(1)
+seen, out = set(), []
+for h in hits:
+    if h not in seen:
+        seen.add(h)
+        out.append(h)
+print("\n".join(out))
+PY
+}
+
+fail_if_unschedulable() {
+  local sid="$1"
+  local msg
+  [[ -n "${sid}" ]] || return 0
+  if msg="$(unschedulable_report "${sid}")"; then
+    die "sandbox unschedulable:\n${msg}"
+  fi
+}
+
 create_sandbox() {
-  info "creating sandbox image=${SANDBOX_IMAGE}"
-  local body resp
+  info "creating sandbox image=${SANDBOX_IMAGE} (timeout ${READY_TIMEOUT_S}s)"
+  local body before curl_out curl_err curl_ec=""
   body="$(python3 - <<PY
 import json
 print(json.dumps({
@@ -156,13 +221,61 @@ print(json.dumps({
 }))
 PY
 )"
-  resp="$(curl -fsS -X POST "${BASE_URL}/v1/sandboxes" \
+  before="$(batchsandbox_names)"
+  curl_out="$(mktemp)"
+  curl_err="$(mktemp)"
+  curl -sS --fail --max-time "${READY_TIMEOUT_S}" -X POST "${BASE_URL}/v1/sandboxes" \
     -H "OPEN-SANDBOX-API-KEY: ${API_KEY}" \
     -H "Content-Type: application/json" \
-    -d "${body}")"
-  SANDBOX_ID="$(json_field "${resp}" 'o["id"]')"
-  [[ -n "${SANDBOX_ID}" ]] || die "create response missing id: ${resp}"
-  ok "created sandbox id=${SANDBOX_ID}"
+    -d "${body}" \
+    -o "${curl_out}" \
+    --stderr "${curl_err}" &
+  CURL_PID=$!
+  local deadline=$((SECONDS + READY_TIMEOUT_S))
+  while (( SECONDS < deadline )); do
+    if [[ -z "${SANDBOX_ID}" ]]; then
+      local name
+      name="$(comm -13 <(printf '%s\n' "${before}") <(batchsandbox_names) | awk 'NF' | head -1)"
+      if [[ -n "${name}" ]]; then
+        SANDBOX_ID="${name}"
+      fi
+    fi
+    if [[ -n "${SANDBOX_ID}" ]]; then
+      fail_if_unschedulable "${SANDBOX_ID}"
+    fi
+    if ! kill -0 "${CURL_PID}" 2>/dev/null; then
+      wait "${CURL_PID}" && curl_ec=0 || curl_ec=$?
+      CURL_PID=""
+      break
+    fi
+    sleep 20
+  done
+  if [[ -n "${CURL_PID}" ]]; then
+    kill "${CURL_PID}" 2>/dev/null || true
+    wait "${CURL_PID}" 2>/dev/null || true
+    CURL_PID=""
+    rm -f "${curl_out}" "${curl_err}"
+    if [[ -n "${SANDBOX_ID}" ]]; then
+      fail_if_unschedulable "${SANDBOX_ID}"
+    fi
+    die "timed out creating sandbox after ${READY_TIMEOUT_S}s${SANDBOX_ID:+ (id=${SANDBOX_ID})}"
+  fi
+  local resp_body err_body
+  resp_body="$(cat "${curl_out}" 2>/dev/null || true)"
+  err_body="$(cat "${curl_err}" 2>/dev/null || true)"
+  rm -f "${curl_out}" "${curl_err}"
+  if [[ "${curl_ec:-1}" -eq 0 ]]; then
+    local from_json
+    from_json="$(json_field "${resp_body}" 'o["id"]')"
+    SANDBOX_ID="${from_json:-${SANDBOX_ID}}"
+    [[ -n "${SANDBOX_ID}" ]] || die "create response missing id: ${resp_body}"
+    ok "created sandbox id=${SANDBOX_ID}"
+    return
+  fi
+  if [[ -n "${SANDBOX_ID}" ]]; then
+    fail_if_unschedulable "${SANDBOX_ID}"
+  fi
+  die "create sandbox failed (curl ${curl_ec:-unknown}): ${err_body} ${resp_body}"
 }
 
 wait_sandbox_running() {
@@ -170,11 +283,12 @@ wait_sandbox_running() {
   local deadline=$((SECONDS + READY_TIMEOUT_S))
   local resp state
   while (( SECONDS < deadline )); do
+    fail_if_unschedulable "${SANDBOX_ID}"
     # A bare assignment from a command substitution inherits curl's exit status, so
     # under `set -e` a single transient failure while the sandbox is still coming up
     # would abort the script and defeat READY_TIMEOUT_S. Treat a failed poll as
     # "not ready yet" and retry until the deadline.
-    if ! resp="$(curl -fsS \
+    if ! resp="$(curl -fsS --max-time 15 \
       -H "OPEN-SANDBOX-API-KEY: ${API_KEY}" \
       "${BASE_URL}/v1/sandboxes/${SANDBOX_ID}" 2>/dev/null)"; then
       sleep 3
@@ -190,6 +304,7 @@ wait_sandbox_running() {
     fi
     sleep 3
   done
+  fail_if_unschedulable "${SANDBOX_ID}"
   die "timed out waiting for Running; last state=${state:-unknown}"
 }
 
@@ -323,6 +438,61 @@ assert_batchsandbox() {
   ok "BatchSandbox/${SANDBOX_ID} present"
 }
 
+assert_server_proxy_streaming() {
+  local pod="$1"
+  local port=18081
+  local response_file error_file response curl_ec=""
+
+  info "checking delayed multi-chunk response through server proxy"
+  # Model Gym's response shape: a whitespace heartbeat (valid JSON prefix), then a
+  # delayed JSON envelope. Write a complete HTTP/1.1 chunked body so this check
+  # distinguishes proxy corruption from a host that omits the terminating chunk.
+  kubectl exec -i -n "${WORKLOAD_NS}" "${pod}" -c sandbox -- /bin/sh -s <<'SH'
+rm -f /tmp/osb-stream-server.log
+nohup /bin/sh -c '
+  {
+    printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+    printf "1\r\n \r\n"
+    sleep 2
+    printf "B\r\n{\"ok\":true}\r\n"
+    printf "0\r\n\r\n"
+  } | nc -l -p 18081
+' </dev/null >/tmp/osb-stream-server.log 2>&1 &
+SH
+
+  response_file="$(mktemp)"
+  error_file="$(mktemp)"
+  local deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    if curl -sS --max-time 45 \
+      -H "OPEN-SANDBOX-API-KEY: ${API_KEY}" \
+      "${BASE_URL}/sandboxes/${SANDBOX_ID}/proxy/${port}/stream" \
+      -o "${response_file}" --stderr "${error_file}"; then
+      curl_ec=0
+      break
+    fi
+    curl_ec=$?
+    sleep 1
+  done
+  response="$(cat "${response_file}" 2>/dev/null || true)"
+  if [[ "${curl_ec:-1}" -ne 0 || "${response}" != ' {"ok":true}' ]]; then
+    local curl_error guest_log proxy_log
+    curl_error="$(cat "${error_file}" 2>/dev/null || true)"
+    guest_log="$(kubectl exec -n "${WORKLOAD_NS}" "${pod}" -c sandbox -- \
+      cat /tmp/osb-stream-server.log 2>&1 || true)"
+    proxy_log="$(kubectl logs -n "${SYSTEM_NS}" "deploy/${SERVER_DEPLOY}" \
+      --since=2m 2>&1 | grep -E 'RemoteProtocolError|incomplete chunked|Exception in ASGI' \
+      | tail -40 || true)"
+    rm -f "${response_file}" "${error_file}"
+    die "server proxy truncated/corrupted a delayed response (curl=${curl_ec:-unknown}, bytes=${#response}, repr=$(printf %q "${response}")).
+curl: ${curl_error}
+guest: ${guest_log}
+proxy: ${proxy_log}"
+  fi
+  rm -f "${response_file}" "${error_file}"
+  ok "server proxy preserved heartbeat plus terminating JSON"
+}
+
 run_profile_verification() {
   PROFILE="$1"
   require_profile "${PROFILE}"
@@ -339,5 +509,6 @@ run_profile_verification() {
   assert_runtime_class "${pod}"
   assert_node_placement "${pod}"
   assert_kernel_isolation "${pod}"
+  assert_server_proxy_streaming "${pod}"
   info "PASS profile=${PROFILE}"
 }

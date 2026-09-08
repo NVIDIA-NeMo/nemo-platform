@@ -267,6 +267,12 @@ class GRPOTraining(_TrainingBase):
         "parallelism and automodel_kwargs). `all_weights` requires `dtensor` (stock HuggingFace "
         "on PyTorch FSDP2, also the pre-Hopper option). Omit it to get the supported one.",
     )
+    v4_compatible: bool = Field(
+        default=True,
+        description="Keep the base checkpoint's transformers-v4 config.json on the trained "
+        "export. The platform's vLLM cannot read the v5 config Automodel otherwise writes. "
+        "Set false to export that v5 config instead.",
+    )
     val_at_start: bool = Field(
         default=False,
         description="Run a validation pass before the first training step. Enable it to measure "
