@@ -135,18 +135,9 @@ operations for the 0.5 release line.
 
 ## Install
 
-For a fresh local checkout:
-
-```bash
-git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
-cd nemo-platform
-make bootstrap
-source .venv/bin/activate
-nemo setup
-```
-
-See [Setup](/documentation/get-started/setup) for prerequisites and provider
-configuration.
+For fresh local installs, see [Setup](/documentation/get-started/setup).
+It covers the recommended PyPI install, source-checkout prerequisites, Flox
+activation, the system-toolchain fallback, and provider configuration.
 
 For self-managed Kubernetes, start with
 [Install NeMo Platform Helm Chart](/documentation/kubernetes-deployment/setup/helm/install).
@@ -163,7 +154,16 @@ From an existing local checkout:
 git fetch
 git checkout main
 make bootstrap
-source .venv/bin/activate
+flox -q activate
+```
+
+Without Flox, install the system toolchain versions printed by
+`make toolchain-versions`, plus a C compiler, then run
+`make TOOLCHAIN=system bootstrap` followed by `source .venv/bin/activate`.
+
+Run setup after updating the checkout:
+
+```bash
 nemo setup
 ```
 
