@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from enum import StrEnum
@@ -78,6 +79,10 @@ from nemo_platform_ext.ui.prompts import (
 
 logger = logging.getLogger(__name__)
 console = Console(stderr=True)
+
+# Supported Python versions (inclusive).
+_SUPPORTED_PYTHON_MIN = (3, 12)
+_SUPPORTED_PYTHON_MAX = (3, 13)
 
 CHECK = "[green]✓[/green]"
 CROSS = "[red]✗[/red]"
@@ -2303,6 +2308,21 @@ def _auto_setup(client: NeMoPlatform, workspace: str) -> str | None:
     return None
 
 
+def _require_supported_python() -> None:
+    """Exit if this interpreter is outside the supported Python versions."""
+    v = sys.version_info[:2]
+    v_min, v_max = _SUPPORTED_PYTHON_MIN, _SUPPORTED_PYTHON_MAX
+    if v_min <= v <= v_max:
+        return
+
+    running = ".".join(str(part) for part in sys.version_info[:3])
+    console.print(f"\n{CROSS} Unsupported Python {running}.")
+    console.print(f"  NeMo Platform requires Python {v_min[0]}.{v_min[1]}-{v_max[0]}.{v_max[1]}.")
+    console.print("  Reinstall the CLI against a supported interpreter:")
+    console.print(f'    [cyan]uv tool install --python {v_max[0]}.{v_max[1]} --reinstall "nemo-platform[all]"[/cyan]')
+    raise typer.Exit(1)
+
+
 # ---------------------------------------------------------------------------
 # Main command
 # ---------------------------------------------------------------------------
@@ -2416,6 +2436,8 @@ def setup_command(
     """
     cli_context: CLIContext = ctx.obj
     base_url = cli_context.get_base_url() or DEFAULT_BASE_URL
+
+    _require_supported_python()
 
     console.print("\n[bold cyan]NeMo Platform Setup[/bold cyan]\n")
     if resume:
