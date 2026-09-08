@@ -224,7 +224,38 @@ function resolveBranchRef(branch) {
       return ref;
     }
   }
-  return undefined;
+  return fetchBranchRef(branch);
+}
+
+// A checkout only fetches the ref it builds (plus tags), not other branches,
+// so pull the mapped branch from origin on demand. This one code path covers
+// local dev, the publish workflow, and the docs preview build alike — no
+// separate CI "fetch the branch" step needed. Only a confirmed-absent branch
+// is treated as a soft skip; any other ls-remote/fetch failure (network,
+// auth) propagates so it isn't silently mistaken for a missing branch.
+function fetchBranchRef(branch) {
+  if (!remoteBranchExists(branch)) {
+    return undefined;
+  }
+
+  const remoteRef = `refs/remotes/origin/${branch}`;
+  git(["fetch", "origin", `${branch}:${remoteRef}`]);
+  return remoteRef;
+}
+
+function remoteBranchExists(branch) {
+  try {
+    execFileSync("git", ["ls-remote", "--exit-code", "--heads", "origin", branch], {
+      cwd: repoRoot,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    return true;
+  } catch (error) {
+    if (error.status === 2) {
+      return false;
+    }
+    throw new Error(`Failed to check origin for branch "${branch}": ${error.message}`);
+  }
 }
 
 function cleanGeneratedFiles() {
