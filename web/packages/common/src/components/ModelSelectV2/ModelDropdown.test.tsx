@@ -140,10 +140,6 @@ describe('ModelDropdown', () => {
       expect(onLoadMore).not.toHaveBeenCalled();
     });
 
-    // Regression: an `include` filter can empty every loaded page (e.g. no fine-tunable models on
-    // this page), so the visible row count stays zero across several silent background fetches.
-    // The empty-state copy used to show up during those fetches, reading as "no models" when more
-    // pages were still on the way.
     it('shows the loading message instead of the empty state while paging past filtered-out pages', () => {
       renderOpen({
         groups: [],
