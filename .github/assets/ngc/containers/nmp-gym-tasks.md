@@ -1,8 +1,10 @@
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 description: Job runner for Gym agent evaluations, part of NeMo Platform
+labels:
+  - NeMo
 ---
 ## NeMo Platform Gym Tasks Container
 
