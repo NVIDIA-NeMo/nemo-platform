@@ -9,6 +9,7 @@ import {
   defaultWizardValues,
   deploymentNameFromWizardBaseName,
   engineRequiresImage,
+  sourceSupportsEngineChoice,
   WORKSPACE_PICKER_FILESET,
   WORKSPACE_PICKER_MODEL,
   SOURCE_HF,
@@ -61,9 +62,9 @@ describe('additionalEnvsFormToApi', () => {
 });
 
 describe('defaultWizardValues', () => {
-  it('returns NGC source with defaults', () => {
+  it('returns HuggingFace source with defaults', () => {
     const vals = defaultWizardValues();
-    expect(vals.source).toBe(SOURCE_NGC);
+    expect(vals.source).toBe(SOURCE_HF);
     expect(vals.gpu).toBe(1);
     expect(vals.loraEnabled).toBe(true);
     expect(typeof vals.name).toBe('string');
@@ -73,6 +74,12 @@ describe('defaultWizardValues', () => {
   it('defaults the engine to vLLM, which needs no image', () => {
     expect(defaultWizardValues().engine).toBe(Engine.vllm);
     expect(engineRequiresImage(Engine.vllm)).toBe(false);
+  });
+
+  it('defaults to a source that actually reads the default engine', () => {
+    // The NGC source overrides `engine` to `nim` when building its request, so
+    // an NGC default made `engine: vllm` unreachable without switching tabs.
+    expect(sourceSupportsEngineChoice(defaultWizardValues().source)).toBe(true);
   });
 });
 
