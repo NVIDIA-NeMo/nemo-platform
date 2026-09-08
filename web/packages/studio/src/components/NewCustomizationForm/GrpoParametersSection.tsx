@@ -573,7 +573,7 @@ export const GrpoParametersSection = () => {
       <FormSection title="Parameter Efficiency">
         <Stack gap="density-lg">
           <Stack gap="density-md">
-            <Text kind="label/bold/md">Finetuning Type</Text>
+            <Text kind="label/bold/md">Fine-tuning Type</Text>
             <RadioGroupRoot
               name="grpoFinetuningType"
               value={finetuningType ?? RlGRPOTrainingFinetuningType.all_weights}

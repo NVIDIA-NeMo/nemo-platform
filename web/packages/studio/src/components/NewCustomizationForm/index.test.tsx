@@ -102,7 +102,7 @@ describe('NewCustomizationForm', () => {
     const user = userEvent.setup();
     renderRoute(<NewCustomizationForm workspace="default" />);
 
-    await user.click(await screen.findByRole('button', { name: /Start Fine-Tuning/i }));
+    await user.click(await screen.findByRole('button', { name: /Start Fine-tuning/i }));
 
     expect(await screen.findByText(/Please fix the following errors/i)).toBeInTheDocument();
     expect(mutateAutomodel).not.toHaveBeenCalled();
@@ -115,7 +115,7 @@ describe('NewCustomizationForm', () => {
     renderRoute(<NewCustomizationForm workspace="default" />);
 
     await user.click(await screen.findByRole('radio', { name: /Unsloth/i }));
-    await user.click(await screen.findByRole('button', { name: /Start Fine-Tuning/i }));
+    await user.click(await screen.findByRole('button', { name: /Start Fine-tuning/i }));
 
     // The errors shown must be about the unsloth fields, never automodel ones.
     const banner = await screen.findByText(/Please fix the following errors/i);

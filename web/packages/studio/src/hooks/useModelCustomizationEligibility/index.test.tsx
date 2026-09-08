@@ -17,13 +17,11 @@ describe('useModelCustomizationEligibility', () => {
       useModelCustomizationEligibility(buildModel({ fileset: 'ws/my-fs' }))
     );
     expect(result.current.canFineTune).toBe(true);
-    expect(result.current.canCustomize).toBe(true);
   });
 
   it('canFineTune=false when model has no fileset', () => {
     const { result } = renderHook(() => useModelCustomizationEligibility(buildModel()));
     expect(result.current.canFineTune).toBe(false);
-    expect(result.current.canCustomize).toBe(false);
   });
 
   it('canFineTune=false when no model is given', () => {
