@@ -939,6 +939,7 @@ def test_concurrent_rollout_batches_interleave_on_that_loop():
 
     assert [len(batch) for batch in results] == [1, 1, 1, 1]
 
+
 def _capture_line(**overrides):
     call = {"model_call_id": "c0", "status_code": 200, "started_at": 1.5, "completed_at": 1.75}
     return json.dumps({**call, **overrides})
@@ -971,7 +972,8 @@ def test_capture_filename_follows_gyms_rollout_id(result, expected):
 
 
 def test_a_capture_is_read_back_onto_its_rollout(tmp_path):
-    (tmp_path / "0-1.capture.jsonl").write_text(f"{_capture_line()}\n", encoding="utf-8")
+    # Trailing blank line included: Gym appends per call, so a partially-flushed file has one.
+    (tmp_path / "0-1.capture.jsonl").write_text(f"{_capture_line()}\n\n", encoding="utf-8")
 
     calls, spent = runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10_000)
 
@@ -1011,3 +1013,54 @@ def test_an_unwritable_work_path_disables_capture_rather_than_failing_the_host(t
     runtime._apply_model_call_capture(config, str(unwritable))
 
     assert config == {}
+
+
+class _IndexedRolloutHelper:
+    """Yields a result per example, carrying the rollout identity a capture is keyed by."""
+
+    def run_examples(self, examples, head_server_config=None):
+        async def _one(row):
+            return row, {"response": {"output": []}, "reward": 0.0, **row}
+
+        return [_one(row) for row in examples]
+
+
+def _rollout_examples(count):
+    return [{"_ng_task_index": i, "_ng_rollout_index": 0} for i in range(count)]
+
+
+async def _collect(tmp_path, examples, budget):
+    return await runtime._collect_rollout_results(examples, MagicMock(), _IndexedRolloutHelper(), str(tmp_path), budget)
+
+
+def test_each_rollouts_capture_is_attached_to_its_own_result(tmp_path):
+    # The whole point of the hop: without this the record crosses the wire bare and the trace it
+    # projects into has no per-call timing.
+    for index in range(2):
+        (tmp_path / f"{index}-0.capture.jsonl").write_text(f"{_capture_line(model_call_id=f'c{index}')}\n")
+
+    results = asyncio.run(_collect(tmp_path, _rollout_examples(2), 10_000))
+
+    attached = [[call["model_call_id"] for call in result[runtime.MODEL_CALLS_RESULT_KEY]] for result in results]
+    assert attached == [["c0"], ["c1"]]
+
+
+def test_the_budget_is_spent_across_rollouts_not_per_rollout(tmp_path):
+    # Captures share one response, so the budget has to deplete. Applied per rollout instead, a
+    # large run would blow the response cap and the host would refuse every result.
+    for index in range(3):
+        (tmp_path / f"{index}-0.capture.jsonl").write_text(f"{_capture_line(model_call_id=f'c{index}')}\n")
+    one_capture = (tmp_path / "0-0.capture.jsonl").stat().st_size
+
+    results = asyncio.run(_collect(tmp_path, _rollout_examples(3), one_capture * 2))
+
+    # The first two fit; the third finds nothing left and returns without its capture.
+    assert [runtime.MODEL_CALLS_RESULT_KEY in result for result in results] == [True, True, False]
+
+
+def test_rollouts_still_return_when_no_capture_was_written(tmp_path):
+    # The reward and output stand on their own; only the per-call timing is missing.
+    results = asyncio.run(_collect(tmp_path, _rollout_examples(2), 10_000))
+
+    assert len(results) == 2
+    assert all(runtime.MODEL_CALLS_RESULT_KEY not in result for result in results)

@@ -586,9 +586,7 @@ def submit_rollouts(
     # Handler threads hand work to the one loop, so concurrent /rollouts/run calls interleave on
     # it rather than each running a loop of its own.
     return asyncio.run_coroutine_threadsafe(
-        _collect_rollout_results(
-            examples, head_server_config, rollout_helper, capture_dir, capture_budget
-        ),
+        _collect_rollout_results(examples, head_server_config, rollout_helper, capture_dir, capture_budget),
         _ensure_event_loop(),
     )
 
@@ -600,9 +598,7 @@ def run_rollouts_sync(
     capture_dir: str | None = None,
     capture_budget: int = 0,
 ) -> list[dict]:
-    return submit_rollouts(
-        examples, head_server_config, rollout_helper, capture_dir, capture_budget
-    ).result()
+    return submit_rollouts(examples, head_server_config, rollout_helper, capture_dir, capture_budget).result()
 
 
 class Handler(BaseHTTPRequestHandler):
