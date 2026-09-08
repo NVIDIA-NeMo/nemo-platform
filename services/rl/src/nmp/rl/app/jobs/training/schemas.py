@@ -141,6 +141,8 @@ class GRPOConfig(BaseModel):
     hf_config_overrides: dict[str, Any] | None = None
     vllm_tensor_parallel_size: int | None = Field(default=None, gt=0)
     vllm_gpu_memory_utilization: float = Field(default=0.5, gt=0.0, le=1.0)
+    # Lands in NeMo-RL's ``logger.wandb``, not ``policy``.
+    log_nemo_gym_full_result_tables: bool = False
 
 
 class LoRAConfig(BaseModel):

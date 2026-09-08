@@ -395,12 +395,13 @@ def test_grpo_accepts_max_new_tokens_up_to_the_context() -> None:
     assert t.max_new_tokens == 2048
 
 
-def _grpo_job(training: GRPOTraining) -> RlJobOutput:
+def _grpo_job(training: GRPOTraining, integrations: Any = None) -> RlJobOutput:
     return RlJobOutput(
         model="default/base",
         dataset="default/gym-data",
         environment="default/env",
         training=training,
+        integrations=integrations,
         output=_make_output(),
     )
 
@@ -480,3 +481,30 @@ def test_no_validation_generations_knob_is_exposed() -> None:
     be accepted and read by nothing. mean@k comes from repeating rows in validation.jsonl.
     """
     assert "num_val_generations_per_prompt" not in GRPOTraining.model_fields
+
+
+def test_full_result_tables_default_off() -> None:
+    """NeMo-RL's own reference configs ship it false; the payloads are large."""
+    assert GRPOTraining(type="grpo").log_nemo_gym_full_result_tables is False
+
+
+def test_full_result_tables_require_the_wandb_integration() -> None:
+    """NeMo-RL gates on ``wandb_enabled AND the flag``, so without it this is a no-op."""
+    job = _grpo_job(GRPOTraining(type="grpo", log_nemo_gym_full_result_tables=True))
+    with pytest.raises(ValueError, match="requires the W&B integration"):
+        job.validate_for_training()
+
+
+def test_full_result_tables_accepted_with_the_wandb_integration() -> None:
+    from nemo_platform_plugin.integrations import IntegrationsSpec, WandbIntegration
+
+    job = _grpo_job(
+        GRPOTraining(type="grpo", log_nemo_gym_full_result_tables=True),
+        integrations=IntegrationsSpec(wandb=WandbIntegration(project="p")),
+    )
+    job.validate_for_training()
+
+
+def test_full_result_tables_off_needs_no_integration() -> None:
+    """The default path must not start demanding W&B."""
+    _grpo_job(GRPOTraining(type="grpo")).validate_for_training()

@@ -362,6 +362,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
                 hf_config_overrides=t.hf_config_overrides,
                 vllm_tensor_parallel_size=t.vllm_tensor_parallel_size,
                 vllm_gpu_memory_utilization=t.vllm_gpu_memory_utilization,
+                log_nemo_gym_full_result_tables=t.log_nemo_gym_full_result_tables,
             ),
             lora=(
                 LoRAConfig(

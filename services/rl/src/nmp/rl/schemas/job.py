@@ -485,6 +485,16 @@ class GRPOTraining(_TrainingBase):
         "for large models; the rest is left for the colocated policy.",
     )
 
+    # --- Rollout logging ---
+    log_nemo_gym_full_result_tables: bool = Field(
+        default=False,
+        description="Log each rollout's full NeMo-Gym payload to your own W&B as a Table "
+        "(`<agent>/full_result`). The only place generated text is readable — the per-step JSONL "
+        "carries token ids and an empty `content`. Each row is one JSON blob, so W&B cannot sort or "
+        "filter on fields inside it. Payloads are large; enable for short debugging runs. Requires "
+        "`integrations.wandb`.",
+    )
+
     @model_validator(mode="after")
     def _lora_defaults(self) -> Self:
         if self.finetuning_type == "lora" and self.lora is None:
@@ -687,6 +697,16 @@ class RlJobOutput(RlSchema):
         if isinstance(training, GRPOTraining):
             if not self.environment:
                 raise ValueError("GRPO jobs require an environment fileset reference.")
+            # NeMo-RL gates the Tables on `wandb_enabled AND the flag`, so without the
+            # integration this is a silent no-op.
+            if training.log_nemo_gym_full_result_tables and (
+                self.integrations is None or self.integrations.wandb is None
+            ):
+                raise ValueError(
+                    "log_nemo_gym_full_result_tables=true requires the W&B integration: the "
+                    "rollout Tables are written to your own W&B project, and NeMo-RL skips them "
+                    "entirely when W&B is disabled. Set integrations.wandb, or turn the flag off."
+                )
             # The rollout engine meshes over the same GPUs under its own rule: vllm_generation.py
             # asserts world_size % tp == 0, and one engine does not span nodes.
             vllm_tp = training.vllm_tensor_parallel_size
