@@ -35,12 +35,12 @@ OPENMATHREASONING = """
 profile_schema_version: "1.0"
 created_at: 2026-07-08T22:05:12Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
-coverage: {rows_scanned: 2112, rows_present: 3201061,
+coverage: {examples_scanned: 2112, examples_present: 3201061,
            files_read: 33, files_present: 33, bytes_present: 31821490182}
 partitions:
   - name: ""
     file_formats: [parquet]
-    rows_complete: false
+    examples_complete: false
     splits:
       - {name: train, canonical: train, num_examples: 3200861, num_files: 32,
          size_bytes: 31819412254, data_files: 'train*.parquet'}
@@ -52,9 +52,11 @@ partitions:
       - {name: completion, dtype: messages, semantic_role: completion, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
     stats:
-      prompt:     {messages: {turns: {p50: 1, p95: 1, p99: 1, max: 1}, content_chars: {p50: 180, p95: 620, p99: 1100, max: 4800},
+      prompt:     {messages: {turns: {p50: 1, p95: 1, p99: 1, max: 1}, content_code_points: {p50: 180, p95: 620, p99: 1100, max: 4800},
+                              content_utf8_bytes: {p50: 184, p95: 632, p99: 1122, max: 4896},
                               roles_seen: [user], ends_with_assistant_rate: 0.0, valid_alternation_rate: 1.0}}
-      completion: {messages: {turns: {p50: 1, p95: 1, p99: 1, max: 1}, content_chars: {p50: 2400, p95: 7800, p99: 12000, max: 32000},
+      completion: {messages: {turns: {p50: 1, p95: 1, p99: 1, max: 1}, content_code_points: {p50: 2400, p95: 7800, p99: 12000, max: 32000},
+                              content_utf8_bytes: {p50: 2448, p95: 7956, p99: 12240, max: 32640},
                               roles_seen: [assistant], ends_with_assistant_rate: 1.0, valid_alternation_rate: 1.0}}
     classification:
       modality: text
@@ -75,12 +77,12 @@ HH_RLHF_HELPFUL_BASE = """
 profile_schema_version: "1.0"
 created_at: 2026-07-08T22:41:37Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
-coverage: {rows_scanned: 1024, rows_present: 46189,
+coverage: {examples_scanned: 1024, examples_present: 46189,
            files_read: 2, files_present: 2, bytes_present: 27055195}
 partitions:
   - name: ""
     file_formats: [parquet]
-    rows_complete: false
+    examples_complete: false
     splits:
       - {name: train, canonical: train, num_examples: 43835, num_files: 1,
          size_bytes: 25670988, data_files: 'train*.parquet'}
@@ -94,11 +96,14 @@ partitions:
       - {name: rejected, dtype: messages, semantic_role: rejected, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
     stats:
-      prompt:   {messages: {turns: {p50: 3, p95: 8, p99: 9, max: 9}, content_chars: {p50: 640, p95: 3200, p99: 5400, max: 9800},
+      prompt:   {messages: {turns: {p50: 3, p95: 8, p99: 9, max: 9}, content_code_points: {p50: 640, p95: 3200, p99: 5400, max: 9800},
+                            content_utf8_bytes: {p50: 646, p95: 3232, p99: 5454, max: 9898},
                             roles_seen: [user, assistant], ends_with_assistant_rate: 0.0, valid_alternation_rate: 1.0}}
-      chosen:   {messages: {turns: {p50: 1, p95: 1, p99: 1, max: 1}, content_chars: {p50: 420, p95: 1400, p99: 2100, max: 3600},
+      chosen:   {messages: {turns: {p50: 1, p95: 1, p99: 1, max: 1}, content_code_points: {p50: 420, p95: 1400, p99: 2100, max: 3600},
+                            content_utf8_bytes: {p50: 424, p95: 1414, p99: 2121, max: 3636},
                             roles_seen: [assistant], ends_with_assistant_rate: 1.0, valid_alternation_rate: 1.0}}
-      rejected: {messages: {turns: {p50: 1, p95: 1, p99: 1, max: 1}, content_chars: {p50: 410, p95: 1380, p99: 2050, max: 3500},
+      rejected: {messages: {turns: {p50: 1, p95: 1, p99: 1, max: 1}, content_code_points: {p50: 410, p95: 1380, p99: 2050, max: 3500},
+                            content_utf8_bytes: {p50: 414, p95: 1394, p99: 2071, max: 3535},
                             roles_seen: [assistant], ends_with_assistant_rate: 1.0, valid_alternation_rate: 1.0}}
     classification:
       modality: text
@@ -115,12 +120,12 @@ HELPSTEER2 = """
 profile_schema_version: "1.0"
 created_at: 2026-07-09T10:12:45Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
-coverage: {rows_scanned: 1024, rows_present: 21362,
+coverage: {examples_scanned: 1024, examples_present: 21362,
            files_read: 2, files_present: 2, bytes_present: 19459677}
 partitions:
   - name: ""
     file_formats: [parquet]
-    rows_complete: false
+    examples_complete: false
     splits:
       - {name: train, canonical: train, num_examples: 20324, num_files: 1,
          size_bytes: 18495985, data_files: 'train*.parquet'}
@@ -135,8 +140,10 @@ partitions:
       - {name: complexity,  dtype: int64,  semantic_role: score, semantic_role_source: detected}
       - {name: verbosity,   dtype: int64,  semantic_role: score, semantic_role_source: detected}
     stats:
-      prompt:   {text: {chars: {p50: 320, p95: 2200, p99: 5600, max: 12000}}}
-      response: {text: {chars: {p50: 1350, p95: 3900, p99: 6200, max: 10500}}}
+      prompt:   {text: {code_points: {p50: 320, p95: 2200, p99: 5600, max: 12000},
+                        utf8_bytes: {p50: 323, p95: 2222, p99: 5656, max: 12120}}}
+      response: {text: {code_points: {p50: 1350, p95: 3900, p99: 6200, max: 10500},
+                        utf8_bytes: {p50: 1364, p95: 3939, p99: 6262, max: 10605}}}
       helpfulness: {numeric: {min: 0, max: 4, mean: 2.8}, categorical: {distinct_count: 5}}
       correctness: {numeric: {min: 0, max: 4, mean: 2.9}, categorical: {distinct_count: 5}}
       coherence:   {numeric: {min: 0, max: 4, mean: 3.5}, categorical: {distinct_count: 5}}
@@ -166,15 +173,15 @@ def _build_profile() -> DatasetProfile:
         created_at=datetime(2026, 7, 13, 12, 0, 0),
         profiler_info={"name": "nemo-dataset-profiler", "version": "0.1.0"},
         coverage=Coverage(
-            rows_scanned=1024,
-            rows_present=2048,
+            examples_scanned=1024,
+            examples_present=2048,
             files_read=2,
             files_present=2,
         ),
         partitions=[
             PartitionProfile(
                 file_formats=["parquet"],
-                rows_complete=False,
+                examples_complete=False,
                 splits=[
                     SplitProfile(
                         name="train",
@@ -431,7 +438,8 @@ def test_quantiles_and_message_stats_construct():
     """Smoke-check the leaf stat models are wired as documented."""
     stats = MessageStats(
         turns=Quantiles(p50=1, p95=3, p99=5, max=9),
-        content_chars=Quantiles(p50=100, p95=500, p99=900, max=2000),
+        content_code_points=Quantiles(p50=100, p95=500, p99=900, max=2000),
+        content_utf8_bytes=Quantiles(p50=104, p95=520, p99=940, max=2100),
         roles_seen=["user", "assistant", "tool"],
         ends_with_assistant_rate=1.0,
         valid_alternation_rate=0.98,

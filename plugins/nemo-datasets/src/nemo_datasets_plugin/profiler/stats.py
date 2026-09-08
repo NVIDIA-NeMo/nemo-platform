@@ -383,6 +383,7 @@ class StringAccumulator(ColumnAccumulator):
     def __init__(self) -> None:
         super().__init__()
         self._lengths = _LengthHistogram()
+        self._byte_lengths = _LengthHistogram()
         self._vocabulary = _Vocabulary()
         self._strings = 0
 
@@ -390,11 +391,16 @@ class StringAccumulator(ColumnAccumulator):
         for value in present:
             if isinstance(value, str):
                 self._lengths.add(len(value))
+                self._byte_lengths.add(_utf8_len(value))
                 self._strings += 1
         self._vocabulary.update(present)
 
     def _stat_blocks(self) -> dict[str, Any]:
-        text = TextStats(chars=self._lengths.quantiles()) if self._strings else None
+        text = (
+            TextStats(code_points=self._lengths.quantiles(), utf8_bytes=self._byte_lengths.quantiles())
+            if self._strings
+            else None
+        )
         return {"text": text, "categorical": self._vocabulary.finalize()}
 
     def vocabulary(self) -> set[Any] | None:
@@ -485,7 +491,8 @@ class MessageAccumulator(ColumnAccumulator):
         super().__init__()
         self._conversations = 0
         self._turns = _LengthHistogram()
-        self._content_chars = _LengthHistogram()
+        self._content_code_points = _LengthHistogram()
+        self._content_utf8_bytes = _LengthHistogram()
         self._roles_seen: list[str] = []
         self._ends_with_assistant = 0
         self._valid_alternation = 0
@@ -498,6 +505,7 @@ class MessageAccumulator(ColumnAccumulator):
             self._conversations += 1
             self._turns.add(len(messages))
             total_content = 0
+            total_content_bytes = 0
             for message in messages:
                 if not isinstance(message, dict):
                     continue
@@ -509,12 +517,15 @@ class MessageAccumulator(ColumnAccumulator):
                     role = role[:_MAX_ROLE_CHARS]
                     if role not in self._roles_seen and len(self._roles_seen) < _MAX_ROLES_SEEN:
                         self._roles_seen.append(role)
-                total_content += _content_len(_message_field(message, "content", "value"))
+                code_points, utf8_bytes = _content_lengths(_message_field(message, "content", "value"))
+                total_content += code_points
+                total_content_bytes += utf8_bytes
                 # `.get` truthiness, not `in`: parquet materializes every declared struct field, so a
                 # schema that merely declares tool_calls would otherwise report tool use on every row.
                 if message.get("tool_calls") or role == "tool":
                     self._has_tool_calls = True
-            self._content_chars.add(total_content)
+            self._content_code_points.add(total_content)
+            self._content_utf8_bytes.add(total_content_bytes)
             if messages and isinstance(messages[-1], dict) and _is_assistant_role(_role_of(messages[-1])):
                 self._ends_with_assistant += 1
             if _valid_alternation(messages):
@@ -526,7 +537,8 @@ class MessageAccumulator(ColumnAccumulator):
         return {
             "messages": MessageStats(
                 turns=self._turns.quantiles(),
-                content_chars=self._content_chars.quantiles(),
+                content_code_points=self._content_code_points.quantiles(),
+                content_utf8_bytes=self._content_utf8_bytes.quantiles(),
                 roles_seen=self._roles_seen,
                 ends_with_assistant_rate=self._ends_with_assistant / self._conversations,
                 valid_alternation_rate=self._valid_alternation / self._conversations,
@@ -815,14 +827,33 @@ def _is_assistant_role(role: Any) -> bool:
     return isinstance(role, str) and role.lower() in _ASSISTANT_ROLES
 
 
-def _content_len(content: Any) -> int:
+def _utf8_len(value: str) -> int:
+    """A string's length in UTF-8 bytes.
+
+    The unit a byte-level BPE tokenizer actually consumes, which is why it is measured alongside code
+    points rather than derived from them: the two differ by 3x on CJK and not at all on ASCII, so
+    neither is recoverable from the other.
+
+    ASCII answers from a flag CPython already carries, so the common case costs no encode; only
+    non-ASCII strings pay for one.
+    """
+    return len(value) if value.isascii() else len(value.encode())
+
+
+def _content_lengths(content: Any) -> tuple[int, int]:
+    """A message's content in code points and UTF-8 bytes, from one walk over it."""
     if isinstance(content, str):
-        return len(content)
+        return len(content), _utf8_len(content)
     if isinstance(content, list):  # VLM content as a list of typed parts
-        return sum(
-            len(part["text"]) for part in content if isinstance(part, dict) and isinstance(part.get("text"), str)
-        )
-    return 0
+        code_points = 0
+        utf8 = 0
+        for part in content:
+            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                text = part["text"]
+                code_points += len(text)
+                utf8 += _utf8_len(text)
+        return code_points, utf8
+    return 0, 0
 
 
 def _valid_alternation(messages: list) -> bool:

@@ -107,7 +107,7 @@ def _is_binary(column: ColumnStats | None) -> bool:
     Two is what a binary label has. One is accepted as well, because a partition is classified on
     its own: a shard whose labels happen to all be one class, or a read that stopped before the
     second class appeared, is still a label column, and must not classify differently from its
-    sibling over class balance. `distinct_count` is a lower bound wherever `rows_complete` is false,
+    sibling over class balance. `distinct_count` is a lower bound wherever `examples_complete` is false,
     which makes the looser bound the safe one.
 
     Zero is not that judgment call. A column with no values at all carries no label, and counting it

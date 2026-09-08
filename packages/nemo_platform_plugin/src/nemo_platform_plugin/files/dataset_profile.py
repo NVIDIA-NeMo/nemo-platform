@@ -13,7 +13,7 @@ It has two stored layers:
   ``format`` / ``prompt_form`` axes, and ``verifiability``.
 
 Vocabularies (``candidates`` entries, ``semantic_role``, ``modality``, ...) are open ``str`` values
-documented canonical sets, not closed enums: only known values are emitted, but consumers must
+with documented canonical sets, not closed enums: only known values are emitted, but consumers must
 tolerate unknown ones so the vocabulary can grow without a breaking change. Pydantic's default
 ``extra="ignore"`` gives the same forward-compatibility for unknown *fields*.
 
@@ -28,6 +28,7 @@ metadata, so writing one cannot clobber an unrelated metadata edit."""
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -142,23 +143,66 @@ class Quantiles(BaseModel):
     **`max` is exact**, always, and is the only number here safe to treat as a hard bound.
     """
 
-    p50: int
-    p95: int
-    p99: int
-    max: int
+    p50: int = Field(ge=0)
+    p95: int = Field(ge=0)
+    p99: int = Field(ge=0)
+    max: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Quantiles:
+        """Quantiles ascend and none exceeds `max`.
+
+        Free to assert and impossible for the producer to violate -- higher percentiles land in
+        later buckets, and every reported value is capped at `max`. It is here to catch a future
+        producer, or a hand-written fixture, rather than the present one.
+        """
+        if not self.p50 <= self.p95 <= self.p99 <= self.max:
+            raise ValueError(f"quantiles must ascend: p50={self.p50} p95={self.p95} p99={self.p99} max={self.max}")
+        return self
 
 
 class TextStats(BaseModel):
     """Measurements for a ``string`` column."""
 
-    chars: Quantiles = Field(description="Per-row character-length distribution.")
+    code_points: Quantiles = Field(description="Per-row length in Unicode code points -- `len(str)`.")
+    utf8_bytes: Quantiles = Field(
+        description=(
+            "Per-row length in UTF-8 bytes, and the length a sequence budget should divide. BPE is "
+            "byte-level, so a code point is not a unit the tokenizer ever sees: ASCII is one byte per "
+            "character and CJK is three, which is why bytes-per-token stays near 3-5 across scripts "
+            "while characters-per-token spans roughly 0.3-5.5.\n\n"
+            "Paired with `code_points` it also says whether one ratio describes the whole column. If every "
+            "row shares a ratio r then bytes = r * code points per row, sorting by one sorts by the other, "
+            "and every quantile scales by that same r -- so p50, p95 and p99 of the two agree. Divergence "
+            "proves the column mixes scripts or content types, where no single ratio converts to tokens "
+            "however well calibrated. Agreement does not prove the converse, so read it as a warning and "
+            "not as a clearance."
+        ),
+    )
 
 
 class MessageStats(BaseModel):
-    """Measurements for a ``messages`` column (a list of ``{role, content}``)."""
+    """Measurements for a ``messages`` column: a list of turns, each a role and its content.
+
+    Both on-disk spellings are read -- ``{role, content}`` and ShareGPT's ``{from, value}`` -- and
+    reported the same way here, so a consumer never has to know which one the file used. What the
+    file called them survives in `roles_seen`, verbatim.
+    """
 
     turns: Quantiles = Field(description="Per-row turn count (p99 -> packing long chats).")
-    content_chars: Quantiles = Field(description="Per-row total content length -> chat sequence length.")
+    content_code_points: Quantiles = Field(
+        description="Per-row total content length in code points -> chat sequence length.",
+    )
+    content_utf8_bytes: Quantiles = Field(
+        description=(
+            "The same total in UTF-8 bytes; see `TextStats.utf8_bytes` for why bytes are the unit a token "
+            "estimate divides and how the pair detects mixed content.\n\n"
+            "Content only, either way. The chat template's role markers and turn delimiters are special "
+            "tokens, matched before BPE runs and therefore atomic -- `<|im_start|>` is twelve characters "
+            "and exactly one token. That overhead is recoverable from neither length, in either direction, "
+            "so a consumer sizing a chat sequence must add it separately, in tokens, scaled by `turns`."
+        ),
+    )
     roles_seen: list[str] = Field(
         default_factory=list,
         description=(
@@ -176,16 +220,43 @@ class MessageStats(BaseModel):
         le=1.0,
         description="Key signal separating an SFT target (conversation ends on an assistant turn) from a prompt-only row.",
     )
-    valid_alternation_rate: float = Field(ge=0.0, le=1.0)
-    has_tool_calls: bool = False
+    valid_alternation_rate: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fraction of rows whose turns alternate between the asking and answering roles, ignoring any "
+            "leading system turns. A low rate means a chat template will not apply cleanly -- consecutive "
+            "turns from one role, or a conversation that opens on the responder."
+        ),
+    )
+    has_tool_calls: bool = Field(
+        default=False,
+        description=(
+            "True when ANY row of this column carried a tool call -- a `tool_calls` key on a turn, or a turn "
+            "whose role is `tool`. A column-level OR, not a rate: one tool-calling row is enough, because the "
+            "question it answers is whether the backend must support tool use at all. False means none was "
+            "seen in what was read, which where `examples_complete` is false is not the same as none existing."
+        ),
+    )
 
 
 class NumericStats(BaseModel):
-    """Measurements for a numeric column."""
+    """Measurements for a numeric column: the range a score column spans, and where it sits in it.
 
-    min: float
-    max: float
-    mean: float
+    Carried as ``float`` whatever the column's width, so an integer column wider than 2**53 reports
+    bounds that have lost their low bits. That is the score-column case this exists for -- ratings,
+    ranks, labels -- and never the id-like case, which `CategoricalStats.distinct_count` is what
+    identifies.
+    """
+
+    min: float = Field(description="Smallest value observed.")
+    max: float = Field(description="Largest value observed.")
+    mean: float = Field(
+        description=(
+            "Arithmetic mean over the values observed. With `min` and `max` it separates a rating "
+            "concentrated at one end from one spread across the range, which a bare range cannot."
+        ),
+    )
 
 
 class FeatureSchema(BaseModel):
@@ -253,11 +324,12 @@ class CategoricalStats(BaseModel):
     """
 
     distinct_count: int = Field(
+        ge=0,
         description=(
-            "How many distinct values the vocabulary holds. Present only for a column that stayed a bounded "
-            "vocabulary throughout -- absence means the column is not one, not that counting was skipped. Exact "
-            "over the rows that were read; where the partition's `rows_complete` is false, a shard was missed or "
-            "a read was cut short, and this is a LOWER BOUND for the partition."
+            "How many distinct values the vocabulary holds. Always present when this block is -- it is the "
+            "enclosing `ColumnStats.categorical` whose absence says the column is not a vocabulary, not this "
+            "field. Exact over the rows that were read; where the partition's `examples_complete` is false a "
+            "shard was missed or a read was cut short, and this is a LOWER BOUND for the partition."
         ),
     )
     values: list[str] | None = Field(
@@ -268,7 +340,7 @@ class CategoricalStats(BaseModel):
             "only part-way -- by a row budget or by a failure mid-read -- since a prefix cannot prove an enumeration "
             "and quoting one would store a sample of row content as though it were the whole vocabulary. A partition "
             "that lost a shard before it yielded a row still quotes: that file contributed nothing to measure, so "
-            "the values gathered from the rest are entire, and `rows_complete` reports the loss. This is the one "
+            "the values gathered from the rest are entire, and `examples_complete` reports the loss. This is the one "
             "place *column* content reaches the stored profile under a role gate rather than a size gate, since "
             "cardinality inverts on small data, where every column looks like an enumeration. It is not the only "
             "place row content reaches the profile: see `MessageStats.roles_seen`."
@@ -280,15 +352,26 @@ class ColumnStats(BaseModel):
     """Measurements for one top-level column (keyed by name in ``PartitionProfile.stats``).
 
     The kind-specific block is populated by dtype, and deep measurements fold into it (e.g.
-    ``MessageStats.content_chars``) so stats stay flat -- no path addressing to drift against the
+    ``MessageStats.content_code_points``) so stats stay flat -- no path addressing to drift against the
     schema tree. Almost never row values: the two exceptions are ``categorical.values``, gated on
     role, and ``messages.roles_seen``, gated on nothing but bounded in count and in length.
     """
 
-    null_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    null_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fraction of rows where this column was null or absent. Distinguishes a role that is optional in "
+            "this dataset from one that is always carried, which decides whether a consumer can rely on it."
+        ),
+    )
     text: TextStats | None = Field(default=None, description="dtype == string")
     numeric: NumericStats | None = Field(default=None, description="dtype in {int*, uint*, float*}")
-    messages: MessageStats | None = Field(default=None, description="dtype == messages (list of {role, content})")
+    messages: MessageStats | None = Field(
+        default=None,
+        description="dtype == messages: a list of turns, either {role, content} or ShareGPT's {from, value}",
+    )
     categorical: CategoricalStats | None = Field(
         default=None,
         description="Present only when the column is a bounded controlled vocabulary; absence means it is not one.",
@@ -352,6 +435,7 @@ class SplitProfile(BaseModel):
     )
     num_files: int = Field(
         default=0,
+        ge=0,
         description=(
             "How many files resolved into this split. Partitioning is exhaustive over the partition's data files, "
             "so these sum to the partition's total."
@@ -359,15 +443,20 @@ class SplitProfile(BaseModel):
     )
     size_bytes: int = Field(
         default=0,
+        ge=0,
         description=(
             "On-disk bytes of this split's files, summed. Answers whether the data fits wherever the reader means "
-            "to put it, which a row count cannot: a row ranges from an integer score to a reasoning trace. Never "
-            "None, since it comes from the file listing rather than from reading. Bytes as stored -- compressed, "
-            "and several times this once decoded."
+            "to put it, which an example count cannot: an example ranges from an integer score to a reasoning "
+            "trace. Never None, since it comes from the file listing rather than from reading. Bytes as stored -- "
+            "compressed, and several times this once decoded.\n\n"
+            "Deliberately NOT named `num_bytes` despite the HF card spelling it that way beside `num_examples`: "
+            "there it means the decoded in-memory size and here it means the bytes on disk, so borrowing the name "
+            "would import the wrong quantity."
         ),
     )
     num_examples: int | None = Field(
         default=None,
+        ge=0,
         description=(
             "Rows in this split, counting every one of its files whether or not that file was read to the end. "
             "None when any file's count is unknown, which is the honest answer: the sum of the rest would look "
@@ -412,7 +501,7 @@ class PartitionProfile(BaseModel):
             "omitted); keys are a subset of the top-level `features` names."
         ),
     )
-    rows_complete: bool = Field(
+    examples_complete: bool = Field(
         description=(
             "True => every row of every file in THIS partition was read. Only then can a consumer assert enum / "
             "required in a bridged JSON Schema, or read a verifiability coverage of 1.0 as literal.\n\n"
@@ -447,26 +536,29 @@ class Coverage(BaseModel):
 
     The dataset-wide question is one expression away, and still says which half failed::
 
-        all(p.rows_complete for p in profile.partitions) and not profile.file_errors
+        all(p.examples_complete for p in profile.partitions) and not profile.file_errors
     """
 
-    rows_scanned: int = Field(description="Total rows actually parsed across all files.")
-    rows_present: int | None = Field(
+    examples_scanned: int = Field(ge=0, description="Total examples actually parsed across all files.")
+    examples_present: int | None = Field(
         default=None,
+        ge=0,
         description=(
-            "How many rows the fileset holds, scanned or not -- the denominator `rows_scanned` is a fraction of. "
+            "How many rows the fileset holds, scanned or not -- the denominator `examples_scanned` is a fraction of. "
             "None once any file's count is unknown, since a total that omits it would read low as though it were "
             "a fact."
         ),
     )
     files_read: int = Field(
+        ge=0,
         description=(
             "Files the profiler opened and did not fail on. This counts a file it opened and took no rows "
             "from, which a zero `row_budget` makes every file. A count, not a list: the paths worth naming "
             "are the ones that failed, and those are on `file_errors`."
-        )
+        ),
     )
     files_present: int = Field(
+        ge=0,
         description=(
             "Data files the fileset holds, whether or not this run could read them -- the denominator "
             "`files_read` is a fraction of. Counts files in formats with no reader too, since those are data the "
@@ -475,6 +567,7 @@ class Coverage(BaseModel):
     )
     bytes_present: int = Field(
         default=0,
+        ge=0,
         description=(
             "On-disk bytes of every data file the fileset holds, whether or not this run could read it -- the "
             "size of the dataset as it sits, independent of how much was profiled. Equal to the sum over "
@@ -500,10 +593,18 @@ class DatasetProfile(BaseModel):
         default=PROFILE_SCHEMA_VERSION,
         description='Semver of THIS contract (e.g. "1.0") — gates consumer compatibility.',
     )
-    created_at: datetime
-    profiler_info: dict = Field(
+    created_at: datetime = Field(
+        description=(
+            "When this profile was computed, timezone-aware and UTC. Says nothing about whether it still "
+            "holds -- see the class docstring on why there is no staleness marker."
+        ),
+    )
+    profiler_info: dict[str, Any] = Field(
         default_factory=dict,
-        description="Free-form profiler metadata (name, version, git sha, timings).",
+        description=(
+            "Free-form profiler metadata (name, version, git sha, timings). The one untyped field here, so "
+            "that recording a new diagnostic never needs a contract bump; nothing may be REQUIRED to read it."
+        ),
     )
     coverage: Coverage = Field(description="How much data the profile is based on.")
     partitions: list[PartitionProfile] = Field(
@@ -514,7 +615,7 @@ class DatasetProfile(BaseModel):
         description=(
             "Every file the profiler could not fully use, from anywhere in the fileset, sorted by path. Files "
             "that read cleanly are counted rather than listed, so this is a findings list and not a manifest. A "
-            "non-empty list does NOT by itself make `rows_present` unknown: a file that failed part-way through "
+            "non-empty list does NOT by itself make `examples_present` unknown: a file that failed part-way through "
             "the data keeps the exact count its footer already declared. What unknows the total is a file whose "
             "count could not be established at all -- one with no registered reader, or a line-delimited file "
             "whose read fell short of its end."

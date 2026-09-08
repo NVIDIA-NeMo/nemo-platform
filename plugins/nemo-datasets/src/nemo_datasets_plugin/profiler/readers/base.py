@@ -26,7 +26,7 @@ class ReadResult:
     """What a format reader returns for one file."""
 
     rows: list[dict[str, Any]]  # the rows read (a sample, or all of them)
-    rows_scanned: int  # number of rows actually parsed
+    examples_scanned: int  # number of rows actually parsed
     num_rows: int | None = None  # exact total when cheaply known (e.g. a parquet footer), else None
     arrow_schema: pa.Schema | None = None  # the declared column schema, when the format carries one
     # Why the read understood less than the whole file; None means nothing was lost. A reader's only
@@ -135,14 +135,14 @@ _UNSUPPORTED_DATA_EXTENSIONS = {".csv", ".tsv", ".arrow", ".feather", ".json", "
 # Compression wrappers. A shard keeps its data extension underneath -- `train.jsonl.gz` -- but the
 # suffix a path reports is the outer one, so a compressed shard matched neither the reader table nor
 # the list above and was dropped before anything could count it. A directory of them profiled as an
-# exhaustively scanned *empty* dataset: no partition, no error, `rows_present` 0, and the documented
+# exhaustively scanned *empty* dataset: no partition, no error, `examples_present` 0, and the documented
 # completeness test still answering True. That is the one failure this whole list exists to prevent,
 # and it read as a clean profile of nothing rather than as a profiler that could not read the data.
 COMPRESSION_EXTENSIONS = {".gz", ".zst", ".zstd", ".bz2", ".xz", ".lz4", ".zip"}
 
 # Metadata a fileset ships beside its shards, spelled with a data extension. `.json` is on the
 # unsupported list because it genuinely can be records, which made every one of these an unreadable
-# data file -- and one such file unknows `rows_present` for the whole fileset (see `profile`). The
+# data file -- and one such file unknows `examples_present` for the whole fileset (see `profile`). The
 # cost landed on the ordinary HuggingFace layout, where a fileset read to its last row reported an
 # unknown size because a card sat next to it.
 _METADATA_FILENAMES = {"dataset_infos.json", "dataset_info.json", "state.json"}

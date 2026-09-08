@@ -106,10 +106,10 @@ def profile(
     file_errors = [FileError(path=entry.path, error=_no_reader_reason(entry.path)) for entry in unreadable_entries]
 
     partitions: list[PartitionProfile] = []
-    rows_scanned = 0
+    examples_scanned = 0
     files_read = 0
     # None once any file's row count is unknown: the fileset's total is then unknowable, not zero.
-    rows_present: int | None = 0
+    examples_present: int | None = 0
 
     # Every path the source listed, data or not. A split's glob is verified against this rather than
     # the partition's own files, so a pattern can never pull in a README sitting beside the shards.
@@ -120,9 +120,9 @@ def profile(
             source, name, partition_entries, row_budget, column_roles or {}, all_paths=all_paths
         )
         partitions.append(outcome.partition)
-        rows_scanned += outcome.rows_scanned
+        examples_scanned += outcome.examples_scanned
         files_read += outcome.files_read
-        rows_present = _add_known(rows_present, outcome.rows_present)
+        examples_present = _add_known(examples_present, outcome.examples_present)
         file_errors.extend(outcome.file_errors)
 
     # Files with no reader never reached a partition, so their rows never went through `_add_known`
@@ -131,11 +131,11 @@ def profile(
     # but had already declared an exact count in its footer. Unknowing that one too would report a
     # fileset whose splits each know their size as a fileset of unknown size.
     if unreadable_entries:
-        rows_present = None
+        examples_present = None
 
     coverage = Coverage(
-        rows_scanned=rows_scanned,
-        rows_present=rows_present,
+        examples_scanned=examples_scanned,
+        examples_present=examples_present,
         files_read=files_read,  # files actually opened and read, not files merely listed
         # Every data file, readable or not: the denominator that makes `files_read` a fraction rather
         # than a bare count. Non-data files (a README, a LICENSE) are not data and are counted nowhere.
@@ -227,9 +227,9 @@ class _PartitionOutcome:
     """One partition plus what it contributes to the dataset-level coverage envelope."""
 
     partition: PartitionProfile
-    rows_scanned: int
+    examples_scanned: int
     files_read: int  # files actually opened and read, so `files_read` can exclude failures
-    rows_present: int | None  # rows known to exist here, or None once any file's count is unknown
+    examples_present: int | None  # rows known to exist here, or None once any file's count is unknown
     file_errors: list[FileError]  # files this partition grouped but could not fully read
 
 
@@ -321,9 +321,9 @@ class _PartitionFolds:
                 prefix_pair=self._prefix.result(),
                 column_roles=column_roles,
             )
-            # Gated on truncation, not on `rows_complete`. A shard that failed to open still let
+            # Gated on truncation, not on `examples_complete`. A shard that failed to open still let
             # every other file be read end to end, so the values collected are the whole vocabulary
-            # of what was read and quoting them is honest -- `rows_complete` is what tells a
+            # of what was read and quoting them is honest -- `examples_complete` is what tells a
             # consumer a shard is missing. A row budget is the different case: it stops *inside*
             # files, so what it collected is whichever values happened to appear early, and
             # quoting that would store a sample of row content under a field documented as the
@@ -389,9 +389,9 @@ def _profile_partition(
         derive_features(declared) if declared is not None else None,
         declared_capped=declared is not None and arrow_schema_was_capped(declared),
     )
-    rows_scanned = 0
+    examples_scanned = 0
     files_read = 0
-    rows_present: int | None = 0
+    examples_present: int | None = 0
     partition_scanned = True
     # Whether any file stopped because it hit the row cap, as opposed to because it failed. Only the
     # first makes a column's collected values a prefix rather than the whole of what was read.
@@ -453,7 +453,7 @@ def _profile_partition(
                 scanned_all = False
             # Counted outside the guard, for what was consumed: a fold cannot give rows back, so a
             # file that failed on its fifth batch still contributed four.
-            rows_scanned += scanned
+            examples_scanned += scanned
             # Truncated when the partition holds a *prefix* of some file rather than the whole of
             # it. The test is on what the file contributed, not on why it stopped: a row budget and
             # a decode error both leave a prefix behind, and `quote_enumerations` cannot tell a
@@ -462,20 +462,20 @@ def _profile_partition(
             # Gating on `error is None` assumed a failed file failed *to open*, and a file that
             # dies on its third batch does neither -- it opens, folds a prefix, and raises. That
             # published the first 1024 rows' distinct values as a column's controlled vocabulary
-            # while `rows_complete` said False three fields away. The row-cap test was wrong the
+            # while `examples_complete` said False three fields away. The row-cap test was wrong the
             # same way, in the other direction: with no budget set there was no gate at all, so
             # every mid-read failure quoted.
             #
             # A file that raised before yielding a row is still excluded, and deliberately: it
             # contributed nothing to measure, so it leaves the vocabulary of the files that *were*
-            # read entire. `rows_complete` is what reports that loss.
+            # read entire. `examples_complete` is what reports that loss.
             if scanned and not scanned_all:
                 partition_truncated = True
             if scanned or error is None:
                 files_read += 1
             if error is not None:
                 file_errors.append(FileError(path=entry.path, error=error))
-            rows_present = _add_known(rows_present, num_rows)
+            examples_present = _add_known(examples_present, num_rows)
             if num_rows is None:
                 split_counts_known = False
             else:
@@ -509,13 +509,13 @@ def _profile_partition(
         # Scoped to this partition, where it was decided all along. Distinct from the truncation
         # flag that gates quoting: a partition can be incomplete because a shard failed and still
         # have read every row of every file it could open.
-        rows_complete=partition_scanned,
+        examples_complete=partition_scanned,
         classification=classification,
     )
     return _PartitionOutcome(
         partition=partition,
-        rows_scanned=rows_scanned,
+        examples_scanned=examples_scanned,
         files_read=files_read,
-        rows_present=rows_present,
+        examples_present=examples_present,
         file_errors=file_errors,
     )

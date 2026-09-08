@@ -93,7 +93,7 @@ def test_task_reads_everything_by_default(tmp_path, monkeypatch):
 
     assert run_mod.run(_SDK) == 0
     coverage = published["profile"]["coverage"]
-    assert coverage["rows_scanned"] == coverage["rows_present"]  # nothing left unread
+    assert coverage["examples_scanned"] == coverage["examples_present"]  # nothing left unread
 
 
 def test_task_honours_an_explicit_row_budget(tmp_path, monkeypatch):
@@ -101,8 +101,8 @@ def test_task_honours_an_explicit_row_budget(tmp_path, monkeypatch):
     published = _install(monkeypatch, tmp_path, {"path": str(data), "row_budget": 5})
 
     assert run_mod.run(_SDK) == 0
-    assert published["profile"]["coverage"]["rows_scanned"] == 5
-    assert published["profile"]["coverage"]["rows_scanned"] == 5
+    assert published["profile"]["coverage"]["examples_scanned"] == 5
+    assert published["profile"]["coverage"]["examples_scanned"] == 5
 
 
 def test_row_budget_zero_asks_for_every_row(tmp_path, monkeypatch):
@@ -111,8 +111,8 @@ def test_row_budget_zero_asks_for_every_row(tmp_path, monkeypatch):
 
     assert run_mod.run(_SDK) == 0
     coverage = published["profile"]["coverage"]
-    assert coverage["rows_scanned"] == coverage["rows_present"]  # 0 means "all of them"
-    assert published["profile"]["partitions"][0]["rows_complete"] is True
+    assert coverage["examples_scanned"] == coverage["examples_present"]  # 0 means "all of them"
+    assert published["profile"]["partitions"][0]["examples_complete"] is True
 
 
 def test_task_fails_when_the_step_config_says_nothing_to_profile(tmp_path, monkeypatch):

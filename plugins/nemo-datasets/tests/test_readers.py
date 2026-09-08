@@ -180,7 +180,7 @@ def test_parquet_reader_reads_schema_rows_and_exact_count(tmp_path):
     result = get_reader("parquet").read(LocalFileSource(tmp_path), FileEntry("d.parquet", 0))
 
     assert result.num_rows == 3  # exact, from the footer
-    assert result.rows_scanned == 3
+    assert result.examples_scanned == 3
     assert result.rows == PARQUET_ROWS
     assert result.arrow_schema is not None
     assert set(result.arrow_schema.names) == {"prompt", "score"}
@@ -191,7 +191,7 @@ def test_parquet_reader_row_cap_bounds_rows_but_keeps_exact_count(tmp_path):
     result = get_reader("parquet").read(LocalFileSource(tmp_path), FileEntry("d.parquet", 0), row_cap=2)
 
     assert result.num_rows == 3  # footer count is unaffected by sampling
-    assert result.rows_scanned == 2
+    assert result.examples_scanned == 2
     assert result.rows == PARQUET_ROWS[:2]
 
 
@@ -269,7 +269,7 @@ def test_jsonl_reader_row_cap_leaves_count_unknown(tmp_path):
     result = get_reader("jsonl").read(LocalFileSource(tmp_path), FileEntry("d.jsonl", 0), row_cap=2)
 
     assert result.rows == [{"a": 1}, {"a": 2}]
-    assert result.rows_scanned == 2
+    assert result.examples_scanned == 2
     assert result.num_rows is None  # a partial read can't assert the total
 
 
@@ -292,7 +292,7 @@ def test_jsonl_reader_survives_an_unparseable_line(tmp_path):
     result = get_reader("jsonl").read(LocalFileSource(tmp_path), FileEntry("d.jsonl", 0))
 
     assert result.rows == [{"a": 1}, {"a": 3}]  # the readable rows survive
-    assert result.rows_scanned == 2
+    assert result.examples_scanned == 2
     assert result.error is not None
     assert "line 2" in result.error  # self-describing: which line, and why
 

@@ -96,7 +96,7 @@ class ParquetReader:
             num_rows = parquet_file.metadata.num_rows
             arrow_schema = parquet_file.schema_arrow
             if row_cap == 0:
-                return ReadResult(rows=[], rows_scanned=0, num_rows=num_rows, arrow_schema=arrow_schema)
+                return ReadResult(rows=[], examples_scanned=0, num_rows=num_rows, arrow_schema=arrow_schema)
 
             rows: list[dict] = []
             # Same ceiling `batches` applies. Passing `row_cap` straight through asked pyarrow for a
@@ -113,7 +113,7 @@ class ParquetReader:
 
         if row_cap is not None:
             rows = rows[:row_cap]
-        return ReadResult(rows=rows, rows_scanned=len(rows), num_rows=num_rows, arrow_schema=arrow_schema)
+        return ReadResult(rows=rows, examples_scanned=len(rows), num_rows=num_rows, arrow_schema=arrow_schema)
 
 
 register_reader(ParquetReader())

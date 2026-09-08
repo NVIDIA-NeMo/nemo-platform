@@ -41,7 +41,8 @@ def _messages_column(ends_with_assistant_rate):
     return ColumnStats(
         messages=MessageStats(
             turns=q,
-            content_chars=q,
+            content_code_points=q,
+            content_utf8_bytes=q,
             roles_seen=["user", "assistant"],
             ends_with_assistant_rate=ends_with_assistant_rate,
             valid_alternation_rate=1.0,

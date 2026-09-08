@@ -223,13 +223,58 @@ def test_quantiles_track_the_true_ones_within_the_error_the_bucketing_promises()
         assert quantiles.max == max(sample)
 
 
+def test_byte_lengths_match_code_points_on_ascii():
+    # The common case, and the one the isascii() fast path serves: nothing to convert.
+    values = ["x" * n for n in (1, 40, 900)]
+    stats = _stats([_feature("a", "string")], _rows("a", values))["a"]
+
+    assert stats.text.utf8_bytes.max == stats.text.code_points.max == 900
+
+
+def test_byte_lengths_diverge_from_code_points_on_non_ascii():
+    # A CJK character is one code point and three UTF-8 bytes. Measuring only code points is what
+    # makes a characters-per-token ratio unusable across scripts -- neither length derives the other.
+    stats = _stats([_feature("a", "string")], _rows("a", ["\u4f60\u597d\u4e16\u754c"]))["a"]
+
+    assert stats.text.code_points.max == 4
+    assert stats.text.utf8_bytes.max == 12
+
+
+def test_one_script_keeps_the_byte_to_char_ratio_constant_across_quantiles():
+    """The homogeneity test a consumer runs before trusting a single bytes-per-token ratio.
+
+    When every row shares a ratio, sorting by one length sorts by the other, so each quantile scales
+    by that same ratio. Agreement here is what licenses converting the whole column with one number.
+    """
+    rows = _rows("a", ["\u4f60" * n for n in (1 + (i * 7) % 400 for i in range(2000))])
+    text = _stats([_feature("a", "string")], rows)["a"].text
+
+    for points, utf8 in ((text.code_points.p50, text.utf8_bytes.p50), (text.code_points.p95, text.utf8_bytes.p95)):
+        assert abs(utf8 / points - 3.0) < 0.1, f"{utf8}/{points} should be ~3 for pure CJK"
+
+
+def test_mixed_scripts_break_the_ratio_apart():
+    # The case the pair exists to expose: short ASCII rows and long CJK rows rank differently in the
+    # two units, so no single ratio converts the column and the quantiles say so.
+    ascii_rows = ["x" * 10 for _ in range(900)]
+    cjk_rows = ["\u4f60" * 100 for _ in range(100)]
+    text = _stats([_feature("a", "string")], _rows("a", ascii_rows + cjk_rows))["a"].text
+
+    assert text.utf8_bytes.p50 / text.code_points.p50 == pytest.approx(1.0, abs=0.1)
+    assert text.utf8_bytes.p99 / text.code_points.p99 == pytest.approx(3.0, abs=0.2)
+
+
 def test_length_quantiles_reach_the_profile():
     # ...and the whole path, since every assertion above is on the histogram in isolation.
     lengths = [1 + (i * 37) % 4000 for i in range(2000)]
     stats = _stats([_feature("a", "string")], _rows("a", ["x" * n for n in lengths]))["a"]
 
-    assert stats.text.chars.max == max(lengths)
-    for percentile, reported in ((50, stats.text.chars.p50), (95, stats.text.chars.p95), (99, stats.text.chars.p99)):
+    assert stats.text.code_points.max == max(lengths)
+    for percentile, reported in (
+        (50, stats.text.code_points.p50),
+        (95, stats.text.code_points.p95),
+        (99, stats.text.code_points.p99),
+    ):
         exact = _exact_quantile(lengths, percentile)
         assert abs(reported - exact) / exact <= 0.016, f"p{percentile}: {reported} vs {exact}"
 
@@ -380,8 +425,27 @@ def test_message_stats_read_the_from_value_spelling():
     rows = [{"m": [{"from": "human", "value": "hi"}, {"from": "gpt", "value": "hello there"}]}]
     stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.roles_seen == ["human", "gpt"]  # verbatim, not normalized
-    assert stats.messages.content_chars.max == len("hi") + len("hello there")
+    assert stats.messages.content_code_points.max == len("hi") + len("hello there")
     assert stats.messages.ends_with_assistant_rate == 1.0  # "gpt" is the responder turn
+
+
+def test_message_content_is_measured_in_both_units():
+    # Content only, in code points and UTF-8 bytes, summed across turns. The template's own tokens
+    # are not counted here -- they are special tokens, so no character length can stand in for them.
+    rows = [{"m": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "\u4f60\u597d"}]}]
+    stats = _stats([_feature("m", "messages")], rows)["m"]
+
+    assert stats.messages.content_code_points.max == 4  # "hi" + two CJK code points
+    assert stats.messages.content_utf8_bytes.max == 8  # 2 ASCII + 6 UTF-8 bytes
+
+
+def test_vlm_content_parts_are_measured_in_both_units():
+    # The list-of-typed-parts spelling: text parts count, non-text parts contribute nothing to either.
+    content = [{"type": "image"}, {"type": "text", "text": "\u4f60\u597d"}]
+    stats = _stats([_feature("m", "messages")], [{"m": [{"role": "user", "content": content}]}])["m"]
+
+    assert stats.messages.content_code_points.max == 2
+    assert stats.messages.content_utf8_bytes.max == 6
 
 
 def test_assistant_equivalent_roles_count_as_the_training_target():
@@ -412,7 +476,7 @@ def test_message_content_parts_tolerate_non_string_text():
     # A VLM-style content part whose "text" key is present but not a string must not crash measurement.
     rows = [{"m": [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": None}]}]}]
     stats = _stats([_feature("m", "messages")], rows)["m"]
-    assert stats.messages.content_chars.max == 0  # no measurable text, and no crash
+    assert stats.messages.content_code_points.max == 0  # no measurable text, and no crash
 
 
 def test_the_roles_list_stops_growing_at_its_bound():
@@ -629,7 +693,7 @@ def test_a_string_subclass_still_reaches_the_string_measurement(observe):
     # kept its dtype and its null rate, so only the missing length quantiles showed it.
     features, measured = _fold_rows(_rows("a", [_StrSubclass("hello"), "world"]), 8, observe)
     assert features[0].dtype == "string"
-    assert measured.stats["a"].text.chars.max == 5
+    assert measured.stats["a"].text.code_points.max == 5
     assert measured.vocabularies["a"] == {"hello", "world"}
 
 

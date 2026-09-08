@@ -187,7 +187,7 @@ class JsonlReader:
             # a cap says how much to read and not whether to look.
             _check_magic(stream)
             if row_cap == 0:
-                return ReadResult(rows=[], rows_scanned=0, num_rows=None, arrow_schema=None)
+                return ReadResult(rows=[], examples_scanned=0, num_rows=None, arrow_schema=None)
             for record, failure in _records(stream):
                 # Branch on the record, not the failure: the two are exclusive, and this narrows the
                 # type without an ignore comment standing in for the reasoning.
@@ -214,7 +214,7 @@ class JsonlReader:
         error = f"skipped {unusable} line(s); first at {first_failure}" if unusable else None
         if error is None and not_rows and not rows:
             error = f"no JSON object rows in {not_rows} line(s); this may not be line-delimited JSON"
-        return ReadResult(rows=rows, rows_scanned=len(rows), num_rows=num_rows, arrow_schema=None, error=error)
+        return ReadResult(rows=rows, examples_scanned=len(rows), num_rows=num_rows, arrow_schema=None, error=error)
 
 
 register_reader(JsonlReader())
