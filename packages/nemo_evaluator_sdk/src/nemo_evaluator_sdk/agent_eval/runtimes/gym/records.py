@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 NG_TASK_INDEX = "_ng_task_index"
 NG_ROLLOUT_INDEX = "_ng_rollout_index"
+#: Gym appends this to a capture key past the first attempt, so it is part of the join.
+NG_ATTEMPT_INDEX = "_ng_attempt_index"
 #: Fields excluded from a row's content hash (runtime-injected, not task-defining).
 _RUNTIME_KEYS = frozenset({NG_TASK_INDEX, NG_ROLLOUT_INDEX})
 

@@ -40,6 +40,7 @@ from nemo_evaluator_sdk.values.evidence import (
 )
 from nemo_evaluator_sdk.values.metrics import MetricBase
 from nemo_evaluator_sdk.values.otlp import span_text_strings
+from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,7 @@ async def _atif_used(evidence: CandidateEvidence, name: str, locations: list[str
     return any(_trajectory_references(trajectory, location) for location in locations)
 
 
-def _otlp_references(resource_spans: list[dict[str, Any]], needle: str) -> bool:
+def _otlp_references(resource_spans: list[ResourceSpans], needle: str) -> bool:
     """Whether any string attribute on the trace's spans or events contains ``needle``."""
     return any(needle in blob for blob in span_text_strings(resource_spans))
 

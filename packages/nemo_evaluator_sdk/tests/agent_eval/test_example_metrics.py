@@ -154,15 +154,13 @@ async def test_inefficient_retry_loop_reads_time_ordered_otlp_tool_spans() -> No
 
 
 @pytest.mark.asyncio
-async def test_inefficient_retry_loop_ignores_non_tool_and_malformed_otlp_spans() -> None:
+async def test_inefficient_retry_loop_ignores_non_tool_otlp_spans() -> None:
     evidence = _otlp_evidence(
         [
             _otlp_tool_span("search", {"q": "same"}, 10),
             _otlp_tool_span("search", {"q": "same"}, 20, kind="CHAIN"),
-            "not-a-span",
             _otlp_tool_span("search", {"q": "different"}, 30),
-        ],
-        {"scopeSpans": "not-a-list"},
+        ]
     )
 
     result = await example_metrics.InefficientRetryLoopMetric(threshold=1).compute_scores(
@@ -171,6 +169,17 @@ async def test_inefficient_retry_loop_ignores_non_tool_and_malformed_otlp_spans(
 
     assert result.outputs[0].value is True
     assert result.outputs[1].value == 1
+
+
+@pytest.mark.asyncio
+async def test_inefficient_retry_loop_refuses_a_trace_it_cannot_parse() -> None:
+    # Reading the spans as OTLP rather than as loose JSON means a structurally invalid trace stops
+    # the metric instead of being scored around. Retry identity comes from the spans it could not
+    # read, so an answer here would be a guess -- the same stance as the no-arguments case below.
+    evidence = _otlp_evidence([_otlp_tool_span("search", {"q": "same"}, 10)], {"scopeSpans": "not-a-list"})
+
+    with pytest.raises(ValueError, match="invalid OTLP payload"):
+        await example_metrics.InefficientRetryLoopMetric(threshold=1).compute_scores(_input_with_evidence(evidence))
 
 
 @pytest.mark.asyncio

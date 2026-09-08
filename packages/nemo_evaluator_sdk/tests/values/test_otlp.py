@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+from base64 import b64decode
 from typing import Any
 
 import pytest
 from nemo_evaluator_sdk.values.otlp import (
-    export_request_from_resource_spans,
     final_output_text,
+    parse_resource_spans,
     resource_spans_from_text,
     root_span_id,
     set_span_attributes,
@@ -35,7 +36,7 @@ def _span(
 
 
 def _answer(*spans: dict[str, Any]) -> str | None:
-    return final_output_text(export_request_from_resource_spans([{"scopeSpans": [{"spans": list(spans)}]}]))
+    return final_output_text(parse_resource_spans([{"scopeSpans": [{"spans": list(spans)}]}]))
 
 
 def _messages(text: str) -> str:
@@ -151,7 +152,7 @@ def test_a_request_without_resource_spans_is_rejected() -> None:
 
 def test_a_payload_that_is_not_otlp_is_rejected_as_a_value_error() -> None:
     with pytest.raises(ValueError, match="invalid OTLP payload"):
-        export_request_from_resource_spans([{"scopeSpans": "not-a-list"}])
+        parse_resource_spans([{"scopeSpans": "not-a-list"}])
 
 
 def test_a_non_string_output_attribute_is_skipped_rather_than_coerced() -> None:
@@ -163,7 +164,7 @@ def test_a_non_string_output_attribute_is_skipped_rather_than_coerced() -> None:
         "attributes": [{"key": "output.value", "value": {"intValue": "7"}}],
     }
 
-    assert final_output_text(export_request_from_resource_spans([{"scopeSpans": [{"spans": [span]}]}])) is None
+    assert final_output_text(parse_resource_spans([{"scopeSpans": [{"spans": [span]}]}])) is None
 
 
 def test_the_root_of_each_trace_is_considered_when_a_file_holds_several() -> None:
@@ -232,7 +233,7 @@ def test_span_text_strings_reaches_every_nesting_the_attribute_schema_allows() -
         }
     ]
 
-    assert sorted(span_text_strings(resource_spans)) == [
+    assert sorted(span_text_strings(parse_resource_spans(resource_spans))) == [
         "in-array",
         "in-kvlist-array",
         "on-event",
@@ -240,17 +241,12 @@ def test_span_text_strings_reaches_every_nesting_the_attribute_schema_allows() -
     ]
 
 
-def test_span_text_strings_tolerates_malformed_containers() -> None:
-    assert list(span_text_strings([{"scopeSpans": "not-a-list"}])) == []
-    assert list(span_text_strings([{"scopeSpans": [{"spans": [{"attributes": "nope"}]}]}])) == []
-
-
 _HEX_TRACE_ID = "0123456789abcdef0123456789abcdef"
 _HEX_SPAN_ID = "0102030405060708"
 
 
 def _parsed(*spans: dict[str, Any]):
-    return export_request_from_resource_spans([{"scopeSpans": [{"spans": list(spans)}]}])
+    return parse_resource_spans([{"scopeSpans": [{"spans": list(spans)}]}])
 
 
 def test_otlp_json_hex_ids_survive_the_protobuf_parse() -> None:
@@ -258,7 +254,7 @@ def test_otlp_json_hex_ids_survive_the_protobuf_parse() -> None:
     # implements; read as base64 a 16-character span id becomes twelve unrelated bytes.
     span = _parsed({"traceId": _HEX_TRACE_ID, "spanId": _HEX_SPAN_ID, "name": "root"})
 
-    parsed = span.resource_spans[0].scope_spans[0].spans[0]
+    parsed = span[0].scope_spans[0].spans[0]
     assert parsed.trace_id.hex() == _HEX_TRACE_ID
     assert parsed.span_id.hex() == _HEX_SPAN_ID
 
@@ -272,7 +268,7 @@ def test_parent_and_link_ids_are_decoded_the_same_way() -> None:
         "links": [{"traceId": _HEX_TRACE_ID, "spanId": _HEX_SPAN_ID}],
     }
 
-    parsed = _parsed(child).resource_spans[0].scope_spans[0].spans[0]
+    parsed = _parsed(child)[0].scope_spans[0].spans[0]
 
     assert parsed.parent_span_id.hex() == _HEX_SPAN_ID
     assert parsed.links[0].span_id.hex() == _HEX_SPAN_ID
@@ -283,39 +279,15 @@ def test_a_base64_id_is_left_alone() -> None:
     # protobuf encoding is not corrupted.
     parsed = _parsed({"traceId": _HEX_TRACE_ID, "spanId": "AQIDBAUGBwg=", "name": "root"})
 
-    assert parsed.resource_spans[0].scope_spans[0].spans[0].span_id.hex() == _HEX_SPAN_ID
+    assert parsed[0].scope_spans[0].spans[0].span_id.hex() == _HEX_SPAN_ID
 
 
 def test_the_callers_resource_spans_are_not_mutated() -> None:
     resource_spans = [{"scopeSpans": [{"spans": [{"traceId": _HEX_TRACE_ID, "spanId": _HEX_SPAN_ID, "name": "root"}]}]}]
 
-    export_request_from_resource_spans(resource_spans)
+    parse_resource_spans(resource_spans)
 
     assert resource_spans[0]["scopeSpans"][0]["spans"][0]["spanId"] == _HEX_SPAN_ID
-
-
-def _nested_attribute_payload(depth: int) -> str:
-    value = '{"arrayValue":{"values":[' * depth + '{"stringValue":"leaf"}' + "]}}" * depth
-    return (
-        '{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"%s","spanId":"%s","name":"s",'
-        '"attributes":[{"key":"k","value":%s}]}]}]}]}' % (_HEX_TRACE_ID, _HEX_SPAN_ID, value)
-    )
-
-
-def test_a_deeply_nested_attribute_fails_conversion_as_a_value_error() -> None:
-    # json.loads accepts this depth, so the decode-time guard does not fire; the conversion
-    # recurses and must not leak RecursionError past a caller guarding on ValueError.
-    resource_spans = resource_spans_from_text(_nested_attribute_payload(400))
-
-    with pytest.raises(ValueError, match="nested too deeply"):
-        export_request_from_resource_spans(resource_spans)
-
-
-@pytest.mark.parametrize("depth", [400, 2000])
-def test_span_text_strings_walks_any_depth(depth: int) -> None:
-    resource_spans = resource_spans_from_text(_nested_attribute_payload(depth))
-
-    assert list(span_text_strings(resource_spans)) == ["leaf"]
 
 
 @pytest.mark.parametrize("kind", ["TOOL", "EVALUATOR", "RETRIEVER", "GUARDRAIL"])
@@ -395,7 +367,7 @@ def test_set_span_attributes_overrides_what_the_producer_wrote() -> None:
 
     set_span_attributes(request, {"gen_ai.conversation.id": "run:trial", "nemo.evaluation.name": "exp"})
 
-    for span in request.resource_spans[0].scope_spans[0].spans:
+    for span in request[0].scope_spans[0].spans:
         attributes = {attribute.key: attribute.value.string_value for attribute in span.attributes}
         assert attributes["gen_ai.conversation.id"] == "run:trial"
         assert attributes["nemo.evaluation.name"] == "exp"
@@ -407,9 +379,36 @@ def test_each_attribute_value_type_maps_to_its_any_value_field() -> None:
 
     set_span_attributes(request, {"s": "text", "i": 7, "f": 1.5, "b": True})
 
-    values = {a.key: a.value for a in request.resource_spans[0].scope_spans[0].spans[0].attributes}
+    values = {a.key: a.value for a in request[0].scope_spans[0].spans[0].attributes}
     assert values["s"].string_value == "text"
     assert values["i"].int_value == 7
     assert values["f"].double_value == pytest.approx(1.5)
     assert values["b"].bool_value is True
     assert values["b"].WhichOneof("value") == "bool_value"
+
+
+def test_a_payload_nested_past_the_parser_s_limit_is_rejected_as_a_value_error() -> None:
+    # protobuf guards against deeply nested messages by raising RecursionError, which is neither a
+    # ParseError nor a ValueError -- so without its own except it escapes every caller's guard and
+    # takes down a run over one unreadable trace.
+    value: dict[str, Any] = {"stringValue": "deep"}
+    for _ in range(200):
+        value = {"kvlistValue": {"values": [{"key": "k", "value": value}]}}
+    span = {
+        "traceId": _HEX_TRACE_ID,
+        "spanId": _HEX_SPAN_ID,
+        "name": "root",
+        "attributes": [{"key": "a", "value": value}],
+    }
+
+    with pytest.raises(ValueError, match="nested too deeply"):
+        _parsed(span)
+
+
+def test_an_id_field_of_the_right_length_but_not_hex_is_left_alone() -> None:
+    # Length alone does not make a string hex. Converting on length would corrupt an id already in
+    # another encoding, so a non-hex string is passed through for the parser to interpret itself --
+    # here as the base64 it also happens to be.
+    parsed = _parsed({"traceId": "z" * 32, "spanId": _HEX_SPAN_ID, "name": "root"})
+
+    assert parsed[0].scope_spans[0].spans[0].trace_id == b64decode("z" * 32)
