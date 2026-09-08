@@ -25,7 +25,8 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 SCHEMA_VERSION = "ATIF-v1.7"
-CANONICALIZER = "mlflow-to-atif@1"
+CANONICALIZER = "mlflow-to-atif@2"
+EVENT_TIME_MICROSECONDS_NORMALIZED = "event_time_microseconds_normalized_to_nanoseconds"
 LLM_TYPES = frozenset({"CHAT_MODEL", "LLM", "MODEL", "PROMPT"})
 TOOL_TYPES = frozenset({"EMBEDDING", "FUNCTION", "GUARDRAIL", "RERANKER", "RETRIEVER", "SEARCH", "TOOL"})
 ORCHESTRATION_TYPES = frozenset({"AGENT", "CHAIN", "TASK", "WORKFLOW"})
@@ -101,6 +102,36 @@ def _iso_from_nanos(value: Any) -> str:
     seconds, remainder = divmod(nanoseconds, 1_000_000_000)
     timestamp = datetime.fromtimestamp(seconds, tz=timezone.utc).replace(microsecond=remainder // 1000)
     return timestamp.isoformat()
+
+
+def _normalize_event_times(span: dict[str, Any]) -> int:
+    """Correct microsecond event times when nanosecond parent bounds prove the unit mismatch."""
+    events = span.get("events")
+    start = span.get("start_time_unix_nano")
+    end = span.get("end_time_unix_nano")
+    if (
+        not isinstance(events, list)
+        or not isinstance(start, int)
+        or isinstance(start, bool)
+        or not isinstance(end, int)
+        or isinstance(end, bool)
+    ):
+        return 0
+    if start > end:
+        return 0
+
+    normalized = 0
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        value = event.get("time_unix_nano")
+        if not isinstance(value, int) or isinstance(value, bool):
+            continue
+        event_time_nanos = value * 1_000
+        if not start <= value <= end and start <= event_time_nanos <= end:
+            event["time_unix_nano"] = event_time_nanos
+            normalized += 1
+    return normalized
 
 
 def _parse_bound(value: str) -> datetime:
@@ -360,14 +391,29 @@ def _agent_step(span: dict[str, Any], attributes: dict[str, Any], span_type: str
 
 
 def _trace_input(info: dict[str, Any], root_attributes: dict[str, Any]) -> Any:
-    value = _input(root_attributes)
-    if value is not None:
-        return value
+    for key in ("mlflow.spanInputs", "input.value", "gen_ai.input.messages"):
+        if key in root_attributes:
+            value = _parse_json(root_attributes[key])
+            if _has_trace_input(value):
+                return value
     metadata = _object(info.get("trace_metadata") or {}, "MLflow trace metadata")
     for key in ("mlflow.traceInputs", "inputs"):
         if key in metadata:
-            return _parse_json(metadata[key])
+            value = _parse_json(metadata[key])
+            if _has_trace_input(value):
+                return value
     return _parse_json(info.get("request_preview"))
+
+
+def _has_trace_input(value: Any) -> bool:
+    """Whether an input carries an instruction rather than an empty export placeholder."""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict | list | tuple):
+        return bool(value)
+    return True
 
 
 def _trace_output(info: dict[str, Any], root_attributes: dict[str, Any]) -> Any:
@@ -456,6 +502,7 @@ def convert_trace(
         raise ValueError(f"trace[{trace_index}] does not contain spans")
     for span_index, span in enumerate(spans):
         _require_span_fields(span, trace_index=trace_index, span_index=span_index)
+    normalized_event_times = sum(_normalize_event_times(span) for span in spans)
     canonical_span_ids = [_span_id(span.get("span_id")) for span in spans]
     if len(canonical_span_ids) != len(set(canonical_span_ids)):
         raise ValueError(f"trace[{trace_index}] contains duplicate span IDs")
@@ -474,7 +521,7 @@ def convert_trace(
     root = roots[0]
     root_attributes = _attributes(root)
     trace_input = _trace_input(info, root_attributes)
-    if trace_input is None:
+    if not _has_trace_input(trace_input):
         raise ValueError(f"trace[{trace_index}] has no recoverable root input for an ATIF human instruction")
 
     external_trace_id = info_trace_id or _trace_id(root.get("trace_id"))
@@ -549,7 +596,11 @@ def convert_trace(
                 "info": info,
                 "spans": [_jsonable(span) for span in spans],
             },
-            "mlflow_to_atif": {"canonicalizer": CANONICALIZER, "loss_codes": sorted(loss_codes)},
+            "mlflow_to_atif": {
+                "canonicalizer": CANONICALIZER,
+                "loss_codes": sorted(loss_codes),
+                "normalization_codes": ([EVENT_TIME_MICROSECONDS_NORMALIZED] if normalized_event_times else []),
+            },
         },
     }
 
