@@ -289,6 +289,25 @@ def test_sandbox_runtime_defaults_preserve_caller_gym_config():
     assert global_config["uv_venv_dir"]
 
 
+def test_sandbox_runtime_defaults_target_gym_installs_at_the_activated_venv():
+    """Gym must install into the venv it activated, not whatever UV_PYTHON names.
+
+    The training image sets UV_PYTHON to an absolute interpreter path, which outranks the active
+    venv when Gym's ``uv pip install`` resolves a target. Without this the install lands in a
+    read-only tree and every Gym server dies during startup.
+    """
+    from sandboxed_gym.orchestrator import apply_sandbox_runtime_defaults
+
+    assert apply_sandbox_runtime_defaults({})["uv_pip_set_python"] is True
+
+
+def test_sandbox_runtime_defaults_respect_an_explicit_uv_pip_set_python():
+    """A caller that has its own answer keeps it -- every uv key here is a default, not an override."""
+    from sandboxed_gym.orchestrator import apply_sandbox_runtime_defaults
+
+    assert apply_sandbox_runtime_defaults({"uv_pip_set_python": False})["uv_pip_set_python"] is False
+
+
 def test_gym_host_spec_defers_to_the_image_entrypoint_when_omitted():
     # The orchestrator cannot name a path inside the host image: resolving one from its own
     # installation would describe its own container. With no entrypoint configured the image
