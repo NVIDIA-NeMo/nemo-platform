@@ -860,7 +860,7 @@ def test_reading_everything_is_the_default(tmp_path):
     assert result.partitions[0].examples_complete is True
 
 
-def test_rows_complete_speaks_to_rows_read_not_to_exactness(tmp_path):
+def test_examples_complete_speaks_to_examples_read_not_to_exactness(tmp_path):
     # It was `stats_complete`, which promised more than it delivered: the length quantiles are
     # estimates by construction, whatever it says. Renamed to what it actually measures.
     _write_parquet(tmp_path / "train.parquet", [{"t": f"row {i}"} for i in range(100)])
@@ -1258,7 +1258,7 @@ def test_a_budgeted_read_does_not_quote_an_unproven_enumeration(tmp_path):
     # *sample* -- here the values are grouped, so the first ten rows witness one of four.
     #
     # Gated on truncation and not on `examples_complete`, which is the distinction
-    # `test_rows_completeness_is_per_partition` pins from the other side: a partition that merely
+    # `test_examples_completeness_is_per_partition` pins from the other side: a partition that merely
     # lost a shard read every file it could open to the end, and still quotes.
     lines = [json.dumps({"prompt": f"q{i}", "source": ["aaa", "bbb", "ccc", "ddd"][i // 25]}) for i in range(100)]
     (tmp_path / "train.jsonl").write_text("\n".join(lines) + "\n")
@@ -1320,7 +1320,7 @@ def test_a_declared_dtype_measures_every_value_it_was_given(tmp_path):
     assert categorical is not None and categorical.distinct_count == 2
 
 
-def test_rows_completeness_is_per_partition(tmp_path):
+def test_examples_completeness_is_per_partition(tmp_path):
     # A corrupt shard in one partition says nothing about the measurements in another, but a
     # fileset-wide flag downgraded every partition to the worst one. It was never even the value
     # that gated quoting a proven enumeration -- that was decided per partition and never stored.
