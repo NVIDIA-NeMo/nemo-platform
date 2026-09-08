@@ -17,6 +17,7 @@ from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperator
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
+from nmp.core.models.controllers.backends.deployments_plugin import nim_compiler
 from nmp.core.models.controllers.backends.deployments_plugin.config import DeploymentsPluginConfig
 from nmp.core.models.controllers.backends.deployments_plugin.nim_compiler import (
     apply_container_resources,
@@ -215,18 +216,51 @@ def test_build_k8s_deployment_backend_config_applies_default_pod_annotations(eng
     assert backend.k8s.pod_annotations == {"sidecar.istio.io/nativeSidecar": "true"}
 
 
-def test_build_k8s_deployment_backend_config_default_annotations_merge_key_wise() -> None:
-    # Per-entity annotation for the same key wins over the platform default;
-    # non-overlapping platform defaults are still applied.
+def test_build_k8s_deployment_backend_config_default_annotations_applied_and_merged() -> None:
+    # All platform-default annotation keys land on the compiled k8s config. In the
+    # models path there is no per-entity annotation source yet (that is out of scope;
+    # tracked separately), so this asserts only what this path can produce: every
+    # platform default is present. The per-entity-wins precedence of the merge
+    # operator itself is covered by
+    # test_build_k8s_deployment_backend_config_default_annotations_per_entity_wins.
     view = DeploymentConfigView()
     config = DeploymentsPluginConfig(
         default_pod_annotations={"sidecar.istio.io/nativeSidecar": "true", "team": "platform"}
     )
     backend = build_k8s_deployment_backend_config("nim", view, config)
     assert backend.k8s is not None
-    # Simulate a per-entity annotation set on the compiled config before merge is
-    # not exposed via the view; instead verify the config-default path directly.
     assert backend.k8s.pod_annotations == {"sidecar.istio.io/nativeSidecar": "true", "team": "platform"}
+
+
+def test_build_k8s_deployment_backend_config_default_annotations_per_entity_wins(monkeypatch) -> None:
+    # Prove the documented merge contract with a REAL conflicting key: when a
+    # per-entity K8sDeploymentConfig carries pod_annotations, its value wins over the
+    # platform default for the same key while non-conflicting defaults still apply.
+    # The models producer has no per-entity annotation source today, so we inject one
+    # at the only place k8s originates for the NIM engine
+    # (k8s_backend_config_from_nim_operator) to exercise the {**default, **entity}
+    # precedence end-to-end through build_k8s_deployment_backend_config.
+    entity_k8s = K8sDeploymentConfig.model_validate(
+        {"podAnnotations": {"sidecar.istio.io/nativeSidecar": "false", "owner": "team-a"}}
+    )
+    monkeypatch.setattr(
+        nim_compiler,
+        "k8s_backend_config_from_nim_operator",
+        lambda _view: entity_k8s,
+    )
+    view = DeploymentConfigView()
+    config = DeploymentsPluginConfig(
+        default_pod_annotations={"sidecar.istio.io/nativeSidecar": "true", "team": "platform"}
+    )
+    backend = build_k8s_deployment_backend_config("nim", view, config)
+    assert backend.k8s is not None
+    # Conflicting key: per-entity "false" wins over the platform default "true".
+    # Non-conflicting keys from both sides are retained.
+    assert backend.k8s.pod_annotations == {
+        "sidecar.istio.io/nativeSidecar": "false",
+        "team": "platform",
+        "owner": "team-a",
+    }
 
 
 @pytest.mark.parametrize("engine", ["nim", "vllm", "generic"])
