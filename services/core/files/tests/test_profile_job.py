@@ -47,7 +47,7 @@ from nmp.core.files.entities import FILESET_PROFILE_ENTITY_NAME, Fileset, Filese
 def _minimal_profile(created_at: datetime | None = None) -> DatasetProfile:
     return DatasetProfile(
         created_at=created_at or datetime(2026, 1, 1),
-        coverage=Coverage(rows_scanned=1, rows_present=1, files_read=1, files_present=1, bytes_present=100),
+        coverage=Coverage(examples_scanned=1, examples_present=1, files_read=1, files_present=1, bytes_present=100),
         partitions=[],
     )
 
