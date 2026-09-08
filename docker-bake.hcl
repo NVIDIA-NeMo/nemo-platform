@@ -343,10 +343,11 @@ group "docker-cpu" {
   ]
 }
 
-# CI extension that adds the Gym smoke-test stage to docker-cpu.
+# CI extension that adds the CPU Tasks and Gym smoke-test stages to docker-cpu.
 group "docker-cpu-ci" {
   targets = [
     "docker-cpu",
+    "nmp-cpu-tasks-smoke-test",
     "nmp-gym-tasks-smoke-test",
   ]
 }
@@ -710,7 +711,27 @@ target "nmp-cpu-tasks-docker" {
   platforms  = get_platforms()
 }
 
-# Dedicated Gym task image. The Gym-specific dependencies remain isolated from the shared CPU task image.
+# Cheap import validation for Evaluator's standard and sandboxed Gym task entrypoints.
+target "nmp-cpu-tasks-smoke-test" {
+  target     = "smoke-test"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-cpu-tasks"
+  contexts = {
+    nmp-python-base           = "target:nmp-python-base"
+    nmp-workspace             = "target:nmp-workspace"
+    root-busybox              = "target:root-busybox"
+    root-distroless-base-3-13 = "target:root-distroless-base-3-13"
+  }
+  args = {
+    NMP_COLLECT_SOURCES        = NMP_COLLECT_SOURCES
+    NMP_CPU_TASKS_RUNTIME_BASE = NMP_CPU_TASKS_RUNTIME_BASE
+  }
+  cache-from = maybe_registry_cache_from("nmp-cpu-tasks")
+  output     = ["type=cacheonly"]
+  platforms  = get_platforms()
+}
+
+# Dedicated colocated Gym task image. Gym and Ray remain isolated from the shared CPU task image.
 target "nmp-gym-tasks-docker" {
   target     = "runtime"
   context    = "."

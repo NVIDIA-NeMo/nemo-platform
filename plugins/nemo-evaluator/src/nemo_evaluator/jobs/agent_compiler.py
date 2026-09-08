@@ -17,7 +17,7 @@ from collections.abc import Iterator
 from nemo_evaluator.config import config, platform_config
 from nemo_evaluator.jobs.agent_spec import AgentEvalSpec, AgentTarget, GymRunnerTarget, ModelTarget
 from nemo_evaluator.jobs.environment_stage import EnvironmentStageSpec
-from nemo_evaluator.jobs.gym_sandbox import GYM_SANDBOX_PLAN_ENVVAR, resolve_sandbox_plan
+from nemo_evaluator.jobs.gym_sandbox import GYM_SANDBOX_PLAN_ENVVAR, SandboxPlan, resolve_sandbox_plan
 from nemo_evaluator.jobs.secret_env import build_task_environment
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -31,8 +31,9 @@ from nemo_platform_plugin.jobs.image import get_qualified_image
 
 AGENT_EVAL_STEP_NAME = "agent-evaluate"
 
-#: Container wiring for agent-evaluate steps, run via ``python -m``. Gym targets use a dedicated image
-#: because NeMo Gym requires Ray. This keeps Gym and Ray out of the shared CPU task image.
+#: Container wiring for agent-evaluate steps, run via ``python -m``. Colocated Gym targets use a
+#: dedicated image because NeMo Gym requires Ray. Sandboxed Gym targets only orchestrate the separate
+#: Gym host, so they use the shared CPU task image.
 AGENT_EVAL_IMAGE = "nmp-cpu-tasks"
 GYM_AGENT_EVAL_IMAGE = "nmp-gym-tasks"
 AGENT_EVAL_ENTRYPOINT = ["python", "-m"]
@@ -49,13 +50,21 @@ def compile_agent_eval_job(
     use_subprocess: bool = False,
 ) -> PlatformJobSpec:
     """Compile a canonical agent-evaluation spec into a plugin-native platform job."""
+    sandbox_plan = _sandbox_plan(spec)
     steps = []
     # FileSet environments are downloaded onto job storage; that step must finish before the
     # Gym host mounts the same tree read-only.
     if isinstance(spec.target, GymRunnerTarget) and spec.target.environment is not None:
         steps.append(_environment_stage_step(spec.target, profile, use_subprocess=use_subprocess))
 
-    steps.append(_agent_eval_step(spec, profile, use_subprocess=use_subprocess))
+    steps.append(
+        _agent_eval_step(
+            spec,
+            profile,
+            use_subprocess=use_subprocess,
+            sandbox_plan=sandbox_plan,
+        )
+    )
 
     return PlatformJobSpec(steps=steps)
 
@@ -82,18 +91,25 @@ def _secret_refs(spec: AgentEvalSpec) -> Iterator[tuple[str, str]]:
         yield endpoint.api_key_env, endpoint.api_key_secret.root
 
 
-def _agent_eval_step(spec: AgentEvalSpec, profile: str | None, *, use_subprocess: bool) -> PlatformJobStep:
+def _agent_eval_step(
+    spec: AgentEvalSpec,
+    profile: str | None,
+    *,
+    use_subprocess: bool,
+    sandbox_plan: SandboxPlan | None,
+) -> PlatformJobStep:
     """Build the evaluation step, including the sandbox plan when Gym runs sandboxed."""
     is_gym_target = isinstance(spec.target, GymRunnerTarget)
+    is_colocated_gym = is_gym_target and sandbox_plan is None
     image = (
         config.gym_tasks_image
-        if is_gym_target and config.gym_tasks_image is not None
-        else get_qualified_image(GYM_AGENT_EVAL_IMAGE if is_gym_target else AGENT_EVAL_IMAGE)
+        if is_colocated_gym and config.gym_tasks_image is not None
+        else get_qualified_image(GYM_AGENT_EVAL_IMAGE if is_colocated_gym else AGENT_EVAL_IMAGE)
     )
     executor = _executor(
         profile=profile,
         image=image,
-        entrypoint=GYM_AGENT_EVAL_ENTRYPOINT if is_gym_target else AGENT_EVAL_ENTRYPOINT,
+        entrypoint=GYM_AGENT_EVAL_ENTRYPOINT if is_colocated_gym else AGENT_EVAL_ENTRYPOINT,
         command=AGENT_EVAL_COMMAND,
         use_subprocess=use_subprocess,
     )
@@ -101,11 +117,22 @@ def _agent_eval_step(spec: AgentEvalSpec, profile: str | None, *, use_subprocess
         name=AGENT_EVAL_STEP_NAME,
         executor=executor,
         config=spec.model_dump(mode="json"),
-        environment=_environment(spec),
+        environment=_environment(spec, sandbox_plan=sandbox_plan),
     )
 
 
-def _environment(spec: AgentEvalSpec) -> list[EnvironmentVariable]:
+def _sandbox_plan(spec: AgentEvalSpec) -> SandboxPlan | None:
+    """Resolve the deployment-selected Gym sandbox plan once during compilation."""
+    if not isinstance(spec.target, GymRunnerTarget):
+        return None
+    return resolve_sandbox_plan(
+        config,
+        spec.target,
+        sandbox_server_protocol=platform_config.sandbox_server_protocol,
+    )
+
+
+def _environment(spec: AgentEvalSpec, *, sandbox_plan: SandboxPlan | None) -> list[EnvironmentVariable]:
     """The step's environment: secret refs, plus the sandbox plan when Gym runs sandboxed.
 
     Resolving the plan here rather than in the job is what makes the operator's configuration reach
@@ -114,16 +141,9 @@ def _environment(spec: AgentEvalSpec) -> list[EnvironmentVariable]:
     message naming the setting instead of failing partway through an evaluation.
     """
     environment = build_task_environment(_secret_refs(spec))
-    if not isinstance(spec.target, GymRunnerTarget):
+    if sandbox_plan is None:
         return environment
-    plan = resolve_sandbox_plan(
-        config,
-        spec.target,
-        sandbox_server_protocol=platform_config.sandbox_server_protocol,
-    )
-    if plan is None:
-        return environment
-    environment.append(EnvironmentVariable(name=GYM_SANDBOX_PLAN_ENVVAR, value=plan.model_dump_json()))
+    environment.append(EnvironmentVariable(name=GYM_SANDBOX_PLAN_ENVVAR, value=sandbox_plan.model_dump_json()))
     return environment
 
 
@@ -135,14 +155,14 @@ def _environment_stage_step(
 ) -> PlatformJobStep:
     """Download a custom Gym environment into the job PVC before evaluation."""
     assert target.environment is not None
-    image = config.gym_tasks_image or get_qualified_image(GYM_AGENT_EVAL_IMAGE)
+    image = get_qualified_image(AGENT_EVAL_IMAGE)
     stage_spec = EnvironmentStageSpec(environment=target.environment)
     return PlatformJobStep(
         name=ENVIRONMENT_STAGE_STEP_NAME,
         executor=_executor(
             profile=profile,
             image=image,
-            entrypoint=GYM_AGENT_EVAL_ENTRYPOINT,
+            entrypoint=AGENT_EVAL_ENTRYPOINT,
             command=ENVIRONMENT_STAGE_COMMAND,
             use_subprocess=use_subprocess,
         ),
