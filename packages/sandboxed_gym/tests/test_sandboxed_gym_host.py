@@ -289,6 +289,25 @@ def test_sandbox_runtime_defaults_preserve_caller_gym_config():
     assert global_config["uv_venv_dir"]
 
 
+def test_sandbox_runtime_defaults_target_gym_installs_at_the_activated_venv():
+    """Gym must install into the venv it activated, not whatever UV_PYTHON names.
+
+    The training image sets UV_PYTHON to an absolute interpreter path, which outranks the active
+    venv when Gym's ``uv pip install`` resolves a target. Without this the install lands in a
+    read-only tree and every Gym server dies during startup.
+    """
+    from sandboxed_gym.orchestrator import apply_sandbox_runtime_defaults
+
+    assert apply_sandbox_runtime_defaults({})["uv_pip_set_python"] is True
+
+
+def test_sandbox_runtime_defaults_respect_an_explicit_uv_pip_set_python():
+    """A caller that has its own answer keeps it -- every uv key here is a default, not an override."""
+    from sandboxed_gym.orchestrator import apply_sandbox_runtime_defaults
+
+    assert apply_sandbox_runtime_defaults({"uv_pip_set_python": False})["uv_pip_set_python"] is False
+
+
 def test_gym_host_spec_defers_to_the_image_entrypoint_when_omitted():
     # The orchestrator cannot name a path inside the host image: resolving one from its own
     # installation would describe its own container. With no entrypoint configured the image
@@ -329,6 +348,36 @@ def test_gym_host_spec_carries_a_configured_entrypoint_through():
     )
     spec = build_gym_host_spec(cfg, broker)
     assert spec.entrypoint == ("/bin/sh", "/opt/nemo-rl/gym_host.sh")
+
+
+def test_gym_host_spec_forwards_the_rollout_deadline():
+    """The host has to know when to give up, and only the caller's config knows when that is.
+
+    Without this the host falls back to its own 30-minute default while the client gives up at
+    ``rollout_timeout_s``, so a stuck batch never produces the clean ``deadline_exceeded`` body
+    the client timeout was supposed to replace.
+    """
+    from sandboxed_gym.config import BrokerEndpoint
+    from sandboxed_gym.orchestrator import build_gym_host_spec
+    from sandboxed_gym.serve_config import SandboxedGymServeConfig
+
+    cfg = SandboxedGymServeConfig.model_validate(
+        {
+            "job_id": "job-1",
+            "sandbox": {
+                "image": "runtime:dev",
+                "network_policy": {"egress_allow": []},
+                "environment_pvc_claim": "env",
+                "workspace_pvc_claim": "work",
+                "rollout_timeout_s": 120,
+            },
+        }
+    )
+    broker = BrokerEndpoint(url="http://broker:1", host="broker", port=1, token="t")
+
+    spec = build_gym_host_spec(cfg, broker)
+
+    assert spec.bootstrap_env["NMP_ROLLOUT_DEADLINE_S"] == "120.0"
 
 
 def test_gym_host_spec_carries_global_config_in_bootstrap():

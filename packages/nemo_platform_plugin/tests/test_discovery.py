@@ -81,6 +81,10 @@ def _make_cli_cls() -> type[_MinimalPluginCLI]:
     return _MinimalPluginCLI
 
 
+def _make_sdk_resource(_owner: object) -> object:
+    return object()
+
+
 class _MinimalPluginJob(NemoJob):
     name = "test-job"
     description = "A test job"
@@ -523,14 +527,14 @@ class TestDiscoverSDK:
         mock_eps.assert_called_once_with(group="nemo.sdk")
 
     def test_accepts_sync_only_container(self) -> None:
-        container = NemoPluginSDKResources(sync_resource=object)  # ty: ignore[invalid-argument-type]
+        container = NemoPluginSDKResources(sync_resource=_make_sdk_resource)
         ep = _make_ep("example", container)
         with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
             result = discover_sdk()
         assert result["example"] is container
 
     def test_accepts_async_only_container(self) -> None:
-        container = NemoPluginSDKResources(async_resource=object)  # ty: ignore[invalid-argument-type]
+        container = NemoPluginSDKResources(async_resource=_make_sdk_resource)
         ep = _make_ep("example", container)
         with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
             result = discover_sdk()
@@ -542,7 +546,7 @@ class TestDiscoverSDK:
 
     def test_skips_entry_that_is_not_a_container(self) -> None:
         bad = _make_ep("bad", SimpleNamespace(sync_resource=object))
-        good = _make_ep("good", NemoPluginSDKResources(sync_resource=object))  # ty: ignore[invalid-argument-type]
+        good = _make_ep("good", NemoPluginSDKResources(sync_resource=_make_sdk_resource))
         with patch("nemo_platform_plugin.discovery.entry_points", return_value=[bad, good]):
             result = discover_sdk()
         assert "bad" not in result

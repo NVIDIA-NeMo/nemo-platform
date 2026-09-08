@@ -246,6 +246,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -315,6 +319,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response
@@ -620,6 +632,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -689,6 +705,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response
@@ -994,6 +1018,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -1063,6 +1091,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response
@@ -3407,7 +3443,7 @@ components:
       - model
       - dataset
       title: UnslothJobInput
-      description: POST body / CLI JSON for ``nemo customization unsloth run``.
+      description: POST body / CLI JSON for ``nemo customization unsloth submit``.
     UnslothJobOutput:
       properties:
         name:

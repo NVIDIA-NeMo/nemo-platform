@@ -177,11 +177,11 @@ def setup_mock_file(
     )
     with tempfile.NamedTemporaryFile(suffix=".parquet") as tmpfile:
         SEED_DATA.to_parquet(tmpfile.name, index=False)
-        client_context.sdk.files.upload(
-            fileset=FILESET_NAME,
+        files.upload_file(
+            name=FILESET_NAME,
             workspace=client_context.sdk.workspace or WORKSPACE_NAME,
-            local_path=tmpfile.name,
-            remote_path=remote_path or FILE_PATH,
+            path=remote_path or FILE_PATH,
+            content=Path(tmpfile.name).read_bytes(),
         )
     yield
 
@@ -212,11 +212,11 @@ def _create_nemotron_personas_fileset(sdk: NeMoPlatform, persona_data: pd.DataFr
     files.create_fileset(body=CreateFilesetRequest(name=fileset_name), workspace="system")
     with tempfile.NamedTemporaryFile(suffix=".parquet") as tmpfile:
         persona_data.to_parquet(tmpfile.name, index=False)
-        sdk.files.upload(
+        files.upload_file(
             workspace="system",
-            fileset=fileset_name,
-            local_path=tmpfile.name,
-            remote_path=get_file_path_for_locale("en_US"),
+            name=fileset_name,
+            path=get_file_path_for_locale("en_US"),
+            content=Path(tmpfile.name).read_bytes(),
         )
 
 

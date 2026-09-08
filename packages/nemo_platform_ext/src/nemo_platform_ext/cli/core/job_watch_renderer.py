@@ -21,6 +21,8 @@ from nemo_platform_plugin.jobs.watch_types import (
 from rich.console import Console
 from rich.text import Text
 
+from nemo_platform_ext.cli.core.job_log_renderer import render_log_line
+
 
 class JobWatchRenderResult(str, Enum):
     SUCCEEDED = "succeeded"
@@ -129,13 +131,13 @@ def _render_status(console: Console, event: JobStatusEvent) -> None:
 
 
 def _render_log(console: Console, event: JobLogEvent) -> None:
-    line = Text()
-    line.append(f"[{_time_label(event.timestamp)}] ", style="dim")
-    scope = _scope(event)
-    if scope:
-        line.append(f"{scope} | ", style="dim")
-    line.append(event.message)
-    console.print(line)
+    render_log_line(
+        console,
+        timestamp=event.timestamp,
+        step_id=event.step_id,
+        task_id=event.task_id,
+        message=event.message,
+    )
 
 
 def _render_warning(console: Console, event: JobWarningEvent) -> None:
@@ -168,13 +170,3 @@ def _status_details(details: Mapping[str, object]) -> str:
         if len(parts) >= 6:
             break
     return " ".join(parts)
-
-
-def _scope(event: JobLogEvent) -> str:
-    if event.step_id and event.task_id:
-        return f"{event.step_id}/{event.task_id}"
-    if event.step_id:
-        return event.step_id
-    if event.task_id:
-        return event.task_id
-    return ""

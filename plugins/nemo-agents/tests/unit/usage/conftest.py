@@ -6,12 +6,18 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from nemo_platform_plugin.files.types import FilesetFileOutput, ListFilesetFilesResponse
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def _staged_files(root: Path) -> list[str]:
+    """Relative leaf paths under *root*, mirroring ``list_files`` output."""
+    return [p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()]
 
 
 @pytest.fixture
@@ -63,52 +69,93 @@ def tmp_natjobs_dir(tmp_path: Path, fixtures_dir: Path) -> Path:
     return natjobs
 
 
-class FakeFiles:
-    """Minimal stand-in for ``sdk.files`` that satisfies our download contract.
+class _FakeFilesResponse:
+    """NemoResponse-like stand-in whose ``.data()`` returns the listing model."""
 
-    Records each call and copies the contents of *staged_dir* into *local_path*
-    on download — letting tests pre-stage a directory tree and assert it gets
-    delivered to the expected destination.
+    def __init__(self, listing: ListFilesetFilesResponse) -> None:
+        self._listing = listing
+
+    def data(self) -> ListFilesetFilesResponse:
+        return self._listing
+
+
+class _FakeBinaryResponse:
+    """NemoBinaryResponse-like stand-in for ``download_file``."""
+
+    def __init__(self, content: bytes) -> None:
+        self._content = content
+
+    def read(self) -> bytes:
+        return self._content
+
+
+class FakeFiles:
+    """Stand-in for the typed ``FilesClient`` download contract.
+
+    Enumerates *staged_dir* via ``list_files`` and serves each file's bytes via
+    ``download_file``, letting tests pre-stage a directory tree and assert it
+    gets delivered to the expected destination under the same relative paths.
     """
 
     def __init__(self, staged_dir: Path) -> None:
         self._staged = staged_dir
+        self.list_calls: list[dict[str, object]] = []
         self.calls: list[dict[str, object]] = []
 
-    def download(
+    def list_files(
         self,
         *,
-        remote_path: str,
-        local_path: str,
-        fileset: str,
-        workspace: str,
-    ) -> None:
-        self.calls.append(
-            {
-                "remote_path": remote_path,
-                "local_path": local_path,
-                "fileset": fileset,
-                "workspace": workspace,
-            }
-        )
-        target = Path(local_path)
-        target.mkdir(parents=True, exist_ok=True)
-        for child in self._staged.iterdir():
-            dest = target / child.name
-            if child.is_dir():
-                shutil.copytree(child, dest, dirs_exist_ok=True)
-            else:
-                shutil.copy(child, dest)
+        workspace: str | None = None,
+        name: str,
+        query_params=None,
+    ) -> _FakeFilesResponse:
+        self.list_calls.append({"name": name, "workspace": workspace})
+        entries = [
+            FilesetFileOutput(
+                path=rel,
+                size=(self._staged / rel).stat().st_size,
+                file_ref="",
+                file_url="",
+            )
+            for rel in _staged_files(self._staged)
+        ]
+        return _FakeFilesResponse(ListFilesetFilesResponse(data=entries))
+
+    def download_file(
+        self,
+        *,
+        workspace: str | None = None,
+        name: str,
+        path: str,
+    ) -> _FakeBinaryResponse:
+        self.calls.append({"name": name, "workspace": workspace, "path": path})
+        return _FakeBinaryResponse((self._staged / path).read_bytes())
 
 
 class FakeSDK:
-    """Stand-in for ``NeMoPlatform`` exposing only the ``files`` attribute."""
+    """Stand-in for ``NeMoPlatform``; ``build_files_client`` hands out FakeFiles."""
 
     def __init__(self, staged_dir: Path) -> None:
         self.files = FakeFiles(staged_dir)
 
+    def build_files_client(self) -> FakeFiles:
+        return self.files
+
 
 @pytest.fixture
-def fake_sdk_factory() -> Iterator[type[FakeSDK]]:
-    """Yield :class:`FakeSDK`; tests instantiate with their own staged dir."""
-    yield FakeSDK
+def fake_sdk_factory(monkeypatch) -> Iterator[Callable[[Path], FakeSDK]]:
+    """Yield a factory for :class:`FakeSDK` bound to the typed ``FilesClient``.
+
+    Each produced instance is wired as the ``client_from_platform`` result
+    inside ``fileset`` so ``fileset_path`` consumes the fake client.
+    """
+
+    def make(staged_dir: Path) -> FakeSDK:
+        sdk = FakeSDK(staged_dir)
+        monkeypatch.setattr(
+            "nemo_agents_plugin.usage.sources.fileset.client_from_platform",
+            lambda _platform, _client_cls: sdk.build_files_client(),
+        )
+        return sdk
+
+    yield make

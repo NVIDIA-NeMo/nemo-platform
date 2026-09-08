@@ -13,11 +13,12 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.entity import NemoEntity
 from nemo_platform_plugin.refs import FilesetRef
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr, computed_field
 
 DeploymentStatus = Literal["pending", "starting", "running", "failed", "deleting"]
 
@@ -403,6 +404,8 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
     :class:`~nemo_agents_plugin.runner.backend.RunnerBackend`.
     """
 
+    _auth_context: AuthContext | None = PrivateAttr(default=None)
+
     agent: str = Field(default="", description="Name of the Agent entity this deployment is for.")
     config: dict[str, Any] = Field(
         default_factory=dict,
@@ -483,6 +486,15 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
     port: int = Field(default=0, description="Port the agent process is listening on.")
     pid: int = Field(default=0, description="OS process ID of the agent subprocess.")
     error: str = Field(default="", description="Error message if status is 'failed'.")
+
+    @computed_field(json_schema_extra={"nullable": True})
+    @property
+    def auth_context(self) -> AuthContext | None:
+        return self._auth_context
+
+    def with_auth_context(self, auth_context: AuthContext | None) -> Self:
+        self._auth_context = auth_context
+        return self
 
 
 class AgentSession(NemoEntity, entity_type="agent_session"):

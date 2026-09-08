@@ -61,13 +61,29 @@ _AUDIT_DIR = _SKILLS_DIR / "eval-author-audit"
 _TASK_CREATE_DIR = _SKILLS_DIR / "eval-author-task-create"
 _INSPECT_DIR = _SKILLS_DIR / "eval-author-inspect-trace"
 _MLFLOW_TO_ATIF_DIR = _SKILLS_DIR / "mlflow-to-atif"
-_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR, _MLFLOW_TO_ATIF_DIR)
-_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR)
+_TRACE_ENVIRONMENT_DIR = _SKILLS_DIR / "eval-author-trace-environment"
+_SKILL_DIRS = (
+    _CORE_DIR,
+    _DISCOVER_DIR,
+    _AUDIT_DIR,
+    _TASK_CREATE_DIR,
+    _INSPECT_DIR,
+    _MLFLOW_TO_ATIF_DIR,
+    _TRACE_ENVIRONMENT_DIR,
+)
+_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR, _TRACE_ENVIRONMENT_DIR)
 _DISCOVER_SCRIPTS_DIR = _DISCOVER_DIR / "scripts"
 _AUDIT_SPEC_DIR = _AUDIT_DIR / "scripts" / "audit_spec"
 _TASK_CREATE_SCRIPTS_DIR = _TASK_CREATE_DIR / "scripts"
 _MLFLOW_TO_ATIF_SCRIPTS_DIR = _MLFLOW_TO_ATIF_DIR / "scripts"
-_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR, _TASK_CREATE_SCRIPTS_DIR, _MLFLOW_TO_ATIF_SCRIPTS_DIR)
+_TRACE_ENVIRONMENT_SCRIPTS_DIR = _TRACE_ENVIRONMENT_DIR / "scripts"
+_SCRIPT_DIRS = (
+    _DISCOVER_SCRIPTS_DIR,
+    _AUDIT_SPEC_DIR,
+    _TASK_CREATE_SCRIPTS_DIR,
+    _MLFLOW_TO_ATIF_SCRIPTS_DIR,
+    _TRACE_ENVIRONMENT_SCRIPTS_DIR,
+)
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
@@ -88,6 +104,7 @@ _AUDIT_COVERAGE_REPORT_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "coverage
 _AUDIT_TOOL_CALLS_DETAILS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.details.json"
 _AUDIT_CAPABILITIES_DETAILS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "capabilities.details.json"
 _MLFLOW_TO_ATIF = _MLFLOW_TO_ATIF_SCRIPTS_DIR / "convert_mlflow_to_atif.py"
+_TRACE_ENVIRONMENT = _TRACE_ENVIRONMENT_SCRIPTS_DIR / "trace_environment.py"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -571,6 +588,7 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     audit_tools = set(_frontmatter_and_body(_AUDIT_DIR)[0]["allowed-tools"])
     task_create_tools = set(_frontmatter_and_body(_TASK_CREATE_DIR)[0]["allowed-tools"])
     inspect_tools = set(_frontmatter_and_body(_INSPECT_DIR)[0]["allowed-tools"])
+    trace_environment_tools = set(_frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)[0]["allowed-tools"])
 
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
     assert {"Bash", "Write"} <= discover_tools, (
@@ -584,6 +602,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     )
     assert {"Bash", "Write"} <= inspect_tools, (
         f"{_INSPECT_DIR.name} runs provider commands and saves a report; it has {sorted(inspect_tools)}"
+    )
+    assert {"Bash", "Write"} <= trace_environment_tools, (
+        f"{_TRACE_ENVIRONMENT_DIR.name} prepares and verifies task artifacts; it has {sorted(trace_environment_tools)}"
     )
 
 
@@ -702,6 +723,26 @@ def test_mlflow_to_atif_script_the_skill_names_exists() -> None:
     assert (_MLFLOW_TO_ATIF_DIR / relative).is_file()
 
 
+def test_trace_environment_script_the_skill_names_exists() -> None:
+    _, body = _frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)
+    relative = "scripts/trace_environment.py"
+    assert relative in body
+    assert (_TRACE_ENVIRONMENT_DIR / relative).is_file()
+
+
+def test_trace_environment_records_ground_truth_and_software_constraints() -> None:
+    _, body = _frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)
+
+    for phrase in (
+        "ground_truth",
+        "software_requirements",
+        "proprietary",
+        "redistributable",
+        "private/ground-truth/",
+    ):
+        assert phrase in body
+
+
 def test_mlflow_to_atif_converts_export_to_private_v17_trajectory(tmp_path: Path) -> None:
     source = tmp_path / "mlflow.json"
     source.write_text(json.dumps(_mlflow_export()), encoding="utf-8")
@@ -747,9 +788,53 @@ def test_mlflow_to_atif_converts_export_to_private_v17_trajectory(tmp_path: Path
         "mlflow_span_tree_linearized",
         "orchestration_parent_not_emitted_as_step",
     ]
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == []
     if os.name == "posix":
         assert output.stat().st_mode & 0o777 == 0o700
         assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_mlflow_to_atif_normalizes_parent_bounded_microsecond_event_times() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    event_time_micros = 1_788_000_000_000_006
+    event_time_nanos = event_time_micros * 1_000
+    root, tool = payload["traces"][0]["data"]["spans"]
+    root["start_time_unix_nano"] = event_time_nanos - 2_000
+    root["end_time_unix_nano"] = event_time_nanos + 2_000
+    tool["start_time_unix_nano"] = event_time_nanos - 1_000
+    tool["end_time_unix_nano"] = event_time_nanos + 1_000
+    tool["events"] = [{"name": "completed", "time_unix_nano": event_time_micros}]
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    preserved_tool = trajectory["extra"]["mlflow"]["spans"][1]
+    assert preserved_tool["events"][0]["time_unix_nano"] == event_time_nanos
+    assert trajectory["steps"][1]["extra"]["mlflow"]["events"][0]["time_unix_nano"] == event_time_nanos
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == [
+        "event_time_microseconds_normalized_to_nanoseconds"
+    ]
+
+
+def test_mlflow_to_atif_does_not_normalize_event_time_outside_parent_bounds() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    event_time = 1_788_000_000_000_006
+    payload["traces"][0]["data"]["spans"][1]["events"] = [{"name": "unbounded", "time_unix_nano": event_time}]
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    preserved_tool = trajectory["extra"]["mlflow"]["spans"][1]
+    assert preserved_tool["events"][0]["time_unix_nano"] == event_time
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == []
 
 
 def test_mlflow_to_atif_accepts_one_bare_trace_to_dict_value(tmp_path: Path) -> None:
@@ -768,6 +853,39 @@ def test_mlflow_to_atif_accepts_one_bare_trace_to_dict_value(tmp_path: Path) -> 
 
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["converted"] == 1
+
+
+def test_mlflow_to_atif_uses_request_preview_after_empty_input_placeholders() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    info = payload["traces"][0]["info"]
+    info["request_preview"] = "Where is Paris?"
+    info["trace_metadata"]["mlflow.traceInputs"] = "{}"
+    payload["traces"][0]["data"]["spans"][0]["attributes"]["mlflow.spanInputs"] = "[]"
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    assert trajectory["steps"][0]["message"] == "Where is Paris?"
+
+
+def test_mlflow_to_atif_uses_later_populated_root_input_attribute() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    root_attributes = payload["traces"][0]["data"]["spans"][0]["attributes"]
+    root_attributes["mlflow.spanInputs"] = "{}"
+    root_attributes["input.value"] = "Use the populated root input."
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    assert trajectory["steps"][0]["message"] == "Use the populated root input."
 
 
 def test_mlflow_to_atif_matches_current_mlflow_external_and_native_trace_ids(tmp_path: Path) -> None:

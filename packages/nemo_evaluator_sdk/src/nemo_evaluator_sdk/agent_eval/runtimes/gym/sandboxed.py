@@ -128,6 +128,44 @@ class SandboxedGymAgentTaskRunner:
             headers[PROXY_AUTH_HEADER] = self._config.auth_token
         return headers
 
+    def _decode_body(self, response: httpx.Response) -> Any:
+        """Decode a 2xx rollout body, naming the host when there is nothing decodable in it.
+
+        The host commits its 200 before the batch finishes and pads the open connection with
+        whitespace heartbeats until it has an envelope to write. A host that dies mid-batch --
+        OOMKilled, evicted -- therefore leaves a well-formed 200 whose body is heartbeats and
+        nothing else. Left to ``response.json()`` that surfaces as a bare ``JSONDecodeError``,
+        which is a ``ValueError`` and so escapes callers guarding this runner for ``RuntimeError``:
+        a dead sandbox reads as a bug in the evaluator. ``RolloutOrchestrator._decode_results``
+        classifies the same three bodies for the other client of this endpoint.
+        """
+        try:
+            # Strict, and caught rather than avoided: errors="replace" would let a body with one
+            # corrupt byte still parse, handing the caller U+FFFD where the host wrote data.
+            text = response.content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError(
+                f"sandboxed Gym host returned a body that is not UTF-8 from {self._config.rollout_url}: {exc}"
+            ) from exc
+        if not text.strip():
+            raise RuntimeError(
+                f"sandboxed Gym host at {self._config.rollout_url} answered and then stopped "
+                f"without sending a `results` envelope ({len(response.content)} byte(s) of heartbeat "
+                f"only); it most likely died mid-batch -- check whether the sandbox was OOMKilled "
+                f"or evicted"
+            )
+        try:
+            # The host heartbeats leading whitespace while a batch runs; json tolerates it.
+            return json.loads(text)
+        except (ValueError, RecursionError) as exc:
+            # Wider than JSONDecodeError because json also refuses input outright -- the
+            # integer-digit limit, deep nesting -- and narrowing this back lets those escape as
+            # something other than a named host failure.
+            raise RuntimeError(
+                f"sandboxed Gym host returned a body that is not JSON from "
+                f"{self._config.rollout_url} ({exc}); first 200 bytes: {text[:200]!r}"
+            ) from exc
+
     async def _collect(self, examples: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """POST the examples and return the host's rollout records."""
         async with httpx.AsyncClient(timeout=self._config.timeout_s) as client:
@@ -143,7 +181,17 @@ class SandboxedGymAgentTaskRunner:
                 f"sandboxed Gym host returned {response.status_code} from {self._config.rollout_url}: "
                 f"{response.text[:2000]}"
             )
-        body = response.json()
+        body = self._decode_body(response)
+        error = body.get("error") if isinstance(body, Mapping) else None
+        if error is not None:
+            # The host commits its 200 before the batch finishes, so that it can hold the
+            # connection open past the sandbox proxy's first-byte cap. A failure after that point
+            # has only the body left to travel in, and carries the code and traceback that say
+            # which of Gym's layers raised.
+            raise RuntimeError(
+                f"sandboxed Gym host reported an error from {self._config.rollout_url}: "
+                f"{error if isinstance(error, str) else json.dumps(error)[:2000]}"
+            )
         results = body.get("results") if isinstance(body, Mapping) else None
         if not isinstance(results, list):
             raise RuntimeError(

@@ -50,9 +50,11 @@ from nemo_deployments_plugin.entities import (
     HTTPGetAction,
     Probe,
     TCPSocketAction,
+    WorkloadIdentitySpec,
 )
 from nemo_deployments_plugin.secrets import SecretResolutionError
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 pytest.importorskip("openshell")  # platform-restricted extra; skip where not installed (e.g. CI)
@@ -101,6 +103,18 @@ def _config(
         name="cfg1",
         workspace="default",
         containers=[Container(name="web", image="img:latest", command=list(command), args=list(args), ports=ports)],
+    )
+
+
+def _config_with_workload_identity() -> DeploymentConfig:
+    return _config().model_copy(
+        update={
+            "workload_identity": WorkloadIdentitySpec(
+                enabled=True,
+                workloadKind="agent_deployment",
+                workloadId="srv",
+            )
+        }
     )
 
 
@@ -355,6 +369,30 @@ async def test_create_returns_starting_after_create(
     mock_stub.CreateSandbox.assert_called_once()
     mock_stub.ExecSandbox.assert_not_called()
     mock_stub.ExposeService.assert_not_called()
+
+
+async def test_create_fails_when_workload_identity_requested(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = _config_with_workload_identity()
+    mock_stub.GetSandbox.side_effect = _not_found()
+
+    with patch(
+        "nemo_deployments_plugin.backends.workload_identity.is_workload_identity_token_exchange_enabled",
+        return_value=True,
+    ):
+        update = await openshell_backend.create_deployment(
+            workspace="default",
+            name="srv",
+            config_name="cfg1",
+            labels={},
+            backend_config={},
+            auth_context=AuthContext(principal_id="user:alice"),
+        )
+
+    assert update.status == "FAILED"
+    assert "openshell backend" in update.status_message
+    mock_stub.CreateSandbox.assert_not_called()
 
 
 async def test_delete_idempotent_when_missing(

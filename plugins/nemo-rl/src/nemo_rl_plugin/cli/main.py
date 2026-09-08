@@ -18,7 +18,7 @@ from nemo_rl_plugin.jobs.jobs import RlJob
 
 
 class RlContributorCLI:
-    """Passed to ``add_job_commands`` to override run/submit with job-file args."""
+    """Passed to ``add_job_commands`` to override submit with job-file args."""
 
     def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
         if job_cls is RlJob:

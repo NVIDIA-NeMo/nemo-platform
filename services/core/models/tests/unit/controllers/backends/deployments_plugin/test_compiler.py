@@ -1,12 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 from nemo_deployments_plugin.entities import SecretRef
 from nemo_platform.types.inference.k8s_nim_operator_config import K8sNIMOperatorConfig
+from nemo_platform_plugin.auth import AuthContext
 from nmp.common.config import Runtime
 from nmp.core.models.app import ModelWeightsType
 from nmp.core.models.controllers.backends.common import DeploymentConfigView
@@ -19,7 +22,7 @@ from nmp.core.models.controllers.backends.vllm_compiler import MODEL_STORE_PATH
 
 def _resolved(engine: str, *, lora: bool = False, runtime: Runtime = Runtime.KUBERNETES) -> ResolvedPluginDeployment:
     return ResolvedPluginDeployment(
-        deployment=SimpleNamespace(name="my-dep", workspace="default"),
+        deployment=SimpleNamespace(name="my-dep", workspace="default", entity_version=1, auth_context=None),
         config=SimpleNamespace(engine=engine),
         model_entity=None,
         view=DeploymentConfigView(model_namespace="org", model_name="model", lora_enabled=lora),
@@ -421,6 +424,88 @@ def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
     assert env["NMP_BASE_URL"] == "http://platform.example:8080"
     assert env["VLLM_ENDPOINT"] == "http://127.0.0.1:8000"
     assert len(docker.server_config.containers) == 2
+    # The docker sidecar's command becomes docker's entrypoint (replacing the
+    # image ENTRYPOINT), so it must be a complete executable list, never a bare
+    # `-m` fragment (which runc would look up as the executable -> `exec: "-m"`).
+    docker_sidecar = docker.server_config.containers[1]
+    assert docker_sidecar.name == "lora-adapters"
+    assert docker_sidecar.command == ["python", "-m", "nmp.core.models.sidecars.adapters.main"]
+    assert docker_sidecar.command[0] != "-m"
+
+
+def test_docker_lora_sidecar_command_is_a_valid_executable_under_override() -> None:
+    """A LoRA sidecar command overridden in config must still be a valid executable.
+
+    The docker backend maps ``Container.command`` onto docker's ``entrypoint``,
+    replacing the image ENTRYPOINT, so a bare ``["-m", "<module>"]`` fragment
+    makes runc treat ``-m`` as the executable and fail with ``exec: "-m":
+    executable file not found in $PATH``. This guards the config override shape
+    (mirroring the local.yaml deployments-plugin section) so that regression is
+    caught in unit tests rather than only on a live docker deployment.
+    """
+    config = DeploymentsPluginConfig(
+        lora_sidecar_image_name="nmp-customizer-tasks",
+        lora_sidecar_command=["python", "-m", "nmp.core.models.sidecars.adapters.main"],
+    )
+    platform = MagicMock()
+    platform.base_url = "http://platform.example:8080"
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_qualified_image",
+            return_value="registry/nmp-customizer-tasks:tag",
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_platform_config",
+            return_value=platform,
+        ),
+    ):
+        docker = compile_model_deployment(_resolved("vllm", lora=True, runtime=Runtime.DOCKER), config)
+
+    sidecar = docker.server_config.containers[1]
+    assert sidecar.name == "lora-adapters"
+    # command[0] is what the docker backend uses as the entrypoint executable; it
+    # must be a real program, not an interpreter flag.
+    assert sidecar.command
+    assert sidecar.command[0] != "-m"
+    assert sidecar.command == ["python", "-m", "nmp.core.models.sidecars.adapters.main"]
+
+
+def _repo_root() -> Path:
+    """Walk up from this test file to the repo root (the dir holding ``packages/``)."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "packages" / "nmp_platform" / "config" / "local.yaml").is_file():
+            return parent
+    raise AssertionError("could not locate repo root from test file")
+
+
+@pytest.mark.parametrize(
+    "config_rel_path",
+    [
+        "packages/nmp_platform/config/local.yaml",
+        "packages/nmp_platform_runner/src/nmp/platform_runner/config/local.yaml",
+    ],
+)
+def test_shipped_local_yaml_lora_sidecar_command_is_a_valid_executable(config_rel_path: str) -> None:
+    """The shipped local.yaml overrides must not reintroduce the bare ``-m`` bug.
+
+    The docker backend maps ``lora_sidecar_command`` onto docker's ``entrypoint``
+    (replacing the image ENTRYPOINT), so ``command[0]`` is the executable. A bare
+    ``["-m", "<module>"]`` fragment makes runc fail with ``exec: "-m"``. This test
+    reads the ACTUAL shipped config files (not a hardcoded config object), so a
+    future revert of either ``local.yaml`` back to a relative ``-m`` fragment fails
+    here rather than only on a live docker deployment.
+    """
+    doc = yaml.safe_load((_repo_root() / config_rel_path).read_text())
+    plugin = doc["models"]["controller"]["backends"]["deployments_plugin"]
+    command = plugin["lora_sidecar_command"]
+    assert command, f"{config_rel_path}: lora_sidecar_command must not be empty"
+    assert command[0] != "-m", (
+        f"{config_rel_path}: lora_sidecar_command[0] is '-m'; the docker backend maps command -> "
+        "entrypoint, so command[0] must be a real executable (e.g. 'python'), not an interpreter flag"
+    )
+    assert not command[0].startswith("-"), (
+        f"{config_rel_path}: lora_sidecar_command[0] '{command[0]}' looks like a flag, not an executable"
+    )
 
 
 def test_lora_sidecar_rewrites_loopback_nmp_base_url_for_docker() -> None:
@@ -465,3 +550,30 @@ def test_lora_sidecar_rewrites_loopback_nmp_base_url_for_docker() -> None:
         docker_bridge = compile_model_deployment(_resolved("vllm", lora=True, runtime=Runtime.DOCKER), config)
     bridge_env = {item.name: item.value for item in docker_bridge.server_config.containers[1].env}
     assert bridge_env["NMP_BASE_URL"] == "http://172.16.83.1:8080"
+
+
+def test_compile_model_deployment_adds_workload_identity_when_auth_context_present() -> None:
+    resolved = _resolved("vllm")
+    resolved.deployment.auth_context = AuthContext(principal_id="user:alice", principal_groups=["research"])
+    resolved.deployment.entity_version = 3
+
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.is_workload_identity_token_exchange_enabled",
+            return_value=True,
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_workload_identity_token_audience",
+            return_value="model-audience",
+        ),
+    ):
+        compiled = compile_model_deployment(resolved, DeploymentsPluginConfig())
+
+    assert compiled.puller_config is not None
+    assert compiled.puller_config.workload_identity is not None
+    assert compiled.server_config.workload_identity is not None
+    assert compiled.puller_config.workload_identity.workload_kind == "model_deployment"
+    assert compiled.puller_config.workload_identity.workload_id == "my-dep/v3"
+    assert compiled.puller_config.workload_identity.token_audience == "model-audience"
+    assert compiled.server_config.workload_identity.workload_id == "my-dep/v3"
+    assert compiled.server_config.workload_identity.token_audience == "model-audience"

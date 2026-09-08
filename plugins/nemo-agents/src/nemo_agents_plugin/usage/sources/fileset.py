@@ -20,6 +20,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.refs import FilesetRef
 
 logger = logging.getLogger(__name__)
@@ -82,12 +84,12 @@ def fileset_path(
         tmp_path = Path(tmp)
         logger.debug("downloading fileset %s/%s to %s", ws, name, tmp_path)
         try:
-            sdk.files.download(
-                remote_path="",
-                local_path=str(tmp_path),
-                fileset=name,
-                workspace=ws,
-            )
+            files = client_from_platform(sdk, FilesClient)
+            listing = files.list_files(name=name, workspace=ws).data().data
+            for entry in listing:
+                dest = tmp_path / entry.path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(files.download_file(name=name, workspace=ws, path=entry.path).read())
         except (FilesetRefError, FilesetDownloadError):
             raise
         except Exception as exc:

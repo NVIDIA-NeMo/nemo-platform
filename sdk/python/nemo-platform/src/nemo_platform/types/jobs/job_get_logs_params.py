@@ -37,5 +37,8 @@ class JobGetLogsParams(TypedDict, total=False):
     step_id: str
     """Filter logs by step name"""
 
+    tail: int
+    """Number of newest log lines to return"""
+
     task_id: str
     """Filter logs by task ID"""

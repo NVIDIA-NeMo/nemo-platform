@@ -19,7 +19,7 @@ from nemo_unsloth_plugin.jobs.jobs import UnslothJob
 
 
 class UnslothContributorCLI:
-    """Passed to ``add_job_commands`` to override run/submit with job-file args."""
+    """Passed to ``add_job_commands`` to override submit with job-file args."""
 
     def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
         if job_cls is UnslothJob:

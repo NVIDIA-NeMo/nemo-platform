@@ -365,11 +365,12 @@ def anonymizer_fileset(
     name = short_unique_name("anon-inputs")
     files_client.create_fileset(body=CreateFilesetRequest(name=name), workspace=anonymizer_sdk.workspace)
 
-    anonymizer_sdk.files.upload_content(
-        fileset=name,
+    files = client_from_platform(anonymizer_sdk, FilesClient)
+    files.upload_file(
+        name=name,
         workspace=anonymizer_sdk.workspace,
-        remote_path=CSV_REMOTE_PATH,
-        content=_input_csv(),
+        path=CSV_REMOTE_PATH,
+        content=_input_csv().encode(),
     )
 
     parquet_path = tmp_path_factory.mktemp("anonymizer-inputs") / "records.parquet"
@@ -377,21 +378,21 @@ def anonymizer_fileset(
         import pandas as pd
 
         pd.DataFrame(_input_rows()).to_parquet(parquet_path, index=False)
-        anonymizer_sdk.files.upload(
-            fileset=name,
+        files.upload_file(
+            name=name,
             workspace=anonymizer_sdk.workspace,
-            remote_path=PARQUET_REMOTE_PATH,
-            local_path=str(parquet_path),
+            path=PARQUET_REMOTE_PATH,
+            content=parquet_path.read_bytes(),
         )
     finally:
         with suppress(FileNotFoundError):
             parquet_path.unlink()
 
-    anonymizer_sdk.files.upload_content(
-        fileset=name,
+    files.upload_file(
+        name=name,
         workspace=anonymizer_sdk.workspace,
-        remote_path=NOT_CSV_REMOTE_PATH,
-        content="not,a,supported,input\n",
+        path=NOT_CSV_REMOTE_PATH,
+        content=b"not,a,supported,input\n",
     )
     try:
         yield name
@@ -479,10 +480,14 @@ def test_mock_provider_chat_completion_works_through_minikube_ingress(
 def test_file_upload_round_trips_through_minikube_ingress(
     anonymizer_sdk: NeMoPlatform, anonymizer_fileset: str
 ) -> None:
-    content = anonymizer_sdk.files.download_content(
-        fileset=anonymizer_fileset,
-        workspace=anonymizer_sdk.workspace,
-        remote_path=CSV_REMOTE_PATH,
+    content = (
+        client_from_platform(anonymizer_sdk, FilesClient)
+        .download_file(
+            name=anonymizer_fileset,
+            workspace=anonymizer_sdk.workspace,
+            path=CSV_REMOTE_PATH,
+        )
+        .read()
     )
 
     assert content.decode("utf-8") == _input_csv()

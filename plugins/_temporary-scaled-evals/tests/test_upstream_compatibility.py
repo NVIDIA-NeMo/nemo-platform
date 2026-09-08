@@ -109,6 +109,11 @@ def test_generic_harbor_020_patches_cover_langgraph_and_pi(tmp_path: Path) -> No
     assert "python /tmp/pip.pyz install uv" in legacy.read_text()
     assert "bootstrap.pypa.io" not in legacy.read_text()
 
+    unknown = tmp_path / "unknown_langgraph.py"
+    unknown.write_text("class LangGraph:\n    pass\n")
+    with pytest.raises(RuntimeError, match="source anchor"):
+        langgraph_patch(unknown)
+
     pi_patch = runpy.run_path(str(PLUGIN_ROOT / "harbor-patches/patch_pi_extra_env.py"))["patch"]
     pi = tmp_path / "pi.py"
     pi.write_text(
@@ -128,3 +133,6 @@ def test_generic_harbor_020_patches_cover_langgraph_and_pi(tmp_path: Path) -> No
     assert "val = self._get_env(key)" in patched
     assert "_write_inference_headers_config" in patched
     assert "</dev/null" not in patched
+
+    pi_patch(pi)
+    assert pi.read_text() == patched

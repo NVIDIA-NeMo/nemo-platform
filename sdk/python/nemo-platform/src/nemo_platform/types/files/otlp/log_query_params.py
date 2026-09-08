@@ -40,3 +40,6 @@ class LogQueryParams(TypedDict, total=False):
 
     page_cursor: str
     """Cursor for pagination"""
+
+    tail: int
+    """Number of newest log lines to return"""

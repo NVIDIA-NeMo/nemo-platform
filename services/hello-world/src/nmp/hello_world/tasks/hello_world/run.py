@@ -11,6 +11,9 @@ import traceback
 import types
 
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import CreateFilesetRequest
 from nmp.common.jobs.config import get_job_id, get_task_config, get_workspace
 from nmp.common.sdk_factory import get_platform_sdk
 from nmp.hello_world.api.v2.jobs.schemas import HelloWorldJobConfig
@@ -105,12 +108,13 @@ def run(*, sdk: NeMoPlatform | None = None) -> int:
             return 0
 
         # Upload the message (creates fileset if it doesn't exist)
-        sdk.files.upload_content(
+        files = client_from_platform(sdk, FilesClient)
+        files.create_fileset(body=CreateFilesetRequest(name=fileset_name), workspace=workspace, exist_ok=True)
+        files.upload_file(
             content=config.message,
-            remote_path=DEFAULT_FILE_PATH,
-            fileset=fileset_name,
+            path=DEFAULT_FILE_PATH,
+            name=fileset_name,
             workspace=workspace,
-            fileset_auto_create=True,
         )
 
         print(f"Successfully wrote message: {config.message}")
