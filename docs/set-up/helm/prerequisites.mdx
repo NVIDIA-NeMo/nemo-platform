@@ -24,7 +24,7 @@ export NMP_NAMESPACE=nemo-platform
 kubectl create namespace "$NMP_NAMESPACE"
 ```
 
-Review the [system requirements](/documentation/reference/system-requirements) before choosing node types. For storage and persistent volume configuration, including ReadWriteMany and StorageClass requirements, see [Persistent Volumes](/documentation/self-managed-deployment/setup/helm/persistent-volumes).
+Review the [system requirements](/documentation/reference/system-requirements) before choosing node types. For storage and persistent volume configuration, including ReadWriteMany and StorageClass requirements, see [Persistent Volumes](/documentation/kubernetes-deployment/setup/helm/persistent-volumes).
 
 ## Cluster requirements
 
@@ -36,7 +36,7 @@ The chart can run on local or managed Kubernetes clusters when the required stor
 | `kind` | Single-node smoke testing. Provide a static PersistentVolume or StorageClass for the shared PVC and use port-forwarding for API access. |
 | EKS | Configure EFS or another RWX storage backend for shared jobs storage. Use GPU node groups and NVIDIA GPU Operator or device plugin for GPU workloads. Configure EFA only for multi-node GPU jobs. |
 | AKS, GKE, OKE, or on-prem | Configure an RWX-capable StorageClass, GPU node support, ingress or Gateway API, and any cloud-specific high-performance networking before enabling multi-node jobs. |
-| OpenShift | Apply the OpenShift security context overrides in [OpenShift](/documentation/self-managed-deployment/setup/helm/openshift). |
+| OpenShift | Apply the OpenShift security context overrides in [OpenShift](/documentation/kubernetes-deployment/setup/helm/openshift). |
 
 ## Create NGC API key and secrets
 
