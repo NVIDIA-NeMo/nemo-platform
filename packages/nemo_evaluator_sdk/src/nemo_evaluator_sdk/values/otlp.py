@@ -18,7 +18,8 @@ from typing import Any, TypeAlias, cast
 
 from google.protobuf import json_format
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
-from opentelemetry.proto.trace.v1.trace_pb2 import Span, Status
+from opentelemetry.proto.common.v1.common_pb2 import AnyValue
+from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, Span, Status
 
 _MESSAGE_ATTRIBUTE_KEY = "gen_ai.output.messages"
 _SPAN_KIND_ATTRIBUTE = "openinference.span.kind"
@@ -123,32 +124,36 @@ def resource_spans_from_text(raw: str) -> list[dict[str, Any]]:
     return resource_spans
 
 
-def export_request_from_resource_spans(resource_spans: list[dict[str, Any]]) -> ExportTraceServiceRequest:
-    """Parse OTLP/JSON resource spans into one export request.
+def parse_resource_spans(resource_spans: list[dict[str, Any]]) -> list[ResourceSpans]:
+    """Parse OTLP/JSON resource spans into their protobuf messages.
+
+    Returns the spans themselves rather than an ``ExportTraceServiceRequest``: that is the envelope
+    of OTLP's Export RPC, and only a caller actually sending them over a wire needs one.
 
     Args:
         resource_spans: Decoded OTLP/JSON ``resourceSpans`` objects.
 
     Returns:
-        Every span in a single request, ready to serialize for OTLP ingest.
+        The parsed resource spans, in the order given.
 
     Raises:
         ValueError: The payload does not match the OTLP schema.
     """
     try:
-        return json_format.ParseDict(
+        request = json_format.ParseDict(
             {"resourceSpans": [_base64_ids(resource_span) for resource_span in resource_spans]},
             ExportTraceServiceRequest(),
             # A producer on a newer OTLP schema stays readable rather than failing wholesale.
             ignore_unknown_fields=True,
         )
+        return list(request.resource_spans)
     except json_format.ParseError as error:
         raise ValueError(f"invalid OTLP payload: {error}") from error
     except RecursionError as error:
         raise ValueError("OTLP payload is nested too deeply to convert") from error
 
 
-def final_output_text(request: ExportTraceServiceRequest) -> str | None:
+def final_output_text(resource_spans: list[ResourceSpans]) -> str | None:
     """Return the agent's final answer from an OTLP trace.
 
     A root span represents the run as a whole, so its output is the answer when it has one.
@@ -157,14 +162,12 @@ def final_output_text(request: ExportTraceServiceRequest) -> str | None:
     trace of nothing but tool calls has no answer rather than a misattributed one.
 
     Args:
-        request: Parsed OTLP export request.
+        resource_spans: Parsed OTLP resource spans.
 
     Returns:
         The answer text, or ``None`` when no span carries one.
     """
-    spans = [
-        span for rs in request.resource_spans for ss in rs.scope_spans for span in ss.spans if _is_answer_span(span)
-    ]
+    spans = [span for rs in resource_spans for ss in rs.scope_spans for span in ss.spans if _is_answer_span(span)]
     by_recency = sorted(spans, key=lambda span: span.end_time_unix_nano, reverse=True)
     roots = [span for span in by_recency if not span.parent_span_id]
     for span in roots + by_recency:
@@ -231,25 +234,23 @@ def _assistant_text(raw: str) -> str | None:
     return None
 
 
-def span_text_strings(resource_spans: list[dict[str, Any]]) -> Iterator[str]:
+def span_text_strings(resource_spans: list[ResourceSpans]) -> Iterator[str]:
     """Yield every string carried by the spans' and span events' attributes.
 
-    Reads decoded OTLP/JSON rather than the parsed protobuf: a caller searching for text
-    needs the strings a trace does carry, and one span with a malformed unrelated field
-    should not hide every other span's attributes behind a parse failure.
-
     Args:
-        resource_spans: Decoded OTLP/JSON ``resourceSpans`` objects.
+        resource_spans: Parsed OTLP resource spans.
 
     Yields:
         String leaves, including those nested in array and key-value attribute values.
     """
     for resource_span in resource_spans:
-        for scope_span in _objects(resource_span.get("scopeSpans")):
-            for span in _objects(scope_span.get("spans")):
-                yield from _attribute_strings(span.get("attributes"))
-                for event in _objects(span.get("events")):
-                    yield from _attribute_strings(event.get("attributes"))
+        for scope_span in resource_span.scope_spans:
+            for span in scope_span.spans:
+                for attribute in span.attributes:
+                    yield from _any_value_strings(attribute.value)
+                for event in span.events:
+                    for attribute in event.attributes:
+                        yield from _any_value_strings(attribute.value)
 
 
 def _objects(value: Any) -> list[dict[str, Any]]:
@@ -259,29 +260,22 @@ def _objects(value: Any) -> list[dict[str, Any]]:
     return [cast(dict[str, Any], item) for item in value if isinstance(item, dict)]
 
 
-def _attribute_strings(attributes: Any) -> Iterator[str]:
-    """Yield the string leaves of a decoded OTLP attribute list."""
-    for attribute in _objects(attributes):
-        yield from _any_value_strings(attribute.get("value"))
+def _any_value_strings(value: AnyValue) -> Iterator[str]:
+    """Yield the string leaves of one ``AnyValue``, in no particular order.
 
-
-def _any_value_strings(value: Any) -> Iterator[str]:
-    """Yield the string leaves of one decoded OTLP ``AnyValue``, in no particular order.
-
-    An ``AnyValue`` nests without limit, so this walks an explicit stack rather than
-    recursing: a producer's nesting depth must not become this process's recursion limit.
+    Walks an explicit stack rather than recursing, so nesting depth is bounded by what the
+    protobuf parser already accepted rather than by this process's recursion limit.
     """
     pending = [value]
     while pending:
         current = pending.pop()
-        if not isinstance(current, dict):
-            continue
-        if isinstance(text := current.get("stringValue"), str):
-            yield text
-        elif isinstance(array := current.get("arrayValue"), dict):
-            pending.extend(_objects(array.get("values")))
-        elif isinstance(kvlist := current.get("kvlistValue"), dict):
-            pending.extend(item.get("value") for item in _objects(kvlist.get("values")))
+        field = current.WhichOneof("value")
+        if field == "string_value":
+            yield current.string_value
+        elif field == "array_value":
+            pending.extend(current.array_value.values)
+        elif field == "kvlist_value":
+            pending.extend(item.value for item in current.kvlist_value.values)
 
 
 def _loads(text: str) -> Any:
@@ -296,102 +290,6 @@ def _loads(text: str) -> Any:
         raise ValueError("OTLP JSON is nested too deeply to parse") from error
 
 
-def set_span_attributes(request: ExportTraceServiceRequest, attributes: Mapping[str, AttributeValue]) -> None:
-    """Set attributes on every span of a trace, replacing any the producer set.
-
-    Span attributes are written rather than resource attributes because Intake merges the two
-    layers as ``{**resource, **span}``. A producer that publishes one of these keys itself
-    would win from the resource layer and silently redirect whatever the value identifies.
-    """
-    for span in _spans(request):
-        _set_attributes(span, attributes)
-
-
-def set_root_span_attributes(request: ExportTraceServiceRequest, attributes: Mapping[str, AttributeValue]) -> None:
-    """Set attributes on the trace's root span alone, if it has exactly one.
-
-    Totals for a whole run belong on the one span that represents it. Writing them to every
-    span would have any rollup that sums across a trace count them once per span.
-    """
-    root = _root_span(request)
-    if root is not None:
-        _set_attributes(root, attributes)
-
-
-def set_root_span_error(request: ExportTraceServiceRequest, *, message: str | None = None) -> None:
-    """Mark the trace's root span as failed, if it has exactly one.
-
-    Intake reads span status, not attributes, to decide a span failed.
-    """
-    root = _root_span(request)
-    if root is None:
-        return
-    root.status.code = Status.STATUS_CODE_ERROR
-    if message is not None:
-        root.status.message = message
-
-
-def fill_missing_start_times(request: ExportTraceServiceRequest, *, start_time_unix_nano: int) -> None:
-    """Give spans without a start time one, so re-publishing the same trace replaces it.
-
-    Intake stores a span with no start time against its own ingest clock, and start time is
-    part of the key its spans table replaces on — so an absent one makes every publish a new
-    row rather than a replacement of the last.
-    """
-    for span in _spans(request):
-        if not span.start_time_unix_nano:
-            span.start_time_unix_nano = start_time_unix_nano
-
-
-def _root_span(request: ExportTraceServiceRequest) -> Span | None:
-    """The single parentless span of a trace, or ``None`` when there is not exactly one."""
-    roots = [span for span in _spans(request) if not span.parent_span_id]
-    return roots[0] if len(roots) == 1 else None
-
-
-def _spans(request: ExportTraceServiceRequest) -> Iterator[Span]:
-    """Yield every span in the request, in resource and scope order."""
-    for resource_span in request.resource_spans:
-        for scope_span in resource_span.scope_spans:
-            yield from scope_span.spans
-
-
-def _set_attributes(span: Span, attributes: Mapping[str, AttributeValue]) -> None:
-    """Write attributes onto one span, replacing keys it already carries."""
-    existing = {attribute.key: attribute for attribute in span.attributes}
-    for key, value in attributes.items():
-        attribute = existing.get(key)
-        if attribute is None:
-            attribute = span.attributes.add()
-            attribute.key = key
-        if isinstance(value, bool):
-            attribute.value.bool_value = value
-        elif isinstance(value, int):
-            attribute.value.int_value = value
-        elif isinstance(value, float):
-            attribute.value.double_value = value
-        else:
-            attribute.value.string_value = value
-
-
-def root_span_id(request: ExportTraceServiceRequest) -> str | None:
-    """Return the hex id of the trace's root span, or ``None`` when it has no single root.
-
-    A trace with several roots has no one span that stands for the whole run, so there is
-    nothing to attach a trial-level score to.
-    """
-    roots = [span for span in _spans(request) if not span.parent_span_id]
-    if len(roots) != 1:
-        return None
-    span_id = bytes(roots[0].span_id)
-    # Intake requires a present, non-zero id and drops the span otherwise, which would leave
-    # anything scored against this id pointing at a span that was never stored.
-    if not any(span_id):
-        return None
-    return span_id.hex()
-
-
-# Byte lengths of the OTLP id fields, which decide whether a string is hex for that field.
 _ID_BYTE_LENGTHS = {"traceId": 16, "spanId": 8, "parentSpanId": 8}
 
 
@@ -423,3 +321,101 @@ def _base64_span_ids(span: dict[str, Any]) -> None:
         except ValueError:
             continue
         span[field] = b64encode(raw).decode("ascii")
+
+
+def set_span_attributes(resource_spans: list[ResourceSpans], attributes: Mapping[str, AttributeValue]) -> None:
+    """Set attributes on every span of a trace, replacing any the producer set.
+
+    Span attributes are written rather than resource attributes because Intake merges the two
+    layers as ``{**resource, **span}``. A producer that publishes one of these keys itself
+    would win from the resource layer and silently redirect whatever the value identifies.
+    """
+    for span in _spans(resource_spans):
+        _set_attributes(span, attributes)
+
+
+def set_root_span_attributes(resource_spans: list[ResourceSpans], attributes: Mapping[str, AttributeValue]) -> None:
+    """Set attributes on the trace's root span alone, if it has exactly one.
+
+    Totals for a whole run belong on the one span that represents it. Writing them to every
+    span would have any rollup that sums across a trace count them once per span.
+    """
+    root = _root_span(resource_spans)
+    if root is not None:
+        _set_attributes(root, attributes)
+
+
+def set_root_span_error(resource_spans: list[ResourceSpans], *, message: str | None = None) -> None:
+    """Mark the trace's root span as failed, if it has exactly one.
+
+    Intake reads span status, not attributes, to decide a span failed.
+    """
+    root = _root_span(resource_spans)
+    if root is None:
+        return
+    root.status.code = Status.STATUS_CODE_ERROR
+    if message is not None:
+        root.status.message = message
+
+
+def fill_missing_start_times(resource_spans: list[ResourceSpans], *, start_time_unix_nano: int) -> None:
+    """Give spans without a start time one, so re-publishing the same trace replaces it.
+
+    Intake stores a span with no start time against its own ingest clock, and start time is
+    part of the key its spans table replaces on — so an absent one makes every publish a new
+    row rather than a replacement of the last.
+    """
+    for span in _spans(resource_spans):
+        if not span.start_time_unix_nano:
+            span.start_time_unix_nano = start_time_unix_nano
+
+
+def _root_span(resource_spans: list[ResourceSpans]) -> Span | None:
+    """The single parentless span of a trace, or ``None`` when there is not exactly one."""
+    roots = [span for span in _spans(resource_spans) if not span.parent_span_id]
+    return roots[0] if len(roots) == 1 else None
+
+
+def _spans(resource_spans: list[ResourceSpans]) -> Iterator[Span]:
+    """Yield every span, in resource and scope order."""
+    for resource_span in resource_spans:
+        for scope_span in resource_span.scope_spans:
+            yield from scope_span.spans
+
+
+def _set_attributes(span: Span, attributes: Mapping[str, AttributeValue]) -> None:
+    """Write attributes onto one span, replacing keys it already carries."""
+    existing = {attribute.key: attribute for attribute in span.attributes}
+    for key, value in attributes.items():
+        attribute = existing.get(key)
+        if attribute is None:
+            attribute = span.attributes.add()
+            attribute.key = key
+        if isinstance(value, bool):
+            attribute.value.bool_value = value
+        elif isinstance(value, int):
+            attribute.value.int_value = value
+        elif isinstance(value, float):
+            attribute.value.double_value = value
+        else:
+            attribute.value.string_value = value
+
+
+def root_span_id(resource_spans: list[ResourceSpans]) -> str | None:
+    """Return the hex id of the trace's root span, or ``None`` when it has no single root.
+
+    A trace with several roots has no one span that stands for the whole run, so there is
+    nothing to attach a trial-level score to.
+    """
+    roots = [span for span in _spans(resource_spans) if not span.parent_span_id]
+    if len(roots) != 1:
+        return None
+    span_id = bytes(roots[0].span_id)
+    # Intake requires a present, non-zero id and drops the span otherwise, which would leave
+    # anything scored against this id pointing at a span that was never stored.
+    if not any(span_id):
+        return None
+    return span_id.hex()
+
+
+# Byte lengths of the OTLP id fields, which decide whether a string is hex for that field.

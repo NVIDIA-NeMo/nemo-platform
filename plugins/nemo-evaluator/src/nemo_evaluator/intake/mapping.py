@@ -55,6 +55,7 @@ from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParam
 from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
 from nemo_platform.types.intake.ingest.atif_step_agent_param import AtifStepAgentParam
 from nemo_platform.types.intake.ingest.atif_step_param import AtifStepParam
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -163,12 +164,12 @@ async def otlp_ingest_for_trial(
     except KeyError:
         return None
     try:
-        request = await handle.export_request()
+        resource_spans = await handle.resource_spans()
     except (OSError, ValueError) as error:
         logger.warning("Ignoring unreadable OTLP trace for trial %s: %s", trial.id, error)
         return None
 
-    span_id = root_span_id(request)
+    span_id = root_span_id(resource_spans)
     if span_id is None:
         logger.warning(
             "Ignoring OTLP trace for trial %s: it has no single root span with a usable id to score.", trial.id
@@ -176,18 +177,19 @@ async def otlp_ingest_for_trial(
         return None
 
     set_span_attributes(
-        request,
+        resource_spans,
         {
             _SESSION_ID_ATTRIBUTE: session_id,
             _EVALUATION_NAME_ATTRIBUTE: evaluation_name,
             _TEST_CASE_NAME_ATTRIBUTE: trial.task_id,
         },
     )
-    set_root_span_attributes(request, _trial_totals(trial, measurements))
+    set_root_span_attributes(resource_spans, _trial_totals(trial, measurements))
     if trial.error is not None:
-        set_root_span_error(request, message=trial.error.message)
-    fill_missing_start_times(request, start_time_unix_nano=int(started_at.timestamp() * 1_000_000_000))
-    return request.SerializeToString(), span_id
+        set_root_span_error(resource_spans, message=trial.error.message)
+    fill_missing_start_times(resource_spans, start_time_unix_nano=int(started_at.timestamp() * 1_000_000_000))
+    # The Export RPC envelope goes on only here, at the point these actually cross a wire.
+    return ExportTraceServiceRequest(resource_spans=resource_spans).SerializeToString(), span_id
 
 
 def _trial_totals(trial: AgentEvalTrial, measurements: TrialMeasurements) -> dict[str, str | int | float]:
