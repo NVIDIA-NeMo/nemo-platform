@@ -21,6 +21,7 @@ from nemo_deployments_plugin.backends.k8s.client import KubernetesClients, k8s_c
 from nemo_deployments_plugin.backends.k8s.compiler import (
     CompiledWorkload,
     DeploymentConfigError,
+    ExecutorK8sDefaults,
     compile_workload,
     create_configmap,
     create_secret,
@@ -101,6 +102,7 @@ def build_deployment_body(
     deployment_name: str,
     k8s_config: K8sDeploymentConfig | None,
     executor_image_pull_secrets: list | None = None,
+    executor_defaults: ExecutorK8sDefaults | None = None,
     secret_env: dict[str, str] | None = None,
 ) -> BuiltDeployment:
     """Build an ``apps/v1.Deployment`` for create and its compiled workload."""
@@ -115,6 +117,7 @@ def build_deployment_body(
         k8s_config=k8s_config,
         pod_restart_policy="Always",
         executor_image_pull_secrets=executor_image_pull_secrets,
+        executor_defaults=executor_defaults,
         secret_env=secret_env,
     )
     deployment = k8s.client.V1Deployment(
@@ -331,6 +334,7 @@ async def create_deployment(
     backend_config: dict[str, Any],
     config: DeploymentConfig,
     executor_image_pull_secrets: list | None = None,
+    executor_defaults: ExecutorK8sDefaults | None = None,
     secret_env: dict[str, str] | None = None,
     auth_context: AuthContext | None = None,
     workload_delegation_store: WorkloadDelegationStore | None = None,
@@ -359,6 +363,7 @@ async def create_deployment(
             deployment_name=name,
             k8s_config=k8s_config,
             executor_image_pull_secrets=executor_image_pull_secrets,
+            executor_defaults=executor_defaults,
             secret_env=secret_env,
         )
         deployment_body = built.deployment

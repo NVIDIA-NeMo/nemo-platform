@@ -577,13 +577,6 @@ basePlatformConfig: |
           enabled: true
           k8s_executor: local-k8s
           default_executor: local-k8s
-          # Platform-default pod annotations applied to every k8s model
-          # deployment/job (all engines). The Istio native-sidecar annotation
-          # makes a mesh-injected istio-proxy terminate when a Job's main
-          # container exits, so the weight-puller Job completes while keeping
-          # mesh mTLS egress (inject: "false" is NOT viable in-mesh).
-          default_pod_annotations:
-            sidecar.istio.io/nativeSidecar: "true"
           # Bypass the image `nemo` ENTRYPOINT; invoke the adapters module directly.
           # Avoids PermissionError when the sidecar writes instance state under $HOME.
           lora_sidecar_command:
@@ -597,6 +590,15 @@ basePlatformConfig: |
         backend: k8s
         config:
           default_namespace: {{ .Release.Namespace | quote }}
+          # Executor-level default pod annotations applied to EVERY k8s workload
+          # this executor renders — models AND agents. The Istio native-sidecar
+          # annotation makes a mesh-injected istio-proxy terminate when a Job's
+          # main container exits, so a weight-puller (or any mesh-injected Job)
+          # completes instead of hanging while keeping mesh mTLS egress
+          # (inject: "false" is NOT viable in-mesh). Per-entity backend_config.k8s
+          # values override these defaults.
+          default_pod_annotations:
+            sidecar.istio.io/nativeSidecar: "true"
     default_executor: local-k8s
 
   # -- inference_gateway is the configuration specific to inference request routing
