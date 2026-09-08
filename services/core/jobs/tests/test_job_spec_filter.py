@@ -38,11 +38,7 @@ SOURCE = "spec-filter-testing"
 
 AGENT_SPEC = {"target": {"format": "generic", "url": "http://agent/v1/chat/completions", "name": "my-agent"}}
 MODEL_SPEC = {"target": {"format": "openai", "url": "http://model/v1", "name": "my-model"}}
-# An offline run scored from stored rows names no target at all.
 OFFLINE_SPEC = {"dataset": "ws/rows"}
-
-# What Studio's Model Evaluations table sends. The null branch is what keeps the
-# offline run: `$nin` alone drops a row whose field is absent.
 NOT_AGENT_TRIGGERED = {
     "$or": [
         {"spec.target.format": {"$nin": ["generic", "nemo_agent_toolkit"]}},
