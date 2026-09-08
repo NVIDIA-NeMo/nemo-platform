@@ -517,20 +517,7 @@ def compile_grpo_config(
     model_path = customizer_config.model.path
     precision = _adapt_precision(customizer_config.model.precision)
     parallelism = customizer_config.parallelism
-    # V2 (Automodel) already serializes HF safetensors. Ask it to also write the
-    # consolidated export Platform publishes. V1 forbids model_save_format on the
-    # DTensorPolicyWorker, so these keys stay omitted when policy_backend=dtensor.
-    #
-    # Bool, not "every"/"final". docker-bake.hcl pins NEMO_RL_REF, whose Automodel
-    # submodule is 24b47e856 — CheckpointingConfig.save_consolidated is a bool there
-    # and Checkpointer._should_write_consolidated_safetensors() is
-    # ``self.config.save_consolidated and self._should_write_hf_metadata()``.
-    # Automodel main later replaced this with SaveConsolidatedMode; that is not
-    # what the training image ships.
-    #
-    # LoRA still gets save_consolidated: Automodel no-ops consolidation when is_peft,
-    # but the key is V2-wide (same as the publisher expecting a consolidated tree).
-    # model_save_format stays all_weights-only; LoRA already saves safetensors adapters.
+    # Automodel: write a consolidated HF export. V1 forbids model_save_format.
     if parallelism.policy_backend is PolicyBackend.AUTOMODEL:
         cfg["checkpointing"]["save_consolidated"] = True
         if customizer_config.training.finetuning_type == FinetuningType.ALL_WEIGHTS:

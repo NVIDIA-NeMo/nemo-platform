@@ -132,7 +132,6 @@ def test_finds_consolidated_full_weight_layout(tmp_path: Path):
 
 
 def test_empty_consolidated_dir_falls_back_to_shards(tmp_path: Path):
-    """Automodel mkdir's consolidated/ before writing; an empty dir is not the export."""
     checkpoint = tmp_path / "step_20"
     (checkpoint / "policy" / "weights" / "model" / "consolidated").mkdir(parents=True)
     model_dir = _write_hf_shard(checkpoint / "policy" / "weights" / "model")
@@ -209,7 +208,6 @@ def test_copy_full_weights_prefers_consolidated_export(tmp_path: Path):
 
 
 def test_copy_leaves_multi_rank_shards_in_place(tmp_path: Path):
-    """Two ranks writing one logical file each hold partial tensors needing stitching."""
     checkpoint = tmp_path / "step_20"
     model_dir = checkpoint / "policy" / "weights" / "model"
     _write_hf_shard(model_dir, "shard-00001-model-00001-of-00001.safetensors")
@@ -224,8 +222,6 @@ def test_copy_leaves_multi_rank_shards_in_place(tmp_path: Path):
 
 
 def test_copy_leaves_multi_file_shards_in_place(tmp_path: Path):
-    """One rank, but a model spanning several HF files needs an index a sharded save
-    never writes, so renaming alone would not be loadable."""
     checkpoint = tmp_path / "step_20"
     model_dir = checkpoint / "policy" / "weights" / "model"
     _write_hf_shard(model_dir, "shard-00001-model-00001-of-00002.safetensors")

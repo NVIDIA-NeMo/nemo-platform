@@ -8,16 +8,10 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-"""Checkpoint publication helpers for NeMo-RL training.
+"""Checkpoint publication for NeMo-RL training.
 
-DTensor V1 writes PyTorch Distributed Checkpoint (DCP) trees that still need
-``convert_dcp_to_hf``. DTensor V2 / Automodel already writes HuggingFace
-safetensors (optionally under ``model/consolidated``), so publication must copy
-that tree instead of sending it to the DCP converter, which requires a
-``.metadata`` file and fails on the HF layout.
-
-LoRA adapters are nested under ``<step>/policy/`` rather than at the checkpoint
-root the way an Automodel SFT export does.
+Copies HuggingFace safetensors (full weights or LoRA adapters) out of a NeMo-RL
+step directory. Converts DCP only when ``.metadata`` is present.
 """
 
 import glob
@@ -33,25 +27,16 @@ import yaml
 logger = logging.getLogger(__name__)
 
 # Where a LoRA adapter can sit inside a NeMo-RL checkpoint, most specific first.
-#
-# DTensor V2 delegates to Automodel's checkpointer, which writes every model artifact to
-# ``<weights_path>/model`` -- so with NeMo-RL passing
-# ``<step>/policy/weights`` as weights_path, the PEFT files land in
-# ``<step>/policy/weights/model``. The V1 layout writes directly to weights_path, and the
-# bare root is kept for adapters exported by something other than the policy worker.
 LORA_ADAPTER_SEARCH_PATHS: tuple[Path, ...] = (
     Path("policy") / "weights" / "model",
     Path("policy") / "weights",
     Path(),
 )
 
-# NeMo-RL saves the tokenizer beside the weights rather than inside them, so a copied
-# adapter tree would otherwise ship without one.
+# Tokenizer lives beside the weights, not inside them.
 RL_TOKENIZER_SUBPATH = Path("policy") / "tokenizer"
 
-# Full-weight HF trees, most specific first. Automodel writes shards to
-# ``policy/weights/model`` and, when consolidation ran, a loadable HF export under
-# ``model/consolidated``. V1 DCP lives in ``policy/weights`` and is not listed here.
+# Full-weight HF trees, most specific first.
 HF_FULL_WEIGHT_SEARCH_PATHS: tuple[Path, ...] = (
     Path("policy") / "weights" / "model" / "consolidated",
     Path("policy") / "weights" / "model",
@@ -63,7 +48,7 @@ _DCP_METADATA_SEARCH_PATHS: tuple[Path, ...] = (
     Path("policy") / "weights",
 )
 
-# Automodel internals that must not become the published HuggingFace root.
+# Files that must not appear in the published HuggingFace root.
 _HF_SKIP_NAMES = {
     ".hf_metadata",
     "consolidated",
@@ -72,8 +57,7 @@ _HF_SKIP_NAMES = {
     "fqn_to_dtype_mapping.json",
 }
 
-# shard-00001-model-00001-of-00001.safetensors
-# -> group 1 the logical HF file, group 2 how many logical files the model spans.
+# shard-<rank>-model-<i>-of-<n>.safetensors
 _AUTOMODEL_SHARD_RE = re.compile(r"^shard-\d+-(model-\d+-of-(\d+)\.safetensors)$")
 
 
@@ -87,12 +71,7 @@ def find_lora_adapter_root(checkpoint_path: Path) -> Path | None:
 
 
 def copy_lora_adapter(checkpoint_path: Path, adapter_root: Path, output_path: Path) -> None:
-    """Copy an adapter tree to ``output_path``, adding the tokenizer when it is elsewhere.
-
-    Only the adapter directory is copied: the checkpoint root also holds optimizer shards
-    and scheduler state, which are training artifacts rather than part of the published
-    model.
-    """
+    """Copy an adapter tree to ``output_path``, adding the tokenizer when it is elsewhere."""
     output_path.mkdir(parents=True, exist_ok=True)
     shutil.copytree(adapter_root, output_path, dirs_exist_ok=True)
     _copy_tokenizer_if_missing(checkpoint_path, output_path)
@@ -129,10 +108,9 @@ def _weight_safetensors(path: Path) -> list[Path]:
 def find_hf_full_weight_root(checkpoint_path: Path) -> Path | None:
     """Return the directory holding full-weight HuggingFace safetensors, or None.
 
-    Prefers Automodel's consolidated export when present. Directories that are DCP
-    (``.metadata``) or PEFT adapters are skipped so V1 conversion still runs.
-    ``model/consolidated`` is only chosen when ``config.json`` is there: Automodel
-    creates that directory before writing into it, so existence alone is not enough.
+    Prefers ``model/consolidated`` when it contains ``config.json``. Skips DCP and PEFT
+    directories. An empty ``consolidated/`` is ignored because Automodel creates that
+    directory before writing into it.
     """
     for relative in HF_FULL_WEIGHT_SEARCH_PATHS:
         candidate = checkpoint_path / relative
@@ -169,15 +147,9 @@ def _flatten_hf_metadata(model_dir: Path, output_path: Path) -> None:
 
 
 def _promote_automodel_shards(output_path: Path) -> None:
-    """Rename Automodel's ``shard-`` file to the HuggingFace name, when that is sound.
+    """Rename a single-rank, single-file Automodel shard to ``model.safetensors``.
 
-    Automodel names sharded saves ``shard-<rank>-model-<i>-of-<n>.safetensors``, where
-    the ``shard-`` prefix is the writing rank and ``model-<i>-of-<n>`` is the logical HF
-    file the tensors belong to. A pure rename only yields a loadable tree when one rank
-    wrote one logical file, which is the single-GPU case. With several ranks each file
-    holds partial tensors that have to be stitched, and with several logical files the
-    tree needs a ``model.safetensors.index.json`` that a sharded save never writes.
-    Both of those require Automodel's consolidation, so they are left untouched.
+    Multi-rank or multi-file shards need consolidation and are left unchanged.
     """
     groups: dict[str, list[Path]] = {}
     totals: set[int] = set()
@@ -193,14 +165,11 @@ def _promote_automodel_shards(output_path: Path) -> None:
     one_logical_file = len(groups) == 1 and totals == {1}
     if not (one_rank_per_file and one_logical_file):
         logger.warning(
-            "Automodel wrote %d shard file(s) across %d logical HuggingFace file(s) under "
-            "%s and there is no consolidated/ export; publishing the shard names as-is. "
-            "This tree will not load with from_pretrained -- enable "
-            "checkpointing.save_consolidated so Automodel stitches the shards and writes "
-            "model.safetensors.index.json.",
+            "Publishing Automodel shard names as-is under %s (%d files, %d logical HF files); "
+            "from_pretrained needs a consolidated export.",
+            output_path,
             sum(len(files) for files in groups.values()),
             len(groups),
-            output_path,
         )
         return
 
@@ -234,11 +203,9 @@ def _fix_fsdp2_architecture(model_path: Path) -> None:
 
 
 def copy_hf_full_weights(checkpoint_path: Path, weights_root: Path, output_path: Path) -> None:
-    """Copy an already-HuggingFace full-weight tree to ``output_path``.
+    """Copy a HuggingFace full-weight tree to ``output_path``.
 
-    Optimizer shards under ``policy/optimizer`` are left behind. Automodel metadata
-    (``.hf_metadata``, ``consolidate.sh``) is not published; ``config.json`` and
-    tokenizer files from ``.hf_metadata`` are flattened onto the output root.
+    Flattens ``.hf_metadata`` onto the output root and does not copy optimizer state.
     """
     output_path.mkdir(parents=True, exist_ok=True)
     for item in weights_root.iterdir():

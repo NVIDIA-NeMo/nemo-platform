@@ -892,14 +892,12 @@ def test_automodel_all_weights_requests_consolidated_safetensors(
     checkpointing = compile_grpo_config(step, job_ctx)["checkpointing"]
 
     assert checkpointing["model_save_format"] == "safetensors"
-    # Bool: bake-pinned Automodel 24b47e856 types save_consolidated as bool.
     assert checkpointing["save_consolidated"] is True
 
 
 def test_dtensor_v1_omits_model_save_format(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """NeMo-RL raises if V1 sees model_save_format on DTensorPolicyWorker."""
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
     step, _ = _prepared_step(tmp_path, policy_backend=PolicyBackend.DTENSOR)
     checkpointing = compile_grpo_config(step, job_ctx)["checkpointing"]
@@ -911,12 +909,6 @@ def test_dtensor_v1_omits_model_save_format(
 def test_automodel_lora_still_requests_consolidated_export(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """V2 LoRA is still Automodel; save_consolidated is the V2-wide export switch.
-
-    Automodel skips writing a full-weight consolidated tree when is_peft, so this
-    does not change the published adapter. model_save_format stays omitted -- LoRA
-    already writes safetensors adapters, and V1 forbids the key.
-    """
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
     step, _ = _prepared_step(
         tmp_path,
