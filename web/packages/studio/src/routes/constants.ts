@@ -5,6 +5,7 @@ export const QUERY_PARAMETERS = {
   completionsTableFilter: 'completionsTableFilter',
   filesetFolder: 'filesetFolder',
   file: 'file',
+  fileset: 'fileset',
   model: 'model',
   rating: 'rating',
   exportJobId: 'exportJobId',

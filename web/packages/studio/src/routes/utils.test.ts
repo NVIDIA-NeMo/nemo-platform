@@ -13,6 +13,7 @@ import {
   getIntakeSessionRoute,
   getIntakeSessionTraceRoute,
   getWorkspaceBaseModelsRoute,
+  getWorkspaceDeploymentsRoute,
   getWorkspaceInferenceProvidersRoute,
 } from '@studio/routes/utils';
 
@@ -203,6 +204,39 @@ describe('getFilesetDetailsRoute', () => {
   it('encodes the folder query param without double-encoding', () => {
     expect(getFilesetDetailsRoute('my-workspace', 'default/set', 'nested/folder 1')).toBe(
       '/workspaces/my-workspace/filesets/default%2Fset?filesetFolder=nested%2Ffolder+1'
+    );
+  });
+});
+
+describe('getWorkspaceDeploymentsRoute', () => {
+  it('returns the bare list route with no options', () => {
+    expect(getWorkspaceDeploymentsRoute('ws')).toBe('/workspaces/ws/deployments');
+  });
+
+  // DeploymentsListRoute reads these params and auto-opens the create wizard
+  // prefilled on the Workspace source, so the encoding has to survive the trip.
+  it('encodes a model reference into the prefill param', () => {
+    expect(getWorkspaceDeploymentsRoute('ws', { model: 'ws/my-model' })).toBe(
+      '/workspaces/ws/deployments?model=ws%2Fmy-model'
+    );
+  });
+
+  it('encodes a fileset reference into the prefill param', () => {
+    expect(getWorkspaceDeploymentsRoute('ws', { fileset: 'ws/my-fileset' })).toBe(
+      '/workspaces/ws/deployments?fileset=ws%2Fmy-fileset'
+    );
+  });
+
+  // Matches DeploymentsListRoute, which checks `model` before `fileset`.
+  it('prefers model over fileset when both are given', () => {
+    expect(getWorkspaceDeploymentsRoute('ws', { model: 'ws/m', fileset: 'ws/f' })).toBe(
+      '/workspaces/ws/deployments?model=ws%2Fm'
+    );
+  });
+
+  it('encodes special characters exactly once', () => {
+    expect(getWorkspaceDeploymentsRoute('ws', { model: 'ws/100% coverage' })).toBe(
+      '/workspaces/ws/deployments?model=ws%2F100%25%20coverage'
     );
   });
 });

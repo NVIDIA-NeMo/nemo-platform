@@ -38,6 +38,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { BaseModelCard } from '@studio/components/BaseModelCard';
 import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsDataView/CustomizeModelButton';
+import { DeployModelButton } from '@studio/components/DeployModelButton';
 import { ModelPanel, ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { VirtualizedCardGrid } from '@studio/components/VirtualizedCardGrid';
 import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
@@ -288,6 +289,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
               {CUSTOMIZER_ENABLED && selectedModel && (
                 <CustomizeModelButton model={selectedModel} workspace={workspace} />
               )}
+              {selectedModel && <DeployModelButton model={selectedModel} workspace={workspace} />}
             </Flex>
           ),
         }}
