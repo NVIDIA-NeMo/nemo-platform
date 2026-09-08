@@ -253,7 +253,11 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
           <ErrorMessage
             header="Loading Error"
             message="This dataset was unable to load. Please try again."
-            slotFooter={<Button onClick={() => refetchFileset()}>Retry</Button>}
+            slotFooter={
+              <Button type="button" onClick={() => refetchFileset()}>
+                Retry
+              </Button>
+            }
           />
         </Block>
       )}
