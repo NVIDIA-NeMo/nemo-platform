@@ -2089,13 +2089,10 @@ components:
       description: 'Which NeMo-RL policy worker trains the model.
 
 
-        Chosen explicitly, never inferred: the value picks the worker class, which
-        picks
+        The value picks the worker class, which picks the Ray actor''s venv and kernels.
 
-        the Ray actor''s venv and kernels. Asking for a capability the backend lacks
-        is a
-
-        validation error, not a silent upgrade.'
+        Asking for a capability the backend lacks is a validation error, not a silent
+        upgrade.'
     ProgressReportingConfig:
       properties:
         min_report_interval_seconds:
@@ -2443,8 +2440,7 @@ components:
             `automodel` (NeMo Automodel + Transformer Engine, Hopper or newer; the
             only backend with expert parallelism and automodel_kwargs). `all_weights`
             requires `dtensor` (stock HuggingFace on PyTorch FSDP2, also the pre-Hopper
-            option). Leave unset to get the supported one.
-          default: automodel
+            option). Omit it to get the supported one.
         val_at_start:
           type: boolean
           title: Val At Start

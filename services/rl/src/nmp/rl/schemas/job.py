@@ -260,12 +260,12 @@ class GRPOTraining(_TrainingBase):
         default=None,
         description="LoRA hyperparameters. Defaults applied when finetuning_type is lora.",
     )
-    policy_backend: PolicyBackend = Field(
-        default=PolicyBackend.AUTOMODEL,
+    policy_backend: PolicyBackend | None = Field(
+        default=None,
         description="NeMo-RL policy worker that trains the model. `lora` requires `automodel` "
         "(NeMo Automodel + Transformer Engine, Hopper or newer; the only backend with expert "
         "parallelism and automodel_kwargs). `all_weights` requires `dtensor` (stock HuggingFace "
-        "on PyTorch FSDP2, also the pre-Hopper option). Leave unset to get the supported one.",
+        "on PyTorch FSDP2, also the pre-Hopper option). Omit it to get the supported one.",
     )
     val_at_start: bool = Field(
         default=False,
@@ -513,7 +513,7 @@ class GRPOTraining(_TrainingBase):
     @model_validator(mode="after")
     def _policy_backend_defaults_to_the_one_that_supports_the_request(self) -> Self:
         """Follow ``finetuning_type`` when no backend was named; an explicit value is left alone."""
-        if "policy_backend" not in self.model_fields_set:
+        if self.policy_backend is None:
             self.policy_backend = PolicyBackend.AUTOMODEL if self.finetuning_type == "lora" else PolicyBackend.DTENSOR
         return self
 
