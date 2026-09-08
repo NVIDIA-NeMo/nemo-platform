@@ -2036,22 +2036,14 @@ def _with_probe_detail(message: str, resp: httpx.Response) -> str:
 def _catalog_model_ids(resp: httpx.Response) -> list[str]:
     """Return model ids from an OpenAI-shaped ``GET /v1/models`` body."""
     try:
-        payload = resp.json()
+        ids: list[str] = []
+        for item in resp.json()["data"]:
+            model_id = item["id"]
+            if isinstance(model_id, str) and model_id.strip():
+                ids.append(model_id.strip())
+        return ids
     except Exception:
         return []
-    if not isinstance(payload, dict):
-        return []
-    data = payload.get("data")
-    if not isinstance(data, list):
-        return []
-    ids: list[str] = []
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        model_id = item.get("id")
-        if isinstance(model_id, str) and model_id.strip():
-            ids.append(model_id.strip())
-    return ids
 
 
 def _nvidia_build_chat_candidates(model_ids: list[str]) -> list[str]:
@@ -2063,7 +2055,7 @@ def _nvidia_build_chat_candidates(model_ids: list[str]) -> list[str]:
 def _probe_status_result(resp: httpx.Response) -> KeyValidationResult:
     if resp.status_code in _KEY_REJECTED_STATUS_CODES:
         return KeyValidationResult(passed=False, message=_with_probe_detail(_KEY_REJECTED_MESSAGE, resp))
-    if 200 <= resp.status_code < 300:
+    if resp.is_success:
         return KeyValidationResult(passed=True, message="")
     return KeyValidationResult(
         passed=True,
@@ -2103,7 +2095,7 @@ def _nvidia_build_chat_probe(
             continue
         if chat_resp.status_code in _KEY_REJECTED_STATUS_CODES:
             return _probe_status_result(chat_resp)
-        if 200 <= chat_resp.status_code < 300:
+        if chat_resp.is_success:
             return KeyValidationResult(passed=True, message="")
         last_warning = _probe_status_result(chat_resp).message
     return KeyValidationResult(passed=True, message=last_warning)
@@ -2158,7 +2150,7 @@ def _validate_api_key(
         )
         if resp.status_code in _KEY_REJECTED_STATUS_CODES:
             return _probe_status_result(resp)
-        if 200 <= resp.status_code < 300:
+        if resp.is_success:
             if provider_name == "nvidia-build":
                 return _nvidia_build_chat_probe(host_url, headers, resp, timeout=timeout)
             return KeyValidationResult(passed=True, message="")

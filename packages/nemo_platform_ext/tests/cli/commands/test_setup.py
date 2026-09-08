@@ -2810,6 +2810,7 @@ class TestAutoModelPairSelection:
 def _http_response(status_code: int, json_body: dict | None = None, text: str = "") -> MagicMock:
     """Build a mock httpx response with explicit JSON/text, not MagicMock defaults."""
     mock_resp = MagicMock(status_code=status_code)
+    mock_resp.is_success = 200 <= status_code < 300
     if json_body is None:
         mock_resp.json.side_effect = ValueError("no json")
         mock_resp.text = text
@@ -2837,7 +2838,7 @@ class TestValidateApiKey:
     )
     def test_http_responses(self, provider_name, status_code, expected_passed):
         host_url = _KNOWN_PROVIDERS_BY_NAME[provider_name].host_url
-        mock_resp = MagicMock(status_code=status_code)
+        mock_resp = _http_response(status_code, {"data": [{"id": "nvidia/nemotron-3-nano-30b-a3b"}]})
         with patch(f"{self._MOD}.httpx.request", return_value=mock_resp):
             result = _validate_api_key(provider_name, host_url, "test-key")
         assert result.passed is expected_passed
@@ -2967,6 +2968,7 @@ class TestValidateApiKey:
     def test_custom_auth_header_format(self):
         """Anthropic-style 'X-Api-Key: {{ auth_secret }}' header should be constructed."""
         mock_resp = MagicMock(status_code=400)
+        mock_resp.is_success = False
         with patch(f"{self._MOD}.httpx.request", return_value=mock_resp) as mock_req:
             _validate_api_key(
                 "nvidia-build",
@@ -2981,6 +2983,7 @@ class TestValidateApiKey:
     def test_extra_headers_included(self):
         """default_extra_headers should be merged into the probe request."""
         mock_resp = MagicMock(status_code=400)
+        mock_resp.is_success = False
         extra = {"anthropic-version": "2023-06-01"}
         with patch(f"{self._MOD}.httpx.request", return_value=mock_resp) as mock_req:
             _validate_api_key(
