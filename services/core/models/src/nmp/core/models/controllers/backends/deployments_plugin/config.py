@@ -32,7 +32,7 @@ class DeploymentsPluginConfig(BaseModel):
         default_factory=dict,
         description="Platform-default nodeSelector applied to every k8s model deployment/job (all engines).",
     )
-    default_tolerations: list[dict[str, str]] = Field(
+    default_tolerations: list[dict[str, str | int]] = Field(
         default_factory=list,
         description="Platform-default pod tolerations applied to every k8s model deployment/job (all engines).",
     )

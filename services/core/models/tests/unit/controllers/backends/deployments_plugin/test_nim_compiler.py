@@ -297,7 +297,17 @@ def test_build_k8s_deployment_backend_config_applies_default_tolerations(engine:
     assert backend.k8s.tolerations[0].key == "gpu"
 
 
-def test_build_k8s_deployment_backend_config_default_tolerations_skipped_when_entity_tolerations_set() -> None:
+def test_build_k8s_deployment_backend_config_default_tolerations_accept_int_seconds() -> None:
+    # tolerationSeconds is an int on the plugin Toleration model, so the config-default
+    # toleration dict must permit integer values (not just strings).
+    view = DeploymentConfigView()
+    config = DeploymentsPluginConfig(
+        default_tolerations=[{"key": "gpu", "operator": "Exists", "effect": "NoExecute", "tolerationSeconds": 300}]
+    )
+    backend = build_k8s_deployment_backend_config("nim", view, config)
+    assert backend.k8s is not None
+    assert len(backend.k8s.tolerations) == 1
+    assert backend.k8s.tolerations[0].toleration_seconds == 300
     view = DeploymentConfigView(
         k8s_nim_operator_config=K8sNIMOperatorConfig(
             tolerations=[{"key": "entity", "operator": "Exists"}],
