@@ -938,3 +938,76 @@ def test_concurrent_rollout_batches_interleave_on_that_loop():
     results = [future.result(timeout=10) for future in futures]
 
     assert [len(batch) for batch in results] == [1, 1, 1, 1]
+
+def _capture_line(**overrides):
+    call = {"model_call_id": "c0", "status_code": 200, "started_at": 1.5, "completed_at": 1.75}
+    return json.dumps({**call, **overrides})
+
+
+def test_capture_is_enabled_so_a_rollout_records_per_call_timing(tmp_path):
+    # Set, not defaulted: a caller's global config that left observability off would produce traces
+    # with no per-call timing, which reads the same as a model that was never called.
+    config = {"observability_enabled": False}
+
+    runtime._apply_model_call_capture(config, str(tmp_path))
+
+    assert config["observability_enabled"] is True
+    assert config["model_call_capture_dir"] == str(tmp_path / runtime.MODEL_CALL_CAPTURE_SUBDIR)
+    assert (tmp_path / runtime.MODEL_CALL_CAPTURE_SUBDIR).is_dir()
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        ({"_ng_task_index": 0, "_ng_rollout_index": 1}, "0-1.capture.jsonl"),
+        ({"_ng_task_index": 0, "_ng_rollout_index": 1, "_ng_attempt_index": 0}, "0-1.capture.jsonl"),
+        ({"_ng_task_index": 0, "_ng_rollout_index": 1, "_ng_attempt_index": 2}, "0-1-a2.capture.jsonl"),
+        ({"_ng_task_index": 0}, None),
+        ({"_ng_task_index": True, "_ng_rollout_index": 1}, None),
+    ],
+)
+def test_capture_filename_follows_gyms_rollout_id(result, expected):
+    assert runtime._capture_filename(result) == expected
+
+
+def test_a_capture_is_read_back_onto_its_rollout(tmp_path):
+    (tmp_path / "0-1.capture.jsonl").write_text(f"{_capture_line()}\n", encoding="utf-8")
+
+    calls, spent = runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10_000)
+
+    assert [call["model_call_id"] for call in calls] == ["c0"]
+    assert spent > 0
+
+
+def test_a_capture_over_budget_is_dropped_whole_rather_than_truncated(tmp_path):
+    # Half a capture would project into a trace that looks complete while under-reporting the calls
+    # the agent actually made.
+    (tmp_path / "0-1.capture.jsonl").write_text(f"{_capture_line()}\n{_capture_line(model_call_id='c1')}\n")
+
+    calls, spent = runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10)
+
+    assert calls == []
+    assert spent == 0
+
+
+@pytest.mark.parametrize("body", ["", "{not json}\n", "[1, 2]\n"])
+def test_an_unreadable_capture_costs_the_timing_not_the_rollout(tmp_path, body):
+    (tmp_path / "0-1.capture.jsonl").write_text(body, encoding="utf-8")
+
+    assert runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10_000) == ([], 0)
+
+
+def test_a_missing_capture_is_not_an_error(tmp_path):
+    assert runtime._read_capture(str(tmp_path), {"_ng_task_index": 9, "_ng_rollout_index": 9}, budget=10_000) == ([], 0)
+
+
+def test_an_unwritable_work_path_disables_capture_rather_than_failing_the_host(tmp_path):
+    # Whether the work path is writable varies by sandbox provider. A host that refuses to start is
+    # a far worse outcome than one whose traces lack per-call timing.
+    unwritable = tmp_path / "file-not-a-dir"
+    unwritable.write_text("", encoding="utf-8")
+    config = {}
+
+    runtime._apply_model_call_capture(config, str(unwritable))
+
+    assert config == {}

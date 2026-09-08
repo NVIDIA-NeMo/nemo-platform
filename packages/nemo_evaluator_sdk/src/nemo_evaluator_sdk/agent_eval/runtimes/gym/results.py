@@ -203,6 +203,19 @@ def _capture_path(record: Mapping[str, Any], capture_dir: Path | None) -> Path |
     """
     if capture_dir is None:
         return None
+    name = capture_filename(record)
+    if name is None:
+        return None
+    path = capture_dir / name
+    return path if path.exists() else None
+
+
+def capture_filename(record: Mapping[str, Any]) -> str | None:
+    """Gym's capture filename for this rollout, or ``None`` when its indices do not name one.
+
+    The single definition of that name: the sandboxed runner writes captures under it and
+    :func:`_capture_path` reads them back, so the two cannot drift apart.
+    """
     task, rollout = record.get(NG_TASK_INDEX), record.get(NG_ROLLOUT_INDEX)
     if not isinstance(task, int) or not isinstance(rollout, int):
         return None
@@ -210,8 +223,7 @@ def _capture_path(record: Mapping[str, Any], capture_dir: Path | None) -> Path |
     attempt = record.get(NG_ATTEMPT_INDEX)
     if isinstance(attempt, int) and attempt > 0:
         rollout_id = f"{rollout_id}-a{attempt}"
-    path = capture_dir / f"{rollout_id}.capture.jsonl"
-    return path if path.exists() else None
+    return f"{rollout_id}.capture.jsonl"
 
 
 def _read_model_calls(capture_path: Path | None, *, trial_id: str) -> list[dict[str, Any]]:
