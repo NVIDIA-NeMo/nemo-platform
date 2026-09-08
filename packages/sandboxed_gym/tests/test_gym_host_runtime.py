@@ -302,6 +302,38 @@ def test_a_non_mapping_result_is_left_alone(result):
     assert runtime._with_row_identity(result, {"_ng_task_index": 1}) is result
 
 
+def test_a_caller_example_id_is_carried_onto_the_result():
+    """The case Gym's own indices cannot express: several examples under one task.
+
+    Both examples below share ``_ng_task_index``, so a consumer joining on it sees a duplicate
+    and cannot tell the two apart. ``SG_EXAMPLE_ID`` is what distinguishes them, and Gym never
+    sets it, so a result carries it only because this host copied it across.
+    """
+    rows = [
+        {"_ng_task_index": 4, runtime.SG_EXAMPLE_ID: 17},
+        {"_ng_task_index": 4, runtime.SG_EXAMPLE_ID: 18},
+    ]
+    results = [runtime._with_row_identity({"_ng_task_index": 4, "reward": 1.0}, row) for row in rows]
+
+    assert [result[runtime.SG_EXAMPLE_ID] for result in results] == [17, 18]
+    # Gym's own identity is passed through untouched, not displaced by the caller's.
+    assert [result["_ng_task_index"] for result in results] == [4, 4]
+
+
+def test_a_caller_example_id_returned_by_gym_is_not_overwritten():
+    """Same additive rule as the Gym indices: what came back wins over what went out."""
+    result = runtime._with_row_identity({runtime.SG_EXAMPLE_ID: 99}, {runtime.SG_EXAMPLE_ID: 17})
+
+    assert result[runtime.SG_EXAMPLE_ID] == 99
+
+
+def test_an_example_without_a_caller_id_gains_no_key():
+    """Existing callers stamp nothing, so their results must look exactly as they did before."""
+    result = runtime._with_row_identity({"reward": 1.0}, {"_ng_task_index": 4})
+
+    assert runtime.SG_EXAMPLE_ID not in result
+
+
 # --------------------------------------------------------------------------------------------
 # wheels-v1 dependency install
 # --------------------------------------------------------------------------------------------
