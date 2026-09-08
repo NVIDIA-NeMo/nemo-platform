@@ -1856,6 +1856,40 @@ def test_audit_generate_explains_missing_ethos_with_docs_link(tmp_path: Path) ->
     assert not out.exists()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="chmod-based unreadable-file check is POSIX-specific")
+def test_audit_generate_explains_unreadable_ethos_with_docs_link(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Ethos\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+    out = tmp_path / ".eval-author" / "audit.md"
+
+    ethos.chmod(0)
+    try:
+        result = _run_script(
+            _AUDIT_GENERATE,
+            "--ethos",
+            str(ethos),
+            "--items",
+            str(items),
+            "--out",
+            str(out),
+        )
+    finally:
+        ethos.chmod(0o600)
+
+    assert result.returncode == 1
+    assert result.stderr.startswith("Unreadable Ethos\n\n")
+    assert "needs a source of truth for how the agent is supposed to behave" in result.stderr
+    assert "Unreadable file:" in result.stderr
+    assert "Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in result.stderr
+    assert "Next steps:\n" in result.stderr
+    assert "- Fix read access for the Ethos file, then rerun this command." in result.stderr
+    assert "- Or pass a readable Ethos path with --ethos <path>." in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not out.exists()
+
+
 def test_audit_generate_rejects_missing_candidate_name_before_reconcile(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     before = audit.read_bytes()

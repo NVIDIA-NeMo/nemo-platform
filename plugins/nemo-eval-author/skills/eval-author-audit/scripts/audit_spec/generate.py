@@ -162,7 +162,10 @@ def _read_ethos(path: Path) -> bytes:
             "generate an audit coverage report.\n\n"
             f"Unreadable file: {path}\n"
             f"Error: {exc}\n\n"
-            f"Docs: {ETHOS_DOCS_URL}"
+            f"Docs: {ETHOS_DOCS_URL}\n\n"
+            "Next steps:\n"
+            "- Fix read access for the Ethos file, then rerun this command.\n"
+            "- Or pass a readable Ethos path with --ethos <path>."
         ) from exc
 
 
