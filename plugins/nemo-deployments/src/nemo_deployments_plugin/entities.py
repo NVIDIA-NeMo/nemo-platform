@@ -190,9 +190,29 @@ class DockerDeploymentConfig(BaseModel):
 class K8sDeploymentConfig(BaseModel):
     namespace: str | None = None
     service_account: str | None = Field(default=None, alias="serviceAccount")
+    node_selector: dict[str, str] = Field(default_factory=dict, alias="nodeSelector")
     tolerations: list[Toleration] = Field(default_factory=list)
     affinity: Affinity | None = None
+    topology_spread_constraints: list[dict[str, Any]] = Field(
+        default_factory=list,
+        alias="topologySpreadConstraints",
+        description=(
+            "Pod topology spread constraints applied to every Job/Deployment pod rendered "
+            "from this config. Each entry is a raw Kubernetes topologySpreadConstraint object "
+            "(maxSkew, topologyKey, whenUnsatisfiable, labelSelector, ...). k8s-only."
+        ),
+    )
     security_context: PodSecurityContext | None = Field(default=None, alias="securityContext")
+    pod_annotations: dict[str, str] = Field(
+        default_factory=dict,
+        alias="podAnnotations",
+        description=(
+            "Annotations stamped onto the pod-template metadata for every Job/Deployment "
+            "pod rendered from this config (e.g. an Istio native-sidecar annotation so a "
+            "mesh-injected proxy terminates when a puller Job's main container exits). "
+            "k8s-only; ignored on docker/openshell backends."
+        ),
+    )
 
     model_config = {"populate_by_name": True}
 

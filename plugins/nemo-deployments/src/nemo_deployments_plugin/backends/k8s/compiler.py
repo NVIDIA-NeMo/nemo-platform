@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
 
@@ -165,6 +165,7 @@ class CompiledWorkload:
     service_containers: tuple[Container, ...]
     secret_body: Any | None = None
     secret_name: str | None = None
+    pod_annotations: dict[str, str] = field(default_factory=dict)
 
 
 def _reraise_api_unless(exc: ApiException, *allowed_statuses: int) -> None:
@@ -430,6 +431,12 @@ def build_affinity(affinity: Affinity | None) -> Any | None:
     return _deserialize_k8s(payload, "V1Affinity")
 
 
+def build_topology_spread_constraints(constraints: list[dict[str, Any]]) -> list[Any]:
+    if not constraints:
+        return []
+    return [_deserialize_k8s(item, "V1TopologySpreadConstraint") for item in constraints if item]
+
+
 def build_pod_security_context(security_context: PodSecurityContext | None) -> Any | None:
     if security_context is None:
         return None
@@ -596,15 +603,22 @@ def compile_workload(
         tolerations = build_tolerations(k8s_config.tolerations)
         if tolerations:
             pod_spec_kwargs["tolerations"] = tolerations
+        if k8s_config.node_selector:
+            pod_spec_kwargs["node_selector"] = dict(k8s_config.node_selector)
         affinity = build_affinity(k8s_config.affinity)
         if affinity is not None:
             pod_spec_kwargs["affinity"] = affinity
+        topology_spread_constraints = build_topology_spread_constraints(k8s_config.topology_spread_constraints)
+        if topology_spread_constraints:
+            pod_spec_kwargs["topology_spread_constraints"] = topology_spread_constraints
         security_context = build_pod_security_context(k8s_config.security_context)
         if security_context is not None:
             pod_spec_kwargs["security_context"] = security_context
     effective_service_account_name = pod_service_account_name(config=config, k8s_config=k8s_config)
     if effective_service_account_name:
         pod_spec_kwargs["service_account_name"] = effective_service_account_name
+
+    pod_annotations = dict(k8s_config.pod_annotations) if k8s_config is not None else {}
 
     return CompiledWorkload(
         pod_spec_kwargs=pod_spec_kwargs,
@@ -613,6 +627,7 @@ def compile_workload(
         service_containers=tuple(config.containers),
         secret_body=secret_body,
         secret_name=secret_name,
+        pod_annotations=pod_annotations,
     )
 
 

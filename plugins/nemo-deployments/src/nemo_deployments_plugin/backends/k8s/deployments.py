@@ -125,7 +125,10 @@ def build_deployment_body(
             replicas=1,
             selector=k8s.client.V1LabelSelector(match_labels=selector_labels),
             template=k8s.client.V1PodTemplateSpec(
-                metadata=k8s.client.V1ObjectMeta(labels=pod_labels),
+                metadata=k8s.client.V1ObjectMeta(
+                    labels=pod_labels,
+                    annotations=compiled.pod_annotations or None,
+                ),
                 spec=k8s.client.V1PodSpec(**compiled.pod_spec_kwargs),
             ),
         ),
