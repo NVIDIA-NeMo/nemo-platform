@@ -17422,6 +17422,12 @@ components:
           - type: string
           description: The source of the job.
           title: Source
+        spec:
+          description: Filter on a path within the job's plugin-defined spec, e.g.
+            `spec.target.format`.
+          title: Spec
+          additionalProperties: true
+          type: object
       title: PlatformJobsListFilter
       type: object
     PlatformSecretAccessResponse:
