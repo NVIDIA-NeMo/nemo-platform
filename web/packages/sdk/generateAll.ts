@@ -27,22 +27,28 @@ const MAX_PROCESSES_PATTERN = /^(\d+)(%)?$/;
 
 const services = Object.keys(serviceConfigs) as Array<keyof typeof serviceConfigs>;
 
+const availableParallelism = (): number =>
+  typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
+
 const defaultMaxProcesses = (): number => {
-  const availableParallelism =
-    typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
-  return Math.min(services.length, Math.max(MIN_SERVICE_PIPELINES, availableParallelism));
+  return Math.min(services.length, Math.max(MIN_SERVICE_PIPELINES, availableParallelism()));
 };
 
 const maxProcesses = (): string => {
   const configured = process.env[MAX_PROCESSES_ENV]?.trim();
   if (configured) {
     const match = configured.match(MAX_PROCESSES_PATTERN);
-    if (!match || Number(match[1]) < 1) {
+    const value = match ? Number(match[1]) : Number.NaN;
+    if (!match || value < 1) {
       throw new Error(
         `${MAX_PROCESSES_ENV} must be a positive count or percent, got "${configured}"`
       );
     }
-    return configured;
+
+    const configuredProcesses = match[2]
+      ? Math.round((availableParallelism() * value) / 100)
+      : value;
+    return String(Math.min(services.length, Math.max(1, configuredProcesses)));
   }
   return String(defaultMaxProcesses());
 };
