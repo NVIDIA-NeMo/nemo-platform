@@ -26,13 +26,15 @@ from ..shared_params.string_filter import StringFilter
 from .finetuning_type_filter_param import FinetuningTypeFilterParam
 from ..shared_params.datetime_filter import DatetimeFilter
 
-__all__ = ["ModelEntityFilterParam", "Adapters", "BaseModel", "Description", "Name"]
+__all__ = ["ModelEntityFilterParam", "Adapters", "BaseModel", "Description", "Fileset", "Name"]
 
 Adapters: TypeAlias = Union[FinetuningTypeFilterParam, bool]
 
 BaseModel: TypeAlias = Union[BaseModelFilterParam, bool, str]
 
 Description: TypeAlias = Union[StringFilter, str]
+
+Fileset: TypeAlias = Union[bool, str]
 
 Name: TypeAlias = Union[StringFilter, str]
 
@@ -55,8 +57,11 @@ class ModelEntityFilterParam(TypedDict, total=False):
     description: Description
     """Filter by description."""
 
-    fileset: str
-    """Filter by fileset reference in the form {workspace}/{fileset_name}."""
+    fileset: Fileset
+    """
+    Filter by fileset: true = has a fileset, false = no fileset, string = match
+    fileset reference in the form {workspace}/{fileset_name}.
+    """
 
     finetuning_type: Union[FinetuningType, bool]
     """Filter models that have been perviously finetuned."""

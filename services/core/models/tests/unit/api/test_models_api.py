@@ -252,6 +252,46 @@ def test_list_models_with_base_model_filter_name(client, mock_model_entity_servi
     assert parsed_filter.extract("data.base_model") == "llama-3"
 
 
+def test_list_models_with_fileset_filter_ref(client, mock_model_entity_service, sample_page):
+    """Test listing models filtered by fileset reference using $eq."""
+    mock_model_entity_service.list_model_entities.return_value = sample_page
+
+    response = client.get("/apis/models/v2/workspaces/nvidia/models?filter[fileset]=nvidia/my-fileset")
+
+    assert response.status_code == 200
+    call_args = mock_model_entity_service.list_model_entities.call_args
+    parsed_filter = call_args.kwargs["parsed_filter"]
+    assert parsed_filter.extract("data.fileset") == "nvidia/my-fileset"
+
+
+def test_list_models_with_fileset_filter_true(client, mock_model_entity_service, sample_page):
+    """Test listing models filtered by fileset=true → $not { data.fileset $eq null }."""
+    mock_model_entity_service.list_model_entities.return_value = sample_page
+
+    response = client.get("/apis/models/v2/workspaces/nvidia/models?filter[fileset]=true")
+
+    assert response.status_code == 200
+    call_args = mock_model_entity_service.list_model_entities.call_args
+    parsed_filter = call_args.kwargs["parsed_filter"]
+    assert parsed_filter.operation is not None
+    # Bool "true" is coerced to a not-null check
+    assert parsed_filter.operation.to_dict() == {"$not": {"data.fileset": {"$eq": None}}}
+
+
+def test_list_models_with_fileset_filter_false(client, mock_model_entity_service, sample_page):
+    """Test listing models filtered by fileset=false → data.fileset $eq null."""
+    mock_model_entity_service.list_model_entities.return_value = sample_page
+
+    response = client.get("/apis/models/v2/workspaces/nvidia/models?filter[fileset]=false")
+
+    assert response.status_code == 200
+    call_args = mock_model_entity_service.list_model_entities.call_args
+    parsed_filter = call_args.kwargs["parsed_filter"]
+    assert parsed_filter.operation is not None
+    # Bool "false" is coerced to a null check
+    assert parsed_filter.operation.to_dict() == {"data.fileset": {"$eq": None}}
+
+
 def test_list_models_with_name_filter(client, mock_model_entity_service, sample_page):
     """Test listing models with name filter using $like operator."""
     mock_model_entity_service.list_model_entities.return_value = sample_page

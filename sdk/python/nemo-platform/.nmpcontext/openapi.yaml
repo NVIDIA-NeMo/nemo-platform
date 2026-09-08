@@ -15569,9 +15569,12 @@ components:
           description: Filter by description.
           title: Description
         fileset:
-          description: Filter by fileset reference in the form {workspace}/{fileset_name}.
+          anyOf:
+          - type: boolean
+          - type: string
+          description: 'Filter by fileset: true = has a fileset, false = no fileset,
+            string = match fileset reference in the form {workspace}/{fileset_name}.'
           title: Fileset
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
