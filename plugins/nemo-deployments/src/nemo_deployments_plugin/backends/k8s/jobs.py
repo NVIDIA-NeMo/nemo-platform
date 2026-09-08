@@ -161,6 +161,7 @@ def build_job_body(
         executor_image_pull_secrets=executor_image_pull_secrets,
         secret_env=secret_env,
     )
+    pod_annotations = k8s_config.pod_annotations if k8s_config is not None else {}
     job = k8s.client.V1Job(
         api_version="batch/v1",
         kind="Job",
@@ -168,7 +169,7 @@ def build_job_body(
         spec=k8s.client.V1JobSpec(
             backoff_limit=job_backoff_limit(config),
             template=k8s.client.V1PodTemplateSpec(
-                metadata=k8s.client.V1ObjectMeta(labels=labels),
+                metadata=k8s.client.V1ObjectMeta(labels=labels, annotations=pod_annotations or None),
                 spec=k8s.client.V1PodSpec(**compiled.pod_spec_kwargs),
             ),
         ),

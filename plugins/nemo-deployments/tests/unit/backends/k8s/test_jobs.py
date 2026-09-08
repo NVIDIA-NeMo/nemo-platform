@@ -83,6 +83,25 @@ async def test_create_job_on_failure_uses_requested_restart_policy(
 
 
 @pytest.mark.asyncio
+async def test_create_job_applies_pod_annotations(
+    k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = sample_config(restart_policy="OnFailure")
+    mock_k8s_clients.batch_v1.create_namespaced_job.return_value = mock_job(restart_policy="OnFailure", active=1)
+
+    await k8s_backend.create_deployment(
+        workspace="default",
+        name="task",
+        config_name="config1",
+        labels={},
+        backend_config={"k8s": {"podAnnotations": {"sidecar.istio.io/inject": "false"}}},
+    )
+
+    body = mock_k8s_clients.batch_v1.create_namespaced_job.call_args.kwargs["body"]
+    assert body.spec.template.metadata.annotations == {"sidecar.istio.io/inject": "false"}
+
+
+@pytest.mark.asyncio
 async def test_create_job_emits_separate_command_and_args(
     k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
 ) -> None:

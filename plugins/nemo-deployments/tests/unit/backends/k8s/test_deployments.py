@@ -81,6 +81,25 @@ def test_build_in_cluster_endpoints_uses_cluster_dns() -> None:
     assert endpoints[0].url == f"http://{resource_name}.nemo-deployments.svc.cluster.local:8080"
 
 
+@pytest.mark.asyncio
+async def test_create_deployment_applies_pod_annotations(
+    k8s_backend, mock_k8s_clients: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = sample_always_config()
+    mock_k8s_clients.apps_v1.create_namespaced_deployment.return_value = mock_deployment()
+
+    await k8s_backend.create_deployment(
+        workspace="default",
+        name="task",
+        config_name="config1",
+        labels={},
+        backend_config={"k8s": {"podAnnotations": {"example.com/annotation": "value"}}},
+    )
+
+    body = mock_k8s_clients.apps_v1.create_namespaced_deployment.call_args.kwargs["body"]
+    assert body.spec.template.metadata.annotations == {"example.com/annotation": "value"}
+
+
 def test_build_in_cluster_endpoints_uses_tcp_scheme_for_udp() -> None:
     resource_name = k8s_deployment_resource_name("default", "task")
     container = (

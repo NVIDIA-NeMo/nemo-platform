@@ -17,6 +17,7 @@ from nemo_deployments_plugin.entities import (
     DockerVolumeConfig,
     EnvVar,
     HTTPGetAction,
+    K8sDeploymentConfig,
     K8sVolumeConfig,
     Probe,
     Volume,
@@ -69,6 +70,7 @@ from nmp.core.models.controllers.backends.vllm_compiler import (
 _WEIGHTS_MOUNT = "/model-store"
 _SCRATCH_MOUNT = "/scratch"
 _LORA_MOUNT = "/scratch/loras"
+_ISTIO_INJECT_ANNOTATION = "sidecar.istio.io/inject"
 # The adapters sidecar writes under the XDG base dirs: $XDG_STATE_HOME (default
 # ~/.local/state), $XDG_DATA_HOME (default ~/.local/share, via nmp_user_data_dir()),
 # and $XDG_CONFIG_HOME (default ~/.config). The pod runs it as the vLLM uid (2000),
@@ -300,6 +302,11 @@ def compile_model_deployment(
             env=_env(puller_env),
             volumeMounts=[VolumeMount(name=names.volume, mountPath=_WEIGHTS_MOUNT)],
         )
+        puller_backend_config = (backend_config or DeploymentBackendConfig()).model_copy(deep=True)
+        if resolved.runtime == Runtime.KUBERNETES:
+            if puller_backend_config.k8s is None:
+                puller_backend_config.k8s = K8sDeploymentConfig()
+            puller_backend_config.k8s.pod_annotations[_ISTIO_INJECT_ANNOTATION] = "false"
         puller_config = DeploymentConfig(
             name=names.puller,
             workspace=resolved.deployment.workspace,
@@ -307,7 +314,7 @@ def compile_model_deployment(
             labels=_labels(resolved, engine, "puller"),
             restartPolicy="OnFailure",
             backoffLimit=config.max_restart_count,
-            backendConfig=backend_config or DeploymentBackendConfig(),
+            backendConfig=puller_backend_config,
             workloadIdentity=workload_identity,
         )
 

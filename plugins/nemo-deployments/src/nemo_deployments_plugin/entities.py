@@ -190,6 +190,7 @@ class DockerDeploymentConfig(BaseModel):
 class K8sDeploymentConfig(BaseModel):
     namespace: str | None = None
     service_account: str | None = Field(default=None, alias="serviceAccount")
+    pod_annotations: dict[str, str] = Field(default_factory=dict, alias="podAnnotations")
     tolerations: list[Toleration] = Field(default_factory=list)
     affinity: Affinity | None = None
     security_context: PodSecurityContext | None = Field(default=None, alias="securityContext")

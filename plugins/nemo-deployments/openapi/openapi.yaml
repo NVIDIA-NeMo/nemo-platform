@@ -1177,6 +1177,11 @@ components:
         serviceAccount:
           title: Serviceaccount
           type: string
+        podAnnotations:
+          additionalProperties:
+            type: string
+          type: object
+          title: Podannotations
         tolerations:
           items:
             $ref: '#/components/schemas/Toleration'

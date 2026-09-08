@@ -117,6 +117,7 @@ def build_deployment_body(
         executor_image_pull_secrets=executor_image_pull_secrets,
         secret_env=secret_env,
     )
+    pod_annotations = k8s_config.pod_annotations if k8s_config is not None else {}
     deployment = k8s.client.V1Deployment(
         api_version="apps/v1",
         kind="Deployment",
@@ -125,7 +126,7 @@ def build_deployment_body(
             replicas=1,
             selector=k8s.client.V1LabelSelector(match_labels=selector_labels),
             template=k8s.client.V1PodTemplateSpec(
-                metadata=k8s.client.V1ObjectMeta(labels=pod_labels),
+                metadata=k8s.client.V1ObjectMeta(labels=pod_labels, annotations=pod_annotations or None),
                 spec=k8s.client.V1PodSpec(**compiled.pod_spec_kwargs),
             ),
         ),

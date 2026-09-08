@@ -45,6 +45,15 @@ def test_vllm_weighted_chain_has_on_failure_puller_and_always_server() -> None:
     assert compiled.server_config.containers[0].volume_mounts[0].read_only is True
 
 
+def test_k8s_weight_puller_disables_istio_injection_only_for_puller() -> None:
+    compiled = compile_model_deployment(_resolved("vllm"), DeploymentsPluginConfig())
+    assert compiled.puller_config is not None
+    assert compiled.puller_config.backend_config.k8s is not None
+    assert compiled.puller_config.backend_config.k8s.pod_annotations == {"sidecar.istio.io/inject": "false"}
+    assert compiled.server_config.backend_config.k8s is not None
+    assert compiled.server_config.backend_config.k8s.pod_annotations == {}
+
+
 def test_docker_weights_volume_requests_init_chmod() -> None:
     # Docker named volumes are root-owned with no fs_group, so the weights volume
     # must be made writable (chmod) for the non-root puller. The compiler requests
