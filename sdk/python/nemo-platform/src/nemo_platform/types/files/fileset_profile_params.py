@@ -30,9 +30,9 @@ class FilesetProfileParams(TypedDict, total=False):
     Rows the profiler may read per _partition_, divided across that partition's
     files rather than applied to each one. Omit (or pass 0) to read every row, which
     is the default: the profiler folds, so memory is flat in rows and an exhaustive
-    read buys exact row counts, proven value enumerations, and `rows_complete`. Set
-    a budget when the fileset is large enough that the transfer is the cost worth
-    bounding — files are read over the network, so an uncapped run pulls every row
-    group over the wire. Named to match the profiler's own `row_budget`, which is
-    the value this becomes.
+    read buys exact example counts, proven value enumerations, and
+    `examples_complete`. Set a budget when the fileset is large enough that the
+    transfer is the cost worth bounding — files are read over the network, so an
+    uncapped run pulls every row group over the wire. Named to match the profiler's
+    own `row_budget`, which is the value this becomes.
     """

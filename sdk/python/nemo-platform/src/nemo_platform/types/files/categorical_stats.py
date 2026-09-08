@@ -36,10 +36,11 @@ class CategoricalStats(BaseModel):
     distinct_count: int
     """How many distinct values the vocabulary holds.
 
-    Present only for a column that stayed a bounded vocabulary throughout -- absence
-    means the column is not one, not that counting was skipped. Exact over the rows
-    that were read; where the partition's `rows_complete` is false, a shard was
-    missed or a read was cut short, and this is a LOWER BOUND for the partition.
+    Always present when this block is -- it is the enclosing
+    `ColumnStats.categorical` whose absence says the column is not a vocabulary, not
+    this field. Exact over the rows that were read; where the partition's
+    `examples_complete` is false a shard was missed or a read was cut short, and
+    this is a LOWER BOUND for the partition.
     """
 
     values: Optional[List[str]] = None
@@ -51,7 +52,7 @@ class CategoricalStats(BaseModel):
     would store a sample of row content as though it were the whole vocabulary. A
     partition that lost a shard before it yielded a row still quotes: that file
     contributed nothing to measure, so the values gathered from the rest are entire,
-    and `rows_complete` reports the loss. This is the one place _column_ content
+    and `examples_complete` reports the loss. This is the one place _column_ content
     reaches the stored profile under a role gate rather than a size gate, since
     cardinality inverts on small data, where every column looks like an enumeration.
     It is not the only place row content reaches the profile: see

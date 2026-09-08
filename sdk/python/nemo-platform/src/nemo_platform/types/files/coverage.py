@@ -34,8 +34,11 @@ class Coverage(BaseModel):
 
     The dataset-wide question is one expression away, and still says which half failed::
 
-        all(p.rows_complete for p in profile.partitions) and not profile.file_errors
+        all(p.examples_complete for p in profile.partitions) and not profile.file_errors
     """
+
+    examples_scanned: int
+    """Total examples actually parsed across all files."""
 
     files_present: int
     """
@@ -53,9 +56,6 @@ class Coverage(BaseModel):
     failed, and those are on `file_errors`.
     """
 
-    rows_scanned: int
-    """Total rows actually parsed across all files."""
-
     bytes_present: Optional[int] = None
     """
     On-disk bytes of every data file the fileset holds, whether or not this run
@@ -65,9 +65,9 @@ class Coverage(BaseModel):
     reaches a partition.
     """
 
-    rows_present: Optional[int] = None
+    examples_present: Optional[int] = None
     """
     How many rows the fileset holds, scanned or not -- the denominator
-    `rows_scanned` is a fraction of. None once any file's count is unknown, since a
-    total that omits it would read low as though it were a fact.
+    `examples_scanned` is a fraction of. None once any file's count is unknown,
+    since a total that omits it would read low as though it were a fact.
     """

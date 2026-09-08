@@ -80,8 +80,12 @@ class SplitProfile(BaseModel):
     size_bytes: Optional[int] = None
     """On-disk bytes of this split's files, summed.
 
-    Answers whether the data fits wherever the reader means to put it, which a row
-    count cannot: a row ranges from an integer score to a reasoning trace. Never
-    None, since it comes from the file listing rather than from reading. Bytes as
-    stored -- compressed, and several times this once decoded.
+    Answers whether the data fits wherever the reader means to put it, which an
+    example count cannot: an example ranges from an integer score to a reasoning
+    trace. Never None, since it comes from the file listing rather than from
+    reading. Bytes as stored -- compressed, and several times this once decoded.
+
+    Deliberately NOT named `num_bytes` despite the HF card spelling it that way
+    beside `num_examples`: there it means the decoded in-memory size and here it
+    means the bytes on disk, so borrowing the name would import the wrong quantity.
     """

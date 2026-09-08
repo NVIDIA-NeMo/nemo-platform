@@ -24,9 +24,32 @@ __all__ = ["MessageStats"]
 
 
 class MessageStats(BaseModel):
-    """Measurements for a ``messages`` column (a list of ``{role, content}``)."""
+    """
+    Measurements for a ``messages`` column: a list of turns, each a role and its content.
 
-    content_chars: Quantiles
+    Both on-disk spellings are read -- ``{role, content}`` and ShareGPT's ``{from, value}`` -- and
+    reported the same way here, so a consumer never has to know which one the file used. What the
+    file called them survives in `roles_seen`, verbatim.
+    """
+
+    content_code_points: Quantiles
+    """A per-row distribution summary.
+
+    p99 = long-tail sequence-length signal; max = hard cap.
+
+    The shape is the point, not the precision. Mean and max cannot tell "uniformly
+    medium-length" apart from "mostly short with a long tail", and those call for
+    opposite sequence budgets.
+
+    **p50 / p95 / p99 are estimates, within a couple of percent**, read off counters
+    bucketed by magnitude rather than off the lengths themselves. Every row is
+    counted, so the _rank_ is exact; only the value is rounded.
+
+    **`max` is exact**, always, and is the only number here safe to treat as a hard
+    bound.
+    """
+
+    content_utf8_bytes: Quantiles
     """A per-row distribution summary.
 
     p99 = long-tail sequence-length signal; max = hard cap.
@@ -67,8 +90,21 @@ class MessageStats(BaseModel):
     """
 
     valid_alternation_rate: float
+    """
+    Fraction of rows whose turns alternate between the asking and answering roles,
+    ignoring any leading system turns. A low rate means a chat template will not
+    apply cleanly -- consecutive turns from one role, or a conversation that opens
+    on the responder.
+    """
 
     has_tool_calls: Optional[bool] = None
+    """
+    True when ANY row of this column carried a tool call -- a `tool_calls` key on a
+    turn, or a turn whose role is `tool`. A column-level OR, not a rate: one
+    tool-calling row is enough, because the question it answers is whether the
+    backend must support tool use at all. False means none was seen in what was
+    read, which where `examples_complete` is false is not the same as none existing.
+    """
 
     roles_seen: Optional[List[str]] = None
     """The distinct role strings present in the sampled rows -- e.g.

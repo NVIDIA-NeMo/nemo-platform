@@ -31,7 +31,7 @@ class ColumnStats(BaseModel):
     Measurements for one top-level column (keyed by name in ``PartitionProfile.stats``).
 
     The kind-specific block is populated by dtype, and deep measurements fold into it (e.g.
-    ``MessageStats.content_chars``) so stats stay flat -- no path addressing to drift against the
+    ``MessageStats.content_code_points``) so stats stay flat -- no path addressing to drift against the
     schema tree. Almost never row values: the two exceptions are ``categorical.values``, gated on
     role, and ``messages.roles_seen``, gated on nothing but bounded in count and in length.
     """
@@ -49,12 +49,33 @@ class ColumnStats(BaseModel):
     """
 
     messages: Optional[MessageStats] = None
-    """Measurements for a `messages` column (a list of `{role, content}`)."""
+    """
+    Measurements for a `messages` column: a list of turns, each a role and its
+    content.
+
+    Both on-disk spellings are read -- `{role, content}` and ShareGPT's
+    `{from, value}` -- and reported the same way here, so a consumer never has to
+    know which one the file used. What the file called them survives in
+    `roles_seen`, verbatim.
+    """
 
     null_rate: Optional[float] = None
+    """Fraction of rows where this column was null or absent.
+
+    Distinguishes a role that is optional in this dataset from one that is always
+    carried, which decides whether a consumer can rely on it.
+    """
 
     numeric: Optional[NumericStats] = None
-    """Measurements for a numeric column."""
+    """
+    Measurements for a numeric column: the range a score column spans, and where it
+    sits in it.
+
+    Carried as `float` whatever the column's width, so an integer column wider than
+    2\\**\\**53 reports bounds that have lost their low bits. That is the score-column
+    case this exists for -- ratings, ranks, labels -- and never the id-like case,
+    which `CategoricalStats.distinct_count` is what identifies.
+    """
 
     text: Optional[TextStats] = None
     """Measurements for a `string` column."""

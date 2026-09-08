@@ -24,7 +24,24 @@ __all__ = ["TextStats"]
 class TextStats(BaseModel):
     """Measurements for a ``string`` column."""
 
-    chars: Quantiles
+    code_points: Quantiles
+    """A per-row distribution summary.
+
+    p99 = long-tail sequence-length signal; max = hard cap.
+
+    The shape is the point, not the precision. Mean and max cannot tell "uniformly
+    medium-length" apart from "mostly short with a long tail", and those call for
+    opposite sequence budgets.
+
+    **p50 / p95 / p99 are estimates, within a couple of percent**, read off counters
+    bucketed by magnitude rather than off the lengths themselves. Every row is
+    counted, so the _rank_ is exact; only the value is rounded.
+
+    **`max` is exact**, always, and is the only number here safe to treat as a hard
+    bound.
+    """
+
+    utf8_bytes: Quantiles
     """A per-row distribution summary.
 
     p99 = long-tail sequence-length signal; max = hard cap.

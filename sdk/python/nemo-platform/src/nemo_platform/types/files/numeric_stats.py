@@ -21,10 +21,24 @@ __all__ = ["NumericStats"]
 
 
 class NumericStats(BaseModel):
-    """Measurements for a numeric column."""
+    """
+    Measurements for a numeric column: the range a score column spans, and where it sits in it.
+
+    Carried as ``float`` whatever the column's width, so an integer column wider than 2**53 reports
+    bounds that have lost their low bits. That is the score-column case this exists for -- ratings,
+    ranks, labels -- and never the id-like case, which `CategoricalStats.distinct_count` is what
+    identifies.
+    """
 
     max: float
+    """Largest value observed."""
 
     mean: float
+    """Arithmetic mean over the values observed.
+
+    With `min` and `max` it separates a rating concentrated at one end from one
+    spread across the range, which a bare range cannot.
+    """
 
     min: float
+    """Smallest value observed."""

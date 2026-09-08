@@ -45,13 +45,7 @@ class PartitionProfile(BaseModel):
     _why_ they were assigned is recorded here.
     """
 
-    features: List["FeatureSchema"]
-    """
-    The row schema: measured layout plus detected role markers, derived de novo
-    (nested).
-    """
-
-    rows_complete: bool
+    examples_complete: bool
     """True => every row of every file in THIS partition was read.
 
     Only then can a consumer assert enum / required in a bridged JSON Schema, or
@@ -61,6 +55,12 @@ class PartitionProfile(BaseModel):
     exact -- that is a property of the number, and each one says so. Scoped to the
     partition, because a corrupt shard in one says nothing about the measurements in
     another.
+    """
+
+    features: List["FeatureSchema"]
+    """
+    The row schema: measured layout plus detected role markers, derived de novo
+    (nested).
     """
 
     splits: List[SplitProfile]

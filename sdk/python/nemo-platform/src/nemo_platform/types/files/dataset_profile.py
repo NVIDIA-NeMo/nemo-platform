@@ -55,10 +55,15 @@ class DatasetProfile(BaseModel):
     The dataset-wide question is one expression away, and still says which half
     failed::
 
-        all(p.rows_complete for p in profile.partitions) and not profile.file_errors
+        all(p.examples_complete for p in profile.partitions) and not profile.file_errors
     """
 
     created_at: datetime
+    """When this profile was computed, timezone-aware and UTC.
+
+    Says nothing about whether it still holds -- see the class docstring on why
+    there is no staleness marker.
+    """
 
     partitions: List["PartitionProfile"]
     """
@@ -71,10 +76,10 @@ class DatasetProfile(BaseModel):
     Every file the profiler could not fully use, from anywhere in the fileset,
     sorted by path. Files that read cleanly are counted rather than listed, so this
     is a findings list and not a manifest. A non-empty list does NOT by itself make
-    `rows_present` unknown: a file that failed part-way through the data keeps the
-    exact count its footer already declared. What unknows the total is a file whose
-    count could not be established at all -- one with no registered reader, or a
-    line-delimited file whose read fell short of its end.
+    `examples_present` unknown: a file that failed part-way through the data keeps
+    the exact count its footer already declared. What unknows the total is a file
+    whose count could not be established at all -- one with no registered reader, or
+    a line-delimited file whose read fell short of its end.
     """
 
     kind: Optional[Literal["dataset"]] = None
@@ -94,7 +99,11 @@ class DatasetProfile(BaseModel):
     """Semver of THIS contract (e.g. "1.0") — gates consumer compatibility."""
 
     profiler_info: Optional[Dict[str, object]] = None
-    """Free-form profiler metadata (name, version, git sha, timings)."""
+    """Free-form profiler metadata (name, version, git sha, timings).
+
+    The one untyped field here, so that recording a new diagnostic never needs a
+    contract bump; nothing may be REQUIRED to read it.
+    """
 
 
 from .partition_profile import PartitionProfile
