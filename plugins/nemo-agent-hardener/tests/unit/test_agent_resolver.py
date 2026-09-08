@@ -404,8 +404,8 @@ def test_network_mcp_servers_and_model_endpoints_are_allow_listed() -> None:
     }
 
     assert derive_egress(config) == [
-        "https://inference-api.nvidia.com/v1",
-        "https://ledger-tools.internal/mcp",
+        "inference-api.nvidia.com:443",
+        "ledger-tools.internal:443",
     ]
 
 

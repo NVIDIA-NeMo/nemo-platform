@@ -265,15 +265,24 @@ def derive_egress(agent_config: dict[str, Any]) -> list[str]:
             continue
         url = server.get("url")
         if isinstance(url, str) and "://" in url:
-            found.append(url)
+            found.extend(_egress_host_entries(url))
 
     models = agent_config.get("models")
     for model_cfg in models.values() if isinstance(models, dict) else ():
         base_url = model_cfg.get("base_url") if isinstance(model_cfg, dict) else None
         if isinstance(base_url, str) and "://" in base_url:
-            found.append(base_url)
+            found.extend(_egress_host_entries(base_url))
 
     return sorted(dict.fromkeys(found))
+
+
+def _egress_host_entries(url: str) -> list[str]:
+    """A `host[:port]` egress entry for *url* — the manifest's egress contract, not a full URL."""
+    parts = urlsplit(url)
+    if not parts.hostname:
+        return []
+    port = parts.port or {"http": 80, "https": 443}.get(parts.scheme.lower())
+    return [f"{parts.hostname}:{port}" if port else parts.hostname]
 
 
 def gateway_backend(base_url: str) -> dict[str, Any] | None:
