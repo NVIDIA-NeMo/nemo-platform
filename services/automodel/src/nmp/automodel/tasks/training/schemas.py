@@ -10,6 +10,7 @@ from nmp.automodel.app.jobs.training.schemas import (
     ModelConfig,
     OptimizerType,
     TrainingMetrics,
+    TrainingRecipe,
     TrainingResult,
     TrainingStepConfig,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "LoRAConfig",
     "ModelConfig",
     "OptimizerType",
+    "TrainingRecipe",
     "TrainingMetrics",
     "TrainingResult",
     "TrainingStepConfig",

@@ -528,6 +528,29 @@ def test_get_job_logs_with_page_cursor(mock_service_with_job_routes):
     )
 
 
+def test_get_job_logs_with_tail(mock_service_with_job_routes):
+    """Test get_job_logs with tail parameter."""
+    app, mock_jobs = mock_service_with_job_routes
+    client = TestClient(app)
+
+    mock_log_page = create_mock_log_page(num_logs=2, total=10, prev_page="prev_cursor_123")
+    mock_jobs.list_job_logs = AsyncMock(return_value=_cursor_page_resp(mock_log_page))
+
+    response = client.get("/v2/workspaces/default/test/jobs/test-job-123/logs?tail=2")
+
+    assert response.status_code == 200
+    response_data = response.json()
+    assert len(response_data["data"]) == 2
+    assert response_data["total"] == 10
+    assert response_data["prev_page"] == "prev_cursor_123"
+
+    mock_jobs.list_job_logs.assert_called_once_with(
+        workspace="default",
+        name="test-job-123",
+        query_params={"tail": 2},
+    )
+
+
 def test_get_job_logs_with_both_parameters(mock_service_with_job_routes):
     """Test get_job_logs with both limit and page_cursor parameters."""
     app, mock_jobs = mock_service_with_job_routes

@@ -20,7 +20,7 @@ If a user asks you to set up, try, build, evaluate, harden, or optimize an agent
 
 - DO NOT invoke any plugin-based skill, `/skill-name` slash command, or globally-installed assistant for these requests. The repo skills are authoritative. A globally-installed skill (brainstorming, planning, code-review, etc.) will give the wrong answer because it does not know NeMo.
 - DO NOT brainstorm a solution from scratch when a NeMo skill claims the task. The skill already has the answer.
-- DO NOT write Python, Pydantic AI, LangChain, or any agent framework code from scratch. NeMo Platform uses the NVIDIA NeMo Agent Toolkit (NAT) under the hood. Skills will tell you the right way to wire your agent.
+- DO NOT write Python, Pydantic AI, LangChain, or other agent framework code from scratch when a shipped skill covers the request. Skills will tell you the supported way to connect the agent to NeMo Platform. For a new agent build, `nemo-build-agent` uses LangChain Deep Agents through Fabric. Work on a NAT workflow only when the user explicitly asks to maintain or migrate an existing one.
 - DO NOT improvise CLI flags. Only use flags documented in the skill or shown in `nemo <subcommand> --help`.
 - DO NOT report a task complete if you cannot verify it. If a verification step fails or times out, surface what you saw and ask the user to confirm before continuing.
 
@@ -32,7 +32,7 @@ User-facing skills in `packages/nemo_platform_ext/src/nemo_platform_ext/skills/`
 - `setup`: verifies that NeMo Platform is installed and running. If install is missing, tells the user how to run the CLI install (`make bootstrap` + `nemo setup`). **Install itself is CLI-only.** Do not attempt to install NeMo via skill-driven pip; the workspace dependency graph and credential handling are not reliably automatable inside a sandbox.
 - `nemo-explore`: design conversation that feeds into an Ethos. Always confirms purpose, principles, and vision.
 - `nemo-ethos`: writes `agents/<name>-ethos/ETHOS.md` from explore output, then shows a gut-check of the agent.
-- `nemo-build-agent`: scaffolds NAT workflow YAML from the Ethos and deploys.
+- `nemo-build-agent`: builds a tested LangChain Deep Agent from an approved Ethos, then packages and registers it through Fabric.
 - `nemo-try-agent`: test a deployed agent or chat with a model.
 - `nemo-intake`: instrument agents, choose an ingest format, upload/query telemetry, and attach evaluator results.
 - `nemo-experiments-upload`: publish named evaluation runs and scores to the Experiments leaderboard.
@@ -56,9 +56,9 @@ NeMo Platform brings together NVIDIA NeMo libraries under one CLI, Python SDK, a
 - **Harden agents**: guardrails (content safety, jailbreak detection, PII redaction), auditor (red-teaming via garak), anonymizer (PII handling for training data).
 - **Evaluate agents**: evaluator (LLM-as-judge, deterministic, agentic, RAG benchmarks), Harbor-backed eval suites.
 - **Tune agents and models**: skill optimization, prompt/hyperparameter tuning, Switchyard model routing, and fine-tuning through Customizer.
-- **Build agents**: NeMo Agent Toolkit (NAT) for LangGraph-based agents. Broader framework support on the roadmap.
+- **Build and manage agents**: Fabric connects supported agent harnesses to NeMo Platform for packaging, deployment, testing, observation, and optimization.
 
-NeMo Platform optimizes LangGraph agents wrapped in NAT today. Other frameworks require a user-written NAT wrapper. Be honest about this when users ask.
+New agents should use an explicit Fabric configuration and a supported adapter. Existing NAT workflows can still be maintained when the user asks for that path. Do not create a NAT wrapper as the default way to bring a new agent into NeMo Platform.
 
 ---
 

@@ -158,6 +158,8 @@ export const ExperimentDetailRoute: FC = () => {
               </div>
               {group && (
                 <ExperimentDataView
+                  // The route does not remount between experiments; without this the next inherits this one's columns.
+                  key={group.id}
                   group={group}
                   paretoVisible={paretoVisible}
                   trendVisible={trendVisible}

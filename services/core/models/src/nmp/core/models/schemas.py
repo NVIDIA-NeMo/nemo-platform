@@ -4,7 +4,7 @@
 from abc import ABC
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Self, Union
 
 from jinja2 import Environment
 from jinja2 import nodes as jinja_nodes
@@ -19,7 +19,7 @@ from nmp.core.models.constants import (
     MODEL_REF_PATTERN_DESCRIPTION,
     is_valid_model_ref,
 )
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # NAME_PATTERN uses lookaround; rust-regex cannot compile it.
 ENTITY_NAME_CONFIG = ConfigDict(regex_engine="python-re")
@@ -156,7 +156,24 @@ class ModelSpec(BaseModel):
     context_size: Optional[int] = Field(None, description="Context window size")
     num_virtual_tokens: Optional[int] = Field(None, description="Number of virtual tokens for prompt tuning")
     is_chat: Optional[bool] = Field(None, description="Whether this is a chat model")
-    is_embedding_model: bool = Field(False, description="Whether this is an embedding model")
+    head_type: Literal["causal_lm", "embedding", "cross_encoder", "unknown"] = Field(
+        default="unknown",
+        description="Task-specific head persisted in the checkpoint.",
+    )
+    is_embedding_model: bool = Field(
+        False,
+        description="Deprecated compatibility alias for head_type == 'embedding'.",
+        json_schema_extra={"deprecated": True},
+    )
+
+    @model_validator(mode="after")
+    def _sync_head_type_and_embedding_alias(self) -> Self:
+        if self.head_type in ("causal_lm", "embedding", "cross_encoder"):
+            self.is_embedding_model = self.head_type == "embedding"
+            return self
+        if self.is_embedding_model:
+            self.head_type = "embedding"
+        return self
 
     # Basic model information
     checkpoint_model_name: str = Field(description="Checkpoint Model identifier or model path")
@@ -948,7 +965,7 @@ class Adapter(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
 
     @field_validator("model")
-    def validate_model(cls, v: str | None) -> str:
+    def validate_model(cls, v: str | None) -> str | None:
         if v is not None and not is_valid_model_ref(v):
             raise ValueError(MODEL_REF_PATTERN_DESCRIPTION)
         return v
@@ -1122,7 +1139,7 @@ class CreateAdapterRequest(CreateModelAdapterRequest):
     )
 
     @field_validator("model")
-    def validate_model(cls, v: str | None) -> str:
+    def validate_model(cls, v: str | None) -> str | None:
         if v is not None and not is_valid_model_ref(v):
             raise ValueError(MODEL_REF_PATTERN_DESCRIPTION)
         return v

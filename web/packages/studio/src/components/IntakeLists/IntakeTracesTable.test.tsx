@@ -27,6 +27,7 @@ describe('IntakeTracesTable', () => {
     });
 
     await screen.findByText('Answer customer policy question');
+    expect(screen.getAllByText('session-agent-run-001')).not.toHaveLength(0);
     expect(screen.getByText('Can I deploy this model in a private workspace?')).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -101,8 +102,8 @@ describe('IntakeTracesTable', () => {
 
     expect(await screen.findByText('Trace ID')).toBeInTheDocument();
     expect(screen.getByText('Started At')).toBeInTheDocument();
-    expect(screen.queryByText('Status')).not.toBeInTheDocument();
-    expect(screen.queryByText('Session ID')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Status')).not.toHaveLength(0);
+    expect(screen.getByText('Session ID')).toBeInTheDocument();
     expect(screen.queryByText('Evaluation Run ID')).not.toBeInTheDocument();
   });
   it('offers the intake skill and CLI when no traces have been ingested', async () => {

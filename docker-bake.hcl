@@ -128,7 +128,7 @@ variable "NEMO_RL_REPO" {
 # RL pins Gym as a git submodule (-> soluwalana/Gym over https), so Gym rides in with the RL git ADD
 # - no separate Gym pin needed.
 variable "NEMO_RL_REF" {
-  default = "874f94737d5358680607735e339a8c06c01495f7" # soluwalana/RL nmp/customizer
+  default = "eab835b111b78d90c3629b26af9b3f12dc0d0d29" # soluwalana/RL nmp/customizer
 }
 variable "RL_BASE_CONTEXT" {
   default = ""
@@ -718,6 +718,7 @@ target "nmp-gym-tasks-docker" {
   contexts = {
     nmp-python-base = "target:nmp-python-base"
     nmp-cpu-tasks   = "target:nmp-cpu-tasks-docker"
+    nmp-workspace   = "target:nmp-workspace"
   }
   cache-to   = maybe_registry_cache_to("nmp-gym-tasks")
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
@@ -734,6 +735,7 @@ target "nmp-gym-tasks-smoke-test" {
   contexts = {
     nmp-python-base = "target:nmp-python-base"
     nmp-cpu-tasks   = "target:nmp-cpu-tasks-docker"
+    nmp-workspace   = "target:nmp-workspace"
   }
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
   output     = ["type=cacheonly"]

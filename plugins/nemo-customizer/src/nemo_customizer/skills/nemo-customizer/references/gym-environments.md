@@ -127,6 +127,7 @@ So `--no-index` is real, but it is step 2 only. **A job is offline-clean only wh
 - everything the server's `requirements.txt` names, and their transitive deps;
 - **`nemo-gym` at exactly the version the training image reports** (below);
 - `ray[default]` and `openai` at the versions Gym pins as head-server deps — the sub-venv starts from `uv venv --seed`, so nothing is inherited from the image.
+- **`pip`** — `uv venv --seed` installs it into each new virtualenv *before* any `uv pip install` runs, resolving it like any other package. Without it in `wheels/` the seed step reaches for an index and the job fails with `Failed to install seed packages into virtual environment` / `No solution found when resolving: pip`. `uv venv` honours `UV_FIND_LINKS`, so vendoring the wheel is all that is needed. Python 3.13 seeds only `pip`.
 
 Completeness of `wheels/` is what makes a sandboxed run work. The format name alone does not.
 
@@ -485,7 +486,7 @@ pip download --dest my-env/wheels \
   --platform "manylinux_2_28_$ARCH" \
   --platform "manylinux_2_17_$ARCH" \
   --platform "manylinux2014_$ARCH" \
-  "nemo-gym==$GYM_VERSION" "ray[default]==$RAY_VERSION" "openai==$OPENAI_VERSION" \
+  "nemo-gym==$GYM_VERSION" "ray[default]==$RAY_VERSION" "openai==$OPENAI_VERSION" pip \
   -r resources_servers/my_env/requirements.txt
 uv run --package nmp-rl pi-to-gym-conversion --validate-only ./my-env
 ```

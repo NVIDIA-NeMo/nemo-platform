@@ -222,6 +222,9 @@ navigation:
               - page: SFT Customization Job
                 path: ../../customizer/tutorials/sft-customization-job.mdx
                 slug: sft-customization-job
+              - page: DPO Customization Job
+                path: ../../customizer/tutorials/dpo-customization-job.mdx
+                slug: dpo-customization-job
               - page: LoRA Customization Job
                 path: ../../customizer/tutorials/lora-customization-job.mdx
                 slug: lora-customization-job
@@ -361,16 +364,24 @@ navigation:
         contents:
           - page: Agents
             path: ../../studio/agents.mdx
+          - page: Custom Models
+            path: ../../studio/customization.mdx
           - page: Data Designer
             path: ../../studio/data-designer-build.mdx
           - page: Experiments
             path: ../../studio/experiments.mdx
+          - page: Insights
+            path: ../../studio/insights.mdx
+          - page: Model Evaluations
+            path: ../../studio/model-evaluations.mdx
           - page: Monitor
             path: ../../studio/monitor.mdx
           - page: Plugin UIs
             path: ../../studio/plugins.mdx
           - page: Guardrail Configs
             path: ../../studio/guardrails.mdx
+          - page: Traces
+            path: ../../studio/traces.mdx
           - page: Virtual Models
             path: ../../studio/virtual-models.mdx
       - section: Kubernetes Deployment
@@ -403,6 +414,7 @@ navigation:
                   - page: Volcano
                     path: ../../set-up/helm/volcano.mdx
                   - page: OpenSandbox
+                    slug: opensandbox
                     path: ../../set-up/helm/opensandbox.mdx
                   - page: OpenSandbox with Kata
                     slug: opensandbox-kata
@@ -494,6 +506,9 @@ navigation:
             contents:
               - page: Current Release
                 path: ../../about/release-notes/current-release.mdx
+              - page: v0.4.0
+                slug: release-0-4-0
+                path: ../../about/release-notes/release-0-4-0.mdx
               - page: v0.3.0
                 slug: release-0-3-0
                 path: ../../about/release-notes/release-0-3-0.mdx

@@ -515,7 +515,7 @@ def test_input_spec_accepts_stored_metric_reference() -> None:
         ],
         target=_runner_target("openai/gpt-5.4"),
     )
-    assert not isinstance(spec.tasks, TasksetRef)
+    assert isinstance(spec.tasks, list)
     assert isinstance(spec.tasks[0].metrics[0], MetricRef)
 
 
@@ -800,6 +800,67 @@ async def test_compile_gym_environment_adds_staging_step_before_evaluation(mocke
     assert evaluate_config["target"]["environment"] == "dev/custom-gym"
 
 
+async def test_compile_gym_environment_propagates_platform_sandbox_protocol(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        return_value="registry.example/nmp-gym-tasks:test",
+    )
+    _enable_fileset_sandbox(mocker)
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.platform_config.sandbox_server_protocol", "http")
+
+    compiled = await AgentEvalJob.compile(
+        workspace="dev",
+        spec=AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target()),
+        entity_client=object(),
+        job_name=None,
+        async_sdk=None,
+    )
+
+    evaluate = PlatformJobSpec.model_validate(compiled).steps[-1]
+    serialized_plan = next(
+        variable.value for variable in evaluate.environment or [] if variable.name == GYM_SANDBOX_PLAN_ENVVAR
+    )
+    assert serialized_plan is not None
+    plan = json.loads(serialized_plan)
+    assert plan["host_provider_options"] == {"connection": {"protocol": "http"}}
+
+
+async def test_compile_gym_environment_uses_host_commands_for_subprocess_profile(
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        return_value="registry.example/nmp-gym-tasks:test",
+    )
+    _enable_fileset_sandbox(mocker)
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.sandbox_host_provider", "docker")
+    evaluator_config = mocker.Mock()
+    evaluator_config.sandbox_host_provider = "docker"
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_evaluate.get_config",
+        return_value=evaluator_config,
+    )
+    _patch_execution_profiles(mocker, [SubprocessJobExecutionProfile()])
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target())
+
+    compiled = await AgentEvalJob.compile(
+        workspace="dev",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    assert [step.name for step in job_spec.steps] == ["stage-environment", "agent-evaluate"]
+
+    stage, evaluate = job_spec.steps
+    assert isinstance(stage.executor, SubprocessExecutionProvider)
+    assert stage.executor.command == ["python", "-m", "nemo_evaluator.tasks.stage_environment"]
+    assert isinstance(evaluate.executor, SubprocessExecutionProvider)
+    assert evaluate.executor.command == ["python", "-m", "nemo_evaluator.tasks.agent_evaluate"]
+
+
 async def test_compile_rejects_fileset_environment_when_sandboxing_is_disabled(mocker: MockerFixture) -> None:
     mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", None)
     mocker.patch(
@@ -828,7 +889,7 @@ async def test_compile_rejects_mismatched_job_and_sandbox_storage_pvcs(mocker: M
         return_value=None,
     )
     mocker.patch(
-        "nemo_evaluator.jobs.agent_evaluate.EvaluatorConfig",
+        "nemo_evaluator.jobs.agent_evaluate.get_config",
         return_value=EvaluatorConfig(
             sandboxed_gym_default=True,
             sandbox_cluster_capable=True,
@@ -850,6 +911,62 @@ async def test_compile_rejects_mismatched_job_and_sandbox_storage_pvcs(mocker: M
         await AgentEvalJob.compile(
             workspace="dev",
             spec=AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target()),
+            entity_client=object(),
+            job_name=None,
+            async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+        )
+
+
+async def test_compile_prefers_kubernetes_profile_for_opensandbox_fileset(mocker: MockerFixture) -> None:
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", None)
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        return_value="registry.example/nmp-gym-tasks:test",
+    )
+    _enable_fileset_sandbox(mocker)
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.sandbox_host_provider", "opensandbox")
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.sandbox_job_storage_pvc_claim", "jobs-pvc")
+    evaluator_config = mocker.Mock()
+    evaluator_config.sandboxed_gym_default = True
+    evaluator_config.sandbox_host_provider = "opensandbox"
+    evaluator_config.sandbox_job_storage_pvc_claim = "jobs-pvc"
+    mocker.patch("nemo_evaluator.jobs.agent_evaluate.get_config", return_value=evaluator_config)
+    _patch_execution_profiles(
+        mocker,
+        [
+            SubprocessJobExecutionProfile(profile="default"),
+            KubernetesJobExecutionProfile(
+                profile="default",
+                config=KubernetesJobExecutionProfileConfig(storage=KubernetesJobStorageConfig(pvc_name="jobs-pvc")),
+            ),
+        ],
+    )
+
+    compiled = await AgentEvalJob.compile(
+        workspace="dev",
+        spec=AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target()),
+        entity_client=object(),
+        job_name=None,
+        async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    assert all(not isinstance(step.executor, SubprocessExecutionProvider) for step in job_spec.steps)
+
+
+async def test_compile_marks_gym_profile_transport_failure_as_retryable(mocker: MockerFixture) -> None:
+    request = httpx.Request("GET", "http://jobs.test/v2/execution-profiles")
+    jobs_client = mocker.Mock()
+    jobs_client.get_execution_profiles = mocker.AsyncMock(
+        side_effect=NemoTransportError(httpx.ConnectError("profiles unavailable", request=request))
+    )
+    mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target())
+
+    with pytest.raises(PlatformJobDependencyUnavailableError, match="Jobs service is temporarily unavailable"):
+        await AgentEvalJob.compile(
+            workspace="dev",
+            spec=spec,
             entity_client=object(),
             job_name=None,
             async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
@@ -908,7 +1025,7 @@ async def test_resolve_gym_environment_qualifies_and_validates_purpose(mocker: M
     )
 
 
-async def test_resolve_gym_environment_rejects_native_v1(mocker: MockerFixture) -> None:
+async def test_resolve_gym_environment_accepts_native_v1(mocker: MockerFixture) -> None:
     response = mocker.Mock()
     response.data.return_value = SimpleNamespace(purpose=FilesetPurpose.ENVIRONMENT)
     listing = mocker.Mock()
@@ -934,12 +1051,14 @@ async def test_resolve_gym_environment_rejects_native_v1(mocker: MockerFixture) 
     files.download_file = mocker.AsyncMock(return_value=manifest)
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=files)
 
-    with pytest.raises(ValueError, match="native-v1 environment packages are not supported"):
-        await _resolve_gym_environment(
-            _gym_environment_target(),
-            workspace="dev",
-            async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
-        )
+    resolved = await _resolve_gym_environment(
+        _gym_environment_target(),
+        workspace="dev",
+        async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+    )
+
+    assert isinstance(resolved, GymRunnerTarget)
+    assert resolved.environment == FilesetRef(root="dev/custom-gym")
 
 
 async def test_resolve_gym_environment_rejects_wrong_purpose(mocker: MockerFixture) -> None:

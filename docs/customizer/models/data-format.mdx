@@ -175,31 +175,4 @@ Each line in your JSONL file must contain a JSON object with these required fiel
 }
 ```
 
-### SFT Legacy Conversational
-
-#### Required Schema
-
-Each line in your JSONL file must contain a JSON object with these required fields:
-
-- **`system`** (string): The system message that defines the assistant's role or behavior.
-- **`conversations`** (array of objects): The conversation turns between user and assistant.
-  - **`from`** (string): The role of the message sender (`User` or `Assistant`).
-  - **`value`** (string): The content of the message.
-
-#### Example Dataset Entry
-
-```json
-{
-  "system": "You are a helpful assistant.",
-  "conversations": [
-    {
-      "from": "User",
-      "value": "Choose a number that is greater than 0 and less than 2."
-    },
-    {
-      "from": "Assistant",
-      "value": "1"
-    }
-  ]
-}
-```
+The `system` plus `conversations: [{from, value}]` layout is **not** a supported SFT schema. Automodel detects chat data from a `messages` array (`role` / `content`), prompt/completion pairs, embedding triplets, or a custom two-column `prompt_template`. Convert conversational examples to [OpenAI Chat Model](#openai-chat-model) format before training; otherwise the job fails at start with `DatasetFormatError`.

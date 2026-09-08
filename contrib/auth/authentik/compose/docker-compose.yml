@@ -17,7 +17,15 @@ x-authentik-env: &authentik-env
 services:
   nemo:
     image: ${IMAGE_REGISTRY:-my-registry}/nmp-api:${BAKE_TAG:-local}
-    command: ["--host", "0.0.0.0", "--service-group", "core", "--controller-group", "core"]
+    command:
+      [
+        "--host",
+        "0.0.0.0",
+        "--services",
+        "auth,models,files,inference-gateway,jobs,secrets,entities,deployments",
+        "--controllers",
+        "jobs,models,entities,deployments",
+      ]
     # The local Docker jobs backend controls sibling workload containers through
     # the mounted host socket, which Docker Desktop exposes as root-owned.
     user: "0:0"
@@ -31,6 +39,8 @@ services:
       NMP_PLATFORM_SEED_MODEL_PROVIDER_ENABLED: "false"
       NMP_SECRETS_ALLOW_KEY_CREATION: "1"
       NEMO_JOBS_DEFAULT_DOCKER_NETWORK: ${AUTHENTIK_WORKLOAD_NETWORK_NAME:-authentik_workload}
+      NEMO_DEPLOYMENTS_DOCKER_NETWORK: ${AUTHENTIK_WORKLOAD_NETWORK_NAME:-authentik_workload}
+      NEMO_DEPLOYMENTS_DOCKER_ENDPOINT_MODE: network
       SSL_CERT_FILE: /etc/nmp/gateway-tls/tls.crt
       REQUESTS_CA_BUNDLE: /etc/nmp/gateway-tls/tls.crt
       AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD: ${AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD:-svc-nemo-token-secret-dev}

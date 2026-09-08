@@ -186,6 +186,7 @@ path = "README.md"
 pattern = '\[(.+?)\]\(((?!https?://)\S+?)\)'
 replacement = '[\1](https://github.com/stainless-sdks/nemo-platform-python/tree/main/\g<2>)'
 
+
 [tool.hatch.version]
 source = "nmp-dynamic-versioning"
 [tool.pytest.ini_options]

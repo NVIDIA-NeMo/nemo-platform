@@ -3,424 +3,252 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: nemo-build-agent
-description: End-to-end NeMo Platform agent implementation from an approved Ethos. Registers and deploys the agent, generates evaluation data, runs evaluation, and signs off. Use for full Ethos-to-deployed-agent work, including builds from an existing legacy NAT workflow.
+description: Use when a customer asks NeMo Platform to build, implement, package, register, or deploy a new agent from an idea or approved Ethos. Builds the supported LangChain Deep Agents shape through Fabric. Do not use for design-only work, focused agent.yaml editing, testing an existing deployment, onboarding an existing non-Deep-Agents agent, or maintaining NAT workflows.
 triggers:
   - nemo-build-agent
-  - build the agent
-  - create the agent
-  - deploy the agent
-  - scaffold the agent
-  - make me an agent
-  - build an agent on nemo
+  - build an agent
+  - implement the approved agent
+  - package the agent
+  - deploy the new agent
   - build from the agent Ethos
-  - ship the agent
-  - nemo build
-  - deploy my existing NAT agent
+  - onboard the new agent through Fabric
 not-for:
-  - nemo-agent-config (use for focused agent.yaml authoring or migration)
-  - nemo-explore (use to gather design before building)
-  - nemo-ethos (use to write the Ethos before building)
-  - nemo-try-agent (use to query an already deployed agent)
-  - nemo-setup (use to install the platform first)
-  - deploy-sandbox (use to deploy the built agent as a governed OpenShell sandbox)
-  - generic agent framework development outside NeMo Platform
+  - nemo-explore (use for design-only discovery)
+  - nemo-ethos (use to persist a design without implementation)
+  - nemo-agent-config (use for focused agent.yaml authoring or validation)
+  - nemo-try-agent (use to query an existing deployment)
+  - existing agent onboarding through another Fabric adapter
+  - migration or continued operation of NVIDIA NeMo Agent Toolkit workflows
 preconditions:
   - nemo_setup_complete
   - workspace_exists
   - provider_registered
-  - agents_plugin_available
-  - ethos_exists
-compatibility: nemo-platform >= 0.1.0; running platform; requires agents plugin; writes files under agents/; uses nemo-agents-spec-v1 by default and preserves NAT workflow YAML as a compatibility path; macOS or Linux; safe under sandbox.
-maturity: active
+compatibility: NeMo Platform >= 0.4.0; installs the optional NeMo Agents plugin when the user approves and verifies its supported Fabric Deep Agents adapter; Python and uv for local MCP projects; network access and provider credentials for live model tests; Docker for packaged custom code; macOS or Linux.
+maturity: beta
 license: Apache-2.0
 user-invocable: true
 allowed-tools: [Bash, Read, Write, Edit]
 ---
 
-# NeMo Platform agent build
+# Build a NeMo Platform agent
 
-Build a deployable NeMo Platform agent from an approved `ETHOS.md`. Use
-the Platform-managed `nemo-agents-spec-v1` `agent.yaml` path by default. Treat
-NAT workflow YAML as a supported compatibility path, not the default output.
+Build a tested, config-driven LangChain Deep Agent and onboard it through the
+NeMo Platform Fabric path. Fabric owns runtime orchestration and constructs the
+agent from config. The optional NeMo Agents plugin supplies the Fabric harness
+adapters and their runtime dependencies. Customer code runs only when it is
+packaged as a config-referenced service such as MCP.
 
-Use `nemo-agent-config` for the machine-readable config shape. Do not expose
-Fabric SDK object names or raw runtime configuration to the user.
+## Explain the path in customer language
 
-## Select the config path
+Do not assume the user knows NeMo Platform, Fabric, Ethos, MCP or Agent Skills.
+Introduce each term only when it affects a decision.
 
-Choose the config path before pre-flight. Set shared names for either path:
+Before writing implementation files:
 
-```bash
-AGENT_NAME=<agent-name>
-DEPLOYMENT_NAME="${AGENT_NAME}-deployment"
-```
+1. Explain that an Ethos is a plain-language design contract for the agent. It
+   records who the agent serves, what it should accomplish, the tools and data
+   it may use, required approvals, forbidden actions, failure behavior and the
+   examples that will become tests. It is not code or deployment config.
+2. Explain that the Ethos will be drafted from the user's answers, shown for
+   review and revised until the user explicitly approves it. No implementation
+   begins before that approval.
+3. Explain that the supported build path uses the external LangChain Deep
+   Agents runtime. NeMo Platform does not vendor the customer's agent. The
+   optional NeMo Agents plugin installs the supported Fabric adapter and its
+   Deep Agents dependency. Fabric registers the agent and makes it available
+   for deployment, testing, observation and optimization in NeMo Platform.
+4. Explain executable tools only when the requested agent needs them: custom
+   code is exposed through MCP so the deployed agent can call it. Explain Agent
+   Skills only when an instruction package is the right artifact.
+5. Ask whether to continue with this supported path.
 
-If the user supplies an existing NAT workflow YAML, ask whether they want to
-deploy it unchanged or migrate it best-effort to `nemo-agents-spec-v1` with
-`nemo-agent-config`. For an unchanged NAT-only run, preserve the original file
-and also set:
+If the user declines, stop. Offer onboarding of an existing agent through an
+available Fabric adapter. Do not fall back to NAT.
 
-```bash
-NAT_WORKFLOW_PATH=<path-to-workflow-yaml>
-```
+## Approve and persist the design
 
-## Pre-flight
+Use `agents/<agent-name>-ethos/ETHOS.md` as the canonical design and package
+root. If an Ethos exists, summarize it in plain language and confirm that it is
+approved for this build. If it is absent or needs changes, gather the design
+inputs conversationally. Ask about the customer's work first and translate the
+answers into NeMo artifacts yourself:
 
-1. Run the platform probe owned by `nemo-status`. If it reports
-   `PLATFORM_DOWN` or `PLATFORM_WEDGED`, route to `nemo-setup` and stop.
-2. Confirm the agents plugin is loaded:
+- concrete role, users and outcomes;
+- tools, data, credentials and side effects;
+- constraints, approvals, forbidden actions and sensitive data handling;
+- five to ten representative tasks with expected outcomes;
+- mandatory ordering or transactional invariants.
 
-   ```bash
-   .venv/bin/nemo agents --help 2>&1 | grep -q "create"
-   ```
+Route unresolved design questions to `nemo-explore`. Then invoke `nemo-ethos`
+to render, validate and save `agents/<agent-name>-ethos/ETHOS.md`. Show the
+result and wait for explicit approval. Do not create implementation files before
+the Ethos is approved.
 
-3. Check for existing Agent entities and deployments. Ask whether to reuse or
-   replace them. Follow the lifecycle branches below before create or deploy.
-4. For an unchanged NAT-only run, confirm `$NAT_WORKFLOW_PATH` exists and read
-   it before continuing. Do not require `ETHOS.md` or an Ethos fileset.
-5. For the default Platform-managed path, confirm
-   `agents/$AGENT_NAME-ethos/ETHOS.md` exists. If it does not, route through
-   `nemo-explore` and `nemo-ethos` first. If
-   `agents/$AGENT_NAME-spec/AGENT-SPEC.md` exists instead, route to
-   `nemo-explore`.
-6. Read the Ethos and extract the agent name, instructions, capabilities,
-   model requirements, tools, constraints, and success criteria.
-7. Confirm the canonical Ethos fileset exists:
+## Confirm the build environment
 
-   ```bash
-   .venv/bin/nemo files filesets get "${AGENT_NAME}-ethos" \
-     --workspace "${WORKSPACE:-default}" >/dev/null 2>&1 \
-     && echo "ethos_fileset_ok" \
-     || { echo "ethos_fileset_missing - run nemo-ethos first"; exit 1; }
-   ```
+After the Ethos is approved and before creating implementation files, confirm
+the target workspace, environment, model provider, network access, credential
+availability and whether Docker deployment is available. Discover what can be
+read from the current environment instead of asking the user to supply NeMo
+specific details they may not know. Explain any missing prerequisite in terms
+of the capability it blocks.
 
-Steps 5 through 7 apply only to the default Platform-managed path or an explicit
-NAT migration.
+Check `nemo plugins list -f json` and `nemo agents --help`. Then inspect the
+active Python environment for `nemo_agents_plugin`,
+`nemo_fabric_adapters.deepagents` and `deepagents`. Do not infer that a harness
+is available from config acceptance alone.
 
-### Existing-resource lifecycle
-
-- **Reuse:** Do not run `agents create` for an existing Agent. If a deployment
-  already exists, set `DEPLOYMENT_NAME` to its name, do not run `agents deploy`,
-  and continue to the smoke test. If only the Agent exists, skip create and run
-  only the deploy command in Step 1.
-- **Replace:** Show each destructive command and require explicit confirmation
-  immediately before running it. Use `--yes` only after that confirmation. If
-  the resource does not exist, skip its command.
-
-For a confirmed replacement, undeploy first:
-
-```bash
-.venv/bin/nemo agents undeploy "$DEPLOYMENT_NAME" --yes
-```
-
-Wait until this command reports that the deployment is absent before
-continuing:
-
-```bash
-.venv/bin/nemo agents deployments get "$DEPLOYMENT_NAME"
-```
-
-Then show the Agent deletion command and require explicit confirmation before
+If the NeMo Agents plugin and Deep Agents harness are already available, reuse
+them. Do not reinstall or change their versions. If the plugin is absent,
+explain that agent management is optional in NeMo Platform and that this build
+requires it. Show the appropriate install command and ask for approval before
 running it:
 
-```bash
-.venv/bin/nemo agents delete "$AGENT_NAME" --yes
+- Published Platform install: `uv pip install "nemo-platform[nemo-agents-plugin]"`
+- NeMo Platform source checkout: `uv pip install -e plugins/nemo-agents/`
+
+The plugin owns selection of compatible Fabric adapter and harness versions.
+Do not add a separate Deep Agents version constraint. After installation,
+restart Platform services and repeat all four checks. If the plugin is present
+but its Deep Agents adapter or runtime is absent, report a broken plugin
+installation. Offer to reinstall the same Agents plugin only after approval.
+Do not install the harness independently as an untracked repair.
+
+## Choose supported artifacts
+
+Read [references/fabric-deep-agents.md](references/fabric-deep-agents.md).
+Select the smallest supported shape:
+
+- Put core behavior in `agent.yaml` instructions.
+- Use an Agent Skill for a reusable instruction package.
+- Use MCP for every executable custom tool.
+- Add a declarative subagent only for a distinct delegated task.
+- Put a safety or transactional sequence inside one deterministic MCP operation.
+
+Do not create `agent.py` as an agent entry point. Do not put Python callables or
+compiled local graphs into Deep Agents settings. Stop when a requirement cannot
+be expressed by the installed adapter contract.
+
+The current deployed Deep Agents path does not expose a verified end-to-end
+resume contract for runtime human approval. If the Ethos requires an in-run
+approve, edit or reject step, stop and report that adapter gap. Do not treat an
+accepted `interrupt_on` setting as proof that the deployed workflow can resume.
+
+## Build the project
+
+Keep the deployable project under `agents/<agent-name>-ethos/`. Create only the
+files required by the selected shape. For custom Python tools, use a `uv`
+project with a locked dependency set, a typed MCP server and a console script.
+Do not install dependencies globally. Do not add `deepagents` or a Fabric
+adapter to the generated project unless its own code directly imports that API.
+
+Give tools narrow schemas, bounded output, explicit permissions, capped retries
+for transient failures and redacted errors. Never write credentials, customer
+data or production traces into source, YAML, fixtures or logs.
+
+Use `nemo-agent-config` to author the canonical
+`agents/<agent-name>-ethos/agent.yaml`, but do not run its `nemo agents create`
+registration step. This build workflow owns registration after every
+pre-registration gate has passed. Require:
+
+```yaml
+config_format: nemo-agents-spec-v1
+default_harness: deepagents
+harnesses:
+  deepagents:
+    kind: deepagents
 ```
 
-Verify this command reports that the Agent is absent before running the create
-and deploy commands in Step 1:
-
-```bash
-.venv/bin/nemo agents get "$AGENT_NAME"
-```
-
-## Prepare the selected config
-
-### Default: Platform-managed `agent.yaml`
-
-For a new build, invoke `nemo-agent-config` and create:
-
-```txt
-agents/<agent-name>-ethos/
-  ETHOS.md
-  agent.yaml
-```
-
-Delegate authoring to `nemo-agent-config`. It selects the supported harness and
-uses `nemo-model-selection` to verify the exact model against that harness's
-model contract before writing the model block. Translate the approved Ethos into
-system instructions, skills, MCP servers, tools, environment paths, and
-telemetry. Keep every local path relative to the directory containing
+Use the model verified by `nemo-model-selection`. Validate every adapter setting
+against the installed descriptor. Keep referenced paths relative to
 `agent.yaml`.
 
-Before registration, inspect `skills.paths`:
+## Test before registration
 
-- If it is empty, continue with the normal deployment lifecycle below.
-- If it is non-empty, verify every relative directory is inside the agent
-  packaging context and contains `SKILL.md`. Package the complete bundle before
-  deployment:
+Read [references/testing-and-signoff.md](references/testing-and-signoff.md).
+Derive one acceptance case file from the approved Ethos and reuse it for local
+tests, deployed invocation and evaluation.
 
-  ```bash
-  IMAGE_TAG="${AGENT_NAME}:local"
-  .venv/bin/nemo agents package \
-    --agent "agents/$AGENT_NAME-ethos/agent.yaml" \
-    --tag "$IMAGE_TAG"
-  ```
+Require unit tests, MCP contract tests, behavioral tests and trajectory tests
+where tool choice, approval or order matters. Keep live model and integration
+tests separate. If credentials or network access are absent, record the exact
+live test as skipped. A skipped test is not evidence that the integration works.
 
-  Use the packaged-image deploy command below. Do not use subprocess deployment
-  or the default container image because those paths materialize only
-  `agent.yaml` and do not stage relative skill directories.
+Do not run production side effects as representative tests. Use mocks, a sandbox
+or a test tenant. Obtain explicit approval for any live action that can mutate a
+business system.
 
-### Compatibility: existing NAT workflow YAML
+Stop before registration when a required test, Fabric translation, plan,
+diagnostic or delivery reachability check fails.
 
-If the user selected migration, preserve the original YAML. If a workflow,
-tool, or custom Python component has no supported harness equivalent, keep the
-NAT path or identify the need for a custom adapter. Never claim arbitrary NAT
-workflows convert mechanically.
+## Package custom code
 
-Use `references/templates/agent.yml` only when the user explicitly chooses the
-legacy NAT path or needs a new NAT compatibility workflow.
+If the agent includes a local MCP server or another Python package, read
+[references/packaging.md](references/packaging.md). Inspect the entire build
+context for secrets and sensitive data, then package in project mode. Do not use
+`--skip-validation`.
 
-## Step 1: Register and deploy
+Use Docker deployment for packaged custom code. A subprocess deployment is only
+valid when every referenced executable is already installed on the Platform
+service `PATH`. Do not assume the generated project's virtual environment is
+visible to that service.
 
-For the default path:
+## Register and deploy
 
-For each operation retained by the selected lifecycle branch, follow the
-`nemo-agent-config` confirmation requirement. Show the create command and ask
-for explicit confirmation immediately before running it:
+Check for an existing Agent and deployment with the requested names. If either
+exists, offer reuse, rename or replace. Never overwrite or delete it without
+explicit approval immediately before the state change.
 
-```bash
-.venv/bin/nemo agents create \
-  --name "$AGENT_NAME" \
-  --agent-config "agents/$AGENT_NAME-ethos/agent.yaml"
-```
+Show the exact create and deploy commands and ask for approval immediately
+before running them. `nemo agents create` is both the final Fabric plan and
+doctor gate and the registration step; do not run it earlier solely to validate
+the config. Pass the confirmed workspace to both commands. If an
+AgentEnvironment was selected, pass its workspace-qualified reference to
+deployment. Verify registration by reading the Agent back in the same
+workspace. Verify deployment through the blocking command result and deployment
+status. On failure, inspect status and logs once, report the root error and
+stop.
 
-After create succeeds, show the deploy command and ask for explicit
-confirmation immediately before running it:
+## Verify onboarding
 
-```bash
-.venv/bin/nemo agents deploy \
-  --agent "$AGENT_NAME" \
-  --name "$DEPLOYMENT_NAME"
-```
+Invoke the named deployment with safe acceptance cases. Require non-empty
+responses, expected structured output and the required MCP tool calls. Exercise
+one denied action and one upstream failure without causing a production side
+effect.
 
-If `skills.paths` is non-empty, show this command instead and ask for explicit
-confirmation immediately before running it:
+Confirm Fabric telemetry reached the configured destination. When Intake is
+enabled, verify at least one trace with the expected agent, model and tool spans.
+Treat missing telemetry or unreachable tools as incomplete onboarding even when
+the final answer looks correct.
 
-```bash
-.venv/bin/nemo agents deploy \
-  --agent "$AGENT_NAME" \
-  --name "$DEPLOYMENT_NAME" \
-  --mode docker \
-  --image "$IMAGE_TAG"
-```
+Run `nemo-evaluator` only after invocation passes. Use the approved Ethos cases
+and thresholds. Report passed, failed and skipped checks separately.
 
-For Kubernetes, publish the packaged image and replace `docker` and
-`$IMAGE_TAG` with `k8s` and the published image tag.
+## Gotchas
 
-These commands assume the Agent and deployment are absent. If pre-flight found
-existing resources, complete the selected lifecycle branch before running them.
+- Fabric constructs the Deep Agent from `agent.yaml`; it never imports customer
+  `agent.py`.
+- Keep `ETHOS.md`, `agent.yaml` and packaged artifacts together under
+  `agents/<agent-name>-ethos/` so registration uploads one canonical bundle.
+- Custom Python code is deployable only when a declared MCP server or another
+  supported runtime surface can reach it.
+- Prompt instructions and subagent delegation do not guarantee fixed ordering.
+- Packaging copies the selected build context. Untracked secrets can enter an
+  image even when they are absent from committed files.
+- The optional NeMo Agents plugin supplies the selected harness adapter and its
+  runtime dependencies. Reuse an installed harness and let the plugin resolve
+  compatible versions.
+- Docker is the supported local container path. Treat Kubernetes as a separate
+  environment contract that must be verified.
 
-`nemo agents deploy` waits for `running` by default. If the user passed
-`--no-wait`, wait explicitly:
+## Stop conditions
 
-```bash
-.venv/bin/nemo agents deployments wait "$DEPLOYMENT_NAME"
-```
+Stop without registration or deployment when the Ethos is unapproved, the
+adapter cannot express a requirement, a required tool is unreachable, a local
+gate fails, a secret is present in the build context or Fabric validation fails.
 
-Show `agent.yaml` and the deployment result. Stop and ask whether the config,
-model, harness, and instructions look right before continuing.
+Stop without production-candidate status when a live test is skipped, telemetry
+is missing, a target integration is mocked or an Ethos threshold is unmet.
 
-For an unchanged NAT workflow, registration defaults configs without
-`config_format` to `nat-workflow-v1`:
-
-Apply the same immediate confirmation requirement. Show the create command and
-wait for explicit confirmation before running it:
-
-```bash
-.venv/bin/nemo agents create \
-  --name "$AGENT_NAME" \
-  --agent-config "$NAT_WORKFLOW_PATH"
-```
-
-After create succeeds, show the deploy command and wait for explicit
-confirmation before running it:
-
-```bash
-.venv/bin/nemo agents deploy \
-  --agent "$AGENT_NAME" \
-  --name "$DEPLOYMENT_NAME"
-```
-
-## Step 2: Try the deployed agent
-
-For the default path, invoke one question from each category in the Ethos
-`Scope` section (`Categories`). Do not invent a separate category heading. For
-an unchanged NAT-only run without an Ethos, use representative questions from the
-workflow and the user's stated requirements:
-
-```bash
-.venv/bin/nemo agents invoke \
-  --agent-deployment "$DEPLOYMENT_NAME" \
-  --input "<smoke-test question-1>"
-.venv/bin/nemo agents invoke \
-  --agent-deployment "$DEPLOYMENT_NAME" \
-  --input "<smoke-test question-2>"
-.venv/bin/nemo agents invoke \
-  --agent-deployment "$DEPLOYMENT_NAME" \
-  --input "<smoke-test question-3>"
-```
-
-Display each response verbatim. Stop and ask whether to adjust the agent or
-continue to evaluation.
-
-Before Step 3, branch explicitly:
-
-1. For an unchanged NAT-only run without `ETHOS.md`, stop after the smoke
-   test. Do not execute Steps 3–5 and do not require an evaluation fileset.
-2. Continue into the Ethos-driven purpose selection and Data Designer flow only
-   when the user requests it and `agents/$AGENT_NAME-ethos/ETHOS.md` exists.
-   If the user requests evaluation but the Ethos is absent, create and confirm
-   the Ethos first; do not continue to Step 3 yet.
-
-## Step 3: Generate synthetic data
-
-Use Data Designer for every synthetic dataset. Do not hand-author evaluation,
-knowledge-base, benchmark, persona, or training data.
-
-1. Always select evaluation as a required data purpose. Read
-   `agents/$AGENT_NAME-ethos/ETHOS.md` and list any additional plausible
-   purposes: knowledge/RAG corpus, benchmark, personas/adversarial inputs,
-   training, or another user-requested purpose.
-2. Wait for the user to choose any additional purposes. Evaluation cannot be
-   omitted. If they delegate the decision, add a knowledge base when the Ethos
-   requires retrieval and adversarial personas when it contains safety
-   constraints.
-3. Invoke `data-designer` once per selected purpose, passing the agent name,
-   purpose, and Ethos path.
-4. Require every generated config to read product context from
-   `ETHOS.md`; do not duplicate that context inline.
-5. Run each generated config. For evaluation, validate the generated records,
-   verify the resulting fileset exists, and record its exact dataset reference
-   as `EVAL_DATASET_REF`.
-6. Show 3 to 5 sample records per purpose and ask for approval.
-
-A validated `$AGENT_NAME-eval-*` fileset and its exact `EVAL_DATASET_REF` must
-exist before evaluation proceeds.
-
-## Step 3.5: Connect runtime data
-
-If the generated data must be available during invocation, connect it through
-the selected harness's supported skills, MCP, or tool configuration. Update
-`agents/$AGENT_NAME-ethos/agent.yaml` through `nemo-agent-config`, then follow the
-confirmed replacement branch before creating and deploying the Agent again.
-
-Do not invent a generic retriever field. If the selected harness cannot consume
-the required data, surface that limitation and choose a supported integration,
-the NAT compatibility path, or a custom adapter.
-
-For a legacy NAT workflow, NAT-specific retrievers may be wired into its
-`functions` and `workflow` blocks using the matching NAT RAG integration.
-
-After the replacement deployment, invoke a question that requires the data and
-verify the expected tool or retrieval path was actually used.
-
-## Step 4: Evaluate
-
-Select the actual Platform model reference as `EVAL_MODEL`. Create
-`agents/$AGENT_NAME.eval-job.json` from `references/templates/eval-job.json` and
-replace every placeholder. Its `model` must equal `EVAL_MODEL`, and its
-`dataset` must equal the recorded `EVAL_DATASET_REF` from Step 3.
-
-Validate the rendered file before creating the benchmark job:
-
-```bash
-.venv/bin/python -m json.tool "agents/$AGENT_NAME.eval-job.json" >/dev/null
-if grep -Eq '<[^>]+>' "agents/$AGENT_NAME.eval-job.json"; then
-  echo "eval job still contains template placeholders" >&2
-  exit 1
-fi
-```
-
-Also read the validated payload back and confirm its `model` and `dataset`
-values match `EVAL_MODEL` and `EVAL_DATASET_REF`. Do not invoke
-`benchmark-jobs create` if JSON validation, model validation, dataset
-validation, or fileset validation fails.
-
-After all validation succeeds:
-
-```bash
-.venv/bin/nemo evaluation benchmarks list
-.venv/bin/nemo evaluation benchmark-jobs create "$AGENT_NAME-eval" \
-  --input-file "agents/$AGENT_NAME.eval-job.json"
-```
-
-Poll until the job reaches `completed` or `failed`, then download aggregate
-scores. Show the score table and compare it with the success bar in
-`ETHOS.md`.
-
-```bash
-for i in $(seq 1 24); do
-  status=$(.venv/bin/nemo evaluation benchmark-jobs get-status "$AGENT_NAME-eval" 2>/dev/null)
-  echo "$status"
-  echo "$status" | grep -qE "completed|failed" && break
-  sleep 10
-done
-
-.venv/bin/nemo evaluation benchmark-jobs results aggregate-scores download \
-  "$AGENT_NAME-eval"
-```
-
-## Step 5: Guardrails (optional)
-
-For `nemo-agents-spec-v1`, `AgentConfig` has no guardrail field and the current
-skills do not define a supported composition between an Agent and an IGW
-guardrailed VirtualModel. Do not add guardrail fields to `agent.yaml` or claim
-that guardrails are attached. If the Ethos requires guardrails, report this as an
-unmet requirement and stop before sign-off. `nemo-guardrails` may be used to
-configure IGW VirtualModel middleware as a separate workflow, but do not treat
-it as integrated with the Agent until its model routing has been explicitly
-configured and validated.
-
-For a legacy NAT workflow, keep the NAT compatibility behavior: add supported
-guardrail `intercepts` to the NAT workflow YAML, then follow the confirmed
-replacement branch before creating and deploying it again. Never add NAT
-`intercepts` to a `nemo-agents-spec-v1` config.
-
-For the NAT path, test one adversarial prompt and one legitimate prompt. Report
-both responses and do not continue to sign-off until the expected policy is
-enforced without blocking the legitimate request.
-
-## Step 6: Sign off
-
-Invoke the success-criteria prompt from the Ethos against
-`$DEPLOYMENT_NAME`. Print the verbatim response as the formal sign-off. Do not
-claim success until the deployment is `running`, evaluation has completed, and
-the sign-off returns an actual model response.
-
-## If verification fails
-
-| Symptom | Cause | Recovery |
-|---|---|---|
-| Agents plugin unavailable | `plugins/nemo-agents` is not installed | Route to `nemo-setup` |
-| Config validation fails | Config does not match its declared format | Use `nemo-agent-config` for `nemo-agents-spec-v1`; use NAT schema rules only for NAT YAML |
-| Deployment reaches `failed` | Runtime, adapter, image, or config startup failure | Run `.venv/bin/nemo agents deployments get "$DEPLOYMENT_NAME"` and `.venv/bin/nemo agents logs "$DEPLOYMENT_NAME"` |
-| Referenced file is missing | Path is outside or absent from the staged agent directory | Keep paths relative to the config and package the complete agent bundle into the deployed image |
-| Adapter or binary is missing | Selected harness dependency is not installed | Install the matching adapter/runtime package or select an available harness |
-| Empty response | Runtime invocation failed or the selected configuration is incomplete | Inspect deployment logs and the returned structured error |
-| Eval job fails | Dataset reference or model ID is invalid | Get the benchmark job details and correct the named input |
-
-## Hard rules
-
-- Default new builds to `agents/$AGENT_NAME-ethos/agent.yaml` with
-  `config_format: nemo-agents-spec-v1`.
-- Keep `ETHOS.md` as the human-readable design and `agent.yaml` as the
-  machine-readable implementation config.
-- Preserve legacy NAT YAML unless the user explicitly requests migration.
-- Do not mix NAT-only keys such as `functions`, `llms`, `workflow`, or
-  `intercepts` into `nemo-agents-spec-v1`.
-- Do not put Platform `agent.yaml` fields into NAT workflow YAML.
-- Use a named deployment and invoke it with `--agent-deployment`.
-- Keep local artifact paths relative to the config directory.
-- After changing persisted Agent config, use the confirmed replacement branch
-  before creating and deploying it again.
+Call the result `Built`, `Onboarded` or `Production candidate` only according to
+the evidence levels in `references/testing-and-signoff.md`.

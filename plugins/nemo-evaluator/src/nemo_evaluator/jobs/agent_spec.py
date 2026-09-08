@@ -148,12 +148,14 @@ class GymRunnerTarget(BaseModel):
     kind: Literal["gym"] = "gym"
     environment: FilesetRef | None = Field(
         default=None,
-        description="Environment FileSet containing a wheels-v1 Gym package. "
+        description="Environment FileSet containing a native-v1 or wheels-v1 Gym package. "
         "The complete FileSet is staged read-only; file fragments are not supported.",
     )
     agent: str = Field(description="Agent name to collect rollouts with, e.g. 'simple_agent'.")
-    agent_config: str = Field(
-        description="Repo-relative agent config passed to `gym env start` (--config).",
+    agent_config: str | None = Field(
+        default=None,
+        description="Repo-relative built-in agent config. Required without an environment FileSet; "
+        "with a FileSet it is used only when the package does not declare the selected agent instance.",
     )
     resources_server: str = Field(
         description="Resources-server (environment) name, e.g. 'mcqa' (--resources-server).",
@@ -227,6 +229,12 @@ class GymRunnerTarget(BaseModel):
         if file_path:
             raise ValueError("environment FileSet references must not include a file fragment")
         return value
+
+    @model_validator(mode="after")
+    def _require_builtin_agent_config_without_environment(self) -> Self:
+        if self.environment is None and self.agent_config is None:
+            raise ValueError("The agent_config field is required when no environment FileSet is supplied")
+        return self
 
 
 #: The agent-runner slot of the target union — the spec-side mirror of ``AgentTaskRunner``, resolved

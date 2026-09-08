@@ -31,8 +31,8 @@ import {
 } from '@nemo/sdk/generated/platform/models';
 import {
   Engine,
+  type ContainerExecutorConfig,
   type CreateFilesetRequest,
-  type CreateModelDeploymentConfigRequest,
 } from '@nemo/sdk/generated/platform/schema';
 import {
   additionalEnvsFormToApi,
@@ -55,12 +55,21 @@ import { useCallback, useState } from 'react';
 
 type ReportStage = (message: string) => void;
 
-function createNimDeploymentConfigRequest(
-  request: Omit<CreateModelDeploymentConfigRequest, 'engine'>
-): CreateModelDeploymentConfigRequest {
+/**
+ * Image overrides for the engines that accept one.
+ *
+ * Blank is meaningful: the platform resolves the engine's own default image
+ * (model-agnostic for vLLM), so an empty field must be omitted rather than sent
+ * as an empty string.
+ */
+function imageOverrides(
+  values: WizardFormValues
+): Partial<Pick<ContainerExecutorConfig, 'image_name' | 'image_tag'>> {
+  const imageName = values.imageName?.trim();
+  const imageTag = values.imageTag?.trim();
   return {
-    ...request,
-    engine: Engine.nim,
+    ...(imageName ? { image_name: imageName } : {}),
+    ...(imageTag ? { image_tag: imageTag } : {}),
   };
 }
 
@@ -75,23 +84,22 @@ async function createNgcDeployment(
   const modelName = values.name.trim();
 
   reportStage('Creating deployment configuration…');
-  await modelsCreateDeploymentConfig(
-    workspace,
-    createNimDeploymentConfigRequest({
-      name: configName,
-      model_spec: {
-        model_name: modelName,
-        lora_enabled: values.loraEnabled,
-      },
-      executor_config: {
-        gpu: values.gpu,
-        image_name: values.imageName!.trim(),
-        image_tag: values.imageTag!.trim(),
-        disk_size: values.diskSize?.trim() || '50Gi',
-        ...(additionalEnvs ? { additional_envs: additionalEnvs } : {}),
-      },
-    })
-  );
+  await modelsCreateDeploymentConfig(workspace, {
+    name: configName,
+    // The NGC source deploys a NIM container by definition; it has no engine picker.
+    engine: Engine.nim,
+    model_spec: {
+      model_name: modelName,
+      lora_enabled: values.loraEnabled,
+    },
+    executor_config: {
+      gpu: values.gpu,
+      image_name: values.imageName!.trim(),
+      image_tag: values.imageTag!.trim(),
+      disk_size: values.diskSize?.trim() || '50Gi',
+      ...(additionalEnvs ? { additional_envs: additionalEnvs } : {}),
+    },
+  });
 
   reportStage('Creating deployment…');
   await modelsCreateDeployment(workspace, {
@@ -138,20 +146,20 @@ async function createHuggingFaceDeployment(
   });
 
   reportStage('Creating deployment configuration…');
-  await modelsCreateDeploymentConfig(
-    workspace,
-    createNimDeploymentConfigRequest({
-      name: configName,
-      model_spec: {
-        model_namespace: workspace,
-        model_name: modelEntityName,
-      },
-      executor_config: {
-        gpu: values.gpu,
-      },
-      model_entity_id: `${workspace}/${modelEntityName}`,
-    })
-  );
+  await modelsCreateDeploymentConfig(workspace, {
+    name: configName,
+    engine: values.engine,
+    model_spec: {
+      model_namespace: workspace,
+      model_name: modelEntityName,
+      lora_enabled: values.loraEnabled,
+    },
+    executor_config: {
+      gpu: values.gpu,
+      ...imageOverrides(values),
+    },
+    model_entity_id: `${workspace}/${modelEntityName}`,
+  });
 
   reportStage('Creating deployment…');
   await modelsCreateDeployment(workspace, {
@@ -194,20 +202,20 @@ async function createWorkspaceDeployment(
   }
 
   reportStage('Creating deployment configuration…');
-  await modelsCreateDeploymentConfig(
-    workspace,
-    createNimDeploymentConfigRequest({
-      name: configName,
-      model_spec: {
-        model_namespace: modelNamespace,
-        model_name: modelName,
-      },
-      executor_config: {
-        gpu: values.gpu,
-      },
-      model_entity_id: `${modelNamespace}/${modelName}`,
-    })
-  );
+  await modelsCreateDeploymentConfig(workspace, {
+    name: configName,
+    engine: values.engine,
+    model_spec: {
+      model_namespace: modelNamespace,
+      model_name: modelName,
+      lora_enabled: values.loraEnabled,
+    },
+    executor_config: {
+      gpu: values.gpu,
+      ...imageOverrides(values),
+    },
+    model_entity_id: `${modelNamespace}/${modelName}`,
+  });
 
   reportStage('Creating deployment…');
   await modelsCreateDeployment(workspace, {

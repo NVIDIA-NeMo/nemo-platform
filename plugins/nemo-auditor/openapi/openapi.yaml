@@ -550,6 +550,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response

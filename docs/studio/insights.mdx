@@ -1,0 +1,42 @@
+---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+title: "NeMo Studio Insights"
+description: "Review optimization insights generated from observed agent sessions."
+---
+
+Use **Observability > Insights** in the NeMo Studio workspace sidebar to review insights the analyst agent generates from observed agent sessions and traces.
+
+<Note>
+
+Insights is enabled by default. An administrator can disable it by setting `studio.feature_flags.optimizer_enabled: false` in the platform configuration and restarting Studio.
+
+</Note>
+
+## Insight List
+
+The Insights table shows each insight's status, title, source agent, number of observed traces, number of linked experiments, and creation and last-seen times. Select a row to open the insight's detail page.
+
+## Insight Detail
+
+The detail page shows the insight's status, source agent, description, and:
+
+| Section | Shows |
+| ------- | ----- |
+| Experiments | Experiments linked to this insight, with evaluation counts and last-updated times. Select a row to open that experiment. |
+| Traces | The observed sessions and traces that produced this insight. |
+
+Available actions depend on the insight's status:
+
+| Status | Available actions |
+| ------ | ------------------ |
+| Open | **Delete**, or **Resolve**. |
+| Resolved or Deleted | **Run experiment** — reopens the insight and shows a modal with the `nemo exp run` CLI command to start experiments for it. Studio doesn't launch the experiment for you; run the command yourself. |
+
+If the insight originated an experiment, that experiment's detail page links back here. See [NeMo Studio Experiments](/documentation/studio/experiments).
+
+## Related Topics
+
+- [NeMo Studio Experiments](/documentation/studio/experiments)
+- [Optimize Agents](/documentation/agents/optimize-agents)

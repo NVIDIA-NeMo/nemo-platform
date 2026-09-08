@@ -9,6 +9,22 @@ description: ""
 
 This section describes how to configure jobs in NeMo Platform. The Jobs service is responsible for scheduling batch jobs, collecting telemetry and managing job results.
 
+## Viewing Job Logs
+
+Use `nemo jobs get-logs` to inspect paginated job logs:
+
+```bash
+nemo jobs get-logs <job-name> --workspace default --limit 100
+```
+
+Use `nemo jobs tail` when you only need the newest lines from a long or running job:
+
+```bash
+nemo jobs tail <job-name> --workspace default -n 500
+```
+
+Both commands support `--attempt-id`, `--step-id`, and `--task-id` to narrow the log output.
+
 ## Execution Profiles
 
 You can configure jobs to run on different hardware by specifying an execution profile. This allows you to define different compute resources and job execution backends for different job types and use cases.

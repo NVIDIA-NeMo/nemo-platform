@@ -256,6 +256,15 @@ cpu-tasks = [
   "nmp-hello-world",
 ]
 
+# Task runtime for agent-evaluate jobs that orchestrate sandboxed Gym runs.
+# Keep this exact environment separate from cpu-tasks because it additionally
+# needs the Evaluator plugin and OpenSandbox SDK.
+gym-task-orchestrator = [
+  { include-group = "cpu-tasks" },
+  "nemo-evaluator-plugin",
+  "sandboxed-gym[opensandbox]",
+]
+
 # GPU task dependencies (for nmp-gpu-tasks container)
 # Services that have GPU-intensive batch tasks
 gpu-tasks = [

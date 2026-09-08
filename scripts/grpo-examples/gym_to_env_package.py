@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -201,6 +202,47 @@ def build_fork_wheel(gym_root: Path, wheels: Path, expect_version: str | None) -
     return target
 
 
+_NO_WHEEL_RE = re.compile(r"No matching distribution found for (\S+)")
+
+
+def _build_pure_wheel(requirement: str, wheels: Path) -> None:
+    """Build a wheel for a pin that publishes none, e.g. antlr4-python3-runtime.
+
+    Only pure-Python projects are safe to build here: the build host is not the target, so
+    anything compiling an extension would produce a wheel for the wrong platform.
+    """
+    before = set(wheels.glob("*.whl"))
+    subprocess.run(
+        [sys.executable, "-m", "pip", "wheel", "--no-deps", "--no-cache-dir", "--wheel-dir", str(wheels), requirement],
+        check=True,
+    )
+    for built in set(wheels.glob("*.whl")) - before:
+        if not built.stem.endswith("-py3-none-any") and not built.stem.endswith("-py2.py3-none-any"):
+            built.unlink()
+            raise SystemExit(
+                f"{requirement} has no wheel on the index and does not build a pure-Python one "
+                f"({built.name}). Building it here would target the build host, not the cluster."
+            )
+        print(f"Built from sdist: {built.name}", flush=True)
+
+
+def _download_with_sdist_fallback(download_cmd: list[str], wheels: Path, max_builds: int = 8) -> None:
+    """Run pip download, building any pin that publishes no wheel, then retrying."""
+    builds = 0
+    while True:
+        result = subprocess.run(download_cmd, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            return
+        sys.stderr.write(result.stderr)
+        match = _NO_WHEEL_RE.search(result.stderr)
+        if not match:
+            raise SystemExit("pip download failed; see the error above.")
+        if builds >= max_builds:
+            raise SystemExit(f"still missing wheels after building {max_builds} package(s).")
+        _build_pure_wheel(match.group(1), wheels)
+        builds += 1
+
+
 def vendor_wheels(
     out_dir: Path,
     gym_root: Path,
@@ -210,52 +252,104 @@ def vendor_wheels(
     ray_version: str,
     openai_version: str,
 ) -> Path:
-    """Resolve the closure from nemo-gym, Gym's head-server deps, and the server's requirements.
+    """Resolve and download the offline closure for the training nodes.
 
-    Gym appends ``ray[default]==`` and ``openai==`` (read from the Gym host process) to every
-    per-server venv install, and the venv is created with ``uv venv --seed``, so nothing carries
-    over from the image. Omitting them leaves the closure incomplete and the venv build reaches
-    for an index -- which fails on a cluster with no egress, the case wheels-v1 exists for.
+    Resolution and download are separate steps. ``uv pip compile --python-platform`` picks
+    the versions, because environment markers are evaluated during resolution: resolving on
+    the build host omits a linux-only dependency (sqlalchemy's greenlet) and can add a
+    darwin-only one. ``pip download`` then fetches exactly those pins for the target tags.
+
+    Beyond the server's own requirements the closure needs:
+
+    * ``nemo-gym[dev]`` at the image's version, built from ``gym_root`` so a fork is not
+      replaced by the same-versioned upstream release. The ``dev`` extra is required because
+      the image's own servers depend on it;
+    * ``ray[default]`` and ``openai`` at the image's versions, which Gym appends to every
+      per-server install;
+    * ``pip``, installed by ``uv venv --seed`` into each venv before anything else;
+    * ``setuptools`` and ``setuptools-scm``, Gym's ``build-system.requires``. Servers that
+      resolve to the Gym tree take uv's editable branch and build ``nemo-gym`` from source,
+      which needs a PEP 517 build environment.
     """
     wheels = out_dir / "wheels"
     # Rebuild from empty: pip copies by filename, so a wheel from an earlier run survives
-    # whenever the new resolution picks a different version, leaving two versions of one
-    # distribution and no guarantee about which gets installed.
+    # whenever the new resolution picks a different version.
     if wheels.exists():
         shutil.rmtree(wheels)
     wheels.mkdir(parents=True)
     fork_wheel = build_fork_wheel(gym_root, wheels, expect_version)
 
-    cmd = [
-        sys.executable,
-        "-m",
+    requirements = [
+        # The [dev] extra, not the bare wheel: servers that resolve into the Gym tree install
+        # `nemo-gym[dev]` (its own requirements.txt, and vllm_model's pyproject), so the
+        # closure has to cover pre-commit, mypy, ruff and the pytest set too.
+        f"nemo-gym[dev] @ file://{fork_wheel}",
+        f"ray[default]=={ray_version}",
+        f"openai=={openai_version}",
         "pip",
-        "download",
-        "--dest",
-        str(wheels),
-        "--no-cache-dir",
-        "--only-binary",
-        ":all:",
-        "--python-version",
-        TARGET_PYTHON_VERSION,
+        "setuptools>=61",
+        "setuptools-scm",
     ]
-    for tag in (f"manylinux_2_39_{arch}", f"manylinux_2_28_{arch}", f"manylinux_2_17_{arch}", f"manylinux2014_{arch}"):
-        cmd += ["--platform", tag]
-    cmd += [str(fork_wheel), f"ray[default]=={ray_version}", f"openai=={openai_version}"]
-    # The sub-venv is created with `uv venv --seed`, so everything the server imports must be
-    # present. Its own requirements.txt names those; the editable nemo-gym line is not a real
-    # requirement outside a checkout, and Gym rewrites it at spin-up.
     reqs = pkg_server_dir / "requirements.txt"
     if reqs.is_file():
-        kept = [ln for ln in reqs.read_text(encoding="utf-8").splitlines() if ln.strip() and "../.." not in ln]
-        if kept:
-            with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
-                fh.write("\n".join(kept) + "\n")
-            cmd += ["-r", fh.name]
-    print("Running:", " ".join(cmd), flush=True)
-    subprocess.run(cmd, check=True)
+        # The editable nemo-gym line is meaningless outside a checkout; Gym rewrites it.
+        requirements += [ln for ln in reqs.read_text(encoding="utf-8").splitlines() if ln.strip() and "../.." not in ln]
 
-    stray = [p.name for p in wheels.iterdir() if p.is_file() and p.suffix != ".whl"]
+    with tempfile.TemporaryDirectory(prefix="closure-") as tmp:
+        req_in = Path(tmp) / "requirements.in"
+        req_in.write_text("\n".join(requirements) + "\n", encoding="utf-8")
+        pinned = Path(tmp) / "requirements.txt"
+        compile_cmd = [
+            "uv",
+            "pip",
+            "compile",
+            str(req_in),
+            "--output-file",
+            str(pinned),
+            "--no-header",
+            # Ignore the ambient project's [tool.uv] policy, which would repin the closure.
+            "--no-config",
+            "--python-platform",
+            f"{arch}-unknown-linux-gnu",
+            "--python-version",
+            TARGET_PYTHON_VERSION,
+        ]
+        print("Running:", " ".join(compile_cmd), flush=True)
+        subprocess.run(compile_cmd, check=True)
+
+        download_cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "download",
+            "--dest",
+            str(wheels),
+            "--no-cache-dir",
+            "--only-binary",
+            ":all:",
+            # Pick up anything built from an sdist below.
+            "--find-links",
+            str(wheels),
+            "--python-version",
+            TARGET_PYTHON_VERSION,
+            # pip defaults this to the build host's interpreter; the target is CPython
+            # regardless of what runs this script. The ABI set is left to pip, which
+            # derives it from the implementation and version.
+            "--implementation",
+            "cp",
+        ]
+        for tag in (
+            f"manylinux_2_39_{arch}",
+            f"manylinux_2_28_{arch}",
+            f"manylinux_2_17_{arch}",
+            f"manylinux2014_{arch}",
+        ):
+            download_cmd += ["--platform", tag]
+        download_cmd += ["-r", str(pinned)]
+        print("Running:", " ".join(download_cmd), flush=True)
+        _download_with_sdist_fallback(download_cmd, wheels)
+
+    stray = [f.name for f in wheels.iterdir() if f.is_file() and f.suffix != ".whl"]
     if stray:
         raise SystemExit(f"wheels/ must contain only .whl files, got: {stray}")
     return wheels

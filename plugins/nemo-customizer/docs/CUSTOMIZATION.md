@@ -12,7 +12,7 @@ Implement `CustomizationContributor`:
 - `name` — must match the entry-point key (e.g. `automodel`)
 - `get_routers()` — `RouterSpec` list with a **unique** prefix under `v2/workspaces/{workspace}/<backend>/`
 - `get_cli()` — optional `typer.Typer` mounted at `nemo customization <name>`
-- `get_sdk_resources()` — optional sync/async resource classes for `client.customization.<name>` (do not register a separate `nemo.sdk` entry point; **`nemo-customizer-plugin`** owns `nemo.sdk` → `customization` and composes backends)
+- `get_sdk_resources()` — optional sync/async resource classes for `client.customization.<name>`; the Customizer hub constructs them with a typed Customizer SDK context that contains the typed Customizer client, typed Jobs client, and active workspace (do not register a separate `nemo.sdk` entry point; the Customizer hub owns `nemo.sdk` → `customization` and composes backends)
 
 ## pyproject.toml
 

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 from helpers import list_response, make_deployment, make_deployment_config
 from nemo_deployments_plugin.api.v2 import deployments as deployments_module
 from nemo_deployments_plugin.api.v2.dependencies import get_entity_client
-from nemo_deployments_plugin.entities import DeploymentConfig, Prerequisite
+from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Prerequisite
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 
@@ -130,3 +131,55 @@ def test_delete_deployment_conflict_409(client: TestClient, mock_entity_client: 
     mock_entity_client.update.side_effect = NemoEntityConflictError("conflict")
     resp = client.delete("/apis/deployments/v2/workspaces/default/deployments/dep1")
     assert resp.status_code == 409
+
+
+def test_create_deployment_ignores_raw_auth_context_headers(client: TestClient, mock_entity_client: AsyncMock) -> None:
+    mock_entity_client.get.return_value = make_deployment_config()
+    mock_entity_client.list.return_value = list_response([])
+
+    async def _create(deployment: Deployment) -> Deployment:
+        return deployment
+
+    mock_entity_client.create.side_effect = _create
+    resp = client.post(
+        "/apis/deployments/v2/workspaces/default/deployments",
+        json={"name": "dep1", "deployment_config": "cfg1"},
+        headers={
+            "X-NMP-Principal-Id": "user:alice",
+            "X-NMP-Principal-Email": "alice@example.com",
+            "X-NMP-Principal-Groups": "research,platform",
+        },
+    )
+
+    assert resp.status_code == 201
+    created = mock_entity_client.create.await_args.args[0]
+    assert created.auth_context is None
+
+
+def test_create_deployment_captures_runtime_auth_context(client: TestClient, mock_entity_client: AsyncMock) -> None:
+    mock_entity_client.get.return_value = make_deployment_config()
+    mock_entity_client.list.return_value = list_response([])
+
+    async def _create(deployment: Deployment) -> Deployment:
+        return deployment
+
+    mock_entity_client.create.side_effect = _create
+    with patch(
+        "nemo_deployments_plugin.api.v2.deployments.current_auth_context",
+        return_value=AuthContext(
+            principal_id="bearer@example.com",
+            principal_email="bearer@example.com",
+            principal_groups=["runtime"],
+        ),
+    ):
+        resp = client.post(
+            "/apis/deployments/v2/workspaces/default/deployments",
+            json={"name": "dep1", "deployment_config": "cfg1"},
+        )
+
+    assert resp.status_code == 201
+    created = mock_entity_client.create.await_args.args[0]
+    assert created.auth_context is not None
+    assert created.auth_context.principal_id == "bearer@example.com"
+    assert created.auth_context.principal_email == "bearer@example.com"
+    assert created.auth_context.principal_groups == ["runtime"]

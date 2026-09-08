@@ -12,6 +12,7 @@
 
 import { resourceRefSchema } from '@nemo/common/src/types';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
+import { Engine } from '@nemo/sdk/generated/platform/schema';
 import {
   modelsCreateDeploymentBodyNameMax,
   modelsCreateDeploymentBodyNameRegExp,
@@ -52,16 +53,66 @@ export const SOURCE_WORKSPACE = 'workspace' as const;
 export const WORKSPACE_PICKER_MODEL = 'model' as const;
 export const WORKSPACE_PICKER_FILESET = 'fileset' as const;
 
+/**
+ * Engines that need an explicit image.
+ *
+ * `vllm` resolves to a model-agnostic default server image, so leaving the image
+ * blank is safe. `nim` falls back to a model-specific NIM (Llama-3.1-8B today),
+ * which silently mismatches any other architecture, and `generic` has no
+ * compiler at all — both need the user to say which image to run.
+ */
+export const ENGINES_REQUIRING_IMAGE: readonly Engine[] = [Engine.nim, Engine.generic];
+
+export function engineRequiresImage(engine: Engine): boolean {
+  return ENGINES_REQUIRING_IMAGE.includes(engine);
+}
+
+/** Sources where the user picks the engine; NGC is a NIM container by definition. */
+export function sourceSupportsEngineChoice(source: WizardFormValues['source']): boolean {
+  return source === SOURCE_HF || source === SOURCE_WORKSPACE;
+}
+
 const additionalEnvRowSchema = z.object({
   key: z.string(),
   value: z.string().optional(),
 });
+
+/**
+ * Require an explicit image for engines whose default would otherwise be wrong.
+ *
+ * Only applies to the sources that expose an engine picker — the NGC source
+ * already requires an image unconditionally.
+ */
+function requireImageForEngine(
+  data: { engine: Engine; imageName?: string; imageTag?: string },
+  ctx: z.RefinementCtx
+): void {
+  if (!engineRequiresImage(data.engine)) return;
+
+  const label = data.engine === Engine.nim ? 'NIM' : 'generic';
+  if (!data.imageName?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Image name is required for the ${label} engine`,
+      path: ['imageName'],
+    });
+  }
+  if (!data.imageTag?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Image tag is required for the ${label} engine`,
+      path: ['imageTag'],
+    });
+  }
+}
 
 export const createDeploymentWizardSchema = z
   .object({
     source: z.enum([SOURCE_NGC, SOURCE_HF, SOURCE_WORKSPACE]),
     /** Base name: NGC NIM `model_name`, and API deployment/config become `<name>-deployment` / `<name>-config`. */
     name: wizardBaseNameSchema,
+    /** Inference engine. Ignored for the NGC source, which is always a NIM container. */
+    engine: z.nativeEnum(Engine),
     imageName: z.string().optional(),
     imageTag: z.string().optional(),
     gpu: z.coerce.number().int().min(1, 'At least 1 GPU'),
@@ -102,7 +153,9 @@ export const createDeploymentWizardSchema = z
           path: ['repoId'],
         });
       }
+      requireImageForEngine(data, ctx);
     } else {
+      requireImageForEngine(data, ctx);
       if (data.workspacePickerType === WORKSPACE_PICKER_MODEL) {
         if (!data.modelRef?.trim()) {
           ctx.addIssue({
@@ -140,6 +193,10 @@ export type WizardFormValues = z.infer<typeof createDeploymentWizardSchema>;
 export const defaultWizardValues = (): WizardFormValues => ({
   source: SOURCE_NGC,
   name: generateDefaultName(),
+  // vLLM serves any architecture from a model-agnostic default image, so it is
+  // the safe default for the sources that expose the picker. The NGC source
+  // overrides this to `nim` when building its request.
+  engine: Engine.vllm,
   imageName: '',
   imageTag: '',
   gpu: 1,

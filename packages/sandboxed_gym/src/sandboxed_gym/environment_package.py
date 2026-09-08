@@ -25,7 +25,6 @@ CUSTOM_AGENT_SUBDIR = "responses_api_agents"
 CUSTOM_RESOURCES_SERVER_SUBDIR = "resources_servers"
 #: Operator-owned Gym model configs. A customer FileSet that ships this tree is rejected.
 OPERATOR_MODEL_SUBDIR = "responses_api_models"
-NATIVE_V1_UNSUPPORTED_MESSAGE = "native-v1 environment packages are not supported; use a wheels-v1 package"
 
 
 class EnvironmentPackageError(ValueError):
@@ -111,7 +110,10 @@ _ENVIRONMENT_MANIFEST_ADAPTER = TypeAdapter(EnvironmentManifest)
 
 @dataclass(frozen=True)
 class NativeV1Package:
-    """Validated native source package. Parsed and layout-checked, then rejected at execution."""
+    """Validated source package whose dependencies resolve from a package index.
+
+    Validation checks its manifest and layout without importing customer code.
+    """
 
     root: Path
     manifest: NativeV1Manifest
@@ -167,7 +169,7 @@ def validate_environment_manifest_against_listing(
     entries = {path.removeprefix("./") for path in paths}
 
     # Model YAML is operator-owned (image + VirtualModel). A customer copy would silently
-    # shadow it once FileSet composition lands, so refuse it at submit.
+    # shadow it through Gym extra-root discovery, so refuse it at submit.
     customer_model_files = sorted(path for path in entries if path.startswith(f"{OPERATOR_MODEL_SUBDIR}/"))
     if customer_model_files:
         raise EnvironmentPackageError(
@@ -205,7 +207,8 @@ def validate_environment_manifest_against_listing(
 
     if not wheel_entries:
         raise EnvironmentPackageError(
-            f"{WHEELS_V1_FORMAT} installs environment dependencies from a non-empty {WHEELS_V1_SUBDIR}/ directory"
+            f"A {WHEELS_V1_FORMAT} package installs environment dependencies from a non-empty "
+            f"{WHEELS_V1_SUBDIR}/ directory"
         )
 
     non_wheels = [path for path in wheel_entries if not path.endswith(".whl")]
@@ -223,6 +226,160 @@ def duplicate_wheel_distributions(wheelhouse_path: Path) -> dict[str, list[str]]
         normalized_name = re.sub(r"[-_.]+", "-", parts[0]).lower()
         versions[normalized_name].append(parts[1])
     return {name: found for name, found in versions.items() if len(found) > 1}
+
+
+@dataclass(frozen=True)
+class EnvironmentComponents:
+    """Selectable instance names declared by top-level keys in package config files.
+
+    These names come only from config YAML; source-directory names are tracked
+    separately for collision detection.
+    """
+
+    agents: frozenset[str]
+    resources_servers: frozenset[str]
+
+
+@dataclass(frozen=True)
+class ComponentNamespaces:
+    """All names occupied during Gym discovery and config merging.
+
+    Each namespace includes config instance names and immediate source-directory
+    names because Gym can encounter both while resolving a component.
+    """
+
+    agents: frozenset[str]
+    resources_servers: frozenset[str]
+
+
+def inspect_environment_components(package: EnvironmentPackage) -> EnvironmentComponents:
+    """Return the component instances declared by the package's config files.
+
+    This reads only the YAML files named by the manifest and does not import customer
+    code. Duplicate instance names are rejected because Gym could not reliably choose
+    which config should define that instance. Customer model entries are also rejected
+    because model configuration belongs to the runtime image.
+    """
+    agents: set[str] = set()
+    resources_servers: set[str] = set()
+    for config_path in package.config_paths:
+        # A manifest may split its agent and resources-server declarations across several
+        # YAML files, so collect names across the whole package before checking uniqueness.
+        config_agents, config_resources_servers = _read_component_instances(
+            config_path,
+            reject_customer_models=True,
+        )
+        for name in config_agents:
+            _add_unique_component(agents, name, CUSTOM_AGENT_SUBDIR, config_path)
+        for name in config_resources_servers:
+            _add_unique_component(resources_servers, name, CUSTOM_RESOURCES_SERVER_SUBDIR, config_path)
+
+    return EnvironmentComponents(
+        agents=frozenset(agents),
+        resources_servers=frozenset(resources_servers),
+    )
+
+
+def inspect_environment_namespaces(
+    package: EnvironmentPackage,
+    *,
+    components: EnvironmentComponents | None = None,
+) -> ComponentNamespaces:
+    """Return every agent and resources-server name occupied by the package.
+
+    Gym uses both config instance names and component directory names during lookup.
+    Combining them lets callers detect cross-type collisions before Gym starts. Pass
+    ``components`` when the config files have already been inspected.
+    """
+    declared = components or inspect_environment_components(package)
+    # Directory names affect collision detection, but eval selection still uses the
+    # config-declared names held in EnvironmentComponents.
+    return ComponentNamespaces(
+        agents=frozenset({*declared.agents, *_component_directory_names(package.root, CUSTOM_AGENT_SUBDIR)}),
+        resources_servers=frozenset(
+            {
+                *declared.resources_servers,
+                *_component_directory_names(package.root, CUSTOM_RESOURCES_SERVER_SUBDIR),
+            }
+        ),
+    )
+
+
+def validate_environment_namespaces(package_namespaces: ComponentNamespaces) -> None:
+    """Reject a name that the package uses for both component types.
+
+    Gym merges these namespaces while discovering components. Allowing the same name
+    on both sides could load an agent when a resources server was requested, or vice
+    versa.
+    """
+    cross_type = sorted(package_namespaces.agents & package_namespaces.resources_servers)
+    if cross_type:
+        raise EnvironmentPackageError(
+            f"Component names cannot be used as both agents and resources servers: {', '.join(cross_type)}"
+        )
+
+
+def _component_directory_names(root: Path, component_type: str) -> set[str]:
+    """Return immediate child directories below a Gym component root.
+
+    Files, nested paths, and an absent component root do not occupy discovery names.
+    """
+    component_root = root / component_type
+    if not component_root.is_dir():
+        return set()
+    return {child.name for child in component_root.iterdir() if child.is_dir()}
+
+
+def _read_component_instances(
+    config_path: Path,
+    *,
+    reject_customer_models: bool,
+) -> tuple[set[str], set[str]]:
+    """Extract component instance names from one Gym config without importing it.
+
+    Each top-level mapping key is an instance name. Its nested keys identify whether
+    that instance configures an agent, a resources server, or another Gym component.
+    """
+    import yaml
+
+    try:
+        raw_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise EnvironmentPackageError(f"Environment config is not valid YAML: {config_path}") from exc
+    if not isinstance(raw_config, dict):
+        raise EnvironmentPackageError(f"Environment config must be a mapping: {config_path}")
+
+    agents: set[str] = set()
+    resources_servers: set[str] = set()
+    for raw_instance_name, raw_instance in raw_config.items():
+        # Ignore unrelated YAML sections here. Pydantic/Gym performs full config-shape
+        # validation later; this pass only needs enough structure to detect namespaces.
+        if not isinstance(raw_instance_name, str) or not isinstance(raw_instance, dict):
+            continue
+        # The runtime image and selected VirtualModel own model configuration. Rejecting
+        # package model entries prevents customer YAML from overriding that trusted setup.
+        if reject_customer_models and OPERATOR_MODEL_SUBDIR in raw_instance:
+            raise EnvironmentPackageError(f"Customer-provided {OPERATOR_MODEL_SUBDIR} are not supported: {config_path}")
+        if CUSTOM_AGENT_SUBDIR in raw_instance:
+            agents.add(raw_instance_name)
+        if CUSTOM_RESOURCES_SERVER_SUBDIR in raw_instance:
+            # An entry may contain both component keys. Keeping it in both sets lets
+            # validate_environment_namespaces report the cross-type collision.
+            resources_servers.add(raw_instance_name)
+    return agents, resources_servers
+
+
+def _add_unique_component(components: set[str], name: str, component_type: str, config_path: Path) -> None:
+    """Register one instance name across all manifest config files.
+
+    A second declaration for the same component type is ambiguous even when it
+    appears in a different YAML file.
+    """
+    if name in components:
+        raise EnvironmentPackageError(
+            f"Duplicate {component_type} instance {name!r} declared by environment config: {config_path}"
+        )
+    components.add(name)
 
 
 def validate_environment_package_layout(
@@ -257,7 +414,7 @@ def validate_environment_package_layout(
         if duplicates:
             details = ", ".join(f"{name} ({', '.join(versions)})" for name, versions in sorted(duplicates.items()))
             raise EnvironmentPackageError(
-                f"wheels/ vendors multiple versions of the same distribution: {details}; "
+                f"The {WHEELS_V1_SUBDIR}/ directory vendors multiple versions of the same distribution: {details}; "
                 "regenerate the package with one resolved version per distribution"
             )
 
@@ -280,12 +437,6 @@ def load_environment_package(environment_root: str | Path) -> EnvironmentPackage
         wheelhouse_path=wheelhouse_path,
         wheel_files=wheel_files,
     )
-
-
-def require_supported_runtime_format(package: EnvironmentPackage) -> None:
-    """Reject formats that are valid packages but not executable on this branch."""
-    if isinstance(package, NativeV1Package):
-        raise EnvironmentPackageError(NATIVE_V1_UNSUPPORTED_MESSAGE)
 
 
 def _validated_root(environment_root: str | Path) -> Path:

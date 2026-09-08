@@ -28,13 +28,17 @@ from nemo_unsloth_plugin.transform import transform_input_to_output
 from pydantic import ValidationError
 
 
-def _stub_sdk(*, is_embedding: bool = False) -> tuple[SimpleNamespace, SimpleNamespace]:
+def _stub_sdk(*, is_embedding: bool = False, head_type: str | None = None) -> tuple[SimpleNamespace, SimpleNamespace]:
     """Build a minimal async SDK + the model entity the models client returns.
 
     Returns ``(sdk, model_entity)`` so callers can wire the same entity into the
     ``AsyncModelsClient`` mock dispatched by ``client_from_platform``.
     """
-    spec = SimpleNamespace(is_embedding_model=is_embedding) if is_embedding else None
+    spec = (
+        SimpleNamespace(is_embedding_model=is_embedding, head_type=head_type or "unknown")
+        if is_embedding or head_type
+        else None
+    )
     model_entity = SimpleNamespace(
         name="m",
         workspace="default",
@@ -262,15 +266,20 @@ class TestTransformOutput:
         assert out.output.type == "model"
         assert out.output.save_method == "merged_4bit"
 
-    def test_embedding_model_rejected(self) -> None:
-        sdk, model_entity = _stub_sdk(is_embedding=True)
+    @pytest.mark.parametrize(
+        ("is_embedding", "head_type"),
+        [(True, None), (False, "cross_encoder")],
+        ids=["legacy-embedding", "cross-encoder"],
+    )
+    def test_encoder_model_rejected(self, is_embedding: bool, head_type: str | None) -> None:
+        sdk, model_entity = _stub_sdk(is_embedding=is_embedding, head_type=head_type)
         spec = UnslothJobInput.model_validate(_minimal_payload())
         with (
             patch(
                 "nmp.customization_common.service.platform_client.client_from_platform",
                 side_effect=_client_from_platform_side_effect(model_entity),
             ),
-            pytest.raises(ValueError, match="Embedding-model SFT"),
+            pytest.raises(ValueError, match="Encoder-model SFT"),
         ):
             asyncio.run(transform_input_to_output(spec, "default", sdk))
 

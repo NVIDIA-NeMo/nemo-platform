@@ -59,6 +59,28 @@ class ParetoConfig(BaseModel):
         )
 
 
+class ColumnLayout(BaseModel):
+    """A saved table layout for a group's evaluations list: column order and which columns are hidden.
+
+    Column ids are Studio's and cannot be enumerated here — the table builds a column per evaluator
+    and metadata key found in the rows — so ids are stored and echoed back unvalidated.
+
+    Visibility is stored as the *hidden* ids rather than a map over every column, so a column that
+    appears later (a new evaluator, a new metadata key) shows up by default.
+    """
+
+    order: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Column ids in display order. Empty means no saved order: the table falls back to its natural column order."
+        ),
+    )
+    hidden: list[str] = Field(
+        default_factory=list,
+        description="Column ids hidden from the table. Any column not listed is shown.",
+    )
+
+
 class ExperimentGroup(EntityBase):
     """A named container of Experiments pursuing a single optimization goal.
 
@@ -113,6 +135,15 @@ class ExperimentGroup(EntityBase):
         """Schema-on-read: groups persisted before this field stored no ``pareto`` (or ``null``);
         coerce anything that isn't a config mapping to the cost-vs-latency default."""
         return value if isinstance(value, dict | ParetoConfig) else ParetoConfig()
+
+    column_layout: ColumnLayout | None = Field(
+        default=None,
+        description=(
+            "Saved column order and column visibility for this group's evaluations table. Null when no "
+            "layout has been saved, which is distinct from a saved layout that hides nothing: the "
+            "client applies its own default hidden columns only in the null case."
+        ),
+    )
 
     is_favorite: bool = Field(
         default=False,

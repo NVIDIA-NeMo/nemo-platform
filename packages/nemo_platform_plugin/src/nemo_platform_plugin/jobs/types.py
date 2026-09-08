@@ -356,3 +356,4 @@ class JobLogsQueryParams(TypedDict, total=False):
     attempt_id: NotRequired[int]
     step_id: NotRequired[str]
     task_id: NotRequired[str]
+    tail: NotRequired[int]

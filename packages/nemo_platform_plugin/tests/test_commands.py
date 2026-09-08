@@ -172,11 +172,13 @@ class TestSubgroupRegistration:
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
         assert "greet" in result.output
+        assert "Return a greeting." in result.output
 
         help_result = runner.invoke(app, ["greet", "--help"])
         assert help_result.exit_code == 0
         output = _plain(help_result.output)
         assert "COMMAND" not in output
+        assert "Return a greeting." in output
         assert "--base-url" in output
         assert "--profile" in output
         assert "explain" not in output

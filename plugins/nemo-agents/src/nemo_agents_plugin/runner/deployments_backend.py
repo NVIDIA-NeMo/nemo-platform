@@ -52,8 +52,13 @@ from nemo_deployments_plugin.entities import (
     ResourceRequirements,
     SecretRef,
     VolumeMount,
+    WorkloadIdentitySpec,
 )
-from nemo_platform_plugin.auth import platform_auth_enabled
+from nemo_platform_plugin.auth import AuthContext, platform_auth_enabled
+from nemo_platform_plugin.auth.workload_identity import (
+    get_workload_identity_token_audience,
+    is_workload_identity_token_exchange_enabled,
+)
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entities.base import parse_qualified_name
@@ -339,6 +344,45 @@ def executor_for_mode(config: DeploymentsRunnerConfig, mode: DeploymentMode) -> 
     return config.default_executor
 
 
+def executor_backend(name: str | None) -> str | None:
+    """Return the backend key the deployments plugin would run *name* on.
+
+    An unset name is not "no executor": ``ExecutorRegistry.resolve`` falls back to
+    the deployments plugin's own ``default_executor``, so resolving it here is what
+    makes the mode check see the executor that will actually run.
+    """
+    from nemo_deployments_plugin.config import DeploymentsConfig
+
+    config = DeploymentsConfig.get()
+    resolved = name or config.default_executor
+    if not resolved:
+        return None
+    for entry in config.executors:
+        if entry.name == resolved:
+            return entry.backend
+    return None
+
+
+def require_executor_matches_mode(executor: str | None, mode: DeploymentMode) -> None:
+    """Refuse a container mode that would run somewhere other than it names.
+
+    ``executor_for_mode`` falls back to ``default_executor``, so asking for k8s
+    where none is configured silently lands on docker: the deployment reports
+    running while nothing exists in the cluster, and a k8s-only failure cannot
+    reproduce. The backend keys and the deployment modes share a vocabulary, so
+    the mismatch is checkable here rather than discoverable by counting pods.
+    """
+    backend = executor_backend(executor)
+    if backend is None or backend == mode:
+        return
+    alternative = f", or deploy with deployment_mode {backend!r}" if backend in CONTAINER_DEPLOYMENT_MODES else ""
+    raise ValueError(
+        f"deployment_mode {mode!r} resolved to executor {executor!r}, which runs on "
+        f"{backend!r}. Set 'deployments.{mode}_executor' to an executor whose backend "
+        f"is {mode!r}{alternative}."
+    )
+
+
 _HTTP_PROTOCOLS = frozenset({"http", "https"})
 
 
@@ -382,6 +426,7 @@ def build_deployment_config(
     resources: ComputeResources | None = None,
     secrets: dict[str, str] | None = None,
     use_image_entrypoint: bool = False,
+    workload_identity_enabled: bool = False,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -496,6 +541,17 @@ def build_deployment_config(
         }
     )
 
+    workload_identity = (
+        WorkloadIdentitySpec(
+            enabled=True,
+            workloadKind="agent_deployment",
+            workloadId=name,
+            tokenAudience=get_workload_identity_token_audience(),
+        )
+        if workload_identity_enabled
+        else None
+    )
+
     # Request the auth-proxy sidecar via the DeploymentConfig flags; the
     # deployments plugin compiles and injects it (and no-ops when auth is off).
     return DeploymentConfig(
@@ -511,6 +567,7 @@ def build_deployment_config(
             "auth_proxy_sidecar": auth_proxy_identity is not None,
             "auth_proxy_sidecar_identity": auth_proxy_identity,
             "auth_proxy_sidecar_on_behalf_of": auth_proxy_on_behalf_of,
+            "workload_identity": workload_identity,
         }
     )
 
@@ -539,6 +596,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
         image: str | None = None,
         deployment_mode: DeploymentMode = "docker",
         created_by: str | None = None,
+        auth_context: AuthContext | None = None,
         resources: ComputeResources | None = None,
         secrets: dict[str, str] | None = None,
         use_image_entrypoint: bool = False,
@@ -551,6 +609,12 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 status="failed",
                 error=f"DeploymentsRunnerBackend does not support deployment_mode={deployment_mode!r}.",
             )
+
+        try:
+            require_executor_matches_mode(executor_for_mode(self._config, deployment_mode), deployment_mode)
+        except ValueError as exc:
+            logger.error("Refusing to deploy agent %r: %s", name, exc)
+            return DeploymentInfo(name=name, status="failed", error=str(exc))
 
         resolved_image = image or self._config.default_image
         if not resolved_image:
@@ -649,6 +713,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 resources=resources,
                 secrets=secrets,
                 use_image_entrypoint=use_image_entrypoint,
+                workload_identity_enabled=auth_context is not None and is_workload_identity_token_exchange_enabled(),
             )
         except ReservedSecretEnvVarError as exc:
             logger.error("Refusing to deploy agent %r: %s", name, exc)
@@ -662,7 +727,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
                 executor=executor_for_mode(self._config, deployment_mode),
                 desired_state="READY",
                 status="PENDING",
-            )
+            ).with_auth_context(auth_context)
             await entities.create(deployment)
         except Exception:
             # Avoid orphaning the config if Deployment create fails.
