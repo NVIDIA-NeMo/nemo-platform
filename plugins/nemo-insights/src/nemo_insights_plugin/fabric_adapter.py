@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -87,10 +89,13 @@ class InsightsAnalystRuntime:
             return await self._run_analysis(request)
 
         # Relay reads credentials for the export from the environment Fabric
-        # names, so apply it before the exporter is built.
-        os.environ.update(telemetry.env)
-        async with relay_plugin.plugin(_relay_plugin_config(telemetry)):
-            return await self._run_analysis(request, relay_scope_name=ANALYST_RELAY_SCOPE)
+        # names, so apply it before the exporter is built -- and only for this
+        # invocation. The runtime is long-lived and serves many; a leftover
+        # FABRIC_RELAY_CONFIG_PATH is the ambient-config hazard the bundled
+        # adapters have a named guard against.
+        with _applied_environment(telemetry.env):
+            async with relay_plugin.plugin(_relay_plugin_config(telemetry)):
+                return await self._run_analysis(request, relay_scope_name=ANALYST_RELAY_SCOPE)
 
     async def _run_analysis(self, request: contract.AgentRunRequest, *, relay_scope_name: str | None = None):
         target_agent = _string_setting(self._settings, "agent") or _string_setting(self._settings, "target_agent")
@@ -135,6 +140,21 @@ class InsightsAnalystRuntime:
 
     async def stop(self) -> None:
         self.__init__()
+
+
+@contextmanager
+def _applied_environment(env: dict[str, str]) -> Iterator[None]:
+    """Apply *env* for the duration of one invocation, then put it back."""
+    previous = {name: os.environ.get(name) for name in env}
+    os.environ.update(env)
+    try:
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def _relay_plugin_config(telemetry: contract.RuntimeTelemetryContext) -> dict[str, Any]:

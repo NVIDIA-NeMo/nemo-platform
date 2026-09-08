@@ -273,6 +273,9 @@ async def test_relay_activates_fabrics_config_and_scopes_the_agent(
     @asynccontextmanager
     async def fake_plugin(config: Any) -> AsyncIterator[None]:
         seen["plugin_config"] = config
+        # Relay resolves header_env against the environment while exporting,
+        # so the variables have to be set for the duration of the run.
+        seen["env_during_run"] = os.environ.get("FABRIC_RELAY_CONFIG_PATH")
         yield
 
     monkeypatch.setattr(fabric_adapter, "run_analyst_change_set", fake_run_analyst_change_set)
@@ -292,7 +295,10 @@ async def test_relay_activates_fabrics_config_and_scopes_the_agent(
     assert result.status is contract.AgentRunStatus.SUCCEEDED
     assert seen["relay_scope_name"] == fabric_adapter.ANALYST_RELAY_SCOPE
     assert seen["plugin_config"]["components"][0]["kind"] == "observability"
-    assert os.environ["FABRIC_RELAY_CONFIG_PATH"] == str(relay_config)
+    assert seen["env_during_run"] == str(relay_config)
+    # The runtime serves many invocations; a leftover config path would make
+    # the next one export against a stale, possibly deleted, config.
+    assert "FABRIC_RELAY_CONFIG_PATH" not in os.environ
 
 
 async def test_without_relay_the_agent_runs_unscoped() -> None:

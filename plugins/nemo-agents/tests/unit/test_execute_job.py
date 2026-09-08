@@ -1834,6 +1834,10 @@ def test_telemetry_is_pointed_at_the_workspace_intake_ingest(monkeypatch: pytest
 def test_telemetry_credentials_go_to_the_environment_not_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fabric writes the config into artifacts that are uploaded as a job result."""
     monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    # Registered before the call so pytest unsets it afterwards: the code writes
+    # this variable directly, and monkeypatch can only restore what it saw first.
+    header_var = "NMP_AGENT_TELEMETRY_HEADER_X_NMP_PRINCIPAL_ID"
+    monkeypatch.setenv(header_var, "overwritten-by-the-call")
     sdk = cast(NeMoPlatform, SimpleNamespace(_custom_headers={"X-NMP-Principal-Id": "service:agents"}))
     config = _fabric_agent_config()
 
@@ -1842,7 +1846,7 @@ def test_telemetry_credentials_go_to_the_environment_not_the_config(monkeypatch:
     storage = config["telemetry"]["atif"]["storage"][0]
     assert storage["header_env"] == {"X-NMP-Principal-Id": "NMP_AGENT_TELEMETRY_HEADER_X_NMP_PRINCIPAL_ID"}
     assert "headers" not in storage, "an inline header would land in a downloadable artifact"
-    assert os.environ["NMP_AGENT_TELEMETRY_HEADER_X_NMP_PRINCIPAL_ID"] == "service:agents"
+    assert os.environ[header_var] == "service:agents"
 
 
 def test_an_agent_that_names_its_own_destination_keeps_it(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -673,6 +673,9 @@ class DeploymentsRunnerBackend(RunnerBackend):
             # endpoint it produces is rewritten for reachability alongside the
             # inference URLs. No header_env here: the auth-proxy sidecar stamps
             # identity on the way out, which is why the workload needs none.
+            # config is the caller's deployment entity; rewrite_fabric_config_base_urls
+            # deep-copies for the same reason, and wiring runs before it.
+            config = copy.deepcopy(config)
             configure_intake_atif_export(config, workspace=workspace, base_url=rewrite_target)
             config = rewrite_fabric_config_base_urls(config, rewrite_target)
         else:
