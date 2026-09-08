@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import copy
 import importlib.metadata
 import inspect
 import json
@@ -14,6 +15,7 @@ import os
 import queue
 import shutil
 import sys
+import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -59,6 +61,7 @@ NC = "\033[0m"  # No Color
 
 # Global verbose flag
 VERBOSE = False
+PLUGIN_WORKER_TIMEOUT_SECONDS = 300
 
 
 def print_green(message: str, verbose_only: bool = False):
@@ -511,20 +514,44 @@ def extract_plugin_spec_batch(plugin_batch: list[PluginConfig]) -> list[tuple[st
             args=(plugin, VERBOSE, result_queue),
         )
         process.start()
-        processes.append((plugin, process, result_queue))
+        deadline = time.monotonic() + PLUGIN_WORKER_TIMEOUT_SECONDS
+        processes.append((plugin, process, result_queue, deadline))
 
     results = []
-    for plugin, process, result_queue in processes:
+    for plugin, process, result_queue, deadline in processes:
         try:
             while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    if process.is_alive():
+                        process.kill()
+                        process.join()
+                        name = plugin.dir
+                        success = False
+                        output = ""
+                        error = f"Plugin worker for {plugin.dir} timed out after {PLUGIN_WORKER_TIMEOUT_SECONDS}s"
+                    else:
+                        process.join()
+                        try:
+                            name, success, error, output = result_queue.get(timeout=1.0)
+                        except queue.Empty:
+                            name = plugin.dir
+                            success = False
+                            output = ""
+                            error = (
+                                f"Plugin worker for {plugin.dir} exited with code {process.exitcode} "
+                                "without returning a result"
+                            )
+                    break
+
                 try:
-                    name, success, error, output = result_queue.get(timeout=0.1)
+                    name, success, error, output = result_queue.get(timeout=min(0.1, remaining))
                     break
                 except queue.Empty:
                     if not process.is_alive():
                         process.join()
                         try:
-                            name, success, error, output = result_queue.get_nowait()
+                            name, success, error, output = result_queue.get(timeout=1.0)
                         except queue.Empty:
                             name = plugin.dir
                             success = False
@@ -874,7 +901,11 @@ def can_process_single_platform_spec_in_memory(services: list[ServiceConfig]) ->
     # Tags/examples are final-spec-only transformations in the generic path.
     # Keep that path if those inputs exist so individual and aggregate outputs
     # retain their existing semantics.
-    return not Path("openapi/nmp-common.openapi.yaml").exists() and not any(Path("openapi/api-examples").glob("*.json"))
+    return (
+        not Path("openapi/ea/openapi.yaml").exists()
+        and not Path("openapi/nmp-common.openapi.yaml").exists()
+        and not any(Path("openapi/api-examples").glob("*.json"))
+    )
 
 
 def process_single_platform_spec_in_memory(services: list[ServiceConfig]) -> bool:
@@ -891,20 +922,27 @@ def process_single_platform_spec_in_memory(services: list[ServiceConfig]) -> boo
     print_green("=== Processing single platform OpenAPI spec in memory ===")
     spec = load_openapi_spec(temp_path)
     spec = apply_schema_fixes_to_spec(spec, temp_path)
-    spec = apply_schema_removals_to_spec(spec)
-    spec = apply_schema_fixes_to_spec(spec, "openapi/openapi.yaml")
-    spec = remove_guardrail_endpoints_from_spec(spec)
-    spec = fix_ref_with_additional_props(spec)
+    individual_spec = fix_ref_with_additional_props(copy.deepcopy(spec))
 
-    dangling = validate_refs(spec)
-    if dangling:
-        print_red("Found dangling $refs in the platform OpenAPI spec:")
-        for ref in dangling:
-            print_red(f"  - {ref}")
-        raise RuntimeError(f"{len(dangling)} dangling $refs detected")
+    final_spec = apply_schema_removals_to_spec(spec)
+    final_spec = apply_schema_fixes_to_spec(final_spec, "openapi/openapi.yaml")
+    final_spec = remove_guardrail_endpoints_from_spec(final_spec)
+    final_spec = fix_ref_with_additional_props(final_spec)
 
-    for output_path in ["openapi/openapi.yaml", "openapi/ga/openapi.yaml", final_path]:
-        save_openapi_spec(spec, output_path)
+    dangling_specs = [
+        ("platform individual OpenAPI spec", validate_refs(individual_spec)),
+        ("platform OpenAPI spec", validate_refs(final_spec)),
+    ]
+    for spec_name, dangling in dangling_specs:
+        if dangling:
+            print_red(f"Found dangling $refs in the {spec_name}:")
+            for ref in dangling:
+                print_red(f"  - {ref}")
+            raise RuntimeError(f"{len(dangling)} dangling $refs detected")
+
+    for output_path in ["openapi/openapi.yaml", "openapi/ga/openapi.yaml"]:
+        save_openapi_spec(final_spec, output_path)
+    save_openapi_spec(individual_spec, final_path)
 
     os.remove(temp_path)
     return True
