@@ -16,7 +16,6 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple, cast
 
-import nemo_fabric as fabric
 from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.agent_config_formats import resolve_agent_config_for_deployment
 from nemo_agents_plugin.config import AgentsConfig
@@ -51,6 +50,7 @@ from nemo_agents_plugin.tasks.execute.workdir import (
     validate_agent_workdir,
 )
 from nemo_agents_plugin.telemetry.intake_export import configure_intake_atif_export
+from nemo_fabric import Fabric
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job import NemoJob
@@ -812,7 +812,7 @@ def _adapter_supports_relay(agent_config: AgentConfig, base_dir: Path) -> bool:
     run".
     """
     try:
-        plan = fabric.Fabric().plan(translate_agent_config(agent_config), base_dir=base_dir)
+        plan = Fabric().plan(translate_agent_config(agent_config), base_dir=base_dir)
         descriptor = plan.to_dict().get("adapter_descriptor") or {}
         providers = descriptor.get("descriptor", descriptor).get("telemetry", {}).get("providers", {})
         supported = "relay" in providers
