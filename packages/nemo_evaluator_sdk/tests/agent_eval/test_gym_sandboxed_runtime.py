@@ -197,6 +197,56 @@ async def test_a_heartbeat_only_200_names_the_host_as_the_failure(tasks, tmp_pat
     assert "error" in message.lower() or "results" in message.lower()
 
 
+async def test_a_body_free_200_names_both_causes(tasks, tmp_path, monkeypatch) -> None:
+    """Zero bytes, not even heartbeat padding.
+
+    A host that died before writing and a silent host whose request the proxy truncated arrive
+    identically, because without a Content-Length the body ends at the close. The runner must
+    offer both and the check for each, not pick one.
+    """
+    host = _FakeHost(content=b"")
+    runner = runner_against(host, monkeypatch)
+    # The runner times its own POST; a MockTransport answers instantly, so stand in for the wait.
+    monkeypatch.setattr(
+        "nemo_evaluator_sdk.agent_eval.runtimes.gym.sandboxed.time.monotonic",
+        _clock_advancing_by(180.0),
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    message = str(excinfo.value)
+    assert ROLLOUT_URL in message
+    assert "OOMKill" in message
+    assert "predates the rollout heartbeat" in message
+
+
+async def test_a_body_free_200_that_arrived_fast_blames_the_sandbox_alone(tasks, tmp_path, monkeypatch) -> None:
+    host = _FakeHost(content=b"")
+    runner = runner_against(host, monkeypatch)
+    monkeypatch.setattr(
+        "nemo_evaluator_sdk.agent_eval.runtimes.gym.sandboxed.time.monotonic",
+        _clock_advancing_by(2.0),
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    message = str(excinfo.value)
+    assert "OOMKilled" in message
+    assert "heartbeat" not in message
+
+
+def _clock_advancing_by(delta: float):
+    """A monotonic clock whose second reading is ``delta`` later than its first."""
+    readings = iter((0.0, delta))
+
+    def _clock() -> float:
+        return next(readings, delta)
+
+    return _clock
+
+
 async def test_a_non_json_200_names_the_host_rather_than_the_decoder(tasks, tmp_path, monkeypatch) -> None:
     """A non-empty body that is not JSON is a broken response contract, not an evaluator bug.
 

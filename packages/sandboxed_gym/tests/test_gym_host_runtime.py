@@ -68,6 +68,26 @@ def test_health_not_ready():
         server.server_close()
 
 
+def test_health_is_not_ready_until_the_rollout_helpers_are(ready_server):
+    """/health must gate on what do_POST gates on.
+
+    Reporting ready off ``_READY`` alone lets a host pass ``wait_ready`` and then refuse every
+    rollout with 503 bootstrap_failed -- a state the caller has no way to observe until it has
+    already committed a batch.
+    """
+    import urllib.error
+    import urllib.request
+
+    runtime._ROLLOUT_HELPER = None
+    try:
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            urllib.request.urlopen(f"{ready_server}/health", timeout=5)
+        assert excinfo.value.code == 503
+        assert json.loads(excinfo.value.read())["status"] == "starting"
+    finally:
+        runtime._ROLLOUT_HELPER = _FakeRolloutHelper()
+
+
 def test_health_ready(ready_server):
     import urllib.request
 

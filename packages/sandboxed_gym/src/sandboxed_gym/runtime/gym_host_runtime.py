@@ -509,7 +509,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        if not _READY:
+        # Must match do_POST: a host that passes /health and then 503s every rollout is
+        # invisible to wait_ready.
+        if not _READY or _HEAD_SERVER_CONFIG is None or _ROLLOUT_HELPER is None:
             body = json.dumps({"status": "starting"}).encode("utf-8")
             self.send_response(503)
         else:
