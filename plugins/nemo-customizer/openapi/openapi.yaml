@@ -2439,13 +2439,11 @@ components:
         policy_backend:
           allOf:
           - $ref: '#/components/schemas/PolicyBackend'
-          description: 'NeMo-RL policy worker that trains the model. `automodel` (default)
-            builds on NeMo Automodel + Transformer Engine; it handles full-weight
-            training and is the only backend with LoRA, expert parallelism and automodel_kwargs.
-            `dtensor` uses stock HuggingFace modules on PyTorch FSDP2 -- no Transformer
-            Engine, so it is the pre-Hopper option, without those three features.
-            Never switched implicitly: asking `dtensor` for an `automodel`-only feature
-            is rejected.'
+          description: NeMo-RL policy worker that trains the model. `lora` requires
+            `automodel` (NeMo Automodel + Transformer Engine, Hopper or newer; the
+            only backend with expert parallelism and automodel_kwargs). `all_weights`
+            requires `dtensor` (stock HuggingFace on PyTorch FSDP2, also the pre-Hopper
+            option). Leave unset to get the supported one.
           default: automodel
         val_at_start:
           type: boolean
