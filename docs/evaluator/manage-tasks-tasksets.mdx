@@ -77,18 +77,31 @@ the task's workspace). The service returns the stored `Task`.
 ```python
 from nemo_evaluator.api.schemas import EvaluatorTaskDefinition, MetadataItem, MetricRef, TaskInput, TaskInputs
 
-task = TaskInput(
+france_task = TaskInput(
     spec=EvaluatorTaskDefinition(
         kind="evaluator",
         intent="Answer the user's geography question with the capital city.",
         inputs=TaskInputs(instruction="What is the capital of France?"),
+        reference={"expected": "Paris"},
         metrics=[MetricRef("default/answer-exact-match")],
     ),
     metadata=[MetadataItem(key="suite", value="geography")],
 )
 
-stored = tasks.create("capital-of-france", task=task)
-print(stored.id, stored.spec.metrics)
+japan_task = TaskInput(
+    spec=EvaluatorTaskDefinition(
+        kind="evaluator",
+        intent="Answer the user's geography question with the capital city.",
+        inputs=TaskInputs(instruction="What is the capital of Japan?"),
+        reference={"expected": "Tokyo"},
+        metrics=[MetricRef("default/answer-exact-match")],
+    ),
+    metadata=[MetadataItem(key="suite", value="geography")],
+)
+
+stored_france = tasks.create("capital-of-france", task=france_task)
+stored_japan = tasks.create("capital-of-japan", task=japan_task)
+print(stored_france.id, stored_japan.id, stored_france.spec.metrics)
 ```
 
 ### `TaskInput` fields
@@ -140,7 +153,7 @@ as a content-addressed *derived* metric, and the task record is normalized to re
 why `stored.spec.metrics` always comes back as a list of `MetricRef` references.
 </Note>
 
-### Retrieve, list, and delete
+### Retrieve and list
 
 ```python
 # Retrieve one task by name (its current content)
@@ -152,8 +165,6 @@ page = tasks.list(page=1, page_size=100, sort="-created_at")
 for item in page.data:
     print(item.name, item.spec.kind)
 
-# Delete a task (this also removes all of its revisions)
-tasks.delete("capital-of-france")
 ```
 
 `sort` accepts `name`, `created_at`, or `updated_at`, each optionally prefixed with `-` for
@@ -250,16 +261,16 @@ after a member task publishes something new, and it is what makes a suite reprod
 ```python
 from nemo_evaluator.api.schemas import TaskRef, TasksetInput
 
-taskset = TasksetInput(
-    description="Geography questions for smoke-testing the agent.",
+taskset_input = TasksetInput(
+    description="Geography questions for validating the agent.",
     tasks=[
         TaskRef("default/capital-of-france"),
         TaskRef("default/capital-of-japan"),
     ],
 )
 
-stored = tasksets.create("geography-suite", taskset=taskset)
-print(stored.tasks)
+stored_taskset = tasksets.create("geography-suite", taskset=taskset_input)
+print(stored_taskset.tasks)
 # ['default/capital-of-france#a1b2...', 'default/capital-of-japan#c3d4...']
 ```
 
@@ -272,16 +283,15 @@ print(stored.tasks)
 | `metadata` | `list[MetadataItem]` | No | Key/value annotations. Keys must be unique. |
 | `tags` | `list[str]` | No | Tags to point at the revision this request publishes. `latest` is always applied server-side. |
 
-### Retrieve, list, and delete
+### Retrieve and list
 
 ```python
-taskset = tasksets.retrieve("geography-suite")
+stored_taskset = tasksets.retrieve("geography-suite")
 
 page = tasksets.list(page=1, page_size=100, sort="name")
 for item in page.data:
     print(item.name, len(item.tasks))
 
-tasksets.delete("geography-suite")
 ```
 
 Tasksets carry the same revision surface as tasks — `replace`, `list_revisions`, `tag`, and
@@ -289,7 +299,7 @@ Tasksets carry the same revision surface as tasks — `replace`, `list_revisions
 
 ```python
 # Re-resolving membership after a member task published new content cuts a new revision.
-tasksets.replace("geography-suite", taskset=taskset)
+tasksets.replace("geography-suite", taskset=taskset_input)
 
 for revision in tasksets.list_revisions("geography-suite").data:
     print(revision.revision, revision.content_hash)
@@ -322,7 +332,7 @@ from nemo_evaluator_sdk.values import Model
 input_spec = AgentEvalInputSpec(
     tasks=TasksetRef("default/geography-suite"),
     target=ModelTarget(
-        model=Model(url="https://integrate.api.nvidia.com/v1", name="meta/llama-3.3-70b-instruct"),
+        model=Model(url="https://integrate.api.nvidia.com/v1", name="nvidia/nemotron-3.5-lightning-30b-a3b"),
     ),
 )
 ```
@@ -405,6 +415,17 @@ with the rest of its content, so a taskset-driven run grades against the ground 
 fixed. Because `reference` is covered by the revision digest, changing it publishes a new revision —
 a pin fixes the grading, not just the prompt.
 </Note>
+
+## Clean Up
+
+Delete the taskset before its member tasks, then remove the metric used by the tasks:
+
+```python
+tasksets.delete("geography-suite")
+tasks.delete("capital-of-france")
+tasks.delete("capital-of-japan")
+client.evaluator.metrics.delete("answer-exact-match")
+```
 
 ## Async usage
 

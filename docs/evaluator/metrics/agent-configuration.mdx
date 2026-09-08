@@ -68,7 +68,7 @@ You control the request shape with `body` and extract values from the response w
 | `url` | Yes | string | Base URL of the agent endpoint. |
 | `name` | Yes | string | Agent name or identifier. |
 | `format` | No | string |  `generic` (default) or `nemo_agent_toolkit`. |
-| `api_key_secret` | No | string | API key reference. See [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication). |
+| `api_key_secret` | No | `SecretRef` | API key reference. See [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication). |
 | `body` | Yes | dict | Jinja template for the request payload. Use `{{ prompt }}`, `{{ messages }}`, or fields from the rendered prompt context. |
 | `response_path` | Yes | string | [JSONPath](https://datatracker.ietf.org/doc/html/rfc9535) expression to extract the response text. |
 | `trajectory_path` | No | string | JSONPath expression to extract the trajectory. |
@@ -84,13 +84,13 @@ agent = GenericAgent(
     url="https://my-agent.example.com/invoke",
     name="qa-agent",
     format=AgentFormat.GENERIC,
-    api_key_secret=SecretRef(root="MY_AGENT_API_KEY"),
+    api_key_secret=SecretRef(root="my-agent-api-key"),
     body={"question": "{{ prompt }}"},
     response_path="$.answer",
     trajectory_path="$.reasoning_steps",
 )
 
-job = evaluator.submit(
+generic_job = evaluator.submit(
     metric=metric,
     dataset=[
         {"question": "What is the capital of France?", "expected_answer": "Paris"},
@@ -99,8 +99,8 @@ job = evaluator.submit(
     target=agent,
     prompt_template="Question: {{item.question}}\nAnswer:",
 )
-job.wait_until_done()
-result = job.get_result()
+generic_job.wait_until_done()
+result = generic_job.get_result()
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
 ```
@@ -152,9 +152,18 @@ Use the `nemo_agent_toolkit` format when evaluating agents built with the [NeMo 
 | `url` | Yes | string | Base URL of the agent endpoint. |
 | `name` | Yes | string | Agent name or identifier. |
 | `format` | Yes | string | Set to `nemo_agent_toolkit`. |
-| `api_key_secret` | No | string | API key reference. See [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication). |
+| `api_key_secret` | No | `SecretRef` | API key reference. See [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication). |
 
 ### Run a NAT Agent Evaluation
+
+Create the platform secret used by the NAT endpoint:
+
+```python
+client.secrets.create(
+    name="my-nat-api-key",
+    value=os.environ["MY_NAT_API_KEY"],
+)
+```
 
 ```python
 from nemo_evaluator_sdk import ExactMatchMetric, NemoAgentToolkitAgent, RunConfigOnline, SecretRef
@@ -168,7 +177,7 @@ agent = NemoAgentToolkitAgent(
     api_key_secret=SecretRef(root="my-nat-api-key"),
 )
 
-job = evaluator.submit(
+nat_job = evaluator.submit(
     metric=metric,
     dataset=[
         {"question": "What is the capital of France?", "expected_answer": "Paris"},
@@ -181,8 +190,19 @@ job = evaluator.submit(
         ],
     },
 )
-job.wait_until_done()
-result = job.get_result()
+nat_job.wait_until_done()
+result = nat_job.get_result()
+```
+
+## Clean Up
+
+Delete the jobs and secrets created by these examples:
+
+```python
+client.jobs.delete(generic_job.name, workspace="default")
+client.jobs.delete(nat_job.name, workspace="default")
+client.secrets.delete("my-agent-api-key", workspace="default")
+client.secrets.delete("my-nat-api-key", workspace="default")
 ```
 
 ## Model vs Agent: When to Use Which
