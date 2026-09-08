@@ -322,6 +322,61 @@ def test_build_k8s_deployment_backend_config_default_tolerations_accept_int_seco
     assert backend.k8s.tolerations[0].key == "entity"
 
 
+@pytest.mark.parametrize("engine", ["nim", "vllm", "generic"])
+def test_build_k8s_deployment_backend_config_applies_default_affinity(engine: str) -> None:
+    view = DeploymentConfigView()
+    affinity = {
+        "nodeAffinity": {
+            "requiredDuringSchedulingIgnoredDuringExecution": {
+                "nodeSelectorTerms": [{"matchExpressions": [{"key": "gpu", "operator": "In", "values": ["a100"]}]}]
+            }
+        }
+    }
+    config = DeploymentsPluginConfig(default_affinity=affinity)
+    backend = build_k8s_deployment_backend_config(engine, view, config)
+    assert backend.k8s is not None
+    assert backend.k8s.affinity is not None
+    assert backend.k8s.affinity.node_affinity is not None
+
+
+def test_build_k8s_deployment_backend_config_default_affinity_skipped_when_entity_affinity_set() -> None:
+    # A per-entity node selector maps onto affinity via the nim operator path; the
+    # platform-default affinity must not override it.
+    view = DeploymentConfigView(
+        k8s_nim_operator_config=K8sNIMOperatorConfig(node_selector={"zone": "us-west1-a"}),
+    )
+    config = DeploymentsPluginConfig(
+        default_affinity={
+            "nodeAffinity": {
+                "requiredDuringSchedulingIgnoredDuringExecution": {
+                    "nodeSelectorTerms": [{"matchExpressions": [{"key": "gpu", "operator": "In", "values": ["a100"]}]}]
+                }
+            }
+        }
+    )
+    backend = build_k8s_deployment_backend_config("nim", view, config)
+    assert backend.k8s is not None
+    # Entity's node-selector-derived affinity wins; it targets 'zone', not 'gpu'.
+    payload = backend.k8s.affinity.node_affinity
+    assert payload is not None
+    terms = payload["requiredDuringSchedulingIgnoredDuringExecution"]["nodeSelectorTerms"]
+    assert terms[0]["matchExpressions"][0]["key"] == "zone"
+
+
+@pytest.mark.parametrize("engine", ["nim", "vllm", "generic"])
+def test_build_k8s_deployment_backend_config_applies_default_topology_spread(engine: str) -> None:
+    view = DeploymentConfigView()
+    config = DeploymentsPluginConfig(
+        default_topology_spread_constraints=[
+            {"maxSkew": 1, "topologyKey": "kubernetes.io/hostname", "whenUnsatisfiable": "DoNotSchedule"}
+        ]
+    )
+    backend = build_k8s_deployment_backend_config(engine, view, config)
+    assert backend.k8s is not None
+    assert len(backend.k8s.topology_spread_constraints) == 1
+    assert backend.k8s.topology_spread_constraints[0]["topologyKey"] == "kubernetes.io/hostname"
+
+
 def test_build_k8s_deployment_backend_config_no_defaults_returns_empty() -> None:
     # With no platform defaults and no security context (generic + no run_as),
     # the k8s section is omitted entirely.

@@ -431,6 +431,12 @@ def build_affinity(affinity: Affinity | None) -> Any | None:
     return _deserialize_k8s(payload, "V1Affinity")
 
 
+def build_topology_spread_constraints(constraints: list[dict[str, Any]]) -> list[Any]:
+    if not constraints:
+        return []
+    return [_deserialize_k8s(item, "V1TopologySpreadConstraint") for item in constraints if item]
+
+
 def build_pod_security_context(security_context: PodSecurityContext | None) -> Any | None:
     if security_context is None:
         return None
@@ -602,6 +608,9 @@ def compile_workload(
         affinity = build_affinity(k8s_config.affinity)
         if affinity is not None:
             pod_spec_kwargs["affinity"] = affinity
+        topology_spread_constraints = build_topology_spread_constraints(k8s_config.topology_spread_constraints)
+        if topology_spread_constraints:
+            pod_spec_kwargs["topology_spread_constraints"] = topology_spread_constraints
         security_context = build_pod_security_context(k8s_config.security_context)
         if security_context is not None:
             pod_spec_kwargs["security_context"] = security_context

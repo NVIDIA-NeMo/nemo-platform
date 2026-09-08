@@ -339,9 +339,10 @@ def build_k8s_deployment_backend_config(
     """Merge operator overrides, engine security defaults, and platform defaults into backend_config.k8s.
 
     Platform defaults (``default_pod_annotations``, ``default_node_selector``,
-    ``default_tolerations``) apply to every engine (nim/vllm/generic). Annotations
-    merge key-wise with a per-entity value winning over the platform default for the
-    same key; per-entity tolerations/node_selector (nim operator config) win wholesale
+    ``default_tolerations``, ``default_affinity``, ``default_topology_spread_constraints``)
+    apply to every engine (nim/vllm/generic). Annotations merge key-wise with a per-entity
+    value winning over the platform default for the same key; per-entity
+    tolerations/node_selector/affinity/topology-spread (nim operator config) win wholesale
     over the platform default when present. This helper only runs on the Kubernetes
     runtime, so the defaults are k8s-only by construction.
     """
@@ -368,6 +369,16 @@ def build_k8s_deployment_backend_config(
     if config.default_tolerations and not k8s.tolerations:
         k8s.tolerations = _default_tolerations(config)
 
+    # Platform-default affinity (all engines); a per-entity affinity (including the
+    # node-selector-derived affinity from the nim operator path) wins wholesale.
+    if config.default_affinity and k8s.affinity is None:
+        k8s.affinity = Affinity.model_validate(config.default_affinity)
+
+    # Platform-default topology spread constraints (all engines); per-entity
+    # constraints win wholesale.
+    if config.default_topology_spread_constraints and not k8s.topology_spread_constraints:
+        k8s.topology_spread_constraints = [dict(item) for item in config.default_topology_spread_constraints]
+
     if any(
         (
             k8s.tolerations,
@@ -377,6 +388,7 @@ def build_k8s_deployment_backend_config(
             k8s.service_account,
             k8s.node_selector,
             k8s.pod_annotations,
+            k8s.topology_spread_constraints,
         )
     ):
         return DeploymentBackendConfig(k8s=k8s)

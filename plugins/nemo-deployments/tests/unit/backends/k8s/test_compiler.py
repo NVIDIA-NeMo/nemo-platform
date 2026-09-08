@@ -217,6 +217,36 @@ def test_compile_applies_node_selector() -> None:
     assert pod_spec["node_selector"] == {"gpu": "a100", "zone": "us-west1-a"}
 
 
+def test_compile_applies_topology_spread_constraints() -> None:
+    config = sample_always_config()
+    k8s_config = K8sDeploymentConfig.model_validate(
+        {
+            "topologySpreadConstraints": [
+                {
+                    "maxSkew": 1,
+                    "topologyKey": "kubernetes.io/hostname",
+                    "whenUnsatisfiable": "DoNotSchedule",
+                    "labelSelector": {"matchLabels": {"app": "x"}},
+                }
+            ]
+        }
+    )
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=k8s_config,
+        pod_restart_policy="Always",
+    )
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    tsc = pod_spec["topology_spread_constraints"]
+    assert len(tsc) == 1
+    assert tsc[0]["maxSkew"] == 1
+    assert tsc[0]["topologyKey"] == "kubernetes.io/hostname"
+    assert tsc[0]["whenUnsatisfiable"] == "DoNotSchedule"
+
+
 def test_compile_carries_pod_annotations() -> None:
     config = sample_config(restart_policy="Never")
     k8s_config = K8sDeploymentConfig.model_validate({"podAnnotations": {"sidecar.istio.io/nativeSidecar": "true"}})

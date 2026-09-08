@@ -540,6 +540,10 @@ models:
         default_node_selector: {}
         # Platform-default pod tolerations applied to every k8s model deployment/job (all engines).
         default_tolerations: []
+        # Platform-default pod affinity applied to every k8s model deployment/job (all engines) when the deployment does not already set an affinity. Raw Kubernetes affinity object (nodeAffinity / podAffinity / podAntiAffinity).
+        default_affinity: {}
+        # Platform-default pod topology spread constraints applied to every k8s model deployment/job (all engines) when the deployment does not already set them. Each entry is a raw Kubernetes topologySpreadConstraint object.
+        default_topology_spread_constraints: []
         # default: 'nvcr.io/nim/meta/llama-3.1-8b-instruct'
         default_nimservice_image: nvcr.io/nim/meta/llama-3.1-8b-instruct
         # default: '1.8.5'

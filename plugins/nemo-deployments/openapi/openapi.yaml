@@ -1189,6 +1189,16 @@ components:
           title: Tolerations
         affinity:
           $ref: '#/components/schemas/Affinity'
+        topologySpreadConstraints:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Topologyspreadconstraints
+          description: Pod topology spread constraints applied to every Job/Deployment
+            pod rendered from this config. Each entry is a raw Kubernetes topologySpreadConstraint
+            object (maxSkew, topologyKey, whenUnsatisfiable, labelSelector, ...).
+            k8s-only.
         securityContext:
           $ref: '#/components/schemas/PodSecurityContext'
         podAnnotations:
