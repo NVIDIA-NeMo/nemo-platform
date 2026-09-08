@@ -260,14 +260,12 @@ class GRPOTraining(_TrainingBase):
         default=None,
         description="LoRA hyperparameters. Defaults applied when finetuning_type is lora.",
     )
-    policy_backend: PolicyBackend = Field(
-        default=PolicyBackend.AUTOMODEL,
-        description="NeMo-RL policy worker that trains the model. `automodel` (default) builds on "
-        "NeMo Automodel + Transformer Engine; it handles full-weight training and is the only "
-        "backend with LoRA, expert parallelism and automodel_kwargs. `dtensor` uses stock "
-        "HuggingFace modules on PyTorch FSDP2 -- no Transformer Engine, so it is the pre-Hopper "
-        "option, without those three features. Never switched implicitly: asking `dtensor` for an "
-        "`automodel`-only feature is rejected.",
+    policy_backend: PolicyBackend | None = Field(
+        default=None,
+        description="NeMo-RL policy worker that trains the model. `lora` requires `automodel` "
+        "(NeMo Automodel + Transformer Engine, Hopper or newer; the only backend with expert "
+        "parallelism and automodel_kwargs). `all_weights` requires `dtensor` (stock HuggingFace "
+        "on PyTorch FSDP2, also the pre-Hopper option). Omit it to get the supported one.",
     )
     val_at_start: bool = Field(
         default=False,
@@ -513,15 +511,22 @@ class GRPOTraining(_TrainingBase):
         return self
 
     @model_validator(mode="after")
-    def _policy_backend_supports_requested_features(self) -> Self:
-        """Reject capabilities the chosen backend does not implement.
+    def _policy_backend_defaults_to_the_one_that_supports_the_request(self) -> Self:
+        """Follow ``finetuning_type`` when no backend was named; an explicit value is left alone."""
+        if self.policy_backend is None:
+            self.policy_backend = PolicyBackend.AUTOMODEL if self.finetuning_type == "lora" else PolicyBackend.DTENSOR
+        return self
 
-        ``DTensorPolicyWorker`` (V1) asserts ``lora_cfg.enabled is False`` and reads neither
-        ``expert_parallel_size`` nor ``automodel_kwargs`` -- so left to NeMo-RL, LoRA dies in
-        a Ray worker and the other two are silently ignored. All conflicts are reported at
-        once so one fix-up round suffices.
+    @model_validator(mode="after")
+    def _policy_backend_supports_requested_features(self) -> Self:
+        """Reject pairings the backend does not support, before the job reaches a GPU.
+
+        ``dtensor`` asserts ``lora_cfg.enabled is False`` and ignores the other two;
+        ``automodel`` trains full weights but saves a checkpoint the publisher cannot read.
         """
         if self.policy_backend is not PolicyBackend.DTENSOR:
+            if self.finetuning_type != "lora":
+                raise ValueError(f"finetuning_type='{self.finetuning_type}' requires policy_backend='dtensor'.")
             return self
         conflicts = []
         if self.finetuning_type == "lora":
@@ -531,11 +536,7 @@ class GRPOTraining(_TrainingBase):
         if self.automodel_kwargs:
             conflicts.append("automodel_kwargs")
         if conflicts:
-            raise ValueError(
-                f"{', '.join(conflicts)} {'is' if len(conflicts) == 1 else 'are'} only supported with "
-                "policy_backend='automodel'. Set policy_backend='automodel' (it also handles "
-                "full-weight training), or drop the unsupported settings to stay on 'dtensor'."
-            )
+            raise ValueError(f"{', '.join(conflicts)} require policy_backend='automodel'.")
         return self
 
     @model_validator(mode="after")

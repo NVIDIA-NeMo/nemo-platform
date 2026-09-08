@@ -28,9 +28,8 @@ class TrainingBackend(str, Enum):
 class PolicyBackend(str, Enum):
     """Which NeMo-RL policy worker trains the model.
 
-    Chosen explicitly, never inferred: the value picks the worker class, which picks
-    the Ray actor's venv and kernels. Asking for a capability the backend lacks is a
-    validation error, not a silent upgrade.
+    The value picks the worker class, which picks the Ray actor's venv and kernels.
+    Asking for a capability the backend lacks is a validation error, not a silent upgrade.
     """
 
     # _v2: false -> DTensorPolicyWorker. Stock HuggingFace + PyTorch FSDP2, no

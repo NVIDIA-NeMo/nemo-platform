@@ -270,9 +270,15 @@ def test_triton_lora_explicitly_disabled_is_allowed_with_tensor_parallelism() ->
     assert t.lora is not None and t.lora.use_triton is False
 
 
-def test_policy_backend_defaults_to_automodel() -> None:
-    """The default must be the superset backend, or the common LoRA job fails out of the box."""
-    assert GRPOTraining(type="grpo").policy_backend is PolicyBackend.AUTOMODEL
+def test_policy_backend_defaults_to_the_backend_that_supports_the_request() -> None:
+    """An unset value follows finetuning_type; one default for both would reject half the configs."""
+    assert GRPOTraining(type="grpo").policy_backend is PolicyBackend.DTENSOR
+    assert GRPOTraining(type="grpo", finetuning_type="lora").policy_backend is PolicyBackend.AUTOMODEL
+
+
+def test_an_explicit_backend_is_never_overridden_by_the_default() -> None:
+    """The default only fills a gap; a stated value still stands or is rejected outright."""
+    assert GRPOTraining(type="grpo", policy_backend=PolicyBackend.DTENSOR).policy_backend is PolicyBackend.DTENSOR
 
 
 def test_policy_backend_has_no_megatron_member_yet() -> None:
@@ -281,9 +287,15 @@ def test_policy_backend_has_no_megatron_member_yet() -> None:
     assert {b.value for b in PolicyBackend} == {"dtensor", "automodel"}
 
 
+def test_automodel_backend_rejects_full_weight() -> None:
+    """It trains fine, then saves a checkpoint the publisher cannot read -- fail before the GPU."""
+    with pytest.raises(ValueError, match="requires policy_backend='dtensor'"):
+        GRPOTraining(type="grpo", finetuning_type="all_weights", policy_backend=PolicyBackend.AUTOMODEL)
+
+
 def test_dtensor_backend_rejects_lora() -> None:
     """V1 asserts ``lora_cfg.enabled is False`` in the Ray worker; fail before the GPU."""
-    with pytest.raises(ValueError, match="only supported with policy_backend='automodel'"):
+    with pytest.raises(ValueError, match="require policy_backend='automodel'"):
         GRPOTraining(type="grpo", finetuning_type="lora", policy_backend=PolicyBackend.DTENSOR)
 
 
@@ -325,13 +337,6 @@ def test_dtensor_backend_accepts_plain_full_weight() -> None:
     """Full-weight with no v2-only feature is exactly what `dtensor` is for."""
     t = GRPOTraining(type="grpo", policy_backend=PolicyBackend.DTENSOR)
     assert t.policy_backend is PolicyBackend.DTENSOR
-
-
-def test_automodel_backend_accepts_full_weight() -> None:
-    """Automodel is not LoRA-only -- upstream's grpo_math_1B.yaml pairs ``_v2: true`` with
-    ``lora_cfg.enabled: False``, and setup.py gates every LoRA branch on the flag."""
-    t = GRPOTraining(type="grpo", finetuning_type="all_weights", policy_backend=PolicyBackend.AUTOMODEL)
-    assert t.policy_backend is PolicyBackend.AUTOMODEL
 
 
 def test_grpo_lora_rejects_lora_merged() -> None:
@@ -395,20 +400,26 @@ def test_grpo_accepts_max_new_tokens_up_to_the_context() -> None:
     assert t.max_new_tokens == 2048
 
 
-def _grpo_job(training: GRPOTraining) -> RlJobOutput:
+def _grpo_job(training: GRPOTraining, out_type: OutputNameType = OutputNameType.MODEL) -> RlJobOutput:
     return RlJobOutput(
         model="default/base",
         dataset="default/gym-data",
         environment="default/env",
         training=training,
-        output=_make_output(),
+        output=_make_output(out_type=out_type),
     )
 
 
 def test_expert_parallel_size_joins_the_model_parallel_divisor() -> None:
     """EP draws from the same world as TP/CP: NeMo-RL derives dp = world // (tp * cp * ep)."""
     job = _grpo_job(
-        GRPOTraining(type="grpo", parallelism=ParallelismParams(num_gpus_per_node=8, expert_parallel_size=3)),
+        GRPOTraining(
+            type="grpo",
+            # EP is automodel-only, and automodel is LoRA-only, so an EP run is a LoRA run.
+            finetuning_type="lora",
+            parallelism=ParallelismParams(num_gpus_per_node=8, expert_parallel_size=3),
+        ),
+        OutputNameType.ADAPTER,
     )
     with pytest.raises(ValueError, match="expert_parallel_size"):
         job.validate_for_training()
@@ -418,10 +429,12 @@ def test_expert_parallel_size_accepted_when_it_divides_the_world() -> None:
     job = _grpo_job(
         GRPOTraining(
             type="grpo",
+            finetuning_type="lora",
             parallelism=ParallelismParams(num_gpus_per_node=8, expert_parallel_size=8),
             batch_size=8,
             num_generations_per_prompt=8,
         ),
+        OutputNameType.ADAPTER,
     )
     job.validate_for_training()
 
