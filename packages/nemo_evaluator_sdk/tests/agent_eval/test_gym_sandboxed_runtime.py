@@ -24,6 +24,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym.sandboxed import (
     PROXY_AUTH_HEADER,
     SandboxedGymAgentTaskRunner,
     SandboxedGymRuntimeConfig,
+    _stamp_rollout_indices,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig
 from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_OTLP, EVIDENCE_TRACE
@@ -76,7 +77,10 @@ class _FakeHost:
             results = [
                 {
                     NG_TASK_INDEX: example[NG_TASK_INDEX],
-                    NG_ROLLOUT_INDEX: 0,
+                    # Echoed, never invented: Gym's `run_examples` copies the row's identity onto
+                    # the result and assigns nothing of its own. A fake that supplies an index the
+                    # caller failed to send would hide exactly the bug this mirrors.
+                    NG_ROLLOUT_INDEX: example.get(NG_ROLLOUT_INDEX),
                     "reward": rewards.get(example[NG_TASK_INDEX], 1.0),
                     "response": f"answer-{example[NG_TASK_INDEX]}",
                     **({MODEL_CALLS_RESULT_KEY: self._model_calls} if self._model_calls else {}),
@@ -394,3 +398,33 @@ async def test_a_host_that_returns_no_captures_still_produces_trials(tasks, tmp_
 
     assert len(trials) == len(tasks)
     assert not (tmp_path / "gym_run" / "model_calls").exists()
+
+
+async def test_examples_carry_a_rollout_index_so_gym_will_capture(tasks, tmp_path, monkeypatch) -> None:
+    # `run_examples` assigns no `_ng_rollout_index` -- only `gym eval run`'s preprocessing does.
+    # Without it Gym's `maybe_rollout_id_from_run_body` returns None and it writes *no capture at
+    # all*. Found by running a real sandboxed rollout, whose capture directory stayed empty.
+    host = _FakeHost()
+    runner = runner_against(host, monkeypatch)
+
+    await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    assert all(example.get(NG_ROLLOUT_INDEX) is not None for example in host.posted)
+
+
+def test_rollout_indices_number_repeats_within_each_task() -> None:
+    # Per task, not across the batch: the index distinguishes repeats of one task, and a global
+    # counter would make every rollout look like a different task's first attempt.
+    examples = [{NG_TASK_INDEX: 0}, {NG_TASK_INDEX: 1}, {NG_TASK_INDEX: 0}]
+
+    _stamp_rollout_indices(examples)
+
+    assert [example[NG_ROLLOUT_INDEX] for example in examples] == [0, 0, 1]
+
+
+def test_a_caller_that_numbers_its_own_repeats_keeps_its_numbering() -> None:
+    examples = [{NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 7}, {NG_TASK_INDEX: 0}]
+
+    _stamp_rollout_indices(examples)
+
+    assert [example[NG_ROLLOUT_INDEX] for example in examples] == [7, 0]

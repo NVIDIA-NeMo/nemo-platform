@@ -41,6 +41,7 @@ from typing import Any
 import httpx
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import DEFAULT_REWARD_KEY
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import materialize_dataset, source_datasets
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import NG_ROLLOUT_INDEX, NG_TASK_INDEX
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import (
     aggregate_scores_from_gym,
     capture_filename,
@@ -70,6 +71,25 @@ PROXY_AUTH_HEADER = "X-Sandboxed-Gym-Token"
 MODEL_CALLS_RESULT_KEY = "_nmp_model_calls"
 #: Where captures are written locally, matching the CLI runtime's ``model_call_capture_dir``.
 _CAPTURE_SUBDIR = "model_calls"
+
+
+def _stamp_rollout_indices(examples: list[dict[str, Any]]) -> None:
+    """Number each example within its task, as Gym's CLI preprocessing does.
+
+    ``run_examples`` does not assign ``_ng_rollout_index`` -- only ``gym eval run`` does, while
+    preprocessing the dataset. Without it Gym's ``maybe_rollout_id_from_run_body`` returns None, so
+    it writes **no model-call capture at all**, and the trial falls back to a synthesized id.
+    Confirmed by running a real sandboxed rollout: the capture directory was created and stayed
+    empty until the index was supplied.
+
+    Only where the row is silent, so a caller that numbers its own repeats keeps its numbering.
+    """
+    seen: dict[Any, int] = {}
+    for example in examples:
+        if example.get(NG_ROLLOUT_INDEX) is not None:
+            continue
+        task = example.get(NG_TASK_INDEX)
+        example[NG_ROLLOUT_INDEX] = seen[task] = seen.get(task, -1) + 1
 
 
 def _unpack_model_call_captures(records: list[dict[str, Any]], work_dir: Path) -> Path | None:
@@ -295,6 +315,7 @@ class SandboxedGymAgentTaskRunner:
             # which is how multi-agent Gym datasets are meant to work.
             for example in examples:
                 example.setdefault("agent_ref", {"name": cfg.agent_ref_name})
+        _stamp_rollout_indices(examples)
         logger.info(
             "Collecting %d example(s) from %s via sandboxed Gym host %s.",
             len(examples),
