@@ -68,6 +68,44 @@ describe('useHuggingFaceNameDefault', () => {
     expect(result.current.getValues('name')).toBe('my-own-name');
   });
 
+  it('keeps the name after the user edits it and then restores the default', async () => {
+    const { result } = setup(SOURCE_HF);
+
+    await act(async () => {
+      result.current.setValue('name', 'my-own-name', { shouldDirty: true });
+    });
+    // Undoing back to the generated default clears RHF's value-based dirty flag,
+    // but the user has still taken ownership of the field.
+    await act(async () => {
+      result.current.setValue('name', 'seeded-default-name', { shouldDirty: true });
+    });
+    await act(async () => {
+      result.current.setValue('repoId', 'Qwen/Qwen2.5-7B-Instruct', { shouldDirty: true });
+    });
+
+    expect(result.current.getValues('name')).toBe('seeded-default-name');
+  });
+
+  it('resumes deriving after the form is reset for a fresh wizard', async () => {
+    const { result } = setup(SOURCE_HF);
+
+    await act(async () => {
+      result.current.setValue('name', 'my-own-name', { shouldDirty: true });
+    });
+    await act(async () => {
+      result.current.reset({
+        ...defaultWizardValues(),
+        source: SOURCE_HF,
+        name: 'a-new-default-name',
+      });
+    });
+    await act(async () => {
+      result.current.setValue('repoId', 'Qwen/Qwen2.5-7B-Instruct', { shouldDirty: true });
+    });
+
+    expect(result.current.getValues('name')).toBe('qwen-qwen2.5-7b-instruct');
+  });
+
   it('leaves the existing default alone for an unusable repo id', async () => {
     const { result } = setup(SOURCE_HF);
 

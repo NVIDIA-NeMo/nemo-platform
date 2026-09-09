@@ -6,7 +6,7 @@ import {
   type WizardFormValues,
 } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
 import { huggingFaceRepoIdToBaseName } from '@studio/routes/DeploymentsListRoute/huggingFaceDeploymentArtifacts';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useFormState, useWatch, type Control, type UseFormSetValue } from 'react-hook-form';
 
 /**
@@ -22,11 +22,29 @@ export function useHuggingFaceNameDefault(
 ): void {
   const source = useWatch({ control, name: 'source' });
   const repoId = useWatch({ control, name: 'repoId' });
-  const { dirtyFields } = useFormState({ control });
-  const nameEdited = Boolean(dirtyFields.name);
+  const { dirtyFields, defaultValues } = useFormState({ control });
+
+  // `dirtyFields.name` is value-based, not event-based: RHF drops the entry the
+  // moment the field matches its default again. Reading it directly would hand
+  // the name back to the repo ID as soon as a user undid their way back to the
+  // generated default, so ownership is latched rather than read live.
+  const [nameOwnedByUser, setNameOwnedByUser] = useState(false);
+
+  // `reset()` installs fresh defaultValues, including a newly generated name.
+  // That is the wizard starting over, and the only thing that returns ownership
+  // of the name to this hook.
+  const defaultName = defaultValues?.name;
+  const [lastDefaultName, setLastDefaultName] = useState(defaultName);
+
+  if (lastDefaultName !== defaultName) {
+    setLastDefaultName(defaultName);
+    setNameOwnedByUser(Boolean(dirtyFields.name));
+  } else if (dirtyFields.name && !nameOwnedByUser) {
+    setNameOwnedByUser(true);
+  }
 
   useEffect(() => {
-    if (source !== SOURCE_HF || nameEdited) return;
+    if (source !== SOURCE_HF || nameOwnedByUser) return;
 
     // Only overwrite once the repo ID yields something; leaves the existing
     // default in place rather than blanking the field while the user is still
@@ -35,5 +53,5 @@ export function useHuggingFaceNameDefault(
     if (derived) {
       setValue('name', derived, { shouldDirty: false, shouldValidate: true });
     }
-  }, [nameEdited, repoId, setValue, source]);
+  }, [nameOwnedByUser, repoId, setValue, source]);
 }

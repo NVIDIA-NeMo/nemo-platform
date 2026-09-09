@@ -221,6 +221,13 @@ describe('useCreateDeploymentBySource — workspace source', () => {
   });
 });
 
+/** An API rejection shaped like the Axios errors the SDK throws. */
+function httpError(status: number) {
+  return Object.assign(new Error(`request failed with status ${status}`), {
+    response: { status },
+  });
+}
+
 describe('useCreateDeploymentBySource — huggingface name collisions', () => {
   function huggingFaceValues(overrides: Partial<WizardFormValues> = {}): WizardFormValues {
     return {
@@ -247,8 +254,8 @@ describe('useCreateDeploymentBySource — huggingface name collisions', () => {
     mockModelsCreateModel.mockResolvedValue(undefined as never);
     mockModelsCreateDeploymentConfig.mockResolvedValue(undefined as never);
     mockModelsCreateDeployment.mockResolvedValue(undefined as never);
-    // Default: the name is free. `modelsGetModel` rejects with 404 in that case.
-    mockModelsGetModel.mockRejectedValue(new Error('not found'));
+    // Default: the name is free, which the API signals with a 404.
+    mockModelsGetModel.mockRejectedValue(httpError(404));
   });
 
   it('fails before creating anything when the model name is taken', async () => {
@@ -279,5 +286,24 @@ describe('useCreateDeploymentBySource — huggingface name collisions', () => {
     expect(mockFilesCreateFileset).toHaveBeenCalledTimes(1);
     expect(mockModelsCreateModel).toHaveBeenCalledTimes(1);
     expect(result.current.submitError).toBeNull();
+  });
+
+  it('fails without creating anything when the lookup fails for a reason other than 404', async () => {
+    mockModelsGetModel.mockRejectedValue(httpError(503));
+
+    const { result } = renderHook(() => useCreateDeploymentBySource(workspace), { wrapper });
+    const onSuccess = vi.fn();
+
+    await act(async () => {
+      await result.current.createDeploymentFromWizard(huggingFaceValues(), onSuccess);
+    });
+
+    // A failed lookup says nothing about the name, so nothing is created.
+    expect(mockFilesCreateFileset).not.toHaveBeenCalled();
+    expect(mockModelsCreateModel).not.toHaveBeenCalled();
+    expect(mockModelsCreateDeploymentConfig).not.toHaveBeenCalled();
+    expect(mockModelsCreateDeployment).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(result.current.submitError).toBeTruthy();
   });
 });

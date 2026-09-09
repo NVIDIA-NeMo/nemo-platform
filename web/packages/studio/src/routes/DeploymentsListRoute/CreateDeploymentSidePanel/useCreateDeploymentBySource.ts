@@ -10,7 +10,7 @@
  * its affiliates is strictly prohibited.
  */
 
-import { getErrorMessage } from '@nemo/common/src/api/common/utils';
+import { getErrorMessage, isNotFoundError } from '@nemo/common/src/api/common/utils';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
@@ -112,15 +112,17 @@ async function createNgcDeployment(
 /**
  * Whether a Model Entity already exists under this name.
  *
- * A transport failure is reported as "not taken" rather than blocking the
- * deployment: the create call below is still authoritative and returns 409.
+ * Only a 404 proves the name is free. Any other failure (network, 5xx, auth) leaves
+ * the answer unknown, and guessing "not taken" would let the chain create a fileset
+ * that a later 409 strands with no rollback — so those errors propagate instead.
  */
 async function isModelNameTaken(workspace: string, name: string): Promise<boolean> {
   try {
     await modelsGetModel(workspace, name);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isNotFoundError(error)) return false;
+    throw error;
   }
 }
 
