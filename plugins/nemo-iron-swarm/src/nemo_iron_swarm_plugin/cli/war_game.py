@@ -127,7 +127,7 @@ def register(app: typer.Typer) -> None:
         # downstream (unknown intensity reads as "standard", an unknown defender leaves the full
         # default set in place), so a typo would otherwise war-game the wrong configuration.
         try:
-            result = ctx.sdk.iron_swarm.run(
+            result = ctx.iron_swarm.run(
                 config=config_file,
                 manifest_id=manifest_id,
                 env_file=env_file,
@@ -177,7 +177,7 @@ def register(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
         interview = "skip" if no_interactive else "auto" if yes else "interactive"
 
-        result = ctx.sdk.iron_swarm.synth_benign(
+        result = ctx.iron_swarm.synth_benign(
             manifest_id=manifest_id,
             env_file=env_file,
             interview=interview,
@@ -231,7 +231,7 @@ def register(app: typer.Typer) -> None:
         selected = select_defense_ids(defense_ids(mitigations), keep=keep or None, exclude=exclude or None)
         typer.echo(f"Sanity-checking {len(selected)} defense(s): {', '.join(selected) or '(none)'}")
 
-        result = ctx.sdk.iron_swarm.sanity_check(
+        result = ctx.iron_swarm.sanity_check(
             manifest_id=manifest_id,
             mitigations=mitigations,
             selected_defense_ids=selected,

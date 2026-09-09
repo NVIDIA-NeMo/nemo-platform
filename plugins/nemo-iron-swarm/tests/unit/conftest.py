@@ -23,8 +23,11 @@ from typing import Any
 import pytest
 from nemo_iron_swarm_plugin import sdk as sdk_module
 from nemo_iron_swarm_plugin.api.v2 import events as events_module
+from nemo_iron_swarm_plugin.cli import _shared as shared_module
 from nemo_iron_swarm_plugin.jobs import manifest as manifest_module
 from nemo_iron_swarm_plugin.jobs import records as records_module
+
+_REAL_IRON_SWARM_RESOURCE = sdk_module.IronSwarmPluginResource
 
 
 def _data(body: Any) -> Any:
@@ -66,9 +69,18 @@ def _fake_entities_client(platform: Any, _client_cls: Any) -> Any:
     )
 
 
+def _fake_iron_swarm_resource(platform: Any) -> Any:
+    """Use a test SDK's mounted ``iron_swarm`` double when it has one."""
+    resource = getattr(platform, "iron_swarm", None)
+    if resource is not None:
+        return resource
+    return _REAL_IRON_SWARM_RESOURCE(platform)
+
+
 @pytest.fixture(autouse=True)
 def _fake_entities_client_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
     """Route typed-client entity calls onto the fake ``entities`` namespace in every consuming module."""
     for mod in (records_module, manifest_module, events_module):
         monkeypatch.setattr(mod, "client_from_platform", _fake_entities_client)
     monkeypatch.setattr(sdk_module, "client_from_platform", _fake_entities_client)
+    monkeypatch.setattr(shared_module, "IronSwarmPluginResource", _fake_iron_swarm_resource)
