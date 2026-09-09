@@ -5,15 +5,11 @@ import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName'
 import {
   type AutomodelJobInput,
   type AutomodelJobsJobRequest,
-  BatchingStrategy,
-  OptimizerType,
-  PolicyBackend,
   RlGRPOTrainingFinetuningType,
   type RlDPOTraining,
   type RlGRPOTraining,
   type RlJobInput,
   type RlJobsJobRequest,
-  type RlLoRAParams,
   type UnslothJobInput,
   type UnslothJobsJobRequest,
 } from '@nemo/sdk/generated/customizer/schema';
@@ -27,82 +23,29 @@ import {
   type CustomizationJob,
 } from '@studio/util/customizationBackend';
 import type { TrainingType } from '@studio/util/customizerSchema';
+import {
+  AUTOMODEL_DEFAULT_SPEC,
+  RL_DPO_DEFAULT_SPEC,
+  RL_GRPO_DEFAULT_SPEC,
+  UNSLOTH_DEFAULT_SPEC,
+} from '@studio/util/forms/specDefaults';
 import { z } from 'zod';
-
-/**
- * The LoRA knobs the GRPO form exposes. `target_modules`/`exclude_modules` are left
- * to the backend, and the rest are required here because every control is always
- * rendered with a value.
- */
-export type GrpoLoraFields = Required<
-  Pick<RlLoRAParams, 'rank' | 'alpha' | 'dropout' | 'use_triton'>
-> &
-  Pick<RlLoRAParams, 'target_modules' | 'exclude_modules'>;
 
 /**
  * GRPO-only hyperparameters, kept in their own namespace because `rl.training` holds
  * a single object shared with the DPO form. Derived from `RlGRPOTraining` so the form
  * cannot drift from the API — field docs come from the generated schema.
  */
-export interface GrpoFormFields extends Required<
-  Pick<
-    RlGRPOTraining,
-    | 'num_generations_per_prompt'
-    | 'num_prompts_per_step'
-    | 'max_rollout_turns'
-    | 'normalize_rewards'
-    | 'ratio_clip_min'
-    | 'ratio_clip_max'
-    | 'finetuning_type'
-    | 'temperature'
-    | 'val_at_start'
-    | 'overlong_filtering'
-    | 'use_dynamic_sampling'
-    | 'batch_multiplier'
-    | 'dynamic_sampling_max_gen_batches'
-    | 'use_leave_one_out_baseline'
-    | 'use_importance_sampling_correction'
-    | 'use_on_policy_kl_approximation'
-    | 'policy_backend'
-    | 'batching_strategy'
-    | 'sequence_length_round'
-    | 'vllm_gpu_memory_utilization'
-  >
-> {
+/**
+ * GRPO-only form state: the spec's GRPO arm plus the two fields that exist only in the UI.
+ *
+ * A field the form has no control for is inert — `formToRlCreate` picks what it sends.
+ */
+export interface GrpoFormFields extends RlGRPOTraining {
   /** 'grpo' shows the GRPO form sections; 'dpo' shows DPO sections. Maps to training.type on submit. */
   trainingType: RlDPOTraining['type'] | RlGRPOTraining['type'];
   /** Fileset reference for the NeMo Gym reward environment. */
   environmentFileset: string;
-  /**
-   * Seeded to match the default `max_seq_length`, which is what the backend would
-   * derive it from anyway. It has to carry a value because its slider needs a reset
-   * target, and a reset target that differs from the form default is a control whose
-   * ↺ silently changes the request. Raising Max Sequence Length does NOT raise this —
-   * the two are set independently, and the backend rejects this exceeding that.
-   */
-  max_new_tokens: RlGRPOTraining['max_new_tokens'];
-  /** LoRA hyperparameters; only sent when finetuning_type is 'lora'. */
-  lora: GrpoLoraFields;
-  /**
-   * Fields the backend leaves unset by default. They stay optional here so an untouched
-   * control sends nothing and the backend keeps its own behaviour, rather than the form
-   * switching a feature on with a value the user never chose.
-   */
-  ratio_clip_c: RlGRPOTraining['ratio_clip_c'];
-  advantage_clip_low: RlGRPOTraining['advantage_clip_low'];
-  advantage_clip_high: RlGRPOTraining['advantage_clip_high'];
-  truncated_importance_sampling_type: RlGRPOTraining['truncated_importance_sampling_type'];
-  truncated_importance_sampling_ratio: RlGRPOTraining['truncated_importance_sampling_ratio'];
-  truncated_importance_sampling_ratio_min: RlGRPOTraining['truncated_importance_sampling_ratio_min'];
-  top_k: RlGRPOTraining['top_k'];
-  train_mb_tokens: RlGRPOTraining['train_mb_tokens'];
-  router_aux_loss_coef: RlGRPOTraining['router_aux_loss_coef'];
-  vllm_tensor_parallel_size: RlGRPOTraining['vllm_tensor_parallel_size'];
-  reward_scaling: RlGRPOTraining['reward_scaling'];
-  reward_shaping: RlGRPOTraining['reward_shaping'];
-  /** Free-form passthrough dicts, edited via ControlledJsonInput. */
-  hf_config_overrides: RlGRPOTraining['hf_config_overrides'];
-  automodel_kwargs: RlGRPOTraining['automodel_kwargs'];
 }
 
 export interface CustomizationFormFields {
@@ -149,214 +92,42 @@ export const resolveTrainingType = (
   }
 };
 
-const UNSLOTH_DEFAULT_TARGET_MODULES = [
-  'q_proj',
-  'k_proj',
-  'v_proj',
-  'o_proj',
-  'gate_proj',
-  'up_proj',
-  'down_proj',
-];
-
-const RL_DPO_DEFAULTS: RlJobInput = {
-  model: '',
-  dataset: '',
-  training: {
-    type: 'dpo',
-    epochs: 1,
-    learning_rate: 1e-4,
-    batch_size: 32,
-    micro_batch_size: 1,
-    max_seq_length: 2048,
-    warmup_steps: 0,
-    weight_decay: 0.01,
-    ref_policy_kl_penalty: 0.1,
-    preference_loss_weight: 1,
-    sft_loss_weight: 0,
-    preference_average_log_probs: false,
-    sft_average_log_probs: false,
-    parallelism: {
-      num_nodes: 1,
-      num_gpus_per_node: 1,
-      tensor_parallel_size: 1,
-      pipeline_parallel_size: 1,
-      context_parallel_size: 1,
-      sequence_parallel: false,
-    },
-  },
-};
-
-/** Fields both RL forms bind to. `RL_DPO_DEFAULTS.training` is `RlDPOTraining` and omits them. */
-const RL_SHARED_TRAINING_DEFAULTS = {
-  optimizer_type: OptimizerType.adamw_with_cosine_annealing,
-  min_learning_rate: 0,
-  adam_beta1: 0.9,
-  adam_beta2: 0.999,
-  adam_eps: 1e-8,
-  max_grad_norm: 1.0,
-  seed: 42,
-  val_check_interval: 1.0,
-  keep_top_k: 1,
-  activation_checkpointing: false,
-};
+/**
+ * Every default below comes from `specDefaults.ts`, which parses each backend's generated
+ * Zod schema once and lets Zod apply the spec's `default:` values. A field the spec leaves
+ * without a default arrives `undefined` — the form's signal to render it unset rather than
+ * invent a starting value.
+ */
 
 /**
- * `rl.training` is shared by the DPO and GRPO forms, so each method's defaults must
- * stand alone — a GRPO seed left here would silently override the backend for DPO.
- * DPO matches the backend (`max_steps: None`, `val_at_end: True`); GRPO runs to a
- * step budget and skips the trailing validation pass.
- *
- * The casts are required: spreading `RlDPOTraining` with GRPO-only fields yields an
- * object valid for either arm, but TS will not infer the discriminated union itself.
+ * `rl.training` is shared by the DPO and GRPO forms, so each method's defaults must stand
+ * alone: a GRPO value left in the DPO object would silently override the backend. Each
+ * comes from its own arm of the discriminated union, so values that differ per method —
+ * `ref_policy_kl_penalty` is 0.05 on DPO and 0 on GRPO — stay correct without restating.
  */
-export const RL_DPO_TRAINING_DEFAULTS = {
-  ...RL_DPO_DEFAULTS.training,
-  ...RL_SHARED_TRAINING_DEFAULTS,
-  val_at_end: true,
-} as RlJobInput['training'];
+export const RL_DPO_TRAINING_DEFAULTS = RL_DPO_DEFAULT_SPEC.training;
 
-export const RL_GRPO_TRAINING_DEFAULTS = {
-  ...RL_DPO_DEFAULTS.training,
-  ...RL_SHARED_TRAINING_DEFAULTS,
-  max_steps: 500,
-  val_at_end: false,
-  // Backend default is 0.0 for GRPO and 0.05 for DPO; the 0.1 inherited from
-  // RL_DPO_DEFAULTS would otherwise apply a KL penalty the user never asked for.
-  ref_policy_kl_penalty: 0.0,
-  // The shared 1e-4 is SFT-scale and collapses a policy within a few dozen RL steps;
-  // the platform GRPO fixtures train at 5e-6. Deliberately not conditional on
-  // finetuning_type: the backend scales an adapter's effective rate by lora.alpha/rank,
-  // so the default rank 16 / alpha 32 already puts a LoRA run at an effective 1e-5.
-  learning_rate: 5e-6,
-  // Backend default is 1e-5; the shared block's Torch 1e-8 overrides it. Fixed here,
-  // not in the shared block, so DPO's numerics are untouched (DPO still diverges).
-  adam_eps: 1e-5,
-  // A step count, not a fraction of an epoch: 50 gives ~10 validation points over the
-  // 500-step default, where a fraction-of-epoch 1.0 gives exactly one.
-  val_check_interval: 50,
-} as RlJobInput['training'];
+const grpoTraining = RL_GRPO_DEFAULT_SPEC.training as RlGRPOTraining;
+
+/**
+ * Both arms come straight from the spec. The GRPO arm carries its own values for anything
+ * the two methods differ on, so nothing needs restating here — and a field the spec leaves
+ * without a default stays absent, which is how it reaches the form unset.
+ */
+export const RL_GRPO_TRAINING_DEFAULTS = RL_GRPO_DEFAULT_SPEC.training;
 
 export const FORM_DEFAULTS: CustomizationFormFields = {
   backend: 'automodel',
   outputName: '',
   description: '',
-  automodel: {
-    model: '',
-    dataset: { training: '' },
-    training: {
-      training_type: 'sft',
-      finetuning_type: 'lora',
-      lora: { rank: 16, alpha: 32, dropout: 0, merge: false, use_triton: true },
-      max_seq_length: 2048,
-      attn_implementation: 'sdpa',
-    },
-    schedule: { epochs: 1 },
-    batch: { global_batch_size: 8, micro_batch_size: 1, sequence_packing: false },
-    optimizer: {
-      learning_rate: 5e-6,
-      weight_decay: 0.01,
-      warmup_steps: 0,
-      adam_beta1: 0.9,
-      adam_beta2: 0.999,
-      optimizer: 'Adam',
-      lr_decay_style: 'cosine',
-    },
-    parallelism: {
-      num_nodes: 1,
-      num_gpus_per_node: 1,
-      tensor_parallel_size: 1,
-      pipeline_parallel_size: 1,
-      context_parallel_size: 1,
-      sequence_parallel: false,
-    },
-  },
-  unsloth: {
-    model: {
-      name: '',
-      max_seq_length: 2048,
-      load_in_4bit: true,
-      load_in_8bit: false,
-      dtype: 'auto',
-      trust_remote_code: false,
-    },
-    dataset: {
-      path: '',
-      text_field: 'text',
-      apply_chat_template: false,
-      packing: false,
-    },
-    training: {
-      training_type: 'sft',
-      finetuning_type: 'lora',
-      lora: {
-        rank: 16,
-        alpha: 16,
-        dropout: 0,
-        target_modules: UNSLOTH_DEFAULT_TARGET_MODULES,
-        bias: 'none',
-        use_rslora: false,
-        random_state: 3407,
-        init_lora_weights: true,
-      },
-      use_gradient_checkpointing: 'unsloth',
-    },
-    schedule: {
-      epochs: 1,
-      warmup_steps: 0,
-      lr_scheduler_type: 'linear',
-      logging_steps: 1,
-      seed: 3407,
-    },
-    batch: { per_device_train_batch_size: 1, gradient_accumulation_steps: 1 },
-    optimizer: { learning_rate: 2e-4, weight_decay: 0, optim: 'adamw_8bit' },
-    hardware: { precision: 'bf16' },
-  },
-  rl: {
-    ...RL_DPO_DEFAULTS,
-    training: RL_DPO_TRAINING_DEFAULTS,
-  },
+  automodel: AUTOMODEL_DEFAULT_SPEC,
+  unsloth: UNSLOTH_DEFAULT_SPEC,
+  rl: RL_DPO_DEFAULT_SPEC,
   grpo: {
+    /** 'grpo' shows the GRPO sections; 'dpo' shows DPO. Maps to training.type on submit. */
     trainingType: 'dpo',
     environmentFileset: '',
-    num_generations_per_prompt: 8,
-    num_prompts_per_step: 8,
-    overlong_filtering: false,
-    max_rollout_turns: 1,
-    normalize_rewards: true,
-    ratio_clip_min: 0.2,
-    ratio_clip_max: 0.28,
-    temperature: 1.0,
-    val_at_start: false,
-    max_new_tokens: 2048,
-    finetuning_type: RlGRPOTrainingFinetuningType.all_weights,
-    lora: { rank: 16, alpha: 32, dropout: 0, use_triton: true },
-    use_dynamic_sampling: false,
-    batch_multiplier: 1.0,
-    dynamic_sampling_max_gen_batches: 10,
-    use_leave_one_out_baseline: true,
-    use_importance_sampling_correction: true,
-    use_on_policy_kl_approximation: true,
-    policy_backend: PolicyBackend.automodel,
-    batching_strategy: BatchingStrategy.dynamic,
-    sequence_length_round: 64,
-    vllm_gpu_memory_utilization: 0.5,
-    // Left unset: the backend treats absence as "feature off", so seeding any number
-    // here would silently enable it. Their controls reset to empty rather than to a value.
-    ratio_clip_c: undefined,
-    advantage_clip_low: undefined,
-    advantage_clip_high: undefined,
-    truncated_importance_sampling_type: undefined,
-    truncated_importance_sampling_ratio: undefined,
-    truncated_importance_sampling_ratio_min: undefined,
-    top_k: undefined,
-    train_mb_tokens: undefined,
-    router_aux_loss_coef: undefined,
-    vllm_tensor_parallel_size: undefined,
-    reward_scaling: undefined,
-    reward_shaping: undefined,
-    hf_config_overrides: undefined,
-    automodel_kwargs: undefined,
+    ...grpoTraining,
   },
 };
 
@@ -569,8 +340,8 @@ export const formToRlCreate = (f: CustomizationFormFields): RlJobsJobRequest => 
           lora: isLora
             ? {
                 ...f.grpo.lora,
-                target_modules: emptyToUndefined(f.grpo.lora.target_modules),
-                exclude_modules: emptyToUndefined(f.grpo.lora.exclude_modules),
+                target_modules: emptyToUndefined(f.grpo.lora?.target_modules),
+                exclude_modules: emptyToUndefined(f.grpo.lora?.exclude_modules),
               }
             : undefined,
           num_generations_per_prompt: f.grpo.num_generations_per_prompt,
