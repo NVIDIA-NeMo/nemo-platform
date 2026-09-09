@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for discovered plugin resources, clone isolation, and transport auth.
+"""Tests for typed resource dispatch and transport auth.
 
-Covers three behaviours that only surface through the compatibility layer:
+Covers two behaviours that only surface through the compatibility layer:
 
 - ``sdk.inference.*`` must hand back a resource client matching the owning
   client's sync/async flavour.
-- ``with_options()`` clones must not reuse resources bound to the original.
 - Raw calls through the exposed ``_client`` transport must stay authenticated.
 """
 
@@ -18,27 +17,6 @@ import pytest
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 
 BASE = "http://test:8000"
-
-
-class _Resource:
-    """Stand-in for a discovered plugin SDK resource."""
-
-    def __init__(self, platform: object) -> None:
-        self.platform = platform
-
-
-@pytest.fixture
-def discovered(monkeypatch: pytest.MonkeyPatch):
-    """Register a fake ``thing`` resource on the plugin SDK discovery surface."""
-
-    class Resources:
-        sync_resource = _Resource
-        async_resource = _Resource
-
-    monkeypatch.setattr(
-        "nemo_platform_plugin.discovery.discover_sdk",
-        lambda: {"thing": Resources()},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -154,44 +132,8 @@ def test_convenience_properties_return_async_clients_for_async_client() -> None:
         assert isinstance(resource._http, httpx.AsyncClient)
 
 
-# ---------------------------------------------------------------------------
-# with_options() clone isolation
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("client_factory", [NemoClient, AsyncNemoClient])
-def test_with_options_does_not_reuse_cached_resources(client_factory, discovered) -> None:
-    client = client_factory(base_url=BASE)
-    original = client.thing
-
-    clone = client.with_headers({"X-Trace": "1"})
-
-    assert clone.thing is not original
-    assert clone.thing.platform is clone
-    assert original.platform is client
-
-
-@pytest.mark.parametrize("client_factory", [NemoClient, AsyncNemoClient])
-def test_cloned_resource_sees_overridden_options(client_factory, discovered) -> None:
-    """The whole point of the clone: overrides must reach the resource."""
-    client = client_factory(base_url=BASE)
-    _ = client.thing  # prime the cache before cloning
-
-    clone = client.with_headers({"X-Trace": "1"})
-
-    assert clone.thing.platform.default_headers == {"X-Trace": "1"}
-    assert client.thing.platform.default_headers == {}
-
-
-@pytest.mark.parametrize("client_factory", [NemoClient, AsyncNemoClient])
-def test_resource_is_cached_within_one_client(client_factory, discovered) -> None:
-    client = client_factory(base_url=BASE)
-
-    assert client.thing is client.thing
-
-
-@pytest.mark.parametrize("client_factory", [NemoClient, AsyncNemoClient])
-def test_unknown_attribute_still_raises(client_factory, discovered) -> None:
+def test_unknown_attribute_still_raises(client_factory) -> None:
     client = client_factory(base_url=BASE)
 
     with pytest.raises(AttributeError, match="nope"):
@@ -204,7 +146,7 @@ def test_unknown_attribute_still_raises(client_factory, discovered) -> None:
 
 
 def test_raw_client_calls_are_authenticated() -> None:
-    """Plugin resources using platform._client bypass send() but keep auth."""
+    """Plugin resources using owner._client bypass send() but keep auth."""
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:

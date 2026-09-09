@@ -954,6 +954,11 @@ def test_sync_job_active_registers_pod_uid_workload_delegation(
     assert delegation.workload_subject == "system:serviceaccount:test-namespace:default"
     assert delegation.workload_audience == "nemo-platform"
     assert delegation.workload_workspace == test_step_pending_with_auth_context.workspace
+    assert delegation.workload_kind == "job"
+    assert delegation.workload_id == test_step_pending_with_auth_context.job
+    assert delegation.workload_generation == (
+        f"{test_step_pending_with_auth_context.attempt_id}/{test_step_pending_with_auth_context.id}/pod-uid-123"
+    )
     assert delegation.job_id == test_step_pending_with_auth_context.job
     assert delegation.attempt_id == test_step_pending_with_auth_context.attempt_id
     assert delegation.step_id == test_step_pending_with_auth_context.id

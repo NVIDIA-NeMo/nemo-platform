@@ -246,6 +246,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -315,6 +319,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response
@@ -620,6 +632,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -689,6 +705,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response
@@ -994,6 +1018,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -1063,6 +1091,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response
@@ -2135,13 +2171,10 @@ components:
       description: 'Which NeMo-RL policy worker trains the model.
 
 
-        Chosen explicitly, never inferred: the value picks the worker class, which
-        picks
+        The value picks the worker class, which picks the Ray actor''s venv and kernels.
 
-        the Ray actor''s venv and kernels. Asking for a capability the backend lacks
-        is a
-
-        validation error, not a silent upgrade.'
+        Asking for a capability the backend lacks is a validation error, not a silent
+        upgrade.'
     ProgressReportingConfig:
       properties:
         min_report_interval_seconds:
@@ -2485,14 +2518,11 @@ components:
         policy_backend:
           allOf:
           - $ref: '#/components/schemas/PolicyBackend'
-          description: 'NeMo-RL policy worker that trains the model. `automodel` (default)
-            builds on NeMo Automodel + Transformer Engine; it handles full-weight
-            training and is the only backend with LoRA, expert parallelism and automodel_kwargs.
-            `dtensor` uses stock HuggingFace modules on PyTorch FSDP2 -- no Transformer
-            Engine, so it is the pre-Hopper option, without those three features.
-            Never switched implicitly: asking `dtensor` for an `automodel`-only feature
-            is rejected.'
-          default: automodel
+          description: NeMo-RL policy worker that trains the model. `lora` requires
+            `automodel` (NeMo Automodel + Transformer Engine, Hopper or newer; the
+            only backend with expert parallelism and automodel_kwargs). `all_weights`
+            requires `dtensor` (stock HuggingFace on PyTorch FSDP2, also the pre-Hopper
+            option). Omit it to get the supported one.
         val_at_start:
           type: boolean
           title: Val At Start
@@ -3407,7 +3437,7 @@ components:
       - model
       - dataset
       title: UnslothJobInput
-      description: POST body / CLI JSON for ``nemo customization unsloth run``.
+      description: POST body / CLI JSON for ``nemo customization unsloth submit``.
     UnslothJobOutput:
       properties:
         name:

@@ -3,16 +3,16 @@
 
 """Tests for the Unsloth CLI overrides (``apply_unsloth_job_cli_overrides``).
 
-Pins the post-2026 submit-only contract: ``submit`` accepts a positional
-``JOB_JSON`` and delegates to the auto-generated callback with ``--spec``
-set to the validated JSON; ``run`` hard-fails with an "use submit"
-message.
+Pins the post-2026 submit-only contract: generated ``run`` is removed, while
+``submit`` accepts a positional ``JOB_JSON`` and delegates to the auto-generated
+callback with ``--spec`` set to the validated JSON.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -34,16 +34,19 @@ def _plain(text: str) -> str:
 
 
 def _build_app() -> typer.Typer:
-    """Build a Typer app with the contributor's overridden run/submit/explain."""
+    """Build a generated Typer app, then apply the contributor overrides."""
     from nemo_platform_plugin.commands import (
         _add_explain_command,
-        _add_run_command,
         _add_submit_command,
     )
 
     app = typer.Typer(no_args_is_help=True)
+
+    @app.command("run")
+    def generated_run() -> None:
+        raise AssertionError("Customizer overrides should remove generated run commands")
+
     scheduler = NemoJobScheduler()
-    _add_run_command(app, UnslothJob, scheduler)
     _add_submit_command(app, UnslothJob, scheduler)
     _add_explain_command(app, UnslothJob, scheduler)
     apply_unsloth_job_cli_overrides(app)
@@ -56,6 +59,13 @@ def _minimal_payload() -> dict[str, object]:
         "dataset": {"path": "default/my-dataset"},
         "schedule": {"max_steps": 60},
     }
+
+
+@dataclass
+class _SubmittedCall:
+    workspace: str | None = None
+    spec: dict[str, object] | None = None
+    base_url: str | None = None
 
 
 class TestLoadJobJson:
@@ -82,18 +92,16 @@ class TestSubmitPath:
         assert path == "/apis/customization/v2/workspaces/acme-corp/unsloth/jobs"
 
 
-class TestRunHardFail:
-    def test_run_exits_1_with_submit_pointer(self, tmp_path: Path) -> None:
-        path = tmp_path / "job.json"
-        path.write_text(json.dumps(_minimal_payload()))
-
+class TestCommandRegistration:
+    def test_help_lists_submit_and_explain_only(self) -> None:
         app = _build_app()
         runner = CliRunner()
-        result = runner.invoke(app, ["run", str(path)])
-        assert result.exit_code == 1
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
         plain = _plain(result.output)
         assert "submit" in plain
-        assert "does not support local run" in plain
+        assert "explain" in plain
+        assert "run" not in plain
 
 
 class TestSubmitOverride:
@@ -110,12 +118,12 @@ class TestSubmitOverride:
 
     def test_submit_delegates_with_validated_spec(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """``submit JOB.json -w ws`` forwards workspace + base-url to submit_remote."""
-        submitted: dict[str, object] = {}
+        submitted = _SubmittedCall()
 
         def fake_submit_remote(
             _scheduler,
             _job_cls: type,
-            spec_data: dict,
+            spec_data: dict[str, object],
             base_url: str | None,
             workspace: str,
             profile: str | None = None,
@@ -124,9 +132,9 @@ class TestSubmitOverride:
             http_client: httpx.Client | None = None,
             headers: dict[str, str] | None = None,
         ) -> dict:
-            submitted["workspace"] = workspace
-            submitted["spec"] = spec_data
-            submitted["base_url"] = base_url
+            submitted.workspace = workspace
+            submitted.spec = spec_data
+            submitted.base_url = base_url
             return {"id": "job-99"}
 
         monkeypatch.setattr(
@@ -156,10 +164,13 @@ class TestSubmitOverride:
         )
 
         assert result.exit_code == 0, result.stdout + result.stderr
-        assert submitted["workspace"] == "acme-corp"
-        assert submitted["base_url"] == "https://nmp.test"
+        assert submitted.workspace == "acme-corp"
+        assert submitted.base_url == "https://nmp.test"
         # Raw input shape — to_spec runs inside the (mocked-out) submit_remote.
-        assert submitted["spec"]["model"]["name"] == "unsloth/Qwen2.5-0.5B-Instruct"
+        spec = submitted.spec
+        assert spec is not None
+        captured_input = UnslothJobInput.model_validate(spec)
+        assert captured_input.model.name == "unsloth/Qwen2.5-0.5B-Instruct"
 
 
 class TestExplain:

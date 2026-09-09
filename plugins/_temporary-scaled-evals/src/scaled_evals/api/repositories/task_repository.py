@@ -524,6 +524,7 @@ class TaskRepository:
                     WHERE t.id = %s
                       AND t.owner_id = %s
                       AND t.current_revision = %s
+                      AND latest.revision IS NOT NULL
                     """,
                     (task_id, owner_id, revision),
                 )

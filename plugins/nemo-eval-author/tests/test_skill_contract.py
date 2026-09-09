@@ -61,13 +61,29 @@ _AUDIT_DIR = _SKILLS_DIR / "eval-author-audit"
 _TASK_CREATE_DIR = _SKILLS_DIR / "eval-author-task-create"
 _INSPECT_DIR = _SKILLS_DIR / "eval-author-inspect-trace"
 _MLFLOW_TO_ATIF_DIR = _SKILLS_DIR / "mlflow-to-atif"
-_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR, _MLFLOW_TO_ATIF_DIR)
-_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR)
+_TRACE_ENVIRONMENT_DIR = _SKILLS_DIR / "eval-author-trace-environment"
+_SKILL_DIRS = (
+    _CORE_DIR,
+    _DISCOVER_DIR,
+    _AUDIT_DIR,
+    _TASK_CREATE_DIR,
+    _INSPECT_DIR,
+    _MLFLOW_TO_ATIF_DIR,
+    _TRACE_ENVIRONMENT_DIR,
+)
+_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR, _TRACE_ENVIRONMENT_DIR)
 _DISCOVER_SCRIPTS_DIR = _DISCOVER_DIR / "scripts"
 _AUDIT_SPEC_DIR = _AUDIT_DIR / "scripts" / "audit_spec"
 _TASK_CREATE_SCRIPTS_DIR = _TASK_CREATE_DIR / "scripts"
 _MLFLOW_TO_ATIF_SCRIPTS_DIR = _MLFLOW_TO_ATIF_DIR / "scripts"
-_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR, _TASK_CREATE_SCRIPTS_DIR, _MLFLOW_TO_ATIF_SCRIPTS_DIR)
+_TRACE_ENVIRONMENT_SCRIPTS_DIR = _TRACE_ENVIRONMENT_DIR / "scripts"
+_SCRIPT_DIRS = (
+    _DISCOVER_SCRIPTS_DIR,
+    _AUDIT_SPEC_DIR,
+    _TASK_CREATE_SCRIPTS_DIR,
+    _MLFLOW_TO_ATIF_SCRIPTS_DIR,
+    _TRACE_ENVIRONMENT_SCRIPTS_DIR,
+)
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
@@ -88,6 +104,7 @@ _AUDIT_COVERAGE_REPORT_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "coverage
 _AUDIT_TOOL_CALLS_DETAILS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.details.json"
 _AUDIT_CAPABILITIES_DETAILS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "capabilities.details.json"
 _MLFLOW_TO_ATIF = _MLFLOW_TO_ATIF_SCRIPTS_DIR / "convert_mlflow_to_atif.py"
+_TRACE_ENVIRONMENT = _TRACE_ENVIRONMENT_SCRIPTS_DIR / "trace_environment.py"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -571,6 +588,7 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     audit_tools = set(_frontmatter_and_body(_AUDIT_DIR)[0]["allowed-tools"])
     task_create_tools = set(_frontmatter_and_body(_TASK_CREATE_DIR)[0]["allowed-tools"])
     inspect_tools = set(_frontmatter_and_body(_INSPECT_DIR)[0]["allowed-tools"])
+    trace_environment_tools = set(_frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)[0]["allowed-tools"])
 
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
     assert {"Bash", "Write"} <= discover_tools, (
@@ -584,6 +602,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     )
     assert {"Bash", "Write"} <= inspect_tools, (
         f"{_INSPECT_DIR.name} runs provider commands and saves a report; it has {sorted(inspect_tools)}"
+    )
+    assert {"Bash", "Write"} <= trace_environment_tools, (
+        f"{_TRACE_ENVIRONMENT_DIR.name} prepares and verifies task artifacts; it has {sorted(trace_environment_tools)}"
     )
 
 
@@ -702,6 +723,26 @@ def test_mlflow_to_atif_script_the_skill_names_exists() -> None:
     assert (_MLFLOW_TO_ATIF_DIR / relative).is_file()
 
 
+def test_trace_environment_script_the_skill_names_exists() -> None:
+    _, body = _frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)
+    relative = "scripts/trace_environment.py"
+    assert relative in body
+    assert (_TRACE_ENVIRONMENT_DIR / relative).is_file()
+
+
+def test_trace_environment_records_ground_truth_and_software_constraints() -> None:
+    _, body = _frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)
+
+    for phrase in (
+        "ground_truth",
+        "software_requirements",
+        "proprietary",
+        "redistributable",
+        "private/ground-truth/",
+    ):
+        assert phrase in body
+
+
 def test_mlflow_to_atif_converts_export_to_private_v17_trajectory(tmp_path: Path) -> None:
     source = tmp_path / "mlflow.json"
     source.write_text(json.dumps(_mlflow_export()), encoding="utf-8")
@@ -747,9 +788,53 @@ def test_mlflow_to_atif_converts_export_to_private_v17_trajectory(tmp_path: Path
         "mlflow_span_tree_linearized",
         "orchestration_parent_not_emitted_as_step",
     ]
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == []
     if os.name == "posix":
         assert output.stat().st_mode & 0o777 == 0o700
         assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_mlflow_to_atif_normalizes_parent_bounded_microsecond_event_times() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    event_time_micros = 1_788_000_000_000_006
+    event_time_nanos = event_time_micros * 1_000
+    root, tool = payload["traces"][0]["data"]["spans"]
+    root["start_time_unix_nano"] = event_time_nanos - 2_000
+    root["end_time_unix_nano"] = event_time_nanos + 2_000
+    tool["start_time_unix_nano"] = event_time_nanos - 1_000
+    tool["end_time_unix_nano"] = event_time_nanos + 1_000
+    tool["events"] = [{"name": "completed", "time_unix_nano": event_time_micros}]
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    preserved_tool = trajectory["extra"]["mlflow"]["spans"][1]
+    assert preserved_tool["events"][0]["time_unix_nano"] == event_time_nanos
+    assert trajectory["steps"][1]["extra"]["mlflow"]["events"][0]["time_unix_nano"] == event_time_nanos
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == [
+        "event_time_microseconds_normalized_to_nanoseconds"
+    ]
+
+
+def test_mlflow_to_atif_does_not_normalize_event_time_outside_parent_bounds() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    event_time = 1_788_000_000_000_006
+    payload["traces"][0]["data"]["spans"][1]["events"] = [{"name": "unbounded", "time_unix_nano": event_time}]
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    preserved_tool = trajectory["extra"]["mlflow"]["spans"][1]
+    assert preserved_tool["events"][0]["time_unix_nano"] == event_time
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == []
 
 
 def test_mlflow_to_atif_accepts_one_bare_trace_to_dict_value(tmp_path: Path) -> None:
@@ -768,6 +853,39 @@ def test_mlflow_to_atif_accepts_one_bare_trace_to_dict_value(tmp_path: Path) -> 
 
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["converted"] == 1
+
+
+def test_mlflow_to_atif_uses_request_preview_after_empty_input_placeholders() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    info = payload["traces"][0]["info"]
+    info["request_preview"] = "Where is Paris?"
+    info["trace_metadata"]["mlflow.traceInputs"] = "{}"
+    payload["traces"][0]["data"]["spans"][0]["attributes"]["mlflow.spanInputs"] = "[]"
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    assert trajectory["steps"][0]["message"] == "Where is Paris?"
+
+
+def test_mlflow_to_atif_uses_later_populated_root_input_attribute() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    root_attributes = payload["traces"][0]["data"]["spans"][0]["attributes"]
+    root_attributes["mlflow.spanInputs"] = "{}"
+    root_attributes["input.value"] = "Use the populated root input."
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    assert trajectory["steps"][0]["message"] == "Use the populated root input."
 
 
 def test_mlflow_to_atif_matches_current_mlflow_external_and_native_trace_ids(tmp_path: Path) -> None:
@@ -1131,6 +1249,52 @@ def test_audit_skill_reads_schema_before_drafting_items() -> None:
     assert "templates/audit.md" in step_one
     assert "schemas/audit.schema.json" in step_one
     assert "Do not use validation as the primary way to discover the format" in normalized_step
+
+
+def test_audit_skill_routes_missing_ethos_to_platform_skills() -> None:
+    """Audit needs a real Ethos contract, not a placeholder denominator source."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+    preflight = body.split("## Scripts", 1)[0]
+    normalized_body = re.sub(r"\s+", " ", body)
+    normalized_preflight = re.sub(r"\s+", " ", preflight)
+
+    assert "If the user provides `--ethos <path>`, validate and use that path" in normalized_preflight
+    assert "`<ethos_path>` before applying repository discovery" in normalized_preflight
+    assert "from `<ethos_path>` and reviewed audit items" in normalized_body
+    assert "If no Ethos file exists, stop the audit flow" in normalized_preflight
+    assert "needs a source of truth for how the agent is supposed to behave" in normalized_preflight
+    assert "Code shows what the agent does today" in normalized_preflight
+    assert "Ethos records intended behavior" in normalized_preflight
+    assert "https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in preflight
+    assert "current assistant environment exposes both required Ethos creation skills" in normalized_preflight
+    assert "Ask the user whether they want you to" in normalized_preflight
+    assert "automatically generate the Ethos" in normalized_preflight
+    assert "let them create the Ethos themselves from the documentation" in normalized_preflight
+    assert "Use this user-facing message shape for that skills-present path" in normalized_preflight
+    assert "Missing Ethos" in preflight
+    assert "before it can generate an audit coverage report" in normalized_preflight
+    assert "I could not find `ETHOS.md` at the repository root" in normalized_preflight
+    assert "Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in preflight
+    assert "are available here, so I can generate a real Ethos first" in normalized_preflight
+    assert "How would you like to move forward?" in preflight
+    assert "Generate the Ethos for me with `nemo-explore` and `nemo-ethos`" in preflight
+    assert "I'll create or provide an Ethos path myself" in preflight
+    assert "Only offer automatic generation when both required skills are present and usable" in normalized_preflight
+    assert "do not offer to generate it" in normalized_preflight
+    assert "Use this user-facing message shape for that skills-unavailable path" in normalized_preflight
+    assert "I do not have access to both required Ethos creation skills" in normalized_preflight
+    assert "so I cannot generate one automatically here" in normalized_preflight
+    assert "Create or provide an Ethos path" in normalized_preflight
+    assert "rerun the audit flow with `--ethos <path>`" in normalized_preflight
+    assert "nemo-explore" in preflight
+    assert "nemo-ethos" in preflight
+    assert "agents/<name>-ethos/ETHOS.md" in preflight
+    assert "Do not create a placeholder Ethos inside the audit flow" in normalized_preflight
+    assert "do not substitute other repository material for it" in normalized_preflight
+    assert "Contributor docs, operations docs, README files, code, traces, or draft labels" in normalized_preflight
+    assert "not valid source-of-truth replacements for a missing Ethos" in normalized_preflight
+    assert "Do not synthesize an audit denominator from those materials" in normalized_preflight
+    assert "even if the output is marked as draft" in normalized_preflight
 
 
 def test_audit_skill_anchors_tool_names_to_runtime_measurement_surface() -> None:
@@ -1663,6 +1827,71 @@ def test_audit_generate_rejects_outputs_outside_eval_author(tmp_path: Path) -> N
     assert "--out must resolve inside a .eval-author/ directory" in result.stderr
     assert "Traceback" not in result.stderr
     assert out.read_text(encoding="utf-8") == "customer source must stay intact\n"
+
+
+def test_audit_generate_explains_missing_ethos_with_docs_link(tmp_path: Path) -> None:
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+    out = tmp_path / ".eval-author" / "audit.md"
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(out),
+    )
+
+    assert result.returncode == 1
+    assert result.stderr.startswith("Missing Ethos\n\n")
+    assert "needs a source of truth for how the agent is supposed to behave" in result.stderr
+    assert "before it can generate an audit coverage report" in result.stderr
+    assert "ETHOS.md records intended behavior" in result.stderr
+    assert "Missing file:" in result.stderr
+    assert "Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in result.stderr
+    assert "Next steps:\n" in result.stderr
+    assert "- Create an Ethos, then rerun this command with --ethos <path>." in result.stderr
+    assert "https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in result.stderr
+    assert "nemo-explore followed by nemo-ethos" in result.stderr
+    assert "author ETHOS.md by hand" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not out.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="chmod-based unreadable-file check is POSIX-specific")
+def test_audit_generate_explains_unreadable_ethos_with_docs_link(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Ethos\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+    out = tmp_path / ".eval-author" / "audit.md"
+
+    ethos.chmod(0)
+    try:
+        result = _run_script(
+            _AUDIT_GENERATE,
+            "--ethos",
+            str(ethos),
+            "--items",
+            str(items),
+            "--out",
+            str(out),
+        )
+    finally:
+        ethos.chmod(0o600)
+
+    assert result.returncode == 1
+    assert result.stderr.startswith("Unreadable Ethos\n\n")
+    assert "needs a source of truth for how the agent is supposed to behave" in result.stderr
+    assert "Unreadable file:" in result.stderr
+    assert "Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in result.stderr
+    assert "Next steps:\n" in result.stderr
+    assert "- Fix read access for the Ethos file, then rerun this command." in result.stderr
+    assert "- Or pass a readable Ethos path with --ethos <path>." in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not out.exists()
 
 
 def test_audit_generate_rejects_missing_candidate_name_before_reconcile(tmp_path: Path) -> None:

@@ -925,6 +925,11 @@ def test_docker_job_injects_workload_identity_volume_when_token_exchange_enabled
     assert delegation.workload_subject == expected_delegation_name
     assert delegation.workload_audience == "nemo-platform"
     assert delegation.workload_workspace == test_job_step_with_auth_context.workspace
+    assert delegation.workload_kind == "job"
+    assert delegation.workload_id == test_job_step_with_auth_context.job
+    assert delegation.workload_generation == (
+        f"{test_job_step_with_auth_context.attempt_id}/{test_job_step_with_auth_context.id}"
+    )
     assert delegation.job_id == test_job_step_with_auth_context.job
     assert delegation.attempt_id == test_job_step_with_auth_context.attempt_id
     assert delegation.step_id == test_job_step_with_auth_context.id
@@ -997,9 +1002,8 @@ def test_docker_schedule_cleans_task_volumes_when_workload_identity_proof_token_
 ):
     with (
         patch("nmp.common.config.get_auth_config", return_value=workload_token_exchange_auth_config()),
-        patch.object(
-            docker_job,
-            "_provision_docker_workload_proof_token",
+        patch(
+            "nmp.core.jobs.controllers.backends.docker.build_docker_opaque_workload_delegation",
             side_effect=JobStorageError("proof failed"),
         ),
         pytest.raises(JobStorageError, match="proof failed"),
@@ -1229,7 +1233,7 @@ def test_docker_job_execution_profile_config_has_no_workload_identity_surface():
 
 
 def test_schedule_docker_gpu(mock_nmp_client, docker_client_mock):
-    """Test successful job scheduling."""
+    """Test GPU job scheduling defers when the pool is temporarily full."""
 
     gpus = 2
     gpu_executor_config = GPUExecutionProvider.model_validate(
@@ -1319,8 +1323,8 @@ def test_schedule_docker_gpu(mock_nmp_client, docker_client_mock):
         )
         executor._client = docker_client_mock
 
-    # whichever one is the third will fail
-    with pytest.raises(ResourceAllocationError):
+    # Whichever one is the third will defer until another step releases GPUs.
+    with pytest.raises(SchedulingDeferred):
         executor.schedule(executor_config=gpu_executor_config, step=step)
         executor.schedule(executor_config=gpu_executor_config, step=step_two)
         executor.schedule(executor_config=gpu_executor_config, step=step_three)
@@ -1365,6 +1369,69 @@ def test_schedule_docker_gpu(mock_nmp_client, docker_client_mock):
     pool_values = set(executor.gpu_pool.gpu_to_workload_id.values())
     assert len(pool_values.intersection(all_steps)) == 2
     assert len([v for v in executor.gpu_pool.gpu_to_workload_id.values() if v is None]) == 1
+
+
+def test_gpu_configure_container_defers_when_pool_is_temporarily_full(mock_nmp_client, docker_client_mock):
+    """Full but sufficient GPU pools should defer scheduling instead of erroring."""
+    gpu_executor_config = GPUExecutionProvider.model_validate(
+        {
+            "provider": "gpu",
+            "profile": "default",
+            "container": {"image": "hello-world:latest"},
+            "resources": {"num_gpus": 1},
+            "config": {},
+        }
+    )
+
+    with patch("nmp.core.jobs.controllers.backends.docker.SharedResourceManager") as mock_srm:
+        mock_pool = DockerGPUPool(reserved_gpu_device_ids=[0])
+        mock_pool.allocate_gpu("already-running", num_requested=1)
+        mock_srm.get_instance.return_value.get_gpu_pool.return_value = mock_pool
+
+        executor = GPUDockerJobBackend(
+            nmp_sdk=mock_nmp_client,
+            execution_profile_config=DockerJobExecutionProfileConfig(
+                storage=DockerJobStorageConfig(volume_name="test_jobs_storage"),
+            ),
+            profile_name="default",
+        )
+        executor._client = docker_client_mock
+
+    with pytest.raises(SchedulingDeferred, match="Not enough GPUs available"):
+        executor.configure_container({"labels": {JOB_STEP_ID_LABEL: "deferred-step"}}, gpu_executor_config)
+
+    assert executor.gpu_pool.gpu_to_workload_id == {0: "already-running"}
+
+
+def test_gpu_configure_container_errors_when_request_exceeds_pool(mock_nmp_client, docker_client_mock):
+    """GPU requests larger than the pool are permanent resource allocation errors."""
+    gpu_executor_config = GPUExecutionProvider.model_validate(
+        {
+            "provider": "gpu",
+            "profile": "default",
+            "container": {"image": "hello-world:latest"},
+            "resources": {"num_gpus": 2},
+            "config": {},
+        }
+    )
+
+    with patch("nmp.core.jobs.controllers.backends.docker.SharedResourceManager") as mock_srm:
+        mock_pool = DockerGPUPool(reserved_gpu_device_ids=[0])
+        mock_srm.get_instance.return_value.get_gpu_pool.return_value = mock_pool
+
+        executor = GPUDockerJobBackend(
+            nmp_sdk=mock_nmp_client,
+            execution_profile_config=DockerJobExecutionProfileConfig(
+                storage=DockerJobStorageConfig(volume_name="test_jobs_storage"),
+            ),
+            profile_name="default",
+        )
+        executor._client = docker_client_mock
+
+    with pytest.raises(ResourceAllocationError, match="Requested 2"):
+        executor.configure_container({"labels": {JOB_STEP_ID_LABEL: "oversized-step"}}, gpu_executor_config)
+
+    assert executor.gpu_pool.gpu_to_workload_id == {0: None}
 
 
 def test_gpu_cleanup_on_job_completion(mock_nmp_client, docker_client_mock):

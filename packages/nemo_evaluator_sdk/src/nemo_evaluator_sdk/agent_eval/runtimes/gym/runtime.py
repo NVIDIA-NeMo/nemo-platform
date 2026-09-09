@@ -25,6 +25,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import (
     _hydra_scalar,
     _redact_hydra_params,
     _selection_args,
+    model_call_capture_dir,
 )
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import _materialize_dataset, _source_datasets
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.process import (
@@ -156,7 +157,13 @@ class GymAgentTaskRunner:
 
         await self._run_two_step(input_path, rollouts_path, work_dir)
         self._run_aggregations = _read_run_aggregations(rollouts_path)
-        trials = _trials_from_rollouts(rollouts_path, tasks, index_to_task_id, reward_key=cfg.reward_key)
+        trials = _trials_from_rollouts(
+            rollouts_path,
+            tasks,
+            index_to_task_id,
+            reward_key=cfg.reward_key,
+            capture_dir=model_call_capture_dir(work_dir),
+        )
         _require_full_coverage(tasks, covered_task_ids={trial.task_id for trial in trials}, rollouts_path=rollouts_path)
         return trials
 

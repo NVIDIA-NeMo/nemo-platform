@@ -12,6 +12,7 @@ from typing import Any
 
 from nemo_deployments_plugin.types import DeploymentStatus, Endpoint, VolumeStatus
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.auth import AuthContext
 from nemo_platform_plugin.capabilities import CapabilityUnavailableError
 from pydantic import BaseModel, Field
 
@@ -76,6 +77,7 @@ class DeploymentBackend(abc.ABC):
         config_name: str,
         labels: dict[str, str],
         backend_config: dict[str, Any],
+        auth_context: AuthContext | None = None,
     ) -> BackendStatusUpdate:
         raise NotImplementedError
 

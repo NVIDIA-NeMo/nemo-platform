@@ -104,7 +104,7 @@ git diff --stat "$NMP_BASE_REF...HEAD"
 Require all of the following:
 
 - Use a named feature branch, not detached `HEAD` and not the default branch.
-- Follow `[git-issue-number]-<descriptive-branch-name>/<username>` from `AGENTS.md`. Omit the issue prefix only when no issue is known; keep kebab case and the username suffix.
+- Follow `<descriptive-branch-name>/<username>` from `AGENTS.md`. Keep kebab case and the username suffix. Do NOT embed an issue/ticket number in the branch name — branch names are public and trackers may be private.
 - Keep only the intended PR changes in the worktree. Do not stash, discard, or absorb unrelated changes without the user's direction.
 - Confirm that the branch has commits ahead of the trusted base or intended uncommitted changes that the user asked to include.
 - Confirm that another worktree or active PR branch is not being repurposed.

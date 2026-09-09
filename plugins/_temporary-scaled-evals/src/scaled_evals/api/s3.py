@@ -100,6 +100,7 @@ def _gcs_client_error(operation: str, response: httpx.Response) -> ClientError:
 
 def _raise_for_gcs(operation: str, response: httpx.Response) -> None:
     if response.status_code >= 400:
+        response.read()
         raise _gcs_client_error(operation, response)
 
 

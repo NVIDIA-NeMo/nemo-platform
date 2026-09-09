@@ -20,6 +20,9 @@ host's ``/rollouts/run`` and writes the returned records where the parser expect
 Attribution survives that hop because the host copies each example's ``_ng_task_index`` onto its
 result. Nothing here joins by position.
 
+One thing does not survive yet (AALGO-593): the host does not enable Gym's model-call capture, so trials from
+this runner carry a trace projected from the rollout record alone, without per-call timing.
+
 The host itself is provisioned by ``sandboxed-gym``: start a session, take its rollout URL and
 token off the descriptor, and hand them to this runner.
 """
@@ -29,6 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import tempfile
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -47,6 +51,7 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTas
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
 from nemo_evaluator_sdk.values.results import AggregateScore
 from pydantic import BaseModel, ConfigDict, Field
+from sandboxed_gym.host.models import MIN_PROXY_CUTOFF_S
 
 logger = logging.getLogger(__name__)
 
@@ -128,14 +133,70 @@ class SandboxedGymAgentTaskRunner:
             headers[PROXY_AUTH_HEADER] = self._config.auth_token
         return headers
 
+    def _decode_body(self, response: httpx.Response, elapsed: float | None = None) -> Any:
+        """Decode a 2xx rollout body, naming the host when there is nothing decodable in it.
+
+        The host commits its 200 before the batch finishes and pads the open connection with
+        whitespace heartbeats until it has an envelope to write. A host that dies mid-batch --
+        OOMKilled, evicted -- therefore leaves a well-formed 200 whose body is heartbeats and
+        nothing else. Left to ``response.json()`` that surfaces as a bare ``JSONDecodeError``,
+        which is a ``ValueError`` and so escapes callers guarding this runner for ``RuntimeError``:
+        a dead sandbox reads as a bug in the evaluator. ``RolloutOrchestrator._decode_results``
+        classifies the same three bodies for the other client of this endpoint.
+        """
+        try:
+            # Strict, and caught rather than avoided: errors="replace" would let a body with one
+            # corrupt byte still parse, handing the caller U+FFFD where the host wrote data.
+            text = response.content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError(
+                f"sandboxed Gym host returned a body that is not UTF-8 from {self._config.rollout_url}: {exc}"
+            ) from exc
+        if not text:
+            if elapsed is not None and elapsed < MIN_PROXY_CUTOFF_S:
+                raise RuntimeError(
+                    f"sandboxed Gym host at {self._config.rollout_url} answered and then sent "
+                    f"nothing in {elapsed:.1f}s -- too fast to have been cut in transit, so it "
+                    f"died before it could write; check whether the sandbox was OOMKilled or "
+                    f"evicted"
+                )
+            raise RuntimeError(
+                f"sandboxed Gym host at {self._config.rollout_url} sent no body at all"
+                + (f" in {elapsed:.1f}s" if elapsed is not None else "")
+                + " -- nothing was ever written. Either it died before writing anything (check the "
+                "sandbox for an OOMKill or an eviction), or its image predates the rollout "
+                "heartbeat and the proxy cut the silent request at its own cap. Without a "
+                "Content-Length the body ends at the close, so this client cannot tell them apart"
+            )
+        if not text.strip():
+            raise RuntimeError(
+                f"sandboxed Gym host at {self._config.rollout_url} answered and then stopped "
+                f"without sending a `results` envelope ({len(response.content)} byte(s) of "
+                f"heartbeat, then silence); it most likely died mid-batch -- check whether the "
+                f"sandbox was OOMKilled or evicted"
+            )
+        try:
+            # The host heartbeats leading whitespace while a batch runs; json tolerates it.
+            return json.loads(text)
+        except (ValueError, RecursionError) as exc:
+            # Wider than JSONDecodeError because json also refuses input outright -- the
+            # integer-digit limit, deep nesting -- and narrowing this back lets those escape as
+            # something other than a named host failure.
+            raise RuntimeError(
+                f"sandboxed Gym host returned a body that is not JSON from "
+                f"{self._config.rollout_url} ({exc}); first 200 bytes: {text[:200]!r}"
+            ) from exc
+
     async def _collect(self, examples: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """POST the examples and return the host's rollout records."""
+        started = time.monotonic()
         async with httpx.AsyncClient(timeout=self._config.timeout_s) as client:
             response = await client.post(
                 self._config.rollout_url,
                 json={"examples": examples},
                 headers=self._request_headers(),
             )
+        elapsed = time.monotonic() - started
         if response.status_code >= 400:
             # The body is the host's own error envelope; it names which example or server failed,
             # which the status code alone does not.
@@ -143,7 +204,17 @@ class SandboxedGymAgentTaskRunner:
                 f"sandboxed Gym host returned {response.status_code} from {self._config.rollout_url}: "
                 f"{response.text[:2000]}"
             )
-        body = response.json()
+        body = self._decode_body(response, elapsed)
+        error = body.get("error") if isinstance(body, Mapping) else None
+        if error is not None:
+            # The host commits its 200 before the batch finishes, so that it can hold the
+            # connection open past the sandbox proxy's first-byte cap. A failure after that point
+            # has only the body left to travel in, and carries the code and traceback that say
+            # which of Gym's layers raised.
+            raise RuntimeError(
+                f"sandboxed Gym host reported an error from {self._config.rollout_url}: "
+                f"{error if isinstance(error, str) else json.dumps(error)[:2000]}"
+            )
         results = body.get("results") if isinstance(body, Mapping) else None
         if not isinstance(results, list):
             raise RuntimeError(
@@ -196,6 +267,12 @@ class SandboxedGymAgentTaskRunner:
         )
 
         self._run_aggregations = _read_run_aggregations(rollouts_path)
-        trials = _trials_from_rollouts(rollouts_path, tasks, index_to_task_id, reward_key=cfg.reward_key)
+        # No capture_dir yet (AALGO-593): the host does not switch Gym's model-call capture on, so
+        # its captures never leave the sandbox and traces from this runner carry no per-call timing.
+        # Unimplemented rather than impossible -- the host drives Gym through its Python API, whose
+        # global config takes the same observability keys the CLI runtime sets.
+        trials = _trials_from_rollouts(
+            rollouts_path, tasks, index_to_task_id, reward_key=cfg.reward_key, capture_dir=None
+        )
         _require_full_coverage(tasks, covered_task_ids={trial.task_id for trial in trials}, rollouts_path=rollouts_path)
         return trials
