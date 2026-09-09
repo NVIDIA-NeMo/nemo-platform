@@ -73,6 +73,22 @@ const groupDefenses = (defenses: DefensePair[]): DefenseGroup[] => {
   return order.map((tool) => ({ tool, items: byTool.get(tool) ?? [] }));
 };
 
+/**
+ * Whether "Apply to Agent" may be clicked.
+ *
+ * A project-source manifest has no registered agent to adopt onto; its run carries the *manifest*
+ * name in `agent`, so an apply targets whatever agent happens to share that name. Until the
+ * manifest query has actually succeeded, `isProjectSource` reads `false` by default — enabling on
+ * that default would open a window, while the query is loading or failed, to apply a mitigation to
+ * an unrelated same-named agent.
+ */
+export const canApplyMitigation = (params: {
+  hasComposedGuardrails: boolean;
+  manifestQuerySucceeded: boolean;
+  isProjectSource: boolean;
+}): boolean =>
+  params.hasComposedGuardrails && params.manifestQuerySucceeded && !params.isProjectSource;
+
 // One defense: a scannable row (toggle · shield · rule · the attack it counters) that expands to the full
 // attack → mitigation story. Collapsed by default so 15 of these stay glanceable.
 const DefenseRow: FC<{ defense: DefensePair; checked: boolean; onToggle: () => void }> = ({
@@ -441,7 +457,13 @@ export const HardenPanel: FC<HardenPanelProps> = ({
                   kind="primary"
                   size="small"
                   onClick={() => setConfirmOpen(true)}
-                  disabled={!effectiveComposedGuardrails || isProjectSource}
+                  disabled={
+                    !canApplyMitigation({
+                      hasComposedGuardrails: Boolean(effectiveComposedGuardrails),
+                      manifestQuerySucceeded: manifestQuery.isSuccess,
+                      isProjectSource,
+                    })
+                  }
                 >
                   Apply to Agent
                 </Button>
