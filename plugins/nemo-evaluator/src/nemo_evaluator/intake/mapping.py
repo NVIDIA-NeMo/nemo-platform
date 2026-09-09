@@ -47,15 +47,14 @@ from nemo_evaluator_sdk.values.otlp import (
     set_root_span_error,
     set_span_attributes,
 )
-from nemo_platform_plugin.intake.types import (
-    AtifAgentParam,
-    AtifCreateParams,
-    AtifFinalMetricsParam,
-    AtifStepParam,
-    EvaluationContextParam,
-    EvaluatorResultCreateParams,
-    EvaluatorResultDataType,
-)
+from nemo_evaluator_sdk.values.protocol import OUTPUT_DETAIL
+from nemo_platform.types.intake.evaluation_context_param import EvaluationContextParam
+from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
+from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
+from nemo_platform.types.intake.ingest.atif_agent_param import AtifAgentParam
+from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
+from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
+from nemo_platform.types.intake.ingest.atif_step_param import AtifStepParam
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from pydantic import RootModel
 
@@ -318,7 +317,6 @@ def score_to_evaluator_results(
         ]
         return [], skipped
 
-    comment = score.diagnostics[0].message if score.diagnostics else None
     rows: list[EvaluatorResultCreateParams] = []
     skipped: list[SkippedOutput] = []
     for output in score.outputs:
@@ -337,10 +335,26 @@ def score_to_evaluator_results(
             row["value"] = value
         if string_value is not None:
             row["string_value"] = string_value
+        comment = _comment_for_output(score, output.name)
         if comment is not None:
             row["comment"] = comment
         rows.append(row)
     return rows, skipped
+
+
+def _comment_for_output(score: AgentEvalTaskScore, output_name: str) -> str | None:
+    """Select the diagnostic comment that describes one emitted output.
+
+    A diagnostic naming this output wins; otherwise the first that names no output at all, which
+    is the one describing the score as a whole.
+    """
+    for diagnostic in score.diagnostics:
+        if diagnostic.details.get(OUTPUT_DETAIL) == output_name:
+            return diagnostic.message
+    for diagnostic in score.diagnostics:
+        if OUTPUT_DETAIL not in diagnostic.details:
+            return diagnostic.message
+    return None
 
 
 def _coerce_metric_value(value: object) -> tuple[EvaluatorResultDataType, float | None, str | None]:
