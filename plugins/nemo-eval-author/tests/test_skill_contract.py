@@ -1729,7 +1729,7 @@ def test_audit_validation_allows_unknown_prohibited_tool(tmp_path: Path) -> None
     audit = _write_audit(
         tmp_path,
         lambda text: text.replace(
-            "    prohibited_tools: []\n",
+            "    prohibited_tools:\n      - password.reset\n",
             "    prohibited_tools:\n      - admin.reset_password\n",
         ),
     )
@@ -2869,7 +2869,7 @@ def test_audit_measure_reports_failure_case_unjudged_evidence_without_covering(t
     assert details["missing"] == ["account_recovery_unverified_identity"]
     assert details["judgment_input"] == {"provided": False, "judgment_count": 0}
     assert failure_case["covered"] is False
-    assert failure_case["prohibited_tool_results"] == []
+    assert failure_case["prohibited_tool_results"] == [{"tool": "password.reset", "status": "satisfied", "matches": []}]
     assert [result["status"] for result in failure_case["evidence_results"]] == ["unjudged", "unjudged"]
     assert failure_case["missing_reasons"] == ["unjudged_evidence"]
 
@@ -2984,10 +2984,7 @@ def test_audit_measure_failure_case_judgment_does_not_override_missing_tool_evid
 
 @_needs_harbor
 def test_audit_measure_prohibited_tool_overrides_failure_case_judgments(tmp_path: Path) -> None:
-    audit = _write_audit(
-        tmp_path,
-        lambda text: text.replace("    prohibited_tools: []\n", "    prohibited_tools:\n      - password.reset\n", 1),
-    )
+    audit = _write_audit(tmp_path)
     trace = tmp_path / "trajectory.json"
     _write_atif_trace(trace, tool_calls=["customer.lookup", "password.reset"])
     judgments = tmp_path / ".eval-author" / "failure-case-judgments.json"
@@ -3752,8 +3749,8 @@ def test_audit_report_failure_case_empty_expected_tools_suppresses_fallback(tmp_
     audit = _write_audit(
         tmp_path,
         lambda text: text.replace(
-            "    expected_tools:\n      - customer.lookup\n    prohibited_tools: []\n",
-            "    expected_tools: []\n    prohibited_tools: []\n",
+            "    expected_tools:\n      - customer.lookup\n    prohibited_tools:\n      - password.reset\n",
+            "    expected_tools: []\n    prohibited_tools:\n      - password.reset\n",
             1,
         ),
     )
@@ -3784,7 +3781,7 @@ def test_audit_report_failure_case_needed_tools_prefer_expected_and_filter_prohi
     audit = _write_audit(
         tmp_path,
         lambda text: text.replace("\n  - kind: capability\n", f"\n{ticket_block}\n\n  - kind: capability\n", 1).replace(
-            "    expected_tools:\n      - customer.lookup\n    prohibited_tools: []\n",
+            "    expected_tools:\n      - customer.lookup\n    prohibited_tools:\n      - password.reset\n",
             "    expected_tools:\n      - ticket.create\n    prohibited_tools:\n      - ticket.create\n",
             1,
         ),
