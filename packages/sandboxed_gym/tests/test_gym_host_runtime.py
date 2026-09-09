@@ -1064,3 +1064,28 @@ def test_rollouts_still_return_when_no_capture_was_written(tmp_path):
 
     assert len(results) == 2
     assert all(runtime.MODEL_CALLS_RESULT_KEY not in result for result in results)
+
+
+def test_capture_spend_is_measured_in_bytes_not_characters(tmp_path):
+    # The budget is spent against a byte cap. `len` on decoded text counts code points, so a CJK
+    # capture would report about a third of what it costs on the wire -- the aggregate then
+    # overshoots `max_response_bytes`, and an oversized response is refused whole.
+    # `ensure_ascii=False` on purpose: escaped to \uXXXX the file would be pure ASCII, byte count
+    # would equal character count, and the test would pass against the bug it is written for.
+    payload = json.dumps(
+        {"model_call_id": "c0", "note": "四十二といえば生命、宇宙、そして万物についての究極の疑問の答え"},
+        ensure_ascii=False,
+    )
+    path = tmp_path / "0-1.capture.jsonl"
+    path.write_text(f"{payload}\n", encoding="utf-8")
+    assert path.stat().st_size > len(payload) + 1, "test data must be genuinely multibyte"
+
+    _, spent = runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10_000)
+
+    assert spent == path.stat().st_size
+
+
+def test_a_capture_that_is_not_valid_utf8_costs_the_timing_not_the_rollout(tmp_path):
+    (tmp_path / "0-1.capture.jsonl").write_bytes(b'{"model_call_id": "\xff\xfe"}\n')
+
+    assert runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10_000) == ([], 0)

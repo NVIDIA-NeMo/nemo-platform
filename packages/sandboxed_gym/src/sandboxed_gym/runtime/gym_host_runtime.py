@@ -520,8 +520,10 @@ def _read_capture(capture_dir: str, result: dict, *, budget: int) -> tuple[list[
             # Dropped whole rather than truncated: half a capture would project into a trace that
             # looks complete and silently under-reports the calls the agent actually made.
             return [], 0
-        raw = open(path, encoding="utf-8").read()
-    except OSError:
+        with open(path, "rb") as handle:
+            data = handle.read()
+        raw = data.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
         return [], 0
     calls = []
     for line in raw.splitlines():
@@ -533,7 +535,9 @@ def _read_capture(capture_dir: str, result: dict, *, budget: int) -> tuple[list[
             continue
         if isinstance(call, dict):
             calls.append(call)
-    return (calls, len(raw)) if calls else ([], 0)
+    # Bytes, not characters: the budget is spent against a byte cap, and `len` on the decoded text
+    # counts code points -- a CJK capture reports about a third of what it costs on the wire.
+    return (calls, len(data)) if calls else ([], 0)
 
 
 async def _collect_rollout_results(
