@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import _aggregate_scores_from_gym
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import aggregate_scores_from_gym
 from nemo_evaluator_sdk.values.results import AggregateRangeScore, AggregateScalarScore, AggregateScore
 
 
@@ -23,7 +23,7 @@ def _by_name(scores: Sequence[AggregateScore]) -> dict[str, AggregateScore]:
 
 def test_a_full_stat_family_is_reassembled_into_one_range_score() -> None:
     scores = _by_name(
-        _aggregate_scores_from_gym(
+        aggregate_scores_from_gym(
             _gym(
                 {
                     "mean/total_tokens": 120.0,
@@ -48,7 +48,7 @@ def test_a_full_stat_family_is_reassembled_into_one_range_score() -> None:
 def test_a_partial_stat_family_is_left_as_standalone_scalars() -> None:
     # A resources-server may define a metric literally named `mean`; re-assembling on a partial match
     # would rename someone's real metric into a statistic of a distribution that never existed.
-    scores = _by_name(_aggregate_scores_from_gym(_gym({"mean/accuracy": 0.8, "max/accuracy": 1.0})))
+    scores = _by_name(aggregate_scores_from_gym(_gym({"mean/accuracy": 0.8, "max/accuracy": 1.0})))
 
     assert set(scores) == {"runner.gym.mean/accuracy", "runner.gym.max/accuracy"}
     assert all(isinstance(score, AggregateScalarScore) for score in scores.values())
@@ -58,7 +58,7 @@ def test_a_partial_stat_family_is_left_as_standalone_scalars() -> None:
 
 def test_environment_specific_metrics_survive_as_scalars() -> None:
     # 36 of Gym's ~97 resources-servers override compute_metrics, emitting keys in their own shapes.
-    scores = _by_name(_aggregate_scores_from_gym(_gym({"arena_elo/score": 1523.0, "easy/pass@1/accuracy": 0.42})))
+    scores = _by_name(aggregate_scores_from_gym(_gym({"arena_elo/score": 1523.0, "easy/pass@1/accuracy": 0.42})))
 
     assert set(scores) == {"runner.gym.arena_elo/score", "runner.gym.easy/pass@1/accuracy"}
     easy = scores["runner.gym.easy/pass@1/accuracy"]
@@ -67,7 +67,7 @@ def test_environment_specific_metrics_survive_as_scalars() -> None:
 
 def test_reward_is_skipped_because_the_sdk_scores_it_natively() -> None:
     scores = _by_name(
-        _aggregate_scores_from_gym(
+        aggregate_scores_from_gym(
             _gym(
                 {
                     "mean/reward": 0.6,
@@ -93,7 +93,7 @@ def test_an_incomplete_reward_family_is_skipped_rather_than_kept_as_scalars() ->
     # Redundancy is a property of the metric, not of how complete its family is. A resources-server
     # that emits only part of the reward family would otherwise leave `mean/reward` behind as a scalar
     # -- the very duplicate of the natively-computed `gym_reward.reward` that skipping reward prevents.
-    scores = _by_name(_aggregate_scores_from_gym(_gym({"mean/reward": 0.6, "max/reward": 1.0, "accuracy": 0.9})))
+    scores = _by_name(aggregate_scores_from_gym(_gym({"mean/reward": 0.6, "max/reward": 1.0, "accuracy": 0.9})))
 
     assert list(scores) == ["runner.gym.accuracy"]
 
@@ -118,7 +118,7 @@ def test_nothing_numeric_is_dropped_from_a_custom_environment_payload() -> None:
         "notes": "not a measurement",  # non-numeric: stays only in the opaque payload
         "converged": True,  # a bool is a flag, not a measurement
     }
-    scores = _aggregate_scores_from_gym(_gym(key_metrics))
+    scores = aggregate_scores_from_gym(_gym(key_metrics))
 
     numeric_keys = {key for key, value in key_metrics.items() if isinstance(value, (int, float)) and value is not True}
     represented = set()
@@ -134,26 +134,26 @@ def test_nothing_numeric_is_dropped_from_a_custom_environment_payload() -> None:
 
 def test_names_are_qualified_by_agent_only_when_a_run_produced_several() -> None:
     # One agent per run is the norm, so the agent name adds nothing; with two it prevents a collision.
-    one = _by_name(_aggregate_scores_from_gym(_gym({"score": 1.0})))
+    one = _by_name(aggregate_scores_from_gym(_gym({"score": 1.0})))
     assert list(one) == ["runner.gym.score"]
 
     two = _by_name(
-        _aggregate_scores_from_gym({"a": {"agent_metrics": {"score": 1.0}}, "b": {"agent_metrics": {"score": 2.0}}})
+        aggregate_scores_from_gym({"a": {"agent_metrics": {"score": 1.0}}, "b": {"agent_metrics": {"score": 2.0}}})
     )
     assert set(two) == {"runner.gym.a.score", "runner.gym.b.score"}
 
 
 def test_absent_or_malformed_aggregations_yield_nothing() -> None:
-    assert _aggregate_scores_from_gym(None) == []
-    assert _aggregate_scores_from_gym({}) == []
-    assert _aggregate_scores_from_gym({"agent": {"group_level_metrics": []}}) == []  # no agent_metrics
-    assert _aggregate_scores_from_gym({"agent": "not a mapping"}) == []
+    assert aggregate_scores_from_gym(None) == []
+    assert aggregate_scores_from_gym({}) == []
+    assert aggregate_scores_from_gym({"agent": {"group_level_metrics": []}}) == []  # no agent_metrics
+    assert aggregate_scores_from_gym({"agent": "not a mapping"}) == []
 
 
 def test_imported_scores_report_an_unknown_sample_size_rather_than_zero() -> None:
     # Gym reports statistics without the n behind them. count=0 would assert that nothing was
     # evaluated — false, and a landmine for anything that divides by it.
-    scores = _aggregate_scores_from_gym(
+    scores = aggregate_scores_from_gym(
         _gym(
             {
                 "mean/steps": 3.0,
@@ -191,7 +191,7 @@ def test_imports_read_agent_metrics_not_the_key_metrics_subset() -> None:
         }
     }
 
-    scores = _by_name(_aggregate_scores_from_gym(payload))
+    scores = _by_name(aggregate_scores_from_gym(payload))
 
     assert list(scores) == ["runner.gym.steps"]
     steps = scores["runner.gym.steps"]
