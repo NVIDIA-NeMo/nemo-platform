@@ -5707,12 +5707,13 @@ components:
           title: Timeout Seconds
           description: Maximum time to wait for Fabric to return an execution result.
           default: 3600
-        telemetry:
+        auto_telemetry:
           type: boolean
-          title: Telemetry
-          description: "Export the agent's trajectory to Intake. Set false to run\
-            \ untraced, or configure 'telemetry' on the agent yourself \u2014 an agent\
-            \ that already declares it is left alone."
+          title: Auto Telemetry
+          description: Let the server fill in the agent's telemetry export -- an Intake
+            destination for a config that asks for one and does not say where. False
+            submits the agent config as written, which still exports if the config
+            says to; an agent config is the place to say a run should not be traced.
           default: true
         extension:
           allOf:
