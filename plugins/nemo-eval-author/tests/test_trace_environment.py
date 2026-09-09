@@ -6,6 +6,7 @@
 import hashlib
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -13,13 +14,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from dirhash import dirhash
+from harbor.models.task.task import Task
 
 _PLUGIN = Path(__file__).resolve().parents[1]
 _SCRIPT = _PLUGIN / "skills" / "eval-author-trace-environment" / "scripts" / "trace_environment.py"
 _SUMMARY_SCHEMA = "nemo.eval_author.trace_environment_summary.v2"
 _CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v2"
-_VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v4"
+_VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v5"
 
 
 def _run(*args: str) -> tuple[int, dict[str, Any]]:
@@ -207,7 +208,7 @@ The human reviewer confirmed that this fixture accurately represents the recorde
             encoding="utf-8",
         )
     (task / "solution" / "solve.sh").write_text("#!/usr/bin/env bash\ntouch repaired\n", encoding="utf-8")
-    checksum = dirhash(task, "sha256")
+    checksum = Task(task).checksum
     if mode == "separate":
         _record_reproducibility(task_dir)
     control_source = task_dir / "private" / "negative_agent.py"
@@ -703,10 +704,11 @@ def test_reproducibility_records_complete_task_tree_and_portability(tmp_path: Pa
 
     report = json.loads((task_dir / "reproducibility.json").read_text(encoding="utf-8"))
 
-    assert report["schema"] == "nemo.eval_author.trace_environment_reproducibility.v2"
+    assert report["schema"] == "nemo.eval_author.trace_environment_reproducibility.v3"
     assert report["task_tree_sha256"].startswith("sha256:")
     assert report["file_count"] == 7
-    assert report["portability"]["state"] == "recipe_rebuildable"
+    assert report["portability"]["state"] == "image_pinned_recipe"
+    assert report["portability"]["dependency_closure"] == "unverified"
     assert report["network"] == {"agent": "no-network", "verifier": "no-network"}
     assert report["contamination"]["passed"] is True
 
@@ -1104,9 +1106,93 @@ def test_export_uses_a_strict_publication_whitelist(tmp_path: Path) -> None:
     assert not (output / "safe").exists()
     assert not (output / "private").exists()
     product = json.loads((output / "result.json").read_text(encoding="utf-8"))
-    assert product["schema"] == "nemo.eval_author.trace_environment_product.v2"
+    assert product["schema"] == "nemo.eval_author.trace_environment_product.v3"
     assert product["reproducibility"]["contamination_passed"] is True
     assert product["technical_validation"]["minimum_runs"] == {"negative": 1, "nop": 2, "oracle": 2}
+    assert product["technical_validation"]["distinct_jobs"] is True
+    assert product["technical_validation"]["container_freshness"] == "unverified"
+    assert "fresh_jobs" not in product["technical_validation"]
+    assert product["reproducibility"]["dependency_closure"] == "unverified"
+
+
+@pytest.mark.parametrize("executable_bits", [0, stat.S_IXUSR, stat.S_IXGRP, stat.S_IXOTH, 0o111])
+def test_export_preserves_executable_bits_and_task_digest(tmp_path: Path, executable_bits: int) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    scripts = (Path("tests/test.sh"), Path("solution/solve.sh"))
+    for relative in scripts:
+        (task_dir / "task" / relative).chmod(0o640 | executable_bits)
+    _record_reproducibility(task_dir)
+    _review_privacy(task_dir)
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+    assert code == 0, result
+    output = tmp_path / "product"
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+    assert code == 0, result
+
+    for relative in scripts:
+        exported = output / "task" / relative
+        assert stat.S_IMODE(exported.stat().st_mode) == 0o644 | executable_bits
+        assert exported.read_bytes() == (task_dir / "task" / relative).read_bytes()
+    if executable_bits & stat.S_IXUSR:
+        execution = subprocess.run([str(output / "task/tests/test.sh")], capture_output=True, check=False)
+        assert execution.returncode == 0, execution.stderr
+
+    # Independently rescan the actual exported tree through the public command.
+    code, result = _run("init", "--root", str(tmp_path / ".eval-author/imported"), "--task-id", "imported-task")
+    assert code == 0, result
+    imported = Path(result["task_dir"])
+    shutil.copytree(output / "task", imported / "task")
+    _record_reproducibility(imported)
+    expected = json.loads((task_dir / "reproducibility.json").read_text())
+    actual = json.loads((imported / "reproducibility.json").read_text())
+    published = json.loads((output / "reproducibility.json").read_text())
+    product = json.loads((output / "result.json").read_text())
+    assert actual == published == expected
+    assert product["reproducibility"]["task_tree_sha256"] == actual["task_tree_sha256"]
+
+
+@pytest.mark.parametrize(
+    "field,value", [("container_freshness", "verified"), ("distinct_jobs", False), ("fresh_jobs", True)]
+)
+def test_validation_rejects_unsupported_job_evidence_claims(tmp_path: Path, field: str, value: object) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir)
+    path = task_dir / "validation.json"
+    validation = json.loads(path.read_text())
+    assert validation["distinct_jobs"] is True
+    assert validation["container_freshness"] == "unverified"
+    assert "fresh_jobs" not in validation
+    validation[field] = value
+    _write_json(path, validation)
+    _review_privacy(task_dir)
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+    assert code == 1
+    assert "versioned contract" in result["error"]
+
+
+def test_image_pinning_does_not_claim_dependency_closure(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / "task/environment/Dockerfile").write_text(
+        "FROM example.invalid/runtime@sha256:" + "a" * 64 + "\nRUN pip install example-package\n"
+    )
+    _record_reproducibility(task_dir)
+    _review_privacy(task_dir)
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+    assert code == 0, result
+    output = tmp_path / "product"
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+    assert code == 0, result
+    manifest = json.loads((output / "reproducibility.json").read_text())
+    product = json.loads((output / "result.json").read_text())
+    assert manifest["portability"]["state"] == "image_pinned_recipe"
+    assert manifest["portability"]["dependency_closure"] == "unverified"
+    assert product["reproducibility"]["portability_state"] == "image_pinned_recipe"
+    assert product["reproducibility"]["dependency_closure"] == "unverified"
 
 
 def test_batch_prepare_is_resumable_and_reports_full_denominator(tmp_path: Path) -> None:
@@ -1374,7 +1460,7 @@ def test_portability_tracks_external_copy_sources(tmp_path: Path, copy_source: s
     )
     _record_reproducibility(task_dir)
     report = json.loads((task_dir / "reproducibility.json").read_text())
-    assert report["portability"]["state"] == ("recipe_rebuildable" if pinned else "local_only")
+    assert report["portability"]["state"] == ("image_pinned_recipe" if pinned else "local_only")
     copies = [image for image in report["portability"]["container_images"] if image["instruction"] == "copy"]
     assert len(copies) == 1
     assert copies[0]["reference"] == copy_source
@@ -1399,7 +1485,7 @@ def test_portability_tracks_configured_images(tmp_path: Path, location: str, pin
     _record_reproducibility(task_dir)
     report = json.loads((task_dir / "reproducibility.json").read_text())
     expected = (
-        "immutable_image" if pinned and location == "environment" else "recipe_rebuildable" if pinned else "local_only"
+        "immutable_image" if pinned and location == "environment" else "image_pinned_recipe" if pinned else "local_only"
     )
     assert report["portability"]["state"] == expected
     assert report["portability"]["configured_images"][0]["reference"] == image

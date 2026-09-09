@@ -422,7 +422,8 @@ If Harbor or Docker is missing, technical status is `not_run` and the environmen
 is `unproven`; do not describe it as ready. Two NOP=0 runs, two Oracle=1 runs,
 and a task-specific negative-control=0 run without exceptions establish technical
 status `passed` only when their recorded agents and task snapshots match. They
-do not establish human review. The
+do not establish human review or container freshness. Reports distinguish
+verified distinct job IDs/paths from `container_freshness: "unverified"`. The
 helper independently requires the task configuration and every retained Harbor
 result to report separate verification.
 
@@ -505,7 +506,10 @@ python <skill_dir>/scripts/trace_environment.py export \
 The command runs `check` and copies only `candidate.json`, the generalized
 `task/` and `reproducibility.json` when present, and a declassified `result.json`.
 It never copies source, canonical, safe, privacy-audit, ground-truth, validation,
-or Harbor job files.
+or Harbor job files. It preserves task-file executable bits while making the
+export readable, so the published task matches its task-tree digest.
+Public results report image pinning separately from unverified dependency
+closure and distinguish distinct jobs from unverified container freshness.
 
 Report the task ID, `candidate` or `no_candidate`, ground-truth availability and
 artifact count, required software and licensing constraints, environment

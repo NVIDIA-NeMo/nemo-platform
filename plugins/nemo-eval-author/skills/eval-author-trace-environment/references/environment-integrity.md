@@ -12,6 +12,8 @@ environment to set `[environment].network_mode = "no-network"`. A step-local
 agent environment may inherit that setting or repeat `network_mode =
 "no-network"`; it must never enable public networking. Resolve and vendor the
 complete build and runtime dependency closure before grading.
+This is an authoring requirement, not a claim that the static helper verifies
+the complete dependency closure.
 
 ## Reproducibility manifest
 
@@ -26,15 +28,17 @@ The manifest hashes every task path, file byte, directory, and executable bit.
 It records a declared source revision, Dockerfile base images, external
 `COPY --from` and `RUN --mount=from=...` image dependencies, configured agent,
 verifier and step `docker_image` references, network modes,
-and one portability state: `local_only`, `recipe_rebuildable`, or
-`immutable_image`. A recipe is rebuildable only when the agent Dockerfile exists
+and one image-reference state: `local_only`, `image_pinned_recipe`, or
+`immutable_image`. `image_pinned_recipe` means the agent Dockerfile exists
 and every inventoried external image is pinned by digest. Local named or numeric
 build stages are distinguished from external images. Unresolved variable-based
 references keep the task `local_only`. A configured agent image is immutable
 only when its reference contains a SHA-256 digest and all inventoried image
 dependencies are immutable. Use Harbor's `docker_image` field, not `image`.
-These states describe image pinning; they do not prove that arbitrary package
-downloads in a Dockerfile are reproducible.
+These states describe image pinning only. The manifest and public result
+explicitly report `dependency_closure: "unverified"`: arbitrary package
+downloads, tool installations, and external build inputs are not proven
+reproducible. Do not describe `image_pinned_recipe` as a rebuildability verdict.
 
 The scan fails closed on Git metadata in `task/environment`, exact solution or
 hidden-test files copied into the agent build context, private keys, bearer
@@ -44,8 +48,8 @@ transcripts private and inspect pre-existing opaque images separately.
 
 ## Repeat and negative-control proof
 
-Run every arm as an independent Harbor invocation so each result records a
-distinct job ID and fresh task containers. Require at least two NOP runs, two
+Run every arm as an independent Harbor invocation with new task containers.
+Require at least two NOP runs, two
 Oracle runs, and one negative control. NOP must receive reward `0`, Oracle must
 receive reward `1`, and every run must finish without an exception.
 
@@ -100,12 +104,21 @@ The helper requires unique Harbor job IDs, each result's task checksum matching
 the current task and its pre-run receipt, separate verifier mode in every
 result, and matching pre-run/current/reproducibility task-tree digests. Old
 results cannot be attached to a changed task by regenerating its manifest.
-These checks establish consistency of retained evidence, not cryptographic
-attestation of container freshness. Failed rewards remain technical evidence:
-retain them and report the candidate as failed.
+The report records `distinct_jobs: true` only after checking unique job paths
+and IDs. It explicitly reports `container_freshness: "unverified"`, including
+in exported results. Neither job identity nor the pre-run task receipt proves
+container identity or absence of reused container state. Fresh containers remain
+an execution requirement, not a property established by this helper. A passing
+report means the retained rewards and evidence are consistent, not that container
+freshness has been verified. Failed rewards remain technical evidence: retain
+them and report the candidate as failed.
 
-Validation v4 and reproducibility v2 replace the previous contracts. Historical
-proof without pre-run receipts must be rerun; do not fabricate receipts for
-completed jobs. Keep historical fixture results labeled with their original
-contract rather than implying that they passed the upgraded gate. Run receipts
-and negative-control source/rationale stay private and are never exported.
+Validation v5, reproducibility v3, and public product v3 replace the previous
+contracts and their broader claim names. Preserve previous reports privately
+before regenerating them from the unchanged task and retained evidence; do not
+edit schema strings or claims in place. Jobs with genuine matching pre-run
+receipts can be rechecked without claiming a new execution. Historical proof
+without those receipts must be rerun; do not fabricate receipts for completed
+jobs. Keep historical fixture results labeled with their original contract.
+Run receipts and negative-control source/rationale stay private and are never
+exported.

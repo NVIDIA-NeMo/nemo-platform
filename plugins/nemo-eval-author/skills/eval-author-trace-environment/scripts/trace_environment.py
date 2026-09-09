@@ -23,11 +23,11 @@ from urllib.parse import urlsplit
 
 SCHEMA = "nemo.eval_author.trace_environment_summary.v2"
 CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v2"
-VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v4"
+VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v5"
 RUN_INPUT_SCHEMA = "nemo.eval_author.trace_environment_run_input.v1"
 PRIVACY_AUDIT_SCHEMA = "nemo.eval_author.trace_environment_privacy_audit.v1"
-REPRODUCIBILITY_SCHEMA = "nemo.eval_author.trace_environment_reproducibility.v2"
-EXPORT_SCHEMA = "nemo.eval_author.trace_environment_product.v2"
+REPRODUCIBILITY_SCHEMA = "nemo.eval_author.trace_environment_reproducibility.v3"
+EXPORT_SCHEMA = "nemo.eval_author.trace_environment_product.v3"
 BATCH_SCHEMA = "nemo.eval_author.trace_environment_batch.v1"
 MAX_RAW_SOURCE_BYTES = 128 * 1024 * 1024
 MAX_CANONICAL_BYTES = 25 * 1024 * 1024
@@ -1310,7 +1310,7 @@ def _derive_reproducibility(task_dir: Path) -> dict[str, Any]:
     if all_immutable and isinstance(configured_image, str) and _IMAGE_DIGEST.fullmatch(configured_image):
         portability_state = "immutable_image"
     elif has_agent_recipe and all_immutable:
-        portability_state = "recipe_rebuildable"
+        portability_state = "image_pinned_recipe"
     else:
         portability_state = "local_only"
     findings, scanned_files = _contamination_findings(task_dir)
@@ -1320,6 +1320,7 @@ def _derive_reproducibility(task_dir: Path) -> dict[str, Any]:
         "source_revision": source_revision,
         "portability": {
             "state": portability_state,
+            "dependency_closure": "unverified",
             "configured_image": configured_image,
             "container_images": images,
             "configured_images": configured_images,
@@ -1681,7 +1682,8 @@ def _validation_from_jobs(
         "task_checksum": next(iter(checksums)),
         "task_tree_sha256": reproducibility["task_tree_sha256"],
         "verifier_environment_mode": mode,
-        "fresh_jobs": True,
+        "distinct_jobs": True,
+        "container_freshness": "unverified",
         "minimum_runs": _MIN_VALIDATION_RUNS,
         "passed": passed,
         "runs": runs,
@@ -1719,7 +1721,8 @@ def _validate_validation(task_dir: Path) -> dict[str, Any]:
         "task_checksum",
         "task_tree_sha256",
         "verifier_environment_mode",
-        "fresh_jobs",
+        "distinct_jobs",
+        "container_freshness",
         "minimum_runs",
         "passed",
         "runs",
@@ -1728,8 +1731,12 @@ def _validate_validation(task_dir: Path) -> dict[str, Any]:
         raise ContractError("validation fields do not match the versioned contract")
     if not isinstance(recorded.get("harbor_version"), str) or not recorded["harbor_version"].strip():
         raise ContractError("validation.harbor_version must be nonempty text")
-    if recorded.get("minimum_runs") != _MIN_VALIDATION_RUNS or recorded.get("fresh_jobs") is not True:
-        raise ContractError("validation repeat and fresh-job policy does not match the versioned contract")
+    if (
+        recorded.get("minimum_runs") != _MIN_VALIDATION_RUNS
+        or recorded.get("distinct_jobs") is not True
+        or recorded.get("container_freshness") != "unverified"
+    ):
+        raise ContractError("validation repeat and job-evidence policy does not match the versioned contract")
     runs = recorded.get("runs")
     if not isinstance(runs, dict) or set(runs) != set(_MIN_VALIDATION_RUNS):
         raise ContractError("validation.runs fields do not match the versioned contract")
@@ -2117,6 +2124,7 @@ def _export(args: argparse.Namespace) -> dict[str, Any]:
             "total_bytes": reproducibility["total_bytes"],
             "source_revision": reproducibility["source_revision"],
             "portability_state": reproducibility["portability"]["state"],
+            "dependency_closure": reproducibility["portability"]["dependency_closure"],
             "agent_network_mode": reproducibility["network"]["agent"],
             "contamination_passed": reproducibility["contamination"]["passed"],
         }
@@ -2128,7 +2136,8 @@ def _export(args: argparse.Namespace) -> dict[str, Any]:
             "task_checksum": validation["task_checksum"],
             "task_tree_sha256": validation["task_tree_sha256"],
             "verifier_environment_mode": validation["verifier_environment_mode"],
-            "fresh_jobs": validation["fresh_jobs"],
+            "distinct_jobs": validation["distinct_jobs"],
+            "container_freshness": validation["container_freshness"],
             "minimum_runs": validation["minimum_runs"],
             "passed": validation["passed"],
             "runs": {
@@ -2172,7 +2181,7 @@ def _export(args: argparse.Namespace) -> dict[str, Any]:
     _write_json(output_dir / "result.json", product)
     for path in output_dir.rglob("*"):
         if path.is_file():
-            path.chmod(0o644)
+            path.chmod(0o644 | (stat.S_IMODE(path.stat().st_mode) & 0o111))
         elif path.is_dir():
             path.chmod(0o755)
     output_dir.chmod(0o755)
