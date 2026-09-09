@@ -1962,24 +1962,39 @@ def test_an_adapter_without_the_atif_output_is_not_wired(
     assert "not its ATIF output" in caplog.text
 
 
-def test_declining_auto_telemetry_submits_the_agent_config_as_written() -> None:
+def test_declining_auto_telemetry_submits_the_agent_config_as_written(
+    ctx: JobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The request governs server-side filling; the agent config governs the agent.
 
     An agent that declares its own export still exports -- saying a run should
     not be traced is the agent config's job, and an inline agent can say it.
+    Driven through ``run`` so the opt-out branch is what is under test, rather
+    than the request parsing around it.
     """
-    declared = {"enabled": True, "atif": {"enabled": True, "storage": [{"type": "http", "endpoint": "https://mine"}]}}
-    step = ExecuteAgentStepConfig.model_validate(
-        {
-            "request": {"agent": "a", "input": "hi", "auto_telemetry": False},
-            "agent": {"name": "a", "workspace": "w", "config_format": "nemo-agents-spec-v1", "config": {}},
-        }
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    # ATIF is left unset, so this config *would* be wired -- otherwise the test
+    # would pass whether or not auto_telemetry was honoured.
+    declared = {"enabled": True, "opentelemetry": {"endpoints": [{"type": "gen_ai", "endpoint": "https://mine"}]}}
+    agent = _resolved_agent()
+    agent.config["telemetry"] = declared
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello", auto_telemetry=False),
+        agent=agent,
     )
+    seen: dict[str, Any] = {}
 
-    assert step.request.auto_telemetry is False
-    # Nothing in the wiring path runs, so a declared export is untouched.
-    config = _fabric_agent_config(telemetry=declared)
-    assert config["telemetry"] == declared
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        seen["telemetry"] = request.agent_config.telemetry.model_dump(exclude_none=True)
+        return FabricRuntimeResult(status="succeeded", output={"answer": "done"})
+
+    with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=MagicMock())
+
+    assert result["status"] == "completed"
+    # Reached Fabric exactly as declared: no Intake destination added beside it.
+    assert "atif" not in seen["telemetry"]
+    assert seen["telemetry"]["opentelemetry"] == declared["opentelemetry"]
 
 
 def test_workload_identity_jobs_export_with_a_bearer_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
