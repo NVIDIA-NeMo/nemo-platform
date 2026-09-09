@@ -16,10 +16,12 @@ The same helper backs both the interactive Studio "Test connection" and the laun
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 import httpx
 
 _PROBE_TIMEOUT_S = 10.0
+_INSECURE_HOSTS = {"localhost", "127.0.0.1"}
 
 
 @dataclass(frozen=True)
@@ -51,7 +53,9 @@ class Validation:
 def probe_models(base_url: str, api_key: str | None, *, client: httpx.Client | None = None) -> ProbeResult:
     """List the models reachable at ``{base_url}/models`` with *api_key* (best-effort, never raises)."""
     url = base_url.rstrip("/") + "/models"
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    parsed = urlsplit(base_url)
+    send_credential = bool(api_key) and (parsed.scheme == "https" or parsed.hostname in _INSECURE_HOSTS)
+    headers = {"Authorization": f"Bearer {api_key}"} if send_credential else {}
     owns = client is None
     client = client or httpx.Client(timeout=_PROBE_TIMEOUT_S)
     try:
