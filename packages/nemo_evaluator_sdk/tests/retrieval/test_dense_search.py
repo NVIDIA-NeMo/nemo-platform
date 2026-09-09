@@ -128,6 +128,48 @@ async def test_embedding_client_rejects_wrong_dimension() -> None:
 
 
 @pytest.mark.asyncio
+async def test_embedding_client_rejects_duplicate_indexes() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=request,
+            content=json.dumps(
+                {"data": [{"index": 0, "embedding": [1.0, 0.0]}, {"index": 0, "embedding": [0.0, 1.0]}]}
+            ),
+            headers={"content-type": "application/json"},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(NimEmbeddingError, match="invalid indexes"):
+            await NimEmbeddingClient(model=_model(), dimensions=2).encode(
+                ["first", "second"],
+                input_type="query",
+                client=client,
+            )
+
+
+@pytest.mark.asyncio
+async def test_embedding_client_rejects_skipped_indexes() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=request,
+            content=json.dumps(
+                {"data": [{"index": 0, "embedding": [1.0, 0.0]}, {"index": 2, "embedding": [0.0, 1.0]}]}
+            ),
+            headers={"content-type": "application/json"},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(NimEmbeddingError, match="invalid indexes"):
+            await NimEmbeddingClient(model=_model(), dimensions=2).encode(
+                ["first", "second"],
+                input_type="query",
+                client=client,
+            )
+
+
+@pytest.mark.asyncio
 async def test_dense_search_ranks_documents_and_uses_passage_then_query(tmp_path: Path) -> None:
     (tmp_path / "qrels").mkdir()
     (tmp_path / "corpus.jsonl").write_text(

@@ -102,6 +102,8 @@ def _parse_embeddings(
     try:
         data = response.json()["data"]
         ordered = sorted(data, key=lambda item: item["index"])
+        if [item["index"] for item in ordered] != list(range(expected_count)):
+            raise NimEmbeddingError("embedding endpoint returned invalid indexes")
         embeddings = [item["embedding"] for item in ordered]
     except (KeyError, TypeError, ValueError) as error:
         raise NimEmbeddingError("embedding endpoint returned an invalid response") from error

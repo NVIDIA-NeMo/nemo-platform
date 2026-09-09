@@ -27,6 +27,7 @@ class Retrieval(BaseModel):
     truncate_long_documents: Truncation | None = Field(
         default="end",
         description="How to cap passages at 65535 characters: keep the start ('end'), the tail ('start'), or error (null).",
+        json_schema_extra={"nullable": True},
     )
     batch_size: int = Field(default=32, ge=1, description="Embedding HTTP batch size.")
     embedding_dimensions: int | None = Field(

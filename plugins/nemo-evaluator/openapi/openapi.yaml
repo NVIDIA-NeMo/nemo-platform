@@ -5434,6 +5434,7 @@ components:
           description: 'How to cap passages at 65535 characters: keep the start (''end''),
             the tail (''start''), or error (null).'
           default: end
+          nullable: true
           type: string
           enum:
           - end
@@ -5480,6 +5481,7 @@ components:
           description: 'How to cap passages at 65535 characters: keep the start (''end''),
             the tail (''start''), or error (null).'
           default: end
+          nullable: true
           type: string
           enum:
           - end

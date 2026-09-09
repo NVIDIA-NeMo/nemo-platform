@@ -118,6 +118,14 @@ async def test_to_spec_forwards_retrieval_pipeline_fields() -> None:
     assert canonical.target.embedding_dimensions == 1024
 
 
+def test_truncation_json_schema_marks_null_as_allowed() -> None:
+    schema = RetrievalInputSpec.model_json_schema()["properties"]["truncate_long_documents"]
+    assert schema.get("nullable") is True
+    assert schema.get("enum") == ["end", "start"] or any(
+        member.get("enum") == ["end", "start"] for member in schema.get("anyOf", []) if isinstance(member, dict)
+    )
+
+
 async def test_compile_builds_cpu_retrieve_eval_task() -> None:
     job = await RetrieveEvalJob.compile(
         workspace="default",

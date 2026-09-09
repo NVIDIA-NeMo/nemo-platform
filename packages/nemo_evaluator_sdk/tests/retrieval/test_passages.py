@@ -8,13 +8,14 @@ from nemo_evaluator_sdk.retrieval.passages import DOCUMENT_CHARACTER_LIMIT, pass
 
 def test_title_aware_end_truncation_caps_concatenated_passage() -> None:
     title = "Title"
-    text = "x" * (DOCUMENT_CHARACTER_LIMIT + 50)
+    head = "HEAD"
+    tail = "TAIL"
+    text = head + ("x" * DOCUMENT_CHARACTER_LIMIT) + tail
     passage = passage_text(BeirCorpusDocument(id="d1", title=title, text=text), "end")
 
     assert len(passage) == DOCUMENT_CHARACTER_LIMIT
-    assert passage.startswith(f"{title} ")
-    assert passage.endswith("x")
-    assert "y" not in passage
+    assert passage.startswith(f"{title} {head}")
+    assert tail not in passage
 
 
 def test_start_truncation_keeps_the_tail() -> None:
