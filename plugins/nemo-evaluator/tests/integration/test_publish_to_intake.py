@@ -620,6 +620,8 @@ async def test_publishing_a_trial_with_an_otlp_trace_lands_its_spans(platform_ba
         spans = await async_sdk.intake.spans.list(workspace=WORKSPACE, filter={"session_id": published.session_id})
         assert [span.name for span in spans.data] == ["agent run"]
 
+        assert {span.source for span in spans.data} == {"otel"}
+
         rows = await async_sdk.intake.spans.evaluator_results.list(published.span_id, workspace=WORKSPACE)
         assert [row.name for row in rows] == ["accuracy.score"]
 
