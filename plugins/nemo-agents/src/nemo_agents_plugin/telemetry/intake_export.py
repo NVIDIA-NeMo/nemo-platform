@@ -123,7 +123,7 @@ def configure_intake_atif_export(
 
     if telemetry.enabled is False:
         return False
-    if _declares_a_destination(telemetry) and not _asks_for_a_filled_atif(telemetry):
+    if _declares_atif_storage(telemetry):
         return False
 
     storage: dict[str, object] = {
@@ -154,29 +154,13 @@ def configure_intake_atif_export(
     return True
 
 
-def _asks_for_a_filled_atif(telemetry: TelemetryConfig) -> bool:
-    """Whether the config turns ATIF on without saying where it goes.
+def _declares_atif_storage(telemetry: TelemetryConfig) -> bool:
+    """Whether the config says where its trajectory goes.
 
-    That combination is a request rather than a declaration -- "I want a
-    trajectory, you pick the destination" -- and it is how a config exporting
-    OpenTelemetry to its own collector also gets the platform's Intake
-    trajectory, which it could otherwise only have by hand-writing the endpoint
-    and header names this exists to spare people.
+    Only the ATIF block is consulted. Declaring an OpenTelemetry collector or an
+    ATOF sink is an opinion about *that* output; leaving ATIF unset is no
+    opinion about ATIF, so the backend's default applies -- the same tri-state
+    reading as ``telemetry.enabled``. A config that wants no trajectory says so
+    with ``atif.enabled: false``.
     """
-    atif = telemetry.atif
-    return isinstance(atif, dict) and atif.get("enabled") is True and not atif.get("storage")
-
-
-def _declares_a_destination(telemetry: TelemetryConfig) -> bool:
-    """Whether the config already names anywhere to send telemetry.
-
-    Checked across every output, not just ATIF: a config that exports
-    OpenTelemetry to its own collector has declared where its telemetry goes,
-    and adding a second destination it never asked for is the opposite of
-    letting an explicit declaration win.
-    """
-    return bool(
-        (isinstance(telemetry.atif, dict) and telemetry.atif.get("storage"))
-        or (isinstance(telemetry.atof, dict) and telemetry.atof.get("sinks"))
-        or (isinstance(telemetry.opentelemetry, dict) and telemetry.opentelemetry.get("endpoints"))
-    )
+    return isinstance(telemetry.atif, dict) and bool(telemetry.atif.get("storage"))

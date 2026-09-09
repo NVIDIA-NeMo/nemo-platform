@@ -1858,20 +1858,21 @@ def test_telemetry_credentials_go_to_the_environment_not_the_config(monkeypatch:
         ("opentelemetry", {"endpoints": [{"type": "gen_ai", "endpoint": "https://mine/otlp"}]}),
     ],
 )
-def test_a_destination_declared_through_any_output_is_left_alone(
+def test_another_outputs_destination_does_not_speak_for_atif(
     monkeypatch: pytest.MonkeyPatch, output: str, declaration: dict[str, Any]
 ) -> None:
-    """Declaring an export is declaring where telemetry goes, whichever output carries it.
+    """Declaring a collector is an opinion about that output, not about the trajectory.
 
-    Adding an Intake destination beside one the agent chose would be a second,
-    unrequested export -- not the "fill in what was left out" this is for.
+    Leaving ATIF unset is no opinion about ATIF, so the Intake default applies
+    and the agent keeps the destination it did choose.
     """
     monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
     config = _fabric_agent_config(telemetry={"enabled": True, output: declaration})
 
-    _configure_intake_telemetry(config, workspace="default", sdk=None)
+    _configure_intake_telemetry(config, workspace="team-a", sdk=None)
 
-    assert "atif" not in config["telemetry"]
+    storage = config["telemetry"]["atif"]["storage"][0]
+    assert storage["endpoint"] == "http://nemo-platform-api:8080/apis/intake/v2/workspaces/team-a/ingest/atif"
     assert config["telemetry"][output] == declaration
 
 
@@ -2025,7 +2026,7 @@ def test_a_failed_token_exchange_still_exports_rather_than_failing_the_run(
     assert "without credentials" in caplog.text
 
 
-def test_an_atif_block_without_a_destination_is_filled_alongside_other_outputs(
+def test_an_atif_block_turned_on_without_a_destination_is_filled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Turning ATIF on without a destination asks for one, rather than declaring one.
