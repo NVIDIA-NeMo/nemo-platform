@@ -108,7 +108,7 @@ function requireImageForEngine(
 
 export const createDeploymentWizardSchema = z
   .object({
-    source: z.enum([SOURCE_NGC, SOURCE_HF, SOURCE_WORKSPACE]),
+    source: z.enum([SOURCE_HF, SOURCE_WORKSPACE, SOURCE_NGC]),
     /** Base name: NGC NIM `model_name`, and API deployment/config become `<name>-deployment` / `<name>-config`. */
     name: wizardBaseNameSchema,
     /** Inference engine. Ignored for the NGC source, which is always a NIM container. */
@@ -191,7 +191,11 @@ export const createDeploymentWizardSchema = z
 export type WizardFormValues = z.infer<typeof createDeploymentWizardSchema>;
 
 export const defaultWizardValues = (): WizardFormValues => ({
-  source: SOURCE_NGC,
+  // Matches the leftmost segment in the panel's source control. HuggingFace is
+  // also the only default that agrees with `engine` below: the NGC source
+  // ignores the engine entirely, so defaulting to it left the two defaults
+  // describing different deployments.
+  source: SOURCE_HF,
   name: generateDefaultName(),
   // vLLM serves any architecture from a model-agnostic default image, so it is
   // the safe default for the sources that expose the picker. The NGC source
