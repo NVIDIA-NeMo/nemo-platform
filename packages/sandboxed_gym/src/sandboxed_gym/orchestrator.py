@@ -19,7 +19,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Coroutine, Mapping
 from types import FrameType
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 from urllib.parse import urlparse
 
 from sandboxed_gym.broker import EpisodeBrokerServer
@@ -339,7 +339,7 @@ class SandboxedGymSession:
         self,
         *,
         cfg: SandboxedGymServeConfig,
-        broker_server: EpisodeBrokerServer,
+        broker_server: EpisodeBroker,
         broker: BrokerEndpoint,
         host_provider: SandboxedGymHostProvider,
         host: GymHostHandle,
@@ -646,40 +646,76 @@ class SandboxedGymSession:
             LOGGER.exception("Failed to shut down episode broker")
 
 
+class EpisodeBroker(Protocol):
+    """All the orchestrator needs of a broker: somewhere to start it, and a way to stop it.
+
+    Narrow on purpose -- anything added here couples the orchestrator to how a broker is hosted,
+    which is the caller's choice to make.
+    """
+
+    def start(self) -> BrokerEndpoint: ...
+
+    def shutdown(self) -> None: ...
+
+
 class SandboxedGymOrchestrator:
     """Start episode broker, provision Gym host, return a live session."""
 
-    def start(self, cfg: SandboxedGymServeConfig | Mapping[str, Any]) -> SandboxedGymSession:
+    def start(
+        self,
+        cfg: SandboxedGymServeConfig | Mapping[str, Any],
+        *,
+        broker: EpisodeBroker | None = None,
+    ) -> SandboxedGymSession:
+        """Bring up a session, hosting the broker in this process unless given one.
+
+        The default hosts it on a background thread here, which suits a caller that rarely
+        creates episodes -- an ordinary evaluation creates none. Pass a broker that runs
+        elsewhere when they are created heavily: a SWE rollout crosses the broker on every
+        ``exec``, and that traffic would otherwise contend for this process's GIL.
+
+        A supplied broker is configured by its owner; ``cfg.episode_broker`` is not applied to it.
+        """
         if not isinstance(cfg, SandboxedGymServeConfig):
             cfg = SandboxedGymServeConfig.model_validate(cfg)
 
-        broker_cfg = cfg.broker_config()
-        broker_server = EpisodeBrokerServer(broker_cfg)
-        broker = broker_server.start()
+        broker_server: EpisodeBroker = broker if broker is not None else EpisodeBrokerServer(cfg.broker_config())
+        broker_endpoint = broker_server.start()
 
-        host_spec = build_gym_host_spec(cfg, broker)
-        host_provider = get_host_provider(cfg.host_provider, cfg.sandbox.host_provider_options)
-        # Use one loop for create, wait-ready, and destroy. A new asyncio.run() for
-        # each call closes the SDK client that create_host just built.
-        async_runner = _SessionAsyncRunner()
-        host: GymHostHandle | None = None
+        # The broker is serving from here on, so every later failure has to release it --
+        # including provider selection, which rejects an unknown name or a bad option. An
+        # injected broker can be a Ray actor, which would otherwise outlive this process.
         try:
-            host = async_runner.run(host_provider.create_host(host_spec))
-            async_runner.run(host_provider.wait_ready(host, cfg.sandbox.ready_timeout_s))
+            host_spec = build_gym_host_spec(cfg, broker_endpoint)
+            host_provider = get_host_provider(cfg.host_provider, cfg.sandbox.host_provider_options)
+            # Use one loop for create, wait-ready, and destroy. A new asyncio.run() for
+            # each call closes the SDK client that create_host just built.
+            async_runner = _SessionAsyncRunner()
+            host: GymHostHandle | None = None
+            try:
+                host = async_runner.run(host_provider.create_host(host_spec))
+                async_runner.run(host_provider.wait_ready(host, cfg.sandbox.ready_timeout_s))
+            except Exception:
+                if host is not None:
+                    try:
+                        async_runner.run(host_provider.destroy_host(host))
+                    except Exception:
+                        LOGGER.exception("Failed to destroy sandboxed Gym host after startup failure")
+                async_runner.close()
+                raise
         except Exception:
-            if host is not None:
-                try:
-                    async_runner.run(host_provider.destroy_host(host))
-                except Exception:
-                    LOGGER.exception("Failed to destroy sandboxed Gym host after startup failure")
-            broker_server.shutdown()
-            async_runner.close()
+            # A supplied broker is the caller's code. Let its failure be logged rather than
+            # replace the startup error that is the reason we are here.
+            try:
+                broker_server.shutdown()
+            except Exception:
+                LOGGER.exception("Failed to shut down episode broker after startup failure")
             raise
 
         return SandboxedGymSession(
             cfg=cfg,
             broker_server=broker_server,
-            broker=broker,
+            broker=broker_endpoint,
             host_provider=host_provider,
             host=host,
             async_runner=async_runner,
