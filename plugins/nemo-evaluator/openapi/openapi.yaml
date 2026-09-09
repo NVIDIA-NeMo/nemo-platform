@@ -4282,11 +4282,11 @@ components:
       - resources_server
       title: GymRunnerTarget
       description: "Generate trials by driving a NeMo Gym environment through the\
-        \ SDK's :class:`GymAgentTaskRunner`.\n\nGym runs locally in the job container\
-        \ (the ``gym`` CLI must be installed in the same environment\nas this SDK).\
-        \ The environment dataset is recovered from the tasks at run time \u2014 the\
-        \ runner stamps\n``gym_dataset_path`` onto each task via ``discover_gym_tasks``,\
-        \ mirroring the Harbor pattern."
+        \ SDK's :class:`GymAgentTaskRunner`.\n\nThe deployment chooses colocated execution\
+        \ in the Gym task container or a separate sandboxed\nGym host. An environment\
+        \ FileSet requires the sandboxed path. The environment dataset is\nrecovered\
+        \ from the tasks at run time \u2014 ``discover_gym_tasks`` records the source\
+        \ row data needed\nto materialize the selected tasks for rollout collection."
     HTTPValidationError:
       properties:
         detail:

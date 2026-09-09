@@ -170,6 +170,70 @@ target = FabricRunnerTarget(
 
 Do not use profile overlays. Fold the complete configuration into `config`.
 
+### Configure Gym as a task runner
+
+Use `discover_gym_tasks` to turn Gym JSONL rows into task definitions and attach
+`GymRewardMetric` to score each rollout's reward. A standalone
+`GymAgentTaskRunner` requires `agent`, `agent_config`, and `resources_server`.
+
+For a durable job that uses components already installed in `nmp-gym-tasks`,
+submit the validated live runner as shown above or build a `GymRunnerTarget`:
+
+```python
+from nemo_evaluator.jobs.agent_spec import GymRunnerTarget
+
+target = GymRunnerTarget(
+    agent="simple_agent",
+    agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+    resources_server="mcqa",
+    num_repeats=1,
+    concurrency=4,
+)
+```
+
+The caller chooses between a local SDK run and a durable platform job. A local
+run executes Evaluator and the `gym` subprocesses on the caller's machine. For
+a platform job, sandbox placement is an operator decision: sandbox-enabled
+deployments run Gym in a separate `nmp-gym-host`; deployments without
+OpenSandbox can run trusted, built-in Gym components together with Evaluator in
+`nmp-gym-tasks`. The latter is the colocated compatibility path, not a separate
+submission interface.
+
+A custom environment supplies Gym component configuration, code, and
+dependencies that are not built into the platform's Gym runtime image. Package
+those files in a FileSet with `purpose=environment`, place
+`nemo-environment.yaml` at its root, and set `target.environment` to the whole
+FileSet reference. Evaluator accepts `native-v1` and `wheels-v1` packages.
+
+FileSet-backed environments require sandboxed platform execution. Evaluator
+compiles them into two ordered Jobs steps:
+
+1. `stage-environment` downloads the FileSet onto job-scoped shared storage.
+2. `agent-evaluate` provisions `nmp-gym-host` with the environment mounted
+   read-only, collects and scores rollouts, then destroys the host.
+
+```python
+from nemo_evaluator.filesets import FilesetRef
+from nemo_evaluator.jobs.agent_spec import GymRunnerTarget
+
+target = GymRunnerTarget(
+    environment=FilesetRef(root="default/my-gym-environment"),
+    agent="simple_agent",
+    agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+    resources_server="custom_greeting",
+    env_secrets={"MODEL_API_KEY": "default/my-model-api-key"},
+)
+```
+
+`agent_config` can be omitted when the FileSet declares the selected agent.
+Set `agent_ref_name` when the package registers that agent under a different
+instance name. Use `env_secrets`, not `env_vars`, for credentials; sandboxed
+jobs reject credential-shaped plaintext environment variables.
+
+A live `GymAgentTaskRunner` cannot carry the wire-only `environment`,
+`agent_ref_name`, or `env_secrets` fields. Build `GymRunnerTarget` explicitly
+and submit it in an agent-evaluate spec for those cases.
+
 `max_concurrent_tasks` limits tasks evaluated concurrently. Target-specific
 settings such as inference parallelism or Harbor
 `n_concurrent_trials` control concurrency inside trial generation.
