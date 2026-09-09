@@ -37,7 +37,7 @@ const repoRoot = resolve(fernDir, "..", "..");
 const docsYmlPath = resolve(fernDir, "docs.yml");
 const versionsDir = resolve(fernDir, "versions");
 const generatedRoot = resolve(fernDir, "generated", "release-versions");
-const branchMapPath = resolve(fernDir, "release-branches.json");
+const branchConfigPath = resolve(fernDir, "release-branches.json");
 
 // Fern's docs.yml versions[].availability enum has no literal "pre-release"
 // value; "preview" is the closest fit and still renders a badge.
@@ -48,6 +48,8 @@ const generatedFileHeader =
 const taggedVersionDir = "docs/fern/versions";
 const releaseTagPattern =
   /^v?(?<core>(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*))(?:-(?<prerelease>[0-9A-Za-z.-]+))?(?:\+(?<build>[0-9A-Za-z.-]+))?$/;
+const releaseBranchPattern =
+  /^release\/(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)(?:\.(?<patch>0|[1-9]\d*))?$/;
 
 const argv = process.argv.slice(2);
 const includePrerelease = argv.includes("--include-prerelease");
@@ -132,6 +134,16 @@ function parseReleaseTag(tag) {
   };
 }
 
+function tagForReleaseBranch(branch) {
+  const match = releaseBranchPattern.exec(branch);
+  if (!match?.groups) {
+    return undefined;
+  }
+
+  const { major, minor, patch } = match.groups;
+  return `${major}.${minor}.${patch ?? "0"}`;
+}
+
 function safePathName(value) {
   return value.replace(/[^A-Za-z0-9._-]/g, "-");
 }
@@ -173,21 +185,28 @@ function discoverReleaseTags() {
   return releases;
 }
 
-// Optional branch -> tag map (docs/fern/release-branches.json): lets a release
-// branch preview as a pre-release version before its tag is cut. A real tag
-// always wins once it exists; see docs/fern/README.md#release-versioning.
+// Optional docs/fern/release-branches.json selects release branches to preview
+// before their tags are cut. Array entries derive release/x.y -> x.y.0; object
+// entries map branch -> tag for patch or nonstandard cases. A real tag always
+// wins once it exists; see docs/fern/README.md#release-versioning.
 function discoverBranchReleases() {
-  if (!existsSync(branchMapPath)) {
+  if (!existsSync(branchConfigPath)) {
     return [];
   }
 
-  const branchMap = JSON.parse(readFileSync(branchMapPath, "utf8"));
   const releases = [];
 
-  for (const [branch, tag] of Object.entries(branchMap)) {
+  for (const [branch, tag] of readBranchReleaseEntries()) {
+    if (!tag) {
+      console.log(
+        `Skipping release branch "${branch}": branch names must be release/x.y or release/x.y.z unless explicitly mapped`,
+      );
+      continue;
+    }
+
     const release = parseReleaseTag(tag);
     if (!release) {
-      console.log(`Skipping release-branches.json entry "${branch}": "${tag}" is not a stable SemVer tag`);
+      console.log(`Skipping release branch "${branch}": "${tag}" is not a stable SemVer tag`);
       continue;
     }
 
@@ -216,6 +235,32 @@ function discoverBranchReleases() {
 
   releases.sort(compareReleaseTags);
   return releases;
+}
+
+function readBranchReleaseEntries() {
+  const config = JSON.parse(readFileSync(branchConfigPath, "utf8"));
+
+  if (Array.isArray(config)) {
+    return config.map((branch) => {
+      if (typeof branch !== "string") {
+        throw new Error(`${branchConfigPath} array entries must be branch names`);
+      }
+
+      return [branch, tagForReleaseBranch(branch)];
+    });
+  }
+
+  if (!config || typeof config !== "object") {
+    throw new Error(`${branchConfigPath} must be a branch-name array or branch-to-tag object`);
+  }
+
+  return Object.entries(config).map(([branch, tag]) => {
+    if (typeof tag !== "string") {
+      throw new Error(`${branchConfigPath} object values must be tag names`);
+    }
+
+    return [branch, tag];
+  });
 }
 
 function resolveBranchRef(branch) {

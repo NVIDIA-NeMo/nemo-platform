@@ -111,17 +111,25 @@ To preview the release selector locally, run `npm run materialize:versions` from
 
 ### Pre-release branches
 
-`docs/fern/release-branches.json` is an optional map from a release branch to the tag it will eventually become, for example:
+`docs/fern/release-branches.json` is an optional allowlist of release branches to preview before their tags are cut. Standard branch names derive their eventual tag automatically: `release/0.6` becomes `0.6.0`, and `release/0.6.1` becomes `0.6.1`.
 
 ```json
-{
-  "release/0.6": "0.6.0"
-}
+[
+  "release/0.6"
+]
 ```
 
 If the tag (`0.6.0`) doesn't exist yet but the branch (`release/0.6`) does and contains `docs/fern/versions/latest.yml`, `materialize-release-versions.mjs` builds that version's docs from the branch instead, under the same version path the real tag will use, and marks it `availability: preview` in `docs.yml` (Fern's version-selector schema has no literal "pre-release" value; `preview` is the closest fit and still renders a badge). Once the real tag is pushed, it takes over automatically — the branch entry is skipped as soon as the tag exists.
 
-The map is not read by Fern itself, so it isn't subject to `docs.yml`'s schema (which is `additionalProperties: false`). It's optional: an absent or empty file is a no-op. A mapped branch that isn't already fetched locally is pulled from `origin` on demand (anonymously — this repo is public, so no token is needed), then treated the same as any other local ref. This is the same code path everywhere it runs, so no extra CI step is needed: `npm run materialize:versions` behaves identically locally, in `publish-fern-docs.yaml`, and in `fern-docs-preview-build.yaml` (so a PR's Fern preview shows the same version selector, including pre-release branches, that a real publish would produce — not just `main`). A confirmed-absent branch is a soft skip; any other fetch failure (network, auth) fails the run instead of silently dropping the preview version.
+For patch or nonstandard cases, use object form to map a branch to the exact future tag:
+
+```json
+{
+  "release/0.6": "0.6.1"
+}
+```
+
+The allowlist is not read by Fern itself, so it isn't subject to `docs.yml`'s schema (which is `additionalProperties: false`). It's optional: an absent file or empty array/object is a no-op. A listed branch that isn't already fetched locally is pulled from `origin` on demand (anonymously — this repo is public, so no token is needed), then treated the same as any other local ref. This is the same code path everywhere it runs, so no extra CI step is needed: `npm run materialize:versions` behaves identically locally, in `publish-fern-docs.yaml`, and in `fern-docs-preview-build.yaml` (so a PR's Fern preview shows the same version selector, including selected pre-release branches, that a real publish would produce — not just `main`). A confirmed-absent branch is a soft skip; any other fetch failure (network, auth) fails the run instead of silently dropping the preview version.
 
 ## Gated (unready) features
 
