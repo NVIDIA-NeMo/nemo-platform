@@ -14,6 +14,7 @@ import {
   OUTPUT_HEADING_REPLACED,
   OUTPUT_HEADING_REWRITTEN,
 } from '@studio/routes/AnonymizerBuilderRoute/utils';
+import { resolveTextColumn } from '@studio/routes/AnonymizerJobDetailRoute/util';
 import { useMemo, type FC } from 'react';
 
 interface RecordDetailModalProps {
@@ -32,11 +33,12 @@ export const RecordDetailModal: FC<RecordDetailModalProps> = ({
   onClose,
 }) => {
   const row = selectedIndex !== null ? (rows[selectedIndex] ?? null) : null;
+  const resolvedColumn = row ? resolveTextColumn(row, textColumn) : '';
   const record = useMemo(
-    () => (row && textColumn ? buildAnonymizerRecord(row, textColumn) : undefined),
-    [row, textColumn]
+    () => (row ? buildAnonymizerRecord(row, resolvedColumn) : undefined),
+    [row, resolvedColumn]
   );
-  const outputHeading = outputColumn(row ?? {}, textColumn ?? '')?.endsWith(REWRITTEN_SUFFIX)
+  const outputHeading = outputColumn(row ?? {}, resolvedColumn)?.endsWith(REWRITTEN_SUFFIX)
     ? OUTPUT_HEADING_REWRITTEN
     : OUTPUT_HEADING_REPLACED;
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { RunJob } from '@nemo/sdk/generated/anonymizer/schema';
+import type { DataFileRow } from '@studio/components/FileRowEditor/types';
 
 export const ANONYMIZER_POLLING_INTERVAL_MS = 5000;
 
@@ -28,6 +29,10 @@ export const parseArtifactUrl = (artifactUrl: string | undefined): ArtifactLocat
   const fileset = reference.split('/').pop();
   return fileset ? { fileset, basePath } : undefined;
 };
+
+/** Falls back to the row's first field when `metadata.json` didn't name a text column. */
+export const resolveTextColumn = (row: DataFileRow, textColumn: string | undefined): string =>
+  textColumn ?? Object.keys(row)[0] ?? '';
 
 export const metadataTextColumn = (metadata: string | undefined): string | undefined => {
   try {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Banner, Panel, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
+import type { DataFileRow } from '@studio/components/FileRowEditor/types';
 import { RecordDetailModal } from '@studio/routes/AnonymizerJobDetailRoute/components/RecordDetailModal';
 import { ResultsPreviewTable } from '@studio/routes/AnonymizerJobDetailRoute/components/ResultsPreviewTable';
 import { useResultPreview } from '@studio/routes/AnonymizerJobDetailRoute/useResultPreview';
@@ -16,6 +17,10 @@ export const ResultsPreviewPanel: FC<ResultsPreviewPanelProps> = ({ workspace, a
   const { rows, textColumn, isLoading, error } = useResultPreview(workspace, artifactUrl);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const closeSelectedRow = useCallback(() => setSelectedIndex(null), []);
+  const selectRow = useCallback(
+    (_row: DataFileRow, indexInAllRows: number) => setSelectedIndex(indexInAllRows),
+    []
+  );
 
   return (
     <Panel slotHeading="Preview" elevation="high" density="compact">
@@ -27,11 +32,7 @@ export const ResultsPreviewPanel: FC<ResultsPreviewPanelProps> = ({ workspace, a
         <Spinner aria-label="Loading preview" />
       ) : rows.length ? (
         <Stack gap="density-md">
-          <ResultsPreviewTable
-            rows={rows}
-            textColumn={textColumn}
-            onRowClick={(_row, index) => setSelectedIndex(index)}
-          />
+          <ResultsPreviewTable rows={rows} textColumn={textColumn} onRowClick={selectRow} />
           <Text kind="body/regular/sm">
             Showing the first {rows.length} records. Download the result for the full dataset.
             Select a row to view it in the record preview.

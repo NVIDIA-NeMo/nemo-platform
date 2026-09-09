@@ -9,22 +9,23 @@ import {
   REPLACEMENT_MAP_COLUMN,
 } from '@studio/components/AnonymizerRecordView/parse';
 import type { DataFileRow } from '@studio/components/FileRowEditor/types';
-import { RESULT_PREVIEW_ROWS } from '@studio/routes/AnonymizerJobDetailRoute/util';
+import {
+  RESULT_PREVIEW_ROWS,
+  resolveTextColumn,
+} from '@studio/routes/AnonymizerJobDetailRoute/util';
 import { memo, useCallback, useMemo, type ComponentProps, type FC } from 'react';
 
 interface ResultsPreviewTableProps {
   readonly rows: readonly DataFileRow[];
   readonly textColumn: string | undefined;
-  /** `index` is the row's position in the full `rows` array, not just the current page. */
-  readonly onRowClick: (row: DataFileRow, index: number) => void;
+  readonly onRowClick: (row: DataFileRow, indexInAllRows: number) => void;
 }
 
 const cellText = (value: unknown): string =>
   typeof value === 'object' ? JSON.stringify(value) : String(value);
 
-/** Falls back to the first field when the text column can't be resolved for a row. */
 const describeRow = (row: DataFileRow, textColumn: string | undefined): string => {
-  const value = textColumn ? row[textColumn] : Object.values(row)[0];
+  const value = row[resolveTextColumn(row, textColumn)];
   return value == null ? '' : cellText(value);
 };
 
