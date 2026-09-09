@@ -22,6 +22,11 @@ from nmp.platform_runner.config import (
     apply_run_environment,
     resolve_run_configuration,
 )
+from nmp.platform_runner.controller_threads import (
+    join_and_untrack_runner_threads,
+    start_controller_threads,
+    start_sidecar_threads,
+)
 from nmp.platform_runner.health import get_platform_resource_attributes
 from nmp.platform_runner.loader import (
     ControllerRunFunc,
@@ -29,7 +34,10 @@ from nmp.platform_runner.loader import (
     load_service,
     order_services_by_dependencies,
 )
-from nmp.platform_runner.registry import AVAILABLE_SIDECARS
+from nmp.platform_runner.registry import (
+    AVAILABLE_SIDECARS,
+    check_no_controller_sidecar_collision,
+)
 from nmp.platform_runner.server import run_server, run_server_with_reload
 from nmp.platform_runner.version import get_platform_version
 from rich.console import Console
@@ -67,12 +75,15 @@ def run_controllers_in_threads(
     stop_signal: threading.Event,
 ) -> list[threading.Thread]:
     """Start controller run functions in daemon threads."""
-    threads = []
-    for name, run_func in controller_run_funcs.items():
-        thread = threading.Thread(target=run_func, args=(stop_signal,), name=f"controller-{name}", daemon=True)
-        thread.start()
-        threads.append(thread)
-    return threads
+    return start_controller_threads(controller_run_funcs, stop_signal)
+
+
+def run_sidecars_in_threads(
+    sidecar_run_funcs: dict[str, ControllerRunFunc],
+    stop_signal: threading.Event,
+) -> list[threading.Thread]:
+    """Start sidecar run functions in daemon threads."""
+    return start_sidecar_threads(sidecar_run_funcs, stop_signal)
 
 
 def run_platform(
@@ -100,9 +111,7 @@ def run_platform(
     setup_global_instrumentations()
     _startup_phase("observability_init", t0)
 
-    collisions = resolved.controllers & resolved.sidecars
-    if collisions:
-        raise ValueError(f"Controller/sidecar name collision: {', '.join(sorted(collisions))}")
+    check_no_controller_sidecar_collision(resolved.controllers, resolved.sidecars)
 
     service_instances = _load_service_instances(sorted(resolved.services), resolved.available_services)
     get_platform_config().services = ",".join(sorted(service.name for service in service_instances))
@@ -138,6 +147,7 @@ def run_platform(
     )
 
     controller_threads: list[threading.Thread] = []
+    thread_by_name: dict[str, threading.Thread] = {}
     try:
         reload_enabled = os.environ.get("UVICORN_RELOAD", "").lower() in {"true", "1", "yes"}
         if reload_enabled:
@@ -149,9 +159,13 @@ def run_platform(
             )
         else:
             if controller_run_funcs:
-                controller_threads.extend(run_controllers_in_threads(controller_run_funcs, controller_stop_signal))
+                started = run_controllers_in_threads(controller_run_funcs, controller_stop_signal)
+                thread_by_name.update(zip(controller_run_funcs, started))
+                controller_threads.extend(started)
             if sidecar_run_funcs:
-                controller_threads.extend(run_controllers_in_threads(sidecar_run_funcs, controller_stop_signal))
+                started = run_sidecars_in_threads(sidecar_run_funcs, controller_stop_signal)
+                thread_by_name.update(zip(sidecar_run_funcs, started))
+                controller_threads.extend(started)
             run_server(
                 service_instances,
                 host=resolved.host,
@@ -174,10 +188,11 @@ def run_platform(
                 on_shutdown()
             except Exception:
                 logger.debug("on_shutdown callback failed", exc_info=True)
-        for thread in controller_threads:
-            thread.join(timeout=10)
-            if thread.is_alive():
-                logger.warning("Controller thread %s did not finish in time", thread.name)
+        join_and_untrack_runner_threads(
+            controller_threads,
+            thread_by_name,
+            controller_run_funcs.keys() | sidecar_run_funcs.keys(),
+        )
 
 
 def _load_service_instances(

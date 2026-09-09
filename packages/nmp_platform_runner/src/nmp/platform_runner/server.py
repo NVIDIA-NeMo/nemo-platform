@@ -28,6 +28,11 @@ from nmp.common.observability.context import create_app_context_dependency
 from nmp.common.pyleak import detect_blocking
 from nmp.common.service import Service
 from nmp.platform_runner.config import DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS, PlatformAppConfig
+from nmp.platform_runner.controller_threads import (
+    join_and_untrack_runner_threads,
+    start_controller_threads,
+    start_sidecar_threads,
+)
 from nmp.platform_runner.health import ReadinessCheck, create_platform_health_router, get_platform_resource_attributes
 from nmp.platform_runner.loader import (
     ControllerRunFunc,
@@ -37,6 +42,7 @@ from nmp.platform_runner.loader import (
 )
 from nmp.platform_runner.registry import (
     AVAILABLE_SIDECARS,
+    check_no_controller_sidecar_collision,
     get_available_controllers,
     get_available_services,
     get_openapi_service_names,
@@ -141,10 +147,13 @@ def create_app(
     controller_run_funcs: dict[str, ControllerRunFunc] | None = None,
     http_client: httpx.AsyncClient | None = None,
     access_key_lifecycle_http_client: httpx.AsyncClient | None = None,
+    sidecar_run_funcs: dict[str, ControllerRunFunc] | None = None,
 ) -> FastAPI:
     """Create the FastAPI app from service instances."""
     services = services or []
     controller_run_funcs = controller_run_funcs or {}
+    sidecar_run_funcs = sidecar_run_funcs or {}
+    check_no_controller_sidecar_collision(controller_run_funcs.keys(), sidecar_run_funcs.keys())
     controller_stop_signal = threading.Event()
     platform_config = get_platform_config()
     platform_config.services = ",".join(sorted(service.name for service in services))
@@ -164,18 +173,37 @@ def create_app(
     async def lifespan(app: FastAPI):
         logger.info("Starting Nemo Platform server")
         controller_threads = []
+        thread_by_name: dict[str, threading.Thread] = {}
         platform_seed_task: asyncio.Task[None] | None = None
-        if controller_run_funcs:
-            logger.info("Starting controllers in lifespan: %s", list(controller_run_funcs))
-            for name, run_func in controller_run_funcs.items():
-                thread = threading.Thread(
-                    target=run_func,
-                    args=(controller_stop_signal,),
-                    name=f"controller-{name}",
-                    daemon=True,
+        try:
+            # start_*_threads can block synchronously: on a mid-batch failure
+            # (e.g. thread.start() raising under thread exhaustion) it rolls
+            # back already-started components by joining them, which — like
+            # the shutdown join below — can take up to each component's
+            # configured timeout. Run it off the event loop so a failure here
+            # doesn't stall every other in-flight request during startup.
+            if controller_run_funcs:
+                logger.info("Starting controllers in lifespan: %s", list(controller_run_funcs))
+                started = await asyncio.to_thread(
+                    start_controller_threads, controller_run_funcs, controller_stop_signal
                 )
-                thread.start()
-                controller_threads.append(thread)
+                thread_by_name.update(zip(controller_run_funcs, started))
+                controller_threads.extend(started)
+            if sidecar_run_funcs:
+                logger.info("Starting sidecars in lifespan: %s", list(sidecar_run_funcs))
+                started = await asyncio.to_thread(start_sidecar_threads, sidecar_run_funcs, controller_stop_signal)
+                thread_by_name.update(zip(sidecar_run_funcs, started))
+                controller_threads.extend(started)
+        except Exception:
+            controller_stop_signal.set()
+            await asyncio.to_thread(
+                join_and_untrack_runner_threads,
+                controller_threads,
+                thread_by_name,
+                controller_run_funcs.keys() | sidecar_run_funcs.keys(),
+            )
+            await close_shared_http_clients()
+            raise
 
         if platform_seed_state is not None:
             try:
@@ -214,8 +242,16 @@ def create_app(
                 pass
 
         controller_stop_signal.set()
-        for thread in controller_threads:
-            thread.join(timeout=5)
+        # join_and_untrack_runner_threads blocks synchronously (it polls with
+        # time.sleep) for up to each component's shutdown timeout — offload it
+        # so a slow-to-stop controller/sidecar (e.g. auth-proxy's 16s budget)
+        # doesn't stall the event loop and every other in-flight request.
+        await asyncio.to_thread(
+            join_and_untrack_runner_threads,
+            controller_threads,
+            thread_by_name,
+            controller_run_funcs.keys() | sidecar_run_funcs.keys(),
+        )
 
         await close_shared_http_clients()
         logger.info("Shutting down Nemo Platform API server")
@@ -331,17 +367,15 @@ def build_platform_app(
         )
     service_instances = order_services_by_dependencies(service_instances)
 
-    collisions = resolved.controllers & resolved.sidecars
-    if collisions:
-        raise ValueError(f"Controller/sidecar name collision: {', '.join(sorted(collisions))}")
-
+    # Fail before loading colliding functions; create_app() checks direct callers.
+    check_no_controller_sidecar_collision(resolved.controllers, resolved.sidecars)
     controller_run_funcs = _load_run_functions(sorted(resolved.controllers), resolved.available_controllers)
     sidecar_run_funcs = _load_run_functions(sorted(resolved.sidecars), AVAILABLE_SIDECARS)
-    controller_run_funcs.update(sidecar_run_funcs)
 
     return create_app(
         service_instances,
         controller_run_funcs=controller_run_funcs,
+        sidecar_run_funcs=sidecar_run_funcs,
         http_client=http_client,
         access_key_lifecycle_http_client=access_key_lifecycle_http_client,
     )
