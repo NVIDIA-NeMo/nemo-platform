@@ -43,9 +43,9 @@ A dataset-driven template (`{{item.expected}}`) fails on every trial in an
 agent evaluation. The error names the available keys — read it before changing
 the metric.
 
-Retrieval metrics operate on a complete BEIR corpus. Run them through
-`Evaluator.run_sync(retrieval=..., target=...)` or the `retrieve-eval` job, not
-through dataset rows.
+Retrieval metrics operate on BEIR query rows after a `Retrieval` target ranks the corpus. Run
+them through `Evaluator.run_sync(dataset=..., target=Retrieval(...))` or the `retrieve-eval`
+job.
 
 ### Explore the metrics provided by the SDK
 

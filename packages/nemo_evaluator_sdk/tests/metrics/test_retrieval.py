@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import math
-
 import pytest
+import pytrec_eval
 from nemo_evaluator_sdk.metrics.protocol import CandidateOutput, DatasetRow, MetricInput
 from nemo_evaluator_sdk.metrics.retrieval import (
     RetrievalMAPMetric,
@@ -14,6 +13,9 @@ from nemo_evaluator_sdk.metrics.retrieval import (
 from nemo_evaluator_sdk.metrics.types import MetricsUnion
 from pydantic import TypeAdapter
 
+_QRELS = {"d1": 2, "d2": 1}
+_RUN = {"d2": 2.0, "d1": 1.0}
+
 
 def _input(qrels: dict[str, int], scores: dict[str, float]) -> MetricInput:
     return MetricInput(
@@ -22,42 +24,35 @@ def _input(qrels: dict[str, int], scores: dict[str, float]) -> MetricInput:
     )
 
 
+def _pytrec(qrels: dict[str, int], run: dict[str, float], measures: set[str]) -> dict[str, float]:
+    return pytrec_eval.RelevanceEvaluator({"q": qrels}, measures).evaluate({"q": run})["q"]
+
+
 @pytest.mark.asyncio
-async def test_ndcg_matches_trec_eval_linear_gain() -> None:
-    metric = RetrievalNDCGMetric(k=[1, 2])
-    result = await metric.compute_scores(_input({"d1": 2, "d2": 1}, {"d2": 2.0, "d1": 1.0}))
+async def test_ndcg_matches_pytrec_eval() -> None:
+    expected = _pytrec(_QRELS, _RUN, {"ndcg_cut_1", "ndcg_cut_2"})
+    result = await RetrievalNDCGMetric(k=[1, 2]).compute_scores(_input(_QRELS, _RUN))
     scores = {output.name: output.value for output in result.outputs}
 
-    assert scores["query_ndcg@1"] == pytest.approx(0.5)
-    expected = (1 + 2 / math.log2(3)) / (2 + 1 / math.log2(3))
-    assert scores["query_ndcg@2"] == pytest.approx(expected)
+    assert scores["ndcg_cut_1"] == pytest.approx(expected["ndcg_cut_1"])
+    assert scores["ndcg_cut_2"] == pytest.approx(expected["ndcg_cut_2"])
 
 
 @pytest.mark.asyncio
-async def test_recall_and_corpus_mean() -> None:
-    metric = RetrievalRecallMetric(k=[1, 2])
-    inputs = [
-        _input({"d1": 1, "d2": 1}, {"d1": 2.0, "d3": 1.0}),
-        _input({"d3": 1}, {"d3": 2.0, "d1": 1.0}),
-    ]
+async def test_recall_precision_and_map_match_pytrec_eval() -> None:
+    qrels = {"d1": 1, "d2": 1}
+    run = {"d1": 3.0, "d3": 2.0, "d2": 1.0}
+    expected = _pytrec(qrels, run, {"recall_1", "recall_2", "P_2", "map_cut_3"})
 
-    result = await metric.compute_corpus_scores(inputs)
-    scores = {output.name: output.value for output in result.outputs}
-    assert scores == {"recall@1": 0.75, "recall@2": 0.75}
+    recall = await RetrievalRecallMetric(k=[1, 2]).compute_scores(_input(qrels, run))
+    precision = await RetrievalPrecisionMetric(k=[2]).compute_scores(_input(qrels, run))
+    average_precision = await RetrievalMAPMetric(k=[3]).compute_scores(_input(qrels, run))
 
-
-@pytest.mark.asyncio
-async def test_precision_and_map_match_trec_cutoff_semantics() -> None:
-    input = _input(
-        {"d1": 1, "d2": 1},
-        {"d1": 3.0, "d3": 2.0, "d2": 1.0},
-    )
-
-    precision = await RetrievalPrecisionMetric(k=[2]).compute_scores(input)
-    average_precision = await RetrievalMAPMetric(k=[3]).compute_scores(input)
-
-    assert precision.outputs[0].value == pytest.approx(0.5)
-    assert average_precision.outputs[0].value == pytest.approx((1.0 + 2 / 3) / 2)
+    recall_scores = {output.name: output.value for output in recall.outputs}
+    assert recall_scores["recall_1"] == pytest.approx(expected["recall_1"])
+    assert recall_scores["recall_2"] == pytest.approx(expected["recall_2"])
+    assert precision.outputs[0].value == pytest.approx(expected["P_2"])
+    assert average_precision.outputs[0].value == pytest.approx(expected["map_cut_3"])
 
 
 def test_retrieval_metrics_are_registered_variants() -> None:

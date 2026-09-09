@@ -8,9 +8,10 @@ from pathlib import Path
 import httpx
 import pytest
 from nemo_evaluator_sdk.retrieval.beir import BeirDataset
-from nemo_evaluator_sdk.retrieval.dense_search import dense_search
+from nemo_evaluator_sdk.retrieval.dense_search import dense_search, retrieve
 from nemo_evaluator_sdk.retrieval.nim_embeddings import NimEmbeddingClient, NimEmbeddingError
 from nemo_evaluator_sdk.values.models import Model
+from nemo_evaluator_sdk.values.retrieval import Retrieval
 
 
 def _model() -> Model:
@@ -141,3 +142,72 @@ async def test_dense_search_ranks_documents_and_uses_passage_then_query(tmp_path
     assert input_types == ["passage", "query"]
     assert list(results["q1"]) == ["d1", "d2"]
     assert results["q1"]["d1"] > results["q1"]["d2"]
+
+
+def _write_beir(tmp_path: Path, *, title: str = "", text: str = "alpha") -> BeirDataset:
+    (tmp_path / "qrels").mkdir()
+    (tmp_path / "corpus.jsonl").write_text(
+        json.dumps({"_id": "d1", "title": title, "text": text}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "queries.jsonl").write_text('{"_id":"q1","text":"alpha?"}\n', encoding="utf-8")
+    (tmp_path / "qrels" / "test.tsv").write_text(
+        "query-id\tcorpus-id\tscore\nq1\td1\t1\n",
+        encoding="utf-8",
+    )
+    return BeirDataset.from_path(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_retrieve_truncates_long_documents_before_embed(tmp_path: Path) -> None:
+    from nemo_evaluator_sdk.retrieval.passages import DOCUMENT_CHARACTER_LIMIT
+
+    sent: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        if payload.get("input_type") == "passage":
+            sent.extend(payload["input"])
+            return _response(request, [[1.0, 0.0]])
+        return _response(request, [[1.0, 0.0]])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        await retrieve(
+            _write_beir(tmp_path, title="Title", text="x" * (DOCUMENT_CHARACTER_LIMIT + 80)),
+            Retrieval(embeddings=_model(), embedding_dimensions=2, truncate_long_documents="end"),
+            client=client,
+        )
+
+    assert len(sent) == 1
+    assert len(sent[0]) == DOCUMENT_CHARACTER_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_retrieve_reranks_dense_hits(tmp_path: Path) -> None:
+    ranking_bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/ranking"):
+            payload = json.loads(request.content)
+            ranking_bodies.append(payload)
+            return httpx.Response(
+                200,
+                request=request,
+                content=json.dumps({"rankings": [{"index": 0, "logit": 4.2}]}),
+                headers={"content-type": "application/json"},
+            )
+        payload = json.loads(request.content)
+        vectors = [[1.0, 0.0]] if payload["input_type"] == "passage" else [[1.0, 0.0]]
+        return _response(request, vectors)
+
+    target = Retrieval(
+        embeddings=_model(),
+        reranker=Model(url="https://rank.example.test/v1", name="rerank"),
+        embedding_dimensions=2,
+        first_stage_k=1,
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        results = await retrieve(_write_beir(tmp_path), target, client=client)
+
+    assert ranking_bodies[0]["query"] == {"text": "alpha?"}
+    assert results["q1"] == {"d1": 4.2}

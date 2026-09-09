@@ -19,6 +19,7 @@ from nemo_evaluator_sdk.retrieval.beir import BeirDataset
 from nemo_evaluator_sdk.values.models import Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, AggregateRangeScore
+from nemo_evaluator_sdk.values.retrieval import Retrieval
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
@@ -41,7 +42,7 @@ def _context(tmp_path: Path) -> JobContext:
 def _spec() -> RetrieveEvalSpec:
     return RetrieveEvalSpec(
         dataset=FilesetRef("default/retrieval-data"),
-        target=Model(url="https://igw.example.test/v1/chat/completions", name="embed"),
+        target=Retrieval(embeddings=Model(url="https://igw.example.test/v1/chat/completions", name="embed")),
         k=[1, 10],
     )
 
@@ -52,26 +53,26 @@ def _result(*, ndcg: float = 0.75, recall: float = 1.0) -> BenchmarkEvaluationRe
         aggregate_scores=AggregatedMetricResult(
             scores=[
                 AggregateRangeScore(
-                    name="retrieval-ndcg.ndcg@10",
-                    count=1,
+                    name="retrieval-ndcg.ndcg_cut_10",
+                    count=2,
                     nan_count=0,
                     mean=ndcg,
                 ),
                 AggregateRangeScore(
-                    name="retrieval-recall.recall@10",
-                    count=1,
+                    name="retrieval-recall.recall_10",
+                    count=2,
                     nan_count=0,
                     mean=recall,
                 ),
                 AggregateRangeScore(
-                    name="retrieval-precision.precision@10",
-                    count=1,
+                    name="retrieval-precision.P_10",
+                    count=2,
                     nan_count=0,
                     mean=0.1,
                 ),
                 AggregateRangeScore(
-                    name="retrieval-map.map@10",
-                    count=1,
+                    name="retrieval-map.map_cut_10",
+                    count=2,
                     nan_count=0,
                     mean=0.7,
                 ),
@@ -84,7 +85,7 @@ def _result(*, ndcg: float = 0.75, recall: float = 1.0) -> BenchmarkEvaluationRe
 @pytest.mark.parametrize("k", [[], [0], [1, 1]])
 def test_input_spec_rejects_invalid_cutoffs(k: list[int]) -> None:
     with pytest.raises(ValidationError):
-        RetrieveEvalInputSpec(dataset=FilesetRef("default/data"), target=_spec().target, k=k)
+        RetrieveEvalInputSpec(dataset=FilesetRef("default/data"), target=_spec().target.embeddings, k=k)
 
 
 async def test_compile_builds_cpu_retrieve_eval_task() -> None:
@@ -120,12 +121,13 @@ def test_run_validates_fileset_and_persists_nemotron_keys(tmp_path: Path, mocker
 
     download.assert_called_once()
     load.assert_called_once_with(downloaded)
-    assert evaluator.run_sync.call_args.kwargs["retrieval"] is dataset
+    assert evaluator.run_sync.call_args.kwargs["dataset"] is dataset
+    assert isinstance(evaluator.run_sync.call_args.kwargs["target"], Retrieval)
     assert output["eval_results"] == {
-        "ndcg@10": 0.75,
-        "recall@10": 1.0,
-        "precision@10": 0.1,
-        "map@10": 0.7,
+        "ndcg_cut_10": 0.75,
+        "recall_10": 1.0,
+        "P_10": 0.1,
+        "map_cut_10": 0.7,
     }
     assert json.loads((ctx.storage.persistent / EVAL_RESULTS_FILE_NAME).read_text()) == output["eval_results"]
     assert (ctx.storage.persistent / "results" / EVAL_RESULTS_RESULT_NAME).exists()
@@ -147,7 +149,9 @@ def test_run_reports_relative_baseline_scores(tmp_path: Path, mocker: MockerFixt
         _result(ndcg=0.5, recall=0.75),
     ]
     mocker.patch("nemo_evaluator.jobs.retrieve_eval.Evaluator", return_value=evaluator)
-    spec = _spec().model_copy(update={"baseline": Model(url="https://igw.example.test/v1", name="baseline")})
+    spec = _spec().model_copy(
+        update={"baseline": Retrieval(embeddings=Model(url="https://igw.example.test/v1", name="baseline"))}
+    )
 
     output = RetrieveEvalJob().run(
         spec.model_dump(mode="json"),
@@ -156,4 +160,4 @@ def test_run_reports_relative_baseline_scores(tmp_path: Path, mocker: MockerFixt
     )
 
     assert evaluator.run_sync.call_count == 2
-    assert output["relative"] == pytest.approx({"ndcg@10": 0.5, "recall@10": 0.2})
+    assert output["relative"] == pytest.approx({"ndcg_cut_10": 0.5, "recall_10": 0.2})

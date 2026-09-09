@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar, Self
+from typing import ClassVar, Literal, Self
 
 from nemo_evaluator.filesets import (
     FilesetRef,
@@ -36,6 +36,8 @@ from nemo_evaluator_sdk.metrics.retrieval import (
     RetrievalRecallMetric,
 )
 from nemo_evaluator_sdk.values.models import Model, ModelRef
+from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
+from nemo_evaluator_sdk.values.retrieval import Retrieval
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.job import NemoJob
@@ -51,6 +53,18 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 EVAL_RESULTS_FILE_NAME = "eval_results.json"
 EVAL_RESULTS_RESULT_NAME = "eval-results"
+_PROJECTED_SUFFIXES = ("ndcg_cut_", "recall_", "P_", "map_cut_")
+
+
+class RetrievalInputSpec(BaseModel):
+    """Submitter-facing retrieval target before platform model refs are resolved."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    embeddings: Model | ModelRef
+    reranker: Model | ModelRef | None = None
+    first_stage_k: int = Field(default=100, ge=1)
+    truncate_long_documents: Literal["end", "start"] | None = "end"
 
 
 class RetrieveEvalInputSpec(BaseModel):
@@ -59,10 +73,12 @@ class RetrieveEvalInputSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dataset: FilesetRef = Field(description="Fileset containing a BEIR test split.")
-    target: Model | ModelRef = Field(description="Embedding NIM model or platform model reference.")
-    baseline: Model | ModelRef | None = Field(
+    target: RetrievalInputSpec | Model | ModelRef = Field(
+        description="Retrieval pipeline, embedding NIM, or platform model reference."
+    )
+    baseline: RetrievalInputSpec | Model | ModelRef | None = Field(
         default=None,
-        description="Optional baseline embedding model used for relative nDCG@10 and Recall@10.",
+        description="Optional baseline retrieval pipeline used for relative nDCG and recall at 10.",
     )
     k: list[int] = Field(default=[1, 5, 10, 100], min_length=1)
 
@@ -83,8 +99,8 @@ class RetrieveEvalSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dataset: FilesetRef
-    target: Model
-    baseline: Model | None = None
+    target: Retrieval
+    baseline: Retrieval | None = None
     k: list[int] = Field(default=[1, 5, 10, 100], min_length=1)
 
     @model_validator(mode="after")
@@ -99,10 +115,10 @@ class RetrieveEvalSpec(BaseModel):
 
 
 class RetrieveEvalJob(NemoJob):
-    """Score a BEIR fileset with a deployed embedding NIM."""
+    """Score a BEIR fileset with a deployed embedding NIM and optional reranker."""
 
     name: ClassVar[str] = "retrieve-eval"
-    description: ClassVar[str] = "Evaluate dense retrieval over a BEIR corpus with nDCG and recall."
+    description: ClassVar[str] = "Evaluate dense retrieval over a BEIR corpus with nDCG, recall, precision, and MAP."
     container: ClassVar[str] = "cpu-tasks"
     input_spec_schema: ClassVar[type[BaseModel] | None] = RetrieveEvalInputSpec
     spec_schema: ClassVar[type[BaseModel] | None] = RetrieveEvalSpec
@@ -120,20 +136,10 @@ class RetrieveEvalJob(NemoJob):
         """Resolve a platform model reference before the job is compiled."""
         del workspace, entity_client, is_local
         submit_spec = RetrieveEvalInputSpec.model_validate(input_spec.model_dump())
-        target = submit_spec.target
-        if isinstance(target, ModelRef):
-            if async_sdk is None:
-                raise ValueError("a platform SDK client is required to resolve the retrieval target")
-            target = await PlatformMetricModelResolver(async_sdk.models).resolve_model(target)
-        baseline = submit_spec.baseline
-        if isinstance(baseline, ModelRef):
-            if async_sdk is None:
-                raise ValueError("a platform SDK client is required to resolve the retrieval baseline")
-            baseline = await PlatformMetricModelResolver(async_sdk.models).resolve_model(baseline)
         return RetrieveEvalSpec(
             dataset=submit_spec.dataset,
-            target=target,
-            baseline=baseline,
+            target=await _resolve_retrieval(submit_spec.target, async_sdk),
+            baseline=await _resolve_retrieval(submit_spec.baseline, async_sdk) if submit_spec.baseline else None,
             k=submit_spec.k,
         )
 
@@ -154,7 +160,9 @@ class RetrieveEvalJob(NemoJob):
         environment = []
         secret_refs = [
             (model.api_key_env, model.api_key_secret.root)
-            for model in (canonical.target, canonical.baseline)
+            for retrieval in (canonical.target, canonical.baseline)
+            if retrieval is not None
+            for model in (retrieval.embeddings, retrieval.reranker)
             if model is not None and model.api_key_secret is not None and model.api_key_env
         ]
         if secret_refs:
@@ -213,7 +221,7 @@ class RetrieveEvalJob(NemoJob):
             RetrievalMAPMetric(k=spec.k),
         ]
         evaluator = Evaluator()
-        result = evaluator.run_sync(retrieval=dataset, target=spec.target, metrics=metrics)
+        result = evaluator.run_sync(dataset=dataset, target=spec.target, metrics=metrics)
         result_files = EvaluateJob._write_result_files(
             result,
             ctx.storage.persistent,
@@ -230,11 +238,7 @@ class RetrieveEvalJob(NemoJob):
             ignore_patterns=RESULT_IGNORE_PATTERNS,
         )
 
-        eval_results = {
-            score.name.rsplit(".", 1)[-1]: score.mean
-            for score in result.aggregate_scores.scores
-            if any(f".{metric_name}@" in score.name for metric_name in ("ndcg", "recall", "precision", "map"))
-        }
+        eval_results = _project_eval_results(result)
         eval_results_path = Path(ctx.storage.persistent) / EVAL_RESULTS_FILE_NAME
         eval_results_path.write_text(json.dumps(eval_results, indent=2), encoding="utf-8")
         ctx.results.save(EVAL_RESULTS_RESULT_NAME, eval_results_path)
@@ -245,23 +249,57 @@ class RetrieveEvalJob(NemoJob):
         }
         if spec.baseline is not None:
             baseline_result = evaluator.run_sync(
-                retrieval=dataset,
+                dataset=dataset,
                 target=spec.baseline,
                 metrics=metrics,
             )
-            baseline_scores = {
-                score.name.rsplit(".", 1)[-1]: score.mean
-                for score in baseline_result.aggregate_scores.scores
-                if ".ndcg@" in score.name or ".recall@" in score.name
-            }
+            baseline_scores = _project_eval_results(baseline_result)
             relative = {
                 name: _relative_change(eval_results.get(name), baseline_scores.get(name))
-                for name in ("ndcg@10", "recall@10")
+                for name in ("ndcg_cut_10", "recall_10")
                 if name in eval_results and name in baseline_scores
             }
             output["baseline_eval_results"] = baseline_scores
             output["relative"] = relative
         return output
+
+
+async def _resolve_retrieval(
+    value: RetrievalInputSpec | Model | ModelRef,
+    async_sdk: AsyncNeMoPlatform | None,
+) -> Retrieval:
+    if isinstance(value, ModelRef):
+        if async_sdk is None:
+            raise ValueError("a platform SDK client is required to resolve the retrieval target")
+        return Retrieval(embeddings=await PlatformMetricModelResolver(async_sdk.models).resolve_model(value))
+    if isinstance(value, Model):
+        return Retrieval(embeddings=value)
+    embeddings = value.embeddings
+    reranker = value.reranker
+    if isinstance(embeddings, ModelRef):
+        if async_sdk is None:
+            raise ValueError("a platform SDK client is required to resolve the retrieval target")
+        embeddings = await PlatformMetricModelResolver(async_sdk.models).resolve_model(embeddings)
+    if isinstance(reranker, ModelRef):
+        if async_sdk is None:
+            raise ValueError("a platform SDK client is required to resolve the retrieval reranker")
+        reranker = await PlatformMetricModelResolver(async_sdk.models).resolve_model(reranker)
+    return Retrieval(
+        embeddings=embeddings,
+        reranker=reranker,
+        first_stage_k=value.first_stage_k,
+        truncate_long_documents=value.truncate_long_documents,
+    )
+
+
+def _project_eval_results(result: BenchmarkEvaluationResult) -> dict[str, float]:
+    scores = getattr(result, "aggregate_scores").scores
+    projected: dict[str, float] = {}
+    for score in scores:
+        short = score.name.rsplit(".", 1)[-1]
+        if short.startswith(_PROJECTED_SUFFIXES):
+            projected[short] = score.mean
+    return projected
 
 
 def _relative_change(current: float | None, baseline: float | None) -> float | None:

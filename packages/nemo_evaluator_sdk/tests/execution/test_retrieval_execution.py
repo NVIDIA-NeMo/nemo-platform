@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from pathlib import Path
-from typing import Any
 
 import pytest
+from nemo_evaluator_sdk.execution import evaluator as evaluator_module
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.metrics.retrieval import RetrievalNDCGMetric, RetrievalRecallMetric
 from nemo_evaluator_sdk.retrieval.beir import BeirCorpusDocument, BeirDataset, BeirQuery
 from nemo_evaluator_sdk.values.models import Model
+from nemo_evaluator_sdk.values.retrieval import Retrieval
 
 
 def _dataset(tmp_path: Path) -> BeirDataset:
@@ -26,56 +27,55 @@ def _dataset(tmp_path: Path) -> BeirDataset:
     )
 
 
-async def _fake_dense_search(*args, **kwargs) -> dict[str, dict[str, float]]:
+async def _fake_retrieve(*args, **kwargs) -> dict[str, dict[str, float]]:
     return {
         "q1": {"d1": 1.0, "d2": 0.0},
         "q2": {"d1": 1.0, "d2": 0.0},
     }
 
 
+def _target() -> Retrieval:
+    return Retrieval(embeddings=Model(url="https://embed.example.test/v1", name="embed"))
+
+
 @pytest.mark.asyncio
-async def test_run_retrieval_shape_returns_query_rows_and_corpus_scores(
+async def test_run_retrieval_target_returns_query_rows_and_range_means(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        "nemo_evaluator_sdk.execution.retrieval_execution.dense_search",
-        _fake_dense_search,
-    )
+    # Patch the module object rather than a dotted string: the string form re-resolves
+    # `evaluator` through the parent package, which is not necessarily the module this file
+    # imported `Evaluator` from.
+    monkeypatch.setattr(evaluator_module, "retrieve", _fake_retrieve)
 
     result = await Evaluator().run(
-        retrieval=_dataset(tmp_path),
-        target=Model(url="https://embed.example.test/v1", name="embed"),
+        dataset=_dataset(tmp_path),
+        target=_target(),
         metrics=[RetrievalNDCGMetric(k=[1]), RetrievalRecallMetric(k=[1])],
     )
 
     assert len(result.row_scores) == 2
     scores = {score.name: score.mean for score in result.aggregate_scores.scores}
-    assert scores["retrieval-ndcg.ndcg@1"] == pytest.approx(0.5)
-    assert scores["retrieval-recall.recall@1"] == pytest.approx(0.5)
+    assert scores["retrieval-ndcg.ndcg_cut_1"] == pytest.approx(0.5)
+    assert scores["retrieval-recall.recall_1"] == pytest.approx(0.5)
 
 
-def test_run_sync_supports_retrieval_shape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "nemo_evaluator_sdk.execution.retrieval_execution.dense_search",
-        _fake_dense_search,
-    )
+def test_run_sync_supports_retrieval_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(evaluator_module, "retrieve", _fake_retrieve)
 
     result = Evaluator().run_sync(
-        retrieval=_dataset(tmp_path),
-        target=Model(url="https://embed.example.test/v1", name="embed"),
+        dataset=_dataset(tmp_path),
+        target=_target(),
         metrics=[RetrievalRecallMetric(k=[1])],
     )
 
-    assert result.aggregate_scores.scores[-1].name == "retrieval-recall.recall@1"
+    assert result.aggregate_scores.scores[-1].name == "retrieval-recall.recall_1"
 
 
 @pytest.mark.asyncio
-async def test_retrieval_and_dataset_are_mutually_exclusive(tmp_path: Path) -> None:
-    run: Any = Evaluator().run
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        await run(
+async def test_retrieval_target_rejects_inline_rows(tmp_path: Path) -> None:
+    with pytest.raises(TypeError, match="BeirDataset or BEIR fileset path"):
+        await Evaluator().run(
             dataset=[],
-            retrieval=_dataset(tmp_path),
-            target=Model(url="https://embed.example.test/v1", name="embed"),
+            target=_target(),
             metrics=[RetrievalRecallMetric(k=[1])],
         )

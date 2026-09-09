@@ -73,6 +73,17 @@ class BeirDataset:
         _validate_references(corpus, queries, qrels)
         return cls(root=root, corpus=corpus, queries=queries, qrels=qrels)
 
+    def query_rows(self) -> list[dict[str, Any]]:
+        """Return one dataset row per judged query for metric scoring."""
+        return [
+            {
+                "query_id": query_id,
+                "query": self.queries[query_id].text,
+                "qrels": self.qrels[query_id],
+            }
+            for query_id in self.qrels
+        ]
+
 
 def _resolve_root(path: Path) -> Path:
     candidates = (path, path / "eval_beir")

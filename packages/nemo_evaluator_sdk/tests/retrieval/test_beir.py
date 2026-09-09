@@ -42,6 +42,10 @@ def test_loads_beir_test_split(tmp_path: Path) -> None:
     assert dataset.corpus["d3"].title == ""
     assert dataset.queries["q2"].text == "third"
     assert dataset.qrels == {"q1": {"d1": 1}, "q2": {"d3": 2}}
+    assert dataset.query_rows() == [
+        {"query_id": "q1", "query": "first", "qrels": {"d1": 1}},
+        {"query_id": "q2", "query": "third", "qrels": {"d3": 2}},
+    ]
 
 
 def test_discovers_eval_beir_below_fileset_root(tmp_path: Path) -> None:

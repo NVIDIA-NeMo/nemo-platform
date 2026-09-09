@@ -19,8 +19,9 @@ when you score it.
 - **Task-driven evaluation (agent evaluation)** — you have a set of *tasks*, an agent performs each
   task, and you score the resulting *trial* — the agent's final output **and** how it got there
   (its trajectory, tool calls, and other evidence).
-- **Retrieval-driven evaluation** — you have a BEIR corpus, queries, and relevance judgments; an
-  embedding model ranks corpus documents and corpus metrics score those rankings.
+- **Retrieval-driven evaluation** — you have a BEIR corpus, queries, and relevance judgments; a
+  `Retrieval` target ranks corpus documents (embeddings, optionally a reranker) and ordinary
+  retrieval metrics score those rankings.
 
 <Note>
 
@@ -70,31 +71,46 @@ Entry point: [Agent Evaluation](/documentation/evaluate-models/agent-eval).
 ## Retrieval-driven evaluation
 
 You start from a BEIR test fileset containing `corpus.jsonl`, `queries.jsonl`, and
-`qrels/test.tsv`. A deployed embedding NIM encodes queries and passages, exact dense search ranks
-the corpus, and `RetrievalNDCGMetric` and `RetrievalRecallMetric` report per-query and corpus scores.
+`qrels/test.tsv`. A `Retrieval` target encodes queries and passages with an embedding NIM, optionally
+reranks the dense hits, and `RetrievalNDCGMetric`, `RetrievalRecallMetric`,
+`RetrievalPrecisionMetric`, and `RetrievalMAPMetric` score each query. Existing Range aggregation
+averages those per-query scores.
 
-Use the SDK's `retrieval=BeirDataset.from_path(...)` shape for local execution, or submit the
-`evaluator.retrieve-eval` platform job. This path evaluates retrieval rankings directly; it does
-not generate answers or use RAGAS/LLM-judge answer metrics.
+Use `Evaluator.run(dataset=BeirDataset.from_path(...), target=Retrieval(...))` for local execution,
+or submit the `evaluator.retrieve-eval` platform job. This path evaluates retrieval rankings
+directly; it does not generate answers or use RAGAS/LLM-judge answer metrics.
+
+```python
+result = await Evaluator().run(
+    metrics=[
+        RetrievalNDCGMetric(k=[1, 5, 10, 100]),
+        RetrievalRecallMetric(k=[1, 5, 10, 100]),
+        RetrievalPrecisionMetric(k=[1, 5, 10, 100]),
+        RetrievalMAPMetric(k=[1, 5, 10, 100]),
+    ],
+    dataset=BeirDataset.from_path(path),
+    target=Retrieval(embeddings=embed_nim, reranker=rerank_nim, first_stage_k=100),
+)
+```
 
 ```bash
 uv run nemo evaluator retrieve-eval submit --spec \
   '{"dataset":"default/eval-beir","target":"default/embed-nim","k":[1,5,10,100]}'
 ```
 
-The job writes the BEIR-compatible `eval_results.json` artifact with `ndcg@k`, `recall@k`,
-`precision@k`, and `map@k` keys. Add `"baseline":"default/base-embed-nim"` to report relative
-nDCG@10 and Recall@10 without turning those measurements into a release gate.
+The job writes the BEIR-compatible `eval_results.json` artifact with `ndcg_cut_k`, `recall_k`,
+`P_k`, and `map_cut_k` keys. Add `"baseline":"default/base-embed-nim"` to report relative
+`ndcg_cut_10` and `recall_10` without turning those measurements into a release gate.
 
 ## At a glance
 
 | | Dataset-driven | Task-driven (agent evaluation) | Retrieval-driven |
 |---|---|---|---|
 | **Unit of evaluation** | a dataset row | a task, and the trial it produces | a ranked corpus per query |
-| **What produces the candidate** | a model/pipeline generates an output per row | an agent performs the task (via a runner) | an embedding model and dense search |
+| **What produces the candidate** | a model/pipeline generates an output per row | an agent performs the task (via a runner) | a `Retrieval` target (embeddings, optional reranker) |
 | **What you score** | the output, against a reference | the trial: final output **and** trace/evidence | ranked document IDs against qrels |
-| **Metric assignment** | one metric set applied to every row | each task defines its own metrics | corpus retrieval metrics |
-| **Entry point** | metrics (`RunConfig`, dataset rows) | `AgentEvaluator` + `AgentEvalTask` | `BeirDataset` or `retrieve-eval` |
+| **Metric assignment** | one metric set applied to every row | each task defines its own metrics | per-query retrieval metrics, Range-averaged |
+| **Entry point** | metrics (`RunConfig`, dataset rows) | `AgentEvaluator` + `AgentEvalTask` | `dataset=` + `target=Retrieval` or `retrieve-eval` |
 | **Best for** | model quality, RAG answers, regression on labeled data | agents, tool use, multi-step behavior | embedding retrievers |
 
 ## Which should I use?
