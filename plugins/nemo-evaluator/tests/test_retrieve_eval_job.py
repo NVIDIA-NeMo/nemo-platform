@@ -22,7 +22,7 @@ from nemo_evaluator_sdk.values.models import Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, AggregateRangeScore
 from nemo_evaluator_sdk.values.retrieval import Retrieval
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.jobs.api_factory import CPUExecutionProviderSpec
@@ -119,7 +119,7 @@ def test_run_validates_fileset_and_persists_nemotron_keys(tmp_path: Path, mocker
     mocker.patch("nemo_evaluator.jobs.retrieve_eval.Evaluator", return_value=evaluator)
     sdk = SimpleNamespace()
 
-    output = RetrieveEvalJob().run(_spec().model_dump(mode="json"), ctx=ctx, sdk=cast(NeMoPlatform, sdk))
+    output = RetrieveEvalJob().run(_spec().model_dump(mode="json"), ctx=ctx, sdk=cast(NemoClient, sdk))
 
     download.assert_called_once()
     load.assert_called_once_with(downloaded)
@@ -158,7 +158,7 @@ def test_run_reports_relative_baseline_scores(tmp_path: Path, mocker: MockerFixt
     output = RetrieveEvalJob().run(
         spec.model_dump(mode="json"),
         ctx=ctx,
-        sdk=cast(NeMoPlatform, SimpleNamespace()),
+        sdk=cast(NemoClient, SimpleNamespace()),
     )
 
     assert evaluator.run_sync.call_count == 2
@@ -191,7 +191,7 @@ def test_run_includes_cutoff_10_when_baseline_omits_it(tmp_path: Path, mocker: M
     output = RetrieveEvalJob().run(
         spec.model_dump(mode="json"),
         ctx=ctx,
-        sdk=cast(NeMoPlatform, SimpleNamespace()),
+        sdk=cast(NemoClient, SimpleNamespace()),
     )
 
     metrics = evaluator.run_sync.call_args_list[0].kwargs["metrics"]
@@ -218,7 +218,7 @@ def test_run_records_started_at_before_evaluation(tmp_path: Path, mocker: Mocker
     evaluator.run_sync.return_value = _result()
     mocker.patch("nemo_evaluator.jobs.retrieve_eval.Evaluator", return_value=evaluator)
 
-    RetrieveEvalJob().run(_spec().model_dump(mode="json"), ctx=ctx, sdk=cast(NeMoPlatform, SimpleNamespace()))
+    RetrieveEvalJob().run(_spec().model_dump(mode="json"), ctx=ctx, sdk=cast(NemoClient, SimpleNamespace()))
 
     metadata = json.loads((ctx.storage.persistent / "artifacts" / "run-metadata.json").read_text())
     assert metadata["started_at"] == started.isoformat()
