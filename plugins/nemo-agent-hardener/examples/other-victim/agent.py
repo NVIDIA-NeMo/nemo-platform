@@ -20,7 +20,6 @@ import json
 import os
 import subprocess
 import sys
-from io import StringIO
 from typing import Any, cast
 
 import nemo_relay
@@ -69,25 +68,32 @@ TOOL_SPECS = [
 ]
 
 
+# A tool result this long is either a runaway print loop or a file dump the model never asked to
+# see; cap it so one tool call can't balloon the conversation's token count.
+_MAX_TOOL_OUTPUT_CHARS = 20_000
+
+
+def _cap_output(output: str) -> str:
+    if len(output) <= _MAX_TOOL_OUTPUT_CHARS:
+        return output
+    return output[:_MAX_TOOL_OUTPUT_CHARS] + f"\n... (truncated, {len(output)} chars total)"
+
+
 def _bash_executor(command: str) -> str:
     result = subprocess.run(  # noqa: S602 - the tool's entire purpose is running arbitrary commands
         command, shell=True, capture_output=True, text=True, timeout=30, check=False
     )
     output = result.stdout + result.stderr
-    return output if output else f"(exit {result.returncode}, no output)"
+    return _cap_output(output) if output else f"(exit {result.returncode}, no output)"
 
 
 def _python_executor(code: str) -> str:
-    stdout = StringIO()
-    previous_stdout = sys.stdout
-    sys.stdout = stdout
     try:
-        exec(code, {"__name__": "__main__"})  # noqa: S102 - the tool's entire purpose is running code
-    except Exception as exc:
-        return f"{stdout.getvalue()}error: {exc!r}"
-    finally:
-        sys.stdout = previous_stdout
-    return stdout.getvalue() or "(no output)"
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=30, check=False)
+    except subprocess.TimeoutExpired:
+        return "error: execution timed out after 30s"
+    output = result.stdout + result.stderr
+    return _cap_output(output) if output else f"(exit {result.returncode}, no output)"
 
 
 _TOOLS = {"bash_executor": _bash_executor, "python_executor": _python_executor}
