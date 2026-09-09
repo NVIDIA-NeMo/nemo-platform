@@ -230,9 +230,16 @@ def test_duration_uses_job_created_at_when_available() -> None:
         "completed",
         created_at=datetime.fromtimestamp(90.0, tz=timezone.utc),
     )
+    # Live snapshot and duration both call time.time(); extra snapshots must not
+    # exhaust the mock or emit_event is skipped (swallowed in the waiter).
+    time_calls = {"n": 0}
+
+    def fake_time() -> float:
+        time_calls["n"] += 1
+        return 100.0 if time_calls["n"] <= 2 else 130.0
 
     with (
-        patch(f"{WAITERS_MODULE}.time.time", side_effect=[100.0, 100.0, 130.0]),
+        patch(f"{WAITERS_MODULE}.time.time", side_effect=fake_time),
         patch(EMIT_TARGET) as emit_event,
     ):
         assert waiters.wait_for_platform_job(jobs, "job-a", workspace="default") is True
