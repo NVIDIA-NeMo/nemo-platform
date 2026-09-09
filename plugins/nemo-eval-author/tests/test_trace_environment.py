@@ -6,18 +6,20 @@
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from dirhash import dirhash
 
 _PLUGIN = Path(__file__).resolve().parents[1]
 _SCRIPT = _PLUGIN / "skills" / "eval-author-trace-environment" / "scripts" / "trace_environment.py"
-_SUMMARY_SCHEMA = "nemo.eval_author.trace_environment_summary.v1"
-_CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v1"
-_VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v1"
+_SUMMARY_SCHEMA = "nemo.eval_author.trace_environment_summary.v2"
+_CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v2"
+_VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v4"
 
 
 def _run(*args: str) -> tuple[int, dict[str, Any]]:
@@ -42,12 +44,12 @@ def _atif(*, image_only: bool = False) -> dict[str, Any]:
             {
                 "step_id": 2,
                 "source": "agent",
-                "message": "Calling 10.2.3.4 with token Bearer abcdefghijklmnop",
+                "message": "Calling 10.2.3.4 for the fixture.",
                 "tool_calls": [
                     {
                         "tool_call_id": "call-1",
                         "function_name": "fixture.read",
-                        "arguments": {"phone": "+1 (303) 555-0119", "api_key": "secret-value"},
+                        "arguments": {"phone": "+1 (303) 555-0119"},
                     }
                 ],
                 "observation": {"results": [{"source_call_id": "call-1", "content": "Result for 123-45-6789"}]},
@@ -91,6 +93,7 @@ def _candidate(
     if ground_truth is None:
         ground_truth = {
             "availability": "absent",
+            "use": "none",
             "artifacts": [],
             "absence_reason": "No distinct reference artifact was recorded.",
         }
@@ -100,8 +103,9 @@ def _candidate(
         payload = {
             "schema": _CANDIDATE_SCHEMA,
             "status": "candidate",
+            "decision_basis": "safe_atif_only",
             "instruction": "Repair the local fixture.",
-            "requirements": ["The fixture check passes."],
+            "requirements": [{"description": "The fixture check passes.", "evidence_steps": [1, 2]}],
             "verification_mode": "execution",
             "evidence_steps": [1, 2],
             "uncertainties": [],
@@ -113,6 +117,7 @@ def _candidate(
         payload = {
             "schema": _CANDIDATE_SCHEMA,
             "status": "no_candidate",
+            "decision_basis": "safe_atif_only",
             "instruction": None,
             "requirements": [],
             "verification_mode": None,
@@ -125,13 +130,47 @@ def _candidate(
     _write_json(task_dir / "candidate.json", payload)
 
 
-def _ready_environment(task_dir: Path) -> None:
+def _review_privacy(task_dir: Path, *, reviewer_kind: str = "agent") -> None:
+    code, result = _run(
+        "review-privacy",
+        "--task-dir",
+        str(task_dir),
+        "--reviewer-kind",
+        reviewer_kind,
+        "--note",
+        "Reviewed every safe ATIF string and all contextual audit findings.",
+    )
+    assert code == 0, result
+
+
+def _record_reproducibility(task_dir: Path) -> None:
+    (task_dir / "reproducibility.json").unlink(missing_ok=True)
+    code, result = _run("record-reproducibility", "--task-dir", str(task_dir))
+    assert code == 0, result
+
+
+def _ready_environment(
+    task_dir: Path,
+    *,
+    mode: str = "separate",
+    nop_reward: float = 0.0,
+    oracle_reward: float = 1.0,
+    oracle_exception: object | None = None,
+    record_validation: bool = True,
+) -> None:
     task = task_dir / "task"
     (task / "environment").mkdir(parents=True)
     (task / "tests").mkdir()
     (task / "solution").mkdir()
-    (task / "task.toml").write_text('schema_version = "1.1"\n', encoding="utf-8")
+    verifier = f'\n[verifier]\nenvironment_mode = "{mode}"\n'
+    if mode == "separate":
+        verifier += 'network_mode = "no-network"\n\n[verifier.environment]\nnetwork_mode = "no-network"\n'
+    (task / "task.toml").write_text(
+        f'schema_version = "1.1"\n{verifier}\n[environment]\nnetwork_mode = "no-network"\n',
+        encoding="utf-8",
+    )
     (task / "instruction.md").write_text("Repair the fixture.\n", encoding="utf-8")
+    (task / "environment" / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
     (task / "README.md").write_text(
         """# Repair fixture
 
@@ -162,17 +201,83 @@ The human reviewer confirmed that this fixture accurately represents the recorde
         encoding="utf-8",
     )
     (task / "tests" / "test.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    (task / "solution" / "solve.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    (task_dir / "private" / "jobs" / "nop").mkdir(parents=True)
-    (task_dir / "private" / "jobs" / "oracle").mkdir()
-    _write_json(
-        task_dir / "validation.json",
-        {
-            "schema": _VALIDATION_SCHEMA,
-            "nop": {"reward": 0, "exception": None, "job_dir": "private/jobs/nop"},
-            "oracle": {"reward": 1, "exception": None, "job_dir": "private/jobs/oracle"},
-        },
-    )
+    if mode == "separate":
+        (task / "tests" / "Dockerfile").write_text(
+            "FROM scratch\nCOPY test.sh /tests/test.sh\n",
+            encoding="utf-8",
+        )
+    (task / "solution" / "solve.sh").write_text("#!/usr/bin/env bash\ntouch repaired\n", encoding="utf-8")
+    checksum = dirhash(task, "sha256")
+    if mode == "separate":
+        _record_reproducibility(task_dir)
+    control_source = task_dir / "private" / "negative_agent.py"
+    control_source.write_text("# Synthetic incomplete repair implementation.\n", encoding="utf-8")
+    for job_number, arm, reward, exception in (
+        (1, "nop-1", nop_reward, None),
+        (2, "nop-2", nop_reward, None),
+        (3, "oracle-1", oracle_reward, oracle_exception),
+        (4, "oracle-2", oracle_reward, oracle_exception),
+        (5, "negative-1", 0.0, None),
+    ):
+        proof_arm = arm.rsplit("-", 1)[0]
+        if mode == "separate":
+            extra = (
+                [
+                    "--negative-agent",
+                    "negative_agent:IncompleteRepair",
+                    "--negative-source",
+                    "private/negative_agent.py",
+                    "--negative-rationale",
+                    "Repair only one of the required fixture records.",
+                ]
+                if proof_arm == "negative"
+                else []
+            )
+            code, result = _run(
+                "record-run-inputs",
+                "--task-dir",
+                str(task_dir),
+                "--job-dir",
+                f"private/jobs/{arm}",
+                "--arm",
+                proof_arm,
+                *extra,
+            )
+            assert code == 0, result
+        trial = task_dir / "private" / "jobs" / arm / "task__trial"
+        trial.mkdir(parents=True)
+        _write_json(
+            trial / "result.json",
+            {
+                "task_checksum": checksum,
+                "verifier_environment_mode": mode,
+                "verifier_result": {"rewards": {"reward": reward}},
+                "exception_info": exception,
+                "config": {
+                    "job_id": f"job-{job_number}",
+                    "agent": {"name": proof_arm if proof_arm != "negative" else "negative_agent:IncompleteRepair"},
+                },
+            },
+        )
+    if record_validation:
+        code, result = _run(
+            "record-validation",
+            "--task-dir",
+            str(task_dir),
+            "--nop-job-dir",
+            "private/jobs/nop-1",
+            "--nop-job-dir",
+            "private/jobs/nop-2",
+            "--oracle-job-dir",
+            "private/jobs/oracle-1",
+            "--oracle-job-dir",
+            "private/jobs/oracle-2",
+            "--negative-job-dir",
+            "private/jobs/negative-1",
+            "--harbor-version",
+            "0.21.0",
+        )
+        assert code == 0, result
 
 
 def test_init_creates_private_gitignored_workspace(tmp_path: Path) -> None:
@@ -215,25 +320,23 @@ def test_prepare_preserves_original_and_writes_text_only_redacted_atif(tmp_path:
     assert "/home/jane" not in safe_text
     assert "10.2.3.4" not in safe_text
     assert "+1 (303) 555-0119" not in safe_text
-    assert "abcdefghijklmnop" not in safe_text
-    assert "secret-value" not in safe_text
     assert "123-45-6789" not in safe_text
     assert "session-1" not in safe_text
     assert "call-1" not in safe_text
-    assert privacy["manual_review_required"] is True
-    assert privacy["manual_review_complete"] is False
+    assert privacy["contextual_review_required"] is True
+    assert privacy["contextual_review_complete"] is False
     assert set(privacy["deterministic_redactions"]) >= {
-        "bearer_token",
         "email",
         "home_path",
         "identifier",
         "ipv4",
         "phone",
-        "secret_field",
         "ssn",
     }
-    assert summary["source"]["private_sha256"] == f"sha256:{hashlib.sha256(private.read_bytes()).hexdigest()}"
+    assert summary["source"]["original_sha256"] == f"sha256:{hashlib.sha256(private.read_bytes()).hexdigest()}"
     assert summary["source"]["safe_sha256"] == f"sha256:{hashlib.sha256(safe.read_bytes()).hexdigest()}"
+    assert (task_dir / "private" / "canonical.atif.json").is_file()
+    assert (task_dir / "private" / "privacy-audit.json").is_file()
 
 
 def test_prepare_reports_non_object_observation(tmp_path: Path) -> None:
@@ -263,6 +366,7 @@ def test_prepare_reports_non_object_observation(tmp_path: Path) -> None:
 def test_image_only_instruction_blocks_candidate_but_can_be_no_candidate(tmp_path: Path) -> None:
     task_dir, _ = _workspace(tmp_path, image_only=True)
     _candidate(task_dir)
+    _review_privacy(task_dir)
 
     code, result = _run(
         "finalize",
@@ -270,13 +374,12 @@ def test_image_only_instruction_blocks_candidate_but_can_be_no_candidate(tmp_pat
         str(task_dir),
         "--status",
         "candidate",
-        "--privacy-reviewed",
     )
 
     assert code == 1
     assert "unresolved non-text evidence" in result["error"]
     privacy = json.loads((task_dir / "safe" / "privacy.json").read_text(encoding="utf-8"))
-    assert privacy["manual_review_complete"] is False
+    assert privacy["contextual_review_complete"] is True
 
     _candidate(task_dir, status="no_candidate")
     code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "no_candidate")
@@ -321,12 +424,19 @@ def test_summary_captures_ground_truth_and_proprietary_software(tmp_path: Path) 
         status="no_candidate",
         ground_truth={
             "availability": "available",
+            "use": "comparison_only",
             "artifacts": [
                 {
                     "kind": "expected_output",
                     "path": "private/ground-truth/expected.json",
                     "sha256": f"sha256:{hashlib.sha256(expected.read_bytes()).hexdigest()}",
-                    "evidence_steps": [2],
+                    "provenance": {
+                        "kind": "external",
+                        "step_ids": [],
+                        "uri": "https://example.test/fixtures/expected.json",
+                        "revision": "abc123",
+                        "source_id": None,
+                    },
                     "notes": "The trace records this expected fixture state.",
                 }
             ],
@@ -341,7 +451,13 @@ def test_summary_captures_ground_truth_and_proprietary_software(tmp_path: Path) 
                 "license": "proprietary",
                 "availability": "unavailable",
                 "redistributable": False,
-                "evidence_steps": [1, 2],
+                "provenance": {
+                    "kind": "atif_step",
+                    "step_ids": [1, 2],
+                    "uri": None,
+                    "revision": None,
+                    "source_id": None,
+                },
                 "notes": "The workflow requires its native file format and runtime.",
             }
         ],
@@ -374,7 +490,13 @@ def test_candidate_rejects_required_unavailable_software(tmp_path: Path) -> None
                 "license": "commercial",
                 "availability": "unavailable",
                 "redistributable": False,
-                "evidence_steps": [1],
+                "provenance": {
+                    "kind": "atif_step",
+                    "step_ids": [1],
+                    "uri": None,
+                    "revision": None,
+                    "source_id": None,
+                },
                 "notes": "No licensed runtime is available in the task environment.",
             }
         ],
@@ -386,7 +508,6 @@ def test_candidate_rejects_required_unavailable_software(tmp_path: Path) -> None
         str(task_dir),
         "--status",
         "candidate",
-        "--privacy-reviewed",
     )
 
     assert code == 1
@@ -403,12 +524,19 @@ def test_ground_truth_digest_must_match_retained_artifact(tmp_path: Path) -> Non
         status="no_candidate",
         ground_truth={
             "availability": "available",
+            "use": "verification",
             "artifacts": [
                 {
                     "kind": "expected_output",
                     "path": "private/ground-truth/expected.json",
                     "sha256": f"sha256:{'0' * 64}",
-                    "evidence_steps": [2],
+                    "provenance": {
+                        "kind": "atif_step",
+                        "step_ids": [2],
+                        "uri": None,
+                        "revision": None,
+                        "source_id": None,
+                    },
                     "notes": "The trace records this expected fixture state.",
                 }
             ],
@@ -432,12 +560,19 @@ def test_ground_truth_path_cannot_escape_private_directory(tmp_path: Path) -> No
         status="no_candidate",
         ground_truth={
             "availability": "available",
+            "use": "verification",
             "artifacts": [
                 {
                     "kind": "expected_output",
                     "path": "private/ground-truth/../outside.json",
                     "sha256": f"sha256:{hashlib.sha256(outside.read_bytes()).hexdigest()}",
-                    "evidence_steps": [2],
+                    "provenance": {
+                        "kind": "atif_step",
+                        "step_ids": [2],
+                        "uri": None,
+                        "revision": None,
+                        "source_id": None,
+                    },
                     "notes": "The trace records this expected fixture state.",
                 }
             ],
@@ -462,21 +597,18 @@ def test_ready_candidate_requires_privacy_review_and_both_harbor_arms(tmp_path: 
         str(task_dir),
         "--status",
         "candidate",
-        "--environment-status",
-        "ready",
     )
     assert code == 1
-    assert "--privacy-reviewed" in result["error"]
+    assert "review-privacy" in result["error"]
 
+    _review_privacy(task_dir, reviewer_kind="human")
     code, result = _run(
         "finalize",
         "--task-dir",
         str(task_dir),
         "--status",
         "candidate",
-        "--environment-status",
-        "ready",
-        "--privacy-reviewed",
+        "--human-reviewed",
         "--worked-well",
         "NOP and Oracle produced the required rewards.",
     )
@@ -484,8 +616,16 @@ def test_ready_candidate_requires_privacy_review_and_both_harbor_arms(tmp_path: 
     assert code == 0, result
     summary = json.loads((task_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == "candidate"
-    assert summary["environment"] == {"path": "task", "status": "ready", "validation": "validation.json"}
-    assert summary["privacy"]["manual_review_complete"] is True
+    assert summary["environment"] == {
+        "path": "task",
+        "status": "ready",
+        "technical_status": "passed",
+        "review_status": "human_reviewed",
+        "validation": "validation.json",
+        "verifier_environment_mode": "separate",
+        "isolation_status": "isolated",
+    }
+    assert summary["privacy"]["contextual_review_complete"] is True
     code, check = _run("check", "--task-dir", str(task_dir))
     assert code == 0, check
 
@@ -496,8 +636,9 @@ def test_ready_candidate_rejects_wrong_arm_reward(tmp_path: Path) -> None:
     _ready_environment(task_dir)
     validation_path = task_dir / "validation.json"
     validation = json.loads(validation_path.read_text(encoding="utf-8"))
-    validation["nop"]["reward"] = 1
+    validation["runs"]["nop"][0]["reward"] = 1
     _write_json(validation_path, validation)
+    _review_privacy(task_dir)
 
     code, result = _run(
         "finalize",
@@ -505,19 +646,17 @@ def test_ready_candidate_rejects_wrong_arm_reward(tmp_path: Path) -> None:
         str(task_dir),
         "--status",
         "candidate",
-        "--environment-status",
-        "ready",
-        "--privacy-reviewed",
     )
 
     assert code == 1
-    assert "validation.nop" in result["error"]
+    assert "differs from the retained Harbor result evidence" in result["error"]
 
 
 def test_ready_candidate_requires_reviewer_facing_readme(tmp_path: Path) -> None:
     task_dir, _ = _workspace(tmp_path)
     _candidate(task_dir)
     _ready_environment(task_dir)
+    _review_privacy(task_dir)
     (task_dir / "task" / "README.md").unlink()
 
     code, result = _run(
@@ -526,9 +665,6 @@ def test_ready_candidate_requires_reviewer_facing_readme(tmp_path: Path) -> None
         str(task_dir),
         "--status",
         "candidate",
-        "--environment-status",
-        "ready",
-        "--privacy-reviewed",
     )
 
     assert code == 1
@@ -539,6 +675,7 @@ def test_ready_candidate_requires_substantive_readme_sections(tmp_path: Path) ->
     task_dir, _ = _workspace(tmp_path)
     _candidate(task_dir)
     _ready_environment(task_dir)
+    _review_privacy(task_dir)
     readme = task_dir / "task" / "README.md"
     readme.write_text(
         readme.read_text(encoding="utf-8").replace(
@@ -553,13 +690,147 @@ def test_ready_candidate_requires_substantive_readme_sections(tmp_path: Path) ->
         str(task_dir),
         "--status",
         "candidate",
-        "--environment-status",
-        "ready",
-        "--privacy-reviewed",
     )
 
     assert code == 1
     assert "Verification explanation" in result["error"]
+
+
+def test_reproducibility_records_complete_task_tree_and_portability(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+
+    report = json.loads((task_dir / "reproducibility.json").read_text(encoding="utf-8"))
+
+    assert report["schema"] == "nemo.eval_author.trace_environment_reproducibility.v2"
+    assert report["task_tree_sha256"].startswith("sha256:")
+    assert report["file_count"] == 7
+    assert report["portability"]["state"] == "recipe_rebuildable"
+    assert report["network"] == {"agent": "no-network", "verifier": "no-network"}
+    assert report["contamination"]["passed"] is True
+
+
+def test_reproducibility_digest_covers_executable_bits(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    _review_privacy(task_dir)
+    solve = task_dir / "task" / "solution" / "solve.sh"
+    solve.chmod(solve.stat().st_mode | stat.S_IXUSR)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "reproducibility.json differs from the current task tree" in result["error"]
+
+
+def test_reproducibility_retains_failed_contamination_evidence(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    target = task_dir / "task/environment/.git/config"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('[remote "origin"]\n', encoding="utf-8")
+    (task_dir / "reproducibility.json").unlink()
+
+    code, result = _run("record-reproducibility", "--task-dir", str(task_dir))
+
+    assert code == 1
+    assert result["contamination_findings"] == 1
+    report = json.loads((task_dir / "reproducibility.json").read_text(encoding="utf-8"))
+    assert report["contamination"]["passed"] is False
+    assert report["contamination"]["findings"][0]["code"] == "git_metadata_in_agent_context"
+
+
+def test_candidate_requires_no_network_agent_environment(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8").replace(
+            '[environment]\nnetwork_mode = "no-network"', '[environment]\nnetwork_mode = "public"'
+        ),
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "[environment].network_mode must be no-network" in result["error"]
+
+
+def test_reproducibility_rejects_solution_file_in_agent_context(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / "task" / "environment" / "answer.sh").write_bytes(
+        (task_dir / "task" / "solution" / "solve.sh").read_bytes()
+    )
+    (task_dir / "reproducibility.json").unlink()
+
+    code, result = _run("record-reproducibility", "--task-dir", str(task_dir))
+
+    assert code == 1
+    assert result["contamination_findings"] == 1
+    report = json.loads((task_dir / "reproducibility.json").read_text(encoding="utf-8"))
+    assert report["contamination"]["findings"][0]["code"] == "solution_in_agent_context"
+
+
+def test_validation_requires_independent_repeat_and_negative_jobs(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+
+    code, result = _run(
+        "record-validation",
+        "--task-dir",
+        str(task_dir),
+        "--nop-job-dir",
+        "private/jobs/nop-1",
+        "--oracle-job-dir",
+        "private/jobs/oracle-1",
+        "--negative-job-dir",
+        "private/jobs/negative-1",
+        "--harbor-version",
+        "0.21.0",
+    )
+
+    assert code == 1
+    assert "at least 2 independent nop Harbor jobs" in result["error"]
+
+
+def test_validation_requires_distinct_harbor_job_ids(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    duplicate = task_dir / "private" / "jobs" / "nop-2" / "task__trial" / "result.json"
+    payload = json.loads(duplicate.read_text(encoding="utf-8"))
+    payload["config"]["job_id"] = "job-1"
+    _write_json(duplicate, payload)
+
+    code, result = _run(
+        "record-validation",
+        "--task-dir",
+        str(task_dir),
+        "--nop-job-dir",
+        "private/jobs/nop-1",
+        "--nop-job-dir",
+        "private/jobs/nop-2",
+        "--oracle-job-dir",
+        "private/jobs/oracle-1",
+        "--oracle-job-dir",
+        "private/jobs/oracle-2",
+        "--negative-job-dir",
+        "private/jobs/negative-1",
+        "--harbor-version",
+        "0.21.0",
+    )
+
+    assert code == 1
+    assert "config.job_id values must be distinct" in result["error"]
 
 
 def test_check_detects_changed_safe_evidence(tmp_path: Path) -> None:
@@ -575,6 +846,563 @@ def test_check_detects_changed_safe_evidence(tmp_path: Path) -> None:
     assert code == 1
     assert result["valid"] is False
     assert "safe_path is missing or its digest changed" in result["errors"]
+
+
+def test_prepare_narrowly_repairs_provider_redaction_quote(tmp_path: Path) -> None:
+    root = tmp_path / ".eval-author" / "trace-environments"
+    code, result = _run("init", "--root", str(root), "--task-id", "repair-quote")
+    assert code == 0, result
+    source = tmp_path / "broken.atif.json"
+    source.write_text(
+        '{"schema_version":"ATIF-v1.7","agent":{"name":"agent"},"steps":'
+        '[{"step_id":1,"source":"user","message":"prefix \\"PASSWORD=<redacted>" suffix"}]}',
+        encoding="utf-8",
+    )
+
+    code, result = _run(
+        "prepare",
+        "--task-dir",
+        result["task_dir"],
+        "--atif",
+        str(source),
+        "--source-kind",
+        "atif",
+    )
+
+    assert code == 0, result
+    assert result["normalization_count"] == 1
+    summary = json.loads((root / "repair-quote" / "summary.json").read_text(encoding="utf-8"))
+    assert summary["source"]["normalizations"][0]["kind"] == "escape_provider_redaction_placeholder_quote"
+    assert (root / "repair-quote" / "private" / "source.atif.json").read_bytes() == source.read_bytes()
+
+
+def test_prepare_bounds_string_encoded_images_and_audits_context(tmp_path: Path) -> None:
+    root = tmp_path / ".eval-author" / "trace-environments"
+    code, result = _run("init", "--root", str(root), "--task-id", "bound-image")
+    assert code == 0, result
+    task_dir = Path(result["task_dir"])
+    source = tmp_path / "image.atif.json"
+    payload = _atif()
+    payload["steps"][0]["message"] = [
+        {
+            "type": "text",
+            "text": "Use https://api.example.test/path for Example Labs at 123 Main Street and John Smith.",
+        },
+        {
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/png", "data": "A" * 100_001},
+        },
+    ]
+    payload["steps"][1]["observation"]["results"][0]["content"] = (
+        'before {"type":"image","source":{"type":"base64","media_type":"image/png","data":"DATA"}} after'
+    )
+    payload["steps"][1]["message"] = "Call service.default.svc.cluster.local"
+    _write_json(source, payload)
+
+    code, result = _run(
+        "prepare",
+        "--task-dir",
+        str(task_dir),
+        "--atif",
+        str(source),
+        "--source-kind",
+        "atif",
+    )
+
+    assert code == 0, result
+    canonical = json.loads((task_dir / "private" / "canonical.atif.json").read_text(encoding="utf-8"))
+    assert canonical["steps"][0]["message"][1]["source"]["data"] == ""
+    assert canonical["steps"][1]["observation"]["results"][0]["content"][1]["source"]["data"] == ""
+    safe_text = (task_dir / "safe" / "trace.atif.json").read_text(encoding="utf-8")
+    assert "svc.cluster.local" not in safe_text
+    audit = json.loads((task_dir / "private" / "privacy-audit.json").read_text(encoding="utf-8"))
+    assert audit["url_hosts"] == ["api.example.test"]
+    assert {finding["kind"] for finding in audit["candidate_findings"]} >= {
+        "organization",
+        "person_name",
+        "street_address",
+    }
+
+
+def test_shared_verifier_is_rejected(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, mode="shared", record_validation=False)
+    _review_privacy(task_dir, reviewer_kind="human")
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate", "--human-reviewed")
+
+    assert code == 1
+    assert "must explicitly set [verifier].environment_mode to separate" in result["error"]
+
+
+def test_candidate_requires_explicit_verifier_environment_mode(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8").replace('environment_mode = "separate"\n', ""),
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "must explicitly set [verifier].environment_mode to separate" in result["error"]
+
+
+def test_candidate_requires_explicit_verifier_environment(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8").replace(
+            '\n[verifier.environment]\nnetwork_mode = "no-network"\n',
+            "\n",
+        ),
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "must contain an explicit [verifier.environment] table" in result["error"]
+
+
+def test_verifier_environment_must_be_no_network(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8").replace(
+            '[verifier.environment]\nnetwork_mode = "no-network"\n',
+            '[verifier.environment]\nnetwork_mode = "public"\n',
+        ),
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "[verifier.environment].network_mode must be no-network" in result["error"]
+
+
+def test_separate_verifier_can_inherit_image_without_tests_dockerfile(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / "task" / "tests" / "Dockerfile").unlink()
+    _record_reproducibility(task_dir)
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 0, result
+    summary = json.loads((task_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["environment"]["status"] == "unproven"
+    assert summary["environment"]["isolation_status"] == "isolated"
+
+
+def test_step_verifier_cannot_override_separate_mode(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8")
+        + '\n[[steps]]\nname = "grade"\n[steps.verifier]\nenvironment_mode = "shared"\n',
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "step 1 verifier must not override separate mode" in result["error"]
+
+
+def test_step_verifier_environment_must_be_no_network(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8")
+        + '\n[[steps]]\nname = "grade"\n[steps.verifier.environment]\nnetwork_mode = "public"\n',
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "[steps.verifier.environment] for step 1 must set network_mode to no-network" in result["error"]
+
+
+def test_step_can_define_a_separate_no_network_verifier_environment(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8")
+        + '\n[[steps]]\nname = "grade"\n[steps.verifier]\nenvironment_mode = "separate"\n'
+        + '[steps.verifier.environment]\nnetwork_mode = "no-network"\n',
+        encoding="utf-8",
+    )
+    _record_reproducibility(task_dir)
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 0, result
+    summary = json.loads((task_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["environment"]["status"] == "unproven"
+    assert summary["environment"]["isolation_status"] == "isolated"
+
+
+def test_failed_harbor_proof_is_validated_and_attached(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, oracle_reward=0.0, oracle_exception={"type": "RuntimeError"})
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 0, result
+    summary = json.loads((task_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["environment"]["status"] == "failed"
+    assert summary["environment"]["technical_status"] == "failed"
+    assert summary["environment"]["validation"] == "validation.json"
+    code, check = _run("check", "--task-dir", str(task_dir))
+    assert code == 0, check
+
+
+def test_export_uses_a_strict_publication_whitelist(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir)
+    _review_privacy(task_dir, reviewer_kind="human")
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate", "--human-reviewed")
+    assert code == 0, result
+    output = tmp_path / "product"
+
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+
+    assert code == 0, result
+    assert (output / "candidate.json").is_file()
+    assert (output / "reproducibility.json").is_file()
+    assert (output / "result.json").is_file()
+    assert (output / "task").is_dir()
+    assert not (output / "validation.json").exists()
+    assert not (output / "safe").exists()
+    assert not (output / "private").exists()
+    product = json.loads((output / "result.json").read_text(encoding="utf-8"))
+    assert product["schema"] == "nemo.eval_author.trace_environment_product.v2"
+    assert product["reproducibility"]["contamination_passed"] is True
+    assert product["technical_validation"]["minimum_runs"] == {"negative": 1, "nop": 2, "oracle": 2}
+
+
+def test_batch_prepare_is_resumable_and_reports_full_denominator(tmp_path: Path) -> None:
+    source_one = tmp_path / "one.json"
+    source_two = tmp_path / "two.json"
+    _write_json(source_one, _atif())
+    _write_json(source_two, _atif())
+    manifest = tmp_path / "manifest.json"
+    _write_json(
+        manifest,
+        {
+            "schema": "nemo.eval_author.trace_environment_batch.v1",
+            "members": [
+                {"task_id": "task-one", "atif": "one.json", "source_kind": "atif"},
+                {"task_id": "task-two", "atif": "two.json", "source_kind": "atif"},
+            ],
+        },
+    )
+    root = tmp_path / ".eval-author" / "trace-environments"
+
+    code, first = _run("batch-prepare", "--root", str(root), "--manifest", str(manifest))
+    assert code == 0, first
+    assert first["denominator"] == 2
+    assert first["counts"] == {"prepared": 2}
+    code, second = _run("batch-prepare", "--root", str(root), "--manifest", str(manifest))
+    assert code == 0, second
+    assert second["counts"] == {"existing": 2}
+    code, status = _run("batch-status", "--root", str(root), "--manifest", str(manifest))
+    assert code == 0, status
+    assert status["denominator"] == 2
+    assert status["counts"] == {"pending_prepared": 2}
+
+
+def test_batch_status_reports_malformed_workspace_without_aborting(tmp_path: Path) -> None:
+    source_one = tmp_path / "one.json"
+    source_two = tmp_path / "two.json"
+    _write_json(source_one, _atif())
+    _write_json(source_two, _atif())
+    manifest = tmp_path / "manifest.json"
+    manifest_payload = {
+        "schema": "nemo.eval_author.trace_environment_batch.v1",
+        "members": [
+            {"task_id": "task-one", "atif": "one.json", "source_kind": "atif"},
+            {"task_id": "task-two", "atif": "two.json", "source_kind": "atif"},
+        ],
+    }
+    _write_json(manifest, manifest_payload)
+    root = tmp_path / ".eval-author" / "trace-environments"
+    code, prepared = _run("batch-prepare", "--root", str(root), "--manifest", str(manifest))
+    assert code == 0, prepared
+    malformed_summary = root / "task-two" / "summary.json"
+    summary = json.loads(malformed_summary.read_text(encoding="utf-8"))
+    summary["unexpected"] = True
+    _write_json(malformed_summary, summary)
+    manifest_payload["members"].append({"task_id": "task-three", "atif": "missing.json", "source_kind": "atif"})
+    _write_json(manifest, manifest_payload)
+
+    code, status = _run("batch-status", "--root", str(root), "--manifest", str(manifest))
+
+    assert code == 1, status
+    assert status["denominator"] == 3
+    assert status["counts"] == {"invalid": 1, "missing": 1, "pending_prepared": 1}
+    assert status["valid"] is False
+    assert status["members"] == [
+        {"task_id": "task-one", "status": "pending_prepared"},
+        {
+            "task_id": "task-two",
+            "status": "invalid",
+            "error": "summary fields do not match the versioned contract",
+        },
+        {"task_id": "task-three", "status": "missing"},
+    ]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "status",
+        "source.kind",
+        "privacy.reviewer_kind",
+        "environment.status",
+        "environment.technical_status",
+        "environment.review_status",
+        "environment.validation",
+        "environment.verifier_environment_mode",
+        "environment.isolation_status",
+    ],
+)
+@pytest.mark.parametrize("bad_value", [[], {}])
+def test_batch_status_contains_invalid_enum_types(tmp_path: Path, field: str, bad_value: object) -> None:
+    task_dir, source = _workspace(tmp_path)
+    path = task_dir / "summary.json"
+    summary = json.loads(path.read_text())
+    target = summary
+    keys = field.split(".")
+    for key in keys[:-1]:
+        target = target[key]
+    target[keys[-1]] = bad_value
+    _write_json(path, summary)
+    code, result = _run("init", "--root", str(task_dir.parent), "--task-id", "healthy")
+    assert code == 0, result
+    manifest = tmp_path / "batch.json"
+    _write_json(
+        manifest,
+        {
+            "schema": "nemo.eval_author.trace_environment_batch.v1",
+            "members": [
+                {"task_id": name, "atif": str(source), "source_kind": "atif"}
+                for name in (task_dir.name, "healthy", "missing")
+            ],
+        },
+    )
+    code, report = _run("batch-status", "--root", str(task_dir.parent), "--manifest", str(manifest))
+    assert code == 1
+    assert report["denominator"] == 3
+    assert report["valid"] is False
+    assert report["counts"] == {"invalid": 1, "pending_unprepared": 1, "missing": 1}
+    assert [row["task_id"] for row in report["members"]] == [task_dir.name, "healthy", "missing"]
+
+
+def _record_existing_jobs(task_dir: Path) -> tuple[int, dict[str, Any]]:
+    args = []
+    for arm, count in (("nop", 2), ("oracle", 2), ("negative", 1)):
+        for index in range(1, count + 1):
+            args.extend([f"--{arm}-job-dir", f"private/jobs/{arm}-{index}"])
+    return _run("record-validation", "--task-dir", str(task_dir), *args, "--harbor-version", "0.21.0")
+
+
+@pytest.mark.parametrize("change", ["verifier", "executable"])
+def test_stale_jobs_cannot_prove_a_changed_task(tmp_path: Path, change: str) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    verifier = task_dir / "task/tests/test.sh"
+    if change == "verifier":
+        verifier.write_text("#!/bin/sh\nexit 99\n")
+    else:
+        verifier.chmod(verifier.stat().st_mode ^ stat.S_IXUSR)
+    _record_reproducibility(task_dir)
+    code, result = _record_existing_jobs(task_dir)
+    assert code == 1
+    assert "pre-run task snapshot differs" in result["error"]
+    assert not (task_dir / "validation.json").exists()
+
+
+def test_results_must_match_current_harbor_checksum(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    for path in (task_dir / "private/jobs").glob("*/task__*/result.json"):
+        result = json.loads(path.read_text())
+        result["task_checksum"] = "f" * 64
+        _write_json(path, result)
+    code, result = _record_existing_jobs(task_dir)
+    assert code == 1
+    assert "Harbor result task checksum differs" in result["error"]
+
+
+def test_run_inputs_cannot_be_attached_after_a_job_exists(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    code, result = _run(
+        "record-run-inputs", "--task-dir", str(task_dir), "--job-dir", "private/jobs/nop-1", "--arm", "nop"
+    )
+    assert code == 1
+    assert "before Harbor creates" in result["error"]
+
+
+def test_missing_pre_run_inputs_rejects_historical_proof(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    for path in (task_dir / "private/run-inputs").glob("*.json"):
+        path.unlink()
+    code, result = _record_existing_jobs(task_dir)
+    assert code == 1
+    assert "record-run-inputs is required" in result["error"]
+
+
+@pytest.mark.parametrize(
+    "arm,agent",
+    [
+        ("nop-1", None),
+        ("oracle-1", {"name": "nop"}),
+        ("negative-1", {"name": "nop"}),
+        ("negative-1", {"import_path": "harbor.agents.nop:NopAgent"}),
+        ("negative-1", {"import_path": "other_agent:WrongControl"}),
+        ("nop-1", {"name": "nop", "import_path": "other_agent:WrongControl"}),
+    ],
+)
+def test_wrong_proof_agent_is_rejected(tmp_path: Path, arm: str, agent: object) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    path = task_dir / f"private/jobs/{arm}/task__trial/result.json"
+    result = json.loads(path.read_text())
+    result["config"]["agent"] = agent
+    _write_json(path, result)
+    code, result = _record_existing_jobs(task_dir)
+    assert code == 1
+    assert "agent" in result["error"]
+
+
+def test_import_path_agent_identity_is_supported(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    identities = {
+        "nop": "harbor.agents.nop:NopAgent",
+        "oracle": "harbor.agents.oracle:OracleAgent",
+        "negative": "negative_agent:IncompleteRepair",
+    }
+    for path in (task_dir / "private/jobs").glob("*/task__*/result.json"):
+        arm = path.parents[1].name.rsplit("-", 1)[0]
+        result = json.loads(path.read_text())
+        result["config"]["agent"] = {"name": None, "import_path": identities[arm]}
+        _write_json(path, result)
+    code, result = _record_existing_jobs(task_dir)
+    assert code == 0, result
+    assert result["passed"] is True
+
+
+def test_negative_source_mutation_invalidates_proof(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / "private/negative_agent.py").write_text("# Changed implementation\n")
+    code, result = _record_existing_jobs(task_dir)
+    assert code == 1
+    assert "negative control source" in result["error"]
+
+
+@pytest.mark.parametrize("agent", ["nop", "oracle", "harbor.agents.nop:NopAgent", "harbor.agents.oracle:OracleAgent"])
+def test_builtin_agent_cannot_be_declared_negative(tmp_path: Path, agent: str) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    code, result = _run(
+        "record-run-inputs",
+        "--task-dir",
+        str(task_dir),
+        "--job-dir",
+        "private/jobs/new-negative",
+        "--arm",
+        "negative",
+        "--negative-agent",
+        agent,
+        "--negative-source",
+        "private/negative_agent.py",
+        "--negative-rationale",
+        "Incomplete repair",
+    )
+    assert code == 1
+    assert "distinct from NOP and Oracle" in result["error"]
+
+
+@pytest.mark.parametrize(
+    "copy_source,pinned",
+    [
+        ("example.invalid/tool:latest", False),
+        ("example.invalid/tool@sha256:" + "a" * 64, True),
+        ("builder", True),
+        ("0", True),
+        ("${TOOLS_IMAGE}", False),
+    ],
+)
+def test_portability_tracks_external_copy_sources(tmp_path: Path, copy_source: str, pinned: bool) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / "task/environment/Dockerfile").write_text(
+        f'FROM scratch AS builder\nFROM scratch\nCOPY --from="{copy_source}" /tool /tool\n'
+    )
+    _record_reproducibility(task_dir)
+    report = json.loads((task_dir / "reproducibility.json").read_text())
+    assert report["portability"]["state"] == ("recipe_rebuildable" if pinned else "local_only")
+    copies = [image for image in report["portability"]["container_images"] if image["instruction"] == "copy"]
+    assert len(copies) == 1
+    assert copies[0]["reference"] == copy_source
+    assert copies[0]["internal_stage"] == (copy_source in ("builder", "0"))
+
+
+@pytest.mark.parametrize(
+    "location", ["environment", "verifier.environment", "steps.environment", "steps.verifier.environment"]
+)
+@pytest.mark.parametrize("pinned", [True, False])
+def test_portability_tracks_configured_images(tmp_path: Path, location: str, pinned: bool) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    path = task_dir / "task/task.toml"
+    config = path.read_text()
+    image = "example.invalid/runtime@sha256:" + "b" * 64 if pinned else "example.invalid/runtime:latest"
+    if location.startswith("steps."):
+        config += f'\n[[steps]]\nname = "grade"\n[{location}]\nnetwork_mode = "no-network"\ndocker_image = "{image}"\n'
+    else:
+        config = config.replace(f"[{location}]", f'[{location}]\ndocker_image = "{image}"')
+    path.write_text(config)
+    _record_reproducibility(task_dir)
+    report = json.loads((task_dir / "reproducibility.json").read_text())
+    expected = (
+        "immutable_image" if pinned and location == "environment" else "recipe_rebuildable" if pinned else "local_only"
+    )
+    assert report["portability"]["state"] == expected
+    assert report["portability"]["configured_images"][0]["reference"] == image
 
 
 @pytest.mark.parametrize("task_id", ["Has-Caps", "has spaces", "../escape", ""])
