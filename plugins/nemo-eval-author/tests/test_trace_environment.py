@@ -806,7 +806,7 @@ def test_verifier_environment_must_be_no_network(tmp_path: Path) -> None:
     assert "[verifier.environment].network_mode must be no-network" in result["error"]
 
 
-def test_candidate_requires_verifier_owned_dockerfile(tmp_path: Path) -> None:
+def test_separate_verifier_can_inherit_image_without_tests_dockerfile(tmp_path: Path) -> None:
     task_dir, _ = _workspace(tmp_path)
     _candidate(task_dir)
     _ready_environment(task_dir, record_validation=False)
@@ -815,8 +815,10 @@ def test_candidate_requires_verifier_owned_dockerfile(tmp_path: Path) -> None:
 
     code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
 
-    assert code == 1
-    assert "must provide a nonempty task/tests/Dockerfile" in result["error"]
+    assert code == 0, result
+    summary = json.loads((task_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["environment"]["status"] == "unproven"
+    assert summary["environment"]["isolation_status"] == "isolated"
 
 
 def test_step_verifier_cannot_override_separate_mode(tmp_path: Path) -> None:

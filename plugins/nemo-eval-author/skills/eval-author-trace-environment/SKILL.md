@@ -325,10 +325,11 @@ generalized outcome:
 `task.toml` must explicitly set `[verifier].environment_mode = "separate"`,
 `[verifier].network_mode = "no-network"`, and a
 `[verifier.environment]` table whose `network_mode` is also `"no-network"`.
-Provide a verifier-owned `tests/Dockerfile`; it builds the verifier image and
-must install or copy the complete grading dependency closure, including its
-`/tests` tree. The helper rejects shared verification because it lets the grader
-observe or alter the agent container and can expose hidden tests to the agent.
+The helper rejects shared verification because it lets the grader observe or
+alter the agent container and can expose hidden tests to the agent. When the
+grader needs a different image, provide a verifier-owned `tests/Dockerfile` or
+a pinned verifier image through `[verifier.environment]`; include its complete
+grading dependency closure and `/tests` tree.
 
 For a multi-step task, every step inherits the top-level separate verifier.
 An explicit `[steps.verifier]` override must not select `shared`. When a step

@@ -1110,9 +1110,6 @@ def _validate_task(task_dir: Path) -> dict[str, str]:
         raise ContractError("task/task.toml must contain an explicit [verifier.environment] table")
     if verifier_environment.get("network_mode") != "no-network":
         raise ContractError("[verifier.environment].network_mode must be no-network")
-    verifier_dockerfile = environment / "tests" / "Dockerfile"
-    if verifier_dockerfile.is_symlink() or not verifier_dockerfile.is_file() or verifier_dockerfile.stat().st_size == 0:
-        raise ContractError("a separate verifier must provide a nonempty task/tests/Dockerfile")
     steps = config.get("steps", [])
     if not isinstance(steps, list):
         raise ContractError("task/task.toml steps must be an array of tables")
