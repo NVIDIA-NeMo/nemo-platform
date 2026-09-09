@@ -155,6 +155,7 @@ async def test_success_maps_evidence_contract(tmp_path: Path) -> None:
     (trial,) = trials
 
     assert trial.status == AgentEvalTrialStatus.COMPLETED
+    assert trial.measurements.model_dump(exclude_none=True) == {}
     assert trial.output is not None and trial.output.output_text == "fixed the bug"
     # Same evidence keys/kinds FabricAgentRuntime + Codex produce, so metrics work unchanged.
     ws = trial.evidence.require("workspace")
@@ -189,6 +190,7 @@ async def test_failed_trial_stamps_agent_ok_false(tmp_path: Path) -> None:
     provider = _FakeProvider(status="failed")
     (trial,) = await _run(_runtime(provider), [_task()], tmp_path)
     assert trial.status == AgentEvalTrialStatus.FAILED
+    assert trial.measurements.model_dump(exclude_none=True) == {}
     assert trial.metadata["agent_ok"] is False
 
 

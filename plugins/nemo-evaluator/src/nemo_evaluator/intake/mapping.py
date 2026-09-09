@@ -36,9 +36,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, TrialMeasurements
 from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_FORMAT_OTLP, EVIDENCE_TRACE
 from nemo_evaluator_sdk.values.otlp import (
     fill_missing_start_times,

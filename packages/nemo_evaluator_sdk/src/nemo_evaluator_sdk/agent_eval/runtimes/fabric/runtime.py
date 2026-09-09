@@ -34,6 +34,7 @@ import asyncio
 import copy
 import json
 import logging
+import math
 import shutil
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
@@ -53,16 +54,21 @@ from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
     resolve_skill_mode,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
+from nemo_evaluator_sdk.agent_eval.trials import (
+    AgentEvalTrial,
+    AgentEvalTrialStatus,
+    AgentOutput,
+    RunnerInfo,
+    TrialMeasurements,
+)
 from nemo_evaluator_sdk.agent_eval.workspace_seeds import SEED_FILES_INPUT_KEY, seed_workspace
-from nemo_evaluator_sdk.values.atif import FinalMetrics
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_ATIF,
     EVIDENCE_TRACE,
     CandidateEvidence,
     EvidenceDescriptor,
 )
-from pydantic import JsonValue, ValidationError
+from pydantic import JsonValue
 
 if TYPE_CHECKING:
     # Annotations use nemo_fabric's real types (single source of truth). nemo_fabric is an optional
@@ -362,11 +368,19 @@ class FabricAgentRuntime:
                     hook_extras = None
         except TimeoutError as exc:
             return self._failed_trial(
-                task, evidence_dir, exc, extra_metadata=self._failed_metadata(skill_provenances, evidence_dir)
+                task,
+                evidence_dir,
+                exc,
+                extra_metadata=self._skill_metadata(skill_provenances),
+                measurements=_atif_measurements(_relay_atif_path(evidence_dir)),
             )
         except Exception as exc:  # noqa: BLE001 - a task failure must not abort the whole run
             return self._failed_trial(
-                task, evidence_dir, exc, extra_metadata=self._failed_metadata(skill_provenances, evidence_dir)
+                task,
+                evidence_dir,
+                exc,
+                extra_metadata=self._skill_metadata(skill_provenances),
+                measurements=_atif_measurements(_relay_atif_path(evidence_dir)),
             )
         finally:
             if self._task_hook is not None:
@@ -403,18 +417,6 @@ class FabricAgentRuntime:
         """
         return {"skill": provenances[0] if len(provenances) == 1 else None, "skills": provenances}
 
-    @staticmethod
-    def _failed_metadata(provenances: list[SkillProvenance], evidence_dir: Path) -> dict[str, Any]:
-        """Trial metadata for a timed-out/errored task: skill provenance plus whatever tokens Relay flushed.
-
-        Timeouts never reach ``_to_trial``, and there is no ``RunResult`` here, so the trajectory is read
-        straight from the relay dir — these are the long, expensive rows the token count matters most for.
-        """
-        return {
-            **FabricAgentRuntime._skill_metadata(provenances),
-            **_atif_token_metadata(_relay_atif_path(evidence_dir)),
-        }
-
     def _to_trial(
         self,
         task: AgentEvalTask,
@@ -430,6 +432,7 @@ class FabricAgentRuntime:
         result_path.write_text(json.dumps(result.to_mapping(), indent=2, default=str), encoding="utf-8")
 
         extras = dict(hook_extras) if hook_extras else {}
+        measurements = _atif_measurements(_atif_artifact_path(result))
         base_metadata: dict[str, Any] = {
             "runtime": self._runtime_name,
             "harness": result.harness,
@@ -440,9 +443,6 @@ class FabricAgentRuntime:
             # Skill provenance (name + content hash + injection mode) for the A/B diff.
             **self._skill_metadata(skill_provenances or []),
             **extras,
-            # Token usage from the Relay ATIF trajectory; Fabric's RunResult carries no usage of its
-            # own. Merged last so a hook extra can't shadow it.
-            **_atif_token_metadata(_atif_artifact_path(result)),
         }
 
         if result.status != "succeeded":
@@ -466,9 +466,12 @@ class FabricAgentRuntime:
                         metadata={**base_metadata, "evidence_dir": str(evidence_dir)},
                     ),
                     evidence=self._evidence(result, result_path, workspace_dir),
+                    measurements=measurements,
                     metadata={**base_metadata, "generated": True, "agent_ok": True},
                 )
-            return self._failed_trial(task, evidence_dir, _result_error(result), extra_metadata=base_metadata)
+            return self._failed_trial(
+                task, evidence_dir, _result_error(result), extra_metadata=base_metadata, measurements=measurements
+            )
 
         # Fabric wraps the output in a ``RunOutput`` mapping (RunOutput response contract, #52),
         # which is not itself a JSON value; normalize it to a plain mapping so it round-trips through the
@@ -492,6 +495,7 @@ class FabricAgentRuntime:
                 metadata={**base_metadata, "evidence_dir": str(evidence_dir)},
             ),
             evidence=self._evidence(result, result_path, workspace_dir),
+            measurements=measurements,
             # AgentPhaseSuccessMetric reads agent_ok to score whether the agent phase finished cleanly
             # (an explicit bool, not just trial status).
             metadata={**base_metadata, "generated": True, "agent_ok": True},
@@ -537,6 +541,7 @@ class FabricAgentRuntime:
         evidence_dir: Path,
         error: Exception | Mapping[str, Any],
         extra_metadata: Mapping[str, Any] | None = None,
+        measurements: TrialMeasurements | None = None,
     ) -> AgentEvalTrial:
         if isinstance(error, Mapping):
             error_type = str(error.get("code") or error.get("stage") or "FabricError")
@@ -555,6 +560,7 @@ class FabricAgentRuntime:
                 descriptors={"error": EvidenceDescriptor(kind="error", format="json", ref=str(error_path))},
                 metadata={"runtime": self._runtime_name},
             ),
+            measurements=measurements if measurements is not None else TrialMeasurements(),
             metadata={
                 **(dict(extra_metadata) if extra_metadata else {}),
                 "runtime": self._runtime_name,
@@ -760,58 +766,91 @@ def _relay_atif_path(evidence_dir: Path) -> Path | None:
     return None
 
 
-def _atif_token_metadata(path: Path | None) -> dict[str, int]:
-    """Project an ATIF trajectory's token totals onto the trial-metadata ``TOKEN_KEYS``.
+def _atif_measurements(path: Path | None) -> TrialMeasurements:
+    """Build typed measurements from a Relay ATIF trajectory.
 
-    Each token field is resolved on its own: the trajectory-level ``final_metrics`` aggregate when it
-    reports that field, else the sum of the matching per-step ``metrics``. Every ``final_metrics``
-    field is optional, so a block carrying only ``total_steps`` or a cost — or one that fails to
-    validate — must not suppress counts the steps do carry. That partial shape is likeliest on the
-    timeout path, where the trajectory was flushed mid-run and the counts matter most.
+    Each field is resolved on its own: a valid trajectory-level ``final_metrics``
+    value wins; when absent, the matching per-step values are summed. An
+    explicitly invalid final value or step contributor poisons only that field.
+    This per-field fallback matters most on timeout, when Relay may flush a
+    partial trajectory.
 
-    ``total_tokens`` and ``cache_creation_tokens`` have no ATIF source and stay unset — Intake
-    recomputes the total. A missing or unreadable trajectory yields ``{}``: an absent token count
-    must not fail the trial.
+    ``cache_creation_tokens`` has no ATIF source and stays unset. A missing or
+    unreadable trajectory yields empty measurements and never fails the trial.
     """
     if path is None:
-        return {}
+        return TrialMeasurements()
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         logger.warning("Fabric token capture: unreadable ATIF trajectory %s (%s)", path, exc)
-        return {}
+        return TrialMeasurements()
     if not isinstance(payload, Mapping):
-        return {}
+        return TrialMeasurements()
 
-    totals = FinalMetrics()
     final_metrics = payload.get("final_metrics")
-    if isinstance(final_metrics, Mapping):
-        try:
-            totals = FinalMetrics.model_validate(final_metrics)
-        except ValidationError as exc:
-            logger.warning("Fabric token capture: invalid final_metrics in %s (%s)", path, exc)
-
-    captured = {
-        "prompt_tokens": (totals.total_prompt_tokens, "prompt_tokens"),
-        "completion_tokens": (totals.total_completion_tokens, "completion_tokens"),
-        "cache_read_tokens": (totals.total_cached_tokens, "cached_tokens"),
+    final = final_metrics if isinstance(final_metrics, Mapping) else {}
+    fields = {
+        "prompt_tokens": ("total_prompt_tokens", "prompt_tokens", False),
+        "completion_tokens": ("total_completion_tokens", "completion_tokens", False),
+        "cache_read_tokens": ("total_cached_tokens", "cached_tokens", False),
+        "cost_usd": ("total_cost_usd", "cost_usd", True),
     }
-    resolved = {
-        key: total if total is not None else _sum_step_metric(payload, step_key)
-        for key, (total, step_key) in captured.items()
-    }
-    return {key: value for key, value in resolved.items() if value is not None}
+    resolved: dict[str, int | float] = {}
+    for sdk_key, (final_key, step_key, is_float) in fields.items():
+        if final_key in final and final[final_key] is not None:
+            value = final[final_key]
+            if _valid_atif_measurement(value, is_float=is_float):
+                resolved[sdk_key] = float(value) if is_float else int(value)
+            else:
+                logger.warning(
+                    "Fabric token capture: invalid %s=%r in %s; omitting %s", final_key, value, path, sdk_key
+                )
+            continue
+        value, valid = _sum_step_metric(payload, step_key, is_float=is_float)
+        if valid and value is not None:
+            resolved[sdk_key] = value
+        elif not valid:
+            logger.warning("Fabric token capture: invalid step %s in %s; omitting %s", step_key, path, sdk_key)
+    return TrialMeasurements.model_validate(resolved)
 
 
-def _sum_step_metric(payload: Mapping[str, Any], key: str) -> int | None:
-    """Sum one per-step ATIF metric across the trajectory, or ``None`` when no step reported it."""
-    total: int | None = None
-    for step in payload.get("steps") or []:
+def _sum_step_metric(payload: Mapping[str, Any], key: str, *, is_float: bool) -> tuple[int | float | None, bool]:
+    """Sum one per-step ATIF metric, poisoning an explicitly invalid contributor."""
+    values: list[int | float] = []
+    steps = payload.get("steps")
+    if steps is None:
+        return None, True
+    if not isinstance(steps, list):
+        return None, False
+    for step in steps:
         metrics = step.get("metrics") if isinstance(step, Mapping) else None
-        value = metrics.get(key) if isinstance(metrics, Mapping) else None
-        if isinstance(value, int) and not isinstance(value, bool):
-            total = value if total is None else total + value
-    return total
+        if not isinstance(metrics, Mapping) or key not in metrics or metrics[key] is None:
+            continue
+        value = metrics[key]
+        if not _valid_atif_measurement(value, is_float=is_float):
+            return None, False
+        values.append(value)
+    if not values:
+        return None, True
+    try:
+        total = math.fsum(float(value) for value in values) if is_float else sum(int(value) for value in values)
+    except OverflowError:
+        return None, False
+    if not _valid_atif_measurement(total, is_float=is_float):
+        return None, False
+    return (float(total) if is_float else int(total), True)
+
+
+def _valid_atif_measurement(value: Any, *, is_float: bool) -> bool:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        return False
+    if not is_float and not isinstance(value, int):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def _safe_path_name(value: str) -> str:
