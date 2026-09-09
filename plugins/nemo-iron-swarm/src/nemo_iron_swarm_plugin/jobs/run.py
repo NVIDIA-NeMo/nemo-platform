@@ -191,7 +191,7 @@ class IronSwarmRunJob(NemoJob):
         launches the Docker victim sandbox, all of which live on the provisioned host today. A Docker-capable
         container image (`CPUExecutionProviderSpec(container=...)`) is the Phase-2 swap — `run()` is unchanged.
         """
-        war_game = cast(WarGameSpec, spec)
+        war_game = WarGameSpec.model_validate(spec)
 
         # Pre-create the run record now (a Studio war-game submits a manifest_id + service driver) so the UI
         # can open its live view immediately; the worker reuses this record via `run_name` in the step config.
