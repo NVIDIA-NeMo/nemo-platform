@@ -103,12 +103,14 @@ describe('Open insights on the agent overview', () => {
     expect(screen.queryByRole('button', { name: 'View all' })).not.toBeInTheDocument();
   });
 
-  it('surfaces a failing insights service without breaking the tab', async () => {
+  it('surfaces a failing insights service under trace statistics, not under Insights', async () => {
     server.use(http.get(INSIGHTS_URL, () => HttpResponse.json({}, { status: 500 })));
 
     renderDetail();
 
-    expect(await screen.findByText('Insights are unavailable')).toBeInTheDocument();
-    expect(screen.getByText('Trace statistics')).toBeInTheDocument();
+    expect(await screen.findByText('Trace statistics are unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Open insights')).toBeInTheDocument();
+    expect(screen.getByText("Insights couldn't be loaded right now.")).toBeInTheDocument();
+    expect(screen.queryByText('Insights are unavailable')).not.toBeInTheDocument();
   });
 });

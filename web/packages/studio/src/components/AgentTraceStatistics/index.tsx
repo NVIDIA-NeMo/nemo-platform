@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import {
   Button,
   Flex,
@@ -21,6 +23,7 @@ import type {
   TraceStatisticsSummary,
 } from '@studio/components/AgentTraceStatistics/types';
 import { RANGE_LABELS } from '@studio/components/AgentTraceStatistics/utils';
+import { AxiosError } from 'axios';
 import { ListTree } from 'lucide-react';
 import { type FC } from 'react';
 
@@ -28,6 +31,17 @@ const RANGE_OPTIONS: TraceStatisticsRange[] = ['day', 'week', 'month'];
 
 const isTraceStatisticsRange = (value: unknown): value is TraceStatisticsRange =>
   typeof value === 'string' && (RANGE_OPTIONS as string[]).includes(value);
+
+const TRACE_STORE_UNREACHABLE_MESSAGE =
+  "The trace store couldn't be reached, so trace statistics can't be loaded right now. This " +
+  'usually means ClickHouse is down — check that it is running and reachable, then refresh.';
+
+const traceStatisticsErrorMessage = (error: unknown): string => {
+  if (error instanceof AxiosError || error instanceof Error) {
+    return getErrorMessage(error, TRACE_STORE_UNREACHABLE_MESSAGE);
+  }
+  return TRACE_STORE_UNREACHABLE_MESSAGE;
+};
 
 export interface AgentTraceStatisticsProps {
   /**
@@ -49,6 +63,8 @@ export interface AgentTraceStatisticsProps {
   caption?: string;
   isPending?: boolean;
   chartHeight?: number;
+  /** When set, replaces the tiles/chart with a warning — e.g. the trace store is unreachable. */
+  error?: unknown;
 }
 
 export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
@@ -62,8 +78,9 @@ export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
   caption,
   isPending,
   chartHeight,
+  error,
 }) => {
-  const isEmpty = !isPending && (summary === null || summary.totalTraces === 0);
+  const isEmpty = !error && !isPending && (summary === null || summary.totalTraces === 0);
 
   return (
     <Stack gap="4">
@@ -76,38 +93,49 @@ export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
             </Text>
           ) : null}
         </Flex>
-        <Flex gap="2" align="center">
-          {onViewTraces && !isEmpty ? (
-            <Button kind="tertiary" onClick={onViewTraces}>
-              <ListTree size={16} aria-hidden />
-              View traces
-            </Button>
-          ) : null}
-          <SelectRoot
-            value={range}
-            onValueChange={(value: string) => onRangeChange(value as TraceStatisticsRange)}
-          >
-            <SelectTrigger
-              aria-label="Statistics range"
-              className="w-32"
-              renderValue={(value) =>
-                isTraceStatisticsRange(value) ? RANGE_LABELS[value] : undefined
-              }
-            />
-            <SelectContent className="min-w-40">
-              <SelectListbox>
-                {RANGE_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {RANGE_LABELS[option]}
-                  </SelectItem>
-                ))}
-              </SelectListbox>
-            </SelectContent>
-          </SelectRoot>
-        </Flex>
+        {error ? null : (
+          <Flex gap="2" align="center">
+            {onViewTraces && !isEmpty ? (
+              <Button kind="tertiary" onClick={onViewTraces}>
+                <ListTree size={16} aria-hidden />
+                View traces
+              </Button>
+            ) : null}
+            <SelectRoot
+              value={range}
+              onValueChange={(value: string) => onRangeChange(value as TraceStatisticsRange)}
+            >
+              <SelectTrigger
+                aria-label="Statistics range"
+                className="w-32"
+                renderValue={(value) =>
+                  isTraceStatisticsRange(value) ? RANGE_LABELS[value] : undefined
+                }
+              />
+              <SelectContent className="min-w-40">
+                <SelectListbox>
+                  {RANGE_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {RANGE_LABELS[option]}
+                    </SelectItem>
+                  ))}
+                </SelectListbox>
+              </SelectContent>
+            </SelectRoot>
+          </Flex>
+        )}
       </Flex>
 
-      {isEmpty ? (
+      {error ? (
+        <ErrorPanel
+          errorMessage={traceStatisticsErrorMessage(error)}
+          attributes={{
+            ErrorMessage: {
+              header: 'Trace statistics are unavailable',
+            },
+          }}
+        />
+      ) : isEmpty ? (
         <TraceStatisticsEmptyState
           onRunAgent={onRunAgent}
           onLearnMore={onLearnMore}

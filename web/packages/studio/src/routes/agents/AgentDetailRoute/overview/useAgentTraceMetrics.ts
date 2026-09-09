@@ -66,6 +66,7 @@ interface UseAgentTraceMetricsResult {
   summary: TraceStatisticsSummary | null;
   buckets: TraceStatisticsBucket[];
   isPending: boolean;
+  error: unknown;
 }
 
 /**
@@ -91,13 +92,17 @@ export const useAgentTraceMetrics = ({
   const timezone = browserTimezone();
   const queryOptions = { query: { enabled: isEnabled, placeholderData: keepPreviousData } };
 
-  const { data: totals, isPending: isTotalsPending } = useGetTraceMetrics(
-    workspace,
-    { bucket: 'total', timezone, filter },
-    queryOptions
-  );
+  const {
+    data: totals,
+    isPending: isTotalsPending,
+    error: totalsError,
+  } = useGetTraceMetrics(workspace, { bucket: 'total', timezone, filter }, queryOptions);
 
-  const { data: series, isPending: isSeriesPending } = useGetTraceMetrics(
+  const {
+    data: series,
+    isPending: isSeriesPending,
+    error: seriesError,
+  } = useGetTraceMetrics(
     workspace,
     { bucket: bucketParamForRange(range), timezone, filter },
     queryOptions
@@ -118,5 +123,6 @@ export const useAgentTraceMetrics = ({
     summary,
     buckets,
     isPending: isEnabled ? isTotalsPending || isSeriesPending : enabled,
+    error: isEnabled ? (totalsError ?? seriesError) : null,
   };
 };
