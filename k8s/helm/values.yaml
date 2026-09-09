@@ -590,15 +590,6 @@ basePlatformConfig: |
         backend: k8s
         config:
           default_namespace: {{ .Release.Namespace | quote }}
-          # Executor-level default pod annotations applied to EVERY k8s workload
-          # this executor renders — models AND agents. The Istio native-sidecar
-          # annotation makes a mesh-injected istio-proxy terminate when a Job's
-          # main container exits, so a weight-puller (or any mesh-injected Job)
-          # completes instead of hanging while keeping mesh mTLS egress
-          # (inject: "false" is NOT viable in-mesh). Per-entity backend_config.k8s
-          # values override these defaults.
-          default_pod_annotations:
-            sidecar.istio.io/nativeSidecar: "true"
     default_executor: local-k8s
 
   # -- inference_gateway is the configuration specific to inference request routing
