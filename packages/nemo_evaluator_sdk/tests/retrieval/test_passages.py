@@ -32,3 +32,9 @@ def test_unset_truncation_raises_for_oversize_title_plus_text() -> None:
     document = BeirCorpusDocument(id="d1", title="Title", text="x" * DOCUMENT_CHARACTER_LIMIT)
     with pytest.raises(ValueError, match="too long"):
         passage_text(document, None)
+
+
+def test_unset_truncation_raises_when_title_alone_exceeds_the_limit() -> None:
+    document = BeirCorpusDocument(id="d1", title="T" * (DOCUMENT_CHARACTER_LIMIT + 1), text="body")
+    with pytest.raises(ValueError, match="too long"):
+        passage_text(document, None)

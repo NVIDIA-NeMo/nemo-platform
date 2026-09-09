@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import math
 from urllib.parse import urlparse, urlunparse
 
 import httpx
@@ -43,21 +45,28 @@ class NimRankingClient(BaseModel):
         if client is None:
             client = httpx.AsyncClient(timeout=self.timeout)
         try:
-            response = await client.post(
-                _ranking_url(self.model.url),
-                headers=_headers(self.model),
-                json={
-                    "model": self.model.name,
-                    "query": {"text": query},
-                    "passages": [{"text": passage} for passage in passages],
-                    "truncate": truncate,
-                },
-            )
-            response.raise_for_status()
-            return _parse_rankings(response, expected_count=len(passages))
+            for attempt in range(self.max_retries + 1):
+                response = await client.post(
+                    _ranking_url(self.model.url),
+                    headers=_headers(self.model),
+                    json={
+                        "model": self.model.name,
+                        "query": {"text": query},
+                        "passages": [{"text": passage} for passage in passages],
+                        "truncate": truncate,
+                    },
+                )
+                response.raise_for_status()
+                ranked = _parse_rankings(response, expected_count=len(passages))
+                if all(math.isfinite(logit) for _, logit in ranked):
+                    return ranked
+                if attempt < self.max_retries:
+                    await asyncio.sleep(min(0.1 * 2**attempt, 1.0))
         finally:
             if owns_client:
                 await client.aclose()
+
+        raise NimRankingError(f"ranking endpoint returned non-finite values after {self.max_retries + 1} attempts")
 
 
 def _ranking_url(url: str) -> str:

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -15,6 +16,7 @@ from nemo_evaluator.jobs.retrieve_eval import (
     RetrieveEvalJob,
     RetrieveEvalSpec,
 )
+from nemo_evaluator_sdk.metrics.retrieval import RetrievalNDCGMetric, RetrievalRecallMetric
 from nemo_evaluator_sdk.retrieval.beir import BeirDataset
 from nemo_evaluator_sdk.values.models import Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
@@ -161,3 +163,63 @@ def test_run_reports_relative_baseline_scores(tmp_path: Path, mocker: MockerFixt
 
     assert evaluator.run_sync.call_count == 2
     assert output["relative"] == pytest.approx({"ndcg_cut_10": 0.5, "recall_10": 0.2})
+
+
+def test_run_includes_cutoff_10_when_baseline_omits_it(tmp_path: Path, mocker: MockerFixture) -> None:
+    ctx = _context(tmp_path)
+    mocker.patch(
+        "nemo_evaluator.jobs.retrieve_eval.download_dataset_sync",
+        return_value=tmp_path / "downloaded",
+    )
+    mocker.patch(
+        "nemo_evaluator.jobs.retrieve_eval.load_beir_dataset",
+        return_value=mocker.Mock(spec=BeirDataset),
+    )
+    evaluator = mocker.Mock()
+    evaluator.run_sync.side_effect = [
+        _result(ndcg=0.75, recall=0.9),
+        _result(ndcg=0.5, recall=0.75),
+    ]
+    mocker.patch("nemo_evaluator.jobs.retrieve_eval.Evaluator", return_value=evaluator)
+    spec = _spec().model_copy(
+        update={
+            "k": [1],
+            "baseline": Retrieval(embeddings=Model(url="https://igw.example.test/v1", name="baseline")),
+        }
+    )
+
+    output = RetrieveEvalJob().run(
+        spec.model_dump(mode="json"),
+        ctx=ctx,
+        sdk=cast(NeMoPlatform, SimpleNamespace()),
+    )
+
+    metrics = evaluator.run_sync.call_args_list[0].kwargs["metrics"]
+    ndcg = next(metric for metric in metrics if isinstance(metric, RetrievalNDCGMetric))
+    recall = next(metric for metric in metrics if isinstance(metric, RetrievalRecallMetric))
+    assert 10 in ndcg.k
+    assert 10 in recall.k
+    assert output["relative"] == pytest.approx({"ndcg_cut_10": 0.5, "recall_10": 0.2})
+
+
+def test_run_records_started_at_before_evaluation(tmp_path: Path, mocker: MockerFixture) -> None:
+    ctx = _context(tmp_path)
+    mocker.patch(
+        "nemo_evaluator.jobs.retrieve_eval.download_dataset_sync",
+        return_value=tmp_path / "downloaded",
+    )
+    mocker.patch(
+        "nemo_evaluator.jobs.retrieve_eval.load_beir_dataset",
+        return_value=mocker.Mock(spec=BeirDataset),
+    )
+    started = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    mocker.patch("nemo_evaluator.jobs.retrieve_eval.datetime", wraps=datetime).now.return_value = started
+    evaluator = mocker.Mock()
+    evaluator.run_sync.return_value = _result()
+    mocker.patch("nemo_evaluator.jobs.retrieve_eval.Evaluator", return_value=evaluator)
+
+    RetrieveEvalJob().run(_spec().model_dump(mode="json"), ctx=ctx, sdk=cast(NeMoPlatform, SimpleNamespace()))
+
+    metadata = json.loads((ctx.storage.persistent / "artifacts" / "run-metadata.json").read_text())
+    assert metadata["started_at"] == started.isoformat()
+    evaluator.run_sync.assert_called_once()

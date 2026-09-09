@@ -99,6 +99,21 @@ async def test_embedding_client_retries_non_finite_response() -> None:
 
 
 @pytest.mark.asyncio
+async def test_embedding_client_accepts_native_width_when_dimensions_omitted() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _response(request, [[1.0, 0.0, 0.0, 0.0]])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        vectors = await NimEmbeddingClient(model=_model()).encode(
+            ["question"],
+            input_type="query",
+            client=client,
+        )
+
+    assert vectors == [[1.0, 0.0, 0.0, 0.0]]
+
+
+@pytest.mark.asyncio
 async def test_embedding_client_rejects_wrong_dimension() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return _response(request, [[1.0]])

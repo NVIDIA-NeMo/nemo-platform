@@ -214,19 +214,21 @@ class RetrieveEvalJob(NemoJob):
             raise ValueError("retrieve-eval requires an SDK client to download its FilesetRef")
 
         dataset = load_beir_dataset(dataset_path)
+        cutoffs = _metric_cutoffs(spec)
         metrics = [
-            RetrievalNDCGMetric(k=spec.k),
-            RetrievalRecallMetric(k=spec.k),
-            RetrievalPrecisionMetric(k=spec.k),
-            RetrievalMAPMetric(k=spec.k),
+            RetrievalNDCGMetric(k=cutoffs),
+            RetrievalRecallMetric(k=cutoffs),
+            RetrievalPrecisionMetric(k=cutoffs),
+            RetrievalMAPMetric(k=cutoffs),
         ]
         evaluator = Evaluator()
+        started_at = datetime.now(UTC)
         result = evaluator.run_sync(dataset=dataset, target=spec.target, metrics=metrics)
         result_files = EvaluateJob._write_result_files(
             result,
             ctx.storage.persistent,
             run_id=ctx.job_id,
-            started_at=datetime.now(UTC),
+            started_at=started_at,
         )
         artifact = ctx.results.save(DEFAULT_RESULT_NAME, result_files.full_result)
         ctx.results.save(AGGREGATE_SCORES_RESULT_NAME, result_files.aggregate_scores)
@@ -290,6 +292,15 @@ async def _resolve_retrieval(
         first_stage_k=value.first_stage_k,
         truncate_long_documents=value.truncate_long_documents,
     )
+
+
+def _metric_cutoffs(spec: RetrieveEvalSpec) -> list[int]:
+    """Include cutoff 10 whenever a baseline comparison will project nDCG and recall at 10."""
+    cutoffs = list(spec.k)
+    if spec.baseline is not None and 10 not in cutoffs:
+        cutoffs.append(10)
+        cutoffs.sort()
+    return cutoffs
 
 
 def _project_eval_results(result: BenchmarkEvaluationResult) -> dict[str, float]:

@@ -5433,11 +5433,11 @@ components:
           description: Embedding HTTP batch size.
           default: 32
         embedding_dimensions:
+          title: Embedding Dimensions
+          description: Expected embedding width. Omit to accept the model's native
+            width.
           type: integer
           exclusiveMinimum: 0.0
-          title: Embedding Dimensions
-          description: Expected embedding width.
-          default: 2048
       additionalProperties: false
       type: object
       required:

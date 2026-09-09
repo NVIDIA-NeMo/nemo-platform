@@ -29,8 +29,12 @@ def passage_text(
     title_len = len(title) + 1 if title else 0
     text_limit = DOCUMENT_CHARACTER_LIMIT - title_len
     if text_limit <= 0:
-        if title is None:
-            raise ValueError(f"document {document.id!r} exceeds the {DOCUMENT_CHARACTER_LIMIT}-character NIM limit")
+        combined = title_len + len(document.text)
+        if truncate_long_documents is None or title is None:
+            raise ValueError(
+                f"document {document.id!r} is too long ({combined} characters, the limit is "
+                f"{DOCUMENT_CHARACTER_LIMIT}). Set truncate_long_documents to 'start' or 'end'."
+            )
         return title[:DOCUMENT_CHARACTER_LIMIT]
 
     text = document.text

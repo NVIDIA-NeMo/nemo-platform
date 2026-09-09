@@ -30,7 +30,7 @@ class NimEmbeddingClient(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     model: Model
-    dimensions: int = Field(default=2048, gt=0)
+    dimensions: int | None = Field(default=None, gt=0)
     max_retries: int = Field(default=3, ge=0)
     timeout: float = Field(default=60.0, gt=0)
 
@@ -61,6 +61,8 @@ class NimEmbeddingClient(BaseModel):
                 )
                 response.raise_for_status()
                 embeddings = _parse_embeddings(response, expected_count=len(inputs), dimensions=self.dimensions)
+                if embeddings and self.dimensions is None:
+                    self.dimensions = len(embeddings[0])
                 if all(math.isfinite(value) for embedding in embeddings for value in embedding):
                     return embeddings
                 if attempt < self.max_retries:
@@ -95,7 +97,7 @@ def _headers(model: Model) -> dict[str, str]:
 def _parse_embeddings(
     response: httpx.Response,
     expected_count: int,
-    dimensions: int,
+    dimensions: int | None,
 ) -> list[list[float]]:
     try:
         data = response.json()["data"]
@@ -105,10 +107,16 @@ def _parse_embeddings(
         raise NimEmbeddingError("embedding endpoint returned an invalid response") from error
     if len(embeddings) != expected_count:
         raise NimEmbeddingError(f"expected {expected_count} embeddings, received {len(embeddings)}")
+    expected_width = dimensions
     for embedding in embeddings:
-        if not isinstance(embedding, list) or len(embedding) != dimensions:
-            actual = len(embedding) if isinstance(embedding, list) else type(embedding).__name__
-            raise NimEmbeddingError(f"expected embedding dimension {dimensions}, received {actual}")
+        if not isinstance(embedding, list):
+            raise NimEmbeddingError(
+                f"expected embedding dimension {expected_width}, received {type(embedding).__name__}"
+            )
+        if expected_width is None:
+            expected_width = len(embedding)
+        elif len(embedding) != expected_width:
+            raise NimEmbeddingError(f"expected embedding dimension {expected_width}, received {len(embedding)}")
         if not all(isinstance(value, int | float) and not isinstance(value, bool) for value in embedding):
             raise NimEmbeddingError("embedding values must be numbers")
     return embeddings

@@ -29,7 +29,11 @@ class Retrieval(BaseModel):
         description="How to cap passages at 65535 characters: keep the start ('end'), the tail ('start'), or error (null).",
     )
     batch_size: int = Field(default=32, ge=1, description="Embedding HTTP batch size.")
-    embedding_dimensions: int = Field(default=2048, gt=0, description="Expected embedding width.")
+    embedding_dimensions: int | None = Field(
+        default=None,
+        gt=0,
+        description="Expected embedding width. Omit to accept the model's native width.",
+    )
     rankings: dict[str, dict[str, float]] | None = Field(
         default=None,
         exclude=True,

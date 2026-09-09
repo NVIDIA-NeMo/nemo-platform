@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import math
 
 import httpx
 import pytest
@@ -52,3 +53,28 @@ async def test_ranking_client_rewrites_reranking_and_embeddings_routes() -> None
         await NimRankingClient(model=model).rank("q", ["only"], client=client)
 
     assert urls == ["https://igw.example.test/v1/ranking"]
+
+
+@pytest.mark.asyncio
+async def test_ranking_client_retries_non_finite_logits() -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        logit = math.nan if attempts == 1 else 0.9
+        return httpx.Response(
+            200,
+            request=request,
+            content=json.dumps({"rankings": [{"index": 0, "logit": logit}]}),
+            headers={"content-type": "application/json"},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        ranked = await NimRankingClient(
+            model=Model(url="https://rank.example.test/v1", name="rerank"),
+            max_retries=1,
+        ).rank("q", ["only"], client=client)
+
+    assert attempts == 2
+    assert ranked == [(0, 0.9)]
