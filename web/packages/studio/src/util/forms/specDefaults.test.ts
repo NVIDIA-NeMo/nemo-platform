@@ -16,6 +16,7 @@ import {
   numberDefault,
   placeholderFor,
   rlSeed,
+  specSliderProps,
   stringDefault,
 } from '@studio/util/forms/specDefaults';
 
@@ -122,5 +123,18 @@ describe('specDefaults', () => {
         expect(table.size).toBeGreaterThan(0);
       }
     });
+  });
+});
+
+describe('LoRA slider keys resolve (regression: flattened paths after schema-parse refactor)', () => {
+  it.each([
+    ['automodel alpha', AUTOMODEL_SPEC_DEFAULTS, 'training_lora_alpha'],
+    ['automodel dropout', AUTOMODEL_SPEC_DEFAULTS, 'training_lora_dropout'],
+    ['unsloth alpha', UNSLOTH_SPEC_DEFAULTS, 'training_lora_alpha'],
+    ['unsloth dropout', UNSLOTH_SPEC_DEFAULTS, 'training_lora_dropout'],
+  ])('%s has a spec-backed default', (_label, defaults, key) => {
+    const { defaultValue, unsetPlaceholder } = specSliderProps(defaults, key);
+    expect(defaultValue).toBeTypeOf('number');
+    expect(unsetPlaceholder).not.toBe('Unset');
   });
 });

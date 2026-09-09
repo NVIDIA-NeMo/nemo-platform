@@ -29,6 +29,7 @@ import { ModelSelectionSection } from '@studio/components/NewCustomizationForm/M
 import { RewardEnvironmentSection } from '@studio/components/NewCustomizationForm/RewardEnvironmentSection';
 import { RlIntegrationsSection } from '@studio/components/NewCustomizationForm/RlIntegrationsSection';
 import { TrainingMethodSection } from '@studio/components/NewCustomizationForm/TrainingMethodSection';
+import { SaveCustomizationTemplateModal } from '@studio/components/SaveCustomizationTemplateModal';
 import { getWorkspaceCustomizationJobDetailsRoute } from '@studio/routes/utils';
 import {
   FORM_DEFAULTS,
@@ -57,6 +58,7 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
   const toast = useToast();
   const errorBannerRef = useRef<HTMLDivElement>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [isSaveTemplateOpen, setIsSaveTemplateOpen] = useState(false);
 
   const defaultValues = useMemo<CustomizationFormFields>(() => {
     if (initialValues) return initialValues;
@@ -195,6 +197,14 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
                   density="standard"
                   slotFooter={
                     <Flex className="w-full justify-end gap-2">
+                      <Button
+                        type="button"
+                        disabled={isPending}
+                        kind="secondary"
+                        onClick={() => setIsSaveTemplateOpen(true)}
+                      >
+                        Save as Template
+                      </Button>
                       <Button type="submit" disabled={isPending} color="brand">
                         {isPending ? 'Starting…' : 'Start Fine-Tuning'}
                       </Button>
@@ -248,6 +258,16 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
             </Stack>
           </form>
         </FormProvider>
+        {/* Rendered outside the <form> above: FormModal renders its own <form>, and nesting
+            forms would make the modal's submit bubble into starting a fine-tuning job. */}
+        {isSaveTemplateOpen && (
+          <SaveCustomizationTemplateModal
+            open
+            workspace={workspace}
+            fields={form.getValues()}
+            onClose={() => setIsSaveTemplateOpen(false)}
+          />
+        )}
       </Stack>
     </AccessibleTitle>
   );

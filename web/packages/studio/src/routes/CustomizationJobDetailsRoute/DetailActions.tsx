@@ -11,14 +11,16 @@ import { useCustomizationCancelUnslothJob } from '@nemo/sdk/generated/customizer
 import { getJobsGetJobQueryKey } from '@nemo/sdk/generated/platform/jobs';
 import { PlatformJobStatus, type PlatformJobResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex } from '@nvidia/foundations-react-core';
+import { SaveCustomizationTemplateModal } from '@studio/components/SaveCustomizationTemplateModal';
 import { getCustomizationJobStatusQueryKey } from '@studio/hooks/useCustomizationJobStatus';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getNewCustomizationJobRoute, getNewEvaluationMetricRoute } from '@studio/routes/utils';
 import { CustomizationBackend, type CustomizationJob } from '@studio/util/customizationBackend';
+import { jobToFormFields } from '@studio/util/forms/customization';
 import { useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { Ban, Copy } from 'lucide-react';
-import { FC } from 'react';
+import { Ban, Bookmark, Copy } from 'lucide-react';
+import { FC, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 interface DetailActionsProps {
@@ -39,6 +41,7 @@ export const DetailActions: FC<DetailActionsProps> = ({ model, status, backend, 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const workspace = useWorkspaceFromPath();
+  const [isSaveTemplateOpen, setIsSaveTemplateOpen] = useState(false);
 
   const cancelMutation = {
     onSuccess: () => {
@@ -110,6 +113,17 @@ export const DetailActions: FC<DetailActionsProps> = ({ model, status, backend, 
             onSelect: () =>
               navigate(getNewCustomizationJobRoute(workspace), { state: { cloneFromJob: job } }),
           },
+          // Same mapping cloning uses, so a template saved from a job opens exactly as
+          // cloning it would — it just persists instead of being a one-shot navigation.
+          ...(job
+            ? [
+                {
+                  label: 'Save as Template',
+                  icon: <Bookmark />,
+                  onSelect: () => setIsSaveTemplateOpen(true),
+                },
+              ]
+            : []),
           ...(isCancellable || isCancelling
             ? [
                 {
@@ -123,6 +137,14 @@ export const DetailActions: FC<DetailActionsProps> = ({ model, status, backend, 
             : []),
         ]}
       />
+      {isSaveTemplateOpen && job && (
+        <SaveCustomizationTemplateModal
+          open
+          workspace={workspace}
+          fields={jobToFormFields(job)}
+          onClose={() => setIsSaveTemplateOpen(false)}
+        />
+      )}
     </Flex>
   );
 };

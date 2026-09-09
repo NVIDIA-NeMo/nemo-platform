@@ -21,6 +21,13 @@ export interface CustomizeModelButtonProps {
   model?: ModelEntity;
 }
 
+/**
+ * Sends the user into the fine-tuning flow.
+ *
+ * This used to open a modal asking fine-tuned vs prompt-tuned first. That question is
+ * bypassed for now and the button goes straight to fine-tuning, so eligibility here is
+ * `canFineTune` alone rather than "can be customized at all".
+ */
 export const CustomizeModelButton: FC<CustomizeModelButtonProps> = ({ workspace, model }) => {
   const navigate = useNavigate();
   const { canFineTune, isLoading } = useModelCustomizationEligibility(model);

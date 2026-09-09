@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { CreateCustomizationStart } from '@studio/components/CreateCustomizationStart';
+import type { StartSelection } from '@studio/components/CreateCustomizationStart/types';
 import { NewCustomizationForm } from '@studio/components/NewCustomizationForm';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -11,8 +13,8 @@ import {
   isUnslothSpec,
   type CustomizationJob,
 } from '@studio/util/customizationBackend';
-import { jobToFormFields } from '@studio/util/forms/customization';
-import { useMemo } from 'react';
+import { jobToFormFields, type CustomizationFormFields } from '@studio/util/forms/customization';
+import { useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 
 const isCloneFromJobState = (value: unknown): value is { cloneFromJob: CustomizationJob } => {
@@ -31,10 +33,18 @@ export const NewCustomizationRoute = () => {
   const { state: locationState } = useLocation();
   const cloneFromJob = isCloneFromJobState(locationState) ? locationState.cloneFromJob : undefined;
 
-  const initialValues = useMemo(
+  const clonedValues = useMemo(
     () => (cloneFromJob ? jobToFormFields(cloneFromJob) : undefined),
     [cloneFromJob]
   );
+
+  // What the start screen resolved to. `null` means it is still being shown; a value
+  // (possibly the empty object of "from scratch") means the form has taken over.
+  const [started, setStarted] = useState<{ values?: CustomizationFormFields } | null>(null);
+
+  // Arriving with a model to customize or a job to clone already says how to start, so
+  // those entry points skip the picker rather than asking a question with a known answer.
+  const isDeepLink = clonedValues !== undefined || initialModel !== undefined;
 
   useBreadcrumbs({
     items: [
@@ -48,11 +58,19 @@ export const NewCustomizationRoute = () => {
     ],
   });
 
+  const handleContinue = (selection: StartSelection) => {
+    setStarted({ values: selection.optionId === 'scratch' ? undefined : selection.initialValues });
+  };
+
+  if (!isDeepLink && started === null) {
+    return <CreateCustomizationStart workspace={workspace} onContinue={handleContinue} />;
+  }
+
   return (
     <NewCustomizationForm
       workspace={workspace}
       initialModel={initialModel}
-      initialValues={initialValues}
+      initialValues={clonedValues ?? started?.values}
     />
   );
 };

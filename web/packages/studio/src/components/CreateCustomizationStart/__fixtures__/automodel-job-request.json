@@ -1,0 +1,78 @@
+{
+  "name": "qwen3-lora-from-json",
+  "description": null,
+  "spec": {
+    "name": null,
+    "model": "default/qwen3-0-6b",
+    "dataset": {
+      "training": "default/hellaswag-demo",
+      "validation": "default/hellaswag-demo",
+      "prompt_template": null
+    },
+    "training": {
+      "training_type": "sft",
+      "finetuning_type": "lora",
+      "lora": {
+        "rank": 16,
+        "alpha": 32,
+        "dropout": 0.0,
+        "merge": false,
+        "target_modules": null,
+        "exclude_modules": null,
+        "use_triton": true
+      },
+      "max_seq_length": 2048,
+      "precision": null,
+      "attn_implementation": "sdpa",
+      "execution_profile": null,
+      "teacher_model": null,
+      "distillation_ratio": 0.5,
+      "distillation_temperature": 1.0,
+      "teacher_precision": "bf16",
+      "offload_teacher": false
+    },
+    "schedule": {
+      "epochs": 3,
+      "max_steps": null,
+      "val_check_interval": null,
+      "seed": 42,
+      "progress_reporting": {
+        "min_report_interval_seconds": 10.0,
+        "time_series_metrics": null
+      }
+    },
+    "batch": {
+      "global_batch_size": 8,
+      "micro_batch_size": 8,
+      "sequence_packing": false,
+      "sequence_packing_max_samples": 1000
+    },
+    "optimizer": {
+      "learning_rate": 0.0001,
+      "min_learning_rate": null,
+      "weight_decay": 0.01,
+      "adam_beta1": 0.9,
+      "adam_beta2": 0.999,
+      "warmup_steps": 20,
+      "adam_eps": 1e-8,
+      "optimizer": "AdamW",
+      "lr_decay_style": "cosine"
+    },
+    "parallelism": {
+      "num_nodes": 1,
+      "num_gpus_per_node": 1,
+      "tensor_parallel_size": 1,
+      "pipeline_parallel_size": 1,
+      "context_parallel_size": 1,
+      "expert_parallel_size": null,
+      "sequence_parallel": false
+    },
+    "output": {
+      "name": "qwen3-0-6b-hellaswag-lora",
+      "type": "adapter",
+      "fileset": "qwen3-0-6b-hellaswag-lora",
+      "description": "Customizer demo: LoRA SFT of Qwen3-0.6B on 500 HellaSwag rows"
+    },
+    "integrations": null
+  }
+}

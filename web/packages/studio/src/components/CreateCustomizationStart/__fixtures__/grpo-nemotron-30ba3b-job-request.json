@@ -1,0 +1,124 @@
+{
+  "name": "nemotron-30ba3b-grpo-lora-ui",
+  "spec": {
+    "name": null,
+    "model": "default/nemotron-3-5-lightning-30b-a3b-bf16",
+    "dataset": "default/math-with-judge-data-av4",
+    "environment": "default/math-with-judge-env-av4",
+    "training": {
+      "optimizer_type": null,
+      "learning_rate": 2e-6,
+      "min_learning_rate": 1.8e-6,
+      "weight_decay": 0.1,
+      "adam_beta1": 0.9,
+      "adam_beta2": 0.999,
+      "adam_eps": 1e-8,
+      "warmup_steps": 10,
+      "epochs": 2,
+      "max_steps": 60,
+      "val_check_interval": 30.0,
+      "val_at_end": true,
+      "progress_reporting": {
+        "min_report_interval_seconds": 10.0,
+        "time_series_metrics": null
+      },
+      "keep_top_k": 1,
+      "batch_size": 256,
+      "micro_batch_size": 1,
+      "activation_checkpointing": true,
+      "max_seq_length": 9216,
+      "seed": 42,
+      "parallelism": {
+        "num_gpus_per_node": 8,
+        "num_nodes": 1,
+        "tensor_parallel_size": 1,
+        "pipeline_parallel_size": 1,
+        "context_parallel_size": 1,
+        "expert_parallel_size": 8,
+        "sequence_parallel": false
+      },
+      "execution_profile": "h100",
+      "type": "grpo",
+      "finetuning_type": "lora",
+      "lora": {
+        "rank": 128,
+        "alpha": 512,
+        "dropout": 0.0,
+        "target_modules": null,
+        "exclude_modules": ["*out_proj*"],
+        "use_triton": false
+      },
+      "policy_backend": "automodel",
+      "val_at_start": true,
+      "num_generations_per_prompt": 8,
+      "num_prompts_per_step": 32,
+      "temperature": 1.0,
+      "max_new_tokens": 8192,
+      "top_k": null,
+      "normalize_rewards": true,
+      "use_leave_one_out_baseline": false,
+      "advantage_clip_low": null,
+      "advantage_clip_high": null,
+      "overlong_filtering": true,
+      "max_rollout_turns": 1,
+      "ref_policy_kl_penalty": 0.0,
+      "ratio_clip_min": 0.2,
+      "ratio_clip_max": 0.28,
+      "ratio_clip_c": 10.0,
+      "use_on_policy_kl_approximation": true,
+      "use_importance_sampling_correction": true,
+      "max_grad_norm": 1.0,
+      "truncated_importance_sampling_type": "tis",
+      "truncated_importance_sampling_ratio": 2.0,
+      "truncated_importance_sampling_ratio_min": null,
+      "use_dynamic_sampling": true,
+      "dynamic_sampling_max_gen_batches": 10,
+      "batch_multiplier": 1.5,
+      "reward_shaping": {
+        "overlong_buffer_length": 512,
+        "overlong_buffer_penalty": 1.0,
+        "max_response_length": 8192,
+        "stop_properly_penalty_coef": null
+      },
+      "reward_scaling": {
+        "source_min": 0.0,
+        "source_max": 1.0,
+        "target_min": -1.0,
+        "target_max": 1.0
+      },
+      "batching_strategy": "dynamic",
+      "train_mb_tokens": null,
+      "sequence_length_round": 64,
+      "automodel_kwargs": null,
+      "router_aux_loss_coef": null,
+      "hf_config_overrides": null,
+      "vllm_tensor_parallel_size": 4,
+      "vllm_gpu_memory_utilization": 0.6
+    },
+    "integrations": {
+      "wandb": {
+        "project": "nmp-grpo-uplift",
+        "name": "mwj-nemotron30ba3b-lora-ui",
+        "entity": "aiapps",
+        "tags": [
+          "grpo",
+          "math-with-judge",
+          "sandboxed",
+          "nemotron-30ba3b",
+          "lora",
+          "dapo",
+          "recipe-aligned"
+        ],
+        "notes": null,
+        "base_url": null,
+        "api_key_secret": "wandb-api-key"
+      },
+      "mlflow": null
+    },
+    "output": {
+      "name": "nemotron-30ba3b-grpo-lora-ui",
+      "type": "adapter",
+      "fileset": "nemotron-30ba3b-grpo-lora-ui"
+    }
+  }
+}

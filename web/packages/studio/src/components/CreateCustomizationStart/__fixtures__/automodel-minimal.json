@@ -1,0 +1,14 @@
+{
+  "spec": {
+    "model": "default/qwen3-0-6b",
+    "dataset": {
+      "training": "default/hellaswag-demo"
+    },
+    "training": {
+      "finetuning_type": "lora",
+      "lora": {
+        "rank": 64
+      }
+    }
+  }
+}

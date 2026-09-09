@@ -548,3 +548,39 @@ export const jobToFormFields = (job: CustomizationJob): CustomizationFormFields 
     unsloth: stripNulls(job.spec) as UnslothJobInput,
   };
 };
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Fill a partial set of form fields out to a complete one by merging over `FORM_DEFAULTS`.
+ *
+ * Used to seed the form from sources that are not guaranteed complete — notably saved job
+ * templates, whose payload is opaque JSON in the entity-store and can therefore be missing
+ * whole sections if it was written by an older Studio build. Merging keeps every input
+ * controlled instead of flipping to uncontrolled mid-render.
+ *
+ * Deliberately *not* `customizationFormSchema` validation: that schema encodes
+ * submit-readiness (a model and dataset must be chosen), which is a stricter bar than
+ * "usable as a starting point". A half-configured template should still open the form
+ * pre-filled and let the user finish it, rather than being silently discarded.
+ *
+ * Driven off `FORM_DEFAULTS`' own keys, so adding a backend section needs no change here.
+ */
+export const coerceToFormFields = (value: unknown): CustomizationFormFields | undefined => {
+  if (!isPlainObject(value)) return undefined;
+
+  const backend = value.backend;
+  if (backend !== 'automodel' && backend !== 'unsloth' && backend !== 'rl') return undefined;
+
+  const merged: Record<string, unknown> = { ...FORM_DEFAULTS };
+  for (const [key, fallback] of Object.entries(FORM_DEFAULTS)) {
+    const provided = value[key];
+    if (provided === undefined) continue;
+    merged[key] =
+      isPlainObject(fallback) && isPlainObject(provided) ? { ...fallback, ...provided } : provided;
+  }
+
+  const fields = merged as unknown as CustomizationFormFields;
+  return fields.outputName ? fields : { ...fields, outputName: generateDefaultName() };
+};

@@ -24,12 +24,24 @@ const fieldForBinding = (name: string): string => {
   return namespace === 'rl' ? rest.slice(1).join('_') : rest.join('_');
 };
 
-const tableForBinding = (name: string): string | undefined => {
-  if (name.startsWith('automodel.')) return 'AUTOMODEL_SPEC_DEFAULTS';
-  if (name.startsWith('unsloth.')) return 'UNSLOTH_SPEC_DEFAULTS';
-  // `rl.*` and `grpo.*` read DPO or GRPO depending on which form renders the control, so
-  // the arm is the section's choice rather than something the binding can tell us.
-  return undefined;
+/**
+ * `rl.*` and `grpo.*` bindings read whichever arm of the union the section renders, so the
+ * file decides rather than the binding. ComputeResourcesSection is rendered by both forms;
+ * the two arms inherit identical parallelism defaults, so either table is correct there.
+ */
+const RL_TABLES_BY_FILE: Record<string, readonly string[]> = {
+  'GrpoParametersSection.tsx': ['GRPO_SPEC_DEFAULTS'],
+  'GrpoAdvancedSection.tsx': ['GRPO_SPEC_DEFAULTS'],
+  'DpoParametersSection.tsx': ['DPO_SPEC_DEFAULTS'],
+  'GeneralParametersSection.tsx': ['DPO_SPEC_DEFAULTS'],
+  'ComputeResourcesSection.tsx': ['DPO_SPEC_DEFAULTS', 'GRPO_SPEC_DEFAULTS'],
+};
+
+/** Tables a call may legitimately read, given its binding and the file it lives in. */
+const allowedTables = (name: string, file: string): readonly string[] => {
+  if (name.startsWith('automodel.')) return ['AUTOMODEL_SPEC_DEFAULTS'];
+  if (name.startsWith('unsloth.')) return ['UNSLOTH_SPEC_DEFAULTS'];
+  return RL_TABLES_BY_FILE[file] ?? [];
 };
 
 interface SliderCall {
@@ -70,13 +82,18 @@ describe('customizer slider spec fields', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('every slider reads its own backend table', () => {
+  it('every slider reads a table valid for its backend and section', () => {
     const wrong = calls
-      .filter((call) => {
-        const expected = tableForBinding(call.binding);
-        return expected !== undefined && call.table !== expected;
-      })
+      .filter((call) => !allowedTables(call.binding, call.file).includes(call.table))
       .map((call) => `${call.file}: ${call.binding} reads ${call.table}`);
     expect(wrong).toEqual([]);
+  });
+
+  /** A file the map does not know would silently exempt every call it contains. */
+  it('knows the arm for every file holding an rl or grpo slider', () => {
+    const unmapped = calls
+      .filter((call) => /^(rl|grpo)\./.test(call.binding) && !RL_TABLES_BY_FILE[call.file])
+      .map((call) => call.file);
+    expect([...new Set(unmapped)]).toEqual([]);
   });
 });
