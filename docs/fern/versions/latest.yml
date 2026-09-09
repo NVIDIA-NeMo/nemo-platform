@@ -365,6 +365,7 @@ navigation:
           - page: Agents
             path: ../../studio/agents.mdx
           - page: Custom Models
+            slug: customization
             path: ../../studio/customization.mdx
           - page: Data Designer
             path: ../../studio/data-designer-build.mdx
