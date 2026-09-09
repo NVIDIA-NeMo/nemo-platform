@@ -253,6 +253,8 @@ def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch, handler: Any) -> type:
     module.RelayAtifConfig = _FakeRelayModel  # type: ignore[attr-defined]
     module.RelayAtofConfig = _FakeRelayModel  # type: ignore[attr-defined]
     module.RelayAtofFileSinkConfig = _FakeRelayModel  # type: ignore[attr-defined]
+    module.RelayOpenTelemetryConfig = _FakeRelayModel  # type: ignore[attr-defined]
+    module.RelayOpenTelemetryEndpointConfig = _FakeRelayModel  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nemo_fabric", module)
 
     # ``run_tasks`` fails fast on ``import nemo_relay.observability`` when capture_trajectory is on
