@@ -198,9 +198,9 @@ export const CreateDeploymentSidePanel: FC<CreateDeploymentSidePanelProps> = ({
             });
           }}
           items={[
-            { value: SOURCE_NGC, children: 'NGC NIM Container' },
             { value: SOURCE_HF, children: 'HuggingFace' },
             { value: SOURCE_WORKSPACE, children: 'Workspace' },
+            { value: SOURCE_NGC, children: 'NGC NIM Container' },
           ]}
         />
         {(source === SOURCE_HF || source === SOURCE_WORKSPACE) && (
