@@ -130,12 +130,12 @@ kubectl create namespace "${SYSTEM_NS}" --dry-run=client -o yaml | kubectl apply
 kubectl create namespace "${KUBE_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
 log_info "Applying BatchSandbox template ConfigMap..."
-kubectl apply -f "${EXAMPLES}/batchsandbox-template.yaml"
+kubectl apply -f "${REPO_ROOT}/e2e/k8s/values/batchsandbox-minikube-template.yaml"
 
 if ! kubectl get secret nvcrimagepullsecret -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
     log_error "Secret nvcrimagepullsecret is missing in ${KUBE_NAMESPACE}."
     log_error "The BatchSandbox template hard-codes that name. Run setup_local_minikube_gpu.sh first,"
-    log_error "or create the pull Secret, or edit imagePullSecrets in ${EXAMPLES}/batchsandbox-template.yaml."
+    log_error "or create the pull Secret, or edit imagePullSecrets in ${REPO_ROOT}/e2e/k8s/values/batchsandbox-minikube-template.yaml."
     exit 1
 fi
 
@@ -172,6 +172,10 @@ helm upgrade --install opensandbox-server "${SERVER_CHART}" \
   --namespace "${SYSTEM_NS}" \
   --wait --timeout "${HELM_TIMEOUT}" \
   -f "${SERVER_VALUES}"
+
+log_info "Restarting opensandbox-server to pick up the BatchSandbox template..."
+kubectl rollout restart deployment/opensandbox-server -n "${SYSTEM_NS}"
+kubectl rollout status deployment/opensandbox-server -n "${SYSTEM_NS}" --timeout "${HELM_TIMEOUT}"
 
 if [ "${SKIP_VERIFY:-}" != "1" ]; then
     log_info "Verifying shared-kernel OpenSandbox..."
