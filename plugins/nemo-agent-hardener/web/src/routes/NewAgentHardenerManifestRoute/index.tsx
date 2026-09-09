@@ -23,6 +23,7 @@ import {
   type ManifestFormData,
   type ManifestSource,
 } from '@agent-hardener/routes/NewAgentHardenerManifestRoute/schema';
+import { SelectionGuard } from '@agent-hardener/routes/NewAgentHardenerManifestRoute/selectionGuard';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   AccessibleTitle,
@@ -80,7 +81,7 @@ export const NewAgentHardenerManifestRoute: FC = () => {
   });
 
   // Guards against a late agent/project inspection overwriting a newer selection's form state.
-  const selectionRef = useRef(0);
+  const selectionGuard = useRef(new SelectionGuard()).current;
 
   // Pre-fill the port + secret fields from the agent's auto-derived defaults when one is selected;
   // both stay editable so the operator can override.
@@ -89,19 +90,19 @@ export const NewAgentHardenerManifestRoute: FC = () => {
   const { mutate: runInspectAgent } = inspectAgent;
   useEffect(() => {
     if (!selectedAgent) return;
-    const generation = ++selectionRef.current;
+    const generation = selectionGuard.begin();
     runInspectAgent(
       { workspace, agent: selectedAgent },
       {
         onSuccess: (facts) => {
-          if (selectionRef.current !== generation) return;
+          if (!selectionGuard.isCurrent(generation)) return;
           setValue('port', String(facts.port));
           setValue('secrets', facts.secrets.join(', '));
           setValue('egress', facts.egress.join(', '));
         },
       }
     );
-  }, [selectedAgent, workspace, runInspectAgent, setValue]);
+  }, [selectedAgent, workspace, runInspectAgent, setValue, selectionGuard]);
 
   const uploadProject = useUploadProjectFileset();
   const inspectProject = useInspectProject();
@@ -113,18 +114,18 @@ export const NewAgentHardenerManifestRoute: FC = () => {
   const onProjectSelected = (file: File) => {
     setProjectFile(file);
     setDerived(null);
-    const generation = ++selectionRef.current;
+    const generation = selectionGuard.begin();
     uploadProject.mutate(
       { workspace, manifestName: watch('name') || 'byo', file },
       {
         onSuccess: (ref) => {
-          if (selectionRef.current !== generation) return;
+          if (!selectionGuard.isCurrent(generation)) return;
           setProjectFileset(ref);
           inspectProject.mutate(
             { workspace, projectFileset: ref },
             {
               onSuccess: (facts) => {
-                if (selectionRef.current !== generation) return;
+                if (!selectionGuard.isCurrent(generation)) return;
                 setDerived(facts);
                 setValue('dockerfile', facts.dockerfile);
                 setValue('startCommand', facts.start_command);
@@ -266,6 +267,9 @@ export const NewAgentHardenerManifestRoute: FC = () => {
                         files={projectFile ? [projectFile] : []}
                         onDropAccepted={(files: File[]) => files[0] && onProjectSelected(files[0])}
                         onRemoveFile={() => {
+                          // Invalidates any upload/inspect still in flight for the removed file, so
+                          // its onSuccess cannot restore what the user just cleared.
+                          selectionGuard.invalidate();
                           setProjectFile(null);
                           setProjectFileset('');
                           setDerived(null);
