@@ -67,7 +67,7 @@ ENV_MAPPINGS: list[EnvMapping] = [
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_ANONYMIZER_ENABLED",
         config_path="studio.feature_flags.anonymizer_enabled",
-        default="false",
+        default="true",
     ),
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_BASE_MODELS_ENABLED",
