@@ -392,8 +392,8 @@ nemo-guardrails-plugin = [
 nemo-insights-plugin = [
   "fastapi>=0.115",
   "httpx",
-  "nemo-fabric-adapter-contract>=0.3.0b1",
-  "nemo-fabric-adapters-common>=0.3.0b1",
+  "nemo-fabric-adapter-contract==0.3.0b1",
+  "nemo-fabric-adapters-common==0.3.0b1",
   "nemo-platform-plugin",
   "nooa>=0.0.9",
   "opentelemetry-exporter-otlp>=1.42.1",

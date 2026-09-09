@@ -34,7 +34,8 @@ Establish these inputs before building an evaluation:
    or [task-driven agent work](references/evaluation-shapes.md#task-driven-evaluation).
 2. Choose the simplest metric that measures the requested behavior. Prefer deterministic metrics when possible.
 3. Build a tiny smoke case with one expected pass and one expected failure.
-4. Validate metric behavior with the standalone SDK and inspect row-level output plus aggregates.
+4. Validate metric behavior with the standalone SDK. Inspect row-level output, aggregate `count` and
+   `nan_count`, and coverage before interpreting a mean.
 5. Fix field mappings, prompts, parsers, or task definitions before scaling.
 6. Submit the platform job only after the input and scoring shape works.
 
@@ -159,8 +160,8 @@ Submission accepts inline tasks or a stored `TasksetRef`. Stored tasksets are
 resolved in the target workspace.
 
 Read [Agent Evaluation](references/agent-evaluation.md) for inline tasks,
-`TasksetRef`, concurrency, fail-fast behavior, result artifacts, and runner
-configuration.
+`TasksetRef`, concurrency, fail-fast behavior, sparse-output denominators, result
+artifacts, and runner configuration.
 
 ### Prepare Fabric in a repository checkout
 
