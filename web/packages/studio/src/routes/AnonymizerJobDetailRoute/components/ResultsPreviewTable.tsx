@@ -2,29 +2,43 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
-import {
-  TableExpandableCell,
-  type TableExpandableCellState,
-} from '@nemo/common/src/components/DataView/TableExpandableCell';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { Text } from '@nvidia/foundations-react-core';
+import { Button, Text } from '@nvidia/foundations-react-core';
+import {
+  parseReplacements,
+  REPLACEMENT_MAP_COLUMN,
+} from '@studio/components/AnonymizerRecordView/parse';
 import type { DataFileRow } from '@studio/components/FileRowEditor/types';
 import { RESULT_PREVIEW_ROWS } from '@studio/routes/AnonymizerJobDetailRoute/util';
 import { memo, useCallback, useMemo, type ComponentProps, type FC } from 'react';
 
 interface ResultsPreviewTableProps {
   readonly rows: readonly DataFileRow[];
-  readonly columns: readonly string[];
-  readonly onExpand: (cell: TableExpandableCellState) => void;
+  readonly textColumn: string | undefined;
+  /** `index` is the row's position in the full `rows` array, not just the current page. */
+  readonly onRowClick: (row: DataFileRow, index: number) => void;
 }
 
 const cellText = (value: unknown): string =>
   typeof value === 'object' ? JSON.stringify(value) : String(value);
 
-/** Memoized so opening the expanded-cell modal does not re-render every cell. */
+/** Falls back to the first field when the text column can't be resolved for a row. */
+const describeRow = (row: DataFileRow, textColumn: string | undefined): string => {
+  const value = textColumn ? row[textColumn] : Object.values(row)[0];
+  return value == null ? '' : cellText(value);
+};
+
+const replacementCount = (row: DataFileRow): number =>
+  parseReplacements(row[REPLACEMENT_MAP_COLUMN]).length;
+
 export const ResultsPreviewTable: FC<ResultsPreviewTableProps> = memo(
-  ({ rows, columns, onExpand }) => {
-    const dataViewState = useStudioDataViewState({ defaultPageSize: RESULT_PREVIEW_ROWS });
+  ({ rows, textColumn, onRowClick }) => {
+    // Default columnPinning forces every column onto its literal `size`; clearing it lets the
+    // unsized "Record" column flex to fill remaining space.
+    const dataViewState = useStudioDataViewState({
+      defaultPageSize: RESULT_PREVIEW_ROWS,
+      columnPinning: {},
+    });
 
     const { pageIndex, pageSize } = dataViewState.pagination.state;
     const pageRows = useMemo(
@@ -35,24 +49,42 @@ export const ResultsPreviewTable: FC<ResultsPreviewTableProps> = memo(
     const makeColumns = useCallback<
       ComponentProps<typeof StudioDataView<DataFileRow>>['makeColumns']
     >(
-      (col) =>
-        columns.map((column) =>
-          col.display({
-            id: column,
-            header: column,
-            cell: ({ row }) => {
-              const value = row.original[column];
-              return value == null ? (
-                <Text kind="body/regular/sm" color="secondary">
-                  —
-                </Text>
-              ) : (
-                <TableExpandableCell content={cellText(value)} title={column} onExpand={onExpand} />
-              );
-            },
-          })
-        ),
-      [columns, onExpand]
+      (col) => [
+        col.display({
+          id: 'record',
+          header: 'Record',
+          cell: ({ row }) => (
+            <Text kind="body/regular/sm">{describeRow(row.original, textColumn)}</Text>
+          ),
+        }),
+        col.display({
+          id: 'replacements',
+          header: 'Count',
+          size: 100,
+          enableResizing: false,
+          cell: ({ row }) => <Text kind="body/regular/sm">{replacementCount(row.original)}</Text>,
+        }),
+        col.display({
+          id: 'details',
+          header: '',
+          size: 100,
+          enableResizing: false,
+          cell: ({ row }) => (
+            <Button
+              kind="tertiary"
+              onClick={() => onRowClick(row.original, pageIndex * pageSize + row.index)}
+            >
+              Details
+            </Button>
+          ),
+        }),
+      ],
+      [textColumn, onRowClick, pageIndex, pageSize]
+    );
+
+    const handleRowClick = useCallback(
+      (row: DataFileRow, index: number) => onRowClick(row, pageIndex * pageSize + index),
+      [onRowClick, pageIndex, pageSize]
     );
 
     return (
@@ -60,7 +92,7 @@ export const ResultsPreviewTable: FC<ResultsPreviewTableProps> = memo(
         <StudioDataView<DataFileRow>
           dataViewState={dataViewState}
           makeColumns={makeColumns}
-          maxTwoLines={false}
+          onRowClick={handleRowClick}
           attributes={{ DataViewRoot: { data: pageRows, totalCount: rows.length } }}
         />
       </div>
