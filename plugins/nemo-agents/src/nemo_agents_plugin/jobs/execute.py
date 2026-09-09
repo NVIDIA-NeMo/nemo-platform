@@ -48,7 +48,16 @@ from nemo_agents_plugin.tasks.execute.workdir import (
     materialize_agent_workdir,
     validate_agent_workdir,
 )
+from nemo_agents_plugin.telemetry.intake_export import (
+    configure_intake_atif_export,
+    supports_intake_atif_export,
+)
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.constants import (
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    is_workload_identity_token_file_set,
+)
+from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
@@ -80,6 +89,7 @@ from nemo_platform_plugin.jobs.constants import (
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, parse_entity_ref
+from nemo_platform_plugin.sdk_provider import get_forwarding_headers
 from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
@@ -89,6 +99,8 @@ FABRIC_BASE_DIR_NAME = "fabric"
 INPUT_WORKDIR_RESULT_NAME = "input_workdir"
 OUTPUT_WORKDIR_RESULT_NAME = "output_workdir"
 OUTPUT_ARTIFACTS_RESULT_NAME = "output_artifacts"
+NMP_BASE_URL_ENVVAR = "NMP_BASE_URL"
+HEADER_ENVVAR_PREFIX = "NMP_AGENT_TELEMETRY_HEADER_"
 FABRIC_RUN_RESULT_NAME = "fabric_run_result"
 FABRIC_ERROR_RESULT_NAME = "fabric_error"
 FABRIC_RUN_RESULT_FILENAME = "fabric_run_result.json"
@@ -189,6 +201,15 @@ class ExecuteAgentJobConfig(BaseModel):
         default=DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
         gt=0,
         description="Maximum time to wait for Fabric to return an execution result.",
+    )
+    auto_telemetry: bool = Field(
+        default=True,
+        description=(
+            "Let the server fill in the agent's telemetry export -- an Intake destination for a "
+            "config that asks for one and does not say where. False submits the agent config as "
+            "written, which still exports if the config says to; an agent config is the place to "
+            "say a run should not be traced."
+        ),
     )
     extension: ExecuteAgentExtensionConfig | None = Field(
         default=None,
@@ -395,6 +416,14 @@ class ExecuteAgentJob(NemoJob):
         agent_config = _validate_agent_config(step_config.agent.config)
 
         fabric_dirs = FabricDirectories.create(agent_config, ctx.storage.ephemeral)
+
+        if step_config.request.auto_telemetry and supports_intake_atif_export(
+            step_config.agent.config, base_dir=fabric_dirs.base
+        ):
+            _configure_intake_telemetry(step_config.agent.config, workspace=ctx.workspace, sdk=sdk)
+            # Wiring mutates the config mapping, not the model validated above,
+            # so re-validate to carry it into what Fabric is handed.
+            agent_config = _validate_agent_config(step_config.agent.config)
 
         if step_config.workdir is not None and _has_workdir_inputs(step_config.workdir):
             if sdk is None:
@@ -781,6 +810,77 @@ def _validate_agent_config_format(config_format: str) -> None:
             f"Config format {config_format!r} is not supported; "
             f"agents.execute jobs only support {FABRIC_AGENT_CONFIG_FORMAT!r}."
         )
+
+
+def _configure_intake_telemetry(
+    agent_config: dict[str, Any],
+    *,
+    workspace: str,
+    sdk: NeMoPlatform | None,
+) -> None:
+    """Wire the agent's trajectory export to Intake for this job.
+
+    Runs here rather than at create time because only the task knows both
+    halves: ``NMP_BASE_URL`` is the platform URL reachable from *this* pod (the
+    Jobs service rewrites it per runtime), and the task's own SDK carries the
+    identity the platform gave this job -- the same ``service:agents`` principal
+    and on-behalf-of delegation a deployment gets from its auth-proxy sidecar.
+
+    Credentials go in the process environment and the config names them.
+    Fabric writes the resolved agent config into the run's artifacts, and those
+    are uploaded as a job result, so an inline header would be a downloadable
+    one.
+    """
+    base_url = os.environ.get(NMP_BASE_URL_ENVVAR)
+    if not base_url:
+        logger.warning("%s is not set; the agent will run untraced.", NMP_BASE_URL_ENVVAR)
+        return
+
+    headers = get_forwarding_headers(sdk) if sdk is not None else {}
+    headers.update(_workload_identity_headers(base_url))
+    for name, value in headers.items():
+        os.environ[_header_envvar(name)] = value
+
+    configure_intake_atif_export(
+        agent_config,
+        workspace=workspace,
+        base_url=base_url,
+        header_env={name: _header_envvar(name) for name in headers},
+    )
+
+
+def _workload_identity_headers(base_url: str) -> dict[str, str]:
+    """Bearer credentials for Relay when the job runs under workload identity.
+
+    ``get_forwarding_headers`` returns only what the SDK was *constructed* with.
+    Under workload identity that is the internal marker alone -- the bearer is
+    exchanged per request by the SDK's own auth layer, which Relay's raw POST to
+    Intake does not go through. Without this the export would be unauthenticated
+    on exactly the deployments that enforce auth.
+
+    The token is resolved once and read from the environment at export time, so
+    a run outliving its token exports with an expired one. Relay resolves
+    ``header_env`` statically, so refreshing needs a dynamic-credential hook it
+    does not offer today.
+    """
+    if not is_workload_identity_token_file_set():
+        return {}
+    token_file = os.environ[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR]
+    try:
+        provider = resolve_workload_exchange_provider(base_url=base_url, subject_token_file=Path(token_file))
+        return {"Authorization": f"Bearer {provider.get_access_token()}"}
+    except Exception:
+        logger.warning(
+            "Could not exchange the workload identity token for telemetry export; "
+            "the trajectory will be posted without credentials.",
+            exc_info=True,
+        )
+        return {}
+
+
+def _header_envvar(header_name: str) -> str:
+    """Environment variable the exporter reads one outbound header value from."""
+    return f"{HEADER_ENVVAR_PREFIX}{header_name.upper().replace('-', '_')}"
 
 
 def _validate_agent_config(config: dict) -> AgentConfig:
