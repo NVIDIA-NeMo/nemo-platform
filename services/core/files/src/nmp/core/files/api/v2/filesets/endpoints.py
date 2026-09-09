@@ -464,7 +464,6 @@ async def delete_fileset(
 
     Permanently deletes an unreferenced fileset from the platform.
     Referencing model or adapter entities must be relinked or deleted first.
-    Returns metadata about the deleted fileset.
     For local storage backends, this also deletes the underlying files.
     """
     logger.info(f"DELETE /filesets/{name} - workspace={workspace}")

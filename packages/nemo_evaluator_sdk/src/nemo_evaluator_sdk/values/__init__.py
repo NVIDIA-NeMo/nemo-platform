@@ -37,6 +37,7 @@ if TYPE_CHECKING:
         Trajectory,
     )
     from nemo_evaluator_sdk.values.common import SecretRef, SupportedJobTypes
+    from nemo_evaluator_sdk.values.dataset_args import DatasetArg
     from nemo_evaluator_sdk.values.dataset_schemas import (
         FieldMapping,
         InputSchema,
@@ -83,6 +84,8 @@ if TYPE_CHECKING:
         TunableRagEvaluator,
     )
     from nemo_evaluator_sdk.values.models import Model, ModelRef, ReasoningParams
+    from nemo_evaluator_sdk.values.retrieval import Retrieval
+    from nemo_evaluator_sdk.values.targets import EvalTarget
     from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
     from nemo_evaluator_sdk.values.params import (
         InferenceParams,
@@ -157,6 +160,7 @@ _LAZY_ATTRS: dict[str, str] = {
     "SupportedJobTypes": ".common",
     "FieldMapping": ".dataset_schemas",
     "InputSchema": ".dataset_schemas",
+    "DatasetArg": ".dataset_args",
     "DatasetInput": ".datasets",
     "DatasetRows": ".datasets",
     "ATIFTraceHandle": ".evidence",
@@ -198,6 +202,8 @@ _LAZY_ATTRS: dict[str, str] = {
     "Model": ".models",
     "ModelRef": ".models",
     "ReasoningParams": ".models",
+    "Retrieval": ".retrieval",
+    "EvalTarget": ".targets",
     "BenchmarkEvaluationResult": ".multi_metric_results",
     "InferenceParams": ".params",
     "RunConfig": ".params",
@@ -300,6 +306,9 @@ __all__ = [
     "MetricScore",
     "Model",
     "ModelRef",
+    "EvalTarget",
+    "Retrieval",
+    "DatasetArg",
     "DatasetInput",
     "EvaluationResult",
     "EvidenceDescriptor",

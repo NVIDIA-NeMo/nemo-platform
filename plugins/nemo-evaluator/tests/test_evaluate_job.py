@@ -376,7 +376,11 @@ def test_cli_info_reports_registered_evaluator_job_keys() -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["jobs"] == ["evaluator.evaluate", "evaluator.agent-evaluate"]
+    assert payload["jobs"] == [
+        "evaluator.evaluate",
+        "evaluator.agent-evaluate",
+        "evaluator.retrieve-eval",
+    ]
 
 
 def test_cli_evaluate_still_exposes_run_during_stainless_migration() -> None:

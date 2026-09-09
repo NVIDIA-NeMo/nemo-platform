@@ -23,6 +23,16 @@ def build_offline_sample(row: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def build_retrieval_sample(row: dict[str, Any], rankings: dict[str, dict[str, float]] | None) -> dict[str, Any]:
+    """Attach dense-search (or reranked) scores for one query row."""
+    query_id = row.get("query_id")
+    if not isinstance(query_id, str) or not query_id:
+        raise ValueError("retrieval evaluation requires a query_id on each dataset row")
+    if rankings is None or query_id not in rankings:
+        raise ValueError(f"missing retrieval rankings for query {query_id!r}")
+    return {"retrieval_scores": rankings[query_id]}
+
+
 def build_metric_input(row: dict[str, Any], sample: dict[str, Any], index: int | None = None) -> MetricInput:
     """Build the metric protocol input from dataset row and generated sample payloads."""
     output_text = sample.get("output_text")

@@ -8,22 +8,33 @@ from __future__ import annotations
 from typing import TypeAlias
 
 from nemo_evaluator_sdk.values import (
-    Agent,
     AgentBase,
     Model,
     RunConfig,
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_evaluator_sdk.values.retrieval import Retrieval
+from nemo_evaluator_sdk.values.targets import EvalTarget
 
 _RunConfigT: TypeAlias = RunConfig | RunConfigOnline | RunConfigOnlineModel
 
 
 def resolve_params(
     params: _RunConfigT | None = None,
-    target: Model | Agent | None = None,
+    target: EvalTarget = None,
 ) -> _RunConfigT:
     """Return params after validating that they match the selected target mode."""
+    if isinstance(target, Retrieval):
+        if params is None:
+            return RunConfigOnlineModel()
+        if type(params) is RunConfig:
+            return RunConfigOnlineModel.model_validate(params.model_dump())
+        if type(params) is RunConfigOnline:
+            return RunConfigOnlineModel.model_validate(params.model_dump())
+        if not isinstance(params, RunConfigOnlineModel):
+            raise TypeError("retrieval target requires RunConfigOnlineModel")
+        return params
     if isinstance(target, Model):
         if params is None or type(params) is RunConfig:
             raise TypeError("model target requires RunConfigOnlineModel")

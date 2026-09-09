@@ -1859,8 +1859,6 @@ paths:
 
         Referencing model or adapter entities must be relinked or deleted first.
 
-        Returns metadata about the deleted fileset.
-
         For local storage backends, this also deletes the underlying files.'
       operationId: delete_fileset_apis_files_v2_workspaces__workspace__filesets__name__delete
       parameters:

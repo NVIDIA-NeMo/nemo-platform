@@ -8,7 +8,15 @@ from __future__ import annotations
 import pytest
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.execution.config import resolve_params
-from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import (
+    Agent,
+    GenericAgent,
+    Model,
+    Retrieval,
+    RunConfig,
+    RunConfigOnline,
+    RunConfigOnlineModel,
+)
 
 
 class TestResolveParams:
@@ -90,3 +98,9 @@ class TestResolveParams:
         """Offline evaluation should use offline params rather than silently accepting online settings."""
         with pytest.raises(TypeError, match="offline evaluation requires RunConfig"):
             resolve_params(params=RunConfigOnline(ignore_request_failure=True))
+
+    def test_defaults_retrieval_params_to_online_model(self) -> None:
+        """Retrieval targets default to RunConfigOnlineModel when params are omitted."""
+        target = Retrieval(embeddings=Model(url="http://example.test/v1", name="embed"))
+
+        assert isinstance(resolve_params(target=target), RunConfigOnlineModel)
