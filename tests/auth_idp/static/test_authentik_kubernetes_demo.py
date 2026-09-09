@@ -313,7 +313,7 @@ def test_authentik_umbrella_chart_declares_expected_dependencies() -> None:
     assert "postgresql" not in dependencies
     assert dependencies["nemo-platform"] == {
         "name": "nemo-platform",
-        "version": "0.1.0",
+        "version": "0.0.0",
         "repository": "file://../../../../k8s/helm",
     }
 

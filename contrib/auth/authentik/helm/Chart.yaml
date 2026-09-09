@@ -12,5 +12,5 @@ dependencies:
     version: 2026.5.4
     repository: https://charts.goauthentik.io
   - name: nemo-platform
-    version: 0.1.0
+    version: 0.0.0
     repository: file://../../../../k8s/helm
