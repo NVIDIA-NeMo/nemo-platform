@@ -59,6 +59,28 @@ def test_probe_never_sends_the_credential_over_plain_http() -> None:
     assert result.reachable
 
 
+def test_a_withheld_credential_explains_itself_instead_of_blaming_the_key() -> None:
+    """A bare 'HTTP 401' here would send the user off to rotate a perfectly good credential."""
+    result = probe_models("http://x/v1", "secret-key", client=_client(lambda _r: httpx.Response(401)))
+
+    assert not result.auth_ok
+    assert "withheld" in result.detail and "http://" in result.detail
+
+    verdict = validate_choice("a/model", "http://x/v1", "secret-key", client=_client(lambda _r: httpx.Response(401)))
+    assert not verdict.ok and verdict.reason == "auth"
+    assert "withheld" in verdict.detail
+
+
+def test_a_plain_http_endpoint_needing_no_credential_still_validates() -> None:
+    """Withholding the header must not break an open endpoint — the probe still runs."""
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{"id": "real/model"}]})
+
+    verdict = validate_choice("real/model", "http://x/v1", "secret-key", client=_client(handler))
+    assert verdict.ok
+
+
 def test_probe_allows_the_credential_over_plain_http_localhost() -> None:
     """A local dev inference server has no network hop to leak the credential over."""
     captured: dict[str, Any] = {}
