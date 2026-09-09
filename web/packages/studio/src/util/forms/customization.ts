@@ -20,6 +20,9 @@ import {
   CustomizationBackend,
   isAutomodelJob,
   isRlJob,
+  isAutomodelSpec,
+  isRlSpec,
+  isUnslothSpec,
   type CustomizationJob,
 } from '@studio/util/customizationBackend';
 import type { TrainingType } from '@studio/util/customizerSchema';
@@ -547,4 +550,31 @@ export const jobToFormFields = (job: CustomizationJob): CustomizationFormFields 
     backend: 'unsloth',
     unsloth: stripNulls(job.spec) as UnslothJobInput,
   };
+};
+
+/**
+ * Form values for a route entered with state: either a template supplying `initialValues`
+ * outright, or a job to clone.
+ */
+export const getInitialFormValuesFromState = (
+  state: unknown
+): CustomizationFormFields | undefined => {
+  if (typeof state !== 'object' || state === null) return undefined;
+  const { initialValues, cloneFromJob } = state as {
+    initialValues?: unknown;
+    cloneFromJob?: unknown;
+  };
+
+  if (customizationFormSchema.safeParse(initialValues).success) {
+    return initialValues as CustomizationFormFields;
+  }
+
+  if (typeof cloneFromJob === 'object' && cloneFromJob !== null) {
+    const spec = (cloneFromJob as Record<string, unknown>).spec;
+    if (isAutomodelSpec(spec) || isUnslothSpec(spec) || isRlSpec(spec)) {
+      return jobToFormFields(cloneFromJob as CustomizationJob);
+    }
+  }
+
+  return undefined;
 };

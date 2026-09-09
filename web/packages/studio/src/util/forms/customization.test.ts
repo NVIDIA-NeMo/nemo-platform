@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RlGRPOTrainingFinetuningType } from '@nemo/sdk/generated/customizer/schema';
+import { customizationJob1, customizationJob3 } from '@studio/mocks/customizer/customization-jobs';
 import {
   FORM_DEFAULTS,
   RL_DPO_TRAINING_DEFAULTS,
@@ -9,6 +10,8 @@ import {
   customizationFormSchema,
   formToAutomodelCreate,
   formToUnslothCreate,
+  getInitialFormValuesFromState,
+  jobToFormFields,
   type CustomizationFormFields,
 } from '@studio/util/forms/customization';
 import {
@@ -363,4 +366,82 @@ describe('GRPO form validation', () => {
     data.grpo.num_prompts_per_step = undefined as unknown as number;
     expect(messages(data).join(' ')).toContain('must be a multiple of the global batch size (32)');
   });
+});
+
+describe('jobToFormFields', () => {
+  it('maps an automodel job onto the automodel backend', () => {
+    const fields = jobToFormFields(customizationJob1);
+    expect(fields.backend).toBe('automodel');
+    expect(fields.automodel.model).toBe(customizationJob1.spec.model);
+    expect(fields.description).toBe(customizationJob1.description);
+  });
+
+  it('maps an unsloth job onto the unsloth backend', () => {
+    const fields = jobToFormFields(customizationJob3);
+    expect(fields.backend).toBe('unsloth');
+    expect(fields.unsloth.model.name).toBe(customizationJob3.spec.model.name);
+  });
+
+  it('generates a fresh output name rather than reusing the source job name', () => {
+    const fields = jobToFormFields(customizationJob1);
+    expect(fields.outputName).toBeTruthy();
+    expect(fields.outputName).not.toBe(customizationJob1.name);
+  });
+
+  it('strips nulls out of the stored spec so optional fields fall back to undefined', () => {
+    const jobWithNulls = {
+      ...customizationJob1,
+      spec: { ...customizationJob1.spec, optimizer: { learning_rate: null } },
+    } as unknown as typeof customizationJob1;
+    const fields = jobToFormFields(jobWithNulls);
+    expect(fields.automodel.optimizer?.learning_rate).toBeUndefined();
+  });
+});
+
+describe('getInitialFormValuesFromState', () => {
+  it('returns template initialValues as-is when the backend is valid', () => {
+    const initialValues = validAutomodel();
+    expect(getInitialFormValuesFromState({ initialValues })).toBe(initialValues);
+  });
+
+  it('converts a cloneFromJob into form fields', () => {
+    const fields = getInitialFormValuesFromState({ cloneFromJob: customizationJob1 });
+    expect(fields?.backend).toBe('automodel');
+    expect(fields?.automodel.model).toBe(customizationJob1.spec.model);
+  });
+
+  it('prefers template initialValues over cloneFromJob when both are present', () => {
+    const initialValues = validUnsloth();
+    const fields = getInitialFormValuesFromState({
+      initialValues,
+      cloneFromJob: customizationJob1,
+    });
+    expect(fields).toBe(initialValues);
+  });
+
+  it('ignores initialValues with an unrecognized backend', () => {
+    expect(getInitialFormValuesFromState({ initialValues: { backend: 'nope' } })).toBeUndefined();
+  });
+
+  it('ignores initialValues with a valid backend but no matching spec', () => {
+    expect(
+      getInitialFormValuesFromState({ initialValues: { backend: 'automodel' } })
+    ).toBeUndefined();
+    expect(
+      getInitialFormValuesFromState({ initialValues: { backend: 'unsloth' } })
+    ).toBeUndefined();
+  });
+
+  it('ignores a cloneFromJob whose spec matches no backend', () => {
+    expect(
+      getInitialFormValuesFromState({ cloneFromJob: { spec: { foo: 'bar' } } })
+    ).toBeUndefined();
+  });
+
+  it.each([undefined, null, 'string', 42, {}, { other: 1 }])(
+    'returns undefined for unrelated state (%s)',
+    (state) => {
+      expect(getInitialFormValuesFromState(state)).toBeUndefined();
+    }
+  );
 });
