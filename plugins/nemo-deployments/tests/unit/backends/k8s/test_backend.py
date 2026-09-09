@@ -30,6 +30,45 @@ def test_default_namespace_rejects_invalid_dns_label() -> None:
         K8sExecutorConfig(default_namespace="X")
 
 
+def test_to_k8s_defaults_bundles_executor_pod_defaults() -> None:
+    config = K8sExecutorConfig(
+        default_pod_annotations={"sidecar.istio.io/nativeSidecar": "true"},
+        default_node_selector={"gpu": "a100"},
+        default_tolerations=[{"key": "gpu", "operator": "Equal", "value": "true", "effect": "NoSchedule"}],
+        default_affinity={"nodeAffinity": {}},
+        default_topology_spread_constraints=[{"maxSkew": 1, "topologyKey": "kubernetes.io/hostname"}],
+    )
+    defaults = config.to_k8s_defaults()
+    assert defaults.pod_annotations == {"sidecar.istio.io/nativeSidecar": "true"}
+    assert defaults.node_selector == {"gpu": "a100"}
+    assert defaults.tolerations[0]["key"] == "gpu"
+    assert defaults.affinity == {"nodeAffinity": {}}
+    assert defaults.topology_spread_constraints[0]["topologyKey"] == "kubernetes.io/hostname"
+
+
+def test_to_k8s_defaults_empty_by_default() -> None:
+    defaults = K8sExecutorConfig().to_k8s_defaults()
+    assert defaults.pod_annotations == {}
+    assert defaults.node_selector == {}
+    assert defaults.tolerations == []
+    assert defaults.affinity == {}
+    assert defaults.topology_spread_constraints == []
+
+
+def test_to_k8s_defaults_deep_copies_nested_objects() -> None:
+    # Mutating the returned defaults must not corrupt the shared executor config
+    # for later workloads (nested nodeAffinity / labelSelector are deep-copied).
+    config = K8sExecutorConfig(
+        default_affinity={"nodeAffinity": {"key": "orig"}},
+        default_topology_spread_constraints=[{"labelSelector": {"matchLabels": {"app": "orig"}}}],
+    )
+    defaults = config.to_k8s_defaults()
+    defaults.affinity["nodeAffinity"]["key"] = "mutated"
+    defaults.topology_spread_constraints[0]["labelSelector"]["matchLabels"]["app"] = "mutated"
+    assert config.default_affinity["nodeAffinity"]["key"] == "orig"
+    assert config.default_topology_spread_constraints[0]["labelSelector"]["matchLabels"]["app"] == "orig"
+
+
 def test_effective_namespace_prefers_explicit_config(monkeypatch: pytest.MonkeyPatch) -> None:
     # An explicit config value wins even when POD_NAMESPACE is set.
     monkeypatch.setenv("POD_NAMESPACE", "pod-ns")

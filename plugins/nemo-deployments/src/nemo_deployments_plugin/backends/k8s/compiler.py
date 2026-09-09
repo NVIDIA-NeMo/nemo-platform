@@ -156,6 +156,24 @@ def build_container_spec(
 
 
 @dataclass(frozen=True)
+class ExecutorK8sDefaults:
+    """Executor-level k8s defaults applied to every workload the executor renders.
+
+    These are the base layer shared by ALL deployments-plugin consumers (models,
+    agents, ...). A per-entity ``K8sDeploymentConfig`` value overrides the default:
+    annotations merge key-wise (per-entity key wins); node_selector / tolerations /
+    affinity / topology_spread_constraints are applied only when the entity leaves
+    them unset (per-entity wins wholesale).
+    """
+
+    pod_annotations: dict[str, str] = field(default_factory=dict)
+    node_selector: dict[str, str] = field(default_factory=dict)
+    tolerations: list[dict[str, Any]] = field(default_factory=list)
+    affinity: dict[str, Any] = field(default_factory=dict)
+    topology_spread_constraints: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class CompiledWorkload:
     """Kubernetes objects derived from a DeploymentConfig."""
 
@@ -531,6 +549,7 @@ def compile_workload(
     k8s_config: K8sDeploymentConfig | None,
     pod_restart_policy: RestartPolicy,
     executor_image_pull_secrets: list[ImagePullSecret] | None = None,
+    executor_defaults: ExecutorK8sDefaults | None = None,
     secret_env: dict[str, str] | None = None,
 ) -> CompiledWorkload:
     """Compile pod spec kwargs and optional ConfigMap/Secret for a Job or Deployment.
@@ -618,7 +637,32 @@ def compile_workload(
     if effective_service_account_name:
         pod_spec_kwargs["service_account_name"] = effective_service_account_name
 
-    pod_annotations = dict(k8s_config.pod_annotations) if k8s_config is not None else {}
+    # Apply executor-level defaults as the BASE layer, shared by every consumer
+    # (models, agents, ...). A per-entity K8sDeploymentConfig value (set above)
+    # wins: node_selector / tolerations / affinity / topology_spread are applied
+    # only when the entity left them unset; annotations merge key-wise below.
+    entity_pod_annotations = dict(k8s_config.pod_annotations) if k8s_config is not None else {}
+    if executor_defaults is not None:
+        if executor_defaults.node_selector and "node_selector" not in pod_spec_kwargs:
+            pod_spec_kwargs["node_selector"] = dict(executor_defaults.node_selector)
+        if executor_defaults.tolerations and "tolerations" not in pod_spec_kwargs:
+            default_tolerations = build_tolerations(
+                [Toleration.model_validate(item) for item in executor_defaults.tolerations if item]
+            )
+            if default_tolerations:
+                pod_spec_kwargs["tolerations"] = default_tolerations
+        if executor_defaults.affinity and "affinity" not in pod_spec_kwargs:
+            default_affinity = _deserialize_k8s(executor_defaults.affinity, "V1Affinity")
+            if default_affinity is not None:
+                pod_spec_kwargs["affinity"] = default_affinity
+        if executor_defaults.topology_spread_constraints and "topology_spread_constraints" not in pod_spec_kwargs:
+            default_tsc = build_topology_spread_constraints(executor_defaults.topology_spread_constraints)
+            if default_tsc:
+                pod_spec_kwargs["topology_spread_constraints"] = default_tsc
+        # Annotations merge key-wise: executor default first, per-entity wins.
+        pod_annotations = {**executor_defaults.pod_annotations, **entity_pod_annotations}
+    else:
+        pod_annotations = entity_pod_annotations
 
     return CompiledWorkload(
         pod_spec_kwargs=pod_spec_kwargs,

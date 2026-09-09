@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import os
 import re
+from copy import deepcopy
+from typing import Any
 
+from nemo_deployments_plugin.backends.k8s.compiler import ExecutorK8sDefaults
 from nemo_platform_plugin.config import ImagePullSecret
 from pydantic import BaseModel, Field, field_validator
 
@@ -50,6 +53,47 @@ class K8sExecutorConfig(BaseModel):
         default_factory=list,
         description="Image pull secrets merged with platform image_pull_secrets on every pod.",
     )
+    default_pod_annotations: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Executor-level default pod annotations stamped onto every Job/Deployment pod this "
+            "executor renders (all consumers: models, agents, ...). Merged key-wise with per-entity "
+            "backend_config.k8s.podAnnotations, where the per-entity value wins for a shared key. "
+            "Ships the Istio native-sidecar annotation so a mesh-injected proxy terminates when a "
+            "Job's main container exits."
+        ),
+    )
+    default_node_selector: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Executor-level default nodeSelector applied to every Job/Deployment pod this executor "
+            "renders when the entity does not set backend_config.k8s.nodeSelector."
+        ),
+    )
+    default_tolerations: list[dict[str, str | int]] = Field(
+        default_factory=list,
+        description=(
+            "Executor-level default pod tolerations applied to every Job/Deployment pod this executor "
+            "renders when the entity does not set backend_config.k8s.tolerations. Each entry is a raw "
+            "Kubernetes toleration object."
+        ),
+    )
+    default_affinity: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Executor-level default pod affinity applied to every Job/Deployment pod this executor "
+            "renders when the entity does not set backend_config.k8s.affinity. Raw Kubernetes affinity "
+            "object (nodeAffinity / podAffinity / podAntiAffinity)."
+        ),
+    )
+    default_topology_spread_constraints: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Executor-level default pod topology spread constraints applied to every Job/Deployment pod "
+            "this executor renders when the entity does not set backend_config.k8s.topologySpreadConstraints. "
+            "Each entry is a raw Kubernetes topologySpreadConstraint object."
+        ),
+    )
 
     @field_validator("default_namespace")
     @classmethod
@@ -73,3 +117,18 @@ class K8sExecutorConfig(BaseModel):
         if pod_namespace:
             return pod_namespace
         return _FALLBACK_NAMESPACE
+
+    def to_k8s_defaults(self) -> ExecutorK8sDefaults:
+        """Bundle the executor-level pod defaults for the workload compiler.
+
+        Shared by every deployments-plugin consumer (models, agents, ...): the
+        compiler applies these as the base layer, with per-entity
+        ``backend_config.k8s`` values overriding them.
+        """
+        return ExecutorK8sDefaults(
+            pod_annotations=dict(self.default_pod_annotations),
+            node_selector=dict(self.default_node_selector),
+            tolerations=deepcopy(self.default_tolerations),
+            affinity=deepcopy(self.default_affinity),
+            topology_spread_constraints=deepcopy(self.default_topology_spread_constraints),
+        )
