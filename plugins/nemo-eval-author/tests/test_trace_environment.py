@@ -15,9 +15,9 @@ import pytest
 
 _PLUGIN = Path(__file__).resolve().parents[1]
 _SCRIPT = _PLUGIN / "skills" / "eval-author-trace-environment" / "scripts" / "trace_environment.py"
-_SUMMARY_SCHEMA = "nemo.eval_author.trace_environment_summary.v1"
-_CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v1"
-_VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v1"
+_SUMMARY_SCHEMA = "nemo.eval_author.trace_environment_summary.v2"
+_CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v2"
+_VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v2"
 
 
 def _run(*args: str) -> tuple[int, dict[str, Any]]:
@@ -91,6 +91,7 @@ def _candidate(
     if ground_truth is None:
         ground_truth = {
             "availability": "absent",
+            "use": "none",
             "artifacts": [],
             "absence_reason": "No distinct reference artifact was recorded.",
         }
@@ -100,8 +101,9 @@ def _candidate(
         payload = {
             "schema": _CANDIDATE_SCHEMA,
             "status": "candidate",
+            "decision_basis": "safe_atif_only",
             "instruction": "Repair the local fixture.",
-            "requirements": ["The fixture check passes."],
+            "requirements": [{"description": "The fixture check passes.", "evidence_steps": [1, 2]}],
             "verification_mode": "execution",
             "evidence_steps": [1, 2],
             "uncertainties": [],
@@ -113,6 +115,7 @@ def _candidate(
         payload = {
             "schema": _CANDIDATE_SCHEMA,
             "status": "no_candidate",
+            "decision_basis": "safe_atif_only",
             "instruction": None,
             "requirements": [],
             "verification_mode": None,
@@ -125,12 +128,35 @@ def _candidate(
     _write_json(task_dir / "candidate.json", payload)
 
 
-def _ready_environment(task_dir: Path) -> None:
+def _review_privacy(task_dir: Path, *, reviewer_kind: str = "agent") -> None:
+    code, result = _run(
+        "review-privacy",
+        "--task-dir",
+        str(task_dir),
+        "--reviewer-kind",
+        reviewer_kind,
+        "--note",
+        "Reviewed every safe ATIF string and all contextual audit findings.",
+    )
+    assert code == 0, result
+
+
+def _ready_environment(
+    task_dir: Path,
+    *,
+    mode: str = "separate",
+    nop_reward: float = 0.0,
+    oracle_reward: float = 1.0,
+    oracle_exception: object | None = None,
+) -> None:
     task = task_dir / "task"
     (task / "environment").mkdir(parents=True)
     (task / "tests").mkdir()
     (task / "solution").mkdir()
-    (task / "task.toml").write_text('schema_version = "1.1"\n', encoding="utf-8")
+    verifier = f'\n[verifier]\nenvironment_mode = "{mode}"\n'
+    if mode == "separate":
+        verifier += 'network_mode = "no-network"\n\n[verifier.environment]\nnetwork_mode = "no-network"\n'
+    (task / "task.toml").write_text(f'schema_version = "1.1"\n{verifier}', encoding="utf-8")
     (task / "instruction.md").write_text("Repair the fixture.\n", encoding="utf-8")
     (task / "README.md").write_text(
         """# Repair fixture
@@ -163,16 +189,34 @@ The human reviewer confirmed that this fixture accurately represents the recorde
     )
     (task / "tests" / "test.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     (task / "solution" / "solve.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    (task_dir / "private" / "jobs" / "nop").mkdir(parents=True)
-    (task_dir / "private" / "jobs" / "oracle").mkdir()
-    _write_json(
-        task_dir / "validation.json",
-        {
-            "schema": _VALIDATION_SCHEMA,
-            "nop": {"reward": 0, "exception": None, "job_dir": "private/jobs/nop"},
-            "oracle": {"reward": 1, "exception": None, "job_dir": "private/jobs/oracle"},
-        },
+    checksum = "a" * 64
+    for arm, reward, exception in (
+        ("nop", nop_reward, None),
+        ("oracle", oracle_reward, oracle_exception),
+    ):
+        trial = task_dir / "private" / "jobs" / arm / "task__trial"
+        trial.mkdir(parents=True)
+        _write_json(
+            trial / "result.json",
+            {
+                "task_checksum": checksum,
+                "verifier_environment_mode": mode,
+                "verifier_result": {"rewards": {"reward": reward}},
+                "exception_info": exception,
+            },
+        )
+    code, result = _run(
+        "record-validation",
+        "--task-dir",
+        str(task_dir),
+        "--nop-job-dir",
+        "private/jobs/nop",
+        "--oracle-job-dir",
+        "private/jobs/oracle",
+        "--harbor-version",
+        "0.21.0",
     )
+    assert code == 0, result
 
 
 def test_init_creates_private_gitignored_workspace(tmp_path: Path) -> None:
@@ -220,8 +264,8 @@ def test_prepare_preserves_original_and_writes_text_only_redacted_atif(tmp_path:
     assert "123-45-6789" not in safe_text
     assert "session-1" not in safe_text
     assert "call-1" not in safe_text
-    assert privacy["manual_review_required"] is True
-    assert privacy["manual_review_complete"] is False
+    assert privacy["contextual_review_required"] is True
+    assert privacy["contextual_review_complete"] is False
     assert set(privacy["deterministic_redactions"]) >= {
         "bearer_token",
         "email",
@@ -232,8 +276,10 @@ def test_prepare_preserves_original_and_writes_text_only_redacted_atif(tmp_path:
         "secret_field",
         "ssn",
     }
-    assert summary["source"]["private_sha256"] == f"sha256:{hashlib.sha256(private.read_bytes()).hexdigest()}"
+    assert summary["source"]["original_sha256"] == f"sha256:{hashlib.sha256(private.read_bytes()).hexdigest()}"
     assert summary["source"]["safe_sha256"] == f"sha256:{hashlib.sha256(safe.read_bytes()).hexdigest()}"
+    assert (task_dir / "private" / "canonical.atif.json").is_file()
+    assert (task_dir / "private" / "privacy-audit.json").is_file()
 
 
 def test_prepare_reports_non_object_observation(tmp_path: Path) -> None:
@@ -263,6 +309,7 @@ def test_prepare_reports_non_object_observation(tmp_path: Path) -> None:
 def test_image_only_instruction_blocks_candidate_but_can_be_no_candidate(tmp_path: Path) -> None:
     task_dir, _ = _workspace(tmp_path, image_only=True)
     _candidate(task_dir)
+    _review_privacy(task_dir)
 
     code, result = _run(
         "finalize",
@@ -270,13 +317,12 @@ def test_image_only_instruction_blocks_candidate_but_can_be_no_candidate(tmp_pat
         str(task_dir),
         "--status",
         "candidate",
-        "--privacy-reviewed",
     )
 
     assert code == 1
     assert "unresolved non-text evidence" in result["error"]
     privacy = json.loads((task_dir / "safe" / "privacy.json").read_text(encoding="utf-8"))
-    assert privacy["manual_review_complete"] is False
+    assert privacy["contextual_review_complete"] is True
 
     _candidate(task_dir, status="no_candidate")
     code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "no_candidate")
@@ -321,12 +367,19 @@ def test_summary_captures_ground_truth_and_proprietary_software(tmp_path: Path) 
         status="no_candidate",
         ground_truth={
             "availability": "available",
+            "use": "comparison_only",
             "artifacts": [
                 {
                     "kind": "expected_output",
                     "path": "private/ground-truth/expected.json",
                     "sha256": f"sha256:{hashlib.sha256(expected.read_bytes()).hexdigest()}",
-                    "evidence_steps": [2],
+                    "provenance": {
+                        "kind": "external",
+                        "step_ids": [],
+                        "uri": "https://example.test/fixtures/expected.json",
+                        "revision": "abc123",
+                        "source_id": None,
+                    },
                     "notes": "The trace records this expected fixture state.",
                 }
             ],
@@ -341,7 +394,13 @@ def test_summary_captures_ground_truth_and_proprietary_software(tmp_path: Path) 
                 "license": "proprietary",
                 "availability": "unavailable",
                 "redistributable": False,
-                "evidence_steps": [1, 2],
+                "provenance": {
+                    "kind": "atif_step",
+                    "step_ids": [1, 2],
+                    "uri": None,
+                    "revision": None,
+                    "source_id": None,
+                },
                 "notes": "The workflow requires its native file format and runtime.",
             }
         ],
@@ -374,7 +433,13 @@ def test_candidate_rejects_required_unavailable_software(tmp_path: Path) -> None
                 "license": "commercial",
                 "availability": "unavailable",
                 "redistributable": False,
-                "evidence_steps": [1],
+                "provenance": {
+                    "kind": "atif_step",
+                    "step_ids": [1],
+                    "uri": None,
+                    "revision": None,
+                    "source_id": None,
+                },
                 "notes": "No licensed runtime is available in the task environment.",
             }
         ],
@@ -386,7 +451,6 @@ def test_candidate_rejects_required_unavailable_software(tmp_path: Path) -> None
         str(task_dir),
         "--status",
         "candidate",
-        "--privacy-reviewed",
     )
 
     assert code == 1
@@ -403,12 +467,19 @@ def test_ground_truth_digest_must_match_retained_artifact(tmp_path: Path) -> Non
         status="no_candidate",
         ground_truth={
             "availability": "available",
+            "use": "verification",
             "artifacts": [
                 {
                     "kind": "expected_output",
                     "path": "private/ground-truth/expected.json",
                     "sha256": f"sha256:{'0' * 64}",
-                    "evidence_steps": [2],
+                    "provenance": {
+                        "kind": "atif_step",
+                        "step_ids": [2],
+                        "uri": None,
+                        "revision": None,
+                        "source_id": None,
+                    },
                     "notes": "The trace records this expected fixture state.",
                 }
             ],
@@ -432,12 +503,19 @@ def test_ground_truth_path_cannot_escape_private_directory(tmp_path: Path) -> No
         status="no_candidate",
         ground_truth={
             "availability": "available",
+            "use": "verification",
             "artifacts": [
                 {
                     "kind": "expected_output",
                     "path": "private/ground-truth/../outside.json",
                     "sha256": f"sha256:{hashlib.sha256(outside.read_bytes()).hexdigest()}",
-                    "evidence_steps": [2],
+                    "provenance": {
+                        "kind": "atif_step",
+                        "step_ids": [2],
+                        "uri": None,
+                        "revision": None,
+                        "source_id": None,
+                    },
                     "notes": "The trace records this expected fixture state.",
                 }
             ],
@@ -462,21 +540,18 @@ def test_ready_candidate_requires_privacy_review_and_both_harbor_arms(tmp_path: 
         str(task_dir),
         "--status",
         "candidate",
-        "--environment-status",
-        "ready",
     )
     assert code == 1
-    assert "--privacy-reviewed" in result["error"]
+    assert "review-privacy" in result["error"]
 
+    _review_privacy(task_dir, reviewer_kind="human")
     code, result = _run(
         "finalize",
         "--task-dir",
         str(task_dir),
         "--status",
         "candidate",
-        "--environment-status",
-        "ready",
-        "--privacy-reviewed",
+        "--human-reviewed",
         "--worked-well",
         "NOP and Oracle produced the required rewards.",
     )
@@ -484,8 +559,16 @@ def test_ready_candidate_requires_privacy_review_and_both_harbor_arms(tmp_path: 
     assert code == 0, result
     summary = json.loads((task_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == "candidate"
-    assert summary["environment"] == {"path": "task", "status": "ready", "validation": "validation.json"}
-    assert summary["privacy"]["manual_review_complete"] is True
+    assert summary["environment"] == {
+        "path": "task",
+        "status": "ready",
+        "technical_status": "passed",
+        "review_status": "human_reviewed",
+        "validation": "validation.json",
+        "verifier_environment_mode": "separate",
+        "isolation_status": "isolated",
+    }
+    assert summary["privacy"]["contextual_review_complete"] is True
     code, check = _run("check", "--task-dir", str(task_dir))
     assert code == 0, check
 
@@ -498,6 +581,7 @@ def test_ready_candidate_rejects_wrong_arm_reward(tmp_path: Path) -> None:
     validation = json.loads(validation_path.read_text(encoding="utf-8"))
     validation["nop"]["reward"] = 1
     _write_json(validation_path, validation)
+    _review_privacy(task_dir)
 
     code, result = _run(
         "finalize",
@@ -505,19 +589,17 @@ def test_ready_candidate_rejects_wrong_arm_reward(tmp_path: Path) -> None:
         str(task_dir),
         "--status",
         "candidate",
-        "--environment-status",
-        "ready",
-        "--privacy-reviewed",
     )
 
     assert code == 1
-    assert "validation.nop" in result["error"]
+    assert "differs from the retained Harbor result evidence" in result["error"]
 
 
 def test_ready_candidate_requires_reviewer_facing_readme(tmp_path: Path) -> None:
     task_dir, _ = _workspace(tmp_path)
     _candidate(task_dir)
     _ready_environment(task_dir)
+    _review_privacy(task_dir)
     (task_dir / "task" / "README.md").unlink()
 
     code, result = _run(
@@ -526,9 +608,6 @@ def test_ready_candidate_requires_reviewer_facing_readme(tmp_path: Path) -> None
         str(task_dir),
         "--status",
         "candidate",
-        "--environment-status",
-        "ready",
-        "--privacy-reviewed",
     )
 
     assert code == 1
@@ -539,6 +618,7 @@ def test_ready_candidate_requires_substantive_readme_sections(tmp_path: Path) ->
     task_dir, _ = _workspace(tmp_path)
     _candidate(task_dir)
     _ready_environment(task_dir)
+    _review_privacy(task_dir)
     readme = task_dir / "task" / "README.md"
     readme.write_text(
         readme.read_text(encoding="utf-8").replace(
@@ -553,9 +633,6 @@ def test_ready_candidate_requires_substantive_readme_sections(tmp_path: Path) ->
         str(task_dir),
         "--status",
         "candidate",
-        "--environment-status",
-        "ready",
-        "--privacy-reviewed",
     )
 
     assert code == 1
@@ -575,6 +652,182 @@ def test_check_detects_changed_safe_evidence(tmp_path: Path) -> None:
     assert code == 1
     assert result["valid"] is False
     assert "safe_path is missing or its digest changed" in result["errors"]
+
+
+def test_prepare_narrowly_repairs_provider_redaction_quote(tmp_path: Path) -> None:
+    root = tmp_path / ".eval-author" / "trace-environments"
+    code, result = _run("init", "--root", str(root), "--task-id", "repair-quote")
+    assert code == 0, result
+    source = tmp_path / "broken.atif.json"
+    source.write_text(
+        '{"schema_version":"ATIF-v1.7","agent":{"name":"agent"},"steps":'
+        '[{"step_id":1,"source":"user","message":"prefix \\"PASSWORD=<redacted>" suffix"}]}',
+        encoding="utf-8",
+    )
+
+    code, result = _run(
+        "prepare",
+        "--task-dir",
+        result["task_dir"],
+        "--atif",
+        str(source),
+        "--source-kind",
+        "atif",
+    )
+
+    assert code == 0, result
+    assert result["normalization_count"] == 1
+    summary = json.loads((root / "repair-quote" / "summary.json").read_text(encoding="utf-8"))
+    assert summary["source"]["normalizations"][0]["kind"] == "escape_provider_redaction_placeholder_quote"
+    assert (root / "repair-quote" / "private" / "source.atif.json").read_bytes() == source.read_bytes()
+
+
+def test_prepare_bounds_string_encoded_images_and_audits_context(tmp_path: Path) -> None:
+    root = tmp_path / ".eval-author" / "trace-environments"
+    code, result = _run("init", "--root", str(root), "--task-id", "bound-image")
+    assert code == 0, result
+    task_dir = Path(result["task_dir"])
+    source = tmp_path / "image.atif.json"
+    payload = _atif()
+    payload["steps"][0]["message"] = [
+        {
+            "type": "text",
+            "text": "Use https://api.example.test/path for Example Labs at 123 Main Street and John Smith.",
+        },
+        {
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/png", "data": "A" * 100_001},
+        },
+    ]
+    payload["steps"][1]["observation"]["results"][0]["content"] = (
+        'before {"type":"image","source":{"type":"base64","media_type":"image/png","data":"DATA"}} after'
+    )
+    payload["steps"][1]["message"] = "Call service.default.svc.cluster.local"
+    _write_json(source, payload)
+
+    code, result = _run(
+        "prepare",
+        "--task-dir",
+        str(task_dir),
+        "--atif",
+        str(source),
+        "--source-kind",
+        "atif",
+    )
+
+    assert code == 0, result
+    canonical = json.loads((task_dir / "private" / "canonical.atif.json").read_text(encoding="utf-8"))
+    assert canonical["steps"][0]["message"][1]["source"]["data"] == ""
+    assert canonical["steps"][1]["observation"]["results"][0]["content"][1]["source"]["data"] == ""
+    safe_text = (task_dir / "safe" / "trace.atif.json").read_text(encoding="utf-8")
+    assert "svc.cluster.local" not in safe_text
+    audit = json.loads((task_dir / "private" / "privacy-audit.json").read_text(encoding="utf-8"))
+    assert audit["url_hosts"] == ["api.example.test"]
+    assert {finding["kind"] for finding in audit["candidate_findings"]} >= {
+        "organization",
+        "person_name",
+        "street_address",
+    }
+
+
+def test_shared_verifier_can_pass_technically_but_cannot_be_ready(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, mode="shared")
+    _review_privacy(task_dir, reviewer_kind="human")
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate", "--human-reviewed")
+
+    assert code == 0, result
+    summary = json.loads((task_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["environment"]["technical_status"] == "passed"
+    assert summary["environment"]["status"] == "unproven"
+    assert summary["environment"]["isolation_status"] == "shared"
+
+
+def test_candidate_requires_explicit_verifier_environment_mode(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, mode="shared")
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8").replace('environment_mode = "shared"\n', ""),
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "must explicitly set [verifier].environment_mode" in result["error"]
+
+
+def test_failed_harbor_proof_is_validated_and_attached(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, oracle_reward=0.0, oracle_exception={"type": "RuntimeError"})
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 0, result
+    summary = json.loads((task_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["environment"]["status"] == "failed"
+    assert summary["environment"]["technical_status"] == "failed"
+    assert summary["environment"]["validation"] == "validation.json"
+    code, check = _run("check", "--task-dir", str(task_dir))
+    assert code == 0, check
+
+
+def test_export_uses_a_strict_publication_whitelist(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir)
+    _review_privacy(task_dir, reviewer_kind="human")
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate", "--human-reviewed")
+    assert code == 0, result
+    output = tmp_path / "product"
+
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+
+    assert code == 0, result
+    assert (output / "candidate.json").is_file()
+    assert (output / "result.json").is_file()
+    assert (output / "task").is_dir()
+    assert not (output / "validation.json").exists()
+    assert not (output / "safe").exists()
+    assert not (output / "private").exists()
+
+
+def test_batch_prepare_is_resumable_and_reports_full_denominator(tmp_path: Path) -> None:
+    source_one = tmp_path / "one.json"
+    source_two = tmp_path / "two.json"
+    _write_json(source_one, _atif())
+    _write_json(source_two, _atif())
+    manifest = tmp_path / "manifest.json"
+    _write_json(
+        manifest,
+        {
+            "schema": "nemo.eval_author.trace_environment_batch.v1",
+            "members": [
+                {"task_id": "task-one", "atif": "one.json", "source_kind": "atif"},
+                {"task_id": "task-two", "atif": "two.json", "source_kind": "atif"},
+            ],
+        },
+    )
+    root = tmp_path / ".eval-author" / "trace-environments"
+
+    code, first = _run("batch-prepare", "--root", str(root), "--manifest", str(manifest))
+    assert code == 0, first
+    assert first["denominator"] == 2
+    assert first["counts"] == {"prepared": 2}
+    code, second = _run("batch-prepare", "--root", str(root), "--manifest", str(manifest))
+    assert code == 0, second
+    assert second["counts"] == {"existing": 2}
+    code, status = _run("batch-status", "--root", str(root), "--manifest", str(manifest))
+    assert code == 0, status
+    assert status["denominator"] == 2
+    assert status["counts"] == {"pending_prepared": 2}
 
 
 @pytest.mark.parametrize("task_id", ["Has-Caps", "has spaces", "../escape", ""])

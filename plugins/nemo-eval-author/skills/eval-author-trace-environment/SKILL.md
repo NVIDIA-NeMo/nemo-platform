@@ -36,9 +36,10 @@ reproducible Harbor task. It does not require a particular coding agent, model,
 or framework.
 
 ```text
-bounded source → canonical ATIF → private text scrub → candidate decision
-                                                     ├─ no_candidate → summary
-                                                     └─ candidate → Harbor task → summary
+bounded source → canonical ATIF → private text scrub → contextual audit
+                                                        └─ candidate decision
+                                                           ├─ no_candidate → summary
+                                                           └─ candidate → isolated Harbor proof → review → summary
 ```
 
 The ATIF file is the only handoff into candidate analysis. Keep exact source
@@ -54,6 +55,8 @@ Use one workspace per task:
   .gitignore
   <task-id>/
     private/source.atif.json
+    private/canonical.atif.json
+    private/privacy-audit.json
     private/ground-truth/
     safe/trace.atif.json
     safe/privacy.json
@@ -63,6 +66,10 @@ Use one workspace per task:
     summary.json
     summary.md
 ```
+
+The original bytes, normalized canonical ATIF, safe ATIF, privacy report, audit,
+ground truth, and Harbor jobs stay ignored. Publish only through the helper's
+whitelist-only `export` command.
 
 `scripts/trace_environment.py init` writes the parent `.gitignore` so every
 task directory is ignored, makes directories owner-only, and refuses to replace
@@ -127,6 +134,17 @@ no_candidate instead of guessing.
 
 Before continuing, verify the canonical file has one ATIF v1.0-v1.7 object, one-based
 sequential step IDs, at least one user step, and resolvable tool-call references.
+The helper accepts at most 128 MiB of exact source bytes and produces canonical
+and safe files of at most 25 MiB. It may make only two bounded normalizations:
+
+- insert a missing JSON escape when the parser-implicated quote immediately
+  follows a provider-redaction placeholder; and
+- convert string-encoded ATIF image objects into image parts while omitting
+  encoded binary data and oversized image metadata.
+
+Every operation, offset, count, and loss is recorded in the canonical ATIF and
+summary. Exact source bytes remain unchanged and hashed. Reject unrelated JSON
+damage instead of repairing it heuristically.
 
 ## Step 3: make a text-only safe copy
 
@@ -137,16 +155,29 @@ python <skill_dir>/scripts/trace_environment.py prepare \
   --source-kind <atif|mlflow|intake|otel>
 ```
 
-The helper retains an exact owner-private original, writes a scrubbed safe copy,
-replaces image parts with omission markers, and records only redaction counts.
+The helper retains an exact owner-private original, writes the bounded canonical
+ATIF and a scrubbed safe copy, replaces image parts with omission markers, and
+records only redaction counts in the safe report.
 It recognizes common secret fields, bearer tokens, private keys, email addresses,
-phone numbers, social-security numbers, IP addresses, and user home paths.
+phone numbers, social-security numbers, IP addresses, internal Kubernetes hostnames,
+and user home paths.
 
-This deliberately small scanner cannot recognize names, organizations, street
-addresses, proprietary code, or every credential format. Review every text field
-in `safe/trace.atif.json` and the generalized task files before passing
-`--privacy-reviewed`. Never copy a redacted value into a verifier. An image-only
-user instruction is a blocking reason and must remain no_candidate.
+The helper also writes `private/privacy-audit.json`: a complete string-field and
+character denominator, URL hosts, and candidate name, organization, and street
+address findings. These are contextual leads, not automatic claims. Review every
+text field in `safe/trace.atif.json`, every audit finding and host, and the
+generalized task files, then record who performed the review:
+
+```bash
+python <skill_dir>/scripts/trace_environment.py review-privacy \
+  --task-dir <task-dir> \
+  --reviewer-kind <agent|human> \
+  --note "<what was reviewed and any disposition>"
+```
+
+Never copy a redacted value into a verifier. An image-only user instruction is a
+blocking reason and must remain no_candidate. The scanner cannot establish that
+proprietary code is safe; the contextual reviewer owns that judgment.
 
 ## Step 4: inventory ground truth and software requirements
 
@@ -161,15 +192,28 @@ agent's observed answer:
 An agent answer is not ground truth merely because the trace succeeded. Record
 ground truth as `available`, `partial`, `absent`, or `unknown`. Retain available
 artifacts under `private/ground-truth/`, make them owner-only, record their
-SHA-256 digests, and cite the ATIF steps that establish their relationship to
-the task. Do not copy private ground-truth values into the generated task;
-generalize only what the verifier needs.
+SHA-256 digests, and declare whether each artifact came from an ATIF step or an
+external source. ATIF provenance requires real step IDs and no external locator.
+External provenance requires an empty step list and at least one immutable URI,
+revision, or source ID. Never cite an instruction step as evidence for a public
+benchmark fixture merely because both describe the same task. Record whether
+ground truth is used for `comparison_only` or `verification`; use `none` when it
+is absent or unknown. Do not copy private ground-truth values into the generated
+task; generalize only what the verifier needs.
 
 Also inventory software needed to reproduce the work or verify the outcome.
 Include libraries and CLIs, desktop applications such as CAD tools, services,
 hardware, and proprietary or commercially licensed software. For each item,
 record whether it is actually required, its version when known, license class,
 local availability, redistributability, evidence steps, and a short note.
+Use the same explicit ATIF-or-external provenance object for software facts.
+
+Inventory the complete build, runtime, solution, and verifier dependency
+closure. Pin images, packages, repositories, and tools where reproducibility
+depends on them. The grading path must not download dependencies or contact a
+live service. A dependency needed only by the verifier still belongs in the
+inventory; common misses include fonts, compiler headers, package indexes, and
+language registries.
 
 Do not silently replace required software with a different application or mock
 when the requested behavior depends on the real product. Required unavailable
@@ -186,22 +230,32 @@ this shape:
 
 ```json
 {
-  "schema": "nemo.eval_author.trace_environment_candidate.v1",
+  "schema": "nemo.eval_author.trace_environment_candidate.v2",
   "status": "candidate",
+  "decision_basis": "safe_atif_only",
   "instruction": "Observable task instruction without private values",
-  "requirements": ["Objectively testable requirement"],
+  "requirements": [
+    {"description": "Objectively testable requirement", "evidence_steps": [1, 2]}
+  ],
   "verification_mode": "execution",
   "evidence_steps": [1, 2],
   "uncertainties": [],
   "reason_codes": [],
   "ground_truth": {
     "availability": "available",
+    "use": "comparison_only",
     "artifacts": [
       {
         "kind": "expected_output",
         "path": "private/ground-truth/expected.json",
         "sha256": "sha256:<64-hex-digest>",
-        "evidence_steps": [2],
+        "provenance": {
+          "kind": "external",
+          "step_ids": [],
+          "uri": "https://example.test/fixture.json",
+          "revision": "<immutable-revision>",
+          "source_id": null
+        },
         "notes": "Expected output attached to the recorded task."
       }
     ],
@@ -216,7 +270,13 @@ this shape:
       "license": "proprietary",
       "availability": "unknown",
       "redistributable": false,
-      "evidence_steps": [1, 2],
+      "provenance": {
+        "kind": "atif_step",
+        "step_ids": [1, 2],
+        "uri": null,
+        "revision": null,
+        "source_id": null
+      },
       "notes": "The requested edit and verifier depend on native CAD behavior."
     }
   ]
@@ -241,6 +301,13 @@ Typical reasons are `missing_instruction`,
 reproducible task. Ground truth may be absent without blocking a task, but its
 absence must be explicit.
 
+For batch reporting, distinguish source and construction failures rather than
+folding them into `insufficient_trace_evidence`: use `malformed_atif`,
+`source_too_large`, `build_dependency_unavailable`,
+`verifier_dependency_unavailable`, `network_dependency_required`, and
+`verifier_not_isolated` where applicable. Record the concrete failed command or
+contract check in `did_not_work`; keep `reason_codes` stable and aggregateable.
+
 ## Step 6: author and prove a candidate environment
 
 Skip this step for no_candidate. Under `<task-dir>/task/`, create the smallest
@@ -254,6 +321,13 @@ generalized outcome:
 - `solution/solve.sh` with the reference solution; and
 - `README.md` containing reviewer-facing development context, not a copy of the
   agent instruction.
+
+`task.toml` must explicitly set `[verifier].environment_mode`. Use `separate`
+with `[verifier].network_mode = "no-network"` and a no-network verifier
+environment by default. A shared verifier can observe or alter the agent's
+container and therefore cannot become `ready`; retain it as `unproven` with the
+isolation warning. Never depend on a verifier-only secret or file being hidden
+when the verifier is shared.
 
 The task README is not passed to the agent. Give it a level-one task title and
 these substantive level-two sections:
@@ -288,22 +362,27 @@ harbor run -p <task-dir>/task -a oracle
 
 NOP must finish without an exception and receive reward `0`; Oracle must finish
 without an exception and receive reward `1`. Do not weaken the verifier to make
-Oracle pass. Write their exact evidence to `validation.json`:
+Oracle pass. Retain each exact Harbor job directory inside the ignored task
+workspace. Do not hand-write rewards or exception claims. Derive
+`validation.json` from the single `task__*/result.json` beneath each job:
 
-```json
-{
-  "schema": "nemo.eval_author.trace_environment_validation.v1",
-  "nop": {"reward": 0, "exception": null, "job_dir": "private/jobs/nop"},
-  "oracle": {"reward": 1, "exception": null, "job_dir": "private/jobs/oracle"}
-}
+```bash
+python <skill_dir>/scripts/trace_environment.py record-validation \
+  --task-dir <task-dir> \
+  --nop-job-dir private/jobs/nop \
+  --oracle-job-dir private/jobs/oracle \
+  --harbor-version "$(harbor --version)"
 ```
 
-Retain each exact Harbor job directory at the relative path recorded above.
-These evidence directories must stay inside the ignored task workspace.
+The helper records and hashes the exact result paths, derives rewards and
+exception presence, and requires both arms to report one task checksum and one
+verifier mode matching `task.toml`. Failed proof is still technical evidence:
+retain it, record `failed`, and validate it during `check`.
 
-If Harbor or Docker is missing, the environment is `unproven`; do not describe
-it as ready. If either arm fails, record `failed` and retain the useful failure
-summary in the task workspace.
+If Harbor or Docker is missing, technical status is `not_run` and the environment
+is `unproven`; do not describe it as ready. NOP=0 and Oracle=1 without exceptions
+establish technical status `passed`, but do not establish human review or
+verifier isolation.
 
 ## Step 7: finalize and verify the summary
 
@@ -316,8 +395,7 @@ For a ready candidate:
 python <skill_dir>/scripts/trace_environment.py finalize \
   --task-dir <task-dir> \
   --status candidate \
-  --environment-status ready \
-  --privacy-reviewed \
+  --human-reviewed \
   --worked-well "<evidence-backed success>" \
   --did-not-work "<evidence-backed limitation>"
 ```
@@ -338,9 +416,55 @@ python <skill_dir>/scripts/trace_environment.py check \
   --task-dir <task-dir>
 ```
 
+The helper derives environment status rather than accepting a claimed status:
+failed technical proof becomes `failed`; passed proof with separate no-network
+verification and `--human-reviewed` becomes `ready`; every other candidate is
+`unproven`. The human-review flag means a human supplied or reviewed Relevant
+experience and the generalized task. It is distinct from the earlier contextual
+privacy review, which records either an agent or human reviewer.
+
+## Batch and publication
+
+For a multi-task run, write a checked-in manifest with stable task IDs and
+source paths. This makes the denominator explicit and reruns idempotent:
+
+```json
+{
+  "schema": "nemo.eval_author.trace_environment_batch.v1",
+  "members": [
+    {"task_id": "stable-id", "atif": "private-source.atif.json", "source_kind": "atif"}
+  ]
+}
+```
+
+Keep a real manifest's source paths private if they reveal internal layout.
+Prepare missing members, safely resume existing ones, and report every member:
+
+```bash
+python <skill_dir>/scripts/trace_environment.py batch-prepare \
+  --manifest <manifest.json>
+python <skill_dir>/scripts/trace_environment.py batch-status \
+  --manifest <manifest.json>
+```
+
+`denominator` must equal the selected source set. Never report only candidates
+or successes. For publication, export each finalized workspace to a new,
+nonexistent destination:
+
+```bash
+python <skill_dir>/scripts/trace_environment.py export \
+  --task-dir <task-dir> \
+  --output-dir <dataset-product-dir>
+```
+
+The command runs `check` and copies only `candidate.json`, the generalized
+`task/` when present, and a declassified `result.json`. It never copies source,
+canonical, safe, privacy-audit, ground-truth, validation, or Harbor job files.
+
 Report the task ID, `candidate` or `no_candidate`, ground-truth availability and
 artifact count, required software and licensing constraints, environment
-status, privacy review status, NOP and Oracle rewards when run, and paths to
+status, technical status, review status, verifier isolation, privacy review
+status, NOP and Oracle rewards when run, and paths to
 `summary.md` and the generated task. A `valid: true` check proves the recorded
 files are internally consistent; Harbor is the authority for whether the task
 actually runs.

@@ -11,16 +11,23 @@ import ipaddress
 import json
 import os
 import re
+import shutil
 import stat
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-SCHEMA = "nemo.eval_author.trace_environment_summary.v1"
-CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v1"
-VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v1"
-MAX_SOURCE_BYTES = 25 * 1024 * 1024
+SCHEMA = "nemo.eval_author.trace_environment_summary.v2"
+CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v2"
+VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v2"
+PRIVACY_AUDIT_SCHEMA = "nemo.eval_author.trace_environment_privacy_audit.v1"
+EXPORT_SCHEMA = "nemo.eval_author.trace_environment_product.v1"
+BATCH_SCHEMA = "nemo.eval_author.trace_environment_batch.v1"
+MAX_RAW_SOURCE_BYTES = 128 * 1024 * 1024
+MAX_CANONICAL_BYTES = 25 * 1024 * 1024
 TASK_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 ATIF_VERSION = re.compile(r"ATIF-v1\.[0-7]")
 
@@ -35,6 +42,19 @@ _PRIVATE_KEY = re.compile(
     re.DOTALL,
 )
 _SECRET_KEY = re.compile(r"(?i)(?:password|passwd|secret|token|api[_-]?key|access[_-]?key|authorization)")
+_INTERNAL_HOST = re.compile(r"(?i)\b[a-z0-9.-]+\.svc\.cluster\.local\b")
+_URL = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_STREET = re.compile(
+    r"(?i)\b\d{1,6}\s+[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,4}\s+"
+    r"(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr)\b"
+)
+_ORGANIZATION = re.compile(
+    r"\b[A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,5}\s+"
+    r"(?:Corporation|Corp|Company|Inc|LLC|Ltd|University|Laboratories|Labs)\b"
+)
+_PERSON = re.compile(r"\b[A-Z][a-z]{2,20}\s+[A-Z][a-z]{2,20}\b")
+_REDACTION_QUOTE = '<redacted>"'
+_IMAGE_OBJECT_START = re.compile(r'\{\s*"type"\s*:\s*"image"')
 _IDENTIFIER_KEYS = frozenset(
     {
         "parent_span_id",
@@ -64,6 +84,7 @@ _CANDIDATE_KEYS = frozenset(
     {
         "schema",
         "status",
+        "decision_basis",
         "instruction",
         "requirements",
         "verification_mode",
@@ -74,8 +95,10 @@ _CANDIDATE_KEYS = frozenset(
         "software_requirements",
     }
 )
-_GROUND_TRUTH_KEYS = frozenset({"availability", "artifacts", "absence_reason"})
-_GROUND_TRUTH_ARTIFACT_KEYS = frozenset({"kind", "path", "sha256", "evidence_steps", "notes"})
+_REQUIREMENT_KEYS = frozenset({"description", "evidence_steps"})
+_GROUND_TRUTH_KEYS = frozenset({"availability", "use", "artifacts", "absence_reason"})
+_GROUND_TRUTH_ARTIFACT_KEYS = frozenset({"kind", "path", "sha256", "provenance", "notes"})
+_PROVENANCE_KEYS = frozenset({"kind", "step_ids", "uri", "revision", "source_id"})
 _SOFTWARE_REQUIREMENT_KEYS = frozenset(
     {
         "name",
@@ -85,22 +108,49 @@ _SOFTWARE_REQUIREMENT_KEYS = frozenset(
         "license",
         "availability",
         "redistributable",
-        "evidence_steps",
+        "provenance",
         "notes",
     }
 )
-_SOURCE_KEYS = frozenset({"kind", "private_path", "private_sha256", "safe_path", "safe_sha256"})
+_SOURCE_KEYS = frozenset(
+    {
+        "kind",
+        "original_path",
+        "original_sha256",
+        "original_size_bytes",
+        "canonical_path",
+        "canonical_sha256",
+        "canonical_size_bytes",
+        "safe_path",
+        "safe_sha256",
+        "safe_size_bytes",
+        "normalizations",
+    }
+)
 _PRIVACY_KEYS = frozenset(
     {
         "path",
+        "audit_path",
         "deterministic_redactions",
         "images_omitted",
-        "manual_review_required",
-        "manual_review_complete",
+        "contextual_review_required",
+        "contextual_review_complete",
+        "reviewer_kind",
         "blocking_reasons",
     }
 )
-_ENVIRONMENT_KEYS = frozenset({"path", "status", "validation"})
+_PRIVACY_REPORT_KEYS = _PRIVACY_KEYS - {"path", "audit_path"}
+_ENVIRONMENT_KEYS = frozenset(
+    {
+        "path",
+        "status",
+        "technical_status",
+        "review_status",
+        "validation",
+        "verifier_environment_mode",
+        "isolation_status",
+    }
+)
 _TASK_README_SECTIONS = (
     "Difficulty explanation",
     "Environment and software requirements",
@@ -110,6 +160,8 @@ _TASK_README_SECTIONS = (
     "Relevant experience",
 )
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+_TASK_CHECKSUM = re.compile(r"[0-9a-f]{64}")
+_BATCH_MEMBER_KEYS = frozenset({"task_id", "atif", "source_kind"})
 
 
 class ContractError(ValueError):
@@ -160,12 +212,12 @@ def _write_text(path: Path, text: str) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _load_json(path: Path, *, label: str) -> Any:
+def _load_json(path: Path, *, label: str, max_bytes: int = MAX_CANONICAL_BYTES) -> Any:
     if path.is_symlink() or not path.is_file():
         raise ContractError(f"{label} must be a regular file: {path}")
     size = path.stat().st_size
-    if size > MAX_SOURCE_BYTES:
-        raise ContractError(f"{label} exceeds the {MAX_SOURCE_BYTES}-byte limit")
+    if size > max_bytes:
+        raise ContractError(f"{label} exceeds the {max_bytes}-byte limit")
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -202,12 +254,19 @@ def _load_summary(task_dir: Path) -> dict[str, Any]:
         not isinstance(source, dict)
         or set(source) != _SOURCE_KEYS
         or source.get("kind") not in {"atif", "intake", "mlflow", "otel"}
-        or source.get("private_path") != "private/source.atif.json"
+        or source.get("original_path") != "private/source.atif.json"
+        or source.get("canonical_path") != "private/canonical.atif.json"
         or source.get("safe_path") != "safe/trace.atif.json"
-        or not isinstance(source.get("private_sha256"), str)
-        or _DIGEST.fullmatch(source["private_sha256"]) is None
-        or not isinstance(source.get("safe_sha256"), str)
-        or _DIGEST.fullmatch(source["safe_sha256"]) is None
+        or any(
+            not isinstance(source.get(name), str) or _DIGEST.fullmatch(source[name]) is None
+            for name in ("original_sha256", "canonical_sha256", "safe_sha256")
+        )
+        or any(
+            type(source.get(name)) is not int or source[name] < 0
+            for name in ("original_size_bytes", "canonical_size_bytes", "safe_size_bytes")
+        )
+        or not isinstance(source.get("normalizations"), list)
+        or any(not isinstance(item, dict) for item in source["normalizations"])
     ):
         raise ContractError("summary source does not match the versioned task workspace contract")
     privacy = summary.get("privacy")
@@ -215,10 +274,12 @@ def _load_summary(task_dir: Path) -> dict[str, Any]:
         not isinstance(privacy, dict)
         or set(privacy) != _PRIVACY_KEYS
         or privacy.get("path") != "safe/privacy.json"
+        or privacy.get("audit_path") != "private/privacy-audit.json"
         or not isinstance(privacy.get("deterministic_redactions"), dict)
         or not isinstance(privacy.get("images_omitted"), int)
-        or privacy.get("manual_review_required") is not True
-        or not isinstance(privacy.get("manual_review_complete"), bool)
+        or privacy.get("contextual_review_required") is not True
+        or not isinstance(privacy.get("contextual_review_complete"), bool)
+        or privacy.get("reviewer_kind") not in {None, "agent", "human"}
         or not isinstance(privacy.get("blocking_reasons"), list)
     ):
         raise ContractError("summary privacy data does not match the versioned task workspace contract")
@@ -228,9 +289,15 @@ def _load_summary(task_dir: Path) -> dict[str, Any]:
         or set(environment) != _ENVIRONMENT_KEYS
         or environment.get("path") != "task"
         or environment.get("status") not in {"ready", "failed", "unproven", "not_attempted"}
+        or environment.get("technical_status") not in {"passed", "failed", "not_run"}
+        or environment.get("review_status") not in {"human_reviewed", "unreviewed"}
         or environment.get("validation") not in {None, "validation.json"}
+        or environment.get("verifier_environment_mode") not in {None, "shared", "separate"}
+        or environment.get("isolation_status") not in {"isolated", "shared", "not_run"}
     ):
         raise ContractError("summary environment does not match the versioned task workspace contract")
+    if privacy is not None and source is None:
+        raise ContractError("summary privacy data requires prepared source evidence")
     return summary
 
 
@@ -245,7 +312,7 @@ def _ensure_task_dir(path: Path) -> Path:
         raise ContractError(f"task directory must be a regular directory: {path}")
     if TASK_ID.fullmatch(path.name) is None:
         raise ContractError("task directory name must be lowercase kebab-case")
-    return path
+    return path.resolve()
 
 
 def _init(args: argparse.Namespace) -> dict[str, Any]:
@@ -275,7 +342,15 @@ def _init(args: argparse.Namespace) -> dict[str, Any]:
         "source": None,
         "privacy": None,
         "candidate": None,
-        "environment": {"path": "task", "status": "not_attempted", "validation": None},
+        "environment": {
+            "path": "task",
+            "status": "not_attempted",
+            "technical_status": "not_run",
+            "review_status": "unreviewed",
+            "validation": None,
+            "verifier_environment_mode": None,
+            "isolation_status": "not_run",
+        },
         "worked_well": [],
         "did_not_work": [],
         "reasons": [],
@@ -416,6 +491,7 @@ def _redact_text(value: str, counts: dict[str, int]) -> str:
     value = _replace(_EMAIL, value, "<redacted:email>", counts, "email")
     value = _replace(_SSN, value, "<redacted:ssn>", counts, "ssn")
     value = _replace(_HOME_PATH, value, "/home/<redacted:user>", counts, "home_path")
+    value = _replace(_INTERNAL_HOST, value, "<redacted:internal-host>", counts, "internal_host")
     value = _redact_ipv4(value, counts)
     return _redact_phone(value, counts)
 
@@ -441,60 +517,299 @@ def _scrub(value: Any, counts: dict[str, int], *, key: str | None = None) -> Any
     return value
 
 
+def _parse_or_repair(raw: str) -> tuple[dict[str, Any], list[int]]:
+    repaired = raw
+    inserted_offsets: list[int] = []
+    while True:
+        try:
+            payload = json.loads(repaired)
+            if not isinstance(payload, dict):
+                raise ContractError("ATIF root must be a JSON object")
+            return payload, inserted_offsets
+        except json.JSONDecodeError as error:
+            candidates = [
+                index + len(_REDACTION_QUOTE) - 1
+                for index in range(len(repaired))
+                if repaired.startswith(_REDACTION_QUOTE, index) and index + len(_REDACTION_QUOTE) - 1 < error.pos
+            ]
+            if not candidates:
+                raise ContractError(
+                    "invalid JSON is not attributable to a provider-redaction placeholder quote"
+                ) from error
+            quote_offset = candidates[-1]
+            original_offset = quote_offset - len(inserted_offsets)
+            repaired = repaired[:quote_offset] + "\\" + repaired[quote_offset:]
+            inserted_offsets.append(original_offset)
+
+
+def _bound_stringified_images(payload: dict[str, Any]) -> dict[str, int]:
+    counts = {
+        "count": 0,
+        "omitted_encoded_characters": 0,
+        "metadata_field_count": 0,
+        "metadata_omitted_characters": 0,
+    }
+
+    def convert(content: str) -> tuple[list[dict[str, Any]] | None, int, int]:
+        decoder = json.JSONDecoder()
+        parts: list[dict[str, Any]] = []
+        search_cursor = 0
+        emitted_cursor = 0
+        converted_count = 0
+        converted_characters = 0
+        while match := _IMAGE_OBJECT_START.search(content, search_cursor):
+            start = match.start()
+            try:
+                part, end = decoder.raw_decode(content, start)
+            except json.JSONDecodeError:
+                search_cursor = match.end()
+                continue
+            source = part.get("source") if isinstance(part, dict) else None
+            if part.get("type") != "image" or not isinstance(source, dict) or not isinstance(source.get("data"), str):
+                search_cursor = end
+                continue
+            if start > emitted_cursor:
+                parts.append({"type": "text", "text": content[emitted_cursor:start]})
+            bounded_source = dict(source)
+            encoded = bounded_source["data"]
+            bounded_source["data"] = ""
+            parts.append({"type": "image", "source": bounded_source})
+            converted_count += 1
+            converted_characters += len(encoded)
+            search_cursor = end
+            emitted_cursor = end
+        if converted_count == 0:
+            return None, 0, 0
+        if emitted_cursor < len(content):
+            parts.append({"type": "text", "text": content[emitted_cursor:]})
+        return parts, converted_count, converted_characters
+
+    def bound_metadata(value: Any) -> None:
+        if isinstance(value, dict):
+            image_like = value.get("type") in {"image", "base64"} or (
+                isinstance(value.get("media_type"), str) and value["media_type"].startswith("image/")
+            )
+            for key, nested in value.items():
+                if (
+                    isinstance(nested, str)
+                    and len(nested) > 100_000
+                    and (key == "base64" or (key == "data" and image_like))
+                ):
+                    counts["metadata_field_count"] += 1
+                    counts["metadata_omitted_characters"] += len(nested)
+                    value[key] = ""
+                else:
+                    bound_metadata(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                bound_metadata(nested)
+
+    def bound_image_parts(value: Any) -> None:
+        if isinstance(value, dict):
+            source = value.get("source")
+            if value.get("type") == "image" and isinstance(source, dict):
+                encoded = source.get("data")
+                if isinstance(encoded, str) and encoded:
+                    counts["count"] += 1
+                    counts["omitted_encoded_characters"] += len(encoded)
+                    source["data"] = ""
+            for nested in value.values():
+                bound_image_parts(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                bound_image_parts(nested)
+
+    def visit(trajectory: dict[str, Any]) -> None:
+        steps = trajectory.get("steps")
+        if isinstance(steps, list):
+            for step in steps:
+                observation = step.get("observation") if isinstance(step, dict) else None
+                results = observation.get("results") if isinstance(observation, dict) else None
+                if not isinstance(results, list):
+                    continue
+                for result in results:
+                    if not isinstance(result, dict):
+                        continue
+                    content = result.get("content")
+                    if isinstance(content, str):
+                        parts, converted_count, converted_characters = convert(content)
+                        if parts is not None:
+                            result["content"] = parts
+                            counts["count"] += converted_count
+                            counts["omitted_encoded_characters"] += converted_characters
+                    bound_metadata(result.get("extra"))
+        subagents = trajectory.get("subagent_trajectories")
+        if isinstance(subagents, list):
+            for subagent in subagents:
+                if isinstance(subagent, dict):
+                    visit(subagent)
+
+    visit(payload)
+    bound_image_parts(payload)
+    bound_metadata(payload)
+    return counts
+
+
+def _record_normalization(
+    payload: dict[str, Any], source_sha256: str, offsets: list[int], image_counts: dict[str, int]
+) -> list[dict[str, Any]]:
+    normalizations: list[dict[str, Any]] = []
+    if offsets:
+        normalizations.append(
+            {
+                "kind": "escape_provider_redaction_placeholder_quote",
+                "count": len(offsets),
+                "source_character_offsets": offsets,
+            }
+        )
+    if image_counts["count"] or image_counts["metadata_field_count"]:
+        normalizations.append({"kind": "bound_stringified_image_observations", **image_counts})
+    extra = payload.setdefault("extra", {})
+    if not isinstance(extra, dict):
+        raise ContractError("ATIF extra field must be an object when present")
+    normalization = extra.setdefault("normalization", {})
+    if not isinstance(normalization, dict):
+        raise ContractError("ATIF extra.normalization field must be an object when present")
+    uncertainties = normalization.setdefault("uncertainties", [])
+    losses = normalization.setdefault("losses", [])
+    if not isinstance(uncertainties, list) or any(not isinstance(item, str) for item in uncertainties):
+        raise ContractError("ATIF normalization uncertainties must be a string list")
+    if not isinstance(losses, list) or any(not isinstance(item, str) for item in losses):
+        raise ContractError("ATIF normalization losses must be a string list")
+    if offsets:
+        uncertainties.append(
+            "A missing JSON escape immediately after a provider-redaction placeholder was inserted only where the parser implicated that quote."
+        )
+    if image_counts["count"] or image_counts["metadata_field_count"]:
+        losses.append(
+            "String-encoded image data was omitted from the bounded canonical ATIF; exact source bytes remain preserved and hashed."
+        )
+    normalization["source_sha256"] = source_sha256
+    normalization["operations"] = normalizations
+    return normalizations
+
+
+def _walk_strings(value: Any, path: str = "$") -> list[tuple[str, str]]:
+    if isinstance(value, dict):
+        strings: list[tuple[str, str]] = []
+        for key, nested in value.items():
+            strings.extend(_walk_strings(nested, f"{path}.{key}"))
+        return strings
+    if isinstance(value, list):
+        strings = []
+        for index, nested in enumerate(value):
+            strings.extend(_walk_strings(nested, f"{path}[{index}]"))
+        return strings
+    return [(path, value)] if isinstance(value, str) else []
+
+
+def _privacy_audit(payload: dict[str, Any], safe_sha256: str) -> dict[str, Any]:
+    strings = _walk_strings(payload)
+    findings: list[dict[str, str]] = []
+    url_hosts: set[str] = set()
+    patterns = (("street_address", _STREET), ("organization", _ORGANIZATION), ("person_name", _PERSON))
+    for path, value in strings:
+        for url in _URL.findall(value):
+            hostname = urlsplit(url).hostname
+            if hostname:
+                url_hosts.add(hostname)
+        for kind, pattern in patterns:
+            for match in pattern.finditer(value):
+                findings.append({"kind": kind, "path": path, "value": match.group(0)})
+    return {
+        "schema": PRIVACY_AUDIT_SCHEMA,
+        "safe_sha256": safe_sha256,
+        "string_field_count": len(strings),
+        "unique_string_count": len({value for _, value in strings}),
+        "character_count": sum(len(value) for _, value in strings),
+        "url_hosts": sorted(url_hosts),
+        "candidate_findings": findings,
+        "review": {"complete": False, "reviewer_kind": None, "note": None},
+    }
+
+
 def _prepare(args: argparse.Namespace) -> dict[str, Any]:
-    task_dir = _ensure_task_dir(args.task_dir.resolve())
+    task_dir = _ensure_task_dir(args.task_dir)
     summary = _load_summary(task_dir)
     if summary["source"] is not None:
         raise ContractError("this task workspace already has prepared source evidence")
 
-    source_path = args.atif.resolve()
+    source_path = args.atif
     if source_path.is_symlink() or not source_path.is_file():
         raise ContractError(f"ATIF source must be a regular file: {source_path}")
+    source_path = source_path.resolve()
     source_bytes = source_path.read_bytes()
-    if len(source_bytes) > MAX_SOURCE_BYTES:
-        raise ContractError(f"ATIF source exceeds the {MAX_SOURCE_BYTES}-byte limit")
+    if len(source_bytes) > MAX_RAW_SOURCE_BYTES:
+        raise ContractError(f"ATIF source exceeds the {MAX_RAW_SOURCE_BYTES}-byte raw-source limit")
     try:
-        payload = json.loads(source_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ContractError(f"could not read ATIF source as UTF-8 JSON: {error}") from error
+        source_text = source_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ContractError(f"could not read ATIF source as UTF-8: {error}") from error
+    payload, repaired_offsets = _parse_or_repair(source_text)
+    image_counts = _bound_stringified_images(payload)
+    normalizations = _record_normalization(payload, _sha256(source_bytes), repaired_offsets, image_counts)
     validation = _validate_trajectory(payload)
 
-    private_path = task_dir / "private" / "source.atif.json"
+    original_path = task_dir / "private" / "source.atif.json"
+    canonical_path = task_dir / "private" / "canonical.atif.json"
     safe_path = task_dir / "safe" / "trace.atif.json"
     privacy_path = task_dir / "safe" / "privacy.json"
-    if any(path.exists() for path in (private_path, safe_path, privacy_path)):
+    audit_path = task_dir / "private" / "privacy-audit.json"
+    if any(path.exists() for path in (original_path, canonical_path, safe_path, privacy_path, audit_path)):
         raise ContractError("refusing to replace an existing prepared artifact")
+    canonical_bytes = (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
+    if len(canonical_bytes) > MAX_CANONICAL_BYTES:
+        raise ContractError(f"canonical ATIF exceeds the {MAX_CANONICAL_BYTES}-byte limit after bounded normalization")
     counts: dict[str, int] = {}
     scrubbed = _scrub(payload, counts)
     _validate_trajectory(scrubbed)
     safe_bytes = (json.dumps(scrubbed, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
+    if len(safe_bytes) > MAX_CANONICAL_BYTES:
+        raise ContractError(f"safe ATIF exceeds the {MAX_CANONICAL_BYTES}-byte limit")
     blocking_reasons = [
         f"image_only_user_instruction:step-{step_id}" for step_id in validation["image_only_user_steps"]
     ]
     privacy = {
         "deterministic_redactions": dict(sorted(counts.items())),
         "images_omitted": counts.get("image", 0),
-        "manual_review_required": True,
-        "manual_review_complete": False,
+        "contextual_review_required": True,
+        "contextual_review_complete": False,
+        "reviewer_kind": None,
         "blocking_reasons": blocking_reasons,
     }
+    audit = _privacy_audit(scrubbed, _sha256(safe_bytes))
     summary["source"] = {
         "kind": args.source_kind,
-        "private_path": "private/source.atif.json",
-        "private_sha256": _sha256(source_bytes),
+        "original_path": "private/source.atif.json",
+        "original_sha256": _sha256(source_bytes),
+        "original_size_bytes": len(source_bytes),
+        "canonical_path": "private/canonical.atif.json",
+        "canonical_sha256": _sha256(canonical_bytes),
+        "canonical_size_bytes": len(canonical_bytes),
         "safe_path": "safe/trace.atif.json",
         "safe_sha256": _sha256(safe_bytes),
+        "safe_size_bytes": len(safe_bytes),
+        "normalizations": normalizations,
     }
-    summary["privacy"] = {"path": "safe/privacy.json", **privacy}
+    summary["privacy"] = {
+        "path": "safe/privacy.json",
+        "audit_path": "private/privacy-audit.json",
+        **privacy,
+    }
     privacy_bytes = (json.dumps(privacy, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
+    audit_bytes = (json.dumps(audit, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
     written: list[Path] = []
     try:
-        _write_bytes_once(private_path, source_bytes)
-        written.append(private_path)
+        _write_bytes_once(original_path, source_bytes)
+        written.append(original_path)
+        _write_bytes_once(canonical_path, canonical_bytes)
+        written.append(canonical_path)
         _write_bytes_once(safe_path, safe_bytes)
         written.append(safe_path)
         _write_bytes_once(privacy_path, privacy_bytes)
         written.append(privacy_path)
+        _write_bytes_once(audit_path, audit_bytes)
+        written.append(audit_path)
         _write_json(_summary_path(task_dir), summary)
     except BaseException:
         for path in written:
@@ -506,6 +821,8 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
         "redaction_count": sum(counts.values()),
         "images_omitted": privacy["images_omitted"],
         "blocking_reason_count": len(blocking_reasons),
+        "normalization_count": len(normalizations),
+        "privacy_candidate_count": len(audit["candidate_findings"]),
     }
 
 
@@ -516,6 +833,42 @@ def _string_list(payload: dict[str, Any], name: str, *, nonempty: bool = False) 
     if nonempty and not value:
         raise ContractError(f"candidate.{name} must not be empty")
     return value
+
+
+def _review_privacy(args: argparse.Namespace) -> dict[str, Any]:
+    task_dir = _ensure_task_dir(args.task_dir)
+    summary = _load_summary(task_dir)
+    privacy = summary.get("privacy")
+    if not isinstance(privacy, dict):
+        raise ContractError("prepare ATIF evidence before reviewing privacy")
+    safe_path = task_dir / summary["source"]["safe_path"]
+    audit_path = task_dir / privacy["audit_path"]
+    report_path = task_dir / privacy["path"]
+    audit = _load_object(audit_path, label="privacy audit")
+    if audit.get("schema") != PRIVACY_AUDIT_SCHEMA or audit.get("safe_sha256") != _sha256(safe_path.read_bytes()):
+        raise ContractError("privacy audit does not match the current safe ATIF")
+    review = audit.get("review")
+    if not isinstance(review, dict) or set(review) != {"complete", "reviewer_kind", "note"}:
+        raise ContractError("privacy audit review fields do not match the versioned contract")
+    if review["complete"]:
+        raise ContractError("contextual privacy review has already been recorded")
+    audit["review"] = {"complete": True, "reviewer_kind": args.reviewer_kind, "note": args.note}
+    report = _load_object(report_path, label="privacy report")
+    if set(report) != _PRIVACY_REPORT_KEYS:
+        raise ContractError("privacy report fields do not match the versioned contract")
+    report["contextual_review_complete"] = True
+    report["reviewer_kind"] = args.reviewer_kind
+    privacy.update(report)
+    _write_json(audit_path, audit)
+    _write_json(report_path, report)
+    _write_json(_summary_path(task_dir), summary)
+    return {
+        "task_dir": str(task_dir),
+        "contextual_review_complete": True,
+        "reviewer_kind": args.reviewer_kind,
+        "candidate_findings_reviewed": len(audit.get("candidate_findings", [])),
+        "url_hosts_reviewed": len(audit.get("url_hosts", [])),
+    }
 
 
 def _evidence_steps(value: Any, step_ids: set[int], *, label: str) -> list[int]:
@@ -532,6 +885,42 @@ def _evidence_steps(value: Any, step_ids: set[int], *, label: str) -> list[int]:
     return value
 
 
+def _validate_provenance(value: Any, step_ids: set[int], *, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != _PROVENANCE_KEYS:
+        raise ContractError(f"{label} fields do not match the versioned contract")
+    kind = value.get("kind")
+    provenance_steps = value.get("step_ids")
+    if kind == "atif_step":
+        _evidence_steps(provenance_steps, step_ids, label=f"{label}.step_ids")
+        if any(value.get(name) is not None for name in ("uri", "revision", "source_id")):
+            raise ContractError(f"{label} ATIF provenance must not include external identifiers")
+    elif kind == "external":
+        if provenance_steps != []:
+            raise ContractError(f"{label}.step_ids must be empty for external provenance")
+        for name in ("uri", "revision", "source_id"):
+            item = value.get(name)
+            if item is not None and (not isinstance(item, str) or not item.strip()):
+                raise ContractError(f"{label}.{name} must be null or nonempty text")
+        if not any(value.get(name) for name in ("uri", "revision", "source_id")):
+            raise ContractError(f"{label} external provenance needs a URI, revision, or source ID")
+    else:
+        raise ContractError(f"{label}.kind must be atif_step or external")
+    return value
+
+
+def _validate_requirements(value: Any, step_ids: set[int]) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ContractError("candidate.requirements must be a list")
+    for index, requirement in enumerate(value):
+        label = f"candidate.requirements[{index}]"
+        if not isinstance(requirement, dict) or set(requirement) != _REQUIREMENT_KEYS:
+            raise ContractError(f"{label} fields do not match the versioned contract")
+        if not isinstance(requirement.get("description"), str) or not requirement["description"].strip():
+            raise ContractError(f"{label}.description must be nonempty text")
+        _evidence_steps(requirement.get("evidence_steps"), step_ids, label=f"{label}.evidence_steps")
+    return value
+
+
 def _validate_ground_truth(task_dir: Path, value: Any, step_ids: set[int]) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != _GROUND_TRUTH_KEYS:
         raise ContractError("candidate.ground_truth fields do not match the versioned contract")
@@ -542,6 +931,9 @@ def _validate_ground_truth(task_dir: Path, value: Any, step_ids: set[int]) -> di
     if not isinstance(artifacts, list):
         raise ContractError("candidate.ground_truth.artifacts must be a list")
     absence_reason = value.get("absence_reason")
+    use = value.get("use")
+    if use not in {"none", "comparison_only", "verification"}:
+        raise ContractError("candidate.ground_truth.use is not recognized")
     if absence_reason is not None and (not isinstance(absence_reason, str) or not absence_reason.strip()):
         raise ContractError("candidate.ground_truth.absence_reason must be null or nonempty text")
     if availability in {"available", "partial"} and not artifacts:
@@ -552,6 +944,10 @@ def _validate_ground_truth(task_dir: Path, value: Any, step_ids: set[int]) -> di
         raise ContractError("available ground truth must set absence_reason to null")
     if availability == "partial" and absence_reason is None:
         raise ContractError("partial ground truth must explain what is missing")
+    if availability in {"absent", "unknown"} and use != "none":
+        raise ContractError("absent or unknown ground truth must set use to none")
+    if availability in {"available", "partial"} and use == "none":
+        raise ContractError("available or partial ground truth must declare comparison_only or verification use")
 
     allowed_kinds = {
         "reference_trace",
@@ -584,7 +980,7 @@ def _validate_ground_truth(task_dir: Path, value: Any, step_ids: set[int]) -> di
             raise ContractError(f"{label}.sha256 does not match the retained artifact")
         if os.name == "posix" and stat.S_IMODE(artifact_path.stat().st_mode) & 0o077:
             raise ContractError(f"{label}.path is not owner-private")
-        _evidence_steps(artifact.get("evidence_steps"), step_ids, label=f"{label}.evidence_steps")
+        _validate_provenance(artifact.get("provenance"), step_ids, label=f"{label}.provenance")
         notes = artifact.get("notes")
         if not isinstance(notes, str) or not notes.strip():
             raise ContractError(f"{label}.notes must be nonempty text")
@@ -620,7 +1016,7 @@ def _validate_software_requirements(value: Any, step_ids: set[int]) -> list[dict
         redistributable = requirement.get("redistributable")
         if redistributable is not None and type(redistributable) is not bool:
             raise ContractError(f"{label}.redistributable must be true, false, or null")
-        _evidence_steps(requirement.get("evidence_steps"), step_ids, label=f"{label}.evidence_steps")
+        _validate_provenance(requirement.get("provenance"), step_ids, label=f"{label}.provenance")
         notes = requirement.get("notes")
         if not isinstance(notes, str) or not notes.strip():
             raise ContractError(f"{label}.notes must be nonempty text")
@@ -635,6 +1031,8 @@ def _validate_candidate(task_dir: Path, status: str, step_ids: set[int]) -> dict
         raise ContractError(f"candidate.schema must be {CANDIDATE_SCHEMA!r}")
     if candidate.get("status") != status:
         raise ContractError("candidate status does not match the requested summary status")
+    if candidate.get("decision_basis") != "safe_atif_only":
+        raise ContractError("candidate.decision_basis must be safe_atif_only")
     _evidence_steps(candidate.get("evidence_steps"), step_ids, label="candidate.evidence_steps")
     _string_list(candidate, "uncertainties")
     _string_list(candidate, "reason_codes", nonempty=status == "no_candidate")
@@ -643,7 +1041,9 @@ def _validate_candidate(task_dir: Path, status: str, step_ids: set[int]) -> dict
     if status == "candidate":
         if not isinstance(candidate.get("instruction"), str) or not candidate["instruction"].strip():
             raise ContractError("candidate.instruction must be nonempty text")
-        _string_list(candidate, "requirements", nonempty=True)
+        requirements = _validate_requirements(candidate.get("requirements"), step_ids)
+        if not requirements:
+            raise ContractError("candidate.requirements must not be empty")
         if candidate.get("verification_mode") != "execution":
             raise ContractError("the basic flow accepts only deterministic execution candidates")
         unavailable = [
@@ -661,7 +1061,7 @@ def _validate_candidate(task_dir: Path, status: str, step_ids: set[int]) -> dict
     return candidate
 
 
-def _validate_environment(task_dir: Path) -> dict[str, Any]:
+def _validate_task(task_dir: Path) -> dict[str, str]:
     environment = task_dir / "task"
     required_files = (
         environment / "README.md",
@@ -693,27 +1093,153 @@ def _validate_environment(task_dir: Path) -> dict[str, Any]:
     missing_sections = [section for section in _TASK_README_SECTIONS if not sections.get(section)]
     if missing_sections:
         raise ContractError(f"task/README.md is missing substantive sections: {', '.join(missing_sections)}")
-    validation = _load_object(task_dir / "validation.json", label="environment validation")
-    if set(validation) != {"schema", "nop", "oracle"}:
+    try:
+        config = tomllib.loads((environment / "task.toml").read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        raise ContractError(f"task/task.toml must be valid UTF-8 TOML: {error}") from error
+    verifier = config.get("verifier")
+    if not isinstance(verifier, dict):
+        raise ContractError("task/task.toml must contain a [verifier] table")
+    mode = verifier.get("environment_mode")
+    if mode not in {"shared", "separate"}:
+        raise ContractError("task/task.toml must explicitly set [verifier].environment_mode to shared or separate")
+    if mode == "separate":
+        if verifier.get("network_mode") != "no-network":
+            raise ContractError("a separate verifier must set [verifier].network_mode to no-network")
+        verifier_environment = verifier.get("environment")
+        if isinstance(verifier_environment, dict) and verifier_environment.get("network_mode") != "no-network":
+            raise ContractError("[verifier.environment].network_mode must be no-network when configured")
+        isolation_status = "isolated"
+    else:
+        isolation_status = "shared"
+    return {"verifier_environment_mode": mode, "isolation_status": isolation_status}
+
+
+def _job_result(task_dir: Path, value: str | Path, *, arm: str) -> tuple[Path, Path, dict[str, Any]]:
+    job_dir = Path(value)
+    if not job_dir.is_absolute():
+        job_dir = task_dir / job_dir
+    if job_dir.is_symlink():
+        raise ContractError(f"{arm} Harbor job directory must not be a symlink")
+    job_dir = job_dir.resolve()
+    if not job_dir.is_relative_to(task_dir.resolve()):
+        raise ContractError(f"{arm} Harbor job directory must stay inside the task workspace")
+    if not job_dir.is_dir():
+        raise ContractError(f"{arm} Harbor job directory does not exist as a regular directory")
+    results = sorted(job_dir.glob("task__*/result.json"))
+    if len(results) != 1:
+        raise ContractError(f"{arm} Harbor job directory must contain exactly one task__*/result.json")
+    result_path = results[0]
+    result = _load_object(result_path, label=f"{arm} Harbor result")
+    return job_dir, result_path, result
+
+
+def _arm_from_result(task_dir: Path, job_dir: Path, result_path: Path, result: dict[str, Any]) -> dict[str, Any]:
+    verifier_result = result.get("verifier_result")
+    rewards = verifier_result.get("rewards") if isinstance(verifier_result, dict) else None
+    reward = rewards.get("reward") if isinstance(rewards, dict) else None
+    if reward is not None and (isinstance(reward, bool) or not isinstance(reward, (int, float))):
+        raise ContractError("Harbor result reward must be numeric or null")
+    return {
+        "job_dir": str(job_dir.relative_to(task_dir.resolve())),
+        "result_path": str(result_path.relative_to(task_dir.resolve())),
+        "result_sha256": _sha256(result_path.read_bytes()),
+        "reward": reward,
+        "exception_present": result.get("exception_info") is not None,
+    }
+
+
+def _validation_from_jobs(
+    task_dir: Path, nop_job_dir: str | Path, oracle_job_dir: str | Path, harbor_version: str
+) -> dict[str, Any]:
+    if not isinstance(harbor_version, str) or not harbor_version.strip():
+        raise ContractError("Harbor version must be nonempty text")
+    task_contract = _validate_task(task_dir)
+    arms: dict[str, dict[str, Any]] = {}
+    trials: dict[str, dict[str, Any]] = {}
+    for arm, value in (("nop", nop_job_dir), ("oracle", oracle_job_dir)):
+        job_dir, result_path, result = _job_result(task_dir, value, arm=arm)
+        trials[arm] = result
+        arms[arm] = _arm_from_result(task_dir, job_dir, result_path, result)
+    checksums = {trial.get("task_checksum") for trial in trials.values()}
+    if (
+        len(checksums) != 1
+        or not isinstance(next(iter(checksums)), str)
+        or _TASK_CHECKSUM.fullmatch(next(iter(checksums))) is None
+    ):
+        raise ContractError("NOP and Oracle Harbor results must have one matching task checksum")
+    modes = {trial.get("verifier_environment_mode") for trial in trials.values()}
+    if len(modes) != 1 or next(iter(modes)) not in {"shared", "separate"}:
+        raise ContractError("NOP and Oracle Harbor results must have one matching verifier environment mode")
+    mode = next(iter(modes))
+    if mode != task_contract["verifier_environment_mode"]:
+        raise ContractError("Harbor verifier environment mode differs from task/task.toml")
+    passed = (
+        arms["nop"]["reward"] == 0
+        and not arms["nop"]["exception_present"]
+        and arms["oracle"]["reward"] == 1
+        and not arms["oracle"]["exception_present"]
+    )
+    return {
+        "schema": VALIDATION_SCHEMA,
+        "harbor_version": harbor_version,
+        "task_checksum": next(iter(checksums)),
+        "verifier_environment_mode": mode,
+        "passed": passed,
+        **arms,
+    }
+
+
+def _record_validation(args: argparse.Namespace) -> dict[str, Any]:
+    task_dir = _ensure_task_dir(args.task_dir)
+    validation_path = task_dir / "validation.json"
+    if validation_path.exists():
+        raise ContractError("refusing to replace existing validation.json")
+    validation = _validation_from_jobs(task_dir, args.nop_job_dir, args.oracle_job_dir, args.harbor_version)
+    _write_json(validation_path, validation)
+    return {
+        "task_dir": str(task_dir),
+        "passed": validation["passed"],
+        "nop_reward": validation["nop"]["reward"],
+        "oracle_reward": validation["oracle"]["reward"],
+        "verifier_environment_mode": validation["verifier_environment_mode"],
+    }
+
+
+def _validate_validation(task_dir: Path) -> dict[str, Any]:
+    recorded = _load_object(task_dir / "validation.json", label="environment validation")
+    expected_keys = {
+        "schema",
+        "harbor_version",
+        "task_checksum",
+        "verifier_environment_mode",
+        "passed",
+        "nop",
+        "oracle",
+    }
+    if set(recorded) != expected_keys or recorded.get("schema") != VALIDATION_SCHEMA:
         raise ContractError("validation fields do not match the versioned contract")
-    if validation.get("schema") != VALIDATION_SCHEMA:
-        raise ContractError(f"validation.schema must be {VALIDATION_SCHEMA!r}")
-    for arm, reward in (("nop", 0), ("oracle", 1)):
-        result = validation.get(arm)
-        if not isinstance(result, dict) or set(result) != {"reward", "exception", "job_dir"}:
-            raise ContractError(f"validation.{arm} must be an object")
-        if result.get("reward") != reward or result.get("exception") is not None:
-            raise ContractError(f"validation.{arm} must have reward {reward} and no exception")
-        job_dir = result.get("job_dir")
-        if not isinstance(job_dir, str) or not job_dir.strip():
-            raise ContractError(f"validation.{arm}.job_dir must name the Harbor evidence directory")
-        job_path = task_dir / job_dir
-        resolved_job_path = job_path.resolve()
-        if not resolved_job_path.is_relative_to(task_dir.resolve()):
-            raise ContractError(f"validation.{arm}.job_dir must stay inside the task workspace")
-        if job_path.is_symlink() or not job_path.is_dir():
-            raise ContractError(f"validation.{arm}.job_dir does not exist as a regular directory")
-    return validation
+    if not isinstance(recorded.get("harbor_version"), str) or not recorded["harbor_version"].strip():
+        raise ContractError("validation.harbor_version must be nonempty text")
+    for arm in ("nop", "oracle"):
+        value = recorded.get(arm)
+        if not isinstance(value, dict) or set(value) != {
+            "job_dir",
+            "result_path",
+            "result_sha256",
+            "reward",
+            "exception_present",
+        }:
+            raise ContractError(f"validation.{arm} fields do not match the versioned contract")
+    derived = _validation_from_jobs(
+        task_dir,
+        recorded.get("nop", {}).get("job_dir", ""),
+        recorded.get("oracle", {}).get("job_dir", ""),
+        recorded["harbor_version"],
+    )
+    if recorded != derived:
+        raise ContractError("validation.json differs from the retained Harbor result evidence")
+    return recorded
 
 
 def _summary_markdown(summary: dict[str, Any]) -> str:
@@ -738,7 +1264,10 @@ def _summary_markdown(summary: dict[str, Any]) -> str:
         f"## Evidence\n\n"
         f"- Safe ATIF: `{summary['source']['safe_path']}`\n"
         f"- Evidence steps: {candidate.get('evidence_steps', [])}\n"
-        f"- Environment: `{summary['environment']['status']}`\n\n"
+        f"- Environment: `{summary['environment']['status']}`\n"
+        f"- Technical proof: `{summary['environment']['technical_status']}`\n"
+        f"- Review: `{summary['environment']['review_status']}`\n"
+        f"- Verifier isolation: `{summary['environment']['isolation_status']}`\n\n"
         f"## Ground truth\n\n"
         f"- Availability: `{ground_truth['availability']}`\n"
         f"- Retained artifacts: {len(ground_truth['artifacts'])}\n"
@@ -752,7 +1281,7 @@ def _summary_markdown(summary: dict[str, Any]) -> str:
 
 
 def _finalize(args: argparse.Namespace) -> dict[str, Any]:
-    task_dir = _ensure_task_dir(args.task_dir.resolve())
+    task_dir = _ensure_task_dir(args.task_dir)
     summary = _load_summary(task_dir)
     if summary["source"] is None or summary["privacy"] is None:
         raise ContractError("prepare canonical ATIF evidence before finalizing")
@@ -766,25 +1295,36 @@ def _finalize(args: argparse.Namespace) -> dict[str, Any]:
     candidate = _validate_candidate(task_dir, args.status, step_ids)
 
     privacy = summary["privacy"]
-    privacy_review_complete = privacy["manual_review_complete"] or args.privacy_reviewed
-    if args.status == "candidate" and not privacy_review_complete:
-        raise ContractError("candidate finalization requires --privacy-reviewed after contextual review")
+    if args.status == "candidate" and not privacy["contextual_review_complete"]:
+        raise ContractError("candidate finalization requires the review-privacy command")
     if args.status == "candidate" and privacy["blocking_reasons"]:
         raise ContractError("candidate finalization is blocked by unresolved non-text evidence")
 
     validation: dict[str, Any] | None = None
-    environment_status = args.environment_status
     if args.status == "no_candidate":
-        if environment_status != "not_attempted":
-            raise ContractError("no_candidate must use environment status not_attempted")
-    elif environment_status == "ready":
-        validation = _validate_environment(task_dir)
-
-    if args.privacy_reviewed:
-        privacy["manual_review_complete"] = True
-        privacy_payload = _load_object(task_dir / privacy["path"], label="privacy report")
-        privacy_payload["manual_review_complete"] = True
-        _write_json(task_dir / privacy["path"], privacy_payload)
+        environment_status = "not_attempted"
+        technical_status = "not_run"
+        review_status = "unreviewed"
+        verifier_mode = None
+        isolation_status = "not_run"
+        if (task_dir / "validation.json").exists():
+            raise ContractError("no_candidate workspaces must not include validation.json")
+    else:
+        task_contract = _validate_task(task_dir)
+        verifier_mode = task_contract["verifier_environment_mode"]
+        isolation_status = task_contract["isolation_status"]
+        review_status = "human_reviewed" if args.human_reviewed else "unreviewed"
+        if (task_dir / "validation.json").exists():
+            validation = _validate_validation(task_dir)
+            technical_status = "passed" if validation["passed"] else "failed"
+        else:
+            technical_status = "not_run"
+        if technical_status == "failed":
+            environment_status = "failed"
+        elif technical_status == "passed" and isolation_status == "isolated" and args.human_reviewed:
+            environment_status = "ready"
+        else:
+            environment_status = "unproven"
 
     reasons = list(args.reason)
     if args.status == "no_candidate" and not reasons:
@@ -796,7 +1336,11 @@ def _finalize(args: argparse.Namespace) -> dict[str, Any]:
             "environment": {
                 "path": "task",
                 "status": environment_status,
+                "technical_status": technical_status,
+                "review_status": review_status,
                 "validation": "validation.json" if validation is not None else None,
+                "verifier_environment_mode": verifier_mode,
+                "isolation_status": isolation_status,
             },
             "worked_well": list(args.worked_well),
             "did_not_work": list(args.did_not_work),
@@ -814,14 +1358,22 @@ def _finalize(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _check(args: argparse.Namespace) -> dict[str, Any]:
-    task_dir = _ensure_task_dir(args.task_dir.resolve())
+    task_dir = _ensure_task_dir(args.task_dir)
     summary = _load_summary(task_dir)
     errors: list[str] = []
     source = summary.get("source")
     if isinstance(source, dict):
-        for path_key, digest_key in (("private_path", "private_sha256"), ("safe_path", "safe_sha256")):
+        for path_key, digest_key, size_key in (
+            ("original_path", "original_sha256", "original_size_bytes"),
+            ("canonical_path", "canonical_sha256", "canonical_size_bytes"),
+            ("safe_path", "safe_sha256", "safe_size_bytes"),
+        ):
             path = task_dir / source[path_key]
-            if not path.is_file() or _sha256(path.read_bytes()) != source[digest_key]:
+            if (
+                not path.is_file()
+                or _sha256(path.read_bytes()) != source[digest_key]
+                or path.stat().st_size != source[size_key]
+            ):
                 errors.append(f"{path_key} is missing or its digest changed")
             elif os.name == "posix" and stat.S_IMODE(path.stat().st_mode) & 0o077:
                 errors.append(f"{path_key} is not owner-private")
@@ -830,9 +1382,17 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
     privacy = summary.get("privacy")
     if isinstance(privacy, dict):
         try:
-            privacy_payload = _load_object(task_dir / "safe" / "privacy.json", label="privacy report")
-            if privacy != {"path": "safe/privacy.json", **privacy_payload}:
+            privacy_payload = _load_object(task_dir / privacy["path"], label="privacy report")
+            if privacy != {"path": privacy["path"], "audit_path": privacy["audit_path"], **privacy_payload}:
                 errors.append("privacy report does not match the summary")
+            audit = _load_object(task_dir / privacy["audit_path"], label="privacy audit")
+            if audit.get("schema") != PRIVACY_AUDIT_SCHEMA or audit.get("safe_sha256") != source["safe_sha256"]:
+                errors.append("privacy audit does not match the safe ATIF")
+            review = audit.get("review", {})
+            if review.get("complete") != privacy["contextual_review_complete"]:
+                errors.append("privacy audit review does not match the summary")
+            if review.get("reviewer_kind") != privacy["reviewer_kind"]:
+                errors.append("privacy audit reviewer kind does not match the summary")
         except ContractError as error:
             errors.append(str(error))
     elif source is not None:
@@ -844,14 +1404,238 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
             candidate = _validate_candidate(task_dir, summary["status"], step_ids)
             if summary.get("candidate") != {"path": "candidate.json", **candidate}:
                 errors.append("candidate record does not match the summary")
-            if summary.get("environment", {}).get("status") == "ready":
-                _validate_environment(task_dir)
+            environment = summary.get("environment", {})
+            if summary["status"] == "candidate":
+                if (
+                    not isinstance(privacy, dict)
+                    or not privacy["contextual_review_complete"]
+                    or privacy["blocking_reasons"]
+                ):
+                    errors.append("finalized candidate lacks a clear contextual privacy review")
+                task_contract = _validate_task(task_dir)
+                if environment.get("verifier_environment_mode") != task_contract["verifier_environment_mode"]:
+                    errors.append("summary verifier mode does not match task/task.toml")
+                if environment.get("isolation_status") != task_contract["isolation_status"]:
+                    errors.append("summary isolation status does not match task/task.toml")
+                validation_path = task_dir / "validation.json"
+                if validation_path.exists():
+                    validation = _validate_validation(task_dir)
+                    expected_technical = "passed" if validation["passed"] else "failed"
+                    if environment.get("technical_status") != expected_technical:
+                        errors.append("summary technical status does not match Harbor evidence")
+                    expected_status = "failed"
+                    if validation["passed"]:
+                        expected_status = (
+                            "ready"
+                            if task_contract["isolation_status"] == "isolated"
+                            and environment.get("review_status") == "human_reviewed"
+                            else "unproven"
+                        )
+                    if environment.get("status") != expected_status:
+                        errors.append("summary environment status does not match proof, review, and isolation")
+                    if environment.get("validation") != "validation.json":
+                        errors.append("summary omits retained Harbor validation")
+                elif environment.get("technical_status") != "not_run":
+                    errors.append("summary claims technical proof without validation.json")
+                elif environment.get("status") != "unproven" or environment.get("validation") is not None:
+                    errors.append("unrun candidate must remain unproven without validation")
+            elif environment != {
+                "path": "task",
+                "status": "not_attempted",
+                "technical_status": "not_run",
+                "review_status": "unreviewed",
+                "validation": None,
+                "verifier_environment_mode": None,
+                "isolation_status": "not_run",
+            }:
+                errors.append("no_candidate environment status must remain not_attempted")
             markdown_path = task_dir / "summary.md"
             if not markdown_path.is_file() or markdown_path.read_text(encoding="utf-8") != _summary_markdown(summary):
                 errors.append("summary.md is missing or does not match summary.json")
         except ContractError as error:
             errors.append(str(error))
     return {"task_dir": str(task_dir), "valid": not errors, "errors": errors}
+
+
+def _load_batch_manifest(path: Path) -> list[dict[str, Any]]:
+    manifest = _load_object(path, label="batch manifest")
+    if set(manifest) != {"schema", "members"} or manifest.get("schema") != BATCH_SCHEMA:
+        raise ContractError("batch manifest fields do not match the versioned contract")
+    members = manifest.get("members")
+    if not isinstance(members, list) or not members:
+        raise ContractError("batch manifest members must be a nonempty list")
+    task_ids: set[str] = set()
+    for index, member in enumerate(members):
+        if not isinstance(member, dict) or set(member) != _BATCH_MEMBER_KEYS:
+            raise ContractError(f"batch manifest member {index} fields do not match the versioned contract")
+        task_id = member.get("task_id")
+        if not isinstance(task_id, str) or len(task_id) > 80 or TASK_ID.fullmatch(task_id) is None:
+            raise ContractError(f"batch manifest member {index} has an invalid task_id")
+        if task_id in task_ids:
+            raise ContractError(f"batch manifest contains duplicate task_id {task_id!r}")
+        task_ids.add(task_id)
+        atif = member.get("atif")
+        if not isinstance(atif, str) or not atif.strip():
+            raise ContractError(f"batch manifest member {index}.atif must be nonempty text")
+        if member.get("source_kind") not in {"atif", "intake", "mlflow", "otel"}:
+            raise ContractError(f"batch manifest member {index}.source_kind is not recognized")
+    return members
+
+
+def _batch_prepare(args: argparse.Namespace) -> dict[str, Any]:
+    manifest_path = args.manifest.resolve()
+    members = _load_batch_manifest(manifest_path)
+    root = args.root.resolve()
+    results: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    for member in members:
+        task_id = member["task_id"]
+        task_dir = root / task_id
+        source_path = Path(member["atif"])
+        if not source_path.is_absolute():
+            source_path = manifest_path.parent / source_path
+        try:
+            if not task_dir.exists():
+                _init(argparse.Namespace(root=root, task_id=task_id))
+            summary = _load_summary(task_dir)
+            if summary["source"] is None:
+                _prepare(
+                    argparse.Namespace(
+                        task_dir=task_dir,
+                        atif=source_path,
+                        source_kind=member["source_kind"],
+                    )
+                )
+                outcome = "prepared"
+            else:
+                source_bytes = source_path.resolve().read_bytes()
+                if summary["source"]["original_sha256"] != _sha256(source_bytes):
+                    raise ContractError("existing workspace source digest differs from the batch manifest source")
+                outcome = "existing"
+            results.append({"task_id": task_id, "outcome": outcome})
+        except (ContractError, OSError) as error:
+            outcome = "failed"
+            results.append({"task_id": task_id, "outcome": outcome, "error": str(error)})
+        counts[outcome] = counts.get(outcome, 0) + 1
+    return {
+        "schema": BATCH_SCHEMA,
+        "denominator": len(members),
+        "counts": dict(sorted(counts.items())),
+        "members": results,
+        "valid": counts.get("failed", 0) == 0,
+    }
+
+
+def _batch_status(args: argparse.Namespace) -> dict[str, Any]:
+    members = _load_batch_manifest(args.manifest.resolve())
+    root = args.root.resolve()
+    results: list[dict[str, str]] = []
+    counts: dict[str, int] = {}
+    for member in members:
+        task_dir = root / member["task_id"]
+        if not task_dir.is_dir():
+            status = "missing"
+        else:
+            summary = _load_summary(task_dir)
+            if summary["status"] == "pending":
+                status = "pending_prepared" if summary["source"] is not None else "pending_unprepared"
+            elif summary["status"] == "candidate":
+                status = f"candidate_{summary['environment']['status']}"
+            else:
+                status = "no_candidate"
+        counts[status] = counts.get(status, 0) + 1
+        results.append({"task_id": member["task_id"], "status": status})
+    return {
+        "schema": BATCH_SCHEMA,
+        "denominator": len(members),
+        "counts": dict(sorted(counts.items())),
+        "members": results,
+    }
+
+
+def _reject_symlinks(root: Path) -> None:
+    for path in (root, *root.rglob("*")):
+        if path.is_symlink():
+            raise ContractError(f"safe export refuses symlink: {path.relative_to(root.parent)}")
+
+
+def _export(args: argparse.Namespace) -> dict[str, Any]:
+    task_dir = _ensure_task_dir(args.task_dir)
+    summary = _load_summary(task_dir)
+    if summary["status"] == "pending":
+        raise ContractError("finalize the task workspace before export")
+    checked = _check(argparse.Namespace(task_dir=task_dir))
+    if not checked["valid"]:
+        raise ContractError(f"task workspace check failed: {'; '.join(checked['errors'])}")
+    output_dir = args.output_dir.resolve()
+    if output_dir.is_relative_to(task_dir) or ".eval-author" in output_dir.parts:
+        raise ContractError("export directory must be outside every private .eval-author workspace")
+    if output_dir.exists():
+        raise ContractError(f"refusing to replace existing export directory: {output_dir}")
+    output_dir.mkdir(parents=True)
+    candidate = _load_object(task_dir / "candidate.json", label="candidate")
+    shutil.copy2(task_dir / "candidate.json", output_dir / "candidate.json")
+    if summary["status"] == "candidate":
+        _reject_symlinks(task_dir / "task")
+        shutil.copytree(task_dir / "task", output_dir / "task")
+    validation_summary = None
+    if summary["environment"]["validation"] is not None:
+        validation = _validate_validation(task_dir)
+        validation_summary = {
+            "harbor_version": validation["harbor_version"],
+            "task_checksum": validation["task_checksum"],
+            "verifier_environment_mode": validation["verifier_environment_mode"],
+            "passed": validation["passed"],
+            "nop": {
+                "reward": validation["nop"]["reward"],
+                "exception_present": validation["nop"]["exception_present"],
+            },
+            "oracle": {
+                "reward": validation["oracle"]["reward"],
+                "exception_present": validation["oracle"]["exception_present"],
+            },
+        }
+    product = {
+        "schema": EXPORT_SCHEMA,
+        "task_id": summary["task_id"],
+        "status": summary["status"],
+        "reason_codes": candidate["reason_codes"],
+        "candidate_evidence_steps": candidate["evidence_steps"],
+        "ground_truth": {
+            "availability": candidate["ground_truth"]["availability"],
+            "use": candidate["ground_truth"]["use"],
+            "artifact_count": len(candidate["ground_truth"]["artifacts"]),
+        },
+        "privacy": {
+            "redaction_count": sum(summary["privacy"]["deterministic_redactions"].values()),
+            "images_omitted": summary["privacy"]["images_omitted"],
+            "contextual_review_complete": summary["privacy"]["contextual_review_complete"],
+            "reviewer_kind": summary["privacy"]["reviewer_kind"],
+        },
+        "environment": {
+            name: summary["environment"][name]
+            for name in (
+                "status",
+                "technical_status",
+                "review_status",
+                "verifier_environment_mode",
+                "isolation_status",
+            )
+        },
+        "technical_validation": validation_summary,
+    }
+    _write_json(output_dir / "result.json", product)
+    for path in output_dir.rglob("*"):
+        if path.is_file():
+            path.chmod(0o644)
+        elif path.is_dir():
+            path.chmod(0o755)
+    output_dir.chmod(0o755)
+    return {
+        "task_id": summary["task_id"],
+        "output_dir": str(output_dir),
+        "files": sorted(str(path.relative_to(output_dir)) for path in output_dir.rglob("*") if path.is_file()),
+    }
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -869,15 +1653,23 @@ def _parser() -> argparse.ArgumentParser:
     prepare.add_argument("--source-kind", choices=("atif", "intake", "mlflow", "otel"), required=True)
     prepare.set_defaults(run=_prepare)
 
+    review = subparsers.add_parser("review-privacy", help="record contextual review of every safe ATIF string")
+    review.add_argument("--task-dir", required=True, type=Path)
+    review.add_argument("--reviewer-kind", choices=("agent", "human"), required=True)
+    review.add_argument("--note", required=True)
+    review.set_defaults(run=_review_privacy)
+
+    record = subparsers.add_parser("record-validation", help="derive proof only from retained Harbor results")
+    record.add_argument("--task-dir", required=True, type=Path)
+    record.add_argument("--nop-job-dir", required=True, type=Path)
+    record.add_argument("--oracle-job-dir", required=True, type=Path)
+    record.add_argument("--harbor-version", required=True)
+    record.set_defaults(run=_record_validation)
+
     finalize = subparsers.add_parser("finalize", help="write the candidate decision and task summary")
     finalize.add_argument("--task-dir", required=True, type=Path)
     finalize.add_argument("--status", choices=("candidate", "no_candidate"), required=True)
-    finalize.add_argument(
-        "--environment-status",
-        choices=("ready", "failed", "unproven", "not_attempted"),
-        default="not_attempted",
-    )
-    finalize.add_argument("--privacy-reviewed", action="store_true")
+    finalize.add_argument("--human-reviewed", action="store_true")
     finalize.add_argument("--worked-well", action="append", default=[])
     finalize.add_argument("--did-not-work", action="append", default=[])
     finalize.add_argument("--reason", action="append", default=[])
@@ -886,6 +1678,21 @@ def _parser() -> argparse.ArgumentParser:
     check = subparsers.add_parser("check", help="verify recorded digests and generated artifacts")
     check.add_argument("--task-dir", required=True, type=Path)
     check.set_defaults(run=_check)
+
+    batch_prepare = subparsers.add_parser("batch-prepare", help="idempotently prepare every manifest member")
+    batch_prepare.add_argument("--root", type=Path, default=Path(".eval-author/trace-environments"))
+    batch_prepare.add_argument("--manifest", required=True, type=Path)
+    batch_prepare.set_defaults(run=_batch_prepare)
+
+    batch_status = subparsers.add_parser("batch-status", help="report the complete manifest denominator")
+    batch_status.add_argument("--root", type=Path, default=Path(".eval-author/trace-environments"))
+    batch_status.add_argument("--manifest", required=True, type=Path)
+    batch_status.set_defaults(run=_batch_status)
+
+    export = subparsers.add_parser("export", help="publish only the reviewed candidate, task, and result summary")
+    export.add_argument("--task-dir", required=True, type=Path)
+    export.add_argument("--output-dir", required=True, type=Path)
+    export.set_defaults(run=_export)
     return parser
 
 
