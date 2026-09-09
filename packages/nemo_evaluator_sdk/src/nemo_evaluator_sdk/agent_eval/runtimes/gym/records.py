@@ -23,11 +23,11 @@ NG_ROLLOUT_INDEX = "_ng_rollout_index"
 #: Gym appends this to a capture key past the first attempt, so it is part of the join.
 NG_ATTEMPT_INDEX = "_ng_attempt_index"
 #: Fields excluded from a row's content hash (runtime-injected, not task-defining).
-_RUNTIME_KEYS = frozenset({NG_TASK_INDEX, NG_ROLLOUT_INDEX})
+RUNTIME_KEYS = frozenset({NG_TASK_INDEX, NG_ROLLOUT_INDEX})
 
 
 #: Lines of subprocess output retained in memory for inclusion in a failure message.
-def _read_jsonl(path: str | Path, *, tolerant: bool = False) -> list[dict[str, Any]]:
+def read_jsonl(path: str | Path, *, tolerant: bool = False) -> list[dict[str, Any]]:
     """Read a jsonl file. With ``tolerant=True``, skip (and log) malformed lines instead of raising —
 
     used for Gym's ``*_failures.jsonl`` sidecar, which is written during abnormal termination and can
@@ -51,4 +51,4 @@ def _read_jsonl(path: str | Path, *, tolerant: bool = False) -> list[dict[str, A
 #: `gym env start`'s combined output, under the run's work dir. Named here with the other
 #: artifacts because a *collection* failure often has to point at it: the eval logs show the
 #: symptom, this shows the cause.
-_ENV_LOG_NAME = "gym_env.log"
+ENV_LOG_NAME = "gym_env.log"

@@ -28,17 +28,17 @@ logger = logging.getLogger(__name__)
 _GYM_CLI = "gym"
 #: Bound on `gym env validate`. It merges config without starting anything and returns in about a
 #: second; this only exists so a wedged invocation cannot stall the run before it begins.
-_VALIDATE_TIMEOUT_S = 120.0
+VALIDATE_TIMEOUT_S = 120.0
 #: Where Gym's Hydra run directories are redirected, relative to the run's work dir.
 #: Token-count keys read to decide whether a model was called at all. Both vocabularies, because
 #: Gym's model servers report in either depending on the adapter: the Responses API spells them
 #: `input_tokens`/`output_tokens`, Chat Completions `prompt_tokens`/`completion_tokens`.
-_LOG_TAIL_LINES = 40
+LOG_TAIL_LINES = 40
 
 
 #: Substrings that mark an override as carrying a credential. Matched case-insensitively against the
 #: full dotted path, so nesting cannot hide one behind an innocuous leaf name.
-def _gym_executable() -> str:
+def gym_executable() -> str:
     """Locate the ``gym`` CLI on PATH, or fail saying what to do about it.
 
     Deliberately PATH-only, with no config field pointing at a checkout or a particular venv: these
@@ -64,7 +64,7 @@ def _gym_executable() -> str:
 _PENDING_SERVERS_RE = re.compile(r"(\d+)\s*/\s*(\d+) servers ready\. Waiting for servers to spin up: \[([^\]]*)\]")
 
 
-def _pending_servers(text: str) -> tuple[int, int, tuple[str, ...]] | None:
+def pending_servers(text: str) -> tuple[int, int, tuple[str, ...]] | None:
     """Recover ``(ready, total, still-pending)`` from the *last* readiness line Gym logged.
 
     The last line is the one that matters: earlier polls list servers that have since come up.
@@ -84,7 +84,7 @@ def _pending_servers(text: str) -> tuple[int, int, tuple[str, ...]] | None:
         return None
 
 
-async def _pump_stream(
+async def pump_stream(
     stream: asyncio.StreamReader | None,
     path: Path,
     *,
@@ -95,10 +95,10 @@ async def _pump_stream(
     """Stream a subprocess pipe to ``path`` while mirroring it to the module logger at ``DEBUG``.
 
     Reads in chunks rather than by line so a pathologically long line can't overrun asyncio's stream
-    limit, and retains only the last :data:`_LOG_TAIL_LINES` lines in memory (via ``tails[key]``) for
+    limit, and retains only the last :data:`LOG_TAIL_LINES` lines in memory (via ``tails[key]``) for
     inclusion in a failure message — the file on disk is the complete record.
     """
-    tail: deque[str] = deque(maxlen=_LOG_TAIL_LINES)
+    tail: deque[str] = deque(maxlen=LOG_TAIL_LINES)
     if tails is not None:
         tails[key] = tail
     if stream is None:
@@ -125,12 +125,12 @@ async def _pump_stream(
             emit(buffer)
 
 
-async def _drain_pumps(pumps: Sequence[asyncio.Task[None]], *, grace_s: float, what: str) -> None:
+async def drain_pumps(pumps: Sequence[asyncio.Task[None]], *, grace_s: float, what: str) -> None:
     """Await log pumps after teardown, but never block on them indefinitely.
 
     A pump ends at pipe EOF, which requires *every* inheritor of the write end to close it. Gym's
     descendants inherit it, and Ray daemonizes ``gcs_server`` into its own session where our
-    process-group signals can't reach it (see :func:`_terminate`) — so a leaked grandchild can hold
+    process-group signals can't reach it (see :func:`terminate`) — so a leaked grandchild can hold
     the pipe open forever. Waiting unconditionally would hang the whole run inside a ``finally``.
 
     Bounded instead: give the pumps ``grace_s`` to flush, then cancel and move on. Everything read
@@ -163,7 +163,7 @@ def _signal_group(pgid: int, sig: int) -> None:
         pass
 
 
-async def _terminate(proc: asyncio.subprocess.Process, *, grace_s: float = 30.0) -> None:
+async def terminate(proc: asyncio.subprocess.Process, *, grace_s: float = 30.0) -> None:
     """Tear down a backgrounded Gym subprocess *and its whole process group*.
 
     ``gym env start`` fans out into a Ray cluster + uvicorn servers, and Gym stops them from a
@@ -190,7 +190,7 @@ async def _terminate(proc: asyncio.subprocess.Process, *, grace_s: float = 30.0)
         await proc.wait()
 
 
-def _gym_invocation_env(config: GymRuntimeConfig) -> dict[str, str]:
+def gym_invocation_env(config: GymRuntimeConfig) -> dict[str, str]:
     """The environment the ``gym`` CLI is invoked with.
 
     Three layers, lowest precedence first:

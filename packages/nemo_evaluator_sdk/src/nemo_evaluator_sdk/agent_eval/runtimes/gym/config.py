@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_REWARD_KEY = "reward"
 #: Gym's CLI, expected on PATH. Not configurable: these runner configs become serialized job specs,
 #: and a path into somebody's venv is meaningless on the other side of that boundary. Note this name
-#: is only ever *resolved*, never executed: :func:`_gym_executable` turns it into an absolute path
+#: is only ever *resolved*, never executed: :func:`gym_executable` turns it into an absolute path
 #: once, and that path is what the subprocesses run — so a child whose PATH differs from ours cannot
 #: end up executing a different Gym.
-_HYDRA_SUBDIR = "gym_hydra"
+HYDRA_SUBDIR = "gym_hydra"
 #: Where Gym writes its per-rollout model-call captures, under the run's work dir.
 _CAPTURE_SUBDIR = "model_calls"
 #: `gym env start`'s combined output, under the run's work dir. Named here because a *collection*
@@ -67,11 +67,11 @@ def _hydra_dict(value: Mapping[str, Any]) -> str:
                 "followed by letters, digits, '_', '.', or '-' survives the round trip. Set this "
                 "key through the override path instead of nesting it inside a list."
             )
-        rendered.append(f"{key}:{_hydra_scalar(item)}")
+        rendered.append(f"{key}:{hydra_scalar(item)}")
     return "{" + ",".join(rendered) + "}"
 
 
-def _hydra_scalar(value: Any) -> str:
+def hydra_scalar(value: Any) -> str:
     """Render a leaf value the way Hydra's override grammar reads it back.
 
     Hydra's grammar is typed, so an unquoted string is not necessarily a string: ``true`` parses as a
@@ -94,7 +94,7 @@ def _hydra_scalar(value: Any) -> str:
     if isinstance(value, Mapping):
         return _hydra_dict(value)
     if isinstance(value, (list, tuple)):
-        return "[" + ",".join(_hydra_scalar(item) for item in value) + "]"
+        return "[" + ",".join(hydra_scalar(item) for item in value) + "]"
     if isinstance(value, str):
         # A trailing backslash would escape the closing quote and leave the value unterminated, and
         # there is no spelling that avoids it — better to say so than to emit something unparseable.
@@ -126,11 +126,11 @@ def _flatten_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> list[
         if isinstance(value, Mapping) and value:
             arguments.extend(_flatten_overrides(value, f"{path}."))
         else:
-            arguments.append(f"++{path}={_hydra_scalar(value)}")
+            arguments.append(f"++{path}={hydra_scalar(value)}")
     return arguments
 
 
-def _redact_hydra_params(overrides: Mapping[str, Any], _prefix: str = "") -> dict[str, Any]:
+def redact_hydra_params(overrides: Mapping[str, Any], _prefix: str = "") -> dict[str, Any]:
     """Redact credential-looking values from overrides before they are recorded as provenance.
 
     ``hydra_params`` is a free-form escape hatch forwarded to Gym, so nothing stops a caller passing
@@ -149,7 +149,7 @@ def _redact_hydra_params(overrides: Mapping[str, Any], _prefix: str = "") -> dic
     for key, value in overrides.items():
         path = f"{_prefix}{key}"
         if isinstance(value, Mapping):
-            redacted[key] = _redact_hydra_params(value, f"{path}.")
+            redacted[key] = redact_hydra_params(value, f"{path}.")
         elif any(marker in path.casefold() for marker in _SECRET_KEY_MARKERS):
             redacted[key] = _REDACTED
         elif isinstance(value, (list, tuple)):
@@ -160,15 +160,15 @@ def _redact_hydra_params(overrides: Mapping[str, Any], _prefix: str = "") -> dic
 
 
 def _redact_list_item(item: Any, path: str) -> Any:
-    """Redact inside one element of a list-valued override. See :func:`_redact_hydra_params`."""
+    """Redact inside one element of a list-valued override. See :func:`redact_hydra_params`."""
     if isinstance(item, Mapping):
-        return _redact_hydra_params(item, f"{path}.")
+        return redact_hydra_params(item, f"{path}.")
     if isinstance(item, (list, tuple)):
         return [_redact_list_item(nested, path) for nested in item]
     return item
 
 
-def _selection_args(config: GymRuntimeConfig, work_dir: Path) -> list[str]:
+def selection_args(config: GymRuntimeConfig, work_dir: Path) -> list[str]:
     """The environment/agent/model selection passed to Gym.
 
     Built once and handed verbatim to both ``gym env validate`` and ``gym env start``, so what is
@@ -203,14 +203,14 @@ def _selection_args(config: GymRuntimeConfig, work_dir: Path) -> list[str]:
     # sweep separator and `[` as a list opener, so an unquoted work dir containing either is
     # silently misread or rejected outright. Verified against Hydra's own parser — unquoted,
     # `/tmp/a,b` becomes a ChoiceSweep and `/tmp/x[1]` raises OverrideParseException.
-    selection.append(f"hydra.run.dir={_hydra_scalar(str(work_dir / _HYDRA_SUBDIR))}")
+    selection.append(f"hydra.run.dir={hydra_scalar(str(work_dir / HYDRA_SUBDIR))}")
     # Off (Gym's default) a rollout reports one usage block summed over the turn and no timing at
     # all; on, each model exchange is captured with its own tokens and latency. Asserted over
     # `hydra_params` rather than defaulted, because turning it off degrades every trace silently.
     # ``++`` for the same reason `_flatten_overrides` uses it: these keys are absent from the merged
     # config until something sets them, and a bare `+` fails once they are present.
-    selection.append(f"++observability_enabled={_hydra_scalar(True)}")
-    selection.append(f"++model_call_capture_dir={_hydra_scalar(str(model_call_capture_dir(work_dir)))}")
+    selection.append(f"++observability_enabled={hydra_scalar(True)}")
+    selection.append(f"++model_call_capture_dir={hydra_scalar(str(model_call_capture_dir(work_dir)))}")
     return selection
 
 
