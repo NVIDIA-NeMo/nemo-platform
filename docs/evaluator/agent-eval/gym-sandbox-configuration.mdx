@@ -15,10 +15,10 @@ PVC, or egress policy.
 
 ## Prerequisites
 
-- A Kubernetes or Volcano Jobs execution profile.
-- [OpenSandbox installed and connected to NeMo Platform](/documentation/kubernetes-deployment/setup/helm/opensandbox).
-- A shared job-storage PVC available to both Jobs pods and OpenSandbox pods. The claim should support
-  `ReadWriteMany` when the scheduler can place them on different nodes.
+- Complete the shared [OpenSandbox platform setup](/documentation/kubernetes-deployment/setup/helm/opensandbox).
+  It configures the server connection, credentials, and top-level platform sandbox capability.
+- A Kubernetes or Volcano Jobs execution profile with a shared job-storage PVC. The claim should
+  support `ReadWriteMany` when Jobs and OpenSandbox pods can run on different nodes.
 - Published `nmp-cpu-tasks` and `nmp-gym-host` images for the platform release.
 - An allowlisted model endpoint reachable from the Gym host.
 
@@ -44,20 +44,12 @@ stage-environment (nmp-cpu-tasks)
 
 The Gym host mounts the environment read-only and a separate workspace path read-write.
 
-## Configure Helm
+## Configure Evaluator
 
-The following values show the required settings. Replace the namespace, Secret, image, PVC, and
-model URL for your deployment:
+After completing the shared OpenSandbox setup, add the Evaluator-specific values. Replace the image,
+PVC, and model URL for your deployment:
 
 ```yaml
-sandboxClusterCapable: true
-
-opensandbox:
-  domain: opensandbox-server.opensandbox-system.svc.cluster.local
-  protocol: http
-  apiKeySecret: opensandbox-server-api-key
-  apiKeySecretKey: api-key
-
 platformConfig:
   evaluator:
     sandboxed_gym_default: true
@@ -72,9 +64,10 @@ platformConfig:
       memory: 8Gi
 ```
 
-The top-level `sandboxClusterCapable` value injects the OpenSandbox connection into Kubernetes and
-Volcano jobs. The Evaluator-specific capability flag makes its compiler fail closed until the
-operator has configured the remaining sandbox settings.
+The Evaluator-specific `sandbox_cluster_capable` flag is separate from the top-level
+`sandboxClusterCapable` value configured in the shared setup. Both must be `true`: the top-level
+value injects the OpenSandbox connection into Jobs pods, and the Evaluator flag makes its compiler
+fail closed until the remaining Evaluator settings are configured.
 
 <Warning>
 
