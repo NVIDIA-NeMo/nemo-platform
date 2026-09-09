@@ -25,7 +25,12 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym import (
     GymRuntimeConfig,
     discover_gym_tasks,
 )
-from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import _flatten_overrides, hydra_scalar, selection_args
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import (
+    _flatten_overrides,
+    hydra_scalar,
+    model_call_capture_dir,
+    selection_args,
+)
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import (
     _canonical_row_hash,
     _content_text,
@@ -1373,3 +1378,23 @@ async def test_collection_redirects_hydra_output_under_the_run_work_dir(tmp_path
 
     argv = (tmp_path / "argv.txt").read_text().splitlines()
     assert f"hydra.run.dir={hydra_scalar(str(tmp_path / 'gym_hydra'))}" in argv
+
+
+def test_leftover_captures_refuse_a_second_run_into_the_same_dir(tmp_path: Path) -> None:
+    # The sandboxed runner writes captures *before* `rollouts.jsonl`, so a run that died in between
+    # leaves them with no file above to catch it. Capture names repeat across runs of one dataset,
+    # so without this the next run attaches a previous run's timing to its own trials.
+    captures = model_call_capture_dir(tmp_path)
+    captures.mkdir(parents=True)
+    (captures / "0-0.capture.jsonl").write_text('{"model_call_id": "old"}\n', encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="already holds Gym rollout output"):
+        ensure_fresh_output(tmp_path / "rollouts.jsonl")
+
+
+def test_an_empty_capture_directory_does_not_refuse_a_run(tmp_path: Path) -> None:
+    # The host creates the directory whether or not Gym writes into it, so its mere existence is
+    # not evidence of a previous run.
+    model_call_capture_dir(tmp_path).mkdir(parents=True)
+
+    ensure_fresh_output(tmp_path / "rollouts.jsonl")

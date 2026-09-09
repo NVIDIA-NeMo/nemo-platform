@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from google.protobuf.json_format import MessageToDict
-from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import DEFAULT_REWARD_KEY
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import DEFAULT_REWARD_KEY, model_call_capture_dir
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import (
     ENV_LOG_NAME,
     NG_ATTEMPT_INDEX,
@@ -203,6 +203,19 @@ def _capture_path(record: Mapping[str, Any], capture_dir: Path | None) -> Path |
     """
     if capture_dir is None:
         return None
+    name = capture_filename(record)
+    if name is None:
+        return None
+    path = capture_dir / name
+    return path if path.exists() else None
+
+
+def capture_filename(record: Mapping[str, Any]) -> str | None:
+    """Gym's capture filename for this rollout, or ``None`` when its indices do not name one.
+
+    The single definition of that name: the sandboxed runner writes captures under it and
+    :func:`_capture_path` reads them back, so the two cannot drift apart.
+    """
     task, rollout = record.get(NG_TASK_INDEX), record.get(NG_ROLLOUT_INDEX)
     if not isinstance(task, int) or not isinstance(rollout, int):
         return None
@@ -210,8 +223,7 @@ def _capture_path(record: Mapping[str, Any], capture_dir: Path | None) -> Path |
     attempt = record.get(NG_ATTEMPT_INDEX)
     if isinstance(attempt, int) and attempt > 0:
         rollout_id = f"{rollout_id}-a{attempt}"
-    path = capture_dir / f"{rollout_id}.capture.jsonl"
-    return path if path.exists() else None
+    return f"{rollout_id}.capture.jsonl"
 
 
 def _read_model_calls(capture_path: Path | None, *, trial_id: str) -> list[dict[str, Any]]:
@@ -378,9 +390,17 @@ def ensure_fresh_output(rollouts_path: Path) -> None:
     Gym appends to the failures sidecar (``open("ab")``) and doesn't clear it between runs, so reusing
     a populated directory would silently mix this run's failures with a prior run's. Rather than clear
     (which would clobber an earlier run's results — infra failures are useful signal), refuse to run
-    into a directory that already holds Gym rollout output.
+    into a directory that already holds Gym rollout output: rollouts, failures, or model-call
+    captures.
     """
-    preexisting = [path for path in (rollouts_path, _failures_path_for(rollouts_path)) if path.exists()]
+    preexisting = [path for path in (rollouts_path, _failures_path_for(rollouts_path)) if path.is_file()]
+    # Model-call captures count as output too, and the sandboxed runner writes them *before*
+    # `rollouts.jsonl`, so a run that died in between leaves captures with no file above to catch
+    # it. Their names -- `{task}-{rollout}` -- repeat across runs of one dataset, so the next run
+    # would attach a previous run's timing to its own trials.
+    captures = model_call_capture_dir(rollouts_path.parent)
+    if captures.is_dir() and any(captures.iterdir()):
+        preexisting.append(captures)
     if preexisting:
         names = ", ".join(path.name for path in preexisting)
         raise FileExistsError(
