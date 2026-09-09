@@ -39,7 +39,7 @@ def ctx(tmp_path: Path) -> JobContext:
     """:class:`JobContext` with platform-style storage rooted in ``tmp_path``.
 
     Mirrors the shape ``run_task`` builds via
-    :func:`nemo_platform_plugin.tasks.dispatcher._build_ctx_from_env` and the
+    :func:`nemo_platform_plugin.tasks.dispatcher.build_ctx_from_env` and the
     scheduler builds via ``_build_local_context``: a per-job tempdir
     containing ``persistent/`` and ``ephemeral/`` subdirs plus a
     :class:`LocalJobResults` sink rooted at ``persistent/results/``.

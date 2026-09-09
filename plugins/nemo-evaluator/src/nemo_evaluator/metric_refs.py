@@ -20,8 +20,8 @@ from nemo_evaluator.api.schemas import MetricRef, MetricRefOrInline
 from nemo_evaluator.entities import MetricBundleEntity
 from nemo_evaluator.metric_storage import load_bundle
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle
-from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.entity_client import NemoEntityGetterProtocol, NemoEntityNotFoundError
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.refs import parse_entity_ref
 
 
@@ -42,12 +42,12 @@ async def resolve_metric_ref(
     *,
     workspace: str,
     entity_client: NemoEntityGetterProtocol[MetricBundleEntity] | None,
-    async_sdk: AsyncNeMoPlatform | None,
+    files_client: AsyncFilesClient | None,
 ) -> MetricBundle:
     """Load and reconstruct the stored metric a reference points at."""
-    if entity_client is None or async_sdk is None:
+    if entity_client is None or files_client is None:
         raise ValueError(
-            "MetricRef metrics require a platform connection (entity store and async SDK) to resolve; "
+            "MetricRef metrics require a platform connection (entity store and Files service) to resolve; "
             "they cannot be used in local execution. Pass an inline metric instead."
         )
     ref_workspace, name = parse_metric_ref(ref.root, workspace)
@@ -59,7 +59,7 @@ async def resolve_metric_ref(
             f"Ensure a stored metric named '{name}' exists in workspace '{ref_workspace}', "
             "or pass an inline metric instead."
         ) from exc
-    return await load_bundle(async_sdk, entity.bundle_ref, expected_digest=entity.payload_digest)
+    return await load_bundle(files_client, entity.bundle_ref, expected_digest=entity.payload_digest)
 
 
 async def resolve_metric_specs(
@@ -67,7 +67,7 @@ async def resolve_metric_specs(
     *,
     workspace: str,
     entity_client: NemoEntityGetterProtocol[MetricBundleEntity] | None,
-    async_sdk: AsyncNeMoPlatform | None,
+    files_client: AsyncFilesClient | None,
 ) -> list[MetricBundle]:
     """Resolve a wire metric list into runtime bundles.
 
@@ -83,7 +83,7 @@ async def resolve_metric_specs(
                     item,
                     workspace=workspace,
                     entity_client=entity_client,
-                    async_sdk=async_sdk,
+                    files_client=files_client,
                 )
             )
         else:

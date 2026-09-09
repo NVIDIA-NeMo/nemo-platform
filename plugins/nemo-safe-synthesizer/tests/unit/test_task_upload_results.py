@@ -42,12 +42,18 @@ def test_upload_results_uploads_and_registers_adapter(tmp_path, monkeypatch):
     sdk = MagicMock()
     monkeypatch.setattr(task_main, "get_platform_sdk", lambda: sdk)
 
-    # Production routes both the job lookup and result creation through
-    # client_from_platform(sdk, JobsClient): get_job(...).data() for attempt_id,
-    # then create_job_result(..., body=PlatformJobResultCreateRequest(...)).
     jobs_client = MagicMock()
     jobs_client.get_job.return_value = _resp(SimpleNamespace(attempt_id="attempt-123"))
-    monkeypatch.setattr(task_main, "client_from_platform", lambda _sdk, _cls: jobs_client)
+    files_client = MagicMock()
+
+    def client_from_platform(_sdk, client_cls):
+        if client_cls is task_main.JobsClient:
+            return jobs_client
+        if client_cls is task_main.FilesClient:
+            return files_client
+        raise AssertionError(f"Unexpected client class: {client_cls!r}")
+
+    monkeypatch.setattr(task_main, "client_from_platform", client_from_platform)
 
     file_manager = MagicMock()
     file_manager.upload.side_effect = lambda _local_path, remote_path: (
@@ -55,6 +61,9 @@ def test_upload_results_uploads_and_registers_adapter(tmp_path, monkeypatch):
     )
     fileset_manager_cls = MagicMock(return_value=file_manager)
     monkeypatch.setattr(task_main, "FilesetFileManager", fileset_manager_cls)
+    filesystem = MagicMock()
+    fileset_filesystem_cls = MagicMock(return_value=filesystem)
+    monkeypatch.setattr(task_main, "FilesetFileSystem", fileset_filesystem_cls)
 
     result = SimpleNamespace(
         synthetic_data=pd.DataFrame({"value": [1]}),
@@ -67,9 +76,10 @@ def test_upload_results_uploads_and_registers_adapter(tmp_path, monkeypatch):
     fileset_manager_cls.assert_called_once_with(
         workspace="test-workspace",
         fileset_name="job-results-safe-synth-job",
-        sdk=sdk,
+        filesystem=filesystem,
         ensure_fileset_exists=True,
     )
+    fileset_filesystem_cls.assert_called_once_with(client=files_client)
     file_manager.validate_storage.assert_called_once_with()
     file_manager.upload.assert_has_calls([call(adapter_path, "results/attempt-123/adapter")], any_order=True)
 
@@ -85,4 +95,4 @@ def test_upload_results_uploads_and_registers_adapter(tmp_path, monkeypatch):
     assert adapter_call.kwargs["workspace"] == "test-workspace"
     body = adapter_call.kwargs["body"]
     assert body.artifact_url == "test-workspace/job-results-safe-synth-job#results/attempt-123/adapter"
-    assert body.artifact_storage_type == "fileset"
+    assert body.artifact_storage_type == task_main.FileStorageType.FILESET

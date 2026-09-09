@@ -43,6 +43,43 @@ class ItemResponse(BaseModel):
     name: str
 
 
+@pytest.mark.parametrize("client_cls", [NemoClient, AsyncNemoClient])
+def test_resolve_workspace_prefers_explicit_workspace(
+    client_cls: type[NemoClient] | type[AsyncNemoClient],
+) -> None:
+    client = client_cls(base_url=BASE, workspace="client-ws")
+
+    assert client.resolve_workspace("request-ws") == "request-ws"
+
+
+@pytest.mark.parametrize("client_cls", [NemoClient, AsyncNemoClient])
+def test_resolve_workspace_uses_client_workspace(
+    client_cls: type[NemoClient] | type[AsyncNemoClient],
+) -> None:
+    client = client_cls(base_url=BASE, workspace="client-ws")
+
+    assert client.resolve_workspace() == "client-ws"
+
+
+@pytest.mark.parametrize("client_cls", [NemoClient, AsyncNemoClient])
+def test_resolve_workspace_uses_default_workspace(
+    client_cls: type[NemoClient] | type[AsyncNemoClient],
+) -> None:
+    client = client_cls(base_url=BASE, workspace=None)
+
+    assert client.resolve_workspace() == "default"
+
+
+@pytest.mark.parametrize("client_cls", [NemoClient, AsyncNemoClient])
+def test_require_workspace_rejects_missing_workspace(
+    client_cls: type[NemoClient] | type[AsyncNemoClient],
+) -> None:
+    client = client_cls(base_url=BASE, workspace=None)
+
+    with pytest.raises(ValueError, match="workspace must be provided"):
+        client.require_workspace()
+
+
 # ---------------------------------------------------------------------------
 # Endpoint definitions with client options
 # ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from models import parse_workspace_name_ref
 from nemo_platform import (
     APIConnectionError,
     APIStatusError,
@@ -224,6 +225,54 @@ def test_get_model_entity_route_openai_url_always_appends_v1(sdk):
     result = sdk.models.get_model_entity_route_openai_url(model_entity)
 
     assert result.endswith("/v1")
+
+
+def test_resolve_model_reference_fetches_model_and_provider(sdk):
+    """Test model reference resolution returns model route details."""
+    models = sdk.models
+    model_entity = MagicMock(spec=ModelEntity)
+    model_entity.workspace = "default"
+    model_entity.name = "judge"
+    model_entity.model_providers = ["default/provider"]
+    provider = MagicMock(spec=ModelProvider)
+    provider.workspace = "default"
+    provider.name = "provider"
+    provider.host_url = "http://nim.example.test:8000"
+
+    with (
+        patch.object(models, "retrieve", return_value=model_entity) as mock_retrieve,
+        patch.object(sdk.inference.providers, "retrieve", return_value=provider) as mock_provider_retrieve,
+    ):
+        result = models.resolve_model_reference("default/judge")
+
+    mock_retrieve.assert_called_once_with("judge", workspace="default")
+    mock_provider_retrieve.assert_called_once_with("provider", workspace="default")
+    assert result.name == "judge"
+    assert result.url == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/model/judge/-/v1"
+    assert result.host_url == "http://nim.example.test:8000"
+
+
+def test_resolve_model_reference_ignores_missing_provider(sdk):
+    """Provider lookup failures do not prevent model route resolution."""
+    models = sdk.models
+    model_entity = MagicMock(spec=ModelEntity)
+    model_entity.workspace = "default"
+    model_entity.name = "judge"
+    model_entity.model_providers = ["default/missing-provider"]
+
+    with (
+        patch.object(models, "retrieve", return_value=model_entity),
+        patch.object(sdk.inference.providers, "retrieve", side_effect=_not_found_error()),
+    ):
+        result = models.resolve_model_reference("default/judge")
+
+    assert result.name == "judge"
+    assert result.host_url is None
+
+
+def test_parse_workspace_name_ref_rejects_extra_separator():
+    with pytest.raises(ValueError, match="ModelRef must be in format 'workspace/model_name'"):
+        parse_workspace_name_ref("default/judge/extra", label="ModelRef", expected_format="workspace/model_name")
 
 
 # Tests for get_provider_route_openai_url_for_deployment
@@ -501,6 +550,34 @@ def test_async_get_model_entity_route_openai_url(async_sdk):
     result = async_sdk.models.get_model_entity_route_openai_url(model_entity)
 
     assert result == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/model/my-model/-/v1"
+
+
+@pytest.mark.asyncio
+async def test_async_resolve_model_reference_fetches_model_and_provider(async_sdk):
+    """Test async model reference resolution returns model route details."""
+    models = async_sdk.models
+    model_entity = MagicMock(spec=ModelEntity)
+    model_entity.workspace = "default"
+    model_entity.name = "judge"
+    model_entity.model_providers = ["default/provider"]
+    provider = MagicMock(spec=ModelProvider)
+    provider.workspace = "default"
+    provider.name = "provider"
+    provider.host_url = "http://nim.example.test:8000"
+    mock_retrieve = AsyncMock(return_value=model_entity)
+    mock_provider_retrieve = AsyncMock(return_value=provider)
+
+    with (
+        patch.object(models, "retrieve", mock_retrieve),
+        patch.object(async_sdk.inference.providers, "retrieve", mock_provider_retrieve),
+    ):
+        result = await models.resolve_model_reference("default/judge")
+
+    mock_retrieve.assert_awaited_once_with("judge", workspace="default")
+    mock_provider_retrieve.assert_awaited_once_with("provider", workspace="default")
+    assert result.name == "judge"
+    assert result.url == "https://nmp.example.com/apis/inference-gateway/v2/workspaces/default/model/judge/-/v1"
+    assert result.host_url == "http://nim.example.test:8000"
 
 
 # Tests for get_async_openai_client

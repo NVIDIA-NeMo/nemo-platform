@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 from nemo_evaluator.filesets import FilesetRef, download_dataset_sync
 from nemo_evaluator_sdk.agent_eval.workspace_seeds import WorkspaceSeedError, register_seed_handler
-from nemo_platform_plugin.sdk_provider import get_task_sdk
+from nemo_platform_plugin.client_provider import get_task_nemo_client
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 #: Service identity used to build the task SDK (matches ``tasks/agent_evaluate.py``).
@@ -57,10 +57,10 @@ class FilesetSeedHandler:
     def resolve(self, seed: BaseModel) -> bytes:
         assert isinstance(seed, FilesetSeed)
         # Acquire the client at resolve time from the running job's ambient identity.
-        sdk = get_task_sdk(_EVALUATOR_SERVICE)
+        client = get_task_nemo_client(_EVALUATOR_SERVICE)
         with tempfile.TemporaryDirectory() as staging:
             try:
-                downloaded = download_dataset_sync(sdk, FilesetRef(root=seed.ref), staging)
+                downloaded = download_dataset_sync(client, FilesetRef(root=seed.ref), staging)
             except Exception as exc:  # noqa: BLE001 - surface any resolution failure as a seed error
                 raise WorkspaceSeedError(f"fileset seed {seed.ref!r} could not be resolved: {exc}") from exc
             files = [downloaded] if downloaded.is_file() else sorted(p for p in downloaded.rglob("*") if p.is_file())

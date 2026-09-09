@@ -13,7 +13,7 @@ absent means no publish, and nothing here runs — while giving the job API a wa
 is what Studio needs to get evaluation runs into Experiments.
 
 ``run`` is synchronous and the publisher is async, so the call goes through the same
-``run_with_isolated_async_sdk`` bridge ``result_persistence`` uses for the entity write.
+``run_with_isolated_async_client`` bridge ``result_persistence`` uses for the entity write.
 """
 
 from __future__ import annotations
@@ -26,15 +26,15 @@ from nemo_evaluator.intake.publish import PublishError, PublishReport, publish_t
 from nemo_evaluator.intake.row_adapter import RowIdentityError, row_result_to_agent_eval_result
 from nemo_evaluator.jobs.agent_spec import Target, target_agent_identity
 from nemo_evaluator.jobs.publication_spec import IntakePublicationSpec, RowIntakePublicationSpec
-from nemo_evaluator.jobs.utils import run_with_isolated_async_sdk
+from nemo_evaluator.jobs.utils import run_with_isolated_async_client
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.values import Model
 from nemo_evaluator_sdk.values.agents import AgentBase
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform._exceptions import NeMoPlatformError, NotFoundError
-from nemo_platform.types.evaluations import EvaluationResponse
+from nemo_platform_plugin.client.errors import NemoClientError, NotFoundError
+from nemo_platform_plugin.intake.client import AsyncIntakeClient
+from nemo_platform_plugin.intake.types import EvaluationPatchRequest, EvaluationResponse
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -121,7 +121,7 @@ def _eval_duration_sec(result: AgentEvalResult) -> float | None:
 
 
 async def _record_durations(
-    platform: AsyncNeMoPlatform,
+    intake: AsyncIntakeClient,
     *,
     evaluation: EvaluationResponse,
     spec: IntakePublicationSpec,
@@ -138,13 +138,17 @@ async def _record_durations(
     if eval_duration_sec is not None:
         metadata[EVAL_DURATION_KEY] = f"{eval_duration_sec:.1f}"
     metadata[PUBLISH_DURATION_KEY] = f"{publish_duration_sec:.1f}"
-    await platform.evaluations.patch(spec.evaluation_id, workspace=workspace, metadata=metadata)
+    await intake.patch_evaluation(
+        name=spec.evaluation_id,
+        workspace=workspace,
+        body=EvaluationPatchRequest(metadata=metadata),
+    )
 
 
 async def _publish(
     result: AgentEvalResult,
     *,
-    platform: AsyncNeMoPlatform,
+    intake: AsyncIntakeClient,
     spec: IntakePublicationSpec,
     workspace: str,
     agent_name: str,
@@ -154,14 +158,15 @@ async def _publish(
     # Measured before the publish so the two durations stay disjoint — for a result that carries only
     # a start time, reading this afterwards would fold the whole publish into the run's own length.
     eval_duration_sec = _eval_duration_sec(result)
-    # Read for the entity itself, which ``_record_durations`` stamps onto below. This reads the
-    # entity store, so it says nothing about whether Intake's span storage is up; that surfaces on
-    # the first ingest, and re-publish is idempotent, so it needs no probe.
-    evaluation = await platform.evaluations.retrieve(spec.evaluation_id, workspace=workspace)
+    # The Evaluation must pre-exist — ATIF ingest rejects an unknown one per trial, so without this
+    # a typo would surface as N failed writes after a partial publish instead of one clear stop.
+    # This reads the entity store, so it says nothing about whether Intake's span storage is up;
+    # that surfaces on the first ingest below, and re-publish is idempotent, so it needs no probe.
+    evaluation = (await intake.get_evaluation(name=spec.evaluation_id, workspace=workspace)).data()
     publish_started = time.monotonic()
     report = await publish_to_intake(
         result,
-        platform=platform,
+        client=intake,
         experiment_id=spec.evaluation_id,
         workspace=workspace,
         agent_name=agent_name,
@@ -171,7 +176,7 @@ async def _publish(
     publish_duration_sec = time.monotonic() - publish_started
     try:
         await _record_durations(
-            platform,
+            intake,
             evaluation=evaluation,
             spec=spec,
             workspace=workspace,
@@ -196,7 +201,7 @@ def publish_agent_eval_result(
     spec: IntakePublicationSpec,
     target: Target | Model | AgentBase | None,
     workspace: str,
-    async_sdk: AsyncNeMoPlatform | None,
+    intake: AsyncIntakeClient | None,
 ) -> PublicationOutcome:
     """Publish a finished run to Intake and describe what happened.
 
@@ -219,7 +224,7 @@ def publish_agent_eval_result(
         )
         return outcome
 
-    if async_sdk is None:
+    if intake is None:
         return fail("No platform client available to publish with (platformless local run).")
 
     logger.info(
@@ -229,11 +234,11 @@ def publish_agent_eval_result(
         workspace,
     )
     try:
-        report = run_with_isolated_async_sdk(
-            async_sdk,
-            lambda sdk: _publish(
+        report = run_with_isolated_async_client(
+            intake,
+            lambda cloned_intake: _publish(
                 result,
-                platform=sdk,
+                intake=cloned_intake,
                 spec=spec,
                 workspace=workspace,
                 agent_name=agent_name,
@@ -247,7 +252,7 @@ def publish_agent_eval_result(
             f"Evaluation {spec.evaluation_id!r} does not exist in workspace {workspace!r}. "
             "Create it before submitting the job; the evaluation does not create it."
         )
-    except NeMoPlatformError as error:
+    except NemoClientError as error:
         return fail(f"{type(error).__name__}: {error}")
     except Exception as error:
         # `required=False` promises the evaluation survives a failed publish. Letting an unforeseen
@@ -274,7 +279,7 @@ def publish_row_eval_result(
     run_id: str | None,
     started_at: datetime,
     workspace: str,
-    async_sdk: AsyncNeMoPlatform | None,
+    intake: AsyncIntakeClient | None,
 ) -> PublicationOutcome:
     """Publish a finished dataset-driven run to Intake and describe what happened.
 
@@ -311,4 +316,4 @@ def publish_row_eval_result(
         logger.warning("Publication to Intake failed for evaluation %r: %s", spec.evaluation_id, error)
         return outcome
 
-    return publish_agent_eval_result(adapted, spec=spec, target=target, workspace=workspace, async_sdk=async_sdk)
+    return publish_agent_eval_result(adapted, spec=spec, target=target, workspace=workspace, intake=intake)

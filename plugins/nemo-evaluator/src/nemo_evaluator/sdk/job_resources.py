@@ -14,15 +14,14 @@ from collections.abc import Callable, Mapping
 from io import BytesIO
 from pathlib import Path
 from time import monotonic
-from typing import TypeAlias, cast
+from typing import TypeAlias
 
-import httpx
 from nemo_evaluator.jobs.agent_spec import AgentEvalSpec
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
-from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk.utils import filter_aggregate_scores
 from nemo_evaluator_sdk.execution.job_poll import async_poll_until_terminal
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, AggregateFieldName, EvaluationResult, RowScore
+from nemo_platform_plugin.evaluator.client import AsyncEvaluatorClient, EvaluatorClient
 from nemo_platform_plugin.jobs.api_factory import BaseJob
 from nemo_platform_plugin.jobs.archive import safe_extract_tar
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatusResponse
@@ -43,14 +42,8 @@ _DEFAULT_POLL_INTERVAL_SECONDS = 10.0
 _DEFAULT_JOB_TIMEOUT_SECONDS = 3600.0
 _DEFAULT_PENDING_TIMEOUT_SECONDS = 600.0
 
-_RES_STATUS = "status"
-_RES_AGGREGATE_DOWNLOAD = "results/aggregate-scores/download"
-_RES_ROW_SCORES_DOWNLOAD = "results/row-scores/download"
-_RES_ARTIFACTS_DOWNLOAD = "results/artifacts/download"
-
 _RowScorePayload: TypeAlias = RowScore | BaseModel | Mapping[str, object]
 _AggregateScoresPayload: TypeAlias = AggregatedMetricResult | BaseModel | Mapping[str, object]
-_AsyncHTTPClient: TypeAlias = httpx.AsyncClient | httpx.Client
 
 log = logging.getLogger(__name__)
 
@@ -94,8 +87,13 @@ def _parse_row_scores_jsonl(payload: str) -> list[RowScore]:
     for line in payload.splitlines():
         stripped = line.strip()
         if stripped:
-            row_scores.append(_coerce_row_score(cast(_RowScorePayload, json.loads(stripped))))
+            row_scores.append(RowScore.model_validate_json(stripped))
     return row_scores
+
+
+def _parse_aggregate_scores_json(payload: bytes) -> AggregatedMetricResult:
+    """Parse aggregate-score JSON downloaded from the evaluator plugin result route."""
+    return AggregatedMetricResult.model_validate_json(payload)
 
 
 def _extract_artifacts_tarball(payload: bytes, output_path: Path) -> Path:
@@ -241,22 +239,13 @@ class AgentEvaluatorJobResource:
         self,
         *,
         job: AgentEvaluatorJob,
-        http_client: httpx.Client,
-        base_url: str,
+        client: EvaluatorClient,
         workspace: str,
-        headers: Mapping[str, str] | None = None,
     ) -> None:
-        """Store the job identity and HTTP client used for status calls."""
+        """Store the job identity and typed client used for status calls."""
         self._job = job
-        self._http_client = http_client
-        self._base_url = http_utils.base_url(base_url)
+        self._client = client
         self._workspace = workspace
-        self._headers = dict(headers or {})
-        self._job_base_url = http_utils.job_route_base_url(
-            raw_base_url=self._base_url,
-            workspace=self._workspace,
-            job_name=self.name,
-        )
 
     @property
     def name(self) -> str:
@@ -270,12 +259,7 @@ class AgentEvaluatorJobResource:
 
     def get_job_status(self) -> PlatformJobStatusResponse:
         """Fetch the current job status from the evaluator plugin API."""
-        response = self._http_client.get(
-            http_utils.job_route_resource_url(job_base_url=self._job_base_url, resource_path=_RES_STATUS),
-            headers=self._headers,
-        )
-        response.raise_for_status()
-        return PlatformJobStatusResponse.model_validate(response.json())
+        return self._client.get_agent_eval_job_status(workspace=self._workspace, name=self.name).data()
 
     def check_if_complete(self, *, raise_if_not_complete: bool = False) -> bool:
         """Return whether the job has completed.
@@ -319,22 +303,13 @@ class EvaluatorJobResource:
         self,
         *,
         job: EvaluatorJob,
-        http_client: httpx.Client,
-        base_url: str,
+        client: EvaluatorClient,
         workspace: str,
-        headers: Mapping[str, str] | None = None,
     ) -> None:
-        """Store the job identity and HTTP client used for status and result calls."""
+        """Store the job identity and typed client used for status and result calls."""
         self._job = job
-        self._http_client = http_client
-        self._base_url = http_utils.base_url(base_url)
+        self._client = client
         self._workspace = workspace
-        self._headers = dict(headers or {})
-        self._job_base_url = http_utils.job_route_base_url(
-            raw_base_url=self._base_url,
-            workspace=self._workspace,
-            job_name=self.name,
-        )
 
     @property
     def name(self) -> str:
@@ -348,12 +323,7 @@ class EvaluatorJobResource:
 
     def get_job_status(self) -> PlatformJobStatusResponse:
         """Fetch the current evaluator job status from the evaluator plugin API."""
-        response = self._http_client.get(
-            http_utils.job_route_resource_url(job_base_url=self._job_base_url, resource_path=_RES_STATUS),
-            headers=self._headers,
-        )
-        response.raise_for_status()
-        return PlatformJobStatusResponse.model_validate(response.json())
+        return self._client.get_evaluate_job_status(workspace=self._workspace, name=self.name).data()
 
     def check_if_complete(self, *, raise_if_not_complete: bool = False) -> bool:
         """Return whether the evaluator job has completed.
@@ -391,28 +361,20 @@ class EvaluatorJobResource:
 
     def get_result(self, aggregate_fields: tuple[AggregateFieldName, ...] | None = None) -> EvaluationResult:
         """Get aggregate and row-score artifacts as an ``EvaluationResult``."""
-        aggregate_response = self._http_client.get(
-            http_utils.job_route_resource_url(
-                job_base_url=self._job_base_url,
-                resource_path=_RES_AGGREGATE_DOWNLOAD,
-            ),
-            headers=self._headers,
-        )
-        aggregate_response.raise_for_status()
-        row_scores_response = self._http_client.get(
-            http_utils.job_route_resource_url(
-                job_base_url=self._job_base_url,
-                resource_path=_RES_ROW_SCORES_DOWNLOAD,
-            ),
-            headers=self._headers,
-        )
-        row_scores_response.raise_for_status()
+        aggregate_payload = self._client.download_evaluate_job_aggregate_scores(
+            workspace=self._workspace,
+            name=self.name,
+        ).read()
+        row_scores_payload = self._client.download_evaluate_job_row_scores(
+            workspace=self._workspace,
+            name=self.name,
+        ).read()
         aggregate_scores = filter_aggregate_scores(
-            _coerce_aggregate_scores(cast(_AggregateScoresPayload, aggregate_response.json())),
+            _parse_aggregate_scores_json(aggregate_payload),
             aggregate_fields,
         )
         return EvaluationResult(
-            row_scores=_parse_row_scores_jsonl(row_scores_response.text),
+            row_scores=_parse_row_scores_jsonl(row_scores_payload.decode("utf-8")),
             aggregate_scores=aggregate_scores,
         )
 
@@ -425,27 +387,10 @@ class EvaluatorJobResource:
         Returns:
             The job-specific directory that contains the extracted artifacts.
         """
-        response = self._http_client.get(
-            http_utils.job_route_resource_url(
-                job_base_url=self._job_base_url,
-                resource_path=_RES_ARTIFACTS_DOWNLOAD,
-            ),
-            headers=self._headers,
-        )
-        response.raise_for_status()
+        payload = self._client.download_evaluate_job_artifacts(workspace=self._workspace, name=self.name).read()
         return _extract_artifacts_tarball(
-            response.content,
+            payload,
             _artifact_output_path(path, self.name),
-        )
-
-    def as_async(self) -> AsyncEvaluatorJobResource:
-        """Return an async resource view that shares this resource's job and HTTP client."""
-        return AsyncEvaluatorJobResource(
-            job=self._job,
-            http_client=self._http_client,
-            base_url=self._base_url,
-            workspace=self._workspace,
-            headers=self._headers,
         )
 
 
@@ -456,22 +401,13 @@ class AsyncEvaluatorJobResource:
         self,
         *,
         job: EvaluatorJob,
-        http_client: _AsyncHTTPClient,
-        base_url: str,
+        client: AsyncEvaluatorClient,
         workspace: str,
-        headers: Mapping[str, str] | None = None,
     ) -> None:
-        """Store the job identity and HTTP client used for async status and result calls."""
+        """Store the job identity and typed client used for async status and result calls."""
         self._job = job
-        self._http_client = http_client
-        self._base_url = http_utils.base_url(base_url)
+        self._client = client
         self._workspace = workspace
-        self._headers = dict(headers or {})
-        self._job_base_url = http_utils.job_route_base_url(
-            raw_base_url=self._base_url,
-            workspace=self._workspace,
-            job_name=self.name,
-        )
 
     @property
     def name(self) -> str:
@@ -485,11 +421,8 @@ class AsyncEvaluatorJobResource:
 
     async def get_job_status(self) -> PlatformJobStatusResponse:
         """Fetch the current evaluator job status from the evaluator plugin API."""
-        response = await self._get(
-            http_utils.job_route_resource_url(job_base_url=self._job_base_url, resource_path=_RES_STATUS)
-        )
-        response.raise_for_status()
-        return PlatformJobStatusResponse.model_validate(response.json())
+        response = await self._client.get_evaluate_job_status(workspace=self._workspace, name=self.name)
+        return response.data()
 
     async def check_if_complete(self, *, raise_if_not_complete: bool = False) -> bool:
         """Return whether the evaluator job has completed.
@@ -537,28 +470,16 @@ class AsyncEvaluatorJobResource:
         Aggregate and row-score downloads are dispatched concurrently so a slow
         artifact never serializes the other.
         """
-        aggregate_response, row_scores_response = await asyncio.gather(
-            self._get(
-                http_utils.job_route_resource_url(
-                    job_base_url=self._job_base_url,
-                    resource_path=_RES_AGGREGATE_DOWNLOAD,
-                )
-            ),
-            self._get(
-                http_utils.job_route_resource_url(
-                    job_base_url=self._job_base_url,
-                    resource_path=_RES_ROW_SCORES_DOWNLOAD,
-                )
-            ),
+        aggregate_payload, row_scores_payload = await asyncio.gather(
+            self._read_aggregate_scores(),
+            self._read_row_scores(),
         )
-        aggregate_response.raise_for_status()
-        row_scores_response.raise_for_status()
         aggregate_scores = filter_aggregate_scores(
-            _coerce_aggregate_scores(cast(_AggregateScoresPayload, aggregate_response.json())),
+            _parse_aggregate_scores_json(aggregate_payload),
             aggregate_fields,
         )
         return EvaluationResult(
-            row_scores=_parse_row_scores_jsonl(row_scores_response.text),
+            row_scores=_parse_row_scores_jsonl(row_scores_payload.decode("utf-8")),
             aggregate_scores=aggregate_scores,
         )
 
@@ -571,21 +492,30 @@ class AsyncEvaluatorJobResource:
         Returns:
             The job-specific directory that contains the extracted artifacts.
         """
-        response = await self._get(
-            http_utils.job_route_resource_url(
-                job_base_url=self._job_base_url,
-                resource_path=_RES_ARTIFACTS_DOWNLOAD,
-            )
-        )
-        response.raise_for_status()
+        payload = await self._read_artifacts()
         return await asyncio.to_thread(
             _extract_artifacts_tarball,
-            response.content,
+            payload,
             _artifact_output_path(path, self.name),
         )
 
-    async def _get(self, url: str) -> httpx.Response:
-        """Run one HTTP GET without blocking the event loop for sync clients."""
-        if isinstance(self._http_client, httpx.Client):
-            return await asyncio.to_thread(self._http_client.get, url, headers=self._headers)
-        return await self._http_client.get(url, headers=self._headers)
+    async def _read_aggregate_scores(self) -> bytes:
+        """Read aggregate scores through the async typed client."""
+        response = await self._client.download_evaluate_job_aggregate_scores(
+            workspace=self._workspace,
+            name=self.name,
+        )
+        return await response.read()
+
+    async def _read_row_scores(self) -> bytes:
+        """Read row scores through the async typed client."""
+        response = await self._client.download_evaluate_job_row_scores(
+            workspace=self._workspace,
+            name=self.name,
+        )
+        return await response.read()
+
+    async def _read_artifacts(self) -> bytes:
+        """Read job artifacts through the async typed client."""
+        response = await self._client.download_evaluate_job_artifacts(workspace=self._workspace, name=self.name)
+        return await response.read()

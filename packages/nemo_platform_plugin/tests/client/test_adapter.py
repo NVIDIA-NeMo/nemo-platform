@@ -32,38 +32,21 @@ def test_client_from_platform_preserves_stainless_retry_policy() -> None:
     )
 
 
-def test_client_from_platform_prefers_platform_request_router() -> None:
+def test_client_from_platform_uses_platform_prepare_url() -> None:
     http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
-    platform = NeMoPlatform(
+
+    class RoutedPlatform(NeMoPlatform):
+        def _prepare_url(self, url: str) -> httpx.URL:
+            prepared = super()._prepare_url(url)
+            if prepared.path.startswith("/apis/jobs"):
+                return prepared.copy_with(scheme="http", host="127.0.0.1", port=8080)
+            return prepared
+
+    platform = RoutedPlatform(
         base_url="http://gateway",
         workspace="default",
         http_client=http_client,
     )
-
-    class RequestRouter:
-        def resolve(self, url: str) -> str:
-            return url.replace("http://gateway/apis/jobs", "http://127.0.0.1:8080/apis/jobs")
-
-    platform._nmp_request_router = RequestRouter()  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
-
-    client = client_from_platform(platform, JobsClient)
-
-    request = endpoints.list_steps(workspace="default", name="job-1")
-    assert client._resolve_path(request) == ("http://127.0.0.1:8080/apis/jobs/v2/workspaces/default/jobs/job-1/steps")
-
-
-def test_client_from_platform_falls_back_to_sdk_prepare_url() -> None:
-    http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
-    platform = NeMoPlatform(
-        base_url="http://gateway",
-        workspace="default",
-        http_client=http_client,
-    )
-
-    def prepare_url(url: str) -> str:
-        return url.replace("http://gateway/apis/jobs", "http://127.0.0.1:8080/apis/jobs")
-
-    platform._prepare_url = prepare_url  # type: ignore[method-assign]  # ty: ignore[invalid-assignment]
 
     client = client_from_platform(platform, JobsClient)
 

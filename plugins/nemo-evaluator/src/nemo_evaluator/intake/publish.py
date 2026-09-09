@@ -12,7 +12,7 @@ It references an **existing** Experiment (created by the caller via the platform
 Experiments SDK) and never creates one. Per Trial it: POSTs the ATIF trajectory,
 resolves the trajectory's root span, then POSTs one evaluator-result per metric
 output. All request shapes come from :mod:`nemo_evaluator.intake.mapping`; the
-HTTP calls go through the generated platform SDK's ``intake`` resources.
+HTTP calls go through the typed Intake client.
 """
 
 from __future__ import annotations
@@ -22,18 +22,23 @@ import logging
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import timedelta
+from typing import cast
 
 from nemo_evaluator.intake import mapping
-from nemo_evaluator.sdk import http_utils
 from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
-from nemo_platform import AsyncNeMoPlatform, NotFoundError, UnprocessableEntityError
-from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
-from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
-from nemo_platform.types.intake.ingest.atif_step_param import AtifStepParam
-from nemo_platform.types.intake.trace_filter_param import TraceFilterParam
+from nemo_platform_plugin.client.errors import NotFoundError, UnprocessableEntityError
+from nemo_platform_plugin.intake.client import AsyncIntakeClient
+from nemo_platform_plugin.intake.types import (
+    AtifCreateParams,
+    AtifCreateRequest,
+    AtifFinalMetricsParam,
+    AtifStepParam,
+    EvaluatorResultCreateRequest,
+    TraceFilterParam,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
@@ -123,10 +128,20 @@ def _token_final_metrics(measurements: TrialMeasurements) -> AtifFinalMetricsPar
     return final_metrics or None
 
 
+def _atif_request_body(body: AtifCreateParams) -> AtifCreateParams:
+    """Return the ATIF JSON body, excluding generated-SDK-only path parameters."""
+    return cast(AtifCreateParams, {key: value for key, value in body.items() if key != "workspace"})
+
+
+def _evaluator_result_request_body(row: mapping.EvaluatorResultCreateParams) -> EvaluatorResultCreateRequest:
+    """Return the evaluator-result JSON body, excluding path parameters."""
+    return EvaluatorResultCreateRequest.model_validate({key: value for key, value in row.items() if key != "workspace"})
+
+
 async def publish_to_intake(
     result: AgentEvalResult,
     *,
-    platform: AsyncNeMoPlatform,
+    client: AsyncIntakeClient,
     experiment_id: str,
     workspace: str | None = None,
     agent_name: str = "agent",
@@ -164,7 +179,8 @@ async def publish_to_intake(
     arguments because it lives on the run *target*, which ``AgentEvalResult`` does
     not carry (design §3.9 #6).
     """
-    resolved_workspace = http_utils.resolve_workspace(platform, workspace, strict=True)
+    intake = client
+    resolved_workspace = intake.require_workspace(workspace)
 
     # Required, not defaulted to "now": a fallback would silently reintroduce the
     # publish-time clock that makes re-ingest duplicate rows (see the ingest note on
@@ -178,7 +194,7 @@ async def publish_to_intake(
         )
 
     try:
-        await platform.evaluations.retrieve(experiment_id, workspace=resolved_workspace)
+        await intake.get_evaluation(name=experiment_id, workspace=resolved_workspace)
     except NotFoundError as error:
         raise PublishError(
             f"Cannot publish run {result.run_id!r}: evaluation {experiment_id!r} does not exist in "
@@ -204,13 +220,14 @@ async def publish_to_intake(
         if otlp is None:
             return None
         payload, span_id = otlp
-        response = await platform.intake.ingest.otlp.v1.traces.create(body=payload, workspace=resolved_workspace)
+        response = await intake.create_otlp_traces(content=payload, workspace=resolved_workspace)
+        ingest_response = response.data()
         # OTLP ingest answers 200 with a per-span error list, so a partly-stored trace is
         # invisible unless the body is read — including the case where the span the scores
         # are about to reference is the one that was dropped.
-        if response.errors:
+        if ingest_response.errors:
             raise PublishError(
-                f"Intake rejected {len(response.errors)} span(s) of trial {trial.id!r}: {response.errors}"
+                f"Intake rejected {len(ingest_response.errors)} span(s) of trial {trial.id!r}: {ingest_response.errors}"
             )
         return span_id
 
@@ -240,7 +257,10 @@ async def publish_to_intake(
 
         recorded_steps = await mapping.atif_steps_from_trial(trial, started_at=started_at)
         try:
-            await platform.intake.ingest.atif.create(**build_body(recorded_steps))
+            await intake.create_atif(
+                workspace=resolved_workspace,
+                body=AtifCreateRequest(root=_atif_request_body(build_body(recorded_steps))),
+            )
         except UnprocessableEntityError as error:
             # The SDK's ATIF read model accepts shapes ingest does not, so a trajectory that
             # parsed locally can still be refused. Losing the trial's scores over a trace
@@ -254,11 +274,14 @@ async def publish_to_intake(
                 trial.id,
                 error,
             )
-            await platform.intake.ingest.atif.create(**build_body(None))
+            await intake.create_atif(
+                workspace=resolved_workspace,
+                body=AtifCreateRequest(root=_atif_request_body(build_body(None))),
+            )
 
         # ATIF span ids are minted by Intake from its own identity scheme, so unlike the
         # OTLP path this one has to read the id back rather than know it locally.
-        return await _resolve_root_span_id(platform, workspace=resolved_workspace, session_id=session_id)
+        return await _resolve_root_span_id(intake, workspace=resolved_workspace, session_id=session_id)
 
     async def _publish_trial(trial: AgentEvalTrial) -> PublishedTrial:
         async with semaphore:
@@ -275,7 +298,10 @@ async def publish_to_intake(
             rows, omitted = mapping.score_to_evaluator_results(score, session_id=session_id, span_id=span_id)
             for row in rows:
                 row["workspace"] = resolved_workspace
-                await platform.intake.evaluator_results.create(**row)
+                await intake.create_evaluator_result(
+                    workspace=resolved_workspace,
+                    body=_evaluator_result_request_body(row),
+                )
                 written += 1
             skipped.extend(SkippedScore(trial_id=trial.id, name=item.name, reason=item.reason) for item in omitted)
 
@@ -330,10 +356,11 @@ def _publish_failure_message(
     )
 
 
-async def _resolve_root_span_id(platform: AsyncNeMoPlatform, *, workspace: str, session_id: str) -> str:
+async def _resolve_root_span_id(intake: AsyncIntakeClient, *, workspace: str, session_id: str) -> str:
     """Return the root AGENT span id for a freshly-ingested trajectory (design §3.5, option 1)."""
     trace_filter: TraceFilterParam = {"session_id": session_id}
-    async for trace in platform.intake.traces.list(workspace=workspace, filter=trace_filter):
+    traces = await intake.list_traces(workspace=workspace, query_params={"filter": trace_filter})
+    async for trace in traces.items():
         if trace.root_span_id:
             return trace.root_span_id
     raise PublishError(f"No root span resolved for session {session_id!r} after ATIF ingest")

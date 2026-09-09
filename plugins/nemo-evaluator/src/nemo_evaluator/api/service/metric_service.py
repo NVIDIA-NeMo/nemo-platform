@@ -32,13 +32,13 @@ from nemo_evaluator.api.schemas import (
 from nemo_evaluator.entities import MetricBundleEntity
 from nemo_evaluator.metric_storage import delete_bundle_by_ref, store_bundle
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle as RuntimeMetricBundle
-from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClientProtocol,
     NemoEntityConflictError,
     NemoEntityNotFoundError,
 )
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.filter_ops import FilterOperation
 from nemo_platform_plugin.log_utils import sanitize_for_log
 from nemo_platform_plugin.schema import Page, PaginationData
@@ -124,9 +124,9 @@ def _entity_from_bundle(
 class MetricService:
     """Service layer for stored metric CRUD."""
 
-    def __init__(self, entity_client: NemoEntitiesClientProtocol[MetricBundleEntity], sdk: AsyncNeMoPlatform):
+    def __init__(self, entity_client: NemoEntitiesClientProtocol[MetricBundleEntity], files_client: AsyncFilesClient):
         self.entity_client = entity_client
-        self.sdk = sdk
+        self.files_client = files_client
 
     async def create_metric(
         self,
@@ -153,7 +153,7 @@ class MetricService:
         # Convert the wire DTO into the runtime bundle (JSON round-trip keeps the
         # base64 payload handling consistent), then store/index it.
         runtime_bundle = RuntimeMetricBundle.model_validate_json(metric.model_dump_json())
-        bundle_ref = await store_bundle(self.sdk, workspace, name, runtime_bundle)
+        bundle_ref = await store_bundle(self.files_client, workspace, name, runtime_bundle)
         entity = _entity_from_bundle(
             name=name,
             workspace=workspace,
@@ -204,7 +204,7 @@ class MetricService:
         except NemoEntityNotFoundError:
             pass
 
-        bundle_ref = await store_bundle(self.sdk, workspace, name, runtime_bundle)
+        bundle_ref = await store_bundle(self.files_client, workspace, name, runtime_bundle)
         entity = _entity_from_bundle(
             name=name, workspace=workspace, bundle=runtime_bundle, bundle_ref=bundle_ref, project=None, derived=True
         )
@@ -297,7 +297,7 @@ class MetricService:
         affects a live metric.
         """
         try:
-            await delete_bundle_by_ref(self.sdk, bundle_ref)
+            await delete_bundle_by_ref(self.files_client, bundle_ref)
         except Exception:
             logger.warning(
                 "Failed to delete unreferenced metric bundle fileset; storage may be leaked",

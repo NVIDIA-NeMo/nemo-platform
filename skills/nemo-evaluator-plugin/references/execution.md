@@ -196,7 +196,6 @@ artifacts = job.download_artifacts("./artifacts")  # local output dir
 - `get_job_status()`
 - `check_if_complete(raise_if_not_complete=False)`
 - `get_result(aggregate_fields=...)`
-- `as_async()`
 
 **Platform CLI**
 

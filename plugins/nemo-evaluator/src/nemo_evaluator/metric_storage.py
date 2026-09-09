@@ -21,8 +21,6 @@ import uuid
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
 from pydantic import ValidationError
@@ -65,7 +63,7 @@ def parse_bundle_ref(bundle_ref: str) -> tuple[str, str, str]:
     return workspace, fileset, path
 
 
-async def store_bundle(sdk: AsyncNeMoPlatform, workspace: str, name: str, bundle: MetricBundle) -> str:
+async def store_bundle(client: AsyncFilesClient, workspace: str, name: str, bundle: MetricBundle) -> str:
     """Serialize and upload a metric bundle to a fresh fileset, returning its reference.
 
     Each call creates a new, uniquely-named fileset, so callers can safely roll
@@ -74,22 +72,18 @@ async def store_bundle(sdk: AsyncNeMoPlatform, workspace: str, name: str, bundle
     """
     fileset = _new_fileset_name()
     body = bundle.model_dump_json().encode("utf-8")
-    files = client_from_platform(sdk, AsyncFilesClient)
     try:
         description = f"Stored metric bundle for {workspace}/{name}."
-        await files.create_fileset(
-            body=CreateFilesetRequest(
-                name=fileset,
-                description=description[:255],
-            ),
+        await client.create_fileset(
             workspace=workspace,
+            body=CreateFilesetRequest(name=fileset, description=description[:255]),
         )
     except Exception as exc:
         raise MetricBundleStorageError(f"failed to create fileset for metric bundle {workspace}/{name}") from exc
     try:
-        await files.upload_file(
-            path=BUNDLE_FILENAME,
+        await client.upload_file(
             content=body,
+            path=BUNDLE_FILENAME,
             name=fileset,
             workspace=workspace,
         )
@@ -97,7 +91,7 @@ async def store_bundle(sdk: AsyncNeMoPlatform, workspace: str, name: str, bundle
         # Roll back the just-created (now-empty) fileset so a failed upload
         # doesn't leak it, then surface a typed storage error.
         try:
-            await files.delete_fileset(name=fileset, workspace=workspace)
+            await client.delete_fileset(name=fileset, workspace=workspace)
         except Exception:
             logger.warning(
                 "Failed to clean up fileset after a failed metric bundle upload; storage may be leaked",
@@ -110,16 +104,15 @@ async def store_bundle(sdk: AsyncNeMoPlatform, workspace: str, name: str, bundle
     return f"{workspace}/{fileset}#{BUNDLE_FILENAME}"
 
 
-async def load_bundle(sdk: AsyncNeMoPlatform, bundle_ref: str, *, expected_digest: str | None = None) -> MetricBundle:
+async def load_bundle(client: AsyncFilesClient, bundle_ref: str, *, expected_digest: str | None = None) -> MetricBundle:
     """Download and reconstruct a stored metric bundle from its Files reference.
 
     When ``expected_digest`` is provided, the reconstructed payload digest is
     verified against it to detect drift or corruption.
     """
     workspace, fileset, path = parse_bundle_ref(bundle_ref)
-    files = client_from_platform(sdk, AsyncFilesClient)
     try:
-        response = await files.download_file(path=path, workspace=workspace, name=fileset)
+        response = await client.download_file(path=path, name=fileset, workspace=workspace)
         data = await response.read()
     except Exception as exc:
         raise MetricBundleStorageError(f"failed to download metric bundle from {bundle_ref!r}") from exc
@@ -136,8 +129,7 @@ async def load_bundle(sdk: AsyncNeMoPlatform, bundle_ref: str, *, expected_diges
     return bundle
 
 
-async def delete_bundle_by_ref(sdk: AsyncNeMoPlatform, bundle_ref: str) -> None:
+async def delete_bundle_by_ref(client: AsyncFilesClient, bundle_ref: str) -> None:
     """Delete the specific fileset a bundle reference points at."""
     workspace, fileset, _ = parse_bundle_ref(bundle_ref)
-    files = client_from_platform(sdk, AsyncFilesClient)
-    await files.delete_fileset(name=fileset, workspace=workspace)
+    await client.delete_fileset(name=fileset, workspace=workspace)

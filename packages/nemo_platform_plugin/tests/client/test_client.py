@@ -194,6 +194,30 @@ def test_base_url_trailing_slash_stripped() -> None:
     assert not url_called.startswith(BASE + "//")
 
 
+def _assert_platform_url_behavior(client: NemoClient | AsyncNemoClient) -> None:
+    assert client.is_platform_url("http://platform/apis/inference-gateway/v2/workspaces/default/model/m/-/v1")
+    assert client.is_platform_url("http://platform:80/apis/inference-gateway/v2/workspaces/default/model/m/-/v1")
+    assert not client.is_platform_url("https://platform/apis/inference-gateway/v2/workspaces/default/model/m/-/v1")
+    assert not client.is_platform_url("http://platform:8080/apis/inference-gateway/v2/workspaces/default/model/m/-/v1")
+    assert not client.is_platform_url("http://other/apis/inference-gateway/v2/workspaces/default/model/m/-/v1")
+    assert not client.is_platform_url("/apis/inference-gateway/v2/workspaces/default/model/m/-/v1")
+
+
+def test_is_platform_url_matches_sync_client_origin() -> None:
+    _assert_platform_url_behavior(NemoClient(base_url="http://platform"))
+
+
+def test_is_platform_url_matches_async_client_origin() -> None:
+    _assert_platform_url_behavior(AsyncNemoClient(base_url="http://platform"))
+
+
+def test_is_platform_url_normalizes_https_default_port() -> None:
+    client = NemoClient(base_url="https://platform")
+
+    assert client.is_platform_url("https://platform:443/apis/inference-gateway/v2/workspaces/default/model/m/-/v1")
+    assert not client.is_platform_url("http://platform:443/apis/inference-gateway/v2/workspaces/default/model/m/-/v1")
+
+
 # ---------------------------------------------------------------------------
 # Async client
 # ---------------------------------------------------------------------------

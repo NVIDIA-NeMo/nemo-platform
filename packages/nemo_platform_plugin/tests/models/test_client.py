@@ -232,6 +232,51 @@ def test_model_entity_route_always_v1() -> None:
     assert client.get_model_entity_route_openai_url(me).endswith("/model/m/-/v1")
 
 
+def test_resolve_model_reference_fetches_model_and_provider() -> None:
+    http = MagicMock(spec=httpx.Client)
+    http.request.side_effect = [
+        httpx.Response(
+            200,
+            request=httpx.Request("GET", BASE),
+            json=_model_json("judge", model_providers=["default/provider"]),
+        ),
+        httpx.Response(
+            200,
+            request=httpx.Request("GET", BASE),
+            json=_provider_json("READY", name="provider", host_url="http://nim.example.test:8000"),
+        ),
+    ]
+    client = ModelsClient(base_url=BASE, workspace="default", http_client=http)
+
+    result = client.resolve_model_reference("default/judge")
+
+    assert [call.args[1] for call in http.request.call_args_list] == [
+        f"{BASE}/apis/models/v2/workspaces/default/models/judge",
+        f"{BASE}/apis/models/v2/workspaces/default/providers/provider",
+    ]
+    assert result.name == "judge"
+    assert result.url == f"{BASE}/apis/inference-gateway/v2/workspaces/default/model/judge/-/v1"
+    assert result.host_url == "http://nim.example.test:8000"
+
+
+def test_resolve_model_reference_ignores_missing_provider() -> None:
+    http = MagicMock(spec=httpx.Client)
+    http.request.side_effect = [
+        httpx.Response(
+            200,
+            request=httpx.Request("GET", BASE),
+            json=_model_json("judge", model_providers=["default/missing-provider"]),
+        ),
+        httpx.Response(404, request=httpx.Request("GET", BASE), json={"detail": "missing"}),
+    ]
+    client = ModelsClient(base_url=BASE, workspace="default", http_client=http)
+
+    result = client.resolve_model_reference("default/judge")
+
+    assert result.name == "judge"
+    assert result.host_url is None
+
+
 def test_provider_route_for_deployment_fetches_provider() -> None:
     http = MagicMock(spec=httpx.Client)
     http.request.return_value = httpx.Response(
@@ -376,6 +421,34 @@ async def test_async_create_model() -> None:
 
     out = (await client.create_model(body=CreateModelEntityRequest(name="llama"))).data()
     assert out.name == "llama"
+
+
+@pytest.mark.asyncio
+async def test_async_resolve_model_reference_fetches_model_and_provider() -> None:
+    http = AsyncMock(spec=httpx.AsyncClient)
+    http.request.side_effect = [
+        httpx.Response(
+            200,
+            request=httpx.Request("GET", BASE),
+            json=_model_json("judge", model_providers=["default/provider"]),
+        ),
+        httpx.Response(
+            200,
+            request=httpx.Request("GET", BASE),
+            json=_provider_json("READY", name="provider", host_url="http://nim.example.test:8000"),
+        ),
+    ]
+    client = AsyncModelsClient(base_url=BASE, workspace="default", http_client=http)
+
+    result = await client.resolve_model_reference("default/judge")
+
+    assert [call.args[1] for call in http.request.call_args_list] == [
+        f"{BASE}/apis/models/v2/workspaces/default/models/judge",
+        f"{BASE}/apis/models/v2/workspaces/default/providers/provider",
+    ]
+    assert result.name == "judge"
+    assert result.url == f"{BASE}/apis/inference-gateway/v2/workspaces/default/model/judge/-/v1"
+    assert result.host_url == "http://nim.example.test:8000"
 
 
 @pytest.mark.asyncio

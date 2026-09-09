@@ -25,8 +25,9 @@ from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.dependencies import get_sdk_client
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
-from nemo_platform_plugin.jobs.result_manager import result_manager_factory
+from nemo_platform_plugin.jobs.result_manager import async_result_manager_factory
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,13 @@ async def download_audit_artifacts(
 ) -> FileResponse:
     """Stream an aggregate tar.gz of all garak report artifacts for an audit job."""
     jobs_client = client_from_platform(sdk, AsyncJobsClient)
-    result_manager = result_manager_factory(job_name=job, workspace=workspace, files_sdk=sdk)
+    files_client = client_from_platform(sdk, AsyncFilesClient)
+    result_manager = async_result_manager_factory(
+        job_name=job,
+        workspace=workspace,
+        files_client=files_client,
+        jobs_client=jobs_client,
+    )
 
     tmp_dir = tempfile.TemporaryDirectory()
     artifact_tmps = []
