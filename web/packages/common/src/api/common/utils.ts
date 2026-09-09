@@ -133,3 +133,14 @@ export const getErrorMessage = (error: AxiosError | Error, fallbackMessage?: str
   // "config has no usable model" into "Unknown error" at the guardrail-run call site.
   return error.message || fallbackMessage || '';
 };
+
+/**
+ * Resolves to `undefined` instead of rejecting when the call loses a create race —
+ * "already exists" is the desired end state for the idempotent setup a template does.
+ * Every other failure still propagates.
+ */
+export const swallowConflict = <T>(promise: Promise<T>): Promise<T | undefined> =>
+  promise.catch((e: unknown) => {
+    if (isVersionConflictError(e)) return undefined;
+    throw e;
+  });
