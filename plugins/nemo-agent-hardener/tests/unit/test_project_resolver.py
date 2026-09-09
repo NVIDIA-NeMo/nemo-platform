@@ -131,6 +131,27 @@ def test_a_named_dockerfile_resolves_the_ambiguity(tmp_path: Path):
     assert "dockerfile" not in derived["unresolved"]
 
 
+def test_an_absolute_dockerfile_path_is_refused(tmp_path: Path):
+    """`project_root / dockerfile` silently discards project_root for an absolute right side."""
+    secret = tmp_path.parent / "secret.txt"
+    secret.write_text("outside the bundle", encoding="utf-8")
+    (tmp_path / "Dockerfile").write_text(FABRIC_DOCKERFILE, encoding="utf-8")
+
+    derived = inspect_project(tmp_path, dockerfile=str(secret))
+    assert derived["unresolved"] == ["dockerfile"]
+    assert any("not a file in the uploaded bundle" in warning for warning in derived["warnings"])
+
+
+def test_a_dockerfile_path_that_escapes_the_bundle_is_refused(tmp_path: Path):
+    secret = tmp_path.parent / "secret.txt"
+    secret.write_text("outside the bundle", encoding="utf-8")
+    (tmp_path / "Dockerfile").write_text(FABRIC_DOCKERFILE, encoding="utf-8")
+
+    derived = inspect_project(tmp_path, dockerfile=f"../{secret.name}")
+    assert derived["unresolved"] == ["dockerfile"]
+    assert any("not a file in the uploaded bundle" in warning for warning in derived["warnings"])
+
+
 def test_vendored_dockerfiles_do_not_create_ambiguity(tmp_path: Path):
     """A Dockerfile under .venv or node_modules is not the agent's own."""
     (tmp_path / "Dockerfile").write_text(FABRIC_DOCKERFILE, encoding="utf-8")
