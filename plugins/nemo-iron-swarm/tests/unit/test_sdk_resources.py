@@ -8,7 +8,19 @@ from __future__ import annotations
 import types
 from typing import Any
 
+import pytest
+from _doubles import make_sdk
 from nemo_iron_swarm_plugin.sdk import IronSwarmPluginResource
+from nemo_platform_plugin.iron_swarm.client import IronSwarmClient
+from nemo_platform_plugin.iron_swarm.types import (
+    InspectProjectRequest,
+    InspectProjectResponse,
+    IronSwarmManifest,
+    ManifestInit,
+    ManifestUpdate,
+    ValidateModelRequest,
+    ValidateModelResponse,
+)
 
 
 class _AutoPaginatingPage:
@@ -89,3 +101,67 @@ def test_manifests_list_is_bounded_too() -> None:
     resource, entities = _resource(total=50)
     assert len(resource.manifests.list(limit=3)) == 3
     assert len(entities.requests) == 1
+
+
+def test_manifest_create_uses_typed_iron_swarm_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class _IronSwarm:
+        def create_manifest(self, *, workspace: str, body: ManifestInit) -> Any:
+            captured["workspace"] = workspace
+            captured["body"] = body
+            return types.SimpleNamespace(
+                data=lambda: IronSwarmManifest(name=body.name, workspace=workspace, agent=body.agent or "")
+            )
+
+    def _client_from_platform(_platform: Any, client_cls: Any) -> Any:
+        assert client_cls is IronSwarmClient
+        return _IronSwarm()
+
+    monkeypatch.setattr("nemo_iron_swarm_plugin.sdk.client_from_platform", _client_from_platform)
+
+    result = IronSwarmPluginResource(make_sdk()).manifests.create(
+        workspace="ws", name="finance", agent="default/finance"
+    )
+
+    assert isinstance(captured["body"], ManifestInit)
+    assert captured["body"].name == "finance"
+    assert result["name"] == "finance"
+    assert result["workspace"] == "ws"
+
+
+def test_manifest_update_validate_and_inspect_use_typed_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class _IronSwarm:
+        def update_manifest(self, *, workspace: str, name: str, body: ManifestUpdate) -> Any:
+            captured["update"] = (workspace, name, body)
+            return types.SimpleNamespace(
+                data=lambda: IronSwarmManifest(name=name, workspace=workspace, rounds=body.rounds or 1)
+            )
+
+        def validate_model(self, *, workspace: str, body: ValidateModelRequest) -> Any:
+            captured["validate"] = (workspace, body)
+            return types.SimpleNamespace(data=lambda: ValidateModelResponse(ok=True, available=[body.model or ""]))
+
+        def inspect_project(self, *, workspace: str, body: InspectProjectRequest) -> Any:
+            captured["inspect"] = (workspace, body)
+            return types.SimpleNamespace(data=lambda: InspectProjectResponse(default_agent_name=body.project_fileset))
+
+    def _client_from_platform(_platform: Any, client_cls: Any) -> Any:
+        assert client_cls is IronSwarmClient
+        return _IronSwarm()
+
+    monkeypatch.setattr("nemo_iron_swarm_plugin.sdk.client_from_platform", _client_from_platform)
+    manifests = IronSwarmPluginResource(make_sdk()).manifests
+
+    updated = manifests.update("finance", workspace="ws", rounds=3)
+    verdict = manifests.validate_model(workspace="ws", model="model-a", base_url="https://models.example/v1")
+    detected = manifests.inspect(workspace="ws", project_fileset="ws/project")
+
+    assert isinstance(captured["update"][2], ManifestUpdate)
+    assert updated["rounds"] == 3
+    assert isinstance(captured["validate"][1], ValidateModelRequest)
+    assert verdict["ok"] is True
+    assert isinstance(captured["inspect"][1], InspectProjectRequest)
+    assert detected["default_agent_name"] == "ws/project"
