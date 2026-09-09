@@ -123,7 +123,7 @@ def configure_intake_atif_export(
 
     if telemetry.enabled is False:
         return False
-    if _declares_atif_storage(telemetry):
+    if _declares_a_destination(telemetry):
         return False
 
     storage: dict[str, object] = {
@@ -154,6 +154,16 @@ def configure_intake_atif_export(
     return True
 
 
-def _declares_atif_storage(telemetry: TelemetryConfig) -> bool:
-    """Whether the config already names somewhere to send trajectories."""
-    return isinstance(telemetry.atif, dict) and bool(telemetry.atif.get("storage"))
+def _declares_a_destination(telemetry: TelemetryConfig) -> bool:
+    """Whether the config already names anywhere to send telemetry.
+
+    Checked across every output, not just ATIF: a config that exports
+    OpenTelemetry to its own collector has declared where its telemetry goes,
+    and adding a second destination it never asked for is the opposite of
+    letting an explicit declaration win.
+    """
+    return bool(
+        (isinstance(telemetry.atif, dict) and telemetry.atif.get("storage"))
+        or (isinstance(telemetry.atof, dict) and telemetry.atof.get("sinks"))
+        or (isinstance(telemetry.opentelemetry, dict) and telemetry.opentelemetry.get("endpoints"))
+    )

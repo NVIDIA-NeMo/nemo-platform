@@ -1852,6 +1852,30 @@ def test_telemetry_credentials_go_to_the_environment_not_the_config(monkeypatch:
     assert os.environ[header_var] == "service:agents"
 
 
+@pytest.mark.parametrize(
+    ("output", "declaration"),
+    [
+        ("atof", {"enabled": True, "sinks": [{"type": "stream", "url": "https://mine/events"}]}),
+        ("opentelemetry", {"endpoints": [{"type": "gen_ai", "endpoint": "https://mine/otlp"}]}),
+    ],
+)
+def test_a_destination_declared_through_any_output_is_left_alone(
+    monkeypatch: pytest.MonkeyPatch, output: str, declaration: dict[str, Any]
+) -> None:
+    """Declaring an export is declaring where telemetry goes, whichever output carries it.
+
+    Adding an Intake destination beside one the agent chose would be a second,
+    unrequested export -- not the "fill in what was left out" this is for.
+    """
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    config = _fabric_agent_config(telemetry={"enabled": True, output: declaration})
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert "atif" not in config["telemetry"]
+    assert config["telemetry"][output] == declaration
+
+
 def test_an_agent_that_names_its_own_destination_keeps_it(monkeypatch: pytest.MonkeyPatch) -> None:
     """An explicit export destination beats an inferred one."""
     monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
