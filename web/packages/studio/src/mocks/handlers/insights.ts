@@ -1,12 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getInsightsGetAnalysisConfigQueryKey } from '@nemo/sdk/generated/insights/insights-analysis-configs';
+import { getInsightsListInsightsQueryKey } from '@nemo/sdk/generated/insights/insights-insights';
 import type { InsightListItem } from '@nemo/sdk/generated/insights/schema';
-import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { mockApiUrl } from '@studio/mocks/mockApiUrl';
 import { http, HttpResponse } from 'msw';
 
-const INSIGHTS_URL = `${PLATFORM_BASE_URL}/apis/insights/v2/workspaces/:workspace/insights`;
-const ANALYSIS_CONFIG_URL = `${PLATFORM_BASE_URL}/apis/insights/v2/workspaces/:workspace/analysis-configs/:agent`;
+const INSIGHTS_URL = mockApiUrl(getInsightsListInsightsQueryKey, ':workspace');
+const ANALYSIS_CONFIG_URL = mockApiUrl(
+  getInsightsGetAnalysisConfigQueryKey,
+  ':workspace',
+  ':agent'
+);
 
 /** Stored per-agent analysis config, as the Details tab's Insights analysis panel reads it. */
 export const mockAnalysisConfig = {
