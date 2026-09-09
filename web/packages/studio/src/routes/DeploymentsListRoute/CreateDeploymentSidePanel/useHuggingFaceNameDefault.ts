@@ -28,11 +28,12 @@ export function useHuggingFaceNameDefault(
   useEffect(() => {
     if (source !== SOURCE_HF || nameEdited) return;
 
+    // Only overwrite once the repo ID yields something; leaves the existing
+    // default in place rather than blanking the field while the user is still
+    // part-way through typing.
     const derived = huggingFaceRepoIdToBaseName(repoId ?? '');
-    // Leave the existing default in place rather than blanking the field while the
-    // user is still part-way through typing a repo ID.
-    if (!derived) return;
-
-    setValue('name', derived, { shouldDirty: false, shouldValidate: true });
+    if (derived) {
+      setValue('name', derived, { shouldDirty: false, shouldValidate: true });
+    }
   }, [nameEdited, repoId, setValue, source]);
 }
