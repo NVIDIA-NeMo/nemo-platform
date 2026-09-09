@@ -318,11 +318,17 @@ target = HarborRunnerTarget(
 )
 ```
 
-`reward_key` selects the required primary reward by name; mapping order and alphabetical order do not
-select it. On a scoreable trial, a missing or unusable primary emits `0.0` with a diagnostic. Other
-task-local reward keys become optional secondary outputs: finite numeric values are emitted, while
-missing, Boolean, nonnumeric, NaN, or infinite values are omitted with diagnostics. A secondary
-discovered for one task does not become applicable to another task.
+- `reward_key` selects the required primary reward by name (default `reward`). Mapping order and
+  alphabetical order do not select it.
+- The SDK scores only Harbor-valid `result.json` files (Harbor's `TrialResult`). A `null`,
+  nonnumeric string, or object in the reward mapping fails that check, so the whole attempt is
+  skipped and sibling rewards are not scored. Harbor writes `NaN` and infinity as `null`, which
+  hits this gate.
+- On a Harbor-valid trial, a finite primary is emitted unchanged. A missing or unusable primary
+  (including Boolean) emits `0.0` with a diagnostic; the trial is still scored.
+- Other keys from that task's Harbor-valid results become optional secondaries. Finite numbers are
+  emitted. Missing or Boolean values are omitted with a diagnostic; usable siblings are kept.
+- A secondary reward discovered for one task does not apply to another task.
 
 Use `agent_import_path` for a custom Harbor agent and `agent_model_name` when
 the agent requires a model. The module must be importable in the execution
