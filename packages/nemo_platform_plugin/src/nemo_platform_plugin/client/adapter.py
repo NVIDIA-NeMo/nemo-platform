@@ -17,7 +17,6 @@ Usage::
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TypeVar, overload
 
 import httpx
@@ -27,14 +26,6 @@ from nemo_platform_plugin.client.types import RetryPolicy
 
 SyncT = TypeVar("SyncT", bound=NemoClient)
 AsyncT = TypeVar("AsyncT", bound=AsyncNemoClient)
-
-
-def _url_resolver_from_platform(platform: NeMoPlatform | AsyncNeMoPlatform) -> Callable[[str], str | httpx.URL]:
-    router = getattr(platform, "_nmp_request_router", None)
-    resolver = getattr(router, "resolve", None)
-    if resolver is not None:
-        return resolver
-    return platform._prepare_url
 
 
 @overload
@@ -47,19 +38,17 @@ def client_from_platform(
     platform: NeMoPlatform | AsyncNeMoPlatform,
     client_cls: type[NemoClient] | type[AsyncNemoClient],
 ) -> NemoClient | AsyncNemoClient:
-    """Create a :class:`NemoClient` or :class:`AsyncNemoClient` from a :class:`NeMoPlatform` instance.
+    """Create a typed client sharing a generated platform SDK's transport.
 
     The overloads ensure callers get the correct concrete return type.
     """
     # Prefer _custom_headers (set via with_options/set_default_headers),
     # fall back to the httpx client's actual headers (set at construction,
     # e.g. TestClient(headers={...})), filtering out httpx defaults.
-    # _custom_headers and _client are private Stainless SDK attrs present on both
-    # NeMoPlatform and AsyncNeMoPlatform but not visible to the type checker.
-    headers = platform._custom_headers  # type: ignore[union-attr]
+    headers = platform._custom_headers
     if not headers:
         _skip = {"accept", "accept-encoding", "connection", "user-agent", "host"}
-        headers = {k: v for k, v in platform._client.headers.items() if k.lower() not in _skip}  # type: ignore[union-attr]
+        headers = {k: v for k, v in platform._client.headers.items() if k.lower() not in _skip}
 
     retry = RetryPolicy(
         max_retries=platform.max_retries,
@@ -68,7 +57,7 @@ def client_from_platform(
         respect_retry_decision_headers=True,
         respect_retry_after_headers=True,
     )
-    url_resolver = _url_resolver_from_platform(platform)
+    url_resolver = platform._prepare_url
 
     # Carry the platform's timeout across as a per-request override. The shared
     # httpx client keeps whatever timeout it was built with, so a caller's

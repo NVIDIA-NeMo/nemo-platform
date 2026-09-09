@@ -25,11 +25,12 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.tasks import dispatcher as dispatcher_module
-from nemo_platform_plugin.tasks.dispatcher import _build_ctx_from_env, run_task
+from nemo_platform_plugin.tasks.dispatcher import build_ctx_from_env, run_task
 
 
 def _setup_env(
@@ -42,9 +43,9 @@ def _setup_env(
 ) -> Path:
     """Wire the env so :func:`run_task` can read step config + ctx.
 
-    Patches :class:`PlatformJobResults` to a no-op so the env-default ctx
-    can be built without a real Files / Jobs SDK round-trip; tests that
-    care about the results sink override ``ctx`` explicitly.
+    Patches the task-SDK-to-results boundary to a no-op so the env-default ctx
+    can be built without a real Files / Jobs SDK round-trip; tests that care
+    about the results sink override ``ctx`` explicitly.
 
     Returns the step-config path so tests can re-point or delete it.
     """
@@ -59,15 +60,19 @@ def _setup_env(
         monkeypatch.delenv("NEMO_JOB_ID", raising=False)
     else:
         monkeypatch.setenv("NEMO_JOB_ID", job_id)
+
+    def _fake_platform_job_results(**_kwargs: object) -> MagicMock:
+        return MagicMock(name="PlatformJobResults")
+
     monkeypatch.setattr(
         dispatcher_module,
         "PlatformJobResults",
-        lambda **_kwargs: MagicMock(name="PlatformJobResults"),
+        _fake_platform_job_results,
     )
     return config_path
 
 
-_DEFAULT_SDK = MagicMock(name="default-sdk")
+_DEFAULT_SDK = NeMoPlatform(base_url="http://platform.test", workspace="ws")
 
 
 class TestExitCodes:
@@ -568,7 +573,7 @@ class TestCtxOverride:
 
 
 class TestBuildCtxFromEnv:
-    """``_build_ctx_from_env`` reads the platform-injected env vars.
+    """``build_ctx_from_env`` reads the platform-injected env vars.
 
     Tested in isolation here so the env-vars-to-JobContext mapping has
     direct coverage — :func:`run_task` is the only public call site,
@@ -579,10 +584,14 @@ class TestBuildCtxFromEnv:
     @staticmethod
     def _patch_results(monkeypatch) -> MagicMock:
         sentinel = MagicMock(name="PlatformJobResults")
+
+        def _fake_platform_job_results(**_kwargs: object) -> MagicMock:
+            return sentinel
+
         monkeypatch.setattr(
             dispatcher_module,
             "PlatformJobResults",
-            lambda **_kwargs: sentinel,
+            _fake_platform_job_results,
         )
         return sentinel
 
@@ -601,7 +610,7 @@ class TestBuildCtxFromEnv:
         monkeypatch.setenv("NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH", str(ephemeral))
         monkeypatch.setenv("NEMO_JOB_ID", "submitted-job-name")
 
-        ctx = _build_ctx_from_env(_DEFAULT_SDK)
+        ctx = build_ctx_from_env(_DEFAULT_SDK)
 
         assert ctx.workspace == "platform-ws"
         assert ctx.storage.persistent == persistent
@@ -614,18 +623,23 @@ class TestBuildCtxFromEnv:
         # can retrieve it via the typed Jobs client. Earlier versions passed
         # ``job_cls.name`` (the NemoJob class identifier like ``"evaluate"``)
         # which points at a non-existent job record.
-        captured: dict[str, str] = {}
+        captured: dict[str, object] = {}
+
+        def _capture_platform_job_results(**kwargs: object) -> MagicMock:
+            captured.update(kwargs)
+            return MagicMock(name="PlatformJobResults")
+
         monkeypatch.setattr(
             dispatcher_module,
             "PlatformJobResults",
-            lambda **kwargs: captured.update(kwargs) or MagicMock(),
+            _capture_platform_job_results,
         )
         monkeypatch.setenv("NEMO_JOB_WORKSPACE", "ws")
         monkeypatch.setenv("NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH", str(tmp_path / "p"))
         monkeypatch.setenv("NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH", str(tmp_path / "e"))
         monkeypatch.setenv("NEMO_JOB_ID", "evaluate-agent-abc123")
 
-        _build_ctx_from_env(_DEFAULT_SDK)
+        build_ctx_from_env(_DEFAULT_SDK)
 
         assert captured["job_name"] == "evaluate-agent-abc123"
         assert captured["workspace"] == "ws"
@@ -641,7 +655,7 @@ class TestBuildCtxFromEnv:
         monkeypatch.setenv("NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH", str(tmp_path / "e"))
         monkeypatch.setenv("NEMO_JOB_ID", "submitted-job-name")
 
-        ctx = _build_ctx_from_env(_DEFAULT_SDK)
+        ctx = build_ctx_from_env(_DEFAULT_SDK)
 
         assert ctx.results is sentinel
 
@@ -649,7 +663,7 @@ class TestBuildCtxFromEnv:
         monkeypatch.delenv("NEMO_JOB_WORKSPACE", raising=False)
 
         with pytest.raises(RuntimeError, match="NEMO_JOB_WORKSPACE"):
-            _build_ctx_from_env(_DEFAULT_SDK)
+            build_ctx_from_env(_DEFAULT_SDK)
 
     def test_empty_workspace_raises(self, monkeypatch) -> None:
         # Empty string is treated as missing; the platform never sets a
@@ -657,7 +671,7 @@ class TestBuildCtxFromEnv:
         monkeypatch.setenv("NEMO_JOB_WORKSPACE", "")
 
         with pytest.raises(RuntimeError, match="NEMO_JOB_WORKSPACE"):
-            _build_ctx_from_env(_DEFAULT_SDK)
+            build_ctx_from_env(_DEFAULT_SDK)
 
     def test_whitespace_workspace_raises(self, monkeypatch) -> None:
         # Whitespace-only is treated as missing too — same realistic
@@ -666,18 +680,19 @@ class TestBuildCtxFromEnv:
         monkeypatch.setenv("NEMO_JOB_WORKSPACE", "   ")
 
         with pytest.raises(RuntimeError, match="NEMO_JOB_WORKSPACE"):
-            _build_ctx_from_env(_DEFAULT_SDK)
+            build_ctx_from_env(_DEFAULT_SDK)
 
     def test_missing_persistent_storage_builds_ctx_but_access_raises(self, tmp_path: Path, monkeypatch) -> None:
         # Persistent storage is optional — the ctx builds successfully
         # without it, but accessing ctx.storage.persistent raises a clear
         # RuntimeError so jobs that need it fail fast with guidance.
+        self._patch_results(monkeypatch)
         monkeypatch.setenv("NEMO_JOB_WORKSPACE", "ws")
         monkeypatch.delenv("NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH", raising=False)
         monkeypatch.setenv("NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH", str(tmp_path / "e"))
         monkeypatch.setenv("NEMO_JOB_ID", "test-job")
 
-        ctx = _build_ctx_from_env(_DEFAULT_SDK)
+        ctx = build_ctx_from_env(_DEFAULT_SDK)
         assert ctx.storage.ephemeral == tmp_path / "e"
 
         with pytest.raises(RuntimeError, match="did not request persistent storage"):
@@ -689,7 +704,7 @@ class TestBuildCtxFromEnv:
         monkeypatch.delenv("NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH", raising=False)
 
         with pytest.raises(RuntimeError, match="NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH"):
-            _build_ctx_from_env(_DEFAULT_SDK)
+            build_ctx_from_env(_DEFAULT_SDK)
 
     def test_missing_job_id_raises(self, tmp_path: Path, monkeypatch) -> None:
         # ``NEMO_JOB_ID`` is required for the default ctx because
@@ -702,4 +717,4 @@ class TestBuildCtxFromEnv:
         monkeypatch.delenv("NEMO_JOB_ID", raising=False)
 
         with pytest.raises(RuntimeError, match="NEMO_JOB_ID"):
-            _build_ctx_from_env(_DEFAULT_SDK)
+            build_ctx_from_env(_DEFAULT_SDK)

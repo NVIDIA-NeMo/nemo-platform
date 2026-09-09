@@ -127,7 +127,6 @@ Some of the most useful methods and properties are described below.
 | `wait_until_done()` | Polls the job until it reaches a terminal platform status. Raises if the job fails or times out. |
 | `get_result(aggregate_fields=None)` | Downloads aggregate-score and row-score artifacts and returns an `EvaluationResult`. Optional `aggregate_fields` shapes the returned aggregate scores only. |
 | `download_artifacts(path=None)` | Downloads and extracts the full job artifacts archive under a job-specific directory. |
-| `as_async()` | Returns an `AsyncEvaluatorJobResource` view over the same job. |
 
 ## AsyncEvaluatorJobResource
 
