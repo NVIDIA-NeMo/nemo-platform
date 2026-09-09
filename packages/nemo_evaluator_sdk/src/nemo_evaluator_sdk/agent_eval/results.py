@@ -433,7 +433,13 @@ class AgentEvalSummary(BaseModel):
         ],
     )
     task_count: int = Field(default=0, description="Number of tasks represented in the run.")
-    trial_count: int = Field(default=0, description="Number of distinct trials scored.")
+    trial_count: int = Field(
+        default=0,
+        description=(
+            "Number of trial records in the run. Uses len(trials) when supplied, including duplicate "
+            "ids and trials without scores; otherwise counts distinct (task_id, trial_id) score pairs."
+        ),
+    )
     score_count: int = Field(default=0, description="Total number of metric scores.")
     error_count: int = Field(
         default=0,
@@ -523,7 +529,8 @@ class AgentEvalSummary(BaseModel):
         :attr:`error_trial_ids` empty rather than raising -- the same silent-skip contract ``tasks``
         already has for pass@k. It may legitimately be *wider* than ``scores`` (a caller
         re-aggregating a subset), so the rollup can name trial ids absent from
-        :attr:`task_metric_values`.
+        :attr:`task_metric_values`. :attr:`trial_count` uses ``len(trials)`` when supplied; otherwise
+        it counts distinct ``(task_id, trial_id)`` pairs among ``scores``.
         """
         score_list = list(scores)
         task_list = list(tasks) if tasks is not None else None
@@ -533,6 +540,10 @@ class AgentEvalSummary(BaseModel):
         observations_by_output = _group_by(observations, _by_output)
         task_metric_values = _task_metric_values(observations, task_list)
         error_trial_ids = _error_trial_ids(trials)
+        if trials is None:
+            trial_count = len({(score.task_id, score.trial_id) for score in score_list})
+        else:
+            trial_count = len(trials)
         return AgentEvalSummary(
             scores=_aggregate_scores(
                 observations,
@@ -544,7 +555,7 @@ class AgentEvalSummary(BaseModel):
             task_metric_values=task_metric_values,
             error_trial_ids=error_trial_ids,
             task_count=len(task_list) if task_list is not None else len({score.task_id for score in score_list}),
-            trial_count=len({score.trial_id for score in score_list}),
+            trial_count=trial_count,
             score_count=len(score_list),
             error_count=sum(len(ids) for ids in error_trial_ids.values()),
         )
