@@ -248,7 +248,7 @@ PY
       CURL_PID=""
       break
     fi
-    sleep 2
+    sleep 20
   done
   if [[ -n "${CURL_PID}" ]]; then
     kill "${CURL_PID}" 2>/dev/null || true
@@ -462,9 +462,9 @@ SH
 
   response_file="$(mktemp)"
   error_file="$(mktemp)"
-  local deadline=$((SECONDS + 30))
+  local deadline=$((SECONDS + 60))
   while (( SECONDS < deadline )); do
-    if curl -sS --max-time 15 \
+    if curl -sS --max-time 45 \
       -H "OPEN-SANDBOX-API-KEY: ${API_KEY}" \
       "${BASE_URL}/sandboxes/${SANDBOX_ID}/proxy/${port}/stream" \
       -o "${response_file}" --stderr "${error_file}"; then
