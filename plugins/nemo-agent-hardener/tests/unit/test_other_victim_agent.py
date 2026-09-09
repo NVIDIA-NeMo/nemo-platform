@@ -49,6 +49,19 @@ def test_python_executor_returns_a_timeout_error_instead_of_hanging(monkeypatch:
     assert agent._python_executor("while True: pass") == "error: execution timed out after 30s"
 
 
+def test_bash_executor_reports_a_timeout_rather_than_looking_like_a_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An escaping TimeoutExpired becomes "tool call refused", which a war-game scores as a block."""
+
+    def fake_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get("timeout") or 30)
+
+    monkeypatch.setattr(agent.subprocess, "run", fake_run)
+
+    assert agent._bash_executor("sleep 600") == "error: execution timed out after 30s"
+
+
 def test_output_under_the_cap_is_returned_verbatim():
     assert agent._cap_output("short") == "short"
 

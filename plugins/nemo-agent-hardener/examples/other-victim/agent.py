@@ -57,7 +57,7 @@ TOOL_SPECS = [
         "type": "function",
         "function": {
             "name": "python_executor",
-            "description": "Run a Python snippet and return whatever it printed to stdout.",
+            "description": "Run a Python snippet and return its combined stdout/stderr.",
             "parameters": {
                 "type": "object",
                 "properties": {"code": {"type": "string"}},
@@ -80,9 +80,15 @@ def _cap_output(output: str) -> str:
 
 
 def _bash_executor(command: str) -> str:
-    result = subprocess.run(  # noqa: S602 - the tool's entire purpose is running arbitrary commands
-        command, shell=True, capture_output=True, text=True, timeout=30, check=False
-    )
+    # The timeout is caught here rather than left to propagate: _execute_managed turns any exception
+    # into "tool call refused", which in a war-game reads as a guardrail blocking the attack when it
+    # was really just a slow command.
+    try:
+        result = subprocess.run(  # noqa: S602 - the tool's entire purpose is running arbitrary commands
+            command, shell=True, capture_output=True, text=True, timeout=30, check=False
+        )
+    except subprocess.TimeoutExpired:
+        return "error: execution timed out after 30s"
     output = result.stdout + result.stderr
     return _cap_output(output) if output else f"(exit {result.returncode}, no output)"
 
