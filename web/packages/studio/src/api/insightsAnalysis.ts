@@ -95,7 +95,7 @@ export const triggerInsightsRun = async (
     return {
       agent,
       status: 'error',
-      message: `Model reference "${unqualified[0]}" must use workspace/name format (for example "default/${unqualified[0]}").`,
+      message: `Model reference "${unqualified[0]}" must use workspace/name format (for example "default/model-name").`,
     };
   }
 
