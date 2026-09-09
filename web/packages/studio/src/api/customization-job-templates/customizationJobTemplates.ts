@@ -20,10 +20,6 @@ import {
 import type { CustomizationBackend } from '@studio/util/customizationBackend';
 import { coerceToFormFields, type CustomizationFormFields } from '@studio/util/forms/customization';
 
-// ---------------------------------------------------------------------------
-// Query keys
-// ---------------------------------------------------------------------------
-
 /** Query key for a (optionally filtered/paginated) list of job templates. */
 export const getCustomizationJobTemplatesQueryKey = (
   workspace: string,
@@ -34,17 +30,9 @@ export const getCustomizationJobTemplatesQueryKey = (
 export const getCustomizationJobTemplateQueryKey = (workspace: string, name: string) =>
   ['customization-job-template', workspace, name] as const;
 
-/**
- * Build the entity-store `filter` expression that scopes a list to one backend.
- * The entity-store supports `data.<key>` paths in JSON filters, so this narrows
- * server-side rather than in the browser.
- */
+/** Scopes a list to one backend. `data.<key>` paths let the entity-store filter server-side. */
 export const customizationJobTemplatesForBackendFilter = (backend: CustomizationBackend): string =>
   JSON.stringify({ 'data.backend': backend });
-
-// ---------------------------------------------------------------------------
-// CRUD (thin wrappers over the generic entity-store endpoints)
-// ---------------------------------------------------------------------------
 
 /** List job templates in a workspace, optionally filtered and paginated. */
 export async function listCustomizationJobTemplates(
@@ -76,8 +64,8 @@ export function listCustomizationJobTemplatesForBackend(
 }
 
 /**
- * Fetch a single job template by name. Templates are top-level entities (no `parent`),
- * so the name is unique within the workspace and no scoping param is needed.
+ * Fetch one template by name. They are top-level entities, so the name is unique in the
+ * workspace and needs no scoping param.
  */
 export async function getCustomizationJobTemplate(
   workspace: string,

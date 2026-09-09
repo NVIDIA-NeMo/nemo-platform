@@ -45,8 +45,7 @@ export const CreateCustomizationStart: FC<CreateCustomizationStartProps> = ({
 }) => {
   const [selectedId, setSelectedId] = useState<StartOptionId | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateSelection | null>(null);
-  // Set only once a pasted config parses and validates, so Continue can never load a
-  // config the form would immediately reject.
+  // Set only once a pasted config validates, so Continue cannot load a rejected config.
   const [jsonFields, setJsonFields] = useState<CustomizationFormFields | null>(null);
 
   const [savedTemplateError, setSavedTemplateError] = useState<string | null>(null);
@@ -64,14 +63,12 @@ export const CreateCustomizationStart: FC<CreateCustomizationStartProps> = ({
     setSavedTemplateError(null);
   };
 
-  // Identity-stable so it can be a dependency of the JSON panel's validate callback.
   const handleValidConfig = useCallback(
     (fields: CustomizationFormFields | null) => setJsonFields(fields),
     []
   );
 
-  // Ready to continue once a tile is chosen — plus that option's own payload: a template
-  // card for "template", a config that parsed for "json".
+  // A tile, plus that option's own payload.
   const canContinue =
     selectedOption !== null &&
     !isSettingUp &&
@@ -91,8 +88,7 @@ export const CreateCustomizationStart: FC<CreateCustomizationStartProps> = ({
     if (selectedOption.id !== 'template' || !selectedTemplate) return;
 
     if (selectedTemplate.kind === 'saved') {
-      // Re-read the entity rather than trusting the list payload, so a template edited
-      // in another tab since this page loaded applies as it is now.
+      // Re-read the entity so a template edited elsewhere applies as it is now.
       setSavedTemplateError(null);
       setIsLoadingSaved(true);
       try {

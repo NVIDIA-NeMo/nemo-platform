@@ -5,11 +5,7 @@ import type { TemplateBadge } from '@studio/components/CreateCustomizationStart/
 import { CustomizationBackend } from '@studio/util/customizationBackend';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
 
-/**
- * Backend badge. RL is coloured because it is the one that changes what the job *is*
- * rather than how it runs — the two supervised backends read as interchangeable and are
- * deliberately left neutral so RL stands out in a mixed list.
- */
+/** RL is coloured because it changes what the job is, not just how it runs. */
 const BACKEND_BADGE: Record<CustomizationBackend, TemplateBadge> = {
   [CustomizationBackend.automodel]: { label: 'Automodel', color: 'gray' },
   [CustomizationBackend.unsloth]: { label: 'Unsloth', color: 'gray' },

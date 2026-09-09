@@ -23,8 +23,8 @@ export interface CustomizationTemplateDataset {
 }
 
 /**
- * Footer stats for a template card. Rendered in declaration order on every card so
- * the collection can be scanned as a column — see the KUI entity-card pattern.
+ * Footer stats for a template card, rendered in declaration order so a collection of cards
+ * scans as a column.
  */
 export interface CustomizationTemplateStats {
   /** Total parameter count, e.g. "30B". */
@@ -43,8 +43,8 @@ export interface CustomizationTemplate {
   /** Rendered as the resource-type Badge in the card header. */
   trainingLabel: string;
   /**
-   * Backend this recipe targets. Stated rather than derived from `buildFormSpec` so the
-   * card can badge it without building a whole form payload first.
+   * Stated rather than derived from `buildFormSpec`, so the card can badge it without
+   * building a whole form payload.
    */
   backend: CustomizationBackend;
   /** Who produced the checkpoint. Kept even though all templates share it today. */
@@ -56,32 +56,17 @@ export interface CustomizationTemplate {
 }
 
 /**
- * Settings every Nemotron cookbook shares, and that the platform cannot express.
+ * Settings the Nemotron cookbooks set that the platform cannot express, so these recipes
+ * train without them: activation checkpointing, the repeated-layer MTP pair
+ * (`num_nextn_predict_layers: 2` with `mtp_use_repeated_layer`), and the Transformer
+ * Engine / DeepEP backend block, which the platform decides for itself.
  *
- * - Activation checkpointing. The Super and Ultra cookbooks set
- *   `activation_checkpointing: true`, Super noting it "avoids OOM on 80GB". The
- *   platform emits that key only for embedding models, and Automodel's own
- *   `FSDP2Config` defaults it to `False`, so these recipes train without it.
- * - Multi-token prediction depth (Ultra and Lightning cookbooks only). MTP itself is
- *   NOT lost: Automodel reads `num_nextn_predict_layers` off the checkpoint config, and
- *   all three Nemotron repos declare `1`, so MTP auto-enables at depth 1 — and the
- *   cookbooks' `mtp_loss_scaling_factor: 0.1` is already the default. What we cannot set
- *   is the pair those two cookbooks override: `num_nextn_predict_layers: 2` with
- *   `mtp_use_repeated_layer: true`. They were trained with weight-tied MTP and the HF
- *   export records only the physical depth (1), not the iteration count (2), so we build
- *   one standalone MTP layer where the recipe intends one layer reused twice.
- * - The Transformer Engine / grouped-matmul / DeepEP backend block. The platform
- *   detects MoE itself and emits its own `BackendConfig`, deliberately with DeepEP
- *   disabled.
- *
- * Closing these needs fields on the automodel job schema plus emission in the
- * automodel service; they are not fixable from the frontend.
+ * MTP itself still runs — Automodel reads depth 1 off the checkpoint config. Closing the
+ * rest needs fields on the automodel job schema, not a frontend change.
  */
-
 /**
- * BIRD-SQL rows into prompt/completion pairs, matching the prompt layout in the
- * Nemotron text2SQL cookbook: the database DDL, then the question, then the
- * evidence hint. `evidence` is frequently empty upstream, so it is not required.
+ * BIRD-SQL rows into prompt/completion pairs, in the text2SQL cookbook's layout: DDL,
+ * question, then the evidence hint — which is often empty upstream, so it is optional.
  */
 const birdSqlConvertRow = (row: Record<string, unknown>): Record<string, unknown> | null => {
   const schema = typeof row.schema === 'string' ? row.schema : '';

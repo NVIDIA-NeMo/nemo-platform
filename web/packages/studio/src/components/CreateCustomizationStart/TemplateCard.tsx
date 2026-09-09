@@ -7,10 +7,8 @@ import { KeyRound, Trash2 } from 'lucide-react';
 import type { FC } from 'react';
 
 /**
- * One template tile, used for both shipped recipes and the user's own saved templates.
- *
- * A delete control, when present, is a sibling of the selecting `<button>` rather than a
- * child: a button inside a button is invalid HTML and the inner click gets swallowed.
+ * One template tile, for both shipped recipes and saved templates. The delete control is a
+ * sibling of the selecting `<button>`, not a child — nested buttons swallow the inner click.
  */
 export const TemplateCard: FC<TemplateCardProps> = ({ model, selected, onSelect }) => {
   const stateClasses = !model.applicable

@@ -33,12 +33,9 @@ interface UseTemplateSetupResult {
 }
 
 /**
- * Everything a template needs in place before its form values mean anything: the base
- * models registered as entities, and the Hugging Face dataset fetched, converted to the
- * prompt/completion shape the recipe trains on, and uploaded as a fileset.
- *
- * Each create is wrapped in `swallowConflict` so re-running a template the workspace has
- * already been set up for is a no-op rather than an error.
+ * Puts a template's prerequisites in place: base models registered as entities, and its
+ * HuggingFace dataset fetched, converted and uploaded as a fileset. Creates are wrapped in
+ * `swallowConflict`, so re-running a template already set up is a no-op.
  */
 export const useTemplateSetup = (workspace: string): UseTemplateSetupResult => {
   const queryClient = useQueryClient();

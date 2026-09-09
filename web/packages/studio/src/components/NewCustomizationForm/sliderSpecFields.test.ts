@@ -6,13 +6,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Every `specSliderProps` call has to name the field its own control is bound to, and read
- * from its own backend's table.
+ * Every `specSliderProps` call must name the field its own control is bound to.
  *
- * This is checked by reading the source because nothing else can see it. A field name that
- * belongs to a different control is still a valid string and still resolves — to another
- * field's value, or to `undefined` — so the types are satisfied, the linter is satisfied,
- * and the rendered form looks plausible. The only signal is the control's own binding.
+ * Checked by reading the source: a field name belonging to another control is still a valid
+ * string that resolves, so types, lint and the rendered form all look fine.
  */
 
 const FORM_DIR = dirname(fileURLToPath(import.meta.url));
@@ -25,9 +22,8 @@ const fieldForBinding = (name: string): string => {
 };
 
 /**
- * `rl.*` and `grpo.*` bindings read whichever arm of the union the section renders, so the
- * file decides rather than the binding. ComputeResourcesSection is rendered by both forms;
- * the two arms inherit identical parallelism defaults, so either table is correct there.
+ * `rl.*` and `grpo.*` read whichever arm the section renders, so the file decides.
+ * ComputeResourcesSection serves both, and their parallelism defaults are identical.
  */
 const RL_TABLES_BY_FILE: Record<string, readonly string[]> = {
   'GrpoParametersSection.tsx': ['GRPO_SPEC_DEFAULTS'],
@@ -55,8 +51,8 @@ const collectSliderCalls = (): SliderCall[] => {
   const calls: SliderCall[] = [];
   for (const file of readdirSync(FORM_DIR).filter((name) => name.endsWith('.tsx'))) {
     const source = readFileSync(join(FORM_DIR, file), 'utf8');
-    // One self-closing control element at a time, so a match cannot run past a control that
-    // has no defaultValue and pick up its neighbour's — which is the bug this guards.
+    // One element at a time, or a match runs past a control with no defaultValue into its
+    // neighbour's — the bug this guards.
     for (const element of source.matchAll(/<Controlled\w+\b[\s\S]*?\n\s*\/>/g)) {
       const block = element[0];
       const binding = /name: '([a-z][a-z_.0-9]+)'/.exec(block);

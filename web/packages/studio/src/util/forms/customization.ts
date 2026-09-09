@@ -38,8 +38,7 @@ import { z } from 'zod';
  */
 /**
  * GRPO-only form state: the spec's GRPO arm plus the two fields that exist only in the UI.
- *
- * A field the form has no control for is inert — `formToRlCreate` picks what it sends.
+ * A field with no control is inert — `formToRlCreate` picks what it sends.
  */
 export interface GrpoFormFields extends RlGRPOTraining {
   /** 'grpo' shows the GRPO form sections; 'dpo' shows DPO sections. Maps to training.type on submit. */
@@ -93,27 +92,18 @@ export const resolveTrainingType = (
 };
 
 /**
- * Every default below comes from `specDefaults.ts`, which parses each backend's generated
- * Zod schema once and lets Zod apply the spec's `default:` values. A field the spec leaves
- * without a default arrives `undefined` — the form's signal to render it unset rather than
- * invent a starting value.
+ * Defaults come from `specDefaults.ts`. A field the spec leaves without one arrives
+ * `undefined`, and the form renders it unset.
  */
 
 /**
- * `rl.training` is shared by the DPO and GRPO forms, so each method's defaults must stand
- * alone: a GRPO value left in the DPO object would silently override the backend. Each
- * comes from its own arm of the discriminated union, so values that differ per method —
- * `ref_policy_kl_penalty` is 0.05 on DPO and 0 on GRPO — stay correct without restating.
+ * `rl.training` is shared by both RL forms, so each method reads its own arm of the union —
+ * values that differ per method, like `ref_policy_kl_penalty`, stay correct without restating.
  */
 export const RL_DPO_TRAINING_DEFAULTS = RL_DPO_DEFAULT_SPEC.training;
 
 const grpoTraining = RL_GRPO_DEFAULT_SPEC.training as RlGRPOTraining;
 
-/**
- * Both arms come straight from the spec. The GRPO arm carries its own values for anything
- * the two methods differ on, so nothing needs restating here — and a field the spec leaves
- * without a default stays absent, which is how it reaches the form unset.
- */
 export const RL_GRPO_TRAINING_DEFAULTS = RL_GRPO_DEFAULT_SPEC.training;
 
 export const FORM_DEFAULTS: CustomizationFormFields = {
@@ -553,19 +543,11 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
- * Fill a partial set of form fields out to a complete one by merging over `FORM_DEFAULTS`.
+ * Fill a partial set of form fields out to a complete one by merging over `FORM_DEFAULTS`,
+ * so a saved template written by an older build still opens with every input controlled.
  *
- * Used to seed the form from sources that are not guaranteed complete — notably saved job
- * templates, whose payload is opaque JSON in the entity-store and can therefore be missing
- * whole sections if it was written by an older Studio build. Merging keeps every input
- * controlled instead of flipping to uncontrolled mid-render.
- *
- * Deliberately *not* `customizationFormSchema` validation: that schema encodes
- * submit-readiness (a model and dataset must be chosen), which is a stricter bar than
- * "usable as a starting point". A half-configured template should still open the form
- * pre-filled and let the user finish it, rather than being silently discarded.
- *
- * Driven off `FORM_DEFAULTS`' own keys, so adding a backend section needs no change here.
+ * Not `customizationFormSchema` validation: that encodes submit-readiness, which is a
+ * stricter bar than "usable as a starting point".
  */
 export const coerceToFormFields = (value: unknown): CustomizationFormFields | undefined => {
   if (!isPlainObject(value)) return undefined;

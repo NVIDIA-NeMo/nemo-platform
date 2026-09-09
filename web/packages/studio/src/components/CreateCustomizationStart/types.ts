@@ -10,12 +10,8 @@ export type StartOptionId = 'json' | 'template' | 'scratch';
 export type StartOption = SharedStartOption<StartOptionId>;
 
 /**
- * Which template is picked, and from which of the two very different sources.
- *
- * A curated recipe has to provision first (register a model, fetch and upload a dataset)
- * and is keyed by a code-defined `id`. A saved template provisions nothing and is keyed
- * by its entity `name`. Keeping them in one union means the Continue handler has to say
- * which it is, rather than guessing from a bare string that could be either.
+ * A curated recipe provisions first and is keyed by a code-defined `id`; a saved template
+ * provisions nothing and is keyed by its entity `name`. The union keeps the two distinct.
  */
 export type TemplateSelection = { kind: 'curated'; id: string } | { kind: 'saved'; name: string };
 

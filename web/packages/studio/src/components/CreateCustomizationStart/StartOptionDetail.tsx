@@ -7,11 +7,7 @@ import { TemplateGrid } from '@studio/components/CreateCustomizationStart/Templa
 import type { StartOptionDetailProps } from '@studio/components/CreateCustomizationStart/types';
 import type { FC, ReactNode } from 'react';
 
-/**
- * The secondary area under the start tiles, holding whatever the chosen option still
- * needs from the user. "Build from scratch" needs nothing, so it renders no detail at
- * all rather than filling the space with an explanation of the form it is about to open.
- */
+/** Whatever the chosen option still needs. "Build from scratch" needs nothing. */
 export const StartOptionDetail: FC<StartOptionDetailProps> = ({
   option,
   workspace,

@@ -65,8 +65,7 @@ export const TemplateGrid: FC<TemplateGridProps> = ({
       void queryClient.invalidateQueries({
         queryKey: getCustomizationJobTemplatesQueryKey(workspace).slice(0, 2),
       });
-      // Deleting the selected template must clear the selection, or Continue stays
-      // enabled pointing at something that no longer exists.
+      // Or Continue stays enabled pointing at something that no longer exists.
       if (selectedTemplate?.kind === 'saved' && selectedTemplate.name === name) {
         onSelectTemplate(null);
       }
@@ -76,8 +75,7 @@ export const TemplateGrid: FC<TemplateGridProps> = ({
     onSettled: () => setDeletingName(null),
   });
 
-  // User templates lead: they are what a returning user came for, and unlike the shipped
-  // recipes they apply instantly rather than provisioning first.
+  // User templates lead: they apply instantly, where recipes provision first.
   const savedCards: TemplateCardModel[] = (page?.data ?? []).map((template) => {
     const fields = templateToFormFields(template);
     return {

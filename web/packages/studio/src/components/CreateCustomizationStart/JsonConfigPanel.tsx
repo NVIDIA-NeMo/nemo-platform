@@ -18,9 +18,8 @@ const BACKEND_LABEL: Record<CustomizationBackend, string> = {
 };
 
 /**
- * Offered behind a button rather than used as placeholder text: the editor has no
- * placeholder affordance, and seeding it directly would leave the panel looking like it
- * held a real config — one that parses, so Continue would light up on values nobody typed.
+ * Behind a button rather than seeded into the editor: a seeded config parses, so Continue
+ * would light up on values nobody typed.
  */
 const EXAMPLE = `{
   "spec": {
@@ -38,7 +37,6 @@ export const JsonConfigPanel: FC<JsonConfigPanelProps> = ({ onValidConfig }) => 
 
   const validate = (value: string) => {
     setText(value);
-    // An empty editor is the resting state, not an error to shout about.
     if (!value.trim()) {
       setError(null);
       setBackendLabel(null);

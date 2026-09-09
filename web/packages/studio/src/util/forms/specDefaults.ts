@@ -11,24 +11,12 @@ import { CustomizationCreateRlJobBody } from '@nemo/sdk/generated/customizer/zod
 import { CustomizationCreateUnslothJobBody } from '@nemo/sdk/generated/customizer/zod/unsloth-jobs';
 
 /**
- * Backend defaults for the customizer forms, taken from the Zod schemas Orval generates
- * out of `plugins/nemo-customizer/openapi/openapi.yaml`.
+ * Backend defaults, read by parsing the generated Zod schemas — which carry the spec's
+ * `default:` values — rather than restating them here. A field the spec leaves without a
+ * default parses to `undefined`, and the form renders it unset.
  *
- * Nothing here is hardcoded. The generated schemas carry the spec's `default:` values as
- * `.default(...)`, so parsing a seed that supplies only the required fields makes Zod
- * fill in every default at once — one call per backend instead of a line per control.
- * `pnpm install` re-derives all of them, and a backend default change reaches the form
- * without anyone editing a field list.
- *
- * A field the spec leaves without a `default:` parses to `undefined`, which is the signal
- * for the form to render it unset rather than invent a starting value.
- */
-
-/**
- * Zod applies a nested object's inner defaults only when that object is present in the
- * input, so every container the form binds to has to be seeded with `{}`. Required leaves
- * (`model`, `dataset`) get an empty string: the form overwrites them, and Zod refuses to
- * parse without them.
+ * Zod fills a nested object's defaults only when that object is present, so every container
+ * the form binds to is seeded with `{}`.
  */
 export const AUTOMODEL_SEED = {
   model: '',
@@ -50,11 +38,7 @@ export const UNSLOTH_SEED = {
   hardware: {},
 };
 
-/**
- * `training` is a discriminated union, so the seed has to name the arm. The two arms hold
- * genuinely different values — `ref_policy_kl_penalty` is 0.05 on DPO and 0 on GRPO — so
- * each is parsed separately rather than merged.
- */
+/** `training` is a discriminated union, and the arms differ — DPO's KL penalty is 0.05, GRPO's 0. */
 export const rlSeed = (type: 'dpo' | 'grpo') => ({
   model: '',
   dataset: '',
@@ -82,11 +66,7 @@ export const RL_GRPO_DEFAULT_SPEC = specOf<RlJobInput>(
   rlSeed('grpo')
 );
 
-/**
- * Flattened `snake_case` view of a parsed spec, e.g. `optimizer_learning_rate`. The slider
- * and placeholder helpers look values up by field path rather than by object traversal, so
- * a control names the field once.
- */
+/** Flattened `snake_case` view of a parsed spec, e.g. `optimizer_learning_rate`. */
 const flatten = (
   value: unknown,
   prefix = '',
@@ -126,28 +106,16 @@ export const numberDefault = reader(isNumber);
 export const booleanDefault = reader(isBoolean);
 export const stringDefault = reader(isString);
 
-/**
- * What a control shows when the spec gives it no default. Kept here so every form uses the
- * same word for "the backend decides this", rather than each control inventing a hint.
- */
+/** Shown when the spec gives a control no default. */
 export const UNSET_PLACEHOLDER = 'Unset';
 
-/**
- * Placeholder for a slider: the backend's own default when the spec has one, so the user
- * can see what will happen without the form sending a value, and `Unset` when it does not.
- */
+/** The backend's default when the spec has one, `Unset` when it does not. */
 export const placeholderFor = (defaults: ReadonlyMap<string, unknown>, field: string): string => {
   const value = defaults.get(field);
   return value === undefined || value === null ? UNSET_PLACEHOLDER : String(value);
 };
 
-/**
- * Slider props for a spec-backed field: the backend's default as the seeded value and ↺
- * target, or unset with an `Unset` placeholder when the spec declares no default.
- *
- * Spread rather than passed field-by-field so a control cannot end up seeded from one
- * field and placeholdered from another.
- */
+/** Spread onto a slider so its value and placeholder cannot come from different fields. */
 export const specSliderProps = (
   defaults: ReadonlyMap<string, unknown>,
   field: string

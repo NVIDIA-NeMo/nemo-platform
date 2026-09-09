@@ -21,11 +21,7 @@ export type ParseCustomizationJsonResult =
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/**
- * The job payload the API takes is `{ "spec": { … } }`, but the spec on its own is just
- * as recognisable and is what a user tends to have on the clipboard. Accept either, and
- * carry `name`/`description` through when the wrapper is present.
- */
+/** Accept either the `{ "spec": … }` wrapper the API takes or a bare spec. */
 const unwrap = (
   parsed: Record<string, unknown>
 ): { spec: Record<string, unknown>; name?: string; description?: string } => {
@@ -42,11 +38,8 @@ const unwrap = (
 /**
  * Which backend a spec belongs to.
  *
- * `getCustomizationBackend` is deliberately not reused here: its guards key off fields a
- * *server-returned* spec always carries (`parallelism`, `hardware`), and a hand-written
- * config routinely omits them. So check the discriminator first, then those strong
- * markers, then fall back to the shape of `model`/`dataset` — which differ per backend
- * and are the two fields nobody leaves out.
+ * Not `getCustomizationBackend`: its guards key off fields a server-returned spec always
+ * carries, and a hand-written config routinely omits them.
  */
 const detectBackend = (spec: Record<string, unknown>): CustomizationBackend | undefined => {
   const training = isRecord(spec.training) ? spec.training : undefined;
@@ -64,9 +57,8 @@ const detectBackend = (spec: Record<string, unknown>): CustomizationBackend | un
 };
 
 /**
- * Overlays `source` onto `base` recursively so a partial config inherits every default it
- * does not mention. Arrays and nulls replace wholesale rather than merging element-wise —
- * a config listing `exclude_modules` means that list, not that list appended to ours.
+ * Overlays `source` onto `base` so a partial config inherits the defaults it omits. Arrays
+ * replace wholesale — a config listing `exclude_modules` means that list, not ours plus it.
  */
 const deepMerge = (base: unknown, source: unknown): unknown => {
   if (!isRecord(base) || !isRecord(source)) return source;
@@ -95,11 +87,8 @@ const formatIssues = (issues: { path: PropertyKey[]; message: string }[]): strin
     .join('; ');
 
 /**
- * Turns a pasted or uploaded job config into form values, or explains why it can't.
- *
- * The result is always a complete, schema-valid set of fields: the config is merged over
- * the backend's defaults before validation, so a config naming only the handful of
- * settings a user cares about still opens a fully-populated form.
+ * Turns a pasted or uploaded job config into form values, or explains why it can't. The
+ * config is merged over the backend's defaults first, so a partial one still opens complete.
  */
 export const parseCustomizationJson = (text: string): ParseCustomizationJsonResult => {
   const trimmed = text.trim();
@@ -128,8 +117,7 @@ export const parseCustomizationJson = (text: string): ParseCustomizationJsonResu
 
   const mergedSpec = deepMerge(defaultSpecFor(backend, spec), spec);
 
-  // `jobToFormFields` is the same mapping a cloned job goes through, so a config loaded
-  // here lands in exactly the state cloning that job would produce.
+  // The same mapping a cloned job goes through, so both land in the same state.
   const base = jobToFormFields({
     name: name ?? '',
     description,
