@@ -6,20 +6,15 @@
 ARG NMP_PYTHON_BASE=nmp-python-base
 ARG NMP_PYTHON_IMAGE=python:3.13.15-slim-trixie
 
-FROM ${NMP_PYTHON_BASE} AS package-builder
-
-# Build the first-party host runtime once, as an immutable wheel artifact.
-COPY packages/sandboxed_gym/pyproject.toml /src/sandboxed_gym/pyproject.toml
-COPY packages/sandboxed_gym/README.md /src/sandboxed_gym/README.md
-COPY packages/sandboxed_gym/src /src/sandboxed_gym/src
-RUN --mount=type=cache,target=/root/.cache/uv \
-    UV_CACHE_DIR=/root/.cache/uv \
-    uv build --wheel --out-dir /dist /src/sandboxed_gym
-
 FROM ${NMP_PYTHON_BASE} AS builder
 
 # Copy the host's standalone dependency manifest and lockfile.
 COPY docker/locks/nmp-gym-host /app/docker/locks/nmp-gym-host
+
+# Copy the complete package inputs at the path used by the lock's local source.
+COPY packages/sandboxed_gym/pyproject.toml /app/packages/sandboxed_gym/pyproject.toml
+COPY packages/sandboxed_gym/README.md /app/packages/sandboxed_gym/README.md
+COPY packages/sandboxed_gym/src /app/packages/sandboxed_gym/src
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     UV_CACHE_DIR=/root/.cache/uv \
@@ -32,15 +27,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --no-install-project \
         --no-editable
 
-# Copy the first-party wheel built from this checkout.
-COPY --from=package-builder /dist/sandboxed_gym-*.whl /tmp/
-# Install the wheel without resolving dependencies; the lock above owns them.
-RUN UV_LINK_MODE=copy \
-    uv pip install \
-        --python /opt/gym-host-venv/bin/python \
-        --no-deps \
-        /tmp/sandboxed_gym-*.whl
-
 # Build the per-server venvs now rather than on first run. Gym creates one venv per agent, model and
 # resources server the config selects, which is ~3 GB and several minutes -- paid once here instead
 # of on every container start.
@@ -51,9 +37,14 @@ RUN mkdir -p "${NEMO_GYM_VENV_DIR}" "${UV_CACHE_DIR}"
 RUN gym env prefetch "+config_paths=[responses_api_agents/simple_agent/configs/simple_agent.yaml,responses_api_models/inference_provider/configs/inference_provider.yaml,resources_servers/mcqa/configs/mcqa.yaml]" \
       "++policy_base_url=http://127.0.0.1:9/v1" "++policy_api_key=unused" "++policy_model_name=unused" \
       "++simple_agent.responses_api_agents.simple_agent.resources_server.name=mcqa" \
-      "++uv_venv_dir=${NEMO_GYM_VENV_DIR}" "++uv_cache_dir=${UV_CACHE_DIR}"
+      "++uv_venv_dir=${NEMO_GYM_VENV_DIR}" "++uv_cache_dir=${UV_CACHE_DIR}" \
+    || echo "prefetch failed; venvs will be built at run time"
 
 FROM ${NMP_PYTHON_IMAGE} AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy uv because Gym uses it to launch component environments.
 COPY --from=builder /bin/uv /bin/uv
@@ -66,6 +57,7 @@ COPY --from=builder /home/ubuntu/.cache/uv /home/ubuntu/.cache/uv
 
 ENV PATH="/opt/gym-host-venv/bin:$PATH" \
     VIRTUAL_ENV=/opt/gym-host-venv \
+    PYTHONUNBUFFERED=1 \
     NEMO_GYM_VENV_DIR=/opt/gym_venvs \
     UV_CACHE_DIR=/home/ubuntu/.cache/uv \
     NMP_RUNTIME_HTTP_PORT=8080
