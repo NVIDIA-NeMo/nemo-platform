@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from functools import cache
 
 from nemo_platform_plugin.discovery import discover_controllers, discover_services
@@ -39,6 +40,14 @@ AVAILABLE_SIDECARS: dict[str, str] = {
     "adapters": "nmp.core.models.sidecars.adapters.main:run",
     "auth-proxy": "nmp.common.auth.workload_proxy.main:run",
 }
+
+
+def check_no_controller_sidecar_collision(controller_names: Iterable[str], sidecar_names: Iterable[str]) -> None:
+    """Reject names that make controller and sidecar health indistinguishable."""
+    collisions = set(controller_names) & set(sidecar_names)
+    if collisions:
+        raise ValueError(f"Controller/sidecar name collision: {', '.join(sorted(collisions))}")
+
 
 CORE_SERVICES = [
     "auth",

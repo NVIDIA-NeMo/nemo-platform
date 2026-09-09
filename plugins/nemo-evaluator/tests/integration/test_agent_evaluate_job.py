@@ -82,7 +82,7 @@ pytestmark = [
 
 WORKSPACE = "default"
 
-#: Headers a job's task SDK carries (mirrors ``get_task_sdk``): an internal service principal the
+#: Headers a job's task client carries (mirrors ``get_task_nemo_client``): an internal service principal the
 #: default PDP policy grants full permissions. Authenticates test-side calls against the
 #: auth-enabled platform without standing up OIDC.
 SERVICE_PRINCIPAL_HEADERS = {"X-NMP-Principal-Id": "service:evaluator", "X-NMP-Internal": "true"}
@@ -192,7 +192,7 @@ def test_run_local_model_target_scores_a_real_trial(subprocess_platform: str) ->
             AgentEvalTaskInput(
                 id="ask",
                 intent="Obtain a one-word reply from the model.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
+                inputs=TaskInputs(instruction="Reply with the single word DONE and nothing else."),
                 metrics=[_output_contains_metric("DONE")],
             )
         ],
@@ -238,7 +238,7 @@ def test_run_local_agent_target_scores_a_real_trial(subprocess_platform: str) ->
             AgentEvalTaskInput(
                 id="ask",
                 intent="Obtain a one-word reply from the agent.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
+                inputs=TaskInputs(instruction="Reply with the single word DONE and nothing else."),
                 metrics=[_output_contains_metric("DONE")],
             )
         ],
@@ -269,7 +269,7 @@ def _offline_trials_input_spec() -> dict:
             AgentEvalTaskInput(
                 id="say-done",
                 intent="Agent follows a trivial instruction and exits cleanly.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
+                inputs=TaskInputs(instruction="Reply with the single word DONE and nothing else."),
                 metrics=[_output_contains_metric("DONE")],
             )
         ],
@@ -316,7 +316,7 @@ def _offline_agent_eval_spec_no_metrics() -> dict:
             AgentEvalTaskInput(
                 id="say-done",
                 intent="Agent follows a trivial instruction and exits cleanly.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
+                inputs=TaskInputs(instruction="Reply with the single word DONE and nothing else."),
             )
         ],
         trials=[
@@ -478,7 +478,7 @@ def test_submit_over_taskset_ref_resolves_and_scores(subprocess_platform: str) -
 
 @pytest.mark.timeout(420)
 def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess_platform: str) -> None:
-    # dim 1 (Model target) x dim 3 (submit) under auth.enabled: the submitted task's get_task_sdk
+    # dim 1 (Model target) x dim 3 (submit) under auth.enabled: the submitted task's get_task_nemo_client
     # identity (X-NMP-Principal-Id: service:evaluator) must be forwarded to the evaluator's IGW
     # inference client (AgentEvalJob._build_evaluator) — otherwise the IGW returns 401 and the job
     # fails. A clean completion proves the forwarded service-principal headers authenticate online
@@ -495,7 +495,7 @@ def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess
             AgentEvalTaskInput(
                 id="ask",
                 intent="Obtain a one-word reply from the model.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
+                inputs=TaskInputs(instruction="Reply with the single word DONE and nothing else."),
                 metrics=[_output_contains_metric("DONE")],
             )
         ],
@@ -523,7 +523,7 @@ def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess
     assert job.status == "completed", f"job {job_name} ended {job.status!r}: {getattr(job, 'status_details', None)}"
 
     # Persistence under auth: the result-entity write goes through the job's async task SDK
-    # (get_async_task_sdk) as service:evaluator on-behalf-of the creator. A retrievable record here
+    # (get_async_task_nemo_client) as service:evaluator on-behalf-of the creator. A retrievable record here
     # proves that delegated identity actually authorized the entity write end-to-end (not just the
     # IGW inference call) — the key validation of the async task-SDK identity parity.
     result = sdk.evaluator.agent_eval_results.retrieve(job_name, workspace=WORKSPACE)
