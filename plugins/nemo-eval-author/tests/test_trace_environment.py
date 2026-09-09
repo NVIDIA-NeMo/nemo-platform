@@ -148,6 +148,7 @@ def _ready_environment(
     nop_reward: float = 0.0,
     oracle_reward: float = 1.0,
     oracle_exception: object | None = None,
+    record_validation: bool = True,
 ) -> None:
     task = task_dir / "task"
     (task / "environment").mkdir(parents=True)
@@ -188,6 +189,11 @@ The human reviewer confirmed that this fixture accurately represents the recorde
         encoding="utf-8",
     )
     (task / "tests" / "test.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    if mode == "separate":
+        (task / "tests" / "Dockerfile").write_text(
+            "FROM scratch\nCOPY test.sh /tests/test.sh\n",
+            encoding="utf-8",
+        )
     (task / "solution" / "solve.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     checksum = "a" * 64
     for arm, reward, exception in (
@@ -205,18 +211,19 @@ The human reviewer confirmed that this fixture accurately represents the recorde
                 "exception_info": exception,
             },
         )
-    code, result = _run(
-        "record-validation",
-        "--task-dir",
-        str(task_dir),
-        "--nop-job-dir",
-        "private/jobs/nop",
-        "--oracle-job-dir",
-        "private/jobs/oracle",
-        "--harbor-version",
-        "0.21.0",
-    )
-    assert code == 0, result
+    if record_validation:
+        code, result = _run(
+            "record-validation",
+            "--task-dir",
+            str(task_dir),
+            "--nop-job-dir",
+            "private/jobs/nop",
+            "--oracle-job-dir",
+            "private/jobs/oracle",
+            "--harbor-version",
+            "0.21.0",
+        )
+        assert code == 0, result
 
 
 def test_init_creates_private_gitignored_workspace(tmp_path: Path) -> None:
@@ -730,28 +737,25 @@ def test_prepare_bounds_string_encoded_images_and_audits_context(tmp_path: Path)
     }
 
 
-def test_shared_verifier_can_pass_technically_but_cannot_be_ready(tmp_path: Path) -> None:
+def test_shared_verifier_is_rejected(tmp_path: Path) -> None:
     task_dir, _ = _workspace(tmp_path)
     _candidate(task_dir)
-    _ready_environment(task_dir, mode="shared")
+    _ready_environment(task_dir, mode="shared", record_validation=False)
     _review_privacy(task_dir, reviewer_kind="human")
 
     code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate", "--human-reviewed")
 
-    assert code == 0, result
-    summary = json.loads((task_dir / "summary.json").read_text(encoding="utf-8"))
-    assert summary["environment"]["technical_status"] == "passed"
-    assert summary["environment"]["status"] == "unproven"
-    assert summary["environment"]["isolation_status"] == "shared"
+    assert code == 1
+    assert "must explicitly set [verifier].environment_mode to separate" in result["error"]
 
 
 def test_candidate_requires_explicit_verifier_environment_mode(tmp_path: Path) -> None:
     task_dir, _ = _workspace(tmp_path)
     _candidate(task_dir)
-    _ready_environment(task_dir, mode="shared")
+    _ready_environment(task_dir, record_validation=False)
     task_toml = task_dir / "task" / "task.toml"
     task_toml.write_text(
-        task_toml.read_text(encoding="utf-8").replace('environment_mode = "shared"\n', ""),
+        task_toml.read_text(encoding="utf-8").replace('environment_mode = "separate"\n', ""),
         encoding="utf-8",
     )
     _review_privacy(task_dir)
@@ -759,7 +763,117 @@ def test_candidate_requires_explicit_verifier_environment_mode(tmp_path: Path) -
     code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
 
     assert code == 1
-    assert "must explicitly set [verifier].environment_mode" in result["error"]
+    assert "must explicitly set [verifier].environment_mode to separate" in result["error"]
+
+
+def test_candidate_requires_explicit_verifier_environment(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8").replace(
+            '\n[verifier.environment]\nnetwork_mode = "no-network"\n',
+            "\n",
+        ),
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "must contain an explicit [verifier.environment] table" in result["error"]
+
+
+def test_verifier_environment_must_be_no_network(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8").replace(
+            '[verifier.environment]\nnetwork_mode = "no-network"\n',
+            '[verifier.environment]\nnetwork_mode = "public"\n',
+        ),
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "[verifier.environment].network_mode must be no-network" in result["error"]
+
+
+def test_candidate_requires_verifier_owned_dockerfile(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / "task" / "tests" / "Dockerfile").unlink()
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "must provide a nonempty task/tests/Dockerfile" in result["error"]
+
+
+def test_step_verifier_cannot_override_separate_mode(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8")
+        + '\n[[steps]]\nname = "grade"\n[steps.verifier]\nenvironment_mode = "shared"\n',
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "step 1 verifier must not override separate mode" in result["error"]
+
+
+def test_step_verifier_environment_must_be_no_network(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8")
+        + '\n[[steps]]\nname = "grade"\n[steps.verifier.environment]\nnetwork_mode = "public"\n',
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "[steps.verifier.environment] for step 1 must set network_mode to no-network" in result["error"]
+
+
+def test_step_can_define_a_separate_no_network_verifier_environment(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8")
+        + '\n[[steps]]\nname = "grade"\n[steps.verifier]\nenvironment_mode = "separate"\n'
+        + '[steps.verifier.environment]\nnetwork_mode = "no-network"\n',
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 0, result
+    summary = json.loads((task_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["environment"]["status"] == "unproven"
+    assert summary["environment"]["isolation_status"] == "isolated"
 
 
 def test_failed_harbor_proof_is_validated_and_attached(tmp_path: Path) -> None:

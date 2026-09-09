@@ -322,12 +322,43 @@ generalized outcome:
 - `README.md` containing reviewer-facing development context, not a copy of the
   agent instruction.
 
-`task.toml` must explicitly set `[verifier].environment_mode`. Use `separate`
-with `[verifier].network_mode = "no-network"` and a no-network verifier
-environment by default. A shared verifier can observe or alter the agent's
-container and therefore cannot become `ready`; retain it as `unproven` with the
-isolation warning. Never depend on a verifier-only secret or file being hidden
-when the verifier is shared.
+`task.toml` must explicitly set `[verifier].environment_mode = "separate"`,
+`[verifier].network_mode = "no-network"`, and a
+`[verifier.environment]` table whose `network_mode` is also `"no-network"`.
+Provide a verifier-owned `tests/Dockerfile`; it builds the verifier image and
+must install or copy the complete grading dependency closure, including its
+`/tests` tree. The helper rejects shared verification because it lets the grader
+observe or alter the agent container and can expose hidden tests to the agent.
+
+For a multi-step task, every step inherits the top-level separate verifier.
+An explicit `[steps.verifier]` override must not select `shared`. When a step
+defines `[steps.verifier.environment]`, that environment must also set
+`network_mode = "no-network"`. Transfer only the declared agent-produced
+artifacts into the verifier environment; do not mount or copy the agent
+workspace wholesale.
+
+```toml
+[verifier]
+environment_mode = "separate"
+network_mode = "no-network"
+
+[verifier.environment]
+network_mode = "no-network"
+```
+
+Add a step-local environment only when that step needs a different verifier
+image or resource configuration:
+
+```toml
+[[steps]]
+name = "grade"
+
+[steps.verifier]
+environment_mode = "separate"
+
+[steps.verifier.environment]
+network_mode = "no-network"
+```
 
 The task README is not passed to the agent. Give it a level-one task title and
 these substantive level-two sections:
@@ -381,8 +412,9 @@ retain it, record `failed`, and validate it during `check`.
 
 If Harbor or Docker is missing, technical status is `not_run` and the environment
 is `unproven`; do not describe it as ready. NOP=0 and Oracle=1 without exceptions
-establish technical status `passed`, but do not establish human review or
-verifier isolation.
+establish technical status `passed`, but do not establish human review. The
+helper independently requires the task configuration and both retained Harbor
+results to report separate verification.
 
 ## Step 7: finalize and verify the summary
 
@@ -417,11 +449,12 @@ python <skill_dir>/scripts/trace_environment.py check \
 ```
 
 The helper derives environment status rather than accepting a claimed status:
-failed technical proof becomes `failed`; passed proof with separate no-network
-verification and `--human-reviewed` becomes `ready`; every other candidate is
-`unproven`. The human-review flag means a human supplied or reviewed Relevant
-experience and the generalized task. It is distinct from the earlier contextual
-privacy review, which records either an agent or human reviewer.
+failed technical proof becomes `failed`; passed proof with the required separate
+no-network verification and `--human-reviewed` becomes `ready`; every other
+candidate is `unproven`. A shared verifier is a contract error rather than an
+unproven candidate. The human-review flag means a human supplied or reviewed
+Relevant experience and the generalized task. It is distinct from the earlier
+contextual privacy review, which records either an agent or human reviewer.
 
 ## Batch and publication
 

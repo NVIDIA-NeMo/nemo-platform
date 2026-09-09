@@ -292,8 +292,8 @@ def _load_summary(task_dir: Path) -> dict[str, Any]:
         or environment.get("technical_status") not in {"passed", "failed", "not_run"}
         or environment.get("review_status") not in {"human_reviewed", "unreviewed"}
         or environment.get("validation") not in {None, "validation.json"}
-        or environment.get("verifier_environment_mode") not in {None, "shared", "separate"}
-        or environment.get("isolation_status") not in {"isolated", "shared", "not_run"}
+        or environment.get("verifier_environment_mode") not in {None, "separate"}
+        or environment.get("isolation_status") not in {"isolated", "not_run"}
     ):
         raise ContractError("summary environment does not match the versioned task workspace contract")
     if privacy is not None and source is None:
@@ -1101,18 +1101,41 @@ def _validate_task(task_dir: Path) -> dict[str, str]:
     if not isinstance(verifier, dict):
         raise ContractError("task/task.toml must contain a [verifier] table")
     mode = verifier.get("environment_mode")
-    if mode not in {"shared", "separate"}:
-        raise ContractError("task/task.toml must explicitly set [verifier].environment_mode to shared or separate")
-    if mode == "separate":
-        if verifier.get("network_mode") != "no-network":
-            raise ContractError("a separate verifier must set [verifier].network_mode to no-network")
-        verifier_environment = verifier.get("environment")
-        if isinstance(verifier_environment, dict) and verifier_environment.get("network_mode") != "no-network":
-            raise ContractError("[verifier.environment].network_mode must be no-network when configured")
-        isolation_status = "isolated"
-    else:
-        isolation_status = "shared"
-    return {"verifier_environment_mode": mode, "isolation_status": isolation_status}
+    if mode != "separate":
+        raise ContractError("task/task.toml must explicitly set [verifier].environment_mode to separate")
+    if verifier.get("network_mode") != "no-network":
+        raise ContractError("[verifier].network_mode must be no-network")
+    verifier_environment = verifier.get("environment")
+    if not isinstance(verifier_environment, dict):
+        raise ContractError("task/task.toml must contain an explicit [verifier.environment] table")
+    if verifier_environment.get("network_mode") != "no-network":
+        raise ContractError("[verifier.environment].network_mode must be no-network")
+    verifier_dockerfile = environment / "tests" / "Dockerfile"
+    if verifier_dockerfile.is_symlink() or not verifier_dockerfile.is_file() or verifier_dockerfile.stat().st_size == 0:
+        raise ContractError("a separate verifier must provide a nonempty task/tests/Dockerfile")
+    steps = config.get("steps", [])
+    if not isinstance(steps, list):
+        raise ContractError("task/task.toml steps must be an array of tables")
+    for index, step in enumerate(steps, start=1):
+        if not isinstance(step, dict):
+            raise ContractError(f"task/task.toml step {index} must be a table")
+        step_verifier = step.get("verifier")
+        if step_verifier is None:
+            continue
+        if not isinstance(step_verifier, dict):
+            raise ContractError(f"task/task.toml step {index} verifier must be a table")
+        step_mode = step_verifier.get("environment_mode")
+        if step_mode not in {None, "separate"}:
+            raise ContractError(f"task/task.toml step {index} verifier must not override separate mode")
+        step_network_mode = step_verifier.get("network_mode")
+        if step_network_mode not in {None, "no-network"}:
+            raise ContractError(f"task/task.toml step {index} verifier network_mode must be no-network")
+        step_environment = step_verifier.get("environment")
+        if step_environment is not None and (
+            not isinstance(step_environment, dict) or step_environment.get("network_mode") != "no-network"
+        ):
+            raise ContractError(f"[steps.verifier.environment] for step {index} must set network_mode to no-network")
+    return {"verifier_environment_mode": mode, "isolation_status": "isolated"}
 
 
 def _job_result(task_dir: Path, value: str | Path, *, arm: str) -> tuple[Path, Path, dict[str, Any]]:
@@ -1169,8 +1192,8 @@ def _validation_from_jobs(
     ):
         raise ContractError("NOP and Oracle Harbor results must have one matching task checksum")
     modes = {trial.get("verifier_environment_mode") for trial in trials.values()}
-    if len(modes) != 1 or next(iter(modes)) not in {"shared", "separate"}:
-        raise ContractError("NOP and Oracle Harbor results must have one matching verifier environment mode")
+    if modes != {"separate"}:
+        raise ContractError("NOP and Oracle Harbor results must both report separate verifier mode")
     mode = next(iter(modes))
     if mode != task_contract["verifier_environment_mode"]:
         raise ContractError("Harbor verifier environment mode differs from task/task.toml")
