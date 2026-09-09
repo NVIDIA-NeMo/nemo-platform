@@ -10,7 +10,7 @@
  * its affiliates is strictly prohibited.
  */
 
-import { getErrorMessage } from '@nemo/common/src/api/common/utils';
+import { getErrorMessage, isNotFoundError } from '@nemo/common/src/api/common/utils';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
@@ -28,6 +28,7 @@ import {
 import {
   getModelsListModelsQueryKey,
   modelsCreateModel,
+  modelsGetModel,
 } from '@nemo/sdk/generated/platform/models';
 import {
   Engine,
@@ -108,6 +109,23 @@ async function createNgcDeployment(
   });
 }
 
+/**
+ * Whether a Model Entity already exists under this name.
+ *
+ * Only a 404 proves the name is free. Any other failure (network, 5xx, auth) leaves
+ * the answer unknown, and guessing "not taken" would let the chain create a fileset
+ * that a later 409 strands with no rollback — so those errors propagate instead.
+ */
+async function isModelNameTaken(workspace: string, name: string): Promise<boolean> {
+  try {
+    await modelsGetModel(workspace, name);
+    return true;
+  } catch (error) {
+    if (isNotFoundError(error)) return false;
+    throw error;
+  }
+}
+
 async function createHuggingFaceDeployment(
   workspace: string,
   values: WizardFormValues,
@@ -122,6 +140,18 @@ async function createHuggingFaceDeployment(
     values.hfTokenSecret && values.hfTokenSecret !== NO_SECRET_SELECT_VALUE
       ? values.hfTokenSecret
       : undefined;
+
+  // Checked before anything is created. The name now defaults from the repo id, so
+  // redeploying the same model is a normal action and would otherwise fail on the
+  // fileset — reporting the wrong resource and leaving that fileset orphaned, since
+  // this chain has no rollback.
+  reportStage('Checking name availability…');
+  if (await isModelNameTaken(workspace, modelEntityName)) {
+    throw new Error(
+      `A model named "${modelEntityName}" already exists in ${workspace}. ` +
+        'Choose a different name, or delete the existing deployment first.'
+    );
+  }
 
   const storage: CreateFilesetRequest['storage'] = {
     type: 'huggingface',
