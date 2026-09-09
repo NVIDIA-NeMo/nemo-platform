@@ -31,7 +31,7 @@ import type {
 import { Button, type DropdownEntry, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
 import { FINETUNING_TYPE_FILTER_OPTIONS } from '@studio/components/dataViews/CustomModelsDataView/constants';
-import { DeploymentIndicator } from '@studio/components/dataViews/CustomModelsDataView/DeploymentIndicator';
+import { DeploymentCell } from '@studio/components/dataViews/CustomModelsDataView/DeploymentCell';
 import { KindTag } from '@studio/components/dataViews/CustomModelsDataView/KindTag';
 import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
 import type { ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
@@ -242,26 +242,6 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
   ) => [
     rowExpansionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
     rowSelectionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
-    accessor('id', {
-      id: 'deployment-status',
-      header: () => <span data-fixed-width aria-label="Deployment status" />,
-      enableSorting: false,
-      enableResizing: false,
-      cell: ({ row }) => (
-        <span data-fixed-width>
-          {row.depth === 0 && (
-            <DeploymentIndicator
-              workspace={workspace}
-              providerIds={row.original.model_providers}
-              baseModel={row.original.base_model ?? ''}
-            />
-          )}
-        </span>
-      ),
-      size: 30,
-      minSize: 30,
-      maxSize: 30,
-    }),
     accessor('name', {
       header: 'Name',
       enableSorting: true,
@@ -305,6 +285,19 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
         ) : (
           <Text>-</Text>
         ),
+    }),
+    accessor(() => '', {
+      id: 'deployment',
+      header: 'Deployment',
+      enableSorting: false,
+      size: 200,
+      cell: ({ row }) => (
+        <DeploymentCell
+          workspace={workspace}
+          providerIds={row.original.model_providers}
+          baseModel={row.original.base_model ?? ''}
+        />
+      ),
     }),
     accessor('created_at', {
       id: 'created_at',
