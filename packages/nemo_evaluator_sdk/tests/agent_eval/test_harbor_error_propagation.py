@@ -9,8 +9,9 @@ changing *what* it stamps rather than the SDK mis-reading what it stamped.
 
 Marked ``integration`` rather than ``e2e``/``slow`` on purpose: that combination (used by
 ``test_harbor_runtime_e2e.py``) is selected by no make target and no CI job. ``integration`` at least
-runs wherever the plugin's ``test_harbor_plugin_run.py`` does. It still skips in CI today, because
-``harbor`` is an optional SDK extra and nothing depends on ``nemo-evaluator-sdk[harbor]``.
+runs wherever the plugin's ``test_harbor_plugin_run.py`` does. This older error-rollup check remains
+optional; the Experimentalist integration suite owns the required Harbor 0.20 error-plus-reward
+parity contract.
 """
 
 from __future__ import annotations
