@@ -42,6 +42,8 @@ navigation:
         contents:
           - page: Deploy Agents
             path: ../../agents/deploy-agents.mdx
+          - page: Execute Agents as Jobs
+            path: ../../agents/execute-agent-jobs.mdx
           - page: Observe Agents
             path: ../../agents/observability.mdx
           - section: Optimize Agents
@@ -365,6 +367,7 @@ navigation:
           - page: Agents
             path: ../../studio/agents.mdx
           - page: Custom Models
+            slug: customization
             path: ../../studio/customization.mdx
           - page: Data Designer
             path: ../../studio/data-designer-build.mdx

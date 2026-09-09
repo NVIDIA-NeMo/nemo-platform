@@ -4,6 +4,7 @@
 import asyncio
 import builtins
 import inspect
+import logging
 import os
 import sys
 import threading
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 from nemo_platform_plugin.jobs.openapi_utils import clear_query_param_schemas, generate_openapi_extra_params
 from nmp.common.config import AuthConfig, Configuration
 from nmp.common.config.base import OIDCConfig
+from nmp.common.controller import ControllerManager
 from nmp.common.service import RouterConfig, Service
 from nmp.platform_runner import config as runner_config
 from nmp.platform_runner import server
@@ -285,9 +287,11 @@ def test_build_platform_app_returns_app_without_running_uvicorn(monkeypatch):
         controller_run_funcs=None,
         http_client=None,
         access_key_lifecycle_http_client=None,
+        sidecar_run_funcs=None,
     ):
         captured["services"] = services
         captured["controller_run_funcs"] = controller_run_funcs
+        captured["sidecar_run_funcs"] = sidecar_run_funcs
         captured["http_client"] = http_client
         captured["access_key_lifecycle_http_client"] = access_key_lifecycle_http_client
         return FastAPI()
@@ -304,6 +308,7 @@ def test_build_platform_app_returns_app_without_running_uvicorn(monkeypatch):
     assert isinstance(app, FastAPI)
     assert captured["services"] == [plugin_service]
     assert captured["controller_run_funcs"] == {}
+    assert captured["sidecar_run_funcs"] == {}
     assert captured["http_client"] is None
     assert captured["access_key_lifecycle_http_client"] is lifecycle_http_client
 
@@ -322,9 +327,11 @@ def test_build_platform_app_accepts_platform_app_config(monkeypatch):
         controller_run_funcs=None,
         http_client=None,
         access_key_lifecycle_http_client=None,
+        sidecar_run_funcs=None,
     ):
         captured["services"] = services
         captured["controller_run_funcs"] = controller_run_funcs
+        captured["sidecar_run_funcs"] = sidecar_run_funcs
         captured["http_client"] = http_client
         captured["access_key_lifecycle_http_client"] = access_key_lifecycle_http_client
         return FastAPI()
@@ -339,6 +346,7 @@ def test_build_platform_app_accepts_platform_app_config(monkeypatch):
     assert isinstance(app, FastAPI)
     assert captured["services"] == [plugin_service]
     assert captured["controller_run_funcs"] == {}
+    assert captured["sidecar_run_funcs"] == {}
     assert captured["http_client"] is None
     assert captured["access_key_lifecycle_http_client"] is None
 
@@ -526,6 +534,46 @@ def test_create_app_without_seed_on_startup_keeps_health_ready_unchanged(monkeyp
     assert response.status_code == 200
     assert "platform-seed" not in status["services"]["ready"]
     assert all(item["name"] != "platform-seed" for item in status["services"]["not_ready"])
+
+
+def test_create_app_rejects_controller_sidecar_name_collision(monkeypatch):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=False)
+
+    with pytest.raises(ValueError, match="Controller/sidecar name collision: shared"):
+        server.create_app(
+            services=[],
+            controller_run_funcs={"shared": lambda _stop_signal: None},
+            sidecar_run_funcs={"shared": lambda _stop_signal: None},
+        )
+
+
+def test_create_app_reports_controller_that_crashes_before_registration(monkeypatch, caplog):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=False)
+    crashed = threading.Event()
+
+    def crashing_controller(_stop_signal: threading.Event) -> None:
+        try:
+            raise RuntimeError("startup failed")
+        finally:
+            crashed.set()
+
+    manager = ControllerManager.get_instance()
+    manager.clear()
+    try:
+        with caplog.at_level(logging.ERROR, logger="nmp.platform_runner.controller_threads"):
+            with TestClient(
+                server.create_app(services=[], controller_run_funcs={"models": crashing_controller})
+            ) as client:
+                assert crashed.wait(timeout=2)
+                # The wrapper records failure after crashed is set.
+                response = _wait_for_response(client, "/health/ready", 503)
+                status = client.get("/status").json()
+
+        assert response.status_code == 503
+        assert status["controllers"] == {"healthy": False, "status": {"models": False}}
+        assert "Controller 'models' crashed" in caplog.text
+    finally:
+        manager.clear()
 
 
 def test_create_app_with_seed_on_startup_blocks_readiness_until_seed_completes(monkeypatch):

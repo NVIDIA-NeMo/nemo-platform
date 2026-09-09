@@ -12,16 +12,15 @@ from typing import Any, Protocol
 from nemo_evaluator_sdk.inference import PostprocessResponse, PreprocessRequest
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
-    Agent,
     DatasetInput,
     FieldMapping,
-    Model,
     RunConfig,
     RunConfigOnline,
     RunConfigOnlineModel,
 )
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import AggregateFieldName
+from nemo_evaluator_sdk.values.targets import EvalTarget
 
 BackendParams = RunConfig | RunConfigOnline | RunConfigOnlineModel
 
@@ -33,7 +32,7 @@ class EvaluationBackend(Protocol):
         metrics: Sequence[Metric],
         dataset: DatasetInput | str | Path,
         params: BackendParams,
-        target: Model | Agent | None = None,
+        target: EvalTarget = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
@@ -66,7 +65,7 @@ class SyncEvaluationBackend(Protocol):
         metrics: Sequence[Metric],
         dataset: DatasetInput | str | Path,
         params: BackendParams,
-        target: Model | Agent | None = None,
+        target: EvalTarget = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,

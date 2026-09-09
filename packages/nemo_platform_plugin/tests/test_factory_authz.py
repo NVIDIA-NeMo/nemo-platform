@@ -8,6 +8,7 @@ from __future__ import annotations
 import pytest
 from fastapi import APIRouter
 from fastapi.routing import APIRoute
+from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.authz import (
     AuthzScope,
     CallerKind,
@@ -15,12 +16,14 @@ from nemo_platform_plugin.authz import (
     get_path_scope,
 )
 from nemo_platform_plugin.authz_discovery import _derive_service_contribution
+from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.functions.routes import add_function_routes
 from nemo_platform_plugin.jobs.api_factory import (
     FileResultSerializer,
     JobRouteOption,
     PlatformJobResultRoute,
+    PlatformJobSpec,
     job_route_factory,
 )
 from nemo_platform_plugin.jobs.routes import _rebase_job_collection_routes
@@ -35,7 +38,16 @@ class _Spec(BaseModel):
     value: str = "x"
 
 
-async def _compiler(*args: object, **kwargs: object) -> object:  # never called at route-build time
+async def _compiler(
+    workspace: str,
+    input_spec: _Spec,
+    output_spec: _Spec,
+    entity_client: EntityClient,
+    job_name: str | None,
+    sdk: AsyncNeMoPlatform,
+    /,
+) -> PlatformJobSpec:
+    del workspace, input_spec, output_spec, entity_client, job_name, sdk
     raise NotImplementedError
 
 

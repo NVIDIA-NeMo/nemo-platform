@@ -37,6 +37,7 @@ import {
   type WizardFormValues,
 } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
 import { useCreateDeploymentBySource } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/useCreateDeploymentBySource';
+import { useHuggingFaceNameDefault } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/useHuggingFaceNameDefault';
 import { WorkspaceSourceFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/WorkspaceSourceFields';
 import { FC, useCallback, useEffect, useState } from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
@@ -111,6 +112,10 @@ export const CreateDeploymentSidePanel: FC<CreateDeploymentSidePanelProps> = ({
   });
 
   const source = watch('source');
+
+  // On the HuggingFace source, default the name from the repo id until the user
+  // types their own.
+  useHuggingFaceNameDefault(control, setValue);
 
   useEffect(() => {
     if (open) {

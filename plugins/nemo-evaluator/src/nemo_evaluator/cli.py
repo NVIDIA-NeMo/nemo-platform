@@ -102,7 +102,11 @@ class EvaluatorPluginCLI(NemoCLI):
                     "plugin": self.name,
                     "status": "ready",
                     "service": "/apis/evaluator/v1/healthz",
-                    "jobs": ["evaluator.evaluate", "evaluator.agent-evaluate"],
+                    "jobs": [
+                        "evaluator.evaluate",
+                        "evaluator.agent-evaluate",
+                        "evaluator.retrieve-eval",
+                    ],
                     "sdk": "nemo_evaluator_sdk.Evaluator",
                 }
             )

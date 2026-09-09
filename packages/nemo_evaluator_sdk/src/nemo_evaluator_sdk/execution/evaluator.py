@@ -14,19 +14,36 @@ from typing import Any, TypeGuard, overload
 import nemo_evaluator_sdk.inference as inference
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.metrics.protocol import Metric
+from nemo_evaluator_sdk.retrieval.beir import BeirDataset
+from nemo_evaluator_sdk.retrieval.dense_search import retrieve
 from nemo_evaluator_sdk.values.agents import Agent
+from nemo_evaluator_sdk.values.dataset_args import DatasetArg
 from nemo_evaluator_sdk.values.dataset_schemas import FieldMapping
 from nemo_evaluator_sdk.values.datasets import DatasetInput
 from nemo_evaluator_sdk.values.models import Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.params import RunConfig, RunConfigOnline, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.results import AggregateFieldName
+from nemo_evaluator_sdk.values.retrieval import Retrieval
+from nemo_evaluator_sdk.values.targets import EvalTarget
 
 from .backends.base import BackendParams, EvaluationBackend, SyncEvaluationBackend
 from .backends.local.backend import LocalBackend
 from .config import resolve_params
 
 BackendClient = EvaluationBackend | SyncEvaluationBackend
+
+
+async def _prepare_retrieval_target(dataset: DatasetArg, target: Retrieval) -> tuple[list[dict[str, Any]], Retrieval]:
+    """Load a BEIR corpus, rank it, and return query rows plus a target carrying rankings."""
+    if isinstance(dataset, BeirDataset):
+        beir = dataset
+    elif isinstance(dataset, str | Path):
+        beir = BeirDataset.from_path(dataset)
+    else:
+        raise TypeError("Retrieval evaluation requires a BeirDataset or BEIR fileset path")
+    rankings = await retrieve(beir, target)
+    return beir.query_rows(), target.model_copy(update={"rankings": rankings})
 
 
 def _validate_backend_client(client: BackendClient) -> None:
@@ -69,7 +86,7 @@ class _SyncBackendAdapter:
         metrics: Sequence[Metric],
         dataset: DatasetInput | str | Path,
         params: BackendParams,
-        target: Model | Agent | None = None,
+        target: EvalTarget = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
@@ -137,10 +154,25 @@ class Evaluator:
     async def run(
         self,
         metrics: Sequence[Metric],
-        dataset: DatasetInput | str | Path,
+        dataset: DatasetArg,
         *,
         config: RunConfig | None = None,
         target: None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> BenchmarkEvaluationResult: ...
+
+    @overload
+    async def run(
+        self,
+        metrics: Sequence[Metric],
+        dataset: DatasetArg,
+        *,
+        config: RunConfigOnlineModel | None = None,
+        target: Retrieval,
         field_mapping: FieldMapping | None = None,
         prompt_template: None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
@@ -181,10 +213,10 @@ class Evaluator:
     async def run(
         self,
         metrics: Sequence[Metric],
-        dataset: DatasetInput | str | Path,
+        dataset: DatasetArg | None = None,
         *,
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
-        target: Model | Agent | None = None,
+        target: EvalTarget = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
@@ -195,9 +227,9 @@ class Evaluator:
 
         Args:
             metrics: Metrics to execute together over each dataset row.
-            dataset: Inline dataset rows, a dataset file, or a dataset directory/glob path.
+            dataset: Inline dataset rows, a dataset file, a dataset directory, or a BEIR fileset.
             config: Optional run-level execution configuration. Offline calls default to ``RunConfig``.
-            target: Optional model or agent used for online generation. Omit for offline scoring.
+            target: Optional model, agent, or retrieval pipeline. Omit for offline scoring.
             field_mapping: Optional mapping from canonical evaluator fields to dataset columns.
             prompt_template: Optional prompt template to use for online target generation.
             aggregate_fields: Optional aggregate score fields to keep in the returned result.
@@ -207,6 +239,41 @@ class Evaluator:
         Returns:
             The completed multi-metric result.
         """
+        return await self._run(
+            metrics,
+            dataset,
+            config=config,
+            target=target,
+            field_mapping=field_mapping,
+            prompt_template=prompt_template,
+            aggregate_fields=aggregate_fields,
+            preprocess_hooks=preprocess_hooks,
+            postprocess_hooks=postprocess_hooks,
+        )
+
+    async def _run(
+        self,
+        metrics: Sequence[Metric],
+        dataset: DatasetArg | None = None,
+        *,
+        config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
+        target: EvalTarget = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> BenchmarkEvaluationResult:
+        """Shared body behind ``run`` and ``run_sync``.
+
+        ``run_sync`` forwards here rather than to ``run`` because it holds the same widened
+        argument types the implementation signature declares, and no single ``run`` overload
+        accepts those: the target/config/prompt_template pairings are split across four of them.
+        """
+        if dataset is None:
+            raise ValueError("dataset is required")
+        if isinstance(target, Retrieval):
+            dataset, target = await _prepare_retrieval_target(dataset, target)
         params = resolve_params(config, target)
         normalized_preprocess_hooks = tuple(preprocess_hooks) if preprocess_hooks is not None else None
         normalized_postprocess_hooks = tuple(postprocess_hooks) if postprocess_hooks is not None else None
@@ -226,10 +293,25 @@ class Evaluator:
     def run_sync(
         self,
         metrics: Sequence[Metric],
-        dataset: DatasetInput | str | Path,
+        dataset: DatasetArg,
         *,
         config: RunConfig | None = None,
         target: None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> BenchmarkEvaluationResult: ...
+
+    @overload
+    def run_sync(
+        self,
+        metrics: Sequence[Metric],
+        dataset: DatasetArg,
+        *,
+        config: RunConfigOnlineModel | None = None,
+        target: Retrieval,
         field_mapping: FieldMapping | None = None,
         prompt_template: None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
@@ -270,47 +352,29 @@ class Evaluator:
     def run_sync(
         self,
         metrics: Sequence[Metric],
-        dataset: DatasetInput | str | Path,
+        dataset: DatasetArg | None = None,
         *,
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
-        target: Model | Agent | None = None,
+        target: EvalTarget = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
         postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
     ) -> BenchmarkEvaluationResult:
-        """Synchronously evaluate metrics and return the finished result.
-
-        Args:
-            metrics: Metrics to execute together over each dataset row.
-            dataset: Inline dataset rows, a dataset file, or a dataset directory/glob path.
-            config: Optional run-level execution configuration. Offline calls default to ``RunConfig``.
-            target: Optional model or agent used for online generation. Omit for offline scoring.
-            field_mapping: Optional mapping from canonical evaluator fields to dataset columns.
-            prompt_template: Optional prompt template to use for online target generation.
-            aggregate_fields: Optional aggregate score fields to keep in the returned result.
-            preprocess_hooks: Optional request preprocess hooks for online execution.
-            postprocess_hooks: Optional response postprocess hooks for online execution.
-
-        Returns:
-            The completed multi-metric result.
-        """
+        """Synchronously evaluate metrics and return the finished result."""
 
         async def _call() -> BenchmarkEvaluationResult:
-            params = resolve_params(config, target)
-            normalized_preprocess_hooks = tuple(preprocess_hooks) if preprocess_hooks is not None else None
-            normalized_postprocess_hooks = tuple(postprocess_hooks) if postprocess_hooks is not None else None
-            return await self._backend.evaluate_dataset(
-                metrics=list(metrics),
-                dataset=dataset,
-                params=params,
+            return await self._run(
+                metrics,
+                dataset,
+                config=config,
                 target=target,
                 field_mapping=field_mapping,
                 prompt_template=prompt_template,
                 aggregate_fields=aggregate_fields,
-                preprocess_hooks=normalized_preprocess_hooks,
-                postprocess_hooks=normalized_postprocess_hooks,
+                preprocess_hooks=preprocess_hooks,
+                postprocess_hooks=postprocess_hooks,
             )
 
         return run_sync(_call)
