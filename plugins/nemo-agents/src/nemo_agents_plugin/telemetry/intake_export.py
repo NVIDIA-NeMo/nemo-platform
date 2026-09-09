@@ -123,7 +123,7 @@ def configure_intake_atif_export(
 
     if telemetry.enabled is False:
         return False
-    if _declares_a_destination(telemetry):
+    if _declares_a_destination(telemetry) and not _asks_for_a_filled_atif(telemetry):
         return False
 
     storage: dict[str, object] = {
@@ -152,6 +152,19 @@ def configure_intake_atif_export(
     )
     config["telemetry"] = wired.model_dump(exclude_none=True)
     return True
+
+
+def _asks_for_a_filled_atif(telemetry: TelemetryConfig) -> bool:
+    """Whether the config turns ATIF on without saying where it goes.
+
+    That combination is a request rather than a declaration -- "I want a
+    trajectory, you pick the destination" -- and it is how a config exporting
+    OpenTelemetry to its own collector also gets the platform's Intake
+    trajectory, which it could otherwise only have by hand-writing the endpoint
+    and header names this exists to spare people.
+    """
+    atif = telemetry.atif
+    return isinstance(atif, dict) and atif.get("enabled") is True and not atif.get("storage")
 
 
 def _declares_a_destination(telemetry: TelemetryConfig) -> bool:

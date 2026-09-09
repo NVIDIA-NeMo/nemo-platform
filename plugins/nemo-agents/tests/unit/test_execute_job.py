@@ -42,7 +42,6 @@ from nemo_agents_plugin.jobs.execute import (
     ExecuteAgentStepConfig,
     ResolvedAgentConfig,
     _configure_intake_telemetry,
-    _disable_agent_telemetry,
     _log_agent_stderr,
 )
 from nemo_agents_plugin.tasks.execute.workdir import (
@@ -1243,7 +1242,7 @@ def test_execute_job_create_route_stores_canonical_step_config() -> None:
         "environment": None,
         "workdir": {"base_workdir": "source#project", "artifact_mounts": []},
         "timeout_seconds": DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
-        "telemetry": True,
+        "auto_telemetry": True,
         "extension": None,
     }
     assert body.spec["workdir"] == {"base_workdir": "default/source#project/", "artifact_mounts": []}
@@ -1962,15 +1961,24 @@ def test_an_adapter_without_the_atif_output_is_not_wired(
     assert "not its ATIF output" in caplog.text
 
 
-def test_a_request_that_declines_telemetry_disables_an_agents_own_export() -> None:
-    """ "Run untraced" has to beat an export the agent config declared."""
-    config = _fabric_agent_config(
-        telemetry={"enabled": True, "atif": {"enabled": True, "storage": [{"type": "http", "endpoint": "https://x"}]}}
+def test_declining_auto_telemetry_submits_the_agent_config_as_written() -> None:
+    """The request governs server-side filling; the agent config governs the agent.
+
+    An agent that declares its own export still exports -- saying a run should
+    not be traced is the agent config's job, and an inline agent can say it.
+    """
+    declared = {"enabled": True, "atif": {"enabled": True, "storage": [{"type": "http", "endpoint": "https://mine"}]}}
+    step = ExecuteAgentStepConfig.model_validate(
+        {
+            "request": {"agent": "a", "input": "hi", "auto_telemetry": False},
+            "agent": {"name": "a", "workspace": "w", "config_format": "nemo-agents-spec-v1", "config": {}},
+        }
     )
 
-    _disable_agent_telemetry(config)
-
-    assert config["telemetry"]["enabled"] is False
+    assert step.request.auto_telemetry is False
+    # Nothing in the wiring path runs, so a declared export is untouched.
+    config = _fabric_agent_config(telemetry=declared)
+    assert config["telemetry"] == declared
 
 
 def test_workload_identity_jobs_export_with_a_bearer_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -2015,3 +2023,23 @@ def test_a_failed_token_exchange_still_exports_rather_than_failing_the_run(
 
     assert "Authorization" not in config["telemetry"]["atif"]["storage"][0].get("header_env", {})
     assert "without credentials" in caplog.text
+
+
+def test_an_atif_block_without_a_destination_is_filled_alongside_other_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Turning ATIF on without a destination asks for one, rather than declaring one.
+
+    Otherwise exporting OpenTelemetry to your own collector would cost you the
+    platform trajectory, recoverable only by hand-writing the endpoint and
+    header names this wiring exists to spare people.
+    """
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    mine = {"endpoints": [{"type": "gen_ai", "endpoint": "https://mine/otlp"}]}
+    config = _fabric_agent_config(telemetry={"enabled": True, "atif": {"enabled": True}, "opentelemetry": mine})
+
+    _configure_intake_telemetry(config, workspace="team-a", sdk=None)
+
+    storage = config["telemetry"]["atif"]["storage"][0]
+    assert storage["endpoint"] == "http://nemo-platform-api:8080/apis/intake/v2/workspaces/team-a/ingest/atif"
+    assert config["telemetry"]["opentelemetry"] == mine, "the collector the agent chose is untouched"

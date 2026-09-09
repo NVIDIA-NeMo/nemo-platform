@@ -202,11 +202,13 @@ class ExecuteAgentJobConfig(BaseModel):
         gt=0,
         description="Maximum time to wait for Fabric to return an execution result.",
     )
-    telemetry: bool = Field(
+    auto_telemetry: bool = Field(
         default=True,
         description=(
-            "Export the agent's trajectory to Intake. False runs untraced, overriding any export "
-            "the agent config declares; an agent that declares its own is otherwise left alone."
+            "Let the server fill in the agent's telemetry export -- an Intake destination for a "
+            "config that asks for one and does not say where. False submits the agent config as "
+            "written, which still exports if the config says to; an agent config is the place to "
+            "say a run should not be traced."
         ),
     )
     extension: ExecuteAgentExtensionConfig | None = Field(
@@ -415,13 +417,9 @@ class ExecuteAgentJob(NemoJob):
 
         fabric_dirs = FabricDirectories.create(agent_config, ctx.storage.ephemeral)
 
-        if not step_config.request.telemetry:
-            # "Run untraced" has to hold for an agent that configured its own
-            # export too, or the request-level switch would silently only
-            # govern the automatic wiring.
-            _disable_agent_telemetry(step_config.agent.config)
-            agent_config = _validate_agent_config(step_config.agent.config)
-        elif supports_intake_atif_export(step_config.agent.config, base_dir=fabric_dirs.base):
+        if step_config.request.auto_telemetry and supports_intake_atif_export(
+            step_config.agent.config, base_dir=fabric_dirs.base
+        ):
             _configure_intake_telemetry(step_config.agent.config, workspace=ctx.workspace, sdk=sdk)
             # Wiring mutates the config mapping, not the model validated above,
             # so re-validate to carry it into what Fabric is handed.
@@ -812,12 +810,6 @@ def _validate_agent_config_format(config_format: str) -> None:
             f"Config format {config_format!r} is not supported; "
             f"agents.execute jobs only support {FABRIC_AGENT_CONFIG_FORMAT!r}."
         )
-
-
-def _disable_agent_telemetry(agent_config: dict[str, Any]) -> None:
-    """Turn off any export the agent config declares, in place."""
-    telemetry = agent_config.get("telemetry")
-    agent_config["telemetry"] = {**telemetry, "enabled": False} if isinstance(telemetry, dict) else {"enabled": False}
 
 
 def _configure_intake_telemetry(
