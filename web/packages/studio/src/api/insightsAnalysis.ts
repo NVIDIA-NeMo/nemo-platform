@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { insightsGetAnalysisConfig } from '@nemo/sdk/generated/insights/insights-analysis-configs';
+import { insightsCreateAnalyzeJob } from '@nemo/sdk/generated/insights/insights-analysis-jobs';
 import type { AtifIngestRequest } from '@nemo/sdk/generated/platform/schema';
-import { insightsCreateAnalysisJob, insightsGetAnalysisConfig } from '@studio/api/optimizer';
 import { AxiosError } from 'axios';
 
 export type InsightsTriggerStatus = 'started' | 'not-enabled' | 'error';
@@ -99,7 +100,7 @@ export const triggerInsightsRun = async (
   }
 
   try {
-    const job = await insightsCreateAnalysisJob(workspace, {
+    const job = await insightsCreateAnalyzeJob(workspace, {
       description: `Insights analysis triggered by a trace import for ${agent}.`,
       spec: {
         agent,

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { insightsGetAnalysisConfig } from '@nemo/sdk/generated/insights/insights-analysis-configs';
+import { insightsCreateAnalyzeJob } from '@nemo/sdk/generated/insights/insights-analysis-jobs';
 import type { AtifIngestRequest } from '@nemo/sdk/generated/platform/schema';
 import {
   agentsFromTrajectories,
@@ -8,23 +10,34 @@ import {
   triggerInsightsRun,
   triggerInsightsRuns,
 } from '@studio/api/insightsAnalysis';
-import { insightsCreateAnalysisJob, insightsGetAnalysisConfig } from '@studio/api/optimizer';
 import { AxiosError, AxiosHeaders } from 'axios';
 
-vi.mock('@studio/api/optimizer', () => ({
+vi.mock('@nemo/sdk/generated/insights/insights-analysis-configs', () => ({
   insightsGetAnalysisConfig: vi.fn(),
-  insightsCreateAnalysisJob: vi.fn(),
+}));
+
+vi.mock('@nemo/sdk/generated/insights/insights-analysis-jobs', () => ({
+  insightsCreateAnalyzeJob: vi.fn(),
 }));
 
 const getConfig = vi.mocked(insightsGetAnalysisConfig);
-const createJob = vi.mocked(insightsCreateAnalysisJob);
+const createJob = vi.mocked(insightsCreateAnalyzeJob);
 
 const config = (overrides: Record<string, unknown> = {}) => ({
   name: 'email-security-triage',
+  workspace: 'default',
   agent: 'email-security-triage',
   enabled: true,
   default_model: 'default/nvidia-nemotron-3-nano-30b-a3b',
   fast_model: 'default/nvidia-nemotron-3-nano-30b-a3b',
+  id: 'insights-analysis-config-1',
+  created_at: '2026-08-14T09:00:00Z',
+  created_by: 'user@example.com',
+  updated_at: '2026-08-14T09:00:00Z',
+  updated_by: 'user@example.com',
+  entity_id: 'insights-analysis-config-1',
+  parent: 'ws-default',
+  db_version: 1,
   ...overrides,
 });
 
