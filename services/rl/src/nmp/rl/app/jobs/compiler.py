@@ -306,6 +306,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             name=job_spec.model,
             max_seq_length=t.max_seq_length,
             trust_remote_code=trust_remote_code,
+            v4_compatible=t.v4_compatible,
         ),
         dataset=TrainingStepConfig.DatasetConfig(path=DEFAULT_DATASET_PATH),
         gym=TrainingStepConfig.GymConfig(

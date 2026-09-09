@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from copy import deepcopy
 from pathlib import Path
@@ -183,6 +184,22 @@ def _count_jsonl_rows(path: Path) -> int:
             if line.strip():
                 count += 1
     return count
+
+
+def _warn_if_v4_compatible_on_v5_checkpoint(model_path: str, v4_compatible: bool) -> None:
+    if not v4_compatible:
+        return
+    try:
+        version = json.loads((Path(model_path) / "config.json").read_text(encoding="utf-8")).get("transformers_version")
+        major = int(str(version).split(".")[0])
+    except (OSError, ValueError, AttributeError):
+        return
+    if major >= 5:
+        logger.warning(
+            "v4_compatible is enabled but the base checkpoint is transformers v%s; "
+            "set training.v4_compatible=false to keep the v5 config.json.",
+            major,
+        )
 
 
 # Formats whose wheels/ is a complete closure, so the job can resolve without an index.
@@ -520,6 +537,8 @@ def compile_grpo_config(
     # Automodel: write a consolidated HF export. V1 forbids model_save_format.
     if parallelism.policy_backend is PolicyBackend.AUTOMODEL:
         cfg["checkpointing"]["save_consolidated"] = True
+        cfg["checkpointing"]["v4_compatible"] = customizer_config.model.v4_compatible
+        _warn_if_v4_compatible_on_v5_checkpoint(model_path, customizer_config.model.v4_compatible)
         if customizer_config.training.finetuning_type == FinetuningType.ALL_WEIGHTS:
             cfg["checkpointing"]["model_save_format"] = "safetensors"
     lora_cfg = _build_lora_cfg(customizer_config)

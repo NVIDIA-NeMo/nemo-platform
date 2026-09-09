@@ -67,9 +67,9 @@ RUN --mount=type=bind,source=docker/scripts/remove-listed-apt-packages.sh,target
     --mount=type=bind,source=docker/removals/apt/nmp-rl-base.txt,target=/tmp/apt-package-removals.txt,readonly \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        jq curl git rsync wget less vim ccache gnupg \
-        build-essential ca-certificates \
-        libibverbs-dev libsqlite3-0 && \
+    jq curl git rsync wget less vim ccache gnupg \
+    build-essential ca-certificates \
+    libibverbs-dev libsqlite3-0 && \
     apt-get install -y --only-upgrade openssl libssl3t64 && \
     bash /tmp/remove-listed-apt-packages.sh /tmp/apt-package-removals.txt && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -79,7 +79,7 @@ ARG CMAKE_VERSION
 RUN ARCH="$(uname -m)" && \
     F="cmake-${CMAKE_VERSION}-linux-${ARCH}" && \
     curl --retry 3 --retry-delay 2 -fsSL -o "${F}.tar.gz" \
-        "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/${F}.tar.gz" && \
+    "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/${F}.tar.gz" && \
     tar -xzf "${F}.tar.gz" && \
     cp -r "${F}/bin/"* /usr/local/bin/ && \
     cp -r "${F}/share/"* /usr/local/share/ && \
@@ -113,10 +113,10 @@ COPY docker/scripts/collect-apt-sources.sh \
 # umask 022, but cannot rewrite the shared uv cache that the symlinked venvs execute from.
 RUN groupadd --gid "${BUILD_GID}" nmp-build && \
     useradd --uid "${BUILD_UID}" --gid "${BUILD_GID}" --home-dir /home/nmp-build \
-        --create-home --shell /bin/bash nmp-build && \
+    --create-home --shell /bin/bash nmp-build && \
     mkdir -p /opt/nemo-rl /opt/nemo_rl_venv /opt/uv_cache /opt/ray_venvs /opt/gym_venvs && \
     chown -R "${BUILD_UID}:${BUILD_GID}" \
-        /home/nmp-build /opt/nemo-rl /opt/nemo_rl_venv /opt/uv_cache /opt/ray_venvs /opt/gym_venvs
+    /home/nmp-build /opt/nemo-rl /opt/nemo_rl_venv /opt/uv_cache /opt/ray_venvs /opt/gym_venvs
 
 # Ray / NeMo-RL runtime behavior (affects the running container, not the build):
 #   RAY_USAGE_STATS_ENABLED=0        - no telemetry phone-home.
@@ -203,7 +203,7 @@ ENV NVTE_BUILD_MAX_JOBS=${NVTE_BUILD_MAX_JOBS} \
 COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} pyproject.toml uv.lock ./
 COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} nemo_rl/__init__.py nemo_rl/package_info.py ./nemo_rl/
 COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} --exclude=TensorRT-LLM-workspace --exclude=TensorRT-LLM-workspace/** \
-     --exclude=**/.git 3rdparty/ ./3rdparty/
+    --exclude=**/.git 3rdparty/ ./3rdparty/
 COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} research/ ./research/
 COPY docker/rl/cherry-picks /opt/cherry-picks
 
@@ -316,21 +316,16 @@ EOF
 # Excluding here keeps them out of this layer - removing them later would leave them extractable.
 COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} --exclude=**/.git . /opt/nemo-rl
 
-# TEMPORARY source patches on the pinned NeMo-RL / Automodel trees. Bind-mounted rather than
-# COPY-ed: this stage already runs as ${BUILD_UID}, so a COPY would land root-owned and could
-# not be cleaned up afterwards, and anything left behind ships in the layer.
+# TEMPORARY source patches on the pinned NeMo-RL / Automodel / Gym trees. Bind-mounted rather
+# than COPY-ed: this stage already runs as ${BUILD_UID}, so a COPY would land root-owned and
+# could not be cleaned up afterwards, and anything left behind ships in the layer.
 #
-# - NemotronH: Automodel's parallelizer reaches for model.backbone.layers while both the
-#   stock-HF and Automodel NemotronH name the trunk `model`. Fixed on Automodel main.
-# - Torch version order: pinned Automodel compares base-version strings, so Torch 2.11 is
-#   treated as older than 2.9 and async checkpointing is disabled.
-# - dtype: NeMo-RL still passes Transformers' deprecated torch_dtype alias.
-# Drop each file once the corresponding submodule pin contains the fix.
+# nemo-rl-pinned-source.patch covers: NemotronH trunk layout, Automodel torch 2.11 version
+# compare, transformers dtype alias, v4_compatible checkpoint plumbing, and Gym setuptools<81
+# for pkg_resources. Drop hunks (or the file) once the corresponding pin contains the fix.
 RUN --mount=type=bind,source=docker/rl/patches,target=/patches \
     cd /opt/nemo-rl && \
-    git apply -p1 --verbose /patches/automodel-nemotronh-trunk.patch && \
-    git apply -p1 --verbose /patches/automodel-torch-version-order.patch && \
-    git apply -p1 --verbose /patches/nemo-rl-transformers-dtype.patch
+    git apply -p1 --verbose /patches/nemo-rl-pinned-source.patch
 
 # Install the workspace ROOT (nemo-rl) editable. --no-install-project above installed every
 # DEPENDENCY and workspace MEMBER (incl. nemo-gym) but skipped the root; this adds it with --no-deps
@@ -511,7 +506,7 @@ USER root
 # Uses the venv interpreter explicitly: this stage has no `python` on PATH (cuda-dl-base ships no
 # system Python, and the venv's bin dir only joins PATH in the publish stage below).
 RUN /opt/nemo_rl_venv/bin/python tools/generate_fingerprint.py \
-        > /opt/nemo_rl_container_fingerprint
+    > /opt/nemo_rl_container_fingerprint
 
 # ---- publish base (inherits builder FS; keeps copied CPython valid - see header NOTE) ----
 FROM builder AS nmp-rl-base
@@ -549,13 +544,13 @@ EOF
 RUN apt-get purge -y ccache vim vim-common less >/dev/null 2>&1 || true; \
     apt-get autoremove -y >/dev/null 2>&1 || true; \
     rm -rf \
-        /usr/local/bin/cmake /usr/local/bin/cpack /usr/local/bin/ctest /usr/local/bin/ccmake \
-        /usr/local/share/cmake-* \
-        /root/.cache/ccache \
-        /var/lib/apt/lists/* \
-        /usr/local/cuda*/NsightSystems-cli-* /usr/local/cuda*/nsight-compute-* \
-        /opt/nvidia/nsight-systems-cli /opt/nvidia/nsight-compute \
-        /usr/local/bin/nsys /usr/local/bin/nsys-ui /usr/local/bin/ncu /usr/local/bin/ncu-ui \
+    /usr/local/bin/cmake /usr/local/bin/cpack /usr/local/bin/ctest /usr/local/bin/ccmake \
+    /usr/local/share/cmake-* \
+    /root/.cache/ccache \
+    /var/lib/apt/lists/* \
+    /usr/local/cuda*/NsightSystems-cli-* /usr/local/cuda*/nsight-compute-* \
+    /opt/nvidia/nsight-systems-cli /opt/nvidia/nsight-compute \
+    /usr/local/bin/nsys /usr/local/bin/nsys-ui /usr/local/bin/ncu /usr/local/bin/ncu-ui \
     || true
 # UV_FIND_LINKS below is additive: it adds nemo-gym as a local candidate, and everything else
 # still resolves from the index. Copied here rather than in `base` so the build's own uv steps
@@ -655,10 +650,10 @@ EOF
 RUN GYM_ROOT=/opt/nemo-rl/3rdparty/Gym-workspace/Gym && \
     mkdir -p "${GYM_ROOT}/cache" && \
     chown -R ${RUNTIME_UID}:${RUNTIME_GID} \
-        "${GYM_ROOT}/cache" \
-        "${GYM_ROOT}/resources_servers" \
-        "${GYM_ROOT}/responses_api_agents" \
-        "${GYM_ROOT}/responses_api_models"
+    "${GYM_ROOT}/cache" \
+    "${GYM_ROOT}/resources_servers" \
+    "${GYM_ROOT}/responses_api_agents" \
+    "${GYM_ROOT}/responses_api_models"
 
 WORKDIR /opt/nemo-rl
 

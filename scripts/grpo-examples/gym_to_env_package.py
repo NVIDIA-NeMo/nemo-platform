@@ -48,6 +48,9 @@ WHEEL_ARCHES = ("x86_64", "aarch64")
 
 SERVER_TYPES = ("resources_servers", "responses_api_agents", "responses_api_models")
 
+# setuptools 81 removed pkg_resources, which Gym's pinned hydra imports at import time.
+SETUPTOOLS_PKG_RESOURCES_CEILING = "81"
+
 # native-v1 requires every config_path under a Gym server prefix; wheels-v1 allows configs/.
 POLICY_MODEL_RELPATH = {
     "wheels-v1": Path("configs") / "policy_model.yaml",
@@ -269,7 +272,9 @@ def vendor_wheels(
     * ``pip``, installed by ``uv venv --seed`` into each venv before anything else;
     * ``setuptools`` and ``setuptools-scm``, Gym's ``build-system.requires``. Servers that
       resolve to the Gym tree take uv's editable branch and build ``nemo-gym`` from source,
-      which needs a PEP 517 build environment.
+      which needs a PEP 517 build environment. setuptools is capped below 81, the release
+      that removed ``pkg_resources``: Gym pins hydra 1.3, which imports it at import time,
+      so a server venv that installs a newer setuptools dies before serving a rollout.
     """
     wheels = out_dir / "wheels"
     # Rebuild from empty: pip copies by filename, so a wheel from an earlier run survives
@@ -287,7 +292,7 @@ def vendor_wheels(
         f"ray[default]=={ray_version}",
         f"openai=={openai_version}",
         "pip",
-        "setuptools>=61",
+        f"setuptools>=61,<{SETUPTOOLS_PKG_RESOURCES_CEILING}",
         "setuptools-scm",
     ]
     reqs = pkg_server_dir / "requirements.txt"
