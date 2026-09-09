@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // vi.mock calls below are hoisted by vitest, so this import still resolves the mocks.
+import { modelsListModels } from '@nemo/sdk/generated/platform/models';
 import { NewCustomizationForm } from '@studio/components/NewCustomizationForm';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import {
@@ -27,6 +28,13 @@ vi.mock('@nemo/sdk/generated/customizer/unsloth-jobs', () => ({
 vi.mock('@nemo/sdk/generated/customizer/rl-jobs', () => ({
   useCustomizationCreateRlJob: () => ({ mutateAsync: mutateRl, isPending: false }),
 }));
+
+vi.mock('@nemo/sdk/generated/platform/models', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@nemo/sdk/generated/platform/models')>();
+  return { ...actual, modelsListModels: vi.fn() };
+});
+
+const mockListModels = vi.mocked(modelsListModels);
 
 vi.mock('@studio/hooks/useCustomizationDatasetValidation', async (importOriginal) => {
   const actual =
@@ -59,6 +67,17 @@ describe('NewCustomizationForm', () => {
     mutateUnsloth.mockReset();
     mockUseParams({ [ROUTE_PARAMS.workspace]: 'default' });
     vi.mocked(useCustomizationDatasetValidation).mockReturnValue(emptyValidation);
+    mockListModels.mockReset();
+    mockListModels.mockResolvedValue({
+      data: [],
+      pagination: {
+        page: 1,
+        page_size: 25,
+        current_page_size: 0,
+        total_results: 0,
+        total_pages: 1,
+      },
+    } as Awaited<ReturnType<typeof modelsListModels>>);
   });
 
   it('defaults to the automodel backend and shows its compute controls', async () => {
@@ -102,5 +121,19 @@ describe('NewCustomizationForm', () => {
     const banner = await screen.findByText(/Please fix the following errors/i);
     expect(banner.textContent).not.toMatch(/automodel/i);
     await waitFor(() => expect(mutateAutomodel).not.toHaveBeenCalled());
+  });
+
+  it('asks the API for fine-tunable models instead of filtering the page client-side', async () => {
+    const user = userEvent.setup();
+    renderRoute(<NewCustomizationForm workspace="default" />);
+
+    await user.click(await screen.findByTestId('model-select-v2-trigger'));
+
+    await waitFor(() =>
+      expect(mockListModels).toHaveBeenCalledWith(
+        'default',
+        expect.objectContaining({ filter: expect.objectContaining({ fileset: true }) })
+      )
+    );
   });
 });
