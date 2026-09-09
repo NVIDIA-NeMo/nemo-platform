@@ -648,9 +648,9 @@ def _live_response_usage_measurements(response: Any, *, trial_id: str) -> TrialM
         return TrialMeasurements()
 
     _warn_invalid_live_usage_counts(trial_id, usage)
-    separate_cache = any(key in usage for key in SEPARATE_CACHE_KEYS)
+    separate_cache = any(usage.get(key) is not None for key in SEPARATE_CACHE_KEYS)
     details = _first_usage_details(usage)
-    inclusive_cache = details is not None and CACHED_TOKENS_KEY in details
+    inclusive_cache = details is not None and details.get(CACHED_TOKENS_KEY) is not None
     completion = _first_nonnegative_int(usage, *COMPLETION_TOKEN_KEYS)
     if separate_cache and inclusive_cache:
         log.warning(

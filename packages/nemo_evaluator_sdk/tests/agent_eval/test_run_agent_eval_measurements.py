@@ -134,6 +134,54 @@ def test_example_usage_handles_inclusive_ambiguous_and_invalid_cache_shapes(
     assert "cache_read_input_tokens='bad'" in caplog.text
 
 
+@pytest.mark.parametrize(
+    ("usage_payload", "expected"),
+    [
+        pytest.param(
+            {
+                "input_tokens": 5,
+                "output_tokens": 2,
+                "cached_input_tokens": None,
+                "cache_read_input_tokens": 4,
+            },
+            {
+                "prompt_tokens": 9,
+                "completion_tokens": 2,
+                "total_tokens": 11,
+                "cache_creation_tokens": None,
+                "cache_read_tokens": 4,
+                "duration_ms": None,
+            },
+            id="null-inclusive-placeholder",
+        ),
+        pytest.param(
+            {
+                "input_tokens": 5,
+                "output_tokens": 2,
+                "cached_input_tokens": 4,
+                "cache_read_input_tokens": None,
+            },
+            {
+                "prompt_tokens": 5,
+                "completion_tokens": 2,
+                "total_tokens": 7,
+                "cache_creation_tokens": None,
+                "cache_read_tokens": 4,
+                "duration_ms": None,
+            },
+            id="null-separate-placeholder",
+        ),
+    ],
+)
+def test_example_usage_ignores_null_cache_format_placeholders(
+    usage_payload: dict,
+    expected: dict,
+) -> None:
+    usage = _example("usage")
+
+    assert usage.extract_usage_metrics(json.dumps({"usage": usage_payload})) == expected
+
+
 def test_example_usage_ambiguous_message_invalidates_trial_wide_prompt_and_cache() -> None:
     usage = _example("usage")
 

@@ -93,7 +93,7 @@ def _bucket_from_usage(
             cache_creation_tokens, has_cache_creation = _first_int(details, ("cache_creation",))
         if not has_cache_read:
             cache_read_tokens, has_cache_read = _first_int(details, ("cache_read",))
-    separate_cache = any(key in usage_obj for key in _SEPARATE_CACHE_KEYS)
+    separate_cache = any(usage_obj.get(key) is not None for key in _SEPARATE_CACHE_KEYS)
     invalid_cache_creation = any(
         key in usage_obj and usage_obj[key] is not None and not _is_nonnegative_int(usage_obj[key])
         for key in _CACHE_CREATION_KEYS
@@ -103,7 +103,7 @@ def _bucket_from_usage(
         for key in _SEPARATE_CACHE_READ_KEYS
     )
     invalid_separate_cache = invalid_cache_creation or invalid_cache_read
-    inclusive_cache = "cached_input_tokens" in usage_obj
+    inclusive_cache = usage_obj.get("cached_input_tokens") is not None
     if separate_cache and inclusive_cache:
         logger.warning(
             "Usage contains both inclusive cached_input_tokens and separate cache fields; "

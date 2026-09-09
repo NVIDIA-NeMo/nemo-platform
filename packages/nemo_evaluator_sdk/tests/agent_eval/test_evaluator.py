@@ -222,6 +222,38 @@ def test_trial_from_sample_omits_ambiguous_prompt_cache_usage(
     assert "both inclusive cache details and separate cache fields" in caplog.text
 
 
+@pytest.mark.parametrize(
+    ("usage", "expected"),
+    [
+        pytest.param(
+            {
+                "input_tokens": 5,
+                "output_tokens": 2,
+                "input_tokens_details": {"cached_tokens": None},
+                "cache_read_input_tokens": 4,
+            },
+            TrialMeasurements(prompt_tokens=9, completion_tokens=2, cache_read_tokens=4),
+            id="null-inclusive-placeholder",
+        ),
+        pytest.param(
+            {
+                "input_tokens": 5,
+                "output_tokens": 2,
+                "input_tokens_details": {"cached_tokens": 4},
+                "cache_read_input_tokens": None,
+            },
+            TrialMeasurements(prompt_tokens=5, completion_tokens=2, cache_read_tokens=4),
+            id="null-separate-placeholder",
+        ),
+    ],
+)
+def test_live_response_usage_ignores_null_cache_format_placeholders(
+    usage: dict[str, Any],
+    expected: TrialMeasurements,
+) -> None:
+    assert _live_response_usage_measurements({"usage": usage}, trial_id="trial-1") == expected
+
+
 def test_trial_from_sample_warns_and_preserves_independent_valid_usage(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

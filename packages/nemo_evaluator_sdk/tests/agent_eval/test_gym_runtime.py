@@ -1260,6 +1260,38 @@ def test_gym_usage_omits_ambiguous_prompt_cache(caplog: pytest.LogCaptureFixture
     assert "both inclusive cache details and separate cache fields" in caplog.text
 
 
+@pytest.mark.parametrize(
+    ("usage", "expected"),
+    [
+        pytest.param(
+            {
+                "input_tokens": 5,
+                "output_tokens": 2,
+                "input_tokens_details": {"cached_tokens": None},
+                "cache_read_input_tokens": 4,
+            },
+            TrialMeasurements(prompt_tokens=9, completion_tokens=2, cache_read_tokens=4),
+            id="null-inclusive-placeholder",
+        ),
+        pytest.param(
+            {
+                "input_tokens": 5,
+                "output_tokens": 2,
+                "input_tokens_details": {"cached_tokens": 4},
+                "cache_read_input_tokens": None,
+            },
+            TrialMeasurements(prompt_tokens=5, completion_tokens=2, cache_read_tokens=4),
+            id="null-separate-placeholder",
+        ),
+    ],
+)
+def test_gym_usage_ignores_null_cache_format_placeholders(
+    usage: dict,
+    expected: TrialMeasurements,
+) -> None:
+    assert _usage_measurements({"response": {"usage": usage}}) == expected
+
+
 def test_gym_warn_invalid_usage_counts_logs_malformed_fields(caplog: pytest.LogCaptureFixture) -> None:
     _warn_invalid_usage_counts(
         {NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 1},
