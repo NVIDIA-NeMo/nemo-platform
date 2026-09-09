@@ -236,8 +236,21 @@ export const getVirtualModelChatRoute = (workspace: string, virtualModelName: st
   return generatePath(ROUTES.workspace.virtualModelChat, { workspace, virtualModelName });
 };
 
-export const getWorkspaceDeploymentsRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.deployments, { workspace });
+export const getWorkspaceDeploymentsRoute = (
+  workspace: string,
+  options?: { model?: string; fileset?: string }
+) => {
+  const basePath = generatePath(ROUTES.workspace.deployments, { workspace });
+  // `DeploymentsListRoute` reads these and auto-opens the create wizard on the
+  // Workspace source, prefilled. `model` wins when both are given, matching the
+  // route's own precedence.
+  if (options?.model) {
+    return `${basePath}?${QUERY_PARAMETERS.model}=${encodeURIComponent(options.model)}`;
+  }
+  if (options?.fileset) {
+    return `${basePath}?${QUERY_PARAMETERS.fileset}=${encodeURIComponent(options.fileset)}`;
+  }
+  return basePath;
 };
 
 /** Default segment for the deployment details side panel URL. */
