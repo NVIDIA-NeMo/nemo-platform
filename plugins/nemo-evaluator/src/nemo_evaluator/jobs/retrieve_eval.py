@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar, Literal, Self
+from typing import ClassVar, Self
 
 from nemo_evaluator.filesets import (
     FilesetRef,
@@ -37,7 +37,7 @@ from nemo_evaluator_sdk.metrics.retrieval import (
 )
 from nemo_evaluator_sdk.values.models import Model, ModelRef
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
-from nemo_evaluator_sdk.values.retrieval import Retrieval
+from nemo_evaluator_sdk.values.retrieval import Retrieval, Truncation
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.job import NemoJob
@@ -63,8 +63,17 @@ class RetrievalInputSpec(BaseModel):
 
     embeddings: Model | ModelRef
     reranker: Model | ModelRef | None = None
-    first_stage_k: int = Field(default=100, ge=1)
-    truncate_long_documents: Literal["end", "start"] | None = "end"
+    first_stage_k: int = Field(default=100, ge=1, description="Dense-search cutoff before reranking.")
+    truncate_long_documents: Truncation | None = Field(
+        default="end",
+        description="How to cap passages at 65535 characters: keep the start ('end'), the tail ('start'), or error (null).",
+    )
+    batch_size: int = Field(default=32, ge=1, description="Embedding HTTP batch size.")
+    embedding_dimensions: int | None = Field(
+        default=None,
+        gt=0,
+        description="Expected embedding width. Omit to accept the model's native width.",
+    )
 
 
 class RetrieveEvalInputSpec(BaseModel):
@@ -291,6 +300,8 @@ async def _resolve_retrieval(
         reranker=reranker,
         first_stage_k=value.first_stage_k,
         truncate_long_documents=value.truncate_long_documents,
+        batch_size=value.batch_size,
+        embedding_dimensions=value.embedding_dimensions,
     )
 
 

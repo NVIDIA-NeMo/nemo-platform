@@ -94,7 +94,11 @@ def _headers(model: Model) -> dict[str, str]:
 def _parse_rankings(response: httpx.Response, expected_count: int) -> list[tuple[int, float]]:
     try:
         payload = response.json()
+        if not isinstance(payload, dict):
+            raise TypeError("ranking response must be an object")
         rankings = payload.get("rankings", payload.get("results"))
+        if not isinstance(rankings, list):
+            raise TypeError("ranking response must include a rankings list")
         parsed = [(int(item["index"]), float(item.get("logit", item.get("score")))) for item in rankings]
     except (KeyError, TypeError, ValueError) as error:
         raise NimRankingError("ranking endpoint returned an invalid response") from error

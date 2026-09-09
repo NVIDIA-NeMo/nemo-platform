@@ -6,7 +6,7 @@ import math
 
 import httpx
 import pytest
-from nemo_evaluator_sdk.retrieval.nim_ranking import NimRankingClient
+from nemo_evaluator_sdk.retrieval.nim_ranking import NimRankingClient, NimRankingError
 from nemo_evaluator_sdk.values.models import Model
 
 
@@ -78,3 +78,22 @@ async def test_ranking_client_retries_non_finite_logits() -> None:
 
     assert attempts == 2
     assert ranked == [(0, 0.9)]
+
+
+@pytest.mark.asyncio
+async def test_ranking_client_rejects_non_object_payload() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=request,
+            content=json.dumps([]),
+            headers={"content-type": "application/json"},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(NimRankingError, match="invalid response"):
+            await NimRankingClient(model=Model(url="https://rank.example.test/v1", name="rerank")).rank(
+                "q",
+                ["only"],
+                client=client,
+            )

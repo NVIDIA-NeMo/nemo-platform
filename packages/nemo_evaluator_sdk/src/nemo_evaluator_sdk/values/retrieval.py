@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from nemo_evaluator_sdk.values.models import Model
 
-__all__ = ["Retrieval"]
+__all__ = ["Retrieval", "Truncation"]
 
 Truncation = Literal["end", "start"]
 

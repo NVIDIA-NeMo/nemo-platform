@@ -12,6 +12,7 @@ from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.retrieve_eval import (
     EVAL_RESULTS_FILE_NAME,
     EVAL_RESULTS_RESULT_NAME,
+    RetrievalInputSpec,
     RetrieveEvalInputSpec,
     RetrieveEvalJob,
     RetrieveEvalSpec,
@@ -88,6 +89,33 @@ def _result(*, ndcg: float = 0.75, recall: float = 1.0) -> BenchmarkEvaluationRe
 def test_input_spec_rejects_invalid_cutoffs(k: list[int]) -> None:
     with pytest.raises(ValidationError):
         RetrieveEvalInputSpec(dataset=FilesetRef("default/data"), target=_spec().target.embeddings, k=k)
+
+
+async def test_to_spec_forwards_retrieval_pipeline_fields() -> None:
+    submit = RetrieveEvalInputSpec(
+        dataset=FilesetRef("default/data"),
+        target=RetrievalInputSpec(
+            embeddings=_spec().target.embeddings,
+            first_stage_k=50,
+            truncate_long_documents=None,
+            batch_size=16,
+            embedding_dimensions=1024,
+        ),
+    )
+
+    canonical = await RetrieveEvalJob.to_spec(
+        submit,
+        workspace="default",
+        entity_client=object(),
+        async_sdk=None,
+        is_local=True,
+    )
+
+    assert isinstance(canonical, RetrieveEvalSpec)
+    assert canonical.target.first_stage_k == 50
+    assert canonical.target.truncate_long_documents is None
+    assert canonical.target.batch_size == 16
+    assert canonical.target.embedding_dimensions == 1024
 
 
 async def test_compile_builds_cpu_retrieve_eval_task() -> None:

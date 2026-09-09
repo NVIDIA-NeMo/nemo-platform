@@ -5473,14 +5473,29 @@ components:
           type: integer
           minimum: 1.0
           title: First Stage K
+          description: Dense-search cutoff before reranking.
           default: 100
         truncate_long_documents:
           title: Truncate Long Documents
+          description: 'How to cap passages at 65535 characters: keep the start (''end''),
+            the tail (''start''), or error (null).'
           default: end
           type: string
           enum:
           - end
           - start
+        batch_size:
+          type: integer
+          minimum: 1.0
+          title: Batch Size
+          description: Embedding HTTP batch size.
+          default: 32
+        embedding_dimensions:
+          title: Embedding Dimensions
+          description: Expected embedding width. Omit to accept the model's native
+            width.
+          type: integer
+          exclusiveMinimum: 0.0
       additionalProperties: false
       type: object
       required:
