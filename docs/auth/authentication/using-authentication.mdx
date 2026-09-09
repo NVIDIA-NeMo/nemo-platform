@@ -134,23 +134,35 @@ Pass `--expires-in <seconds>` to request a specific finite lifetime. Pass
 `--expires-in none` only for deployments where the administrator has explicitly
 allowed unlimited keys.
 
-List keys, temporarily suspend and restore one, or permanently revoke one by its stable `jti`:
+List keys, temporarily suspend and restore one, rotate one, or permanently revoke one by
+its stable `jti`:
 
 ```bash
 nemo auth access-keys list
 nemo auth access-keys list --page 2 --page-size 100
 nemo auth access-keys suspend ak_0123456789abcdef0123456789abcdef
 nemo auth access-keys unsuspend ak_0123456789abcdef0123456789abcdef
+nemo auth access-keys rotate ak_0123456789abcdef0123456789abcdef
 nemo auth access-keys revoke ak_0123456789abcdef0123456789abcdef
 ```
 
-The list includes each key's `ACTIVE`, `EXPIRED`, `SUSPENDED`, or `REVOKED` status
-plus its description, issuer, audiences, creation time, and expiration time. Suspension
-and revocation take effect on subsequent authenticated platform requests. Use suspension
-to temporarily block a key, such as while investigating suspected misuse, without
-permanently revoking it. An unexpired suspended key can be restored with `unsuspend`. If
-the key expires while suspended, `unsuspend` is a no-op and reports `EXPIRED`. A revoked
-key cannot be restored. Rotation is not implemented.
+The list includes each key's `ACTIVE`, `EXPIRED`, `SUSPENDED`, `ROTATING`, or `REVOKED`
+status plus its description, issuer, audiences, creation time, expiration time, and last
+authentication time. Suspension and revocation take effect on subsequent authenticated
+platform requests. Use suspension to temporarily block a key, such as while investigating
+suspected misuse, without permanently revoking it. An unexpired suspended key can be
+restored with `unsuspend`. If the key expires while suspended, `unsuspend` is a no-op and
+reports `EXPIRED`. A revoked key cannot be restored.
+
+`rotate` mints a successor key with the same name, description, and lifetime
+characteristics, prints its token once, and transitions the original key to `ROTATING`.
+The rotated-out key keeps authenticating for a dual-active grace period (configurable via
+`auth.access_keys.rotation_grace_period_seconds`, 48 hours by default) so you can update
+configuration or secret stores to the new key without downtime, then call `revoke` on the
+old `jti` once traffic has moved over — check its last authentication time in `list` to
+confirm no recent traffic before revoking. If you don't revoke it manually, it is treated
+as revoked automatically once the grace period elapses. A key must be `ACTIVE` to rotate;
+a suspended, already-rotating, expired, or revoked key must be resolved first.
 
 ### Token Inspection
 
