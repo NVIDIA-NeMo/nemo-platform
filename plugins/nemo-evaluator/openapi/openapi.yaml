@@ -5401,6 +5401,81 @@ components:
       - -updated_at
       title: ResultSort
       description: Sort fields for result queries (``-`` prefix sorts descending).
+    Retrieval:
+      properties:
+        embeddings:
+          allOf:
+          - $ref: '#/components/schemas/Model'
+          description: Embedding NIM used to encode queries and passages.
+        reranker:
+          allOf:
+          - $ref: '#/components/schemas/Model'
+          description: Optional ranking NIM applied after dense search.
+        first_stage_k:
+          type: integer
+          minimum: 1.0
+          title: First Stage K
+          description: Dense-search cutoff before reranking.
+          default: 100
+        truncate_long_documents:
+          title: Truncate Long Documents
+          description: 'How to cap passages at 65535 characters: keep the start (''end''),
+            the tail (''start''), or error (null).'
+          default: end
+          type: string
+          enum:
+          - end
+          - start
+        batch_size:
+          type: integer
+          minimum: 1.0
+          title: Batch Size
+          description: Embedding HTTP batch size.
+          default: 32
+        embedding_dimensions:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Embedding Dimensions
+          description: Expected embedding width.
+          default: 2048
+      additionalProperties: false
+      type: object
+      required:
+      - embeddings
+      title: Retrieval
+      description: Target that ranks a BEIR corpus with dense search and optional
+        reranking.
+    RetrievalInputSpec:
+      properties:
+        embeddings:
+          anyOf:
+          - $ref: '#/components/schemas/Model'
+          - $ref: '#/components/schemas/ModelRef'
+          title: Embeddings
+        reranker:
+          anyOf:
+          - $ref: '#/components/schemas/Model'
+          - $ref: '#/components/schemas/ModelRef'
+          title: Reranker
+        first_stage_k:
+          type: integer
+          minimum: 1.0
+          title: First Stage K
+          default: 100
+        truncate_long_documents:
+          title: Truncate Long Documents
+          default: end
+          type: string
+          enum:
+          - end
+          - start
+      additionalProperties: false
+      type: object
+      required:
+      - embeddings
+      title: RetrievalInputSpec
+      description: Submitter-facing retrieval target before platform model refs are
+        resolved.
     RetrieveEvalInputSpec:
       properties:
         dataset:
@@ -5409,17 +5484,19 @@ components:
           description: Fileset containing a BEIR test split.
         target:
           anyOf:
+          - $ref: '#/components/schemas/RetrievalInputSpec'
           - $ref: '#/components/schemas/Model'
           - $ref: '#/components/schemas/ModelRef'
           title: Target
-          description: Embedding NIM model or platform model reference.
+          description: Retrieval pipeline, embedding NIM, or platform model reference.
         baseline:
           anyOf:
+          - $ref: '#/components/schemas/RetrievalInputSpec'
           - $ref: '#/components/schemas/Model'
           - $ref: '#/components/schemas/ModelRef'
           title: Baseline
-          description: Optional baseline embedding model used for relative nDCG@10
-            and Recall@10.
+          description: Optional baseline retrieval pipeline used for relative nDCG
+            and recall at 10.
         k:
           items:
             type: integer
@@ -5591,9 +5668,9 @@ components:
         dataset:
           $ref: '#/components/schemas/FilesetRef'
         target:
-          $ref: '#/components/schemas/Model'
+          $ref: '#/components/schemas/Retrieval'
         baseline:
-          $ref: '#/components/schemas/Model'
+          $ref: '#/components/schemas/Retrieval'
         k:
           items:
             type: integer
