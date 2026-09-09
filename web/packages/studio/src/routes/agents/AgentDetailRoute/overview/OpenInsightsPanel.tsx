@@ -3,8 +3,8 @@
 
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import type { InsightListItem } from '@nemo/sdk/generated/insights/schema';
 import { Button, Flex, Skeleton, Stack, Text } from '@nvidia/foundations-react-core';
-import type { InsightListItem } from '@studio/api/optimizer';
 import { DetailPanel } from '@studio/routes/agents/AgentDetailRoute/overview/DetailPanel';
 import { OpenInsightRow } from '@studio/routes/agents/AgentDetailRoute/overview/OpenInsightRow';
 import type { FC } from 'react';
