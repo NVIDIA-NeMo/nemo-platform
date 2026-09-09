@@ -44,7 +44,7 @@ fi
 
 CODE_DIR="${NMP_GARAK_PACKAGE_ROOT}/garakapi"
 
-declare -a pyfiles=("_config.py" "_plugins.py" "exception.py")
+declare -a pyfiles=("_selection.py" "_spec.py" "_config.py" "_plugins.py" "exception.py")
 
 for pyfile in "${pyfiles[@]}"; do
 	pyfile_url="https://raw.githubusercontent.com/NVIDIA/garak/refs/tags/v${garak_ver}/garak/${pyfile}"

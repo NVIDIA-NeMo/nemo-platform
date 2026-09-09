@@ -48,6 +48,8 @@ documentation/docs/generate-synthetic-data/images/* filter=lfs diff=lfs merge=lf
 # Files maintained by external garak project
 packages/garak_api/garakapi/_config.py linguist-generated
 packages/garak_api/garakapi/_plugins.py linguist-generated
+packages/garak_api/garakapi/_selection.py linguist-generated
+packages/garak_api/garakapi/_spec.py linguist-generated
 packages/garak_api/garakapi/exception.py linguist-generated
 packages/garak_api/garakapi/resources/plugin_cache.json linguist-generated
 # Tiktoken artifact
