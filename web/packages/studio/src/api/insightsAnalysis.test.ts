@@ -12,7 +12,10 @@ import {
 } from '@studio/api/insightsAnalysis';
 import { AxiosError, AxiosHeaders } from 'axios';
 
-vi.mock('@nemo/sdk/generated/insights/insights-analysis-configs', () => ({
+vi.mock('@nemo/sdk/generated/insights/insights-analysis-configs', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@nemo/sdk/generated/insights/insights-analysis-configs')
+  >()),
   insightsGetAnalysisConfig: vi.fn(),
 }));
 
