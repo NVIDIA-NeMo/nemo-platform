@@ -209,3 +209,73 @@ diff --git a/3rdparty/Gym-workspace/Gym/nemo_gym/cli/setup_command.py b/3rdparty
                  )
          else:
              raise RuntimeError(
+diff --git a/nemo_rl/environments/sandbox/nemo_gym_actor.py b/nemo_rl/environments/sandbox/nemo_gym_actor.py
+--- a/nemo_rl/environments/sandbox/nemo_gym_actor.py
++++ b/nemo_rl/environments/sandbox/nemo_gym_actor.py
+@@ -647,6 +647,10 @@
+             with urllib.request.urlopen(
+                 request, timeout=self._rollout_timeout_s
+             ) as response:
++                response_status = getattr(response, "status", None)
++                response_headers = {
++                    str(key): str(value) for key, value in response.headers.items()
++                }
+                 payload = response.read()
+         except urllib.error.HTTPError as exc:
+             elapsed = time.monotonic() - started
+@@ -701,7 +705,21 @@
+                 retryable=False,
+                 origin="client",
+             )
+-        decoded = json.loads(payload.decode("utf-8"))
++        try:
++            decoded = json.loads(payload.decode("utf-8"))
++        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
++            # A streaming proxy can commit HTTP 200 after the first heartbeat and then
++            # lose the backend connection. Surface the bytes and framing headers instead
++            # of reducing that to an opaque JSON error (often "column 2" for one space).
++            raise RolloutTransportError(
++                "rollout response was not valid JSON "
++                f"(HTTP {response_status}, {len(payload)} byte(s), "
++                f"headers={response_headers!r}, prefix={payload[:512]!r}) "
++                f"from {self._host_handle.rollout_url}: "
++                f"{type(exc).__name__}: {exc}",
++                retryable=False,
++                origin="proxy",
++            ) from exc
+         if isinstance(decoded, dict) and "error" in decoded:
+             raise RolloutTransportError(
+                 f"the sandboxed environment failed this rollout: {decoded['error']}",
+diff --git a/tests/unit/environments/test_sandboxed_gym_actor.py b/tests/unit/environments/test_sandboxed_gym_actor.py
+--- a/tests/unit/environments/test_sandboxed_gym_actor.py
++++ b/tests/unit/environments/test_sandboxed_gym_actor.py
+@@ -63,5 +63,8 @@
+ 
+ class _FakeResponse:
++    status = 200
++    headers = {"Content-Type": "application/json", "Transfer-Encoding": "chunked"}
++
+     def __init__(self, payload: bytes):
+         self._payload = payload
+ 
+@@ -157,6 +160,20 @@
+     assert actor._post_rollouts([{"ok": True}]) == [{"reward": 1.0}]
+ 
+ 
++def test_post_rollouts_reports_truncated_stream_details(monkeypatch):
++    actor = _bare_actor()
++
++    monkeypatch.setattr(
++        "urllib.request.urlopen",
++        lambda *args, **kwargs: _FakeResponse(b" "),
++    )
++    with pytest.raises(
++        RolloutTransportError,
++        match=r"not valid JSON.*HTTP 200, 1 byte\(s\).*Transfer-Encoding.*prefix=b' '",
++    ):
++        actor._post_rollouts([{"ok": True}])
++
++
+ def _chunking_actor(chunk_size: int, max_in_flight: int, max_attempts: int = 1):
+     return _bare_actor(
+         _rollout_chunk_size=chunk_size,

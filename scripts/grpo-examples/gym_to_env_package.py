@@ -36,6 +36,8 @@ import tempfile
 from pathlib import Path
 
 import yaml
+from packaging.specifiers import SpecifierSet
+from packaging.utils import InvalidWheelFilename, canonicalize_name, parse_wheel_filename
 
 GYM_REPO = "https://github.com/NVIDIA-NeMo/Gym"
 
@@ -50,6 +52,12 @@ SERVER_TYPES = ("resources_servers", "responses_api_agents", "responses_api_mode
 
 # setuptools 81 removed pkg_resources, which Gym's pinned hydra imports at import time.
 SETUPTOOLS_PKG_RESOURCES_CEILING = "81"
+HYDRA_CORE_SPEC = ">=1.3,<1.4"
+OMEGACONF_SPEC = ">=2.2,<2.4"
+REQUIRED_WHEEL_SPECS = {
+    canonicalize_name("hydra-core"): SpecifierSet(HYDRA_CORE_SPEC),
+    canonicalize_name("omegaconf"): SpecifierSet(OMEGACONF_SPEC),
+}
 
 # native-v1 requires every config_path under a Gym server prefix; wheels-v1 allows configs/.
 POLICY_MODEL_RELPATH = {
@@ -246,6 +254,31 @@ def _download_with_sdist_fallback(download_cmd: list[str], wheels: Path, max_bui
         builds += 1
 
 
+def validate_required_wheel_versions(wheels: Path) -> None:
+    """Reject a wheelhouse whose resolver backtracked to pre-1.3 Hydra."""
+    found: dict[str, set] = {name: set() for name in REQUIRED_WHEEL_SPECS}
+    for wheel in wheels.glob("*.whl"):
+        try:
+            name, version, _, _ = parse_wheel_filename(wheel.name)
+        except (InvalidWheelFilename, ValueError):
+            continue
+        normalized = canonicalize_name(name)
+        if normalized in found:
+            found[normalized].add(version)
+
+    problems = []
+    for name, specifier in REQUIRED_WHEEL_SPECS.items():
+        versions = found[name]
+        if not versions:
+            problems.append(f"missing {name}{specifier}")
+            continue
+        incompatible = sorted(str(version) for version in versions if version not in specifier)
+        if incompatible:
+            problems.append(f"{name} has incompatible wheel(s) {', '.join(incompatible)}; expected {specifier}")
+    if problems:
+        raise SystemExit("invalid wheels-v1 dependency closure: " + "; ".join(problems))
+
+
 def vendor_wheels(
     out_dir: Path,
     gym_root: Path,
@@ -291,6 +324,8 @@ def vendor_wheels(
         f"nemo-gym[dev] @ file://{fork_wheel}",
         f"ray[default]=={ray_version}",
         f"openai=={openai_version}",
+        f"hydra-core{HYDRA_CORE_SPEC}",
+        f"omegaconf{OMEGACONF_SPEC}",
         "pip",
         f"setuptools>=61,<{SETUPTOOLS_PKG_RESOURCES_CEILING}",
         "setuptools-scm",
@@ -354,6 +389,7 @@ def vendor_wheels(
         print("Running:", " ".join(download_cmd), flush=True)
         _download_with_sdist_fallback(download_cmd, wheels)
 
+    validate_required_wheel_versions(wheels)
     stray = [f.name for f in wheels.iterdir() if f.is_file() and f.suffix != ".whl"]
     if stray:
         raise SystemExit(f"wheels/ must contain only .whl files, got: {stray}")
