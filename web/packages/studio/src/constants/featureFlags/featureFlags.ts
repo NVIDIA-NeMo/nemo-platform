@@ -56,7 +56,7 @@ import { z } from 'zod';
 export const flagDefinitions = {
   agentOverviewEnabled: booleanFlag('VITE_FF_AGENT_OVERVIEW_ENABLED', false),
   agentsEnabled: previewFlag('VITE_FF_AGENTS_ENABLED', true),
-  anonymizerEnabled: booleanFlag('VITE_FF_ANONYMIZER_ENABLED', false),
+  anonymizerEnabled: booleanFlag('VITE_FF_ANONYMIZER_ENABLED', true),
   baseModelsEnabled: previewFlag('VITE_FF_BASE_MODELS_ENABLED', true),
   assistantStudioEnabled: previewFlag('VITE_FF_ASSISTANT_STUDIO_ENABLED', false),
   copilotStudioEnabled: previewFlag('VITE_FF_COPILOT_STUDIO_ENABLED', false),
