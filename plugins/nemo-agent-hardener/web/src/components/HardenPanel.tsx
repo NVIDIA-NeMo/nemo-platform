@@ -81,13 +81,21 @@ const groupDefenses = (defenses: DefensePair[]): DefenseGroup[] => {
  * manifest query has actually succeeded, `isProjectSource` reads `false` by default — enabling on
  * that default would open a window, while the query is loading or failed, to apply a mitigation to
  * an unrelated same-named agent.
+ *
+ * Mirrors the API's own rule (`_reject_project_source`): a run with no manifest behind it — one
+ * launched from `run --config` — has no project-source claim to verify, and the API allows it.
+ * Gating those on a query that never runs would grey the button out permanently.
  */
 export const canApplyMitigation = (params: {
   hasComposedGuardrails: boolean;
+  hasManifestId: boolean;
   manifestQuerySucceeded: boolean;
   isProjectSource: boolean;
-}): boolean =>
-  params.hasComposedGuardrails && params.manifestQuerySucceeded && !params.isProjectSource;
+}): boolean => {
+  if (!params.hasComposedGuardrails) return false;
+  if (!params.hasManifestId) return true;
+  return params.manifestQuerySucceeded && !params.isProjectSource;
+};
 
 // One defense: a scannable row (toggle · shield · rule · the attack it counters) that expands to the full
 // attack → mitigation story. Collapsed by default so 15 of these stay glanceable.
@@ -460,6 +468,7 @@ export const HardenPanel: FC<HardenPanelProps> = ({
                   disabled={
                     !canApplyMitigation({
                       hasComposedGuardrails: Boolean(effectiveComposedGuardrails),
+                      hasManifestId: Boolean(manifestId),
                       manifestQuerySucceeded: manifestQuery.isSuccess,
                       isProjectSource,
                     })
