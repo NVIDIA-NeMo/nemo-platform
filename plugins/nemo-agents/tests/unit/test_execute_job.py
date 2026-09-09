@@ -28,6 +28,7 @@ from nemo_agents_plugin.entities import (
     McpFulfillment,
 )
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult
+from nemo_agents_plugin.jobs import execute as execute_module
 from nemo_agents_plugin.jobs.execute import (
     DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
     FABRIC_ERROR_RESULT_NAME,
@@ -40,8 +41,8 @@ from nemo_agents_plugin.jobs.execute import (
     ExecuteAgentJobConfig,
     ExecuteAgentStepConfig,
     ResolvedAgentConfig,
-    _adapter_supports_relay,
     _configure_intake_telemetry,
+    _disable_agent_telemetry,
     _log_agent_stderr,
 )
 from nemo_agents_plugin.tasks.execute.workdir import (
@@ -51,6 +52,8 @@ from nemo_agents_plugin.tasks.execute.workdir import (
     materialize_agent_workdir,
     validate_agent_workdir,
 )
+from nemo_agents_plugin.telemetry import intake_export
+from nemo_agents_plugin.telemetry.intake_export import supports_intake_atif_export
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
@@ -1902,26 +1905,89 @@ def test_an_unrecognized_telemetry_section_is_left_alone(monkeypatch: pytest.Mon
 
 
 def test_relay_support_is_read_from_the_adapter_descriptor(tmp_path: Path) -> None:
-    """The bundled harnesses advertise relay; auto-wiring is allowed to trust that."""
-    config = AgentConfig.model_validate(_fabric_agent_config())
-
-    assert _adapter_supports_relay(config, tmp_path) is True
-
-
-def test_an_adapter_without_relay_support_is_not_wired(tmp_path: Path) -> None:
-    """Fabric rejects a relay config outright, so wiring one would stop the agent running."""
-    config = AgentConfig.model_validate(
-        _fabric_agent_config(harnesses={"h": {"kind": "nvidia.fabric.insights-analyst"}})
-    )
-
-    assert _adapter_supports_relay(config, tmp_path) is False
+    """The bundled harnesses advertise relay with an ATIF output."""
+    assert supports_intake_atif_export(_fabric_agent_config(), base_dir=tmp_path) is True
 
 
 def test_an_unplannable_config_is_not_wired(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     """We cannot know, so we do not wire; the invocation reports the real problem."""
-    config = AgentConfig.model_validate(_fabric_agent_config(harnesses={"h": {"kind": "codex"}}))
+    config = _fabric_agent_config(harnesses={"h": {"kind": "codex"}})
 
     with caplog.at_level(logging.WARNING):
-        assert _adapter_supports_relay(config, tmp_path) is False
+        assert supports_intake_atif_export(config, base_dir=tmp_path) is False
 
     assert "Could not read adapter telemetry support" in caplog.text
+
+
+def test_an_adapter_without_the_atif_output_is_not_wired(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relay support alone is not enough: an adapter may offer only OpenTelemetry."""
+    otel_only = {"providers": {"relay": {"outputs": ["otel"]}}}
+
+    class _Plan:
+        @staticmethod
+        def to_dict() -> dict[str, Any]:
+            return {"adapter_descriptor": {"descriptor": {"telemetry": otel_only}}}
+
+    monkeypatch.setattr(intake_export.fabric, "Fabric", lambda: SimpleNamespace(plan=lambda *a, **k: _Plan()))
+
+    with caplog.at_level(logging.INFO):
+        assert supports_intake_atif_export(_fabric_agent_config(), base_dir=tmp_path) is False
+
+    assert "not its ATIF output" in caplog.text
+
+
+def test_a_request_that_declines_telemetry_disables_an_agents_own_export() -> None:
+    """ "Run untraced" has to beat an export the agent config declared."""
+    config = _fabric_agent_config(
+        telemetry={"enabled": True, "atif": {"enabled": True, "storage": [{"type": "http", "endpoint": "https://x"}]}}
+    )
+
+    _disable_agent_telemetry(config)
+
+    assert config["telemetry"]["enabled"] is False
+
+
+def test_workload_identity_jobs_export_with_a_bearer_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The SDK adds this per request; Relay's raw POST to Intake does not go through it."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    token_file = tmp_path / "subject-token"
+    token_file.write_text("subject", encoding="utf-8")
+    monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("NMP_AGENT_TELEMETRY_HEADER_AUTHORIZATION", "unset")
+    monkeypatch.setattr(
+        execute_module,
+        "resolve_workload_exchange_provider",
+        lambda **_kwargs: SimpleNamespace(get_access_token=lambda: "exchanged-token"),
+    )
+    sdk = cast(NeMoPlatform, SimpleNamespace(_custom_headers={"X-NMP-Internal": "true"}))
+    config = _fabric_agent_config()
+
+    _configure_intake_telemetry(config, workspace="default", sdk=sdk)
+
+    storage = config["telemetry"]["atif"]["storage"][0]
+    assert storage["header_env"]["Authorization"] == "NMP_AGENT_TELEMETRY_HEADER_AUTHORIZATION"
+    assert os.environ["NMP_AGENT_TELEMETRY_HEADER_AUTHORIZATION"] == "Bearer exchanged-token"
+
+
+def test_a_failed_token_exchange_still_exports_rather_than_failing_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Telemetry is not worth failing an agent over."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    token_file = tmp_path / "subject-token"
+    token_file.write_text("subject", encoding="utf-8")
+    monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
+
+    def explode(**_kwargs: Any) -> Any:
+        raise RuntimeError("auth discovery unavailable")
+
+    monkeypatch.setattr(execute_module, "resolve_workload_exchange_provider", explode)
+    config = _fabric_agent_config()
+
+    with caplog.at_level(logging.WARNING):
+        _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert "Authorization" not in config["telemetry"]["atif"]["storage"][0].get("header_env", {})
+    assert "without credentials" in caplog.text

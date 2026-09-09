@@ -37,7 +37,6 @@ from nemo_agents_plugin.fabric.invocation import (
     invoke_agent_config_request_once,
 )
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeTimeoutError
-from nemo_agents_plugin.fabric.translator import translate_agent_config
 from nemo_agents_plugin.jobs.execute_extensions import (
     NOOP_EXECUTE_AGENT_EXTENSION_KIND,
     ExecuteAgentAfterInvokeContext,
@@ -49,9 +48,16 @@ from nemo_agents_plugin.tasks.execute.workdir import (
     materialize_agent_workdir,
     validate_agent_workdir,
 )
-from nemo_agents_plugin.telemetry.intake_export import configure_intake_atif_export
-from nemo_fabric import Fabric
+from nemo_agents_plugin.telemetry.intake_export import (
+    configure_intake_atif_export,
+    supports_intake_atif_export,
+)
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.constants import (
+    WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
+    is_workload_identity_token_file_set,
+)
+from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
@@ -199,8 +205,8 @@ class ExecuteAgentJobConfig(BaseModel):
     telemetry: bool = Field(
         default=True,
         description=(
-            "Export the agent's trajectory to Intake. Set false to run untraced, or configure "
-            "'telemetry' on the agent yourself — an agent that already declares it is left alone."
+            "Export the agent's trajectory to Intake. False runs untraced, overriding any export "
+            "the agent config declares; an agent that declares its own is otherwise left alone."
         ),
     )
     extension: ExecuteAgentExtensionConfig | None = Field(
@@ -409,7 +415,13 @@ class ExecuteAgentJob(NemoJob):
 
         fabric_dirs = FabricDirectories.create(agent_config, ctx.storage.ephemeral)
 
-        if step_config.request.telemetry and _adapter_supports_relay(agent_config, fabric_dirs.base):
+        if not step_config.request.telemetry:
+            # "Run untraced" has to hold for an agent that configured its own
+            # export too, or the request-level switch would silently only
+            # govern the automatic wiring.
+            _disable_agent_telemetry(step_config.agent.config)
+            agent_config = _validate_agent_config(step_config.agent.config)
+        elif supports_intake_atif_export(step_config.agent.config, base_dir=fabric_dirs.base):
             _configure_intake_telemetry(step_config.agent.config, workspace=ctx.workspace, sdk=sdk)
             # Wiring mutates the config mapping, not the model validated above,
             # so re-validate to carry it into what Fabric is handed.
@@ -802,29 +814,10 @@ def _validate_agent_config_format(config_format: str) -> None:
         )
 
 
-def _adapter_supports_relay(agent_config: AgentConfig, base_dir: Path) -> bool:
-    """Whether the agent's adapter declares that Relay can instrument it.
-
-    Adapters advertise this in their descriptor's ``telemetry.providers``; the
-    four bundled harnesses declare ``relay``, and an adapter that does not is
-    rejected outright by Fabric for configuring one. Auto-wiring has to ask
-    first, or it turns "this agent cannot be traced" into "this agent cannot
-    run".
-    """
-    try:
-        plan = Fabric().plan(translate_agent_config(agent_config), base_dir=base_dir)
-        descriptor = plan.to_dict().get("adapter_descriptor") or {}
-        providers = descriptor.get("descriptor", descriptor).get("telemetry", {}).get("providers", {})
-        supported = "relay" in providers
-    except Exception:
-        # Planning failures are the invocation's to report, with its own
-        # diagnostics; here they only mean we cannot know, so do not wire.
-        logger.warning("Could not read adapter telemetry support; the agent will run untraced.", exc_info=True)
-        return False
-
-    if not supported:
-        logger.info("Adapter does not support Relay telemetry; the agent will run untraced.")
-    return supported
+def _disable_agent_telemetry(agent_config: dict[str, Any]) -> None:
+    """Turn off any export the agent config declares, in place."""
+    telemetry = agent_config.get("telemetry")
+    agent_config["telemetry"] = {**telemetry, "enabled": False} if isinstance(telemetry, dict) else {"enabled": False}
 
 
 def _configure_intake_telemetry(
@@ -852,6 +845,7 @@ def _configure_intake_telemetry(
         return
 
     headers = get_forwarding_headers(sdk) if sdk is not None else {}
+    headers.update(_workload_identity_headers(base_url))
     for name, value in headers.items():
         os.environ[_header_envvar(name)] = value
 
@@ -861,6 +855,35 @@ def _configure_intake_telemetry(
         base_url=base_url,
         header_env={name: _header_envvar(name) for name in headers},
     )
+
+
+def _workload_identity_headers(base_url: str) -> dict[str, str]:
+    """Bearer credentials for Relay when the job runs under workload identity.
+
+    ``get_forwarding_headers`` returns only what the SDK was *constructed* with.
+    Under workload identity that is the internal marker alone -- the bearer is
+    exchanged per request by the SDK's own auth layer, which Relay's raw POST to
+    Intake does not go through. Without this the export would be unauthenticated
+    on exactly the deployments that enforce auth.
+
+    The token is resolved once and read from the environment at export time, so
+    a run outliving its token exports with an expired one. Relay resolves
+    ``header_env`` statically, so refreshing needs a dynamic-credential hook it
+    does not offer today.
+    """
+    if not is_workload_identity_token_file_set():
+        return {}
+    token_file = os.environ[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR]
+    try:
+        provider = resolve_workload_exchange_provider(base_url=base_url, subject_token_file=Path(token_file))
+        return {"Authorization": f"Bearer {provider.get_access_token()}"}
+    except Exception:
+        logger.warning(
+            "Could not exchange the workload identity token for telemetry export; "
+            "the trajectory will be posted without credentials.",
+            exc_info=True,
+        )
+        return {}
 
 
 def _header_envvar(header_name: str) -> str:

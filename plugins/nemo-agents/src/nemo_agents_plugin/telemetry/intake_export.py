@@ -17,14 +17,65 @@ directly, so it names environment variables the exporter reads instead.
 from __future__ import annotations
 
 import logging
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
+import nemo_fabric as fabric
 from nemo_agents_plugin.agent_config import TelemetryConfig
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
 INTAKE_ATIF_INGEST_PATH = "/apis/intake/v2/workspaces/{workspace}/ingest/atif"
+
+
+def supports_intake_atif_export(config: dict[str, Any], *, base_dir: Path | None = None) -> bool:
+    """Whether the agent's adapter declares that Relay can export ATIF for it.
+
+    Adapters advertise this in their descriptor's ``telemetry.providers``, and
+    Fabric rejects a relay configuration outright for one that does not -- so
+    wiring without asking turns "this agent cannot be traced" into "this agent
+    cannot run". The ``atif`` output is checked too: an adapter may support
+    Relay for OpenTelemetry alone, and ATIF is what this wires.
+
+    Anything we cannot answer -- a config that will not validate, a plan that
+    fails -- returns False. Those failures belong to whoever runs the agent
+    next, reported with their own diagnostics; here they only mean we do not
+    know enough to wire telemetry.
+    """
+    try:
+        from nemo_agents_plugin.agent_config import AgentConfig
+        from nemo_agents_plugin.fabric.translator import translate_agent_config
+
+        agent_config = AgentConfig.model_validate(config)
+        with _plan_directory(base_dir) as resolved_base:
+            plan = fabric.Fabric().plan(translate_agent_config(agent_config), base_dir=resolved_base)
+        descriptor = plan.to_dict().get("adapter_descriptor") or {}
+        relay = descriptor.get("descriptor", descriptor).get("telemetry", {}).get("providers", {}).get("relay")
+    except Exception:
+        logger.warning("Could not read adapter telemetry support; the agent will run untraced.", exc_info=True)
+        return False
+
+    if relay is None:
+        logger.info("Adapter does not support Relay telemetry; the agent will run untraced.")
+        return False
+    if "atif" not in (relay.get("outputs") or []):
+        logger.info("Adapter supports Relay but not its ATIF output; the agent will run untraced.")
+        return False
+    return True
+
+
+@contextmanager
+def _plan_directory(base_dir: Path | None) -> Iterator[Path]:
+    """Planning needs somewhere to resolve against; callers mid-run already have one."""
+    if base_dir is not None:
+        yield base_dir
+        return
+    with tempfile.TemporaryDirectory() as scratch:
+        yield Path(scratch)
 
 
 def configure_intake_atif_export(
@@ -83,6 +134,11 @@ def configure_intake_atif_export(
         storage["header_env"] = dict(header_env)
 
     atif = dict(telemetry.atif or {})
+    if atif.get("enabled") is False:
+        # Declining ATIF while leaving telemetry on is a real choice -- an agent
+        # may want only OTel -- and overriding it would be the opposite of
+        # preserving an explicit declaration.
+        return False
     atif["enabled"] = True
     atif["storage"] = [storage]
 

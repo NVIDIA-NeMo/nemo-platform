@@ -1161,7 +1161,11 @@ async def test_deploying_one_config_twice_does_not_carry_the_first_workspace_ove
         "config_format": "nemo-agents-spec-v1",
         "name": "fabric-agent",
         "default_harness": "main",
-        "harnesses": {"main": {"provider": "codex", "model": {"provider": "openai", "model": "m"}}},
+        # A config the telemetry guard can actually plan: it validates as
+        # spec-v1 and names a harness whose adapter advertises Relay ATIF.
+        "harnesses": {"main": {"kind": "hermes"}},
+        "models": {"default": {"provider": "platform", "model": "default/m"}},
+        "environment": {"provider": "local"},
     }
 
     with patch("nemo_agents_plugin.runner.deployments_backend.get_base_url", return_value="http://localhost:8080"):

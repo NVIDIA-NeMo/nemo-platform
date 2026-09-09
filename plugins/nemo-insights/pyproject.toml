@@ -11,6 +11,8 @@ dependencies = [
   "httpx",
   "nemo-fabric-adapter-contract>=0.3.0b1",
   "nemo-fabric-adapters-common>=0.3.0b1",
+  # Imported by the Fabric adapter to activate the Relay config Fabric resolves.
+  "nemo-relay>=0.7,<0.8",
   "nemo-platform",
   "nemo-platform-plugin",
   "nooa>=0.0.9",
