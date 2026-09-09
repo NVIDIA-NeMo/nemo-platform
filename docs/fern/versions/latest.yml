@@ -42,6 +42,8 @@ navigation:
         contents:
           - page: Deploy Agents
             path: ../../agents/deploy-agents.mdx
+          - page: Execute Agents as Jobs
+            path: ../../agents/execute-agent-jobs.mdx
           - page: Observe Agents
             path: ../../agents/observability.mdx
           - section: Optimize Agents
