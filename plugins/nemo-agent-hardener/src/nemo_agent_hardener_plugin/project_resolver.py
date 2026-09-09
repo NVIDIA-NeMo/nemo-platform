@@ -219,8 +219,11 @@ def inspect_project(project_root: Path, *, dockerfile: str | None = None) -> dic
     relative = [str(path.relative_to(project_root)) for path in candidates]
 
     if dockerfile:
-        chosen = (project_root / dockerfile).resolve()
-        if not chosen.is_relative_to(project_root.resolve()) or not chosen.is_file():
+        # Kept unresolved so the `relative_to(project_root)` below still works when project_root
+        # itself runs through a symlink (macOS puts temp dirs under /var -> /private/var). Only the
+        # containment check resolves, and it resolves *both* sides.
+        chosen = project_root / dockerfile
+        if not chosen.resolve().is_relative_to(project_root.resolve()) or not chosen.is_file():
             return {
                 "dockerfiles": relative,
                 "unresolved": ["dockerfile"],

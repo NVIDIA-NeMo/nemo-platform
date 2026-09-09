@@ -152,6 +152,25 @@ def test_a_dockerfile_path_that_escapes_the_bundle_is_refused(tmp_path: Path):
     assert any("not a file in the uploaded bundle" in warning for warning in derived["warnings"])
 
 
+def test_a_named_dockerfile_resolves_through_a_symlinked_project_root(tmp_path: Path):
+    """The containment check must not leave `chosen` resolved while project_root is not.
+
+    macOS puts temp dirs under /var, which is a symlink to /private/var — and the API inspects an
+    uploaded bundle from exactly such a temp dir. Comparing a resolved path against an unresolved
+    root made `relative_to` raise, surfacing as a 400 "could not read the project bundle".
+    """
+    real = tmp_path / "real_bundle"
+    real.mkdir()
+    (real / "Dockerfile").write_text(FABRIC_DOCKERFILE, encoding="utf-8")
+    linked = tmp_path / "linked_bundle"
+    linked.symlink_to(real, target_is_directory=True)
+
+    derived = inspect_project(linked, dockerfile="Dockerfile")
+
+    assert derived["dockerfile"] == "Dockerfile"
+    assert "dockerfile" not in derived["unresolved"]
+
+
 def test_vendored_dockerfiles_do_not_create_ambiguity(tmp_path: Path):
     """A Dockerfile under .venv or node_modules is not the agent's own."""
     (tmp_path / "Dockerfile").write_text(FABRIC_DOCKERFILE, encoding="utf-8")
