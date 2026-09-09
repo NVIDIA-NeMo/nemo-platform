@@ -104,7 +104,7 @@ Same rule for `nemo jobs list-execution-profiles -f json`: parse stdout only; us
 
 ## Verb is backend-specific (both submit-only)
 
-- **Automodel** and **Unsloth** both use **`submit` only**. `nemo customization <plugin> run …` hard-fails with a pointer to `submit`.
+- **Automodel**, **Unsloth**, and **RL** use **`submit` only**. Use `nemo customization <plugin> submit …`; these backends expose no local `run` verb.
 - Dataset refs in job JSON: `default/<fileset>` (automodel: `dataset.training` / `dataset.validation`; unsloth: `dataset.path` / optional `dataset.validation_path`).
 
 ## Gated HuggingFace models
@@ -285,7 +285,6 @@ Set `jobs.executors.docker.launcher_tool_path` in `~/.nemo/config.yaml` to the *
 
 | Error / symptom | Cause | Fix |
 |-----------------|-------|-----|
-| `Unsloth does not support local run` | Used `run` instead of `submit` | `nemo customization unsloth submit <job.json> -w <workspace>` |
 | `Unsloth training requires platform.runtime: docker` | Platform not configured for Docker GPU jobs | Start platform with Docker runtime and a GPU execution profile |
 | Unknown execution profile | Default `gpu` profile missing or wrong | Re-list profiles; pass `--profile <exact-name>` on submit |
 | Missing `nmp-unsloth-training` image / `Failed to pull image` / `manifest unknown` | Image not on the **platform host's** Docker daemon | **Remote platform** (`NMP_BASE_URL` not localhost): tell user to build on the target — **do not** `docker build` locally. **Local platform**: build on same host; see **Missing training images** above and `docker/unsloth/README.md` |
@@ -307,7 +306,7 @@ Shared:
 | Upload | `nemo files upload <local> <fileset> --workspace default --remote-path train.jsonl` |
 | List files | `nemo files list <fileset> --workspace default` |
 | Create model | `nemo models create <name> --workspace default --exist-ok --input-data '<json>'` |
-| Poll job | `nemo jobs get-status <automodel\|unsloth>-<job-id>` |
+| Poll job | `nemo jobs get-status <automodel\|unsloth\|rl>-<job-id>` |
 
 Automodel:
 
@@ -324,6 +323,5 @@ Unsloth:
 | Submit | `nemo customization unsloth submit <job.json> --workspace default [--profile P] [--cluster C]` |
 | Status | `nemo jobs get-status unsloth-<job-id>` |
 | Live schema | `nemo customization unsloth explain` |
-| Run (disabled) | `nemo customization unsloth run …` → hard-fails; use `submit` |
 
 All backends return a job id from `submit` — poll until top-level status is terminal (`completed`, `error`, or `cancelled`).

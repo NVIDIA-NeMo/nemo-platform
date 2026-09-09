@@ -9,6 +9,8 @@ Ported from https://github.com/NVIDIA/NeMo-Agent-Toolkit/blob/main/packages/nvid
 from __future__ import annotations
 
 DEFAULT_SCORING_INSTRUCTIONS = (
+    "Every score is a decimal number on a 0.0 to 1.0 scale, where 0.0 is the lowest and 1.0 is the highest. "
+    "Never use a 0-10 or 0-100 scale. "
     "The coverage score is a measure of how well the generated answer covers the critical aspects mentioned in the "
     "expected answer. A low coverage score indicates that the generated answer misses critical aspects of the "
     "expected answer. A middle coverage score indicates that the generated answer covers some of the must-haves "

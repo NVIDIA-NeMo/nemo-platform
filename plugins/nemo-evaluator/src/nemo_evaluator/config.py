@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from nemo_platform_plugin.config import NemoConfig
+from nemo_platform_plugin.config import NemoConfig, get_platform_config
 from pydantic import Field
 
 
@@ -20,7 +20,8 @@ class EvaluatorConfig(NemoConfig):
     gym_tasks_image: str | None = Field(
         default=None,
         description=(
-            "Optional fully qualified image reference for Gym agent-evaluation jobs. Override with "
+            "Optional fully qualified image reference for colocated Gym agent-evaluation jobs. Sandboxed Gym "
+            "jobs use the platform CPU tasks image and launch Gym in `sandbox_runtime_image`. Override with "
             "NEMO_EVALUATOR_GYM_TASKS_IMAGE; when set, this bypasses platform image registry/tag qualification."
         ),
     )
@@ -116,3 +117,4 @@ def get_config() -> EvaluatorConfig:
 
 
 config = get_config()
+platform_config = get_platform_config()

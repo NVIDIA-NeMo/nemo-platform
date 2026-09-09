@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from collections.abc import Mapping
 from typing import Any, ClassVar, Literal
 
@@ -31,6 +30,7 @@ from nemo_evaluator_sdk.metrics.protocol import (
     MetricOutputSpec,
     MetricResult,
 )
+from nemo_evaluator_sdk.metrics.utils import as_finite_float
 from nemo_evaluator_sdk.values.atif import Trajectory
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_ATIF,
@@ -40,6 +40,7 @@ from nemo_evaluator_sdk.values.evidence import (
 )
 from nemo_evaluator_sdk.values.metrics import MetricBase
 from nemo_evaluator_sdk.values.otlp import span_text_strings
+from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,7 @@ async def _atif_used(evidence: CandidateEvidence, name: str, locations: list[str
     return any(_trajectory_references(trajectory, location) for location in locations)
 
 
-def _otlp_references(resource_spans: list[dict[str, Any]], needle: str) -> bool:
+def _otlp_references(resource_spans: list[ResourceSpans], needle: str) -> bool:
     """Whether any string attribute on the trace's spans or events contains ``needle``."""
     return any(needle in blob for blob in span_text_strings(resource_spans))
 
@@ -259,7 +260,7 @@ class TrialMeasurements(BaseModel):
         return cls(
             **tokens,
             runtime_sec=_runtime_sec(metadata),
-            cost_usd=_as_float(metadata.get("cost_usd")),
+            cost_usd=as_finite_float(metadata.get("cost_usd")),
             reward=_reward(metadata, passed),
             passed=passed,
         )
@@ -290,19 +291,6 @@ def _as_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
     return value if isinstance(value, int) else None
-
-
-def _as_float(value: Any) -> float | None:
-    # bool is an int subclass; never treat True/False as a measurement. NaN, the infinities, and
-    # integers too large to represent are rejected too: none can be serialised onto the wire, so
-    # recording one would fail the publish of an otherwise good trial.
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return None
-    try:
-        number = float(value)
-    except OverflowError:
-        return None
-    return number if math.isfinite(number) else None
 
 
 def _runtime_sec(metadata: Mapping[str, Any]) -> float | None:

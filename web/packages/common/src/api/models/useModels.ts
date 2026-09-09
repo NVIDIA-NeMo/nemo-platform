@@ -21,25 +21,6 @@ export const BASIC_ALL_MODELS_DROPDOWN_FILTER: ModelsListModelsParams = {
   sort: 'name',
 };
 
-/**
- * Query params that fetch only prompt-tuneable models.
- *
- * A model is prompt-tuneable when ALL of:
- *   1. It is a base model (base_model = false -> no parent)
- *   2. It has a NIM deployment with lora_enabled = true
- *
- * The backend's lora_enabled filter queries ModelDeploymentConfig.model_spec,
- * so conditions 2-4 of the flowchart (has deployment, is NIM, lora_enabled) are
- * all satisfied by lora_enabled: true.
- */
-export const QUERY_PROMPT_TUNEABLE_MODELS: ModelsListModelsParams = {
-  ...BASIC_ALL_MODELS_DROPDOWN_FILTER,
-  filter: {
-    base_model: false,
-    lora_enabled: true,
-  },
-};
-
 export interface UseModelsOptions {
   queryOptions?: Omit<UseQueryOptions<ModelEntitysPage, Error>, 'queryFn' | 'queryKey'>;
   query?: ModelsListModelsParams;

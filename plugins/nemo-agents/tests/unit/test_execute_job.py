@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -13,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from nemo_agents_plugin.agent_config import AgentConfig
 from nemo_agents_plugin.entities import (
     Agent,
     AgentComputeSpec,
@@ -26,6 +28,7 @@ from nemo_agents_plugin.entities import (
     McpFulfillment,
 )
 from nemo_agents_plugin.fabric.runtime import FabricRuntimeResult
+from nemo_agents_plugin.jobs import execute as execute_module
 from nemo_agents_plugin.jobs.execute import (
     DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
     FABRIC_ERROR_RESULT_NAME,
@@ -38,6 +41,8 @@ from nemo_agents_plugin.jobs.execute import (
     ExecuteAgentJobConfig,
     ExecuteAgentStepConfig,
     ResolvedAgentConfig,
+    _configure_intake_telemetry,
+    _log_agent_stderr,
 )
 from nemo_agents_plugin.tasks.execute.workdir import (
     AgentWorkdir,
@@ -46,6 +51,9 @@ from nemo_agents_plugin.tasks.execute.workdir import (
     materialize_agent_workdir,
     validate_agent_workdir,
 )
+from nemo_agents_plugin.telemetry import intake_export
+from nemo_agents_plugin.telemetry.intake_export import supports_intake_atif_export
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from nemo_platform_plugin.job_context import JobContext
@@ -1234,6 +1242,7 @@ def test_execute_job_create_route_stores_canonical_step_config() -> None:
         "environment": None,
         "workdir": {"base_workdir": "source#project", "artifact_mounts": []},
         "timeout_seconds": DEFAULT_AGENT_EXECUTION_TIMEOUT_SECONDS,
+        "auto_telemetry": True,
         "extension": None,
     }
     assert body.spec["workdir"] == {"base_workdir": "default/source#project/", "artifact_mounts": []}
@@ -1423,3 +1432,630 @@ def test_agent_entity_may_still_hold_a_nat_workflow_config() -> None:
     entity = Agent(name="legacy", workspace="default", config={"workflow": {}})
 
     assert entity.config_format == "nat-workflow-v1"
+
+
+def test_run_failed_fabric_result_reports_the_reason_in_the_log(
+    ctx: JobContext, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A Fabric result that reports failure never raises, so this is the only
+    place the reason is stated. Without it the step exits non-zero having
+    logged nothing at all."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(
+            status="failed",
+            error={"stage": "invoke", "code": "insights_analyst_failed", "message": "LLM API error"},
+            runtime_id="runtime-1",
+            invocation_id="invocation-1",
+        )
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    logged = caplog.text
+    assert "LLM API error" in logged
+    assert "insights_analyst_failed" in logged
+    assert "runtime-1" in logged
+    assert "invocation-1" in logged
+
+
+def test_run_logs_the_agent_stderr_when_the_run_fails(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """Fabric captures the agent process's stderr to a file, so on failure the
+    real traceback reaches the container's own logs nowhere else."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        # Mirrors the layout Fabric creates: a runtime/invocation directory it
+        # names itself, under the artifacts dir.
+        invocation_dir = request.base_dir / "artifacts" / ".fabric" / "runtime-1" / "invocation-1"
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+        (invocation_dir / "stderr.txt").write_text("Traceback (most recent call last):\nValueError: the actual cause\n")
+        return FabricRuntimeResult(status="failed", error={"message": "agent failed"})
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "ValueError: the actual cause" in caplog.text
+
+
+def test_run_logs_the_agent_stderr_when_fabric_raises(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """Fabric produced no result, so the agent's stderr is the only account of
+    how far it got - which is the case telemetry cannot cover."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        invocation_dir = request.base_dir / "artifacts" / ".fabric" / "runtime-1" / "invocation-1"
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+        (invocation_dir / "stderr.txt").write_text("got as far as loading traces\n")
+        raise TimeoutError("fabric timed out")
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        pytest.raises(TimeoutError),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "got as far as loading traces" in caplog.text
+
+
+def test_run_does_not_log_agent_stderr_on_success(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """A healthy run's execution record belongs in telemetry, which carries it
+    live and structured; duplicating it into the job log is noise."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        invocation_dir = request.base_dir / "artifacts" / ".fabric" / "runtime-1" / "invocation-1"
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+        (invocation_dir / "stderr.txt").write_text("routine chatter nobody needs\n")
+        return FabricRuntimeResult(status="succeeded", response="done")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert result["status"] == "completed"
+    assert "routine chatter nobody needs" not in caplog.text
+
+
+def test_run_ignores_the_agent_stdout_file(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """``stdout.txt`` is the adapter's protocol channel - a single JSON response
+    already saved as ``fabric_run_result`` - not a log stream."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        invocation_dir = request.base_dir / "artifacts" / ".fabric" / "runtime-1" / "invocation-1"
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+        (invocation_dir / "stdout.txt").write_text('{"response":"the protocol payload"}\n')
+        (invocation_dir / "stderr.txt").write_text("the real diagnostics\n")
+        return FabricRuntimeResult(status="failed", error={"message": "agent failed"})
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "the real diagnostics" in caplog.text
+    assert "the protocol payload" not in caplog.text
+
+
+def test_run_logs_the_whole_agent_stderr_for_realistic_output(
+    ctx: JobContext, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The byte cap exists for the pathological case only; ordinary output,
+    however long, must arrive complete."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+    long_stderr = "\n".join(f"line {n}" for n in range(5000))
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        invocation_dir = request.base_dir / "artifacts" / ".fabric" / "runtime-1" / "invocation-1"
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+        (invocation_dir / "stderr.txt").write_text(long_stderr)
+        return FabricRuntimeResult(status="failed", error={"message": "agent failed"})
+
+    with (
+        caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "line 0" in caplog.text
+    assert "line 4999" in caplog.text
+
+
+def test_run_tolerates_a_failure_with_no_agent_stderr(ctx: JobContext) -> None:
+    """The dump runs on an already-failing path; it must not replace the error."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="failed", error={"message": "agent failed"})
+
+    with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert result["status"] == "failed"
+
+
+def test_log_agent_stderr_reports_an_empty_stream(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """An empty stderr is itself a finding: the agent logged nothing at all."""
+    (tmp_path / "stderr.txt").write_text("   \n")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "was empty" in caplog.text
+
+
+def test_log_agent_stderr_survives_a_missing_artifacts_directory() -> None:
+    """Never the reason a failing run fails differently."""
+    _log_agent_stderr(Path("/nonexistent/artifacts"))
+
+
+def test_run_logs_progress_through_a_successful_run(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """A healthy run should account for itself: which agent, that it was
+    invoked, and what came back."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello", timeout_seconds=300),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="succeeded", response="done")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Executing agent default/calc (timeout 300s)." in caplog.text
+    assert "Invoking agent default/calc." in caplog.text
+    assert "returned status=succeeded after" in caplog.text
+
+
+def test_run_names_the_agent_before_validating_its_config(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """A config that fails to parse must still say which agent it belonged to."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=ResolvedAgentConfig(
+            name="calc",
+            workspace="default",
+            config={"not": "a valid agent config"},
+            config_format="nemo-agents-spec-v1",
+        ),
+    )
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        pytest.raises(Exception),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Executing agent default/calc" in caplog.text
+
+
+def test_run_does_not_announce_workdir_staging_when_there_is_none(
+    ctx: JobContext, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Most runs stage nothing; the line would be noise."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        return FabricRuntimeResult(status="succeeded", response="done")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Staging workdir" not in caplog.text
+
+
+def test_run_logs_elapsed_time_when_fabric_raises(ctx: JobContext, caplog: pytest.LogCaptureFixture) -> None:
+    """How long a run got before dying is part of diagnosing a timeout."""
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello"),
+        agent=_resolved_agent(),
+    )
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        raise TimeoutError("fabric timed out")
+
+    with (
+        caplog.at_level(logging.INFO, logger="nemo_agents_plugin.jobs.execute"),
+        patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke),
+        pytest.raises(TimeoutError),
+    ):
+        ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
+
+    assert "Fabric invocation failed for agent default/calc after" in caplog.text
+
+
+def test_log_agent_stderr_tails_a_stream_over_the_cap(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The artifacts dir is agent-writable, so an unbounded read here could
+    exhaust the task's memory while it reports a failure - destroying the very
+    diagnostics this produces."""
+    monkeypatch.setattr("nemo_agents_plugin.jobs.execute._MAX_LOGGED_STDERR_BYTES", 200)
+    (tmp_path / "stderr.txt").write_text("A" * 5000 + "\nthe failure is at the end\n")
+
+    with caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "the failure is at the end" in caplog.text, "the tail is what matters for a long run"
+    assert "earlier bytes omitted" in caplog.text
+    assert "A" * 1000 not in caplog.text, "the whole file was read despite the cap"
+
+
+def test_log_agent_stderr_caps_the_number_of_files(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An agent can write as many of these as it likes into its artifacts dir."""
+    monkeypatch.setattr("nemo_agents_plugin.jobs.execute._MAX_LOGGED_STDERR_FILES", 2)
+    for n in range(5):
+        run_dir = tmp_path / f"run-{n}"
+        run_dir.mkdir()
+        (run_dir / "stderr.txt").write_text(f"stream {n}\n")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "Found 5 agent stderr files" in caplog.text
+    assert "stream 0" in caplog.text
+    assert "stream 1" in caplog.text
+    assert "stream 4" not in caplog.text
+
+
+def test_log_agent_stderr_does_not_flag_truncation_when_it_fits(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A run under the cap must read as complete, with no misleading notice."""
+    (tmp_path / "stderr.txt").write_text("short and complete\n")
+
+    with caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "short and complete" in caplog.text
+    assert "omitted" not in caplog.text
+
+
+def test_log_agent_stderr_reports_byte_counts_not_character_counts(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cap is a byte budget, so the notice has to be in bytes: multibyte
+    UTF-8 would otherwise under-report by up to 4x."""
+    monkeypatch.setattr("nemo_agents_plugin.jobs.execute._MAX_LOGGED_STDERR_BYTES", 400)
+    # 2 bytes per character, so a character count would read as half of this.
+    (tmp_path / "stderr.txt").write_text("é" * 1000, encoding="utf-8")
+
+    with caplog.at_level(logging.ERROR, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "last 400 bytes" in caplog.text
+    assert "1600 earlier bytes omitted" in caplog.text
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="mkfifo is not available on this platform")
+def test_log_agent_stderr_rejects_a_fifo_without_blocking(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A FIFO with no writer would block this task forever - while it is trying
+    to report a failure. The artifacts dir is agent-writable, so the file type
+    is not ours to trust."""
+    os.mkfifo(tmp_path / "stderr.txt")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "is not a regular file" in caplog.text
+
+
+def test_log_agent_stderr_refuses_to_follow_a_symlink(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """``st_size`` on a symlinked character device reads as 0, so it would pass
+    any size cap and then read without bound (``/dev/zero`` being the obvious
+    case). Refusing the symlink outright is what closes that."""
+    (tmp_path / "real.txt").write_text("some diagnostics\n")
+    (tmp_path / "stderr.txt").symlink_to(tmp_path / "real.txt")
+
+    with caplog.at_level(logging.WARNING, logger="nemo_agents_plugin.jobs.execute"):
+        _log_agent_stderr(tmp_path)
+
+    assert "Could not read agent stderr" in caplog.text
+    assert "some diagnostics" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Intake telemetry auto-configuration
+# ---------------------------------------------------------------------------
+
+
+def _fabric_agent_config(**overrides: Any) -> dict[str, Any]:
+    return {
+        "config_format": "nemo-agents-spec-v1",
+        "name": "demo-agent",
+        "default_harness": "h",
+        "harnesses": {"h": {"kind": "hermes"}},
+        "models": {"default": {"provider": "platform", "model": "default/m"}},
+        "environment": {"provider": "local"},
+        **overrides,
+    }
+
+
+def test_telemetry_is_pointed_at_the_workspace_intake_ingest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only the task knows the platform URL reachable from its own pod."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    config = _fabric_agent_config()
+
+    _configure_intake_telemetry(config, workspace="team-a", sdk=None)
+
+    telemetry = config["telemetry"]
+    assert telemetry["enabled"] is True
+    assert telemetry["provider"] == "relay"
+    assert telemetry["agent_name"] == "demo-agent"
+    storage = telemetry["atif"]["storage"][0]
+    assert storage["type"] == "http"
+    assert storage["endpoint"] == "http://nemo-platform-api:8080/apis/intake/v2/workspaces/team-a/ingest/atif"
+    # The wired config still has to be a valid agent config.
+    assert AgentConfig.model_validate(config).telemetry.enabled is True
+
+
+def test_telemetry_credentials_go_to_the_environment_not_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fabric writes the config into artifacts that are uploaded as a job result."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    # Registered before the call so pytest unsets it afterwards: the code writes
+    # this variable directly, and monkeypatch can only restore what it saw first.
+    header_var = "NMP_AGENT_TELEMETRY_HEADER_X_NMP_PRINCIPAL_ID"
+    monkeypatch.setenv(header_var, "overwritten-by-the-call")
+    sdk = cast(NeMoPlatform, SimpleNamespace(_custom_headers={"X-NMP-Principal-Id": "service:agents"}))
+    config = _fabric_agent_config()
+
+    _configure_intake_telemetry(config, workspace="default", sdk=sdk)
+
+    storage = config["telemetry"]["atif"]["storage"][0]
+    assert storage["header_env"] == {"X-NMP-Principal-Id": "NMP_AGENT_TELEMETRY_HEADER_X_NMP_PRINCIPAL_ID"}
+    assert "headers" not in storage, "an inline header would land in a downloadable artifact"
+    assert os.environ[header_var] == "service:agents"
+
+
+@pytest.mark.parametrize(
+    ("output", "declaration"),
+    [
+        ("atof", {"enabled": True, "sinks": [{"type": "stream", "url": "https://mine/events"}]}),
+        ("opentelemetry", {"endpoints": [{"type": "gen_ai", "endpoint": "https://mine/otlp"}]}),
+    ],
+)
+def test_another_outputs_destination_does_not_speak_for_atif(
+    monkeypatch: pytest.MonkeyPatch, output: str, declaration: dict[str, Any]
+) -> None:
+    """Declaring a collector is an opinion about that output, not about the trajectory.
+
+    Leaving ATIF unset is no opinion about ATIF, so the Intake default applies
+    and the agent keeps the destination it did choose.
+    """
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    config = _fabric_agent_config(telemetry={"enabled": True, output: declaration})
+
+    _configure_intake_telemetry(config, workspace="team-a", sdk=None)
+
+    storage = config["telemetry"]["atif"]["storage"][0]
+    assert storage["endpoint"] == "http://nemo-platform-api:8080/apis/intake/v2/workspaces/team-a/ingest/atif"
+    assert config["telemetry"][output] == declaration
+
+
+def test_an_agent_that_names_its_own_destination_keeps_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An explicit export destination beats an inferred one."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    mine = {"type": "http", "endpoint": "https://elsewhere.example/ingest"}
+    config = _fabric_agent_config(telemetry={"enabled": True, "atif": {"enabled": True, "storage": [mine]}})
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert config["telemetry"]["atif"]["storage"] == [mine]
+
+
+def test_telemetry_disabled_on_the_agent_is_an_opt_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """False means no, as distinct from a config that never mentioned telemetry."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    config = _fabric_agent_config(telemetry={"enabled": False})
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert config["telemetry"] == {"enabled": False}
+
+
+def test_an_agent_that_only_names_itself_is_still_wired(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The point of the tri-state: naming yourself is not configuring an export."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    config = _fabric_agent_config(telemetry={"agent_name": "my-agent-name"})
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert config["telemetry"]["enabled"] is True
+    assert config["telemetry"]["agent_name"] == "my-agent-name"
+
+
+def test_telemetry_is_skipped_when_no_platform_url_is_reachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A run untraced beats a run that fails over its own tracing."""
+    monkeypatch.delenv("NMP_BASE_URL", raising=False)
+    config = _fabric_agent_config()
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert "telemetry" not in config
+
+
+def test_an_unrecognized_telemetry_section_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deployments never model-validate, so a stray key must not fail the whole config."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    config = _fabric_agent_config(telemetry={"enabled": True, "not_a_real_field": 1})
+
+    _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert config["telemetry"] == {"enabled": True, "not_a_real_field": 1}
+
+
+def test_relay_support_is_read_from_the_adapter_descriptor(tmp_path: Path) -> None:
+    """The bundled harnesses advertise relay with an ATIF output."""
+    assert supports_intake_atif_export(_fabric_agent_config(), base_dir=tmp_path) is True
+
+
+def test_an_unplannable_config_is_not_wired(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """We cannot know, so we do not wire; the invocation reports the real problem."""
+    config = _fabric_agent_config(harnesses={"h": {"kind": "codex"}})
+
+    with caplog.at_level(logging.WARNING):
+        assert supports_intake_atif_export(config, base_dir=tmp_path) is False
+
+    assert "Could not read adapter telemetry support" in caplog.text
+
+
+def test_an_adapter_without_the_atif_output_is_not_wired(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relay support alone is not enough: an adapter may offer only OpenTelemetry."""
+    otel_only = {"providers": {"relay": {"outputs": ["otel"]}}}
+
+    class _Plan:
+        @staticmethod
+        def to_dict() -> dict[str, Any]:
+            return {"adapter_descriptor": {"descriptor": {"telemetry": otel_only}}}
+
+    monkeypatch.setattr(intake_export.fabric, "Fabric", lambda: SimpleNamespace(plan=lambda *a, **k: _Plan()))
+
+    with caplog.at_level(logging.INFO):
+        assert supports_intake_atif_export(_fabric_agent_config(), base_dir=tmp_path) is False
+
+    assert "not its ATIF output" in caplog.text
+
+
+def test_declining_auto_telemetry_submits_the_agent_config_as_written(
+    ctx: JobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The request governs server-side filling; the agent config governs the agent.
+
+    An agent that declares its own export still exports -- saying a run should
+    not be traced is the agent config's job, and an inline agent can say it.
+    Driven through ``run`` so the opt-out branch is what is under test, rather
+    than the request parsing around it.
+    """
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    # ATIF is left unset, so this config *would* be wired -- otherwise the test
+    # would pass whether or not auto_telemetry was honoured.
+    declared = {"enabled": True, "opentelemetry": {"endpoints": [{"type": "gen_ai", "endpoint": "https://mine"}]}}
+    agent = _resolved_agent()
+    agent.config["telemetry"] = declared
+    spec = ExecuteAgentStepConfig(
+        request=ExecuteAgentJobConfig(agent="calc", input="hello", auto_telemetry=False),
+        agent=agent,
+    )
+    seen: dict[str, Any] = {}
+
+    async def _invoke(request: Any) -> FabricRuntimeResult:
+        seen["telemetry"] = request.agent_config.telemetry.model_dump(exclude_none=True)
+        return FabricRuntimeResult(status="succeeded", output={"answer": "done"})
+
+    with patch("nemo_agents_plugin.jobs.execute.invoke_agent_config_request_once", _invoke):
+        result = ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=MagicMock())
+
+    assert result["status"] == "completed"
+    # Reached Fabric exactly as declared: no Intake destination added beside it.
+    assert "atif" not in seen["telemetry"]
+    assert seen["telemetry"]["opentelemetry"] == declared["opentelemetry"]
+
+
+def test_workload_identity_jobs_export_with_a_bearer_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The SDK adds this per request; Relay's raw POST to Intake does not go through it."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    token_file = tmp_path / "subject-token"
+    token_file.write_text("subject", encoding="utf-8")
+    monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("NMP_AGENT_TELEMETRY_HEADER_AUTHORIZATION", "unset")
+    monkeypatch.setattr(
+        execute_module,
+        "resolve_workload_exchange_provider",
+        lambda **_kwargs: SimpleNamespace(get_access_token=lambda: "exchanged-token"),
+    )
+    sdk = cast(NeMoPlatform, SimpleNamespace(_custom_headers={"X-NMP-Internal": "true"}))
+    config = _fabric_agent_config()
+
+    _configure_intake_telemetry(config, workspace="default", sdk=sdk)
+
+    storage = config["telemetry"]["atif"]["storage"][0]
+    assert storage["header_env"]["Authorization"] == "NMP_AGENT_TELEMETRY_HEADER_AUTHORIZATION"
+    assert os.environ["NMP_AGENT_TELEMETRY_HEADER_AUTHORIZATION"] == "Bearer exchanged-token"
+
+
+def test_a_failed_token_exchange_still_exports_rather_than_failing_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Telemetry is not worth failing an agent over."""
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    token_file = tmp_path / "subject-token"
+    token_file.write_text("subject", encoding="utf-8")
+    monkeypatch.setenv("NMP_WORKLOAD_IDENTITY_TOKEN_FILE", str(token_file))
+
+    def explode(**_kwargs: Any) -> Any:
+        raise RuntimeError("auth discovery unavailable")
+
+    monkeypatch.setattr(execute_module, "resolve_workload_exchange_provider", explode)
+    config = _fabric_agent_config()
+
+    with caplog.at_level(logging.WARNING):
+        _configure_intake_telemetry(config, workspace="default", sdk=None)
+
+    assert "Authorization" not in config["telemetry"]["atif"]["storage"][0].get("header_env", {})
+    assert "without credentials" in caplog.text
+
+
+def test_an_atif_block_turned_on_without_a_destination_is_filled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Turning ATIF on without a destination asks for one, rather than declaring one.
+
+    Otherwise exporting OpenTelemetry to your own collector would cost you the
+    platform trajectory, recoverable only by hand-writing the endpoint and
+    header names this wiring exists to spare people.
+    """
+    monkeypatch.setenv("NMP_BASE_URL", "http://nemo-platform-api:8080")
+    mine = {"endpoints": [{"type": "gen_ai", "endpoint": "https://mine/otlp"}]}
+    config = _fabric_agent_config(telemetry={"enabled": True, "atif": {"enabled": True}, "opentelemetry": mine})
+
+    _configure_intake_telemetry(config, workspace="team-a", sdk=None)
+
+    storage = config["telemetry"]["atif"]["storage"][0]
+    assert storage["endpoint"] == "http://nemo-platform-api:8080/apis/intake/v2/workspaces/team-a/ingest/atif"
+    assert config["telemetry"]["opentelemetry"] == mine, "the collector the agent chose is untouched"

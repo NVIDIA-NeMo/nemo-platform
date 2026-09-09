@@ -78,7 +78,7 @@ export const DeploymentsListRoute: FC = () => {
   const { deleteDeploymentAndConfig } = useDeleteDeploymentAndConfig(workspace);
 
   const handleCloseDetailsPanel = useCallback(() => {
-    navigate(getWorkspaceDeploymentsRoute(workspace), { replace: true });
+    navigate(getWorkspaceDeploymentsRoute(workspace), { replace: true, flushSync: true });
   }, [navigate, workspace]);
 
   const handleDeleteDeployment = useCallback(async () => {
@@ -86,7 +86,7 @@ export const DeploymentsListRoute: FC = () => {
     try {
       await deleteDeploymentAndConfig(deploymentToDelete);
       if (detailsPanelOpen && deploymentToDelete.name === deploymentNameFromPath) {
-        navigate(getWorkspaceDeploymentsRoute(workspace), { replace: true });
+        navigate(getWorkspaceDeploymentsRoute(workspace), { replace: true, flushSync: true });
       }
       return true;
     } catch {
@@ -183,7 +183,7 @@ export const DeploymentsListRoute: FC = () => {
             const next = new URLSearchParams(searchParams);
             next.delete('model');
             next.delete('fileset');
-            setSearchParams(next, { replace: true });
+            setSearchParams(next, { replace: true, flushSync: true });
           }
         }}
       />

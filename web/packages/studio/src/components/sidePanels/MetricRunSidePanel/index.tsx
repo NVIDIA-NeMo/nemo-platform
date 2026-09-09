@@ -308,7 +308,7 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
       const job = await createEvaluateJob({ workspace, data: request });
       toast.success('Metric evaluation job created');
       onOpenChange(false);
-      navigate(getEvaluationResultDetailsRoute(workspace, job.name));
+      navigate(getEvaluationResultDetailsRoute(workspace, job.name), { flushSync: true });
     } catch (error) {
       const message = getErrorMessage(error as Error, 'Failed to create metric evaluation job');
       logger.error(`MetricRunSidePanel: ${message}`);

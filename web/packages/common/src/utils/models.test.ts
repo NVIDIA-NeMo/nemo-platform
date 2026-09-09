@@ -1,9 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ModelDeploymentStatus, type ModelEntity } from '@nemo/sdk/generated/platform/schema';
+import {
+  type Adapter,
+  FinetuningType,
+  ModelDeploymentStatus,
+  type ModelEntity,
+} from '@nemo/sdk/generated/platform/schema';
 
-import { getModelEntityChatStatus, groupModelsByWorkspace } from './models';
+import {
+  getModelEntityChatStatus,
+  groupModelsByWorkspace,
+  toInferenceModelEntityId,
+} from './models';
 
 const createModel = (overrides: Partial<ModelEntity> = {}): ModelEntity => ({
   id: 'test-id',
@@ -12,6 +21,56 @@ const createModel = (overrides: Partial<ModelEntity> = {}): ModelEntity => ({
   created_at: '2025-01-07T12:00:00Z',
   updated_at: '2025-01-07T12:00:00Z',
   ...overrides,
+});
+
+const createAdapter = (overrides: Partial<Adapter> = {}): Adapter => ({
+  name: 'test-adapter',
+  workspace: 'test-namespace',
+  fileset: 'test-namespace/test-adapter',
+  finetuning_type: FinetuningType.lora,
+  ...overrides,
+});
+
+describe('toInferenceModelEntityId', () => {
+  it('returns the plain entity ref when there is no adapter', () => {
+    const model = createModel({ workspace: 'default', name: 'qwen3-0.6b' });
+    expect(toInferenceModelEntityId(model)).toBe('default/qwen3-0.6b');
+    expect(toInferenceModelEntityId(model, null)).toBe('default/qwen3-0.6b');
+  });
+
+  it('builds the composite id the provider reconciler writes for an adapter', () => {
+    const model = createModel({ workspace: 'default', name: 'qwen3-0.6b' });
+    const adapter = createAdapter({ workspace: 'default', name: 'pirate-voice' });
+    expect(toInferenceModelEntityId(model, adapter)).toBe(
+      'default/qwen3-0.6b&adapters/default/pirate-voice'
+    );
+  });
+
+  it('carries the adapter workspace, which may differ from the base model workspace', () => {
+    const model = createModel({ workspace: 'nvidia', name: 'qwen3-0.6b' });
+    const adapter = createAdapter({ workspace: 'default', name: 'pirate-voice' });
+    expect(toInferenceModelEntityId(model, adapter)).toBe(
+      'nvidia/qwen3-0.6b&adapters/default/pirate-voice'
+    );
+  });
+
+  it('matches a served_models entry by identity', () => {
+    // This id exists to look up `provider.served_models`; the value that goes on
+    // the wire is that entry's `served_model_name`, never this.
+    const model = createModel({ workspace: 'default', name: 'qwen3-0.6b' });
+    const adapter = createAdapter({ workspace: 'default', name: 'pirate-voice' });
+    const servedModels = [
+      { model_entity_id: 'default/qwen3-0.6b', served_model_name: 'default/qwen3-0.6b' },
+      {
+        model_entity_id: 'default/qwen3-0.6b&adapters/default/pirate-voice',
+        served_model_name: 'default--pirate-voice',
+      },
+    ];
+    const match = servedModels.find(
+      (sm) => sm.model_entity_id === toInferenceModelEntityId(model, adapter)
+    );
+    expect(match?.served_model_name).toBe('default--pirate-voice');
+  });
 });
 
 describe('getModelEntityChatStatus', () => {
@@ -32,6 +91,39 @@ describe('getModelEntityChatStatus', () => {
     });
 
     expect(getModelEntityChatStatus(model)).toBe('pending');
+  });
+
+  it('skips the grace period for a freshly created model that already has an api_endpoint', () => {
+    // Autodiscovered from an external provider (e.g. build.nvidia.com): the endpoint is
+    // live the moment the entity exists, so there is no deployment to wait for.
+    vi.setSystemTime(new Date('2025-01-07T12:00:00Z').getTime());
+
+    const model = createModel({
+      created_at: '2025-01-07T11:57:00Z', // 3 minutes ago
+      api_endpoint: { url: 'https://integrate.api.nvidia.com/v1/chat/completions' },
+    });
+
+    expect(getModelEntityChatStatus(model)).toBe('enabled');
+  });
+
+  it('still applies the grace period to a fresh model with no api_endpoint', () => {
+    // Deployment-backed: the artifact genuinely is still being populated.
+    vi.setSystemTime(new Date('2025-01-07T12:00:00Z').getTime());
+
+    const model = createModel({ created_at: '2025-01-07T11:57:00Z' });
+
+    expect(getModelEntityChatStatus(model, { deploymentStatus: null })).toBe('pending');
+  });
+
+  it('still reports pending while the deployment chain is loading, endpoint or not', () => {
+    vi.setSystemTime(new Date('2025-01-07T12:00:00Z').getTime());
+
+    const model = createModel({
+      created_at: '2025-01-07T11:57:00Z',
+      api_endpoint: { url: 'https://integrate.api.nvidia.com/v1/chat/completions' },
+    });
+
+    expect(getModelEntityChatStatus(model, { deploymentLoading: true })).toBe('pending');
   });
 
   it('returns enabled when model created more than 5 minutes ago', () => {

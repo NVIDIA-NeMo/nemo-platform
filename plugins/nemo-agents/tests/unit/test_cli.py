@@ -187,7 +187,7 @@ def test_list_404_prints_request_context_and_hint() -> None:
     assert "route may not be deployed" in result.stderr
 
 
-def test_optimize_submit_targets_agents_route() -> None:
+def test_optimize_targets_agents_route() -> None:
     captured: dict[str, Any] = {}
 
     from nemo_platform_plugin.commands import add_job_commands
@@ -211,7 +211,6 @@ def test_optimize_submit_targets_agents_route() -> None:
             app,
             [
                 "optimize",
-                "submit",
                 "--optimize-config",
                 "/tmp/optimize.yml",
                 "--agent",
@@ -227,6 +226,82 @@ def test_optimize_submit_targets_agents_route() -> None:
     assert captured["workspace"] == "default"
     assert captured["spec"]["agent"] == "react-agent"
     assert captured["spec"]["optimize_config"] == "/tmp/optimize.yml"
+
+    legacy_result = CliRunner().invoke(app, ["optimize", "submit"])
+    assert legacy_result.exit_code == 2
+    assert "No such command 'submit'" in legacy_result.output
+
+
+def test_optimize_prepare_fileset_stays_under_optimize_command() -> None:
+    from nemo_platform_plugin.commands import add_job_commands
+
+    OptimizeJob = import_module("nemo_optimization.jobs.optimize").OptimizeJob
+
+    agents_cli = AgentsCLI()
+    app = agents_cli.get_cli()
+    add_job_commands(app, {"agents.optimize": OptimizeJob}, cli=agents_cli)
+
+    result = CliRunner().invoke(app, ["optimize", "prepare-fileset", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--source" in result.output
+    assert "--fileset" in result.output
+
+    top_level_result = CliRunner().invoke(app, ["prepare-fileset", "--help"])
+    assert top_level_result.exit_code != 0
+
+
+def test_agent_jobs_do_not_register_legacy_run_submit_verbs() -> None:
+    import click
+    from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchJob
+    from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
+    from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
+    from nemo_agents_plugin.jobs.execute import ExecuteAgentJob
+    from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
+    from nemo_agents_plugin.jobs.package_agent import PackageAgentJob
+    from nemo_platform_plugin.commands import add_job_commands
+    from nemo_platform_plugin.job import NemoJob
+    from typer.main import get_command
+
+    OptimizeJob = import_module("nemo_optimization.jobs.optimize").OptimizeJob
+    jobs: dict[str, type[NemoJob]] = {
+        "agents.analyze": AnalyzeBatchJob,
+        "agents.evaluate": EvaluateAgentJob,
+        "agents.evaluate-suite": EvaluateSuiteJob,
+        "agents.execute": ExecuteAgentJob,
+        "agents.optimize": OptimizeJob,
+        "agents.optimize-skills": OptimizeSkillsJob,
+        "agents.package-agent": PackageAgentJob,
+    }
+
+    agents_cli = AgentsCLI()
+    app = agents_cli.get_cli()
+    add_job_commands(app, jobs, cli=agents_cli)
+    command = get_command(app)
+
+    assert isinstance(command, click.Group)
+    flat_job_names = {job_cls.name for job_cls in jobs.values()} - {"optimize"}
+    for job_name in flat_job_names:
+        job_command = command.commands[job_name]
+        assert not isinstance(job_command, click.Group)
+        for legacy_verb in ("run", "submit"):
+            legacy_result = CliRunner().invoke(app, [job_name, legacy_verb])
+            assert legacy_result.exit_code == 2
+            assert "Got unexpected extra argument" in legacy_result.output
+
+    optimize_command = command.commands["optimize"]
+    assert isinstance(optimize_command, click.Group)
+    assert set(optimize_command.commands) == {"prepare-fileset"}
+
+    optimize_help = CliRunner().invoke(app, ["optimize", "--help"])
+    assert optimize_help.exit_code == 0, optimize_help.output
+    assert "Precedence:" in optimize_help.output
+
+    for job_cls in jobs.values():
+        job_command = command.commands[job_cls.name]
+        if isinstance(job_command, click.Group):
+            assert "run" not in job_command.commands
+            assert "submit" not in job_command.commands
 
 
 @pytest.mark.parametrize("placeholder", ["${NEMO_DEFAULT_MODEL}", "$NEMO_DEFAULT_MODEL"])

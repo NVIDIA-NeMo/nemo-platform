@@ -49,7 +49,7 @@ export const IntakeLayout: FC = () => {
           className="p-0"
           slotHeading={
             <>
-              Traces
+              Trace explorer
               <FeatureFlagBadge flag="intakeEnabled" />
             </>
           }
@@ -61,7 +61,7 @@ export const IntakeLayout: FC = () => {
             className="min-w-0 flex-1 overflow-visible"
             value={selectedTab}
             items={[
-              { value: 'traces', children: 'Traces', href: tracesRoute },
+              { value: 'traces', children: 'Trace runs', href: tracesRoute },
               { value: 'spans', children: 'Spans', href: spansRoute },
             ]}
             renderLink={(item) => <Link to={item.href!}>{item.children}</Link>}

@@ -44,13 +44,14 @@ import re
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from contextlib import closing
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from pkgutil import resolve_name
 from types import SimpleNamespace
-from typing import Any, Callable, ClassVar, Literal, Optional, cast
+from typing import Any, ClassVar, Literal, Optional, cast
 from urllib.parse import urlencode
 
 import click
@@ -222,7 +223,7 @@ class _LazyAgentCliGroup(NmpGroup):
         loaded.hidden = loaded.hidden or entry.hidden
         panel = getattr(loaded, "rich_help_panel", None)
         if panel is None or type(panel).__name__ == "DefaultPlaceholder":
-            loaded.rich_help_panel = entry.panel
+            setattr(loaded, "rich_help_panel", entry.panel)
         self.commands[cmd_name] = loaded
         return loaded
 
@@ -250,13 +251,17 @@ class AgentsCLI(NemoCLI):
         # Metadata-only discovery: reads entry-point names without importing
         # the plugin modules they point at. Actual imports happen lazily in
         # ``_LazyAgentCliGroup.get_command`` only for the subcommand resolved.
-        agents_callback.__nmp_lazy_agent_cli__ = {
-            name: _LazyAgentCliEntry(
-                import_path=entry_point.value,
-                help=f"Agent CLI commands contributed by the {name!r} plugin.",
-            )
-            for name, entry_point in discover_entry_points(AGENT_CLI_GROUP).items()
-        }
+        setattr(
+            agents_callback,
+            "__nmp_lazy_agent_cli__",
+            {
+                name: _LazyAgentCliEntry(
+                    import_path=entry_point.value,
+                    help=f"Agent CLI commands contributed by the {name!r} plugin.",
+                )
+                for name, entry_point in discover_entry_points(AGENT_CLI_GROUP).items()
+            },
+        )
 
         _register_local_commands(app)
         _register_package_command(app)
@@ -267,10 +272,11 @@ class AgentsCLI(NemoCLI):
         return app
 
     def update_job_cli(self, job_cls: type[NemoJob], group: typer.Typer) -> None:
-        """Amend the auto-generated job groups with commands the three verbs cannot express.
+        """Amend generated job commands with job-specific subcommands.
 
-        ``optimize`` gains ``prepare-fileset``: ``submit`` requires an already-staged bundle, so
-        the staging step needs a home, and it belongs next to the verb that consumes it.
+        ``optimize`` gains ``prepare-fileset``: the remote optimize command requires an
+        already-staged bundle, so the staging step belongs next to the job command that
+        consumes it.
         """
         if job_cls.name != "optimize":
             return
@@ -279,7 +285,55 @@ class AgentsCLI(NemoCLI):
         except ImportError:
             logger.warning("nemo-optimization unavailable; skipping optimize prepare-fileset", exc_info=True)
             return
+
+        if not job_cls.generate_legacy_verbs:
+            _replace_flat_job_command_with_group(
+                group,
+                job_cls=job_cls,
+                register_subcommands=register_prepare_fileset_command,
+            )
+            return
         register_prepare_fileset_command(group)
+
+
+def _replace_flat_job_command_with_group(
+    app: typer.Typer,
+    *,
+    job_cls: type[NemoJob],
+    register_subcommands: Callable[[typer.Typer], None],
+) -> None:
+    """Keep ``nemo agents <job>`` as remote submit while allowing job-specific subcommands."""
+    command_info = next((command for command in app.registered_commands if command.name == job_cls.name), None)
+    if command_info is None or command_info.callback is None:
+        if getattr(app.info, "name", None) == job_cls.name:
+            register_subcommands(app)
+            return
+        logger.warning("Cannot extend generated job command %r because it was not registered", job_cls.name)
+        return
+
+    original = command_info.callback
+    app.registered_commands = [command for command in app.registered_commands if command is not command_info]
+
+    job_group = typer.Typer(
+        name=job_cls.name,
+        help=job_cls.description or f"Manage the {job_cls.name} job.",
+        epilog=command_info.epilog,
+        no_args_is_help=False,
+    )
+
+    def submit(typer_ctx: typer.Context, **kwargs: object) -> None:
+        if typer_ctx.invoked_subcommand is not None:
+            return
+        original(typer_ctx, **kwargs)
+
+    submit.__doc__ = getattr(original, "__doc__", None)
+    signature = getattr(original, "__signature__", None)
+    if signature is not None:
+        setattr(submit, "__signature__", signature)
+    job_group.callback(invoke_without_command=True)(submit)
+
+    register_subcommands(job_group)
+    app.add_typer(job_group, name=job_cls.name, rich_help_panel="Jobs")
 
 
 # ---------------------------------------------------------------------------
@@ -417,7 +471,7 @@ def _register_local_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
 
 
-# Note: ``evaluate`` and ``optimize`` (run/submit/explain) are auto-generated
+# Note: job commands such as ``evaluate`` and ``optimize`` are auto-generated
 # from ``nemo.jobs`` entry points.
 
 

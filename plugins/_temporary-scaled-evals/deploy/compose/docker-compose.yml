@@ -53,6 +53,7 @@ x-scaled-evals-env: &scaled-evals-env
   TASK_IMAGE_VALIDATION_MODE: ${TASK_IMAGE_VALIDATION_MODE:-resolve}
   TASK_IMAGE_ALLOWED_REGISTRIES: ${TASK_IMAGE_ALLOWED_REGISTRIES:-registry:5000}
   TASK_IMAGE_REGISTRY_INSECURE: ${TASK_IMAGE_REGISTRY_INSECURE:-true}
+  HARBOR_DATASET_UPSTREAM_ALLOWED_REGISTRIES: ${HARBOR_DATASET_UPSTREAM_ALLOWED_REGISTRIES:-docker.io,ghcr.io}
   # Empty means "build for the host arch". The setting defaults to linux/amd64
   # for cluster parity, which on an arm64 laptop makes every sample build go
   # through QEMU. Set it explicitly when the image must run on amd64 nodes.

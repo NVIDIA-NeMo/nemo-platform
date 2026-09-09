@@ -36,8 +36,14 @@ _CLAIM_SWITCHYARD_TEARDOWN_SQL = (
           AND (
               (
                   r.status IN ('draining', 'deleting', 'delete_failed')
-                  AND r.drain_until IS NOT NULL
-                  AND r.drain_until <= NOW()
+                  AND (
+                      (r.drain_until IS NOT NULL AND r.drain_until <= NOW())
+                      OR (
+                          r.status = 'deleting'
+                          AND r.drain_until IS NULL
+                          AND r.updated_at <= NOW() - (%s * INTERVAL '1 second')
+                      )
+                  )
               )
               OR (
                   r.status = 'provisioned'
@@ -161,7 +167,10 @@ class RuntimeResourceRepository:
         worker_id: str,
     ) -> dict | None:
         with self.conn.transaction(), self.conn.cursor() as cur:
-            cur.execute(_CLAIM_SWITCHYARD_TEARDOWN_SQL, (claim_timeout, worker_id))
+            cur.execute(
+                _CLAIM_SWITCHYARD_TEARDOWN_SQL,
+                (claim_timeout, claim_timeout, worker_id),
+            )
             return cur.fetchone()
 
     def mark_deleted(self, resource_id: int) -> None:

@@ -246,6 +246,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -315,6 +319,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response
@@ -620,6 +632,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -689,6 +705,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response
@@ -994,6 +1018,10 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Job not Found
+        '409':
+          description: Job is not in a terminal state
         '422':
           description: Validation Error
           content:
@@ -1063,6 +1091,14 @@ paths:
         schema:
           title: Page Cursor
           type: string
+      - name: tail
+        in: query
+        required: false
+        schema:
+          title: Tail
+          type: integer
+          maximum: 10000
+          exclusiveMinimum: 0
       responses:
         '200':
           description: Successful Response
@@ -1185,6 +1221,45 @@ components:
       required:
       - training
       title: AutomodelDatasetSpec
+    AutomodelEmbeddingSpec:
+      properties:
+        train_n_passages:
+          type: integer
+          minimum: 2.0
+          title: Train N Passages
+          default: 5
+        eval_negative_size:
+          title: Eval Negative Size
+          type: integer
+          minimum: 1.0
+        do_gradient_checkpointing:
+          type: boolean
+          title: Do Gradient Checkpointing
+          default: false
+        query_max_length:
+          type: integer
+          minimum: 1.0
+          title: Query Max Length
+          default: 512
+        passage_max_length:
+          type: integer
+          minimum: 1.0
+          title: Passage Max Length
+          default: 512
+        query_prefix:
+          type: string
+          title: Query Prefix
+          description: Collator-side prefix; BiEncoderCollator adds a space.
+          default: 'query:'
+        passage_prefix:
+          type: string
+          title: Passage Prefix
+          description: Collator-side prefix; BiEncoderCollator adds a space.
+          default: 'passage:'
+      additionalProperties: false
+      type: object
+      title: AutomodelEmbeddingSpec
+      description: Collator and dataset knobs for bi_encoder / cross_encoder recipes.
     AutomodelJobInput:
       properties:
         name:
@@ -1489,11 +1564,14 @@ components:
         optimizer:
           type: string
           enum:
+          - auto
           - Adam
           - AdamW
+          - FusedAdam
           title: Optimizer
-          description: Optimizer algorithm.
-          default: Adam
+          description: Optimizer algorithm. 'auto' selects Transformer Engine FusedAdam
+            for retrieval recipes and torch Adam for SFT.
+          default: auto
         lr_decay_style:
           type: string
           enum:
@@ -1613,6 +1691,17 @@ components:
           - distillation
           title: Training Type
           default: sft
+        recipe:
+          type: string
+          enum:
+          - auto
+          - sft
+          - bi_encoder
+          - cross_encoder
+          title: Recipe
+          description: Training recipe. 'auto' uses the model checkpoint head; explicit
+            encoder recipes can wrap a causal-LM backbone for retrieval training.
+          default: auto
         finetuning_type:
           type: string
           enum:
@@ -1678,6 +1767,11 @@ components:
           type: boolean
           title: Offload Teacher
           default: false
+        embedding:
+          allOf:
+          - $ref: '#/components/schemas/AutomodelEmbeddingSpec'
+          description: Retrieval collator/dataset knobs. Used when recipe is bi_encoder
+            or cross_encoder.
       additionalProperties: false
       type: object
       title: AutomodelTrainingSpec
@@ -2077,13 +2171,10 @@ components:
       description: 'Which NeMo-RL policy worker trains the model.
 
 
-        Chosen explicitly, never inferred: the value picks the worker class, which
-        picks
+        The value picks the worker class, which picks the Ray actor''s venv and kernels.
 
-        the Ray actor''s venv and kernels. Asking for a capability the backend lacks
-        is a
-
-        validation error, not a silent upgrade.'
+        Asking for a capability the backend lacks is a validation error, not a silent
+        upgrade.'
     ProgressReportingConfig:
       properties:
         min_report_interval_seconds:
@@ -2427,14 +2518,11 @@ components:
         policy_backend:
           allOf:
           - $ref: '#/components/schemas/PolicyBackend'
-          description: 'NeMo-RL policy worker that trains the model. `automodel` (default)
-            builds on NeMo Automodel + Transformer Engine; it handles full-weight
-            training and is the only backend with LoRA, expert parallelism and automodel_kwargs.
-            `dtensor` uses stock HuggingFace modules on PyTorch FSDP2 -- no Transformer
-            Engine, so it is the pre-Hopper option, without those three features.
-            Never switched implicitly: asking `dtensor` for an `automodel`-only feature
-            is rejected.'
-          default: automodel
+          description: NeMo-RL policy worker that trains the model. `lora` requires
+            `automodel` (NeMo Automodel + Transformer Engine, Hopper or newer; the
+            only backend with expert parallelism and automodel_kwargs). `all_weights`
+            requires `dtensor` (stock HuggingFace on PyTorch FSDP2, also the pre-Hopper
+            option). Omit it to get the supported one.
         val_at_start:
           type: boolean
           title: Val At Start
@@ -3349,7 +3437,7 @@ components:
       - model
       - dataset
       title: UnslothJobInput
-      description: POST body / CLI JSON for ``nemo customization unsloth run``.
+      description: POST body / CLI JSON for ``nemo customization unsloth submit``.
     UnslothJobOutput:
       properties:
         name:

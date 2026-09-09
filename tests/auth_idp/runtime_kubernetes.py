@@ -22,16 +22,18 @@ from typing import TypeVar
 import httpx
 import pytest
 from nemo_platform import DefaultHttpxClient, NeMoPlatform
-from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR
+from nemo_platform_ext.client.tls import NMP_CLIENT_SSL_CERT_FILE_ENVVAR, HttpxTLSConfig
 
 from tests.auth_idp.common import jwt_claims
-from tests.auth_idp.runtime_contract import AuthIdpCase, TokenSet
+from tests.auth_idp.runtime_contract import AuthIdpCase, DeploymentWorkloadRuntimeConfig, TokenSet
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NAMESPACE = os.environ.get("NMP_AUTHENTIK_K8S_NAMESPACE", "nemo-authentik")
 HELM_RELEASE = os.environ.get("NMP_AUTHENTIK_K8S_HELM_RELEASE", "authentik-demo")
 HELM_CHART = Path("contrib/auth/authentik/helm")
 ENVOY_TLS_SECRET = "nemo-platform-envoy-tls"
+IN_CLUSTER_ENVOY_BASE_URL = f"https://nemo-platform-envoy.{NAMESPACE}.svc.cluster.local:8080"
+DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE = "/etc/nmp/workload-token-ca/ca.crt"
 WORKLOAD_AUDIENCE = "nemo-platform"
 WORKLOAD_CLIENT_ID = "nemo-platform-workload"
 AUTHENTIK_K8S_WORKLOAD_IDENTITY_PASSWORD = "workload-identity-dev-only"
@@ -655,10 +657,12 @@ def _get_json_with_retries(
     url: str,
     *,
     timeout: float = HTTP_RETRY_TIMEOUT_SECONDS,
-    verify: str | bool = True,
+    tls_config: HttpxTLSConfig | None = None,
 ) -> dict:
+    request_tls_config: HttpxTLSConfig = {} if tls_config is None else tls_config
+
     def get_json(remaining: float) -> dict | None:
-        response = httpx.get(url, timeout=min(HTTP_REQUEST_TIMEOUT_SECONDS, remaining), verify=verify)
+        response = httpx.get(url, timeout=min(HTTP_REQUEST_TIMEOUT_SECONDS, remaining), **request_tls_config)
         if response.status_code >= 500:
             return None
         response.raise_for_status()
@@ -750,6 +754,7 @@ def _start_port_forward_service(
         if log_handle is not None:
             log_handle.close()
     gateway_url = f"https://127.0.0.1:{port}"
+    tls_config: HttpxTLSConfig = {"verify": str(ca_bundle)}
 
     def wait_for_gateway_ready(remaining: float) -> httpx.Response:
         if process.poll() is not None:
@@ -758,7 +763,7 @@ def _start_port_forward_service(
         return httpx.get(
             gateway_url + GATEWAY_READY_PATH,
             timeout=min(PORT_FORWARD_HTTP_TIMEOUT_SECONDS, remaining),
-            verify=str(ca_bundle),
+            **tls_config,
         )
 
     try:
@@ -865,6 +870,7 @@ class KubernetesAuthIdpRuntime:
 
     def exchange_workload_token(self, subject_token: str) -> TokenSet:
         assert self.workload_token_endpoint is not None
+        tls_config: HttpxTLSConfig = {"verify": self.verify}
         response = httpx.post(
             self.workload_token_endpoint,
             data={
@@ -877,13 +883,35 @@ class KubernetesAuthIdpRuntime:
                 "scope": "openid email groups",
             },
             timeout=TOKEN_EXCHANGE_TIMEOUT_SECONDS,
-            verify=self.verify,
+            **tls_config,
         )
         response.raise_for_status()
         token_response = response.json()
         access_token = token_response["access_token"]
         assert token_response.get("token_type", "").lower() == "bearer"
         return TokenSet(access_token=access_token, claims=jwt_claims(access_token))
+
+    def workload_platform_token(self) -> TokenSet:
+        return self.exchange_workload_token(self.workload_subject_token())
+
+    def deployment_workload_runtime_config(self) -> DeploymentWorkloadRuntimeConfig:
+        assert self.ca_bundle is not None
+        ca_bundle = self.ca_bundle.read_text(encoding="utf-8")
+        return DeploymentWorkloadRuntimeConfig(
+            env=(
+                {"name": "NMP_BASE_URL", "value": IN_CLUSTER_ENVOY_BASE_URL},
+                {"name": "NMP_CLIENT_SSL_CERT_FILE", "value": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE},
+                {"name": "SSL_CERT_FILE", "value": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE},
+                {"name": "REQUESTS_CA_BUNDLE", "value": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE},
+            ),
+            config_files=(
+                {
+                    "path": DEPLOYMENT_WORKLOAD_CA_BUNDLE_FILE,
+                    "content": ca_bundle,
+                    "mode": 0o644,
+                },
+            ),
+        )
 
     def e2e_setup_sdk(self) -> NeMoPlatform:
         return self._sdk_for_token(self.e2e_setup_token().access_token)
@@ -892,7 +920,7 @@ class KubernetesAuthIdpRuntime:
         return self._sdk_for_token(self.interactive_user_token().access_token)
 
     def workload_provider_sdk(self) -> NeMoPlatform:
-        return self._sdk_for_token(self.exchange_workload_token(self.workload_subject_token()).access_token)
+        return self._sdk_for_token(self.workload_platform_token().access_token)
 
     def workload_role_principals(self) -> list[str]:
         return [f"system:serviceaccounts:{NAMESPACE}"]
@@ -979,7 +1007,7 @@ class KubernetesAuthIdpRuntime:
     def _exchange_token(self, token_endpoint: str, grant: dict[str, str]) -> str:
         from tests.auth_idp.conftest import _exchange_token_with_retries
 
-        return _exchange_token_with_retries(token_endpoint, grant, verify=self.verify)
+        return _exchange_token_with_retries(token_endpoint, grant, tls_config={"verify": self.verify})
 
     def _sdk_for_token(self, token: str) -> NeMoPlatform:
         return NeMoPlatform(

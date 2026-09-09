@@ -8,9 +8,11 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from filesets import FilesetPathError, parse_fileset_ref
+import fsspec.asyn
+from filesets import FilesetFileSystem, FilesetPathError, parse_fileset_ref
 from nemo_evaluator.filesets import FilesetRef
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from pydantic import BaseModel, ConfigDict
@@ -40,15 +42,22 @@ def _remove_path(path: Path) -> None:
         shutil.rmtree(path)
 
 
+def _download_fileset_contents(*, sdk: NemoClient, workspace: str, fileset: str, destination: Path) -> None:
+    """Download a FileSet root's contents directly into ``destination``."""
+    files_client = FilesClient.from_client(sdk)
+    fs = FilesetFileSystem(client=files_client)
+    fsspec.asyn.sync(fs.loop, fs._get, f"{workspace}/{fileset}/", str(destination), True)
+
+
 class EnvironmentStageJob(NemoJob):
     """Download a complete environment FileSet before the Gym evaluation step."""
 
     name = "stage-environment"
     description = "Stage a Gym environment FileSet into persistent job storage."
-    container = "nmp-gym-tasks"
+    container = "nmp-cpu-tasks"
     spec_schema = EnvironmentStageSpec
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform) -> dict:
+    def run(self, config: dict, *, ctx: JobContext, sdk: NemoClient) -> dict:
         """Download the FileSet into ``persistent/environment``, replacing any previous tree."""
         spec = EnvironmentStageSpec.model_validate(config)
         try:
@@ -69,10 +78,11 @@ class EnvironmentStageJob(NemoJob):
         workspace_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            sdk.files.download(
+            _download_fileset_contents(
+                sdk=sdk,
+                destination=staging,
                 fileset=fileset,
                 workspace=workspace,
-                local_path=str(staging),
             )
             _remove_path(destination)
             staging.rename(destination)

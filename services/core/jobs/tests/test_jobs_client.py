@@ -155,6 +155,8 @@ async def test_job_lifecycle_methods_round_trip(
     assert cancelled.status == PlatformJobStatus.CANCELLED
 
     deleted_job = await _create_job(jobs_client, sample_platform_job_request, "typed-delete")
+    delete_ready = (await jobs_client.cancel_job(workspace="default", name=deleted_job.name)).data()
+    assert delete_ready.status == PlatformJobStatus.CANCELLED
     deleted = await jobs_client.delete_job(workspace="default", name=deleted_job.name)
     assert deleted.http_response.status_code == 204
 
@@ -267,13 +269,22 @@ async def test_logs_round_trip(
         "job_task": "task-1",
     }
     assert logs_client.query_logs.await_args_list == [
-        call(job.fileset, workspace="default", filters=filters, page_size=5, page_cursor=None, artifact_base_path=None),
+        call(
+            job.fileset,
+            workspace="default",
+            filters=filters,
+            page_size=5,
+            page_cursor=None,
+            tail=None,
+            artifact_base_path=None,
+        ),
         call(
             job.fileset,
             workspace="default",
             filters=filters,
             page_size=5,
             page_cursor="cursor-2",
+            tail=None,
             artifact_base_path=None,
         ),
     ]

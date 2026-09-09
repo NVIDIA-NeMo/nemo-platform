@@ -16,7 +16,6 @@ export const FINETUNING_TYPE_OPTIONS = [
   { value: FinetuningType.adalora, children: 'AdaLoRA' },
   { value: FinetuningType.dora, children: 'DoRA' },
   { value: FinetuningType.lora_plus, children: 'LoRA+' },
-  { value: FinetuningType.prompt_tuning, children: 'Prompt Tuning' },
   { value: FinetuningType.prefix_tuning, children: 'Prefix Tuning' },
   { value: FinetuningType.p_tuning, children: 'P-Tuning' },
   { value: FinetuningType.p_tuning_v2, children: 'P-Tuning v2' },
@@ -36,3 +35,11 @@ export const FINETUNING_TYPE_FILTER_OPTIONS = FINETUNING_TYPE_OPTIONS.map((opt) 
   value: opt.value,
   label: opt.children,
 }));
+
+export const HAS_BASE_MODEL = { 'data.base_model': { $not: { $eq: null } } };
+export const HAS_ADAPTERS = { adapters: { $exists: true } };
+
+/**
+ * Default filter: show only "custom" models (has base_model, finetuning_type, or adapters).
+ */
+export const DEFAULT_CUSTOM_MODELS_FILTER = { $or: [HAS_BASE_MODEL, HAS_ADAPTERS] };

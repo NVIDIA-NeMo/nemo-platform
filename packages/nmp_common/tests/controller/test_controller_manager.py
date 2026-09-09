@@ -4,6 +4,9 @@
 """Tests for ControllerManager health checks and Loop shutdown behavior."""
 
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import cast
 
 import pytest
 from nmp.common.controller import Controller, Loop, TimedLoopWaiter, TrackLastExecutionTime
@@ -71,6 +74,21 @@ def clear_singleton():
     ControllerManager._instance = None
     yield
     ControllerManager._instance = None
+
+
+def test_singleton_initialization_is_thread_safe(monkeypatch: pytest.MonkeyPatch):
+    """Concurrent first access must return the same manager instance."""
+    original_new = ControllerManager.__new__
+
+    def slow_new(cls):
+        time.sleep(0.01)
+        return original_new(cls)
+
+    monkeypatch.setattr(ControllerManager, "__new__", slow_new)
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        managers = list(executor.map(lambda _: ControllerManager.get_instance(), range(16)))
+
+    assert all(manager is managers[0] for manager in managers)
 
 
 def test_all_healthy():
@@ -148,6 +166,17 @@ def test_no_health_property():
         loop_no_health.join(timeout=0.1)
 
 
+def test_registered_object_without_health_attribute_keeps_legacy_healthy_default():
+    manager = ControllerManager.get_instance()
+
+    class LoopWithoutHealth:
+        name = ""
+
+    manager.register("legacy", cast(Loop, LoopWithoutHealth()))
+
+    assert manager.validate_all_healthy() == (True, {"legacy": True})
+
+
 def test_detailed_false():
     """Test validation with detailed=False returns empty status dict."""
     manager = ControllerManager.get_instance()
@@ -167,6 +196,220 @@ def test_detailed_false():
         # Clean up thread
         unhealthy_loop.stop()
         unhealthy_loop.join(timeout=0.1)
+
+
+def test_awaited_controller_is_unhealthy_until_it_registers_a_loop():
+    manager = ControllerManager.get_instance()
+    manager.await_controller_registration("models")
+
+    assert manager.validate_all_healthy() == (False, {"models": False})
+
+    loop = _ToggleLoop(healthy=True)
+    with manager.controller_registration_context("models"):
+        manager.register("models_controller", loop)
+
+    assert manager.validate_all_healthy() == (True, {"models_controller": True})
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_message"),
+    [
+        ("starting", "already starting"),
+        ("running", "already running"),
+    ],
+)
+def test_duplicate_start_cannot_supersede_active_generation(state: str, expected_message: str):
+    manager = ControllerManager.get_instance()
+    generation = manager.await_controller_registration("models")
+    if state == "running":
+        with manager.controller_registration_context("models", generation):
+            manager.register("models_controller", _ToggleLoop(healthy=True))
+
+    with pytest.raises(RuntimeError, match=expected_message):
+        manager.await_controller_registration("models")
+
+    with manager.controller_registration_context("models", generation):
+        if state == "starting":
+            manager.register("models_controller", _ToggleLoop(healthy=True))
+
+    assert manager.validate_all_healthy() == (True, {"models_controller": True})
+
+
+def test_failed_controller_remains_unhealthy_after_registration():
+    manager = ControllerManager.get_instance()
+    manager.await_controller_registration("models")
+    with manager.controller_registration_context("models"):
+        manager.register("models_controller", _ToggleLoop(healthy=True))
+    manager.mark_controller_failed("models")
+
+    assert manager.validate_all_healthy() == (
+        False,
+        {"models": False, "models_controller": True},
+    )
+
+
+def test_failed_controller_status_takes_precedence_over_same_named_healthy_loop():
+    manager = ControllerManager.get_instance()
+    manager.await_controller_registration("models")
+    with manager.controller_registration_context("models"):
+        manager.register("models", _ToggleLoop(healthy=True))
+    manager.mark_controller_failed("models")
+
+    assert manager.validate_all_healthy() == (False, {"models": False})
+
+
+def test_awaiting_registration_for_restart_clears_previous_failure():
+    manager = ControllerManager.get_instance()
+    manager.mark_controller_failed("models")
+
+    manager.await_controller_registration("models")
+    with manager.controller_registration_context("models"):
+        manager.register("models_controller", _ToggleLoop(healthy=True))
+
+    assert manager.validate_all_healthy() == (True, {"models_controller": True})
+
+
+def test_stale_generation_cleanup_does_not_remove_restarted_controller():
+    manager = ControllerManager.get_instance()
+    old_generation = manager.await_controller_registration("models")
+    manager.mark_controller_failed("models", old_generation)
+
+    new_generation = manager.await_controller_registration("models")
+    with manager.controller_registration_context("models", new_generation):
+        manager.register("models_controller", _ToggleLoop(healthy=True))
+
+    assert manager.stop_tracking_controller("models", old_generation) is False
+    assert manager.validate_all_healthy() == (True, {"models_controller": True})
+
+
+def test_clear_does_not_reuse_generation_tokens():
+    manager = ControllerManager.get_instance()
+    old_generation = manager.await_controller_registration("models")
+    manager.clear()
+
+    new_generation = manager.await_controller_registration("models")
+
+    assert new_generation > old_generation
+    assert manager.stop_tracking_controller("models", old_generation) is False
+    assert manager.validate_all_healthy() == (False, {"models": False})
+
+
+def test_stale_generation_cannot_register_a_loop_into_a_restart():
+    manager = ControllerManager.get_instance()
+    old_generation = manager.await_controller_registration("models")
+    manager.mark_controller_failed("models", old_generation)
+    new_generation = manager.await_controller_registration("models")
+
+    with (
+        manager.controller_registration_context("models", old_generation),
+        pytest.raises(RuntimeError, match="stale generation"),
+    ):
+        manager.register("stale_loop", _ToggleLoop(healthy=True))
+
+    assert manager.get_all_loops() == {}
+    with manager.controller_registration_context("models", new_generation):
+        manager.register("models_controller", _ToggleLoop(healthy=True))
+    assert manager.validate_all_healthy() == (True, {"models_controller": True})
+
+
+def test_awaited_controller_is_unhealthy_after_its_last_loop_is_unregistered():
+    manager = ControllerManager.get_instance()
+    manager.await_controller_registration("models")
+    with manager.controller_registration_context("models"):
+        manager.register("models_controller", _ToggleLoop(healthy=True))
+
+    manager.unregister("models_controller")
+
+    assert manager.validate_all_healthy() == (False, {"models": False})
+
+
+def test_stopping_controller_tracking_removes_its_registered_loops():
+    manager = ControllerManager.get_instance()
+    manager.await_controller_registration("jobs")
+    with manager.controller_registration_context("jobs"):
+        manager.register("job_scheduler", _ToggleLoop(healthy=True))
+        manager.register("job_reconciler", _ToggleLoop(healthy=True))
+
+    manager.stop_tracking_controller("jobs")
+
+    assert manager.get_all_loops() == {}
+    assert manager.validate_all_healthy() == (True, {})
+
+
+def test_stopping_transition_preserves_the_original_failure_reason(caplog: pytest.LogCaptureFixture):
+    manager = ControllerManager.get_instance()
+    generation = manager.await_controller_registration("auth-proxy")
+    manager.mark_controller_failed("auth-proxy", generation, reason="health loop failed to start")
+    manager.mark_controller_stopping("auth-proxy", generation)
+
+    with caplog.at_level("WARNING"):
+        assert manager.validate_all_healthy() == (False, {"auth-proxy": False})
+
+    assert "health loop failed to start" in caplog.text
+    assert "did not stop before the shutdown deadline" not in caplog.text
+
+
+def test_stop_tracking_with_clear_state_false_does_not_downgrade_stopping():
+    """``clear_state=False`` must respect the same STOPPING guard as ``clear_state=True``;
+    otherwise a delayed cleanup call downgrades STOPPING back to FAILED and drops the
+    "still stopping" guard in :meth:`ControllerManager.await_controller_registration`,
+    letting a new generation start while the old one still owns a resource.
+    """
+    manager = ControllerManager.get_instance()
+    generation = manager.await_controller_registration("auth-proxy")
+    manager.mark_controller_stopping("auth-proxy", generation)
+
+    assert manager.stop_tracking_controller("auth-proxy", generation, clear_state=False) is False
+    assert manager.validate_all_healthy() == (False, {"auth-proxy": False})
+
+
+def test_stopping_controller_tracking_leaves_still_running_loop_tracked():
+    """A loop whose thread hasn't finished must stay tracked (and thus unhealthy),
+    so a controller that outlives its wrapper thread doesn't silently vanish from
+    health checks (regression test for the auth-proxy shutdown race).
+    """
+    manager = ControllerManager.get_instance()
+    release = threading.Event()
+
+    class BlockingController(Controller):
+        def step(self):
+            pass
+
+        @property
+        def is_healthy(self) -> bool:
+            return True
+
+    loop = Loop(
+        waiter=TimedLoopWaiter(sleep_secs=0.01, stop_signal=threading.Event()),
+        controller=BlockingController(),
+        stop_signal=threading.Event(),
+    )
+    loop.run = lambda: release.wait(timeout=5)
+
+    with manager.controller_registration_context("auth-proxy"):
+        manager.register("auth-proxy", loop)
+    loop.start()
+
+    try:
+        manager.stop_tracking_controller("auth-proxy")
+
+        assert manager.get_loop("auth-proxy") is loop
+        assert manager.validate_all_healthy() == (True, {"auth-proxy": True})
+    finally:
+        release.set()
+        loop.join(timeout=5)
+
+
+def test_registration_context_tracks_loop_ownership_without_requiring_registration():
+    manager = ControllerManager.get_instance()
+    with manager.controller_registration_context("adapters"):
+        manager.register("adapters_controller", _ToggleLoop(healthy=True))
+
+    assert manager.validate_all_healthy() == (True, {"adapters_controller": True})
+
+    manager.stop_tracking_controller("adapters")
+
+    assert manager.validate_all_healthy() == (True, {})
 
 
 # =============================================================================

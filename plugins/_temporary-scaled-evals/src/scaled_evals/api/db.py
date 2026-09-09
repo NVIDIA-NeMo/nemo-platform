@@ -13,6 +13,7 @@ from psycopg_pool import ConnectionPool, PoolTimeout
 
 from scaled_evals.api.repositories import (
     AgentBundleRepository,
+    BenchmarkImportRepository,
     BenchmarkRepository,
     BenchmarkRunRepository,
     ConfigProfileRepository,
@@ -86,6 +87,10 @@ class Database:
     @property
     def benchmarks(self) -> BenchmarkRepository:
         return BenchmarkRepository(self.conn)
+
+    @property
+    def benchmark_imports(self) -> BenchmarkImportRepository:
+        return BenchmarkImportRepository(self.conn)
 
     @property
     def benchmark_runs(self) -> BenchmarkRunRepository:

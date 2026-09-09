@@ -128,7 +128,7 @@ variable "NEMO_RL_REPO" {
 # RL pins Gym as a git submodule (-> soluwalana/Gym over https), so Gym rides in with the RL git ADD
 # - no separate Gym pin needed.
 variable "NEMO_RL_REF" {
-  default = "874f94737d5358680607735e339a8c06c01495f7" # soluwalana/RL nmp/customizer
+  default = "9932dc8aa63a55fd431670d1b7c9d0bf3b2d2373" # soluwalana/RL nmp/customizer
 }
 variable "RL_BASE_CONTEXT" {
   default = ""
@@ -343,10 +343,12 @@ group "docker-cpu" {
   ]
 }
 
-# CI extension that adds the Gym smoke-test stage to docker-cpu.
+# CI extension that adds the colocated Gym task smoke-test stage to docker-cpu.
+# The larger sandbox-host image has a dedicated Platform-Deploy build job.
 group "docker-cpu-ci" {
   targets = [
     "docker-cpu",
+    "nmp-cpu-tasks-smoke-test",
     "nmp-gym-tasks-smoke-test",
   ]
 }
@@ -710,7 +712,27 @@ target "nmp-cpu-tasks-docker" {
   platforms  = get_platforms()
 }
 
-# Dedicated Gym task image. The Gym-specific dependencies remain isolated from the shared CPU task image.
+# Cheap import validation for Evaluator's standard and sandboxed Gym task entrypoints.
+target "nmp-cpu-tasks-smoke-test" {
+  target     = "smoke-test"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-cpu-tasks"
+  contexts = {
+    nmp-python-base           = "target:nmp-python-base"
+    nmp-workspace             = "target:nmp-workspace"
+    root-busybox              = "target:root-busybox"
+    root-distroless-base-3-13 = "target:root-distroless-base-3-13"
+  }
+  args = {
+    NMP_COLLECT_SOURCES        = NMP_COLLECT_SOURCES
+    NMP_CPU_TASKS_RUNTIME_BASE = NMP_CPU_TASKS_RUNTIME_BASE
+  }
+  cache-from = maybe_registry_cache_from("nmp-cpu-tasks")
+  output     = ["type=cacheonly"]
+  platforms  = get_platforms()
+}
+
+# Dedicated colocated Gym task image. Gym and Ray remain isolated from the shared CPU task image.
 target "nmp-gym-tasks-docker" {
   target     = "runtime"
   context    = "."
@@ -718,6 +740,7 @@ target "nmp-gym-tasks-docker" {
   contexts = {
     nmp-python-base = "target:nmp-python-base"
     nmp-cpu-tasks   = "target:nmp-cpu-tasks-docker"
+    nmp-workspace   = "target:nmp-workspace"
   }
   cache-to   = maybe_registry_cache_to("nmp-gym-tasks")
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
@@ -734,8 +757,44 @@ target "nmp-gym-tasks-smoke-test" {
   contexts = {
     nmp-python-base = "target:nmp-python-base"
     nmp-cpu-tasks   = "target:nmp-cpu-tasks-docker"
+    nmp-workspace   = "target:nmp-workspace"
   }
   cache-from = maybe_registry_cache_from("nmp-gym-tasks")
+  output     = ["type=cacheonly"]
+  platforms  = get_platforms()
+}
+
+# Sandboxed Gym host. Evaluator provisions this image through OpenSandbox so
+# user-authored environments run outside the trusted task container.
+target "nmp-gym-host-docker" {
+  target     = "runtime"
+  context    = "."
+  dockerfile = "docker/gym-host/Dockerfile"
+  contexts = {
+    nmp-python-base = "target:nmp-python-base"
+  }
+  args = {
+    NMP_PYTHON_IMAGE = NMP_PYTHON_IMAGE
+  }
+  cache-to   = maybe_registry_cache_to("nmp-gym-host")
+  cache-from = maybe_registry_cache_from("nmp-gym-host")
+  tags       = sha_and_maybe_latest_tags("nmp-gym-host")
+  output     = image_output()
+  platforms  = get_platforms()
+}
+
+# Validate the published host's CLI, runtime module, and locked dependencies.
+target "nmp-gym-host-smoke-test" {
+  target     = "smoke-test"
+  context    = "."
+  dockerfile = "docker/gym-host/Dockerfile"
+  contexts = {
+    nmp-python-base = "target:nmp-python-base"
+  }
+  args = {
+    NMP_PYTHON_IMAGE = NMP_PYTHON_IMAGE
+  }
+  cache-from = maybe_registry_cache_from("nmp-gym-host")
   output     = ["type=cacheonly"]
   platforms  = get_platforms()
 }

@@ -954,6 +954,7 @@ resources:
   experiments:
     standalone_api: true
     models:
+      column_layout: ColumnLayout
       experiment_filter: ExperimentFilter
       experiment_request: ExperimentRequest
       experiment_response: ExperimentResponse

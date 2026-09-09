@@ -5,10 +5,12 @@
 
 import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
 import { FilesetSearchableSelect } from '@nemo/common/src/components/FilesetSearchableSelect';
-import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { type ModelSelection, ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2';
 import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { Flex, FormField, RadioGroupRoot, Stack } from '@nvidia/foundations-react-core';
+import { canFineTuneModel } from '@studio/hooks/useModelCustomizationEligibility';
+import { EngineFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/EngineFields';
+import { GPULoraFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/GPULoraFields';
 import {
   WORKSPACE_PICKER_FILESET,
   WORKSPACE_PICKER_MODEL,
@@ -81,16 +83,9 @@ export const WorkspaceSourceFields: FC<WorkspaceSourceFieldsProps> = ({
         />
       )}
 
-      <ControlledTextInput
-        useControllerProps={{ control, name: 'gpu' }}
-        name="gpu"
-        label="GPUs"
-        type="number"
-        formFieldProps={{
-          slotInfo: 'Uses the multi-LLM NIM; verify model architecture is supported.',
-          slotError: errors.gpu?.message,
-        }}
-      />
+      <EngineFields control={control} errors={errors} />
+
+      <GPULoraFields control={control} errors={errors} />
     </Stack>
   );
 };
@@ -111,14 +106,21 @@ const WorkspaceModelPicker: FC<WorkspaceModelPickerProps> = ({
   const { field } = useController({ control, name: 'modelRef' });
   const [open, setOpen] = useState(false);
 
-  const modelSearch = useModelSearch({ workspace, enabled: queryEnabled && open });
+  // Deployment needs local weights: the puller resolves `model.fileset` and fails
+  // if it is absent, which is what remote provider catalog entries look like.
+  // Same condition as fine-tuning, so the predicate is shared.
+  const modelSearch = useModelSearch({
+    workspace,
+    enabled: queryEnabled && open,
+    include: canFineTuneModel,
+  });
 
   const value: ModelSelection | null = field.value ? { model: field.value as string } : null;
 
   return (
     <FormField
       slotLabel="Model"
-      slotInfo="Existing model entity to deploy from this workspace."
+      slotInfo="Registered model with weights in this workspace. Models served by a remote provider cannot be deployed."
       slotError={errorMessage}
     >
       <ModelSelectV2

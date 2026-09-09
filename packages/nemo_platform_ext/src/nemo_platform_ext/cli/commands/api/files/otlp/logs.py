@@ -98,6 +98,7 @@ def query_logs(
     filters: Annotated[str | None, typer.Option("--filters", help="Key-value filters to apply to the query")] = None,
     limit: Annotated[int | None, typer.Option("--limit", help="Maximum number of results to return")] = None,
     page_cursor: Annotated[str | None, typer.Option("--page-cursor", help="Cursor for pagination")] = None,
+    tail: Annotated[int | None, typer.Option("--tail", help="Number of newest log lines to return")] = None,
     output_format: EntityOutputFormatOption = None,
 ) -> None:
     """Query logs from parquet files in a fileset.
@@ -113,6 +114,7 @@ def query_logs(
         filters=filters,
         limit=limit,
         page_cursor=page_cursor,
+        tail=tail,
     )
     if handle_code_generation(["files", "otlp", "logs"], "query", kwargs, output_format, state):
         return

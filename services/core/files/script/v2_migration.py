@@ -133,11 +133,8 @@ def _resolve_runtime_config(args: argparse.Namespace) -> RuntimeConfig:
     )
     files_workspace = args.files_workspace
 
-    missing: list[str] = []
     if not datastore_url:
-        missing.append("DATASTORE_URL (or --datastore-url)")
-    if missing:
-        raise ValueError(f"Missing required configuration: {', '.join(missing)}")
+        raise ValueError("Missing required configuration: DATASTORE_URL (or --datastore-url)")
 
     if not dataset_prefix.endswith("/"):
         dataset_prefix = f"{dataset_prefix}/"
@@ -379,7 +376,7 @@ def _get_existing_target_paths(sdk: NeMoPlatform, workspace: str, fileset: str) 
     If the fileset does not exist yet, return an empty set.
     """
     try:
-        files = sdk.files.list(fileset=fileset, workspace=workspace).data
+        files = client_from_platform(sdk, FilesClient).list_files(name=fileset, workspace=workspace).data().data
         return {f.path for f in files}
     except NotFoundError:
         return set()
@@ -479,13 +476,13 @@ def apply_plan(
                             local_dir=str(local_root / repo_id),
                             repo_type="dataset",
                         )
-                        sdk.files.upload(
-                            local_path=local_file,
-                            fileset=fileset,
-                            workspace=workspace,
-                            remote_path=target_path,
-                            fileset_auto_create=False,
-                        )
+                        with open(local_file, "rb") as fh:
+                            client_from_platform(sdk, FilesClient).upload_file(
+                                content=fh,
+                                name=fileset,
+                                workspace=workspace,
+                                path=target_path,
+                            )
                         artifact_result["status"] = "uploaded"
                         uploaded += 1
                         # Keep this set up to date for duplicate target paths in the same plan.

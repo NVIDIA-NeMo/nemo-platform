@@ -64,12 +64,14 @@ async def transform_input_to_output(
     if input_spec.dataset.validation_path:
         await check_dataset_access(sdk, input_spec.dataset.validation_path, workspace)
 
-    is_embedding = bool(
-        model_entity.spec and getattr(model_entity.spec, "is_embedding_model", False),
+    model_spec = model_entity.spec
+    head_type = getattr(model_spec, "head_type", None) if model_spec else None
+    is_encoder = head_type in {"embedding", "cross_encoder"} or bool(
+        model_spec and getattr(model_spec, "is_embedding_model", False),
     )
-    if is_embedding:
+    if is_encoder:
         raise ValueError(
-            "Embedding-model SFT is not supported by the unsloth backend. Use a causal LM model entity instead.",
+            "Encoder-model SFT is not supported by the unsloth backend. Use a causal LM model entity instead.",
         )
 
     output_request = input_spec.output or OutputRequest()

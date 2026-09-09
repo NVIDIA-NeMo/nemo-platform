@@ -185,6 +185,18 @@ class ConfigProvenance(BaseModel):
     config_hashes: dict[str, str] = Field(default_factory=dict)
 
 
+class HarborDatasetImageProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_image: str
+    source_immutable_image: str
+    task_id: str
+    task_revision: int
+    image_ref: str
+    image_digest: str
+    runtime_image: str
+
+
 class HarborProvenance(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -207,6 +219,7 @@ class HarborProvenance(BaseModel):
     signature_digest: str | None = None
     signature_audit_id: str | None = None
     profile_config_hash: str | None = None
+    dataset_images: list[HarborDatasetImageProvenance] = Field(default_factory=list)
 
 
 class GymProfileProvenance(BaseModel):
@@ -678,6 +691,7 @@ def _harbor(row: Mapping[str, Any]) -> HarborProvenance | None:
     runner_image_ref = _clean_optional(artifact.get("image_ref"))
     if not gym_runtime:
         runner_image_ref = runner_image_ref or _clean_optional(evaluation.get("runner_image_ref"))
+    dataset_images = _harbor_dataset_images(row)
     harbor = HarborProvenance(
         profile_id=_clean_optional(row.get("harbor_profile_id")),
         requested_version=_clean_optional(row.get("requested_framework_version")),
@@ -711,8 +725,24 @@ def _harbor(row: Mapping[str, Any]) -> HarborProvenance | None:
         signature_digest=_clean_optional(artifact.get("signature_digest")),
         signature_audit_id=_clean_optional(artifact.get("signature_audit_id")),
         profile_config_hash=_optional_value_hash(row.get("harbor_config")),
+        dataset_images=dataset_images,
     )
     return harbor if harbor.model_dump(exclude_none=True) else None
+
+
+def _harbor_dataset_images(row: Mapping[str, Any]) -> list[HarborDatasetImageProvenance]:
+    values = backend_handle_raw(row.get("backend_handle")).get("harbor_dataset_image_imports")
+    if not isinstance(values, list):
+        return []
+    images: list[HarborDatasetImageProvenance] = []
+    for value in values:
+        if not isinstance(value, Mapping):
+            continue
+        try:
+            images.append(HarborDatasetImageProvenance.model_validate(value))
+        except ValueError:
+            continue
+    return images
 
 
 def _gym(row: Mapping[str, Any]) -> GymProvenance | None:

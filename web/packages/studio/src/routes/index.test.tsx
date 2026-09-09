@@ -60,7 +60,6 @@ const stubAllFeatureFlagsOff = () => {
 };
 
 const customizationRoutes = [
-  ROUTES.workspace.promptTuningForm,
   ROUTES.workspace.customizationJobList,
   ROUTES.workspace.customizationJobDetails,
 ];

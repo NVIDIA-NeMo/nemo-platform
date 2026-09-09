@@ -35,7 +35,7 @@ from nemo_evaluator_sdk.execution.metric_execution import (
     generate_online_sample,
     generate_online_sample_agent,
 )
-from nemo_evaluator_sdk.execution.samples import build_metric_input, build_offline_sample
+from nemo_evaluator_sdk.execution.samples import build_metric_input, build_offline_sample, build_retrieval_sample
 from nemo_evaluator_sdk.execution.scoring import (
     corpus_output_spec,
     nan_metric_result,
@@ -80,6 +80,8 @@ from nemo_evaluator_sdk.values.multi_metric_results import (
     BenchmarkEvaluationResult,
     namespace_result,
 )
+from nemo_evaluator_sdk.values.retrieval import Retrieval
+from nemo_evaluator_sdk.values.targets import EvalTarget
 from openai import AsyncOpenAI
 
 _log = getLogger(__name__)
@@ -129,7 +131,7 @@ def _normalize_metric_result(metric_result: MetricResult, expected_outputs: list
     validated = validate_metric_result(metric_result, expected_outputs)
     actual_outputs = {output.name: output for output in validated.outputs}
     return MetricResult(
-        outputs=[actual_outputs[output.name] for output in expected_outputs],
+        outputs=[actual_outputs[output.name] for output in expected_outputs if output.name in actual_outputs],
         diagnostics=validated.diagnostics,
     )
 
@@ -285,7 +287,7 @@ async def _put_pipeline_sentinels(
 async def _run_producer_workers(
     *,
     items: list[dict],
-    target: Model | Agent | None,
+    target: EvalTarget,
     inference_fn: InferenceFn | AgentInferenceFn | None,
     client: AsyncOpenAI | httpx.AsyncClient | None = None,
     params: BenchmarkParams,
@@ -310,7 +312,7 @@ async def _run_producer_workers(
     for idx in range(len(items)):
         index_queue.put_nowait(idx)
 
-    is_online = target is not None
+    is_online = target is not None and not isinstance(target, Retrieval)
     tolerate_failure = not fail_fast_from_params(params)
     online_params = params if isinstance(params, RunConfigOnline) else None
     online_model_params = params if isinstance(params, RunConfigOnlineModel) else None
@@ -326,7 +328,9 @@ async def _run_producer_workers(
             requests_log: list[dict] = []
             requests_log_var.set(requests_log)
             try:
-                if is_online:
+                if isinstance(target, Retrieval):
+                    sample = build_retrieval_sample(item, target.rankings)
+                elif is_online:
                     assert target is not None
                     if prompt_template is None:
                         raise ValueError("prompt_template is required for online benchmark evaluation")
@@ -467,7 +471,7 @@ async def _metric_worker(
 async def _run_streaming_pipeline(
     *,
     items: list[dict],
-    target: Model | Agent | None,
+    target: EvalTarget,
     inference_fn: InferenceFn | AgentInferenceFn | None,
     client: AsyncOpenAI | httpx.AsyncClient | None = None,
     params: BenchmarkParams,
@@ -543,7 +547,7 @@ async def evaluate_benchmark(
     *,
     metrics: Sequence[tuple[str, Metric]],
     rows: list[dict],
-    target: Model | Agent | None = None,
+    target: EvalTarget = None,
     inference_fn: InferenceFn | AgentInferenceFn | None = None,
     params: BenchmarkParams,
     prompt_template: str | dict[str, Any] | None = None,
@@ -566,7 +570,8 @@ async def evaluate_benchmark(
         metrics: Ordered ``(metric_ref, metric)`` tuples. ``metric_ref`` is the
             public identifier used to namespace aggregate score names.
         rows: Dataset rows to evaluate.
-        target: Model or agent used for online inference. Pass ``None`` for
+        target: Model or agent used for online inference, or a retrieval pipeline
+            whose rankings are attached to each query row. Pass ``None`` for
             offline benchmarks; metric workers then receive the offline sample
             built from each row.
         inference_fn: Optional inference callable. Defaults to SDK's
@@ -576,7 +581,7 @@ async def evaluate_benchmark(
             (``ignore_request_failure``, ``request_timeout``, ``max_retries``)
             are read only when ``params`` is an :class:`RunConfigOnline`.
         prompt_template: Jinja template used to render per-row requests; required
-            when ``target`` is set.
+            when ``target`` is a model or agent.
         preprocess_hooks: Request preprocessors applied before each online
             inference call.
         postprocess_hooks: Response postprocessors applied after each online

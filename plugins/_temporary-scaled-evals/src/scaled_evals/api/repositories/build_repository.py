@@ -56,9 +56,14 @@ class TaskBuildRepository:
                 """,
                 (image_ref, image_digest, task_id, revision),
             )
+            if cur.rowcount != 1:
+                return
             cur.execute(
-                "UPDATE tasks SET current_revision = %s, updated_at = NOW() WHERE id = %s",
-                (revision, task_id),
+                """
+                UPDATE tasks SET current_revision = %s, updated_at = NOW()
+                WHERE id = %s AND (current_revision IS NULL OR current_revision <= %s)
+                """,
+                (revision, task_id, revision),
             )
 
     def record_failure(self, task_id: str, revision: int, build_error: str) -> None:
@@ -187,8 +192,11 @@ class TaskBuildRepository:
             updated = cur.rowcount == 1
             if updated:
                 cur.execute(
-                    "UPDATE tasks SET current_revision = %s, updated_at = NOW() WHERE id = %s",
-                    (revision, task_id),
+                    """
+                    UPDATE tasks SET current_revision = %s, updated_at = NOW()
+                    WHERE id = %s AND (current_revision IS NULL OR current_revision <= %s)
+                    """,
+                    (revision, task_id, revision),
                 )
             return updated
 

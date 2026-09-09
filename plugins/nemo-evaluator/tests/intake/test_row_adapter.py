@@ -10,11 +10,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from nemo_evaluator.intake.mapping import score_to_evaluator_results
 from nemo_evaluator.intake.row_adapter import RowIdentityError, row_result_to_agent_eval_result
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
+from nemo_evaluator_sdk.values.protocol import MetricDiagnostic
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult, RowScore
 
 RUN_ID = "job-1"
@@ -213,6 +215,39 @@ def test_metric_error_becomes_a_failed_score_reporting_why() -> None:
     assert score.status == AgentEvalScoreStatus.FAILED
     # Publish surfaces diagnostics[0].message as the row comment, so the error must lead.
     assert score.diagnostics[0].message == "judge timed out"
+
+
+def test_sparse_metric_keeps_rejected_secondary_diagnostic_off_primary_intake_row() -> None:
+    result = _adapt(
+        [
+            _row(
+                metrics={"harbor_reward": [MetricOutput(name="reward", value=1.0)]},
+                metric_diagnostics={
+                    "harbor_reward": [
+                        MetricDiagnostic(
+                            message="optional reward 'format_ok' was omitted: boolean",
+                            details={"output": "format_ok", "reason": "boolean"},
+                        )
+                    ]
+                },
+            )
+        ]
+    )
+    score = result.scores[0]
+
+    assert score.diagnostics[0].details == {"output": "format_ok", "reason": "boolean"}
+    rows, skipped = score_to_evaluator_results(score, session_id="session-1", span_id="span-1")
+
+    assert skipped == []
+    assert rows == [
+        {
+            "session_id": "session-1",
+            "span_id": "span-1",
+            "name": "harbor_reward.reward",
+            "data_type": "NUMERIC",
+            "value": 1.0,
+        }
+    ]
 
 
 def test_a_metric_error_does_not_fail_the_trial_itself() -> None:

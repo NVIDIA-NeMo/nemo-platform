@@ -114,6 +114,7 @@ class TestLogs:
             filters={"foo": "string"},
             limit=1,
             page_cursor="page_cursor",
+            tail=1,
         )
         assert_matches_type(PlatformJobLogPage, log, path=["response"])
 
@@ -247,6 +248,7 @@ class TestAsyncLogs:
             filters={"foo": "string"},
             limit=1,
             page_cursor="page_cursor",
+            tail=1,
         )
         assert_matches_type(PlatformJobLogPage, log, path=["response"])
 

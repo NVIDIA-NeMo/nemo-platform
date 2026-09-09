@@ -14,12 +14,12 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
+from models import parse_workspace_name_ref
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.inference import ModelProvider
 from nemo_platform_ext.config import get_context
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.models.client import AsyncModelsClient
-from nemo_platform_plugin.models.types import ModelEntity
+from nemo_platform_plugin.models.types import ModelEntity, ModelProvider
 from nooa.unifiedllm import CompletionClient, UnifiedLLM
 
 _PLACEHOLDER_API_KEY = "not-needed"
@@ -76,25 +76,39 @@ def configured_model_refs() -> ConfiguredModelRefs:
         raise ValueError("No default model is configured. Run `nemo setup` and select agent models.")
     if not fast:
         raise ValueError("No fast model is configured. Run `nemo setup` and select agent models.")
+    _validate_configured_ref(default, "NEMO_DEFAULT_MODEL")
+    _validate_configured_ref(fast, "NEMO_FAST_MODEL")
     return ConfiguredModelRefs(default=default, fast=fast)
 
 
-def _parse_model_ref(model_ref: str) -> tuple[str, str]:
-    workspace, separator, name = model_ref.partition("/")
-    if separator != "/" or not workspace or not name:
-        raise ValueError(f"Model reference {model_ref!r} must use workspace/name format")
-    return workspace, name
+def _validate_configured_ref(model_ref: str, env_var: str) -> None:
+    """Reject an unqualified model ref where the operator can still act on it.
+
+    Model Entity IDs discovered by ``nemo setup`` are always ``workspace/name``, but
+    the ``NEMO_DEFAULT_MODEL`` / ``NEMO_FAST_MODEL`` overrides are read verbatim. An
+    unqualified value used to survive every layer and only fail inside a running job,
+    long after the job was created, so the operator saw a stack trace instead of the
+    one-line fix.
+    """
+    try:
+        parse_workspace_name_ref(model_ref, label="Model reference")
+    except ValueError:
+        raise ValueError(
+            f"Model reference {model_ref!r} must use workspace/name format "
+            f"(for example 'default/{model_ref}'). "
+            f"Set {env_var} to a workspace-qualified Model Entity ID, or unset it and "
+            f"re-run `nemo setup` to select one."
+        ) from None
 
 
 def _completion_client(
-    client: AsyncNeMoPlatform,
+    models_client: AsyncModelsClient,
     model_entity: ModelEntity,
     served_model_name: str,
 ) -> CompletionClient:
     """Build a Nooa client that routes through the Model Entity's Platform URL."""
-    models = client_from_platform(client, AsyncModelsClient)
-    api_base = models.get_model_entity_route_openai_url(model_entity)
-    extra_headers = dict(models.default_headers)
+    api_base = models_client.get_model_entity_route_openai_url(model_entity)
+    extra_headers = dict(models_client.default_headers)
     # Inference Gateway's direct passthrough session preserves compressed
     # response bytes. Nooa needs decoded JSON/SSE, so make that requirement
     # explicit at this adapter boundary for every configured agent client.
@@ -138,7 +152,7 @@ def _completion_client(
 
 
 async def _served_model_name(
-    client: AsyncNeMoPlatform,
+    client: AsyncModelsClient,
     model_entity: ModelEntity,
     provider_cache: dict[str, ModelProvider],
 ) -> str:
@@ -147,8 +161,8 @@ async def _served_model_name(
     for provider_ref in model_entity.model_providers or ():
         provider = provider_cache.get(provider_ref)
         if provider is None:
-            workspace, name = _parse_model_ref(provider_ref)
-            provider = await client.inference.providers.retrieve(name, workspace=workspace)
+            workspace, name = parse_workspace_name_ref(provider_ref, label="Provider reference")
+            provider = (await client.get_provider(name=name, workspace=workspace)).data()
             provider_cache[provider_ref] = provider
         for mapping in provider.served_models or ():
             if mapping.model_entity_id == entity_ref:
@@ -160,11 +174,11 @@ async def _served_model_name(
 
 
 async def resolve_model_clients(
-    client: AsyncNeMoPlatform,
+    async_sdk: AsyncNeMoPlatform,
     refs: ConfiguredModelRefs | None = None,
 ) -> ConfiguredModelClients:
     """Resolve configured Model Entities and construct each distinct client once."""
-    models = client_from_platform(client, AsyncModelsClient)
+    models_client = client_from_platform(async_sdk, AsyncModelsClient)
     selected = refs or configured_model_refs()
     resolved: dict[str, UnifiedLLM] = {}
     provider_cache: dict[str, ModelProvider] = {}
@@ -172,10 +186,10 @@ async def resolve_model_clients(
         for model_ref in (selected.default, selected.fast):
             if model_ref in resolved:
                 continue
-            workspace, name = _parse_model_ref(model_ref)
-            entity = (await models.get_model(name=name, workspace=workspace)).data()
-            served_model_name = await _served_model_name(client, entity, provider_cache)
-            resolved[model_ref] = _completion_client(client, entity, served_model_name)
+            workspace, name = parse_workspace_name_ref(model_ref, label="Model reference")
+            entity = (await models_client.get_model(name=name, workspace=workspace)).data()
+            served_model_name = await _served_model_name(models_client, entity, provider_cache)
+            resolved[model_ref] = _completion_client(models_client, entity, served_model_name)
     except Exception as resolution_error:
         for model_client in resolved.values():
             try:

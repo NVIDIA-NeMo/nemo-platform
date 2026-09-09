@@ -12,7 +12,6 @@ import {
   getFilesetRoute,
   getIntakeSessionRoute,
   getIntakeSessionTraceRoute,
-  getPromptTuningFormRoute,
   getWorkspaceBaseModelsRoute,
   getWorkspaceInferenceProvidersRoute,
 } from '@studio/routes/utils';
@@ -150,22 +149,6 @@ describe('getWorkspaceBaseModelsRoute (deep linking)', () => {
 
     expect(getWorkspaceBaseModelsRoute(workspace, { searchParams })).toBe(
       '/workspaces/my-workspace/base-models?s=llama&sort=-created_at'
-    );
-  });
-});
-
-describe('getPromptTuningFormRoute', () => {
-  const workspace = 'my-workspace';
-
-  it('returns the bare prompt tuning form path when no model is given', () => {
-    expect(getPromptTuningFormRoute(workspace)).toBe(
-      '/workspaces/my-workspace/customizations/prompt-tuned/new'
-    );
-  });
-
-  it('appends an encoded ?model= query param when a model URN is provided', () => {
-    expect(getPromptTuningFormRoute(workspace, { model: 'my-workspace/my-model' })).toBe(
-      '/workspaces/my-workspace/customizations/prompt-tuned/new?model=my-workspace%2Fmy-model'
     );
   });
 });

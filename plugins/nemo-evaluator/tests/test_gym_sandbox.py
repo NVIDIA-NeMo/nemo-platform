@@ -118,11 +118,41 @@ def test_an_explicit_override_wins_over_the_derived_binding() -> None:
     assert agent == {"extra": 1}, "the caller's value replaces the derived one at the same key"
 
 
-def test_fileset_environment_keeps_required_agent_config_in_config_paths() -> None:
-    config = gym_global_config(target(environment=FilesetRef(root="default/custom-gym")))
+def test_custom_environment_carries_component_selection_for_host_composition() -> None:
+    config = gym_global_config(
+        target(
+            environment=FilesetRef(root="default/custom-gym"),
+            agent_ref_name="custom_agent",
+        )
+    )
 
     assert config["config_paths"][0] == "responses_api_agents/simple_agent/configs/simple_agent.yaml"
-    assert "_nmp_environment_component_selection" not in config
+    assert config["_nmp_environment_component_selection"] == {
+        "agent_instance": "custom_agent",
+        "agent_config": "responses_api_agents/simple_agent/configs/simple_agent.yaml",
+        "resources_server_instance": "mcqa",
+        "resources_server_config": "resources_servers/mcqa/configs/mcqa.yaml",
+        "model_config": "responses_api_models/inference_provider/configs/inference_provider.yaml",
+    }
+    assert config["custom_agent"]["responses_api_agents"]["simple_agent"]["resources_server"]["name"] == "mcqa"
+
+
+def test_custom_environment_omits_agent_config_when_the_package_supplies_the_agent() -> None:
+    config = gym_global_config(
+        target(
+            environment=FilesetRef(root="default/custom-gym"),
+            agent_config=None,
+            agent_ref_name="custom_agent",
+        )
+    )
+
+    assert "responses_api_agents/simple_agent/configs/simple_agent.yaml" not in config["config_paths"]
+    assert config["_nmp_environment_component_selection"]["agent_config"] is None
+
+
+def test_agent_config_is_required_without_an_environment_package() -> None:
+    with pytest.raises(ValueError, match="agent_config field is required"):
+        target(agent_config=None)
 
 
 def test_environment_fileset_rejects_file_fragments() -> None:
@@ -138,6 +168,31 @@ def test_serve_config_takes_cluster_facts_from_the_deployment_not_the_job() -> N
     assert payload["episode_broker"]["job_id"] == "job-7"
     # ...and the job's half is the environment selection, nothing else.
     assert payload["gym_global_config"]["config_paths"]
+
+
+def test_sandbox_server_protocol_reaches_the_opensandbox_host_provider() -> None:
+    plan = resolve_sandbox_plan(
+        capable_config(),
+        target(),
+        sandbox_server_protocol="http",
+    )
+
+    assert plan is not None
+    assert plan.host_provider_options == {"connection": {"protocol": "http"}}
+
+
+def test_sandbox_server_protocol_does_not_change_the_docker_host_provider() -> None:
+    plan = resolve_sandbox_plan(
+        capable_config(
+            sandbox_host_provider="docker",
+            sandbox_host_provider_options={"root_dir": "/tmp/gym"},
+        ),
+        target(),
+        sandbox_server_protocol="http",
+    )
+
+    assert plan is not None
+    assert plan.host_provider_options == {"root_dir": "/tmp/gym"}
 
 
 # --------------------------------------------------------------------------------------------

@@ -46,6 +46,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
@@ -57,6 +58,7 @@ from nemo_platform_plugin.jobs.constants import (
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
 )
 from nemo_platform_plugin.run_dependencies import LocalRunError, resolve_run_kwargs
+from nemo_platform_plugin.tasks.logging_setup import configure_task_logging
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +82,11 @@ def run_task(
     :class:`~nemo_platform_plugin.job_results.PlatformJobResults` as ``ctx.results``,
     so *sdk* is required when *ctx* is not supplied.
 
+    Root logging is bootstrapped via
+    :func:`~nemo_platform_plugin.tasks.logging_setup.configure_task_logging`
+    before anything else, since a task container configures none of its own.
+    A caller that already configured logging keeps it.
+
     Args:
         job_cls: The :class:`~nemo_platform_plugin.job.NemoJob` subclass to run.
         sdk: :class:`~nemo_platform.NeMoPlatform` handle, typically built via
@@ -93,6 +100,11 @@ def run_task(
     Returns:
         Process exit code suitable for :func:`sys.exit`.
     """
+    # First thing in the process: a task container configures nothing itself,
+    # so without this every message below INFO+lastResort is lost - including
+    # the failure reporting further down. Must precede the first log call.
+    configure_task_logging()
+
     try:
         config = _read_step_config()
     except Exception:
@@ -107,7 +119,7 @@ def run_task(
             )
             return 2
         try:
-            ctx = _build_ctx_from_env(sdk)
+            ctx = build_ctx_from_env(sdk)
         except Exception:
             logger.exception("Failed to build JobContext from environment")
             return 2
@@ -155,9 +167,13 @@ def _exit_code_for(result: Any) -> int:
     if not isinstance(result, dict):
         return 0
     if result.get("status") == "failed":
+        # A job that reports failure through its return value never raises, so
+        # nothing else in this process says why the exit code is non-zero.
+        logger.error("Job reported status=failed; result: %s", result)
         return 1
     exit_code = result.get("exit_code")
     if isinstance(exit_code, int) and exit_code != 0:
+        logger.error("Job reported non-zero exit_code=%s; result: %s", exit_code, result)
         return 1
     return 0
 
@@ -186,7 +202,7 @@ def _read_step_config() -> dict:
     return data
 
 
-def _build_ctx_from_env(sdk: Any) -> JobContext:
+def build_ctx_from_env(sdk: NeMoPlatform) -> JobContext:
     """Build a :class:`JobContext` from the platform-injected ``NEMO_JOB_*`` env.
 
     Wires :attr:`JobContext.results` to :class:`PlatformJobResults` so results
@@ -224,4 +240,4 @@ def _build_ctx_from_env(sdk: Any) -> JobContext:
     )
 
 
-__all__ = ["run_task"]
+__all__ = ["build_ctx_from_env", "run_task"]

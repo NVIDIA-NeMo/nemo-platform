@@ -37,6 +37,7 @@ import {
   type WizardFormValues,
 } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
 import { useCreateDeploymentBySource } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/useCreateDeploymentBySource';
+import { useHuggingFaceNameDefault } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/useHuggingFaceNameDefault';
 import { WorkspaceSourceFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/WorkspaceSourceFields';
 import { FC, useCallback, useEffect, useState } from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
@@ -111,6 +112,10 @@ export const CreateDeploymentSidePanel: FC<CreateDeploymentSidePanelProps> = ({
   });
 
   const source = watch('source');
+
+  // On the HuggingFace source, default the name from the repo id until the user
+  // types their own.
+  useHuggingFaceNameDefault(control, setValue);
 
   useEffect(() => {
     if (open) {
@@ -193,16 +198,15 @@ export const CreateDeploymentSidePanel: FC<CreateDeploymentSidePanelProps> = ({
             });
           }}
           items={[
-            { value: SOURCE_NGC, children: 'NGC NIM Container' },
             { value: SOURCE_HF, children: 'HuggingFace' },
             { value: SOURCE_WORKSPACE, children: 'Workspace' },
+            { value: SOURCE_NGC, children: 'NGC NIM Container' },
           ]}
         />
         {(source === SOURCE_HF || source === SOURCE_WORKSPACE) && (
           <Text kind="body/regular/md">
-            {source === SOURCE_HF
-              ? 'HuggingFace deployments support specific model architectures—verify compatibility before deploying or use a model-specific NIM image if required.'
-              : 'Workspace deployments use the multi-LLM NIM by default—verify model architecture is supported.'}
+            Choose the engine that serves this model. vLLM runs any supported architecture from a
+            default image; NIM needs an image built for the specific architecture.
           </Text>
         )}
 

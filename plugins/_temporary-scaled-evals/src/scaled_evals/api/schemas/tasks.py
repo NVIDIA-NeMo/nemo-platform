@@ -92,6 +92,8 @@ class TaskFinalizeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Reuse an externally produced image that is already signed and pullable.
+    # Import orchestration pins this so a later upload cannot redirect finalize.
+    revision: int | None = Field(default=None, ge=1)
     image_ref: str | None = None
     image_digest: str | None = None
     tarball_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

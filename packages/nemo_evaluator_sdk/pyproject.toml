@@ -38,13 +38,14 @@ dependencies = [
   "ragas==0.4.3",
   "langchain-openai>=1.3.5",
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
-  "nemo-relay>=0.7.2,<0.8",
+  "nemo-relay>=0.7.3,<0.8",
   # Fabric's typed config surface (FabricConfig/RuntimeConfig/ModelConfig/the relay models) — what the
   # agent-eval runtimes compose against. The metapackage includes nemo-fabric-runtime; the harness
   # adapters are the weight (codex ~299 MB, claude ~231 MB) and stay in the `fabric` extra below, so
   # only *resolving and running* a harness pulls them.
-  "nemo-fabric>=0.2.0,<0.3.0",
+  "nemo-fabric==0.3.0b1",
   "opentelemetry-proto>=1.27.0",
+  "pytrec-eval-terrier==0.5.10",
 ]
 version = "0.0.0"
 
@@ -56,14 +57,12 @@ agent-runtimes = [
   "openai-agents[docker]>=0.17.3,<0.18",
 ]
 engine = []
-# The native Harbor runtime (HarborAgentTaskRunner / run_harbor_eval) needs `harbor`, which requires
-# Python >=3.12 while this workspace floor is >=3.11. The `python_version >= '3.12'` marker (matching
-# harbor's own requires-python) scopes the dependency to the 3.12+ fork of the universal lock, so it
-# installs on 3.12+ and is simply omitted on 3.11 — no floor bump for the rest of the workspace.
-# `harbor` is imported lazily (only inside HarborAgentTaskRunner.run_tasks), so importing the SDK and
-# resolving a HarborRunnerTarget stay valid on 3.11; only *executing* a Harbor job needs this extra.
+# Native Harbor execution and result adaptation need `harbor`, which requires Python >=3.12 while
+# the SDK floor remains >=3.11. The marker scopes the dependency to compatible interpreters.
+# Harbor is imported lazily, so importing the SDK and constructing Harbor configuration remain
+# valid on Python 3.11; invoking either execution or result adaptation requires this extra.
 harbor = [
-  "harbor>=0.16.1; python_version >= '3.12'",
+  "harbor>=0.20,<0.21; python_version >= '3.12'",
 ]
 nemo-platform = [
   "nemo-platform-sdk",
@@ -95,8 +94,8 @@ nemo-platform = [
 #   * deepagents is omitted to match plugins/nemo-agents (AIRCORE-952: its adapter does not support
 #     the Relay observability v2 config Fabric streaming generates). Nothing here exercises it.
 fabric = [
-  "nemo-fabric[claude,codex]>=0.2.0,<0.3.0",
-  "nemo-fabric-adapters-hermes>=0.2.0,<0.3.0; python_version < '3.14'",
+  "nemo-fabric[claude,codex]==0.3.0b1",
+  "nemo-fabric-adapters-hermes==0.3.0b1; python_version < '3.14'",
 ]
 
 [project.entry-points."nemo.fabric.task_hooks"]

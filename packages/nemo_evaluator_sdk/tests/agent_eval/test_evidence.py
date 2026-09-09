@@ -374,15 +374,15 @@ async def test_trace_handle_reads_otlp_jsonl_and_inline_data(tmp_path: Path) -> 
 
     resource_spans = await handle.resource_spans()
     assert len(resource_spans) == 2
-    assert resource_spans[0]["schemaUrl"] == "keep-me"
-    assert resource_spans[1]["scopeSpans"][0]["spans"][0]["name"] == "child"
+    assert resource_spans[0].schema_url == "keep-me"
+    assert resource_spans[1].scope_spans[0].spans[0].name == "child"
 
     inline = CandidateEvidence(
         descriptors={"trace": EvidenceDescriptor(kind="trace", format="otlp", data=[{"scopeSpans": []}])}
     )
     inline_handle = await inline.trace("trace")
     assert isinstance(inline_handle, OTLPTraceHandle)
-    assert await inline_handle.resource_spans() == [{"scopeSpans": []}]
+    assert [rs.scope_spans for rs in await inline_handle.resource_spans()] == [[]]
 
 
 @pytest.mark.asyncio
@@ -398,7 +398,7 @@ async def test_trace_handle_reads_pretty_printed_otlp_object(tmp_path: Path) -> 
 
     handle = await evidence.trace()
     assert isinstance(handle, OTLPTraceHandle)
-    assert await handle.resource_spans() == [{"scopeSpans": []}]
+    assert [rs.scope_spans for rs in await handle.resource_spans()] == [[]]
 
 
 @pytest.mark.asyncio

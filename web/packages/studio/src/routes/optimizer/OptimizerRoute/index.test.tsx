@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { DEFAULT_WORKSPACE } from '@nemo/common/src/models/constants';
-import type { InsightListItem } from '@studio/api/optimizer';
+import type { InsightListItem } from '@nemo/sdk/generated/insights/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { server } from '@studio/mocks/node';
@@ -16,15 +16,20 @@ const EXPERIMENTS_URL = '*/apis/intake/v2/workspaces/:workspace/experiments';
 
 const makeInsight = (id: string, title: string): InsightListItem => ({
   id,
+  entity_id: id,
+  parent: `ws-${DEFAULT_WORKSPACE}`,
+  db_version: 1,
   name: id,
+  workspace: DEFAULT_WORKSPACE,
   title,
   description: `${title} description`,
   agent: 'research-agent',
   status: 'open',
   trace_refs: ['trace-1'],
-  experiment_group_count: null,
   created_at: '2026-07-20T12:00:00Z',
+  created_by: 'user@example.com',
   updated_at: '2026-07-20T12:00:00Z',
+  updated_by: 'user@example.com',
 });
 
 const insightsPage = (data: InsightListItem[]) => ({

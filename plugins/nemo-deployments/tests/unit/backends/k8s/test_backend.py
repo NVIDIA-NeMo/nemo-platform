@@ -10,6 +10,7 @@ from nemo_deployments_plugin.backends.base import BackendStatusUpdate
 from nemo_deployments_plugin.backends.k8s.backend import K8sDeploymentBackend
 from nemo_deployments_plugin.backends.k8s.config import K8sExecutorConfig
 from nemo_deployments_plugin.entities import Container, DeploymentConfig
+from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 
 def test_executor_config_parsed_from_dict(k8s_backend: K8sDeploymentBackend) -> None:
@@ -27,6 +28,45 @@ def test_shutdown_closes_kubernetes_clients(k8s_backend: K8sDeploymentBackend) -
 def test_default_namespace_rejects_invalid_dns_label() -> None:
     with pytest.raises(ValueError, match="default_namespace must be a lowercase DNS-1123 label"):
         K8sExecutorConfig(default_namespace="X")
+
+
+def test_to_k8s_defaults_bundles_executor_pod_defaults() -> None:
+    config = K8sExecutorConfig(
+        default_pod_annotations={"sidecar.istio.io/nativeSidecar": "true"},
+        default_node_selector={"gpu": "a100"},
+        default_tolerations=[{"key": "gpu", "operator": "Equal", "value": "true", "effect": "NoSchedule"}],
+        default_affinity={"nodeAffinity": {}},
+        default_topology_spread_constraints=[{"maxSkew": 1, "topologyKey": "kubernetes.io/hostname"}],
+    )
+    defaults = config.to_k8s_defaults()
+    assert defaults.pod_annotations == {"sidecar.istio.io/nativeSidecar": "true"}
+    assert defaults.node_selector == {"gpu": "a100"}
+    assert defaults.tolerations[0]["key"] == "gpu"
+    assert defaults.affinity == {"nodeAffinity": {}}
+    assert defaults.topology_spread_constraints[0]["topologyKey"] == "kubernetes.io/hostname"
+
+
+def test_to_k8s_defaults_empty_by_default() -> None:
+    defaults = K8sExecutorConfig().to_k8s_defaults()
+    assert defaults.pod_annotations == {}
+    assert defaults.node_selector == {}
+    assert defaults.tolerations == []
+    assert defaults.affinity == {}
+    assert defaults.topology_spread_constraints == []
+
+
+def test_to_k8s_defaults_deep_copies_nested_objects() -> None:
+    # Mutating the returned defaults must not corrupt the shared executor config
+    # for later workloads (nested nodeAffinity / labelSelector are deep-copied).
+    config = K8sExecutorConfig(
+        default_affinity={"nodeAffinity": {"key": "orig"}},
+        default_topology_spread_constraints=[{"labelSelector": {"matchLabels": {"app": "orig"}}}],
+    )
+    defaults = config.to_k8s_defaults()
+    defaults.affinity["nodeAffinity"]["key"] = "mutated"
+    defaults.topology_spread_constraints[0]["labelSelector"]["matchLabels"]["app"] = "mutated"
+    assert config.default_affinity["nodeAffinity"]["key"] == "orig"
+    assert config.default_topology_spread_constraints[0]["labelSelector"]["matchLabels"]["app"] == "orig"
 
 
 def test_effective_namespace_prefers_explicit_config(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -80,8 +120,9 @@ async def test_create_passes_secret_env_and_unmodified_config(
             "nemo_deployments_plugin.backends.k8s.backend.resolve_deployment_secret_env",
             AsyncMock(return_value=secret_env),
         ) as resolve_mock,
-        patch(
-            "nemo_deployments_plugin.backends.k8s.backend.deployment_ops.create_deployment",
+        patch.object(
+            k8s_backend._deployment_ops,
+            "create_deployment",
             AsyncMock(return_value=BackendStatusUpdate(status="STARTING")),
         ) as create_mock,
     ):
@@ -97,3 +138,40 @@ async def test_create_passes_secret_env_and_unmodified_config(
     assert create_mock.await_args is not None
     assert create_mock.await_args.kwargs["config"] is stored
     assert create_mock.await_args.kwargs["secret_env"] == secret_env
+
+
+@pytest.mark.asyncio
+async def test_delete_deployment_revokes_delegations_when_context_missing(
+    k8s_backend: K8sDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
+    mock_entities.get.side_effect = NemoEntityNotFoundError("missing")
+
+    with (
+        patch.object(
+            k8s_backend._deployment_ops,
+            "delete_deployment",
+            AsyncMock(return_value=BackendStatusUpdate(status="SUCCEEDED")),
+        ) as delete_deployment_mock,
+        patch.object(
+            k8s_backend._job_ops,
+            "delete_job",
+            AsyncMock(return_value=BackendStatusUpdate(status="SUCCEEDED")),
+        ) as delete_job_mock,
+        patch.object(
+            k8s_backend._workload_identity_ops,
+            "revoke_workload_delegations",
+            AsyncMock(),
+        ) as revoke_mock,
+    ):
+        update = await k8s_backend.delete_deployment("default", "server")
+
+    assert update.status == "SUCCEEDED"
+    delete_deployment_mock.assert_awaited_once()
+    delete_job_mock.assert_awaited_once()
+    revoke_mock.assert_awaited_once_with(
+        k8s_backend._workload_delegations,
+        config=None,
+        workspace="default",
+        deployment_name="server",
+    )

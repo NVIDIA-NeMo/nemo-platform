@@ -6,14 +6,16 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 from nemo_evaluator.api.schemas import MetadataItem, MetricInline, TaskInputs, TasksetRef
+from nemo_evaluator.cli import EvaluatorPluginCLI
 from nemo_evaluator.config import EvaluatorConfig
 from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.agent_evaluate import (
@@ -62,7 +64,9 @@ from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
+from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.files.types import FilesetPurpose
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
@@ -82,6 +86,7 @@ from nemo_platform_plugin.jobs.providers import SubprocessExecutionProvider
 from nemo_platform_plugin.jobs.spec import BaseExecutionProfile, PlatformJobSpec
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pytest_mock import MockerFixture
+from typer.testing import CliRunner
 
 
 def _inline_metric() -> MetricInline:
@@ -125,6 +130,18 @@ def _job_context(tmp_path: Path) -> JobContext:
         storage=storage,
         results=LocalJobResults(root=storage.persistent / "results"),
     )
+
+
+def test_cli_agent_evaluate_still_exposes_run_during_stainless_migration() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+    add_job_commands(app, {"evaluator.agent-evaluate": AgentEvalJob}, cli=EvaluatorPluginCLI())
+
+    result = CliRunner().invoke(app, ["agent-evaluate", "--help"])
+
+    assert result.exit_code == 0
+    assert "run" in result.output
+    assert "submit" in result.output
+    assert "explain" in result.output
 
 
 class _FakeEvaluator:
@@ -445,17 +462,51 @@ def test_agent_eval_job_source_is_distinct_from_evaluate_job() -> None:
     assert AGENT_EVAL_JOB_SOURCE != _derive_service_name(EvaluateJob)
 
 
-def _sdk_with_identity(sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform]) -> NeMoPlatform | AsyncNeMoPlatform:
-    return sdk_cls(
-        base_url="http://platform",
-        default_headers={
-            "X-NMP-Principal-Id": "service:evaluator",
-            "X-NMP-Principal-On-Behalf-Of": "user-1",
-            "X-NMP-Principal-On-Behalf-Of-Email": "user@corp.test",  # PII — must stay in-platform
-            "X-NMP-Internal": "true",
-            "X-NMP-Trace-Id": "must-not-forward",  # non-identity X-NMP-* must be dropped
-            "Authorization": "Bearer super-secret",  # bearer must never reach any endpoint
-        },
+def _async_sdk() -> AsyncNemoClient:
+    return AsyncNemoClient(
+        base_url="http://platform.test",
+        workspace="default",
+        http_client=AsyncMock(spec=httpx.AsyncClient),
+    )
+
+
+def _async_platform() -> AsyncNeMoPlatform:
+    return AsyncNeMoPlatform(
+        base_url="http://platform.test",
+        workspace="default",
+        http_client=AsyncMock(spec=httpx.AsyncClient),
+    )
+
+
+_SDK_IDENTITY_HEADERS = {
+    "X-NMP-Principal-Id": "service:evaluator",
+    "X-NMP-Principal-On-Behalf-Of": "user-1",
+    "X-NMP-Principal-On-Behalf-Of-Email": "user@corp.test",  # PII - must stay in-platform
+    "X-NMP-Internal": "true",
+    "X-NMP-Trace-Id": "must-not-forward",  # non-identity X-NMP-* must be dropped
+    "Authorization": "Bearer super-secret",  # bearer must never reach any endpoint
+}
+_FORWARDED_IDENTITY_HEADERS = {
+    "X-NMP-Principal-Id": "service:evaluator",
+    "X-NMP-Principal-On-Behalf-Of": "user-1",
+    "X-NMP-Principal-On-Behalf-Of-Email": "user@corp.test",
+    "X-NMP-Internal": "true",
+}
+
+
+def _sync_sdk_with_identity(base_url: str = "http://platform") -> NemoClient:
+    return NemoClient(
+        base_url=base_url,
+        default_headers=_SDK_IDENTITY_HEADERS,
+        http_client=MagicMock(spec=httpx.Client),
+    )
+
+
+def _async_sdk_with_identity(base_url: str = "http://platform") -> AsyncNemoClient:
+    return AsyncNemoClient(
+        base_url=base_url,
+        default_headers=_SDK_IDENTITY_HEADERS,
+        http_client=AsyncMock(spec=httpx.AsyncClient),
     )
 
 
@@ -463,35 +514,52 @@ def _model_target(url: str) -> ModelTarget:
     return ModelTarget(model=Model(url=url, name="m"))
 
 
-@pytest.mark.parametrize("sdk_cls", [NeMoPlatform, AsyncNeMoPlatform])
+@pytest.mark.parametrize("client_factory", [_sync_sdk_with_identity, _async_sdk_with_identity])
 def test_build_evaluator_forwards_identity_headers_to_platform_routed_target(
-    sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform],
+    client_factory: Callable[[], NemoClient | AsyncNemoClient],
 ) -> None:
     """A platform-routed target (same host as the SDK base URL, e.g. an IGW route) must act as the
     job's principal, so identity headers are forwarded. Forwarding is an explicit allowlist: the
     service principal id and on-behalf-of go through, but transport noise and other ``X-NMP-*`` (e.g.
     trace) headers and the bearer do not."""
-    sdk = _sdk_with_identity(sdk_cls)
+    client = client_factory()
     target = _model_target("http://platform/apis/inference-gateway/v2/workspaces/default/model/m/-/v1/chat/completions")
 
-    evaluator = AgentEvalJob._build_evaluator(sdk, target)
+    evaluator = AgentEvalJob._build_evaluator(client, target)
 
-    assert evaluator.default_headers == {
-        "X-NMP-Principal-Id": "service:evaluator",
-        "X-NMP-Principal-On-Behalf-Of": "user-1",
-        "X-NMP-Principal-On-Behalf-Of-Email": "user@corp.test",
-        "X-NMP-Internal": "true",
-    }
+    assert evaluator.default_headers == _FORWARDED_IDENTITY_HEADERS
 
 
-@pytest.mark.parametrize("sdk_cls", [NeMoPlatform, AsyncNeMoPlatform])
+@pytest.mark.parametrize("client_factory", [_sync_sdk_with_identity, _async_sdk_with_identity])
+def test_build_evaluator_forwards_identity_headers_to_matching_default_port(
+    client_factory: Callable[[str], NemoClient | AsyncNemoClient],
+) -> None:
+    client = client_factory("https://platform")
+    target = _model_target(
+        "https://platform:443/apis/inference-gateway/v2/workspaces/default/model/m/-/v1/chat/completions"
+    )
+
+    assert AgentEvalJob._build_evaluator(client, target).default_headers == _FORWARDED_IDENTITY_HEADERS
+
+
+@pytest.mark.parametrize("client_factory", [_sync_sdk_with_identity, _async_sdk_with_identity])
+def test_build_evaluator_sends_no_identity_when_platform_origin_scheme_differs(
+    client_factory: Callable[[str], NemoClient | AsyncNemoClient],
+) -> None:
+    client = client_factory("https://platform")
+    target = _model_target("http://platform/apis/inference-gateway/v2/workspaces/default/model/m/-/v1/chat/completions")
+
+    assert AgentEvalJob._build_evaluator(client, target).default_headers is None
+
+
+@pytest.mark.parametrize("client_factory", [_sync_sdk_with_identity, _async_sdk_with_identity])
 def test_build_evaluator_sends_no_identity_to_third_party_target(
-    sdk_cls: type[NeMoPlatform | AsyncNeMoPlatform],
+    client_factory: Callable[[], NemoClient | AsyncNemoClient],
 ) -> None:
     """A third-party target the user configured must receive no on-behalf-of identity — that would
     leak the delegated user's id/email/groups PII to an external host (it authenticates via its own
     api key anyway)."""
-    sdk = _sdk_with_identity(sdk_cls)
+    sdk = client_factory()
     target = _model_target("https://api.openai.com/v1/chat/completions")
 
     assert AgentEvalJob._build_evaluator(sdk, target).default_headers is None
@@ -499,7 +567,7 @@ def test_build_evaluator_sends_no_identity_to_third_party_target(
 
 def test_build_evaluator_runner_target_forwards_no_headers() -> None:
     # A runner has no platform HTTP endpoint of its own, so there's no identity to forward.
-    sdk = _sdk_with_identity(NeMoPlatform)
+    sdk = _sync_sdk_with_identity()
     assert AgentEvalJob._build_evaluator(sdk, _runner_target("openai/gpt-5.4")).default_headers is None
 
 
@@ -515,7 +583,7 @@ def test_input_spec_accepts_stored_metric_reference() -> None:
         ],
         target=_runner_target("openai/gpt-5.4"),
     )
-    assert not isinstance(spec.tasks, TasksetRef)
+    assert isinstance(spec.tasks, list)
     assert isinstance(spec.tasks[0].metrics[0], MetricRef)
 
 
@@ -778,7 +846,7 @@ async def test_compile_gym_environment_adds_staging_step_before_evaluation(mocke
     mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", None)
     mocker.patch(
         "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
-        return_value="registry.example/nmp-gym-tasks:test",
+        side_effect=lambda name: f"registry.example/{name}:test",
     )
     _enable_fileset_sandbox(mocker)
     spec = AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target())
@@ -794,10 +862,115 @@ async def test_compile_gym_environment_adds_staging_step_before_evaluation(mocke
     job_spec = PlatformJobSpec.model_validate(compiled)
     assert [step.name for step in job_spec.steps] == ["stage-environment", "agent-evaluate"]
     stage, evaluate = job_spec.steps
-    assert cast(Any, stage.executor).container.command == ["nemo_evaluator.tasks.stage_environment"]
+    stage_container = cast(Any, stage.executor).container
+    assert stage_container.image == "registry.example/nmp-cpu-tasks:test"
+    assert stage_container.entrypoint == ["python", "-m"]
+    assert stage_container.command == ["nemo_evaluator.tasks.stage_environment"]
     assert stage.config == {"environment": "dev/custom-gym"}
+    evaluate_container = cast(Any, evaluate.executor).container
+    assert evaluate_container.image == "registry.example/nmp-cpu-tasks:test"
+    assert evaluate_container.entrypoint == ["python", "-m"]
+    assert evaluate_container.command == ["nemo_evaluator.tasks.agent_evaluate"]
     evaluate_config = cast(dict[str, Any], evaluate.config)
     assert evaluate_config["target"]["environment"] == "dev/custom-gym"
+
+
+async def test_compile_sandboxed_gym_uses_cpu_tasks_and_ignores_colocated_image_override(
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image",
+        "registry.example/nmp-gym-tasks:colocated-only",
+    )
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        side_effect=lambda name: f"registry.example/{name}:test",
+    )
+    _enable_fileset_sandbox(mocker)
+    spec = AgentEvalSpec(
+        tasks=[_task_spec()],
+        target=GymRunnerTarget(
+            agent="simple_agent",
+            agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+            resources_server="mcqa",
+        ),
+    )
+
+    compiled = await AgentEvalJob.compile(
+        workspace="dev",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=None,
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    _assert_agent_eval_step_entrypoint(
+        job_spec,
+        expected_image="registry.example/nmp-cpu-tasks:test",
+        expected_entrypoint=("python", "-m"),
+    )
+
+
+async def test_compile_gym_environment_propagates_platform_sandbox_protocol(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        return_value="registry.example/nmp-gym-tasks:test",
+    )
+    _enable_fileset_sandbox(mocker)
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.platform_config.sandbox_server_protocol", "http")
+
+    compiled = await AgentEvalJob.compile(
+        workspace="dev",
+        spec=AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target()),
+        entity_client=object(),
+        job_name=None,
+        async_sdk=None,
+    )
+
+    evaluate = PlatformJobSpec.model_validate(compiled).steps[-1]
+    serialized_plan = next(
+        variable.value for variable in evaluate.environment or [] if variable.name == GYM_SANDBOX_PLAN_ENVVAR
+    )
+    assert serialized_plan is not None
+    plan = json.loads(serialized_plan)
+    assert plan["host_provider_options"] == {"connection": {"protocol": "http"}}
+
+
+async def test_compile_gym_environment_uses_host_commands_for_subprocess_profile(
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        return_value="registry.example/nmp-gym-tasks:test",
+    )
+    _enable_fileset_sandbox(mocker)
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.sandbox_host_provider", "docker")
+    evaluator_config = mocker.Mock()
+    evaluator_config.sandbox_host_provider = "docker"
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_evaluate.get_config",
+        return_value=evaluator_config,
+    )
+    _patch_execution_profiles(mocker, [SubprocessJobExecutionProfile()])
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target())
+
+    compiled = await AgentEvalJob.compile(
+        workspace="dev",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=_async_platform(),
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    assert [step.name for step in job_spec.steps] == ["stage-environment", "agent-evaluate"]
+
+    stage, evaluate = job_spec.steps
+    assert isinstance(stage.executor, SubprocessExecutionProvider)
+    assert stage.executor.command == ["python", "-m", "nemo_evaluator.tasks.stage_environment"]
+    assert isinstance(evaluate.executor, SubprocessExecutionProvider)
+    assert evaluate.executor.command == ["python", "-m", "nemo_evaluator.tasks.agent_evaluate"]
 
 
 async def test_compile_rejects_fileset_environment_when_sandboxing_is_disabled(mocker: MockerFixture) -> None:
@@ -828,7 +1001,7 @@ async def test_compile_rejects_mismatched_job_and_sandbox_storage_pvcs(mocker: M
         return_value=None,
     )
     mocker.patch(
-        "nemo_evaluator.jobs.agent_evaluate.EvaluatorConfig",
+        "nemo_evaluator.jobs.agent_evaluate.get_config",
         return_value=EvaluatorConfig(
             sandboxed_gym_default=True,
             sandbox_cluster_capable=True,
@@ -852,7 +1025,63 @@ async def test_compile_rejects_mismatched_job_and_sandbox_storage_pvcs(mocker: M
             spec=AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target()),
             entity_client=object(),
             job_name=None,
-            async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+            async_sdk=_async_platform(),
+        )
+
+
+async def test_compile_prefers_kubernetes_profile_for_opensandbox_fileset(mocker: MockerFixture) -> None:
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", None)
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        return_value="registry.example/nmp-gym-tasks:test",
+    )
+    _enable_fileset_sandbox(mocker)
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.sandbox_host_provider", "opensandbox")
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.sandbox_job_storage_pvc_claim", "jobs-pvc")
+    evaluator_config = mocker.Mock()
+    evaluator_config.sandboxed_gym_default = True
+    evaluator_config.sandbox_host_provider = "opensandbox"
+    evaluator_config.sandbox_job_storage_pvc_claim = "jobs-pvc"
+    mocker.patch("nemo_evaluator.jobs.agent_evaluate.get_config", return_value=evaluator_config)
+    _patch_execution_profiles(
+        mocker,
+        [
+            SubprocessJobExecutionProfile(profile="default"),
+            KubernetesJobExecutionProfile(
+                profile="default",
+                config=KubernetesJobExecutionProfileConfig(storage=KubernetesJobStorageConfig(pvc_name="jobs-pvc")),
+            ),
+        ],
+    )
+
+    compiled = await AgentEvalJob.compile(
+        workspace="dev",
+        spec=AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target()),
+        entity_client=object(),
+        job_name=None,
+        async_sdk=_async_platform(),
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    assert all(not isinstance(step.executor, SubprocessExecutionProvider) for step in job_spec.steps)
+
+
+async def test_compile_marks_gym_profile_transport_failure_as_retryable(mocker: MockerFixture) -> None:
+    request = httpx.Request("GET", "http://jobs.test/v2/execution-profiles")
+    jobs_client = mocker.Mock()
+    jobs_client.get_execution_profiles = mocker.AsyncMock(
+        side_effect=NemoTransportError(httpx.ConnectError("profiles unavailable", request=request))
+    )
+    mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
+    spec = AgentEvalSpec(tasks=[_task_spec()], target=_gym_environment_target())
+
+    with pytest.raises(PlatformJobDependencyUnavailableError, match="Jobs service is temporarily unavailable"):
+        await AgentEvalJob.compile(
+            workspace="dev",
+            spec=spec,
+            entity_client=object(),
+            job_name=None,
+            async_sdk=_async_platform(),
         )
 
 
@@ -894,7 +1123,7 @@ async def test_resolve_gym_environment_qualifies_and_validates_purpose(mocker: M
     resolved = await _resolve_gym_environment(
         target,
         workspace="dev",
-        async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+        async_sdk=_async_platform(),
     )
 
     assert isinstance(resolved, GymRunnerTarget)
@@ -908,7 +1137,7 @@ async def test_resolve_gym_environment_qualifies_and_validates_purpose(mocker: M
     )
 
 
-async def test_resolve_gym_environment_rejects_native_v1(mocker: MockerFixture) -> None:
+async def test_resolve_gym_environment_accepts_native_v1(mocker: MockerFixture) -> None:
     response = mocker.Mock()
     response.data.return_value = SimpleNamespace(purpose=FilesetPurpose.ENVIRONMENT)
     listing = mocker.Mock()
@@ -934,12 +1163,14 @@ async def test_resolve_gym_environment_rejects_native_v1(mocker: MockerFixture) 
     files.download_file = mocker.AsyncMock(return_value=manifest)
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=files)
 
-    with pytest.raises(ValueError, match="native-v1 environment packages are not supported"):
-        await _resolve_gym_environment(
-            _gym_environment_target(),
-            workspace="dev",
-            async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
-        )
+    resolved = await _resolve_gym_environment(
+        _gym_environment_target(),
+        workspace="dev",
+        async_sdk=_async_platform(),
+    )
+
+    assert isinstance(resolved, GymRunnerTarget)
+    assert resolved.environment == FilesetRef(root="dev/custom-gym")
 
 
 async def test_resolve_gym_environment_rejects_wrong_purpose(mocker: MockerFixture) -> None:
@@ -959,7 +1190,7 @@ async def test_resolve_gym_environment_rejects_wrong_purpose(mocker: MockerFixtu
         await _resolve_gym_environment(
             target,
             workspace="dev",
-            async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+            async_sdk=_async_platform(),
         )
 
 
@@ -980,7 +1211,7 @@ async def test_resolve_gym_environment_rejects_missing_manifest(mocker: MockerFi
         await _resolve_gym_environment(
             _gym_environment_target(),
             workspace="dev",
-            async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+            async_sdk=_async_platform(),
         )
 
     files.download_file.assert_not_awaited()
@@ -1003,7 +1234,7 @@ async def test_resolve_gym_environment_rejects_manifest_listing_mismatch(mocker:
         await _resolve_gym_environment(
             _gym_environment_target(),
             workspace="dev",
-            async_sdk=mocker.Mock(spec=AsyncNeMoPlatform),
+            async_sdk=_async_platform(),
         )
 
 
@@ -1015,7 +1246,7 @@ async def test_compile_rejects_harbor_target_for_docker_profile(mocker: MockerFi
     )
 
     with pytest.raises(PlatformJobCompilationError) as exc_info:
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=_async_platform())
 
     message = str(exc_info.value)
     assert "profile 'default'" in message
@@ -1044,7 +1275,7 @@ async def test_compile_rejects_harbor_target_for_containerized_profile(
     _patch_execution_profiles(mocker, [execution_profile])
 
     with pytest.raises(PlatformJobCompilationError, match=rf"backend '{backend}'"):
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=_async_platform())
 
 
 async def test_compile_routes_harbor_directly_to_advertised_subprocess_profile(mocker: MockerFixture) -> None:
@@ -1057,7 +1288,7 @@ async def test_compile_routes_harbor_directly_to_advertised_subprocess_profile(m
         ],
     )
 
-    job_spec = await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+    job_spec = await _compile_harbor(async_sdk=_async_platform())
 
     executor = job_spec.steps[0].executor
     assert isinstance(executor, SubprocessExecutionProvider)
@@ -1070,7 +1301,7 @@ async def test_compile_rejects_harbor_when_profile_is_missing(mocker: MockerFixt
     _patch_execution_profiles(mocker, [SubprocessJobExecutionProfile.model_validate({"profile": "other"})])
 
     with pytest.raises(PlatformJobCompilationError, match="profile 'default'.*does not resolve"):
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=_async_platform())
 
 
 async def test_compile_marks_missing_platform_sdk_as_dependency_unavailable() -> None:
@@ -1087,7 +1318,7 @@ async def test_compile_marks_profile_transport_failure_as_retryable(mocker: Mock
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
 
     with pytest.raises(PlatformJobDependencyUnavailableError, match="Jobs service is temporarily unavailable"):
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=_async_platform())
 
 
 @pytest.mark.parametrize("failure_kind", ["invalid-response", "server-error"])
@@ -1104,7 +1335,7 @@ async def test_compile_marks_profile_dependency_failure_as_retryable(failure_kin
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
 
     with pytest.raises(PlatformJobDependencyUnavailableError, match="Jobs service is temporarily unavailable"):
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=_async_platform())
 
 
 async def test_compile_does_not_classify_unexpected_profile_failure_as_invalid(mocker: MockerFixture) -> None:
@@ -1113,7 +1344,7 @@ async def test_compile_does_not_classify_unexpected_profile_failure_as_invalid(m
     mocker.patch("nemo_evaluator.jobs.agent_evaluate.client_from_platform", return_value=jobs_client)
 
     with pytest.raises(RuntimeError, match="unexpected lookup bug"):
-        await _compile_harbor(async_sdk=mocker.Mock(spec=AsyncNeMoPlatform))
+        await _compile_harbor(async_sdk=_async_platform())
 
 
 async def test_compile_non_harbor_target_does_not_resolve_execution_profiles(mocker: MockerFixture) -> None:
@@ -1267,27 +1498,41 @@ class TestAgentEvalTask:
     """Coverage for the compiled container/subprocess task entrypoint."""
 
     def test_main_dispatches_agent_eval_job_with_task_sdk(self, mocker: MockerFixture) -> None:
-        sdk = object()
-        async_sdk = object()
-        get_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", return_value=sdk)
-        get_async_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_async_task_sdk", return_value=async_sdk)
+        sdk = NeMoPlatform(base_url="http://platform.test", workspace="default")
+        client = NemoClient(
+            base_url="http://platform.test", workspace="default", http_client=MagicMock(spec=httpx.Client)
+        )
+        async_client = AsyncNemoClient(
+            base_url="http://platform.test", workspace="default", http_client=AsyncMock(spec=httpx.AsyncClient)
+        )
+        ctx = MagicMock()
+        get_platform_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", return_value=sdk)
+        build_ctx = mocker.patch("nemo_evaluator.tasks.runner.build_ctx_from_env", return_value=ctx)
+        get_task_client = mocker.patch("nemo_evaluator.tasks.runner.get_task_nemo_client", return_value=client)
+        get_async_task_client = mocker.patch(
+            "nemo_evaluator.tasks.runner.get_async_task_nemo_client", return_value=async_client
+        )
         run_task = mocker.patch("nemo_evaluator.tasks.runner.run_task", return_value=0)
 
         exit_code = agent_eval_task_main()
 
         assert exit_code == 0
-        get_task_sdk.assert_called_once_with("evaluator")
-        get_async_task_sdk.assert_called_once_with("evaluator")
-        run_task.assert_called_once_with(AgentEvalJob, sdk=sdk, async_sdk=async_sdk)
+        get_platform_sdk.assert_called_once_with("evaluator")
+        build_ctx.assert_called_once_with(sdk)
+        get_task_client.assert_called_once_with("evaluator")
+        get_async_task_client.assert_called_once_with("evaluator")
+        run_task.assert_called_once_with(AgentEvalJob, sdk=client, async_sdk=async_client, ctx=ctx)
 
     def test_main_returns_setup_exit_code_when_task_sdk_fails(self, mocker: MockerFixture) -> None:
-        get_task_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", side_effect=RuntimeError("boom"))
+        get_platform_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", side_effect=RuntimeError("boom"))
+        get_task_client = mocker.patch("nemo_evaluator.tasks.runner.get_task_nemo_client")
         run_task = mocker.patch("nemo_evaluator.tasks.runner.run_task")
 
         exit_code = agent_eval_task_main()
 
         assert exit_code == SDK_INITIALIZATION_EXIT_CODE
-        get_task_sdk.assert_called_once_with("evaluator")
+        get_platform_sdk.assert_called_once_with("evaluator")
+        get_task_client.assert_not_called()
         run_task.assert_not_called()
 
 

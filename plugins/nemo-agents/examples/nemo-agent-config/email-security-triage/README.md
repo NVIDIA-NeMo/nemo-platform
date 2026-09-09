@@ -144,7 +144,7 @@ EOF
 nemo evaluator evaluate run --spec-file /tmp/esec-eval-spec.json
 ```
 
-Note this is `nemo evaluator evaluate run`, not `nemo agents evaluate run` — the
+Note this is `nemo evaluator evaluate run`, not `nemo agents evaluate` — the
 latter takes a NAT-format eval YAML, and these configs are evaluator SDK specs.
 The task-driven config runs the same way through
 `nemo evaluator agent-evaluate run`, whose spec wraps its tasks in an `agent`

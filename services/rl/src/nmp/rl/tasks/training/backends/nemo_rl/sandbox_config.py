@@ -93,6 +93,9 @@ class NemoGymSandboxedConfig(BaseModel):
     sandboxed: bool = True
     host_provider: str = "opensandbox"
     environment_path: str | None = None
+    # Whether that package vendors a complete closure. NeMo-RL forwards it to the sandbox as
+    # NMP_ENVIRONMENT_OFFLINE so uv resolves from wheels/ instead of an index it cannot reach.
+    environment_offline: bool = False
     sandbox: SandboxConfig | None = None
     # Stamped onto every sandbox pod as a label. Upstream defaults this to a shared
     # constant when absent, which makes concurrent jobs indistinguishable.

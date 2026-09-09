@@ -345,11 +345,11 @@ class FilesetsResource(SyncAPIResource):
     ) -> Fileset:
         """Delete Fileset.
 
-        Permanently deletes a fileset from the platform.
+        Permanently deletes an unreferenced fileset from the platform.
 
-        Returns metadata about the
-        deleted fileset. For local storage backends, this also deletes the underlying
-        files.
+        Referencing model
+        or adapter entities must be relinked or deleted first. For local storage backends, this also deletes the
+        underlying files.
 
         Args:
           extra_headers: Send extra headers
@@ -671,11 +671,11 @@ class AsyncFilesetsResource(AsyncAPIResource):
     ) -> Fileset:
         """Delete Fileset.
 
-        Permanently deletes a fileset from the platform.
+        Permanently deletes an unreferenced fileset from the platform.
 
-        Returns metadata about the
-        deleted fileset. For local storage backends, this also deletes the underlying
-        files.
+        Referencing model
+        or adapter entities must be relinked or deleted first. For local storage backends, this also deletes the
+        underlying files.
 
         Args:
           extra_headers: Send extra headers

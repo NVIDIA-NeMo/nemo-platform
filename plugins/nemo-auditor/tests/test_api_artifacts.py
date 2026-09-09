@@ -107,7 +107,7 @@ class TestDownloadAuditArtifacts:
 
         with (
             patch.object(artifacts_module, "client_from_platform", return_value=mock_jobs),
-            patch.object(artifacts_module, "result_manager_factory", return_value=mock_rm),
+            patch.object(artifacts_module, "async_result_manager_factory", return_value=mock_rm),
         ):
             resp = client.get("/apis/auditor/v2/workspaces/default/jobs/audit/job-1/results/artifacts/download")
 
@@ -137,7 +137,7 @@ class TestDownloadAuditArtifacts:
 
         with (
             patch.object(artifacts_module, "client_from_platform", return_value=mock_jobs),
-            patch.object(artifacts_module, "result_manager_factory", return_value=mock_rm),
+            patch.object(artifacts_module, "async_result_manager_factory", return_value=mock_rm),
         ):
             resp = client.get("/apis/auditor/v2/workspaces/default/jobs/audit/job-1/results/artifacts/download")
 
@@ -154,7 +154,7 @@ class TestDownloadAuditArtifacts:
 
         with (
             patch.object(artifacts_module, "client_from_platform", return_value=mock_jobs),
-            patch.object(artifacts_module, "result_manager_factory", return_value=mock_rm),
+            patch.object(artifacts_module, "async_result_manager_factory", return_value=mock_rm),
         ):
             resp = client.get("/apis/auditor/v2/workspaces/default/jobs/audit/job-1/results/artifacts/download")
 
@@ -180,7 +180,7 @@ class TestDownloadAuditArtifacts:
 
         with (
             patch.object(artifacts_module, "client_from_platform", return_value=mock_jobs),
-            patch.object(artifacts_module, "result_manager_factory", return_value=mock_rm),
+            patch.object(artifacts_module, "async_result_manager_factory", return_value=mock_rm),
         ):
             client.get("/apis/auditor/v2/workspaces/default/jobs/audit/job-1/results/artifacts/download")
 
@@ -202,7 +202,7 @@ class TestDownloadAuditArtifacts:
 
         with (
             patch.object(artifacts_module, "client_from_platform", return_value=mock_jobs),
-            patch.object(artifacts_module, "result_manager_factory", return_value=mock_rm),
+            patch.object(artifacts_module, "async_result_manager_factory", return_value=mock_rm),
         ):
             client.get("/apis/auditor/v2/workspaces/prod/jobs/audit/my-job/results/artifacts/download")
 
@@ -217,7 +217,10 @@ class TestArtifactsRouteWiring:
         paths: set[str] = set()
         for spec in service.get_routers():
             for route in spec.router.routes:
-                if isinstance(route, APIRoute) and "GET" in route.methods:
+                if not isinstance(route, APIRoute):
+                    continue
+                methods = route.methods
+                if methods is not None and "GET" in methods:
                     paths.add(f"/apis/auditor{spec.prefix}{route.path}")
         assert "/apis/auditor/v2/workspaces/{workspace}/jobs/audit/{job}/results/artifacts/download" in paths
 
@@ -228,7 +231,10 @@ class TestArtifactsRouteWiring:
         all_get_paths: list[str] = []
         for spec in service.get_routers():
             for route in spec.router.routes:
-                if isinstance(route, APIRoute) and "GET" in route.methods:
+                if not isinstance(route, APIRoute):
+                    continue
+                methods = route.methods
+                if methods is not None and "GET" in methods:
                     all_get_paths.append(f"/apis/auditor{spec.prefix}{route.path}")
 
         artifacts_idx = next(i for i, p in enumerate(all_get_paths) if p.endswith("/artifacts/download"))

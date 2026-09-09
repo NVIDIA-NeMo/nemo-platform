@@ -24,6 +24,11 @@ from nemo_evaluator_sdk.values.evidence import CandidateEvidence
 from pydantic import ValidationError
 
 
+class _BadFloat(float):
+    def __float__(self) -> float:
+        raise RuntimeError("must not be called")
+
+
 @pytest.mark.asyncio
 async def test_agent_phase_success_metric_reads_metadata_and_bundles_inline() -> None:
     """``type`` is a fixed discriminator now, which is what makes the metric inline-bundleable.
@@ -125,13 +130,14 @@ def test_from_metadata_rejects_unserialisable_cost(bad: object) -> None:
 def test_direct_construction_rejects_unserialisable_cost(bad: object) -> None:
     # from_metadata is not the only way in, so the model itself has to hold the invariant.
     with pytest.raises(ValidationError):
-        TrialMeasurements(cost_usd=bad)
+        TrialMeasurements(cost_usd=bad)  # ty: ignore[invalid-argument-type]
 
 
 @pytest.mark.parametrize("good", [0.134, 0, "0.5", Decimal("1.25")])
 def test_direct_construction_still_accepts_a_finite_cost(good: object) -> None:
     # Rejecting non-finite values must not cost the ordinary coercion of a finite one.
-    assert TrialMeasurements(cost_usd=good).cost_usd == float(good)
+    measurement = TrialMeasurements(cost_usd=good)  # ty: ignore[invalid-argument-type]
+    assert measurement.cost_usd == float(good)  # ty: ignore[invalid-argument-type]
 
 
 @pytest.mark.parametrize(
@@ -158,10 +164,97 @@ def test_runner_and_agent_eval_metrics_are_built_in(factory, expected_type: str)
 
     restored = unbundle_metric(bundle)
     assert type(restored) is type(metric)
-    assert restored.model_dump() == metric.model_dump()
+    assert restored == metric
 
 
 def test_built_in_metrics_reject_a_caller_supplied_type() -> None:
     """The discriminator is fixed. Callers used to namespace it, which the union cannot express."""
     with pytest.raises(ValidationError):
-        GymRewardMetric(type="my_namespaced_reward")
+        GymRewardMetric(type="my_namespaced_reward")  # ty: ignore[invalid-argument-type]
+
+
+def test_harbor_reward_metric_declares_primary_first_and_sparse_secondaries() -> None:
+    metric = HarborRewardMetric(
+        output_name="score",
+        reward_keys=("z_shape", "score", "format_ok", "format_ok"),
+    )
+
+    specs = metric.output_spec()
+
+    assert [spec.name for spec in specs] == ["score", "format_ok", "z_shape"]
+    assert [spec.required for spec in specs] == [True, False, False]
+
+
+@pytest.mark.asyncio
+async def test_harbor_reward_metric_uses_primary_fallback_and_omits_unusable_secondaries() -> None:
+    metric = HarborRewardMetric(output_name="score", reward_keys=("format_ok", "score", "shape_ok"))
+
+    result = await metric.compute_scores(
+        MetricInput(
+            row=DatasetRow(data={}),
+            candidate=CandidateOutput(
+                metadata={
+                    "reward": float("nan"),
+                    "reward_details": {"format_ok": 1.0, "shape_ok": True},
+                    "reward_rejections": {"score": "non_finite", "shape_ok": "boolean"},
+                    "reward_entry_rejections": ["invalid_key", "reserved_key"],
+                }
+            ),
+        )
+    )
+
+    assert [(output.name, output.value) for output in result.outputs] == [("score", 0.0), ("format_ok", 1.0)]
+    assert [diagnostic.details for diagnostic in result.diagnostics] == [
+        {"output": "score", "reason": "non_finite"},
+        {"output": "shape_ok", "reason": "boolean"},
+        {"output": None, "reason": "invalid_key"},
+        {"output": None, "reason": "reserved_key"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_harbor_reward_metric_defensively_rejects_manual_bad_metadata() -> None:
+    metric = HarborRewardMetric(output_name="score", reward_keys=("format_ok", "score"))
+
+    result = await metric.compute_scores(
+        MetricInput(
+            row=DatasetRow(data={}),
+            candidate=CandidateOutput(metadata={"reward": 10**1000, "reward_details": {"format_ok": float("inf")}}),
+        )
+    )
+
+    assert [(output.name, output.value) for output in result.outputs] == [("score", 0.0)]
+    assert [diagnostic.details for diagnostic in result.diagnostics] == [
+        {"output": "score", "reason": "unusable"},
+        {"output": "format_ok", "reason": "unusable"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_harbor_reward_metric_rejects_hostile_numeric_subclasses_without_calling_them() -> None:
+    metric = HarborRewardMetric(output_name="score", reward_keys=("score", "format_ok"))
+
+    result = await metric.compute_scores(
+        MetricInput(
+            row=DatasetRow(data={}),
+            candidate=CandidateOutput(
+                metadata={"reward": _BadFloat(1.0), "reward_details": {"format_ok": _BadFloat(1.0)}}
+            ),
+        )
+    )
+
+    assert [(output.name, output.value) for output in result.outputs] == [("score", 0.0)]
+    assert [diagnostic.details for diagnostic in result.diagnostics] == [
+        {"output": "score", "reason": "unusable"},
+        {"output": "format_ok", "reason": "unusable"},
+    ]
+
+
+@pytest.mark.parametrize("bad_name", ["score.pass@2", ""])
+def test_harbor_reward_metric_rejects_unsafe_names_on_both_fields(bad_name: str) -> None:
+    # The classification rules are the adapter's to test; this proves the validator is wired to both
+    # name-bearing fields and fails at construction.
+    with pytest.raises(ValidationError, match="reward_key"):
+        HarborRewardMetric(output_name=bad_name)
+    with pytest.raises(ValidationError, match="reward_key"):
+        HarborRewardMetric(reward_keys=(bad_name,))

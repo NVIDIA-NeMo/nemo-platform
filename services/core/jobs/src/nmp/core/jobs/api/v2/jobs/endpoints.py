@@ -16,7 +16,7 @@ from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params, parse_deep_object
 from nmp.common.auth import AuthClient, AuthContext, get_auth_client
 from nmp.common.config import get_platform_config
-from nmp.common.entities.client import EntityConflictError, EntityValidationError
+from nmp.common.entities.client import EntityConflictError, EntityNotFoundError, EntityValidationError
 from nmp.common.jobs.docker import validate_gpu_available_for_docker
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.log_client import JobLogsClient, dep_job_logs_client
@@ -31,7 +31,7 @@ from nmp.common.jobs.schemas import (
     PlatformJobStatusResponse,
 )
 from nmp.common.observability import scoped_app_ctx
-from nmp.common.sdk_factory import get_async_platform_sdk
+from nmp.common.sdk_factory import with_options_preserving_request_router
 from nmp.common.service.dependencies import get_sdk_client
 from nmp.core.jobs.api.dependencies import dep_dispatcher
 from nmp.core.jobs.api.v2.jobs.schemas import (
@@ -51,9 +51,11 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
 from nmp.core.jobs.app.ctx import JobContext
 from nmp.core.jobs.app.dispatcher import (
     JobAlreadyExistsError,
+    JobDeletionConflictError,
     JobDispatcher,
     JobOutputLocationError,
     JobSecretValidationError,
+    JobStatusUpdateSkippedError,
     StateTransitionConflictError,
 )
 from nmp.core.jobs.app.profiles import ExecutionProfileT
@@ -72,6 +74,8 @@ router = APIRouter()
 
 platform_config = get_platform_config()
 _JOB_STATUS_VALUES = ", ".join(job_status.value for job_status in PlatformJobStatus)
+MAX_LOG_QUERY_LINES = 10_000
+DEFAULT_LOG_QUERY_LIMIT = 100
 
 
 def _format_validation_location(loc: Any, *, prefix: str | None = None) -> str:
@@ -452,6 +456,9 @@ async def resume_job(
     responses={
         status.HTTP_204_NO_CONTENT: {"description": "Successful Response"},
         status.HTTP_404_NOT_FOUND: {"description": "Job not Found"},
+        status.HTTP_409_CONFLICT: {
+            "description": "Job, attempt, or step is not terminal; paused or cancelling jobs must reach a terminal state before deletion."
+        },
     },
 )
 async def delete_job(
@@ -461,7 +468,18 @@ async def delete_job(
 ) -> None:
     """Delete a platform job."""
     with scoped_app_ctx(JobContext(id=name)):
-        deleted = await dispatcher.delete_job(name, workspace)
+        try:
+            deleted = await dispatcher.delete_job(name, workspace)
+        except JobDeletionConflictError as exc:
+            logger.info(
+                "Cannot delete job '%s' in workspace '%s'",
+                sanitize_for_log(name),
+                sanitize_for_log(workspace),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -530,14 +548,34 @@ async def page_job_logs(
     workspace: str,
     dispatcher: JobDispatcher = Depends(dep_dispatcher),
     logs_client: JobLogsClient = Depends(dep_job_logs_client),
-    limit: int = Query(default=100, description="Maximum number of logs to return", gt=0),
-    page_cursor: str = Query(default=None, description="Page cursor"),
+    limit: int | None = Query(
+        default=None,
+        description="Maximum number of logs to return",
+        gt=0,
+        le=MAX_LOG_QUERY_LINES,
+        json_schema_extra={"x-schema-default": DEFAULT_LOG_QUERY_LIMIT},
+    ),
+    page_cursor: str | None = Query(default=None, description="Page cursor"),
+    tail: int | None = Query(
+        default=None, description="Number of newest log lines to return", gt=0, le=MAX_LOG_QUERY_LINES
+    ),
     attempt_id: Optional[int] = Query(default=None, description="Filter logs by job attempt ID"),
     step_id: Optional[str] = Query(default=None, description="Filter logs by step name"),
     task_id: Optional[str] = Query(default=None, description="Filter logs by task ID"),
 ) -> PlatformJobLogPage:
     """Get paginated logs for a platform job."""
     with scoped_app_ctx(JobContext(id=name)):
+        if tail is not None and limit is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="tail cannot be combined with limit; tail controls the returned log window size.",
+            )
+        if tail is not None and page_cursor is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="tail cannot be combined with page_cursor; pass the returned prev_page as page_cursor without tail.",
+            )
+
         job = await dispatcher.get_job(name, workspace)
         if not job:
             raise HTTPException(
@@ -546,9 +584,9 @@ async def page_job_logs(
             )
 
         try:
-            filters = {
+            filters: dict[str, str] = {
                 "job": name,
-                "job_attempt": attempt_id if attempt_id is not None else job.attempt_id,
+                "job_attempt": str(attempt_id if attempt_id is not None else job.attempt_id),
             }
             if step_id:
                 filters["job_step"] = step_id
@@ -558,13 +596,14 @@ async def page_job_logs(
                 job.fileset,
                 workspace=workspace,
                 filters=filters,
-                page_size=limit,
+                page_size=limit or DEFAULT_LOG_QUERY_LIMIT,
                 page_cursor=page_cursor,
+                tail=tail,
                 artifact_base_path=job_artifact_base_path(name, job.output_location),
             )
         except InvalidPageCursorError as e:
             logger.error(f"Invalid page cursor: {str(e)}")
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid page cursor")
+            raise HTTPException(status_code=422, detail=str(e))
         except Exception as e:
             logger.error(f"Unexpected error when querying logs: {str(e)}")
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to query job logs")
@@ -594,13 +633,20 @@ async def create_job_result(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job '{job}' not found in workspace '{workspace}'.",
             )
-        result = await dispatcher.create_result(
-            job_id=job_entity.id,
-            result_name=name,
-            workspace=workspace,
-            artifact_url=request.artifact_url,
-            artifact_storage_type=request.artifact_storage_type,
-        )
+        try:
+            result = await dispatcher.create_result(
+                job_id=job_entity.id,
+                job_name=job,
+                result_name=name,
+                workspace=workspace,
+                artifact_url=request.artifact_url,
+                artifact_storage_type=request.artifact_storage_type,
+            )
+        except EntityNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{job}' not found in workspace '{workspace}'.",
+            ) from exc
         return result.to_response()
 
 
@@ -679,6 +725,7 @@ async def download_job_result(
     workspace: str,
     background_tasks: BackgroundTasks,
     dispatcher: JobDispatcher = Depends(dep_dispatcher),
+    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
 ) -> FileResponse:
     """Download a job result file."""
     with scoped_app_ctx(JobContext(id=job, result_name=name)):
@@ -692,9 +739,8 @@ async def download_job_result(
         filename, tmp_dir_path = await download_from_result_info(
             result_name=name,
             job_name=job,
-            workspace=workspace,
             artifact_url=result.artifact_url,
-            files_sdk=get_async_platform_sdk(),
+            sdk=with_options_preserving_request_router(sdk, workspace=workspace),
         )
         background_tasks.add_task(lambda: tmp_dir_path.cleanup_tmp_dir())
         return FileResponse(path=tmp_dir_path.path, filename=filename, background=background_tasks)
@@ -830,6 +876,15 @@ async def update_job_step_status(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Conflict updating job step: it was modified by another request. Refresh the step and retry.",
             ) from exc
+        except JobStatusUpdateSkippedError:
+            logger.info(
+                "Skipping job step status update because the job was deleted",
+                extra={
+                    "job": sanitize_for_log(job),
+                    "step": sanitize_for_log(name),
+                    "workspace": sanitize_for_log(workspace),
+                },
+            )
 
         return step_entity
 
@@ -893,13 +948,19 @@ async def update_job_step_task(
                 detail=f"Step '{step}' for job '{job}' not found in workspace '{workspace}'.",
             )
 
-        return await dispatcher.create_or_update_task(
-            job,
-            name,
-            workspace,
-            update,
-            step_entity,
-        )
+        try:
+            return await dispatcher.create_or_update_task(
+                job,
+                name,
+                workspace,
+                update,
+                step_entity,
+            )
+        except EntityNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Step '{step}' for job '{job}' not found in workspace '{workspace}'.",
+            ) from exc
 
 
 @router.get(

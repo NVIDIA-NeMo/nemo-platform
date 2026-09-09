@@ -38,6 +38,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     AgentTaskRunner,
     RunAggregationsProvider,
     RunnerInfo,
+    TrialAwareMetricsProvider,
 )
 from nemo_evaluator_sdk.agent_inference import (
     AgentInferenceContext,
@@ -179,6 +180,26 @@ class AgentEvaluator:
                 trial_list = await self._generate_trials(tasks=task_list, target=target, config=runtime_config)
             else:
                 raise ValueError(seam_error)
+            if isinstance(target, TrialAwareMetricsProvider):
+                # Some runners only know their full metric list after trials exist
+                # (Harbor extras in reward_details). Ask for this task's metrics and
+                # copy the task with that list before scoring.
+                trials_by_task = _trials_by_task(task_list, trial_list)
+                original_task_ids = tuple(trial.task_id for trial in trial_list)
+                task_list = [
+                    _task_with_updated_metrics(task, target.scoring_metrics(task, trials_by_task[task.id]))
+                    for task in task_list
+                ]
+                changed_assignments = [
+                    (index, trial.id, original_task_id, trial.task_id)
+                    for index, (trial, original_task_id) in enumerate(zip(trial_list, original_task_ids, strict=True))
+                    if trial.task_id != original_task_id
+                ]
+                if changed_assignments:
+                    raise ValueError(
+                        "scoring_metrics changed trial task assignments "
+                        f"(row, trial_id, original_task_id, task_id): {changed_assignments}"
+                    )
             scores = await self._score_trials(
                 tasks=task_list,
                 trials=trial_list,
@@ -228,20 +249,11 @@ class AgentEvaluator:
         config: AgentEvalRunConfig,
         run_id: str,
     ) -> list[AgentEvalTaskScore]:
-        tasks_by_id = {task.id: task for task in tasks}
         task_index_by_id = {task.id: index for index, task in enumerate(tasks)}
-        trials_by_task: dict[str, list[AgentEvalTrial]] = defaultdict(list)
-        for trial in trials:
-            if trial.task_id not in tasks_by_id:
-                raise ValueError(f"trial {trial.id!r} references unknown task {trial.task_id!r}")
-            trials_by_task[trial.task_id].append(trial)
-
-        # Fail loudly when a task produced no trial. Imported trials or an AgentTaskRunner may omit a
-        # task entirely; without this an incomplete run would look successful aside from lower summary
-        # counts. (A richer alternative is to emit a "missing trial" failed score per metric.)
-        tasks_without_trials = [task.id for task in tasks if not trials_by_task.get(task.id)]
-        if tasks_without_trials:
-            raise ValueError(f"no trials produced for tasks: {sorted(tasks_without_trials)}")
+        # Regrouped here even when `run` already grouped for the metric-finalization hook. This also
+        # validates direct callers of `_score_trials`; `run` separately rejects hook-side assignment
+        # changes, including balanced swaps that regrouping alone cannot detect.
+        trials_by_task = _trials_by_task(tasks, trials)
 
         for task in tasks:
             if not task.metrics:
@@ -386,6 +398,51 @@ class AgentEvaluator:
         finally:
             if close_client is not None:
                 await close_client()
+
+
+def _trials_by_task(
+    tasks: Sequence[AgentEvalTask],
+    trials: Sequence[AgentEvalTrial],
+) -> dict[str, list[AgentEvalTrial]]:
+    """Group trials by ``task_id``. Two hard checks:
+
+    Check 1 — unknown task. A trial names a ``task_id`` that is not in ``tasks``.
+    Typical cause: imported ``trials.jsonl`` mixed with a different taskset, or a
+    runner stamp typo. Fail the run; there is no task in this eval to attach it to.
+
+    Check 2 — task with no trial. ``tasks`` asked for work the runner/import did
+    not produce. Fail the run rather than ranking on a quieter subset: dropping
+    the missing task would shrink the mean (easy tasks succeed, ``hard`` never
+    ran). Missing expected tasks fail explicitly
+    instead of silently shrinking coverage, and an absent Harbor ``result.json``
+    must not be fabricated into a ``FAILED`` trial. That is distinct from an
+    errored trial that *did* land: those stay ``PARTIAL`` and remain
+    in the denominator.
+    """
+    task_ids = {task.id for task in tasks}
+    trials_by_task: dict[str, list[AgentEvalTrial]] = defaultdict(list)
+    for trial in trials:
+        if trial.task_id not in task_ids:
+            raise ValueError(f"trial {trial.id!r} references unknown task {trial.task_id!r}")
+        trials_by_task[trial.task_id].append(trial)
+    tasks_without_trials = [task.id for task in tasks if not trials_by_task.get(task.id)]
+    if tasks_without_trials:
+        raise ValueError(f"no trials produced for tasks: {sorted(tasks_without_trials)}")
+    return dict(trials_by_task)
+
+
+def _task_with_updated_metrics(task: AgentEvalTask, metrics: Sequence[Metric]) -> AgentEvalTask:
+    """Copy ``task`` with ``metrics`` replaced, through the constructor rather than ``model_copy``.
+
+    ``model_copy(update=...)`` skips validation; the constructor re-runs the check that rejects
+    duplicate metric types and views referencing outputs the new metrics do not declare. Every
+    other field is carried over by value, so a field added to :class:`AgentEvalTask` later cannot
+    quietly revert to its default here -- ``extra="forbid"`` catches an unknown key, not an
+    omitted one.
+    """
+    fields: dict[str, Any] = dict(task)
+    fields["metrics"] = list(metrics)
+    return AgentEvalTask(**fields)
 
 
 async def _preflight_task_metrics(

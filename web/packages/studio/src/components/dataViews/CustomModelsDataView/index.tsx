@@ -30,29 +30,23 @@ import type {
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, type DropdownEntry, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
-import { CustomizeModelModal } from '@studio/components/CustomizeModelModal';
-import { FINETUNING_TYPE_FILTER_OPTIONS } from '@studio/components/dataViews/CustomModelsDataView/constants';
+import {
+  DEFAULT_CUSTOM_MODELS_FILTER,
+  FINETUNING_TYPE_FILTER_OPTIONS,
+  HAS_ADAPTERS,
+} from '@studio/components/dataViews/CustomModelsDataView/constants';
 import { DeploymentIndicator } from '@studio/components/dataViews/CustomModelsDataView/DeploymentIndicator';
 import { KindTag } from '@studio/components/dataViews/CustomModelsDataView/KindTag';
 import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
 import type { ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { INTAKE_ENABLED } from '@studio/constants/environment';
-import { getIntakeTracesRoute } from '@studio/routes/utils';
-import { useBoolean } from '@studio/util/hooks/useBoolean';
+import { getIntakeTracesRoute, getNewCustomizationJobRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 type SearchQuery = Record<string, unknown>;
-
-const HAS_BASE_MODEL = { 'data.base_model': { $not: { $eq: null } } };
-const HAS_ADAPTERS = { adapters: { $exists: true } };
-
-/**
- * Default filter: show only "custom" models (has base_model, finetuning_type, or adapters).
- */
-const DEFAULT_CUSTOM_MODELS_FILTER = { $or: [HAS_BASE_MODEL, HAS_ADAPTERS] };
 
 interface CustomModelsFilterParams {
   name?: string;
@@ -132,7 +126,6 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
   const navigate = useNavigate();
   const { mutateAsync: deleteModel } = useModelsDeleteModel();
   const { mutateAsync: deleteAdapter } = useModelsDeleteModelAdapter();
-  const [isCustomizeModalOpen, openCustomizeModal, closeCustomizeModal] = useBoolean(false);
 
   const dataViewState = useStudioDataViewState({
     defaultSort: [{ id: 'created_at', desc: true }],
@@ -453,7 +446,7 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
                 <EntityEmptyState
                   entity="customModels"
                   variant="first-use"
-                  onCreate={openCustomizeModal}
+                  onCreate={() => navigate(getNewCustomizationJobRoute(workspace))}
                 />
               ),
           },
@@ -472,11 +465,6 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
           simpleConfirm
         />
       )}
-      <CustomizeModelModal
-        open={isCustomizeModalOpen}
-        onClose={closeCustomizeModal}
-        workspace={workspace}
-      />
     </>
   );
 };

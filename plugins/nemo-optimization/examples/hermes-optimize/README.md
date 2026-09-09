@@ -10,9 +10,8 @@ Agent entity YAML lives under `agents/` and is passed to `--agent-config`.
 
 **Layout:** this directory is a self-contained **optimize bundle**. Every path
 inside the `optimize-*.yaml` files (`dataset`, `base_dir`, MCP `config_paths`)
-is relative to *this folder*, not to the repo root. That is what makes the same
-bundle work for a local `run` and for a remote `submit`, where the platform sees
-only the files you staged into a fileset.
+is relative to *this folder*, not to the repo root. That is what makes the
+bundle portable when the platform sees only the files you staged into a fileset.
 
 | Example | What it does | `--optimize-config` | Other |
 |---------|--------------|---------------------|-------|
@@ -72,14 +71,13 @@ export NEMO_BASE_URL="${NEMO_BASE_URL:-$NMP_BASE_URL}"
 export ADAPTER_PYTHON="$REPO_ROOT/.venv/bin/python"
 ```
 
-### Common run rules
+### Common bundle rules
 
-- **`run` reads the config from your filesystem; `submit` reads it from a
-  fileset.** Local `run` takes an **absolute** `--optimize-config` path and
-  resolves the paths inside the YAML against your **current working directory**
-  — so `cd "$BUNDLE"` first. Remote `submit` requires
-  `--optimize-config-fileset` and resolves them against the downloaded bundle
-  root; see [Remote submit](#remote-submit) below.
+- **`prepare-fileset` reads the bundle from your filesystem; `optimize` reads it
+  from a fileset.** Paths inside the YAML are bundle-relative, so `cd "$BUNDLE"`
+  first when validating examples locally. The platform command requires
+  `--optimize-config-fileset` and resolves paths against the downloaded bundle
+  root; see [Platform submission](#platform-submission) below.
 - Local Hermes output lands in `./artifacts/` under this folder (safe to
   delete). Do **not** stage `artifacts/` into a fileset.
 - Re-run the `hermes-agent==0.18.2 --no-deps` install after any fresh
@@ -95,14 +93,21 @@ No MCP, no extra checkouts. Good first smoke for optimize.
 source "$REPO_ROOT/.venv/bin/activate"   # if not already
 cd "$BUNDLE"
 
-nemo agents optimize run \
-  --optimize-config "$BUNDLE/optimize-chatonly.yaml" \
+nemo agents optimize prepare-fileset \
+  --source "$BUNDLE" \
+  --optimize-config optimize-chatonly.yaml \
+  --fileset hermes-optimize-chatonly \
+  --workspace default
+
+nemo agents optimize \
+  --optimize-config-fileset default/hermes-optimize-chatonly \
+  --optimize-config optimize-chatonly.yaml \
   --workspace default
 ```
 
 **Success:** job finishes with `status: completed` and `n_trials: 2`.
 
-Python equivalent:
+Local-only Python run of the same config:
 
 ```python
 import os
@@ -175,8 +180,16 @@ export NEMO_AGENTS_IGW_API_KEY="${NEMO_AGENTS_IGW_API_KEY:-not-used}"
 ```bash
 cd "$BUNDLE"
 
-nemo agents optimize run \
-  --optimize-config "$BUNDLE/optimize-chatonly-via-agent.yaml" \
+nemo agents optimize prepare-fileset \
+  --source "$BUNDLE" \
+  --optimize-config optimize-chatonly-via-agent.yaml \
+  --fileset hermes-optimize-chatonly-via-agent \
+  --agent hermes-optimize-chatonly \
+  --workspace default
+
+nemo agents optimize \
+  --optimize-config-fileset default/hermes-optimize-chatonly-via-agent \
+  --optimize-config optimize-chatonly-via-agent.yaml \
   --agent hermes-optimize-chatonly \
   --workspace default
 ```
@@ -197,11 +210,12 @@ stored config until you delete + recreate.
 
 ---
 
-## Remote submit
+## Platform submission
 
-`submit` runs the study **on the platform**, which cannot read your filesystem.
-So it takes no host paths at all: you stage the bundle into a fileset first, and
-submit references that fileset plus a bundle-relative config path.
+`optimize` runs the study **on the platform**, which cannot read your
+filesystem. So it takes no host paths at all: you stage the bundle into a
+fileset first, and the job references that fileset plus a bundle-relative config
+path.
 
 ### 1. Stage the bundle
 
@@ -223,15 +237,15 @@ Add `--dry-run` to validate without uploading, and `--no-check-models` to skip
 resolving the config's models against the platform.
 
 > Delete `artifacts/` and `.tmp/` from the bundle before staging — the upload is
-> recursive, and a local Hermes run leaves a large tree behind.
+> recursive, and previous Hermes executions can leave a large tree behind.
 
-### 2. Submit the study
+### 2. Launch the study
 
 The command that `prepare-fileset` prints, with `--optimize-config` now relative
 to the fileset root:
 
 ```bash
-nemo agents optimize submit \
+nemo agents optimize \
   --optimize-config-fileset default/hermes-optimize-chatonly \
   --optimize-config optimize-chatonly.yaml \
   --workspace default
@@ -246,7 +260,7 @@ nemo jobs list --workspace default
 nemo jobs logs <job-id> --workspace default
 ```
 
-Pass `--output <fileset-or-dir>` to `submit` to have the study's artifacts
+Pass `--output <fileset-or-dir>` to `optimize` to have the study's artifacts
 (optimized config, trials dataframe, ATIF evidence) published somewhere you can
 read them back from.
 
@@ -292,8 +306,9 @@ uses inference-api (many keys 401 against `integrate.api.nvidia.com`).
 The dataset is the agent’s full eval set (5 emails: 3 phishing, 2 benign).
 
 Because `agent_src` and the MCP binary come from a checkout **outside** the
-bundle, this example is local-`run` only as written. To submit it, vendor the
-analyzer into the bundle and make those two values bundle-relative.
+bundle, the platform job environment must provide those paths for this example
+as written. For a self-contained platform bundle, vendor the analyzer into the
+bundle and make those two values bundle-relative.
 
 ### Run
 
@@ -306,8 +321,15 @@ export PHISHING_AGENT_ROOT="${PHISHING_AGENT_ROOT:-$HOME/work/email-phishing-ana
 export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
 export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
 
-nemo agents optimize run \
-  --optimize-config "$BUNDLE/optimize-mcp.yaml" \
+nemo agents optimize prepare-fileset \
+  --source "$BUNDLE" \
+  --optimize-config optimize-mcp.yaml \
+  --fileset hermes-optimize-mcp \
+  --workspace default
+
+nemo agents optimize \
+  --optimize-config-fileset default/hermes-optimize-mcp \
+  --optimize-config optimize-mcp.yaml \
   --workspace default
 ```
 
@@ -320,7 +342,7 @@ agent’s exactly-once audit). The optimize path recovers the audited analyzer
 JSON in those cases so samples still score. If every sample still fails, check
 `$BUNDLE/artifacts/.fabric/hermes/runtimes/*/logs/`.
 
-Python equivalent:
+Local-only Python run of the same config:
 
 ```python
 import os
@@ -362,12 +384,12 @@ print(
 | `nemo: command not found` | `source .venv/bin/activate` after `uv sync --package nemo-agents-plugin` |
 | `No module named hermes_cli` | Re-run the `hermes-agent==0.18.2 --no-deps` install (needed after every fresh `uv sync`) |
 | `No module named 'nemo_fabric_adapters'` | `export ADAPTER_PYTHON="$REPO_ROOT/.venv/bin/python"` |
-| Missing `PHISHING_AGENT_SRC` / MCP binary | Sync the phishing agent checkout; export both env vars before `optimize run` |
+| Missing `PHISHING_AGENT_SRC` / MCP binary | Sync the phishing agent checkout; export both env vars before staging the optimize bundle |
 | Analyzer / LLM 401 | Confirm `NVIDIA_API_KEY` works on inference-api; keep using `analyzer-inference-api.yaml` |
-| Dataset / config file not found on `run` | `cd "$BUNDLE"` — paths in the YAML are relative to the bundle, not the repo root |
-| `submit` rejected with `optimize_config_fileset is required` | Stage the bundle with `prepare-fileset`, then pass the ref it prints |
+| Dataset / config file not found | `cd "$BUNDLE"` — paths in the YAML are relative to the bundle, not the repo root |
+| `optimize` rejected with `optimize_config_fileset is required` | Stage the bundle with `prepare-fileset`, then pass the ref it prints |
 | `prepare-fileset` reports an absolute path | Move the file into `--source` and make the YAML entry relative to the bundle root |
-| `submit` fails with `... was not found in fileset` | `--optimize-config` must be relative to the fileset root (e.g. `optimize-chatonly.yaml`), not an absolute path |
+| `optimize` fails with `... was not found in fileset` | `--optimize-config` must be relative to the fileset root (e.g. `optimize-chatonly.yaml`), not an absolute path |
 | `No 'subprocess' or 'cpu' execution profile named 'default'` | The platform registered neither backend under that profile; check `nemo jobs list-execution-profiles` with your operator |
 | Agent create fails on fileset size / too many files | Pass `--agent-config` to `agents/chatonly/agent.yaml` (slim dir), not the parent examples folder |
 | `delete` hangs / `Aborted!` | Pass `-y` (`nemo agents delete NAME -y`) |

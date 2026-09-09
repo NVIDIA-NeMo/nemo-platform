@@ -154,17 +154,34 @@ standalone chart:
 
 - **Harbor lives in the image.** It is not a dependency of the plugin, so the
   Dockerfile installs `harbor` plus `sandbox-k8s[harbor]` into `/opt/harbor` and
-  overlays the same patched adapter the standalone image uses. Only the
-  catalog's *default* version is built, so a request naming another
-  `framework_version` fails with a missing runner.
+  overlays the same patched adapter the standalone image uses. Every catalog
+  release marked `selectable` is built; `0.13.2` remains the default.
 - **Sandboxes share the control-plane namespace.** `sandbox-rbac.yaml` is
-  therefore all namespace-scoped, and binds the cluster's existing
-  `agent-sandbox-edit` ClusterRoles. There is no isolation between the control
-  plane and evaluated code — fine for a lab namespace, not for multi-tenancy.
+  therefore all namespace-scoped. The plugin owns the baseline Sandbox CR
+  create/read/delete verbs directly rather than depending on optional
+  user-facing ClusterRoles. There is no isolation between the control plane
+  and evaluated code — fine for a lab namespace, not for multi-tenancy.
 - **The CRDs and controller are a cluster prerequisite.** Nothing here installs
   them. The cluster must already run `agent-sandbox-controller` (conventionally
   in `agent-sandbox-system`) with `sandboxes.agents.x-k8s.io` registered; on a
   cluster without them, every evaluation fails at launch.
+
+Multi-service tasks must declare their service images as
+`environment.kwargs.sidecars` in the Harbor profile. The adapter restores a
+packed Compose declaration for Harbor validation, resolves service names to
+pod loopback aliases, waits for configured ports, and routes collect hooks and
+artifact downloads to the named sidecar. Separate verifier pods deliberately
+omit those sidecars so they can restore and start their own service state.
+
+Two compatibility controls are opt-in because they are not neutral:
+
+- Set `environment.kwargs.enable_ipv6_loopback: true` only for tasks that bind
+  `::1`; it adds deterministic pod sysctls for IPv6 loopback.
+- A task that must move temporary files off `/tmp` should set
+  `environment.kwargs.persistent_env.TMPDIR` and create that directory in its
+  own task-specific `setup_command`. Do not put that redirect in a shared
+  profile: tasks that explicitly manage `/tmp` permissions can break when their
+  scratch directory moves.
 
 ## Viewing a run
 

@@ -61,13 +61,29 @@ _AUDIT_DIR = _SKILLS_DIR / "eval-author-audit"
 _TASK_CREATE_DIR = _SKILLS_DIR / "eval-author-task-create"
 _INSPECT_DIR = _SKILLS_DIR / "eval-author-inspect-trace"
 _MLFLOW_TO_ATIF_DIR = _SKILLS_DIR / "mlflow-to-atif"
-_SKILL_DIRS = (_CORE_DIR, _DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR, _MLFLOW_TO_ATIF_DIR)
-_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR)
+_TRACE_ENVIRONMENT_DIR = _SKILLS_DIR / "eval-author-trace-environment"
+_SKILL_DIRS = (
+    _CORE_DIR,
+    _DISCOVER_DIR,
+    _AUDIT_DIR,
+    _TASK_CREATE_DIR,
+    _INSPECT_DIR,
+    _MLFLOW_TO_ATIF_DIR,
+    _TRACE_ENVIRONMENT_DIR,
+)
+_SUB_FLOW_DIRS = (_DISCOVER_DIR, _AUDIT_DIR, _TASK_CREATE_DIR, _INSPECT_DIR, _TRACE_ENVIRONMENT_DIR)
 _DISCOVER_SCRIPTS_DIR = _DISCOVER_DIR / "scripts"
 _AUDIT_SPEC_DIR = _AUDIT_DIR / "scripts" / "audit_spec"
 _TASK_CREATE_SCRIPTS_DIR = _TASK_CREATE_DIR / "scripts"
 _MLFLOW_TO_ATIF_SCRIPTS_DIR = _MLFLOW_TO_ATIF_DIR / "scripts"
-_SCRIPT_DIRS = (_DISCOVER_SCRIPTS_DIR, _AUDIT_SPEC_DIR, _TASK_CREATE_SCRIPTS_DIR, _MLFLOW_TO_ATIF_SCRIPTS_DIR)
+_TRACE_ENVIRONMENT_SCRIPTS_DIR = _TRACE_ENVIRONMENT_DIR / "scripts"
+_SCRIPT_DIRS = (
+    _DISCOVER_SCRIPTS_DIR,
+    _AUDIT_SPEC_DIR,
+    _TASK_CREATE_SCRIPTS_DIR,
+    _MLFLOW_TO_ATIF_SCRIPTS_DIR,
+    _TRACE_ENVIRONMENT_SCRIPTS_DIR,
+)
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
@@ -78,11 +94,17 @@ _AUDIT_TEMPLATE = _AUDIT_DIR / "templates" / "audit.md"
 _AUDIT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit.schema.json"
 _AUDIT_COVERAGE_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_coverage.schema.json"
 _AUDIT_COVERAGE_REPORT_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_coverage_report.schema.json"
+_AUDIT_CAPABILITY_JUDGMENTS_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_capability_judgments.schema.json"
+_AUDIT_CAPABILITIES_DETAILS_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_capabilities_details.schema.json"
 _AUDIT_TOOL_CALLS_DETAILS_JSON_SCHEMA = _AUDIT_DIR / "schemas" / "audit_tool_calls_details.schema.json"
-_AUDIT_COVERAGE_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.coverage.json"
+_AUDIT_TOOL_CALLS_COVERAGE_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.coverage.json"
+_AUDIT_CAPABILITIES_COVERAGE_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "capabilities.coverage.json"
+_AUDIT_CAPABILITY_JUDGMENTS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "capability_judgments.json"
 _AUDIT_COVERAGE_REPORT_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "coverage_report.json"
 _AUDIT_TOOL_CALLS_DETAILS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "tool_calls.details.json"
+_AUDIT_CAPABILITIES_DETAILS_EXAMPLE = _AUDIT_DIR / "examples" / "schemas" / "capabilities.details.json"
 _MLFLOW_TO_ATIF = _MLFLOW_TO_ATIF_SCRIPTS_DIR / "convert_mlflow_to_atif.py"
+_TRACE_ENVIRONMENT = _TRACE_ENVIRONMENT_SCRIPTS_DIR / "trace_environment.py"
 
 _REQUIRED_FRONTMATTER = (
     "name",
@@ -365,6 +387,52 @@ def _write_audit(tmp_path: Path, transform: Callable[[str], str] | None = None) 
     return audit
 
 
+def _without_user_intent_evidence(text: str) -> str:
+    """Make the template capability coverable by deterministic tool-call evidence only."""
+    return text.replace(
+        "      - kind: user_intent\n        description: User is trying to recover account access.\n",
+        "",
+        1,
+    )
+
+
+def _write_capability_judgments(
+    path: Path,
+    *,
+    trace: Path | None = None,
+    capability: str = "account_recovery",
+    evidence_index: int = 0,
+    kind: str = "user_intent",
+    description: str = "User is trying to recover account access.",
+    status: str = "satisfied",
+    confidence: str = "high",
+) -> None:
+    """Write a skill-authored capability judgment sidecar."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "nemo.eval_author.audit_capability_judgments.v1",
+                "trace_sha256": _digest(trace) if trace is not None else "sha256:" + ("0" * 64),
+                "judged_by": "eval-author-audit skill",
+                "judgments": [
+                    {
+                        "capability": capability,
+                        "evidence_index": evidence_index,
+                        "kind": kind,
+                        "description": description,
+                        "status": status,
+                        "confidence": confidence,
+                        "rationale": "The trace shows the user asking for help recovering account access.",
+                        "supporting_trace_refs": ["$.steps[0].message"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def _run_script(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run a bundled script and return the completed process."""
     return subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, check=False)
@@ -520,6 +588,7 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     audit_tools = set(_frontmatter_and_body(_AUDIT_DIR)[0]["allowed-tools"])
     task_create_tools = set(_frontmatter_and_body(_TASK_CREATE_DIR)[0]["allowed-tools"])
     inspect_tools = set(_frontmatter_and_body(_INSPECT_DIR)[0]["allowed-tools"])
+    trace_environment_tools = set(_frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)[0]["allowed-tools"])
 
     assert not {"Bash", "Write"} & core_tools, f"the core routes and explains; {sorted(core_tools)} is too broad"
     assert {"Bash", "Write"} <= discover_tools, (
@@ -533,6 +602,9 @@ def test_the_core_routes_and_the_sub_flow_executes() -> None:
     )
     assert {"Bash", "Write"} <= inspect_tools, (
         f"{_INSPECT_DIR.name} runs provider commands and saves a report; it has {sorted(inspect_tools)}"
+    )
+    assert {"Bash", "Write"} <= trace_environment_tools, (
+        f"{_TRACE_ENVIRONMENT_DIR.name} prepares and verifies task artifacts; it has {sorted(trace_environment_tools)}"
     )
 
 
@@ -651,6 +723,26 @@ def test_mlflow_to_atif_script_the_skill_names_exists() -> None:
     assert (_MLFLOW_TO_ATIF_DIR / relative).is_file()
 
 
+def test_trace_environment_script_the_skill_names_exists() -> None:
+    _, body = _frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)
+    relative = "scripts/trace_environment.py"
+    assert relative in body
+    assert (_TRACE_ENVIRONMENT_DIR / relative).is_file()
+
+
+def test_trace_environment_records_ground_truth_and_software_constraints() -> None:
+    _, body = _frontmatter_and_body(_TRACE_ENVIRONMENT_DIR)
+
+    for phrase in (
+        "ground_truth",
+        "software_requirements",
+        "proprietary",
+        "redistributable",
+        "private/ground-truth/",
+    ):
+        assert phrase in body
+
+
 def test_mlflow_to_atif_converts_export_to_private_v17_trajectory(tmp_path: Path) -> None:
     source = tmp_path / "mlflow.json"
     source.write_text(json.dumps(_mlflow_export()), encoding="utf-8")
@@ -696,9 +788,53 @@ def test_mlflow_to_atif_converts_export_to_private_v17_trajectory(tmp_path: Path
         "mlflow_span_tree_linearized",
         "orchestration_parent_not_emitted_as_step",
     ]
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == []
     if os.name == "posix":
         assert output.stat().st_mode & 0o777 == 0o700
         assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_mlflow_to_atif_normalizes_parent_bounded_microsecond_event_times() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    event_time_micros = 1_788_000_000_000_006
+    event_time_nanos = event_time_micros * 1_000
+    root, tool = payload["traces"][0]["data"]["spans"]
+    root["start_time_unix_nano"] = event_time_nanos - 2_000
+    root["end_time_unix_nano"] = event_time_nanos + 2_000
+    tool["start_time_unix_nano"] = event_time_nanos - 1_000
+    tool["end_time_unix_nano"] = event_time_nanos + 1_000
+    tool["events"] = [{"name": "completed", "time_unix_nano": event_time_micros}]
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    preserved_tool = trajectory["extra"]["mlflow"]["spans"][1]
+    assert preserved_tool["events"][0]["time_unix_nano"] == event_time_nanos
+    assert trajectory["steps"][1]["extra"]["mlflow"]["events"][0]["time_unix_nano"] == event_time_nanos
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == [
+        "event_time_microseconds_normalized_to_nanoseconds"
+    ]
+
+
+def test_mlflow_to_atif_does_not_normalize_event_time_outside_parent_bounds() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    event_time = 1_788_000_000_000_006
+    payload["traces"][0]["data"]["spans"][1]["events"] = [{"name": "unbounded", "time_unix_nano": event_time}]
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    preserved_tool = trajectory["extra"]["mlflow"]["spans"][1]
+    assert preserved_tool["events"][0]["time_unix_nano"] == event_time
+    assert trajectory["extra"]["mlflow_to_atif"]["normalization_codes"] == []
 
 
 def test_mlflow_to_atif_accepts_one_bare_trace_to_dict_value(tmp_path: Path) -> None:
@@ -717,6 +853,39 @@ def test_mlflow_to_atif_accepts_one_bare_trace_to_dict_value(tmp_path: Path) -> 
 
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["converted"] == 1
+
+
+def test_mlflow_to_atif_uses_request_preview_after_empty_input_placeholders() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    info = payload["traces"][0]["info"]
+    info["request_preview"] = "Where is Paris?"
+    info["trace_metadata"]["mlflow.traceInputs"] = "{}"
+    payload["traces"][0]["data"]["spans"][0]["attributes"]["mlflow.spanInputs"] = "[]"
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    assert trajectory["steps"][0]["message"] == "Where is Paris?"
+
+
+def test_mlflow_to_atif_uses_later_populated_root_input_attribute() -> None:
+    converter = _load_mlflow_to_atif()
+    payload = _mlflow_export()
+    root_attributes = payload["traces"][0]["data"]["spans"][0]["attributes"]
+    root_attributes["mlflow.spanInputs"] = "{}"
+    root_attributes["input.value"] = "Use the populated root input."
+
+    (trajectory,) = converter.convert_export(
+        payload,
+        agent_name="fixture-agent",
+        agent_version="1.0.0",
+    )
+
+    assert trajectory["steps"][0]["message"] == "Use the populated root input."
 
 
 def test_mlflow_to_atif_matches_current_mlflow_external_and_native_trace_ids(tmp_path: Path) -> None:
@@ -1035,8 +1204,11 @@ def test_mlflow_to_atif_output_validates_with_harbor(tmp_path: Path) -> None:
     assert summary["validated_with_harbor"] is True
 
 
-def test_every_audit_spec_path_the_skill_names_exists() -> None:
-    _, body = _frontmatter_and_body(_AUDIT_DIR)
+def test_every_audit_spec_path_the_skill_or_reference_readme_names_exists() -> None:
+    _, skill_body = _frontmatter_and_body(_AUDIT_DIR)
+    readme_body = (_AUDIT_DIR / "scripts" / "audit_spec" / "README.md").read_text(encoding="utf-8")
+    docs = f"{skill_body}\n{readme_body}"
+    assert "scripts/audit_spec/README.md" in skill_body
     for relative in (
         "scripts/audit_spec/README.md",
         "scripts/audit_spec/generate.py",
@@ -1045,19 +1217,26 @@ def test_every_audit_spec_path_the_skill_names_exists() -> None:
         "scripts/audit_spec/validate.py",
         "scripts/audit_spec/_schema.py",
         "scripts/audit_spec/_markdown.py",
+        "scripts/audit_spec/measurements/capabilities.py",
+        "scripts/audit_spec/measurements/trace_tools.py",
         "scripts/audit_spec/measurements/tool_calls.py",
         "schemas/audit.schema.json",
+        "schemas/audit_capability_judgments.schema.json",
+        "schemas/audit_capabilities_details.schema.json",
         "schemas/audit_coverage.schema.json",
         "schemas/audit_coverage_report.schema.json",
         "schemas/audit_tool_calls_details.schema.json",
+        "examples/schemas/capability_judgments.json",
+        "examples/schemas/capabilities.coverage.json",
+        "examples/schemas/capabilities.details.json",
         "examples/schemas/coverage_report.json",
         "examples/schemas/tool_calls.coverage.json",
         "examples/schemas/tool_calls.details.json",
         "requirements.txt",
         "templates/audit.md",
     ):
-        assert relative in body, f"SKILL.md no longer documents {relative}"
-        assert (_AUDIT_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+        assert relative in docs, f"audit docs no longer document {relative}"
+        assert (_AUDIT_DIR / relative).exists(), f"audit docs name {relative}, which is missing on disk"
 
 
 def test_audit_skill_reads_schema_before_drafting_items() -> None:
@@ -1070,6 +1249,52 @@ def test_audit_skill_reads_schema_before_drafting_items() -> None:
     assert "templates/audit.md" in step_one
     assert "schemas/audit.schema.json" in step_one
     assert "Do not use validation as the primary way to discover the format" in normalized_step
+
+
+def test_audit_skill_routes_missing_ethos_to_platform_skills() -> None:
+    """Audit needs a real Ethos contract, not a placeholder denominator source."""
+    _, body = _frontmatter_and_body(_AUDIT_DIR)
+    preflight = body.split("## Scripts", 1)[0]
+    normalized_body = re.sub(r"\s+", " ", body)
+    normalized_preflight = re.sub(r"\s+", " ", preflight)
+
+    assert "If the user provides `--ethos <path>`, validate and use that path" in normalized_preflight
+    assert "`<ethos_path>` before applying repository discovery" in normalized_preflight
+    assert "from `<ethos_path>` and reviewed audit items" in normalized_body
+    assert "If no Ethos file exists, stop the audit flow" in normalized_preflight
+    assert "needs a source of truth for how the agent is supposed to behave" in normalized_preflight
+    assert "Code shows what the agent does today" in normalized_preflight
+    assert "Ethos records intended behavior" in normalized_preflight
+    assert "https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in preflight
+    assert "current assistant environment exposes both required Ethos creation skills" in normalized_preflight
+    assert "Ask the user whether they want you to" in normalized_preflight
+    assert "automatically generate the Ethos" in normalized_preflight
+    assert "let them create the Ethos themselves from the documentation" in normalized_preflight
+    assert "Use this user-facing message shape for that skills-present path" in normalized_preflight
+    assert "Missing Ethos" in preflight
+    assert "before it can generate an audit coverage report" in normalized_preflight
+    assert "I could not find `ETHOS.md` at the repository root" in normalized_preflight
+    assert "Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in preflight
+    assert "are available here, so I can generate a real Ethos first" in normalized_preflight
+    assert "How would you like to move forward?" in preflight
+    assert "Generate the Ethos for me with `nemo-explore` and `nemo-ethos`" in preflight
+    assert "I'll create or provide an Ethos path myself" in preflight
+    assert "Only offer automatic generation when both required skills are present and usable" in normalized_preflight
+    assert "do not offer to generate it" in normalized_preflight
+    assert "Use this user-facing message shape for that skills-unavailable path" in normalized_preflight
+    assert "I do not have access to both required Ethos creation skills" in normalized_preflight
+    assert "so I cannot generate one automatically here" in normalized_preflight
+    assert "Create or provide an Ethos path" in normalized_preflight
+    assert "rerun the audit flow with `--ethos <path>`" in normalized_preflight
+    assert "nemo-explore" in preflight
+    assert "nemo-ethos" in preflight
+    assert "agents/<name>-ethos/ETHOS.md" in preflight
+    assert "Do not create a placeholder Ethos inside the audit flow" in normalized_preflight
+    assert "do not substitute other repository material for it" in normalized_preflight
+    assert "Contributor docs, operations docs, README files, code, traces, or draft labels" in normalized_preflight
+    assert "not valid source-of-truth replacements for a missing Ethos" in normalized_preflight
+    assert "Do not synthesize an audit denominator from those materials" in normalized_preflight
+    assert "even if the output is marked as draft" in normalized_preflight
 
 
 def test_audit_skill_anchors_tool_names_to_runtime_measurement_surface() -> None:
@@ -1139,6 +1364,8 @@ def test_audit_json_schema_is_valid() -> None:
     (
         _AUDIT_COVERAGE_JSON_SCHEMA,
         _AUDIT_COVERAGE_REPORT_JSON_SCHEMA,
+        _AUDIT_CAPABILITY_JUDGMENTS_JSON_SCHEMA,
+        _AUDIT_CAPABILITIES_DETAILS_JSON_SCHEMA,
         _AUDIT_TOOL_CALLS_DETAILS_JSON_SCHEMA,
     ),
 )
@@ -1151,9 +1378,12 @@ def test_audit_measurement_json_schemas_are_valid(schema_path: Path) -> None:
 @pytest.mark.parametrize(
     ("schema_path", "example_path"),
     (
-        (_AUDIT_COVERAGE_JSON_SCHEMA, _AUDIT_COVERAGE_EXAMPLE),
+        (_AUDIT_COVERAGE_JSON_SCHEMA, _AUDIT_TOOL_CALLS_COVERAGE_EXAMPLE),
+        (_AUDIT_COVERAGE_JSON_SCHEMA, _AUDIT_CAPABILITIES_COVERAGE_EXAMPLE),
         (_AUDIT_COVERAGE_REPORT_JSON_SCHEMA, _AUDIT_COVERAGE_REPORT_EXAMPLE),
+        (_AUDIT_CAPABILITY_JUDGMENTS_JSON_SCHEMA, _AUDIT_CAPABILITY_JUDGMENTS_EXAMPLE),
         (_AUDIT_TOOL_CALLS_DETAILS_JSON_SCHEMA, _AUDIT_TOOL_CALLS_DETAILS_EXAMPLE),
+        (_AUDIT_CAPABILITIES_DETAILS_JSON_SCHEMA, _AUDIT_CAPABILITIES_DETAILS_EXAMPLE),
     ),
 )
 def test_audit_measurement_schema_examples_validate(schema_path: Path, example_path: Path) -> None:
@@ -1163,6 +1393,40 @@ def test_audit_measurement_schema_examples_validate(schema_path: Path, example_p
     example = json.loads(example_path.read_text(encoding="utf-8"))
 
     Draft202012Validator(schema).validate(example)
+
+
+def test_audit_capabilities_details_schema_rejects_invalid_measurement_status_pair() -> None:
+    from jsonschema import Draft202012Validator
+    from jsonschema.exceptions import ValidationError
+
+    schema = json.loads(_AUDIT_CAPABILITIES_DETAILS_JSON_SCHEMA.read_text(encoding="utf-8"))
+    example = json.loads(_AUDIT_CAPABILITIES_DETAILS_EXAMPLE.read_text(encoding="utf-8"))
+    example["capability_results"]["account_recovery"]["evidence_results"][1]["status"] = "unjudged"
+
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(example)
+
+
+@pytest.mark.parametrize(
+    ("covered", "missing_reasons"),
+    (
+        (True, ["missing_required_tool"]),
+        (False, []),
+    ),
+)
+def test_audit_capabilities_details_schema_rejects_inconsistent_covered_reasons(
+    covered: bool, missing_reasons: list[str]
+) -> None:
+    from jsonschema import Draft202012Validator
+    from jsonschema.exceptions import ValidationError
+
+    schema = json.loads(_AUDIT_CAPABILITIES_DETAILS_JSON_SCHEMA.read_text(encoding="utf-8"))
+    example = json.loads(_AUDIT_CAPABILITIES_DETAILS_EXAMPLE.read_text(encoding="utf-8"))
+    example["capability_results"]["account_recovery"]["covered"] = covered
+    example["capability_results"]["account_recovery"]["missing_reasons"] = missing_reasons
+
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(example)
 
 
 def test_audit_file_with_matching_source_digest_validates(tmp_path: Path) -> None:
@@ -1563,6 +1827,71 @@ def test_audit_generate_rejects_outputs_outside_eval_author(tmp_path: Path) -> N
     assert "--out must resolve inside a .eval-author/ directory" in result.stderr
     assert "Traceback" not in result.stderr
     assert out.read_text(encoding="utf-8") == "customer source must stay intact\n"
+
+
+def test_audit_generate_explains_missing_ethos_with_docs_link(tmp_path: Path) -> None:
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+    out = tmp_path / ".eval-author" / "audit.md"
+
+    result = _run_script(
+        _AUDIT_GENERATE,
+        "--ethos",
+        str(tmp_path / "ETHOS.md"),
+        "--items",
+        str(items),
+        "--out",
+        str(out),
+    )
+
+    assert result.returncode == 1
+    assert result.stderr.startswith("Missing Ethos\n\n")
+    assert "needs a source of truth for how the agent is supposed to behave" in result.stderr
+    assert "before it can generate an audit coverage report" in result.stderr
+    assert "ETHOS.md records intended behavior" in result.stderr
+    assert "Missing file:" in result.stderr
+    assert "Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in result.stderr
+    assert "Next steps:\n" in result.stderr
+    assert "- Create an Ethos, then rerun this command with --ethos <path>." in result.stderr
+    assert "https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in result.stderr
+    assert "nemo-explore followed by nemo-ethos" in result.stderr
+    assert "author ETHOS.md by hand" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not out.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="chmod-based unreadable-file check is POSIX-specific")
+def test_audit_generate_explains_unreadable_ethos_with_docs_link(tmp_path: Path) -> None:
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Ethos\n", encoding="utf-8")
+    items = tmp_path / "items.yaml"
+    _write_audit_items(items, _template_payload()["items"])
+    out = tmp_path / ".eval-author" / "audit.md"
+
+    ethos.chmod(0)
+    try:
+        result = _run_script(
+            _AUDIT_GENERATE,
+            "--ethos",
+            str(ethos),
+            "--items",
+            str(items),
+            "--out",
+            str(out),
+        )
+    finally:
+        ethos.chmod(0o600)
+
+    assert result.returncode == 1
+    assert result.stderr.startswith("Unreadable Ethos\n\n")
+    assert "needs a source of truth for how the agent is supposed to behave" in result.stderr
+    assert "Unreadable file:" in result.stderr
+    assert "Docs: https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos" in result.stderr
+    assert "Next steps:\n" in result.stderr
+    assert "- Fix read access for the Ethos file, then rerun this command." in result.stderr
+    assert "- Or pass a readable Ethos path with --ethos <path>." in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not out.exists()
 
 
 def test_audit_generate_rejects_missing_candidate_name_before_reconcile(tmp_path: Path) -> None:
@@ -1966,6 +2295,459 @@ def test_audit_measure_reports_missing_tool_calls_as_not_covered(tmp_path: Path)
 
 
 @_needs_harbor
+def test_audit_measure_omits_whitespace_only_optional_trace_identifiers(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    trace.write_text(
+        json.dumps(
+            {
+                "schema_version": "ATIF-v1.7",
+                "session_id": "   ",
+                "trajectory_id": "   ",
+                "agent": {"name": "example-agent", "version": "1.0.0"},
+                "steps": [
+                    {"step_id": 1, "source": "user", "message": "Help me recover my account."},
+                    {
+                        "step_id": 2,
+                        "source": "agent",
+                        "message": "I will inspect the account.",
+                        "tool_calls": [
+                            {"tool_call_id": "   ", "function_name": "  customer.lookup  ", "arguments": {}}
+                        ],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    assert summary["run_id"].startswith("trace-sha256-")
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", summary["run_id"])
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+
+    assert details["covered"] == ["customer.lookup"]
+    assert details["matches"]["customer.lookup"] == [
+        {
+            "step_id": 2,
+            "tool": "customer.lookup",
+            "trajectory_path": "$",
+        }
+    ]
+
+
+@_needs_harbor
+def test_audit_measure_reports_capability_coverage_from_tool_call_evidence(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, _without_user_intent_evidence)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    coverage = json.loads((measurement_dir / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert summary["methods"] == ["capabilities"]
+    assert summary["measurements"][0]["item_kind"] == "capability"
+    assert summary["measurements"][0]["covered"] == ["account_recovery"]
+    assert coverage["method"] == {"name": "capabilities"}
+    assert coverage["item_kind"] == "capability"
+    assert coverage["item_kind_count"] == 1
+    assert coverage["covered"] == ["account_recovery"]
+    assert details["schema"] == "nemo.eval_author.audit_capabilities_details.v1"
+    assert details["covered"] == ["account_recovery"]
+    assert details["missing"] == []
+    assert details["judgment_input"] == {"provided": False, "judgment_count": 0}
+    assert details["tool_call_counts"] == {"customer.lookup": 1}
+    assert capability["covered"] is True
+    assert capability["missing_reasons"] == []
+    assert capability["required_tool_results"] == [
+        {
+            "tool": "customer.lookup",
+            "status": "satisfied",
+            "matches": [
+                {
+                    "step_id": 2,
+                    "tool": "customer.lookup",
+                    "tool_call_id": "root-call-1",
+                    "trajectory_id": "root-trajectory",
+                    "trajectory_path": "$",
+                }
+            ],
+        }
+    ]
+    assert capability["evidence_results"] == [
+        {
+            "kind": "tool_call",
+            "evidence_index": 0,
+            "description": "Agent grounds the request in customer profile data.",
+            "tool": "customer.lookup",
+            "measurement": "deterministic",
+            "status": "satisfied",
+            "matches": [
+                {
+                    "step_id": 2,
+                    "tool": "customer.lookup",
+                    "tool_call_id": "root-call-1",
+                    "trajectory_id": "root-trajectory",
+                    "trajectory_path": "$",
+                }
+            ],
+        }
+    ]
+
+
+@_needs_harbor
+def test_audit_measure_reports_capability_missing_required_tool(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, _without_user_intent_evidence)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["ticket.create"])
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    coverage = json.loads((measurement_dir / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert summary["measurements"][0]["covered"] == []
+    assert coverage["covered"] == []
+    assert details["covered"] == []
+    assert details["missing"] == ["account_recovery"]
+    assert details["tool_call_counts"] == {"ticket.create": 1}
+    assert capability["covered"] is False
+    assert capability["required_tool_results"][0]["status"] == "missing"
+    assert capability["evidence_results"][0]["status"] == "missing"
+    assert capability["missing_reasons"] == ["missing_required_tool", "missing_tool_call_evidence"]
+
+
+@_needs_harbor
+def test_audit_measure_dedupes_capability_required_tools(tmp_path: Path) -> None:
+    audit = _write_audit(
+        tmp_path,
+        lambda text: _without_user_intent_evidence(text).replace(
+            "    required_tools:\n      - customer.lookup\n",
+            "    required_tools:\n      - customer.lookup\n      - customer.lookup\n",
+            1,
+        ),
+    )
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert len(capability["required_tool_results"]) == 1
+    assert capability["required_tool_results"][0]["tool"] == "customer.lookup"
+    assert capability["covered"] is True
+
+
+@_needs_harbor
+def test_audit_measure_reports_capability_unjudged_evidence_without_covering(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    coverage = json.loads((measurement_dir / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert summary["measurements"][0]["covered"] == []
+    assert coverage["covered"] == []
+    assert details["covered"] == []
+    assert details["missing"] == ["account_recovery"]
+    assert details["judgment_input"] == {"provided": False, "judgment_count": 0}
+    assert capability["covered"] is False
+    assert capability["required_tool_results"][0]["status"] == "satisfied"
+    assert capability["evidence_results"][0] == {
+        "kind": "user_intent",
+        "evidence_index": 0,
+        "description": "User is trying to recover account access.",
+        "measurement": "judgment_required",
+        "status": "unjudged",
+    }
+    assert capability["evidence_results"][1]["status"] == "satisfied"
+    assert capability["evidence_results"][1]["measurement"] == "deterministic"
+    assert capability["missing_reasons"] == ["unjudged_evidence"]
+
+
+@_needs_harbor
+def test_audit_measure_uses_capability_judgments_for_non_tool_evidence(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments, trace=trace)
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    coverage = json.loads((measurement_dir / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert summary["measurements"][0]["covered"] == ["account_recovery"]
+    assert coverage["covered"] == ["account_recovery"]
+    assert details["covered"] == ["account_recovery"]
+    assert details["missing"] == []
+    assert details["judgment_input"] == {
+        "provided": True,
+        "schema": "nemo.eval_author.audit_capability_judgments.v1",
+        "trace_sha256": _digest(trace),
+        "judged_by": "eval-author-audit skill",
+        "judgment_count": 1,
+    }
+    assert capability["covered"] is True
+    assert capability["missing_reasons"] == []
+    assert capability["evidence_results"][0] == {
+        "kind": "user_intent",
+        "evidence_index": 0,
+        "description": "User is trying to recover account access.",
+        "measurement": "judged",
+        "status": "satisfied",
+        "confidence": "high",
+        "rationale": "The trace shows the user asking for help recovering account access.",
+        "supporting_trace_refs": ["$.steps[0].message"],
+    }
+    assert capability["evidence_results"][1]["measurement"] == "deterministic"
+    assert capability["evidence_results"][1]["status"] == "satisfied"
+
+
+@_needs_harbor
+def test_audit_measure_capability_judgment_does_not_override_missing_tool_evidence(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace)
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments, trace=trace)
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    measurement_dir = _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities")
+    coverage = json.loads((measurement_dir / "coverage.json").read_text(encoding="utf-8"))
+    details = json.loads((measurement_dir / "details.json").read_text(encoding="utf-8"))
+    capability = details["capability_results"]["account_recovery"]
+
+    assert coverage["covered"] == []
+    assert details["covered"] == []
+    assert capability["covered"] is False
+    assert capability["required_tool_results"][0]["status"] == "missing"
+    assert capability["evidence_results"][0]["status"] == "satisfied"
+    assert capability["evidence_results"][0]["measurement"] == "judged"
+    assert capability["evidence_results"][1]["status"] == "missing"
+    assert capability["evidence_results"][1]["measurement"] == "deterministic"
+    assert capability["missing_reasons"] == ["missing_required_tool", "missing_tool_call_evidence"]
+
+
+@_needs_harbor
+def test_audit_measure_rejects_stale_capability_judgments_without_writing(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments, trace=trace, description="Old user-intent wording.")
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "description does not match audit evidence description" in report["error"]
+    assert not out_dir.exists()
+
+
+@_needs_harbor
+def test_audit_measure_rejects_capability_judgments_from_another_trace(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    judged_trace = tmp_path / "judged-trajectory.json"
+    _write_atif_trace(judged_trace, tool_calls=["customer.lookup"])
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments, trace=judged_trace)
+    measured_trace = tmp_path / "measured-trajectory.json"
+    _write_atif_trace(measured_trace, tool_calls=["customer.lookup"], trajectory_id="different-trajectory")
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(measured_trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "does not match measured trace" in report["error"]
+    assert not out_dir.exists()
+
+
+@_needs_harbor
+def test_audit_measure_batches_tool_call_and_capability_methods(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path, _without_user_intent_evidence)
+    trace = tmp_path / "trajectory.json"
+    _write_atif_trace(trace, tool_calls=["customer.lookup"])
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(audit),
+        "--trace",
+        str(trace),
+        "--task-id",
+        "account-recovery",
+        "--measure",
+        "tool_calls,capabilities",
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 0, stderr or summary
+    assert summary["methods"] == ["tool_calls", "capabilities"]
+    assert summary["measurements"][0]["item_kind"] == "tool"
+    assert summary["measurements"][1]["item_kind"] == "capability"
+    assert (_measurement_dir(out_dir, "account-recovery", "root-trajectory") / "coverage.json").exists()
+    assert (
+        _measurement_dir(out_dir, "account-recovery", "root-trajectory", method="capabilities") / "coverage.json"
+    ).exists()
+
+
+@_needs_harbor
 def test_audit_measure_reads_harbor_trial_metadata(tmp_path: Path) -> None:
     audit = _write_audit(tmp_path)
     trial_dir = tmp_path / "job" / "account-recovery__abc"
@@ -2151,6 +2933,66 @@ def test_audit_measure_rejects_unknown_measurement_method_before_trace_load(tmp_
     assert not out_dir.exists()
 
 
+def test_audit_measure_rejects_capability_judgments_without_capability_method(tmp_path: Path) -> None:
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(judgments)
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(tmp_path / "missing-audit.md"),
+        "--trace",
+        str(tmp_path / "missing-trace.json"),
+        "--measure",
+        "tool_calls",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "--capability-judgments requires --measure capabilities" in report["error"]
+    assert not out_dir.exists()
+
+
+def test_audit_measure_rejects_tool_call_capability_judgments_before_trace_load(tmp_path: Path) -> None:
+    judgments = tmp_path / ".eval-author" / "capability-judgments.json"
+    _write_capability_judgments(
+        judgments,
+        evidence_index=1,
+        kind="tool_call",
+        description="Agent grounds the request in customer profile data.",
+    )
+    out_dir = tmp_path / ".eval-author" / "audit-measurements"
+
+    code, report, _ = _run_json_script(
+        _AUDIT_MEASURE,
+        "--audit",
+        str(tmp_path / "missing-audit.md"),
+        "--trace",
+        str(tmp_path / "missing-trace.json"),
+        "--measure",
+        "capabilities",
+        "--capability-judgments",
+        str(judgments),
+        "--out-dir",
+        str(out_dir),
+    )
+
+    assert code == 1
+    assert report["valid"] is True
+    assert report["written"] is False
+    assert report["error_type"] == "measurement"
+    assert "capability judgments failed its JSON Schema" in report["error"]
+    assert "tool_call" in report["error"]
+    assert not out_dir.exists()
+
+
 @pytest.mark.parametrize("measure_value", ("", ",,"))
 def test_audit_measure_rejects_empty_measure_selection_before_trace_load(tmp_path: Path, measure_value: str) -> None:
     out_dir = tmp_path / ".eval-author" / "audit-measurements"
@@ -2195,7 +3037,7 @@ def test_audit_measure_reports_write_failures_as_environment_json(
         measure_module.MeasurementMethod(
             name="tool_calls",
             details_schema="test.details",
-            measure=lambda audit, trajectory: {
+            measure=lambda audit, trajectory, inputs: {
                 "item_kind": "tool",
                 "covered": [],
                 "details": {"schema": "test.details"},
@@ -2251,7 +3093,7 @@ def test_audit_measure_reports_unknown_method_item_kind_as_measurement_json(
         measure_module.MeasurementMethod(
             name="boundary",
             details_schema="test.details",
-            measure=lambda audit, trajectory: {"item_kind": "boundary", "covered": [], "details": {}},
+            measure=lambda audit, trajectory, inputs: {"item_kind": "boundary", "covered": [], "details": {}},
         ),
     )
 
@@ -2375,6 +3217,50 @@ def test_audit_report_aggregates_coverage_and_formats_generation_gaps(tmp_path: 
     assert (
         "identity is not verified" in gaps_by_name["account_recovery_unverified_identity"]["audit_item"]["description"]
     )
+
+
+def test_audit_report_aggregates_capability_coverage(tmp_path: Path) -> None:
+    audit = _write_audit(tmp_path)
+    coverage_dir = tmp_path / ".eval-author" / "audit-measurements"
+    tool_coverage_path = _measurement_dir(coverage_dir, "account-recovery", "trial-001") / "coverage.json"
+    capability_coverage_path = (
+        _measurement_dir(coverage_dir, "account-recovery", "trial-001", method="capabilities") / "coverage.json"
+    )
+    _write_coverage(tool_coverage_path, audit=audit, covered=["customer.lookup"])
+    _write_coverage(
+        capability_coverage_path,
+        audit=audit,
+        item_kind="capability",
+        method="capabilities",
+        covered=["account_recovery"],
+    )
+    out = tmp_path / ".eval-author" / "audit-coverage-report.json"
+
+    code, summary, stderr = _run_json_script(
+        _AUDIT_REPORT,
+        "--audit",
+        str(audit),
+        "--coverage-dir",
+        str(coverage_dir),
+        "--out",
+        str(out),
+    )
+
+    report = json.loads(out.read_text(encoding="utf-8"))
+    gaps_by_name = {item["name"]: item for item in report["uncovered_items"]}
+
+    assert code == 0, stderr or summary
+    assert summary["measured_kinds"] == ["capability", "tool"]
+    assert summary["covered_count"] == 2
+    assert summary["uncovered"] == ["account_recovery_unverified_identity"]
+    assert report["covered"] == ["customer.lookup", "account_recovery"]
+    assert report["coverage"]["by_kind"]["capability"] == {
+        "item_count": 1,
+        "covered_count": 1,
+        "uncovered_count": 0,
+    }
+    assert "account_recovery" not in gaps_by_name
+    assert gaps_by_name["account_recovery_unverified_identity"]["reason"] == "not_measured_by_any_method"
 
 
 def test_audit_report_dedupes_generation_needed_tools(tmp_path: Path) -> None:
