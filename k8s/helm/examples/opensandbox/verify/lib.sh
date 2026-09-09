@@ -457,7 +457,7 @@ nohup /bin/sh -c '
     printf "B\r\n{\"ok\":true}\r\n"
     printf "0\r\n\r\n"
   } | nc -l -p 18081
-' >/tmp/osb-stream-server.log 2>&1 &
+' </dev/null >/tmp/osb-stream-server.log 2>&1 &
 SH
 
   response_file="$(mktemp)"
