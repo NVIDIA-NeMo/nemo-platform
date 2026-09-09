@@ -45,6 +45,7 @@ dependencies = [
   # only *resolving and running* a harness pulls them.
   "nemo-fabric==0.3.0b1",
   "opentelemetry-proto>=1.27.0",
+  "pytrec-eval-terrier==0.5.10",
 ]
 version = "0.0.0"
 

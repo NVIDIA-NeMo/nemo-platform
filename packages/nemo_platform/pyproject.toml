@@ -361,6 +361,7 @@ nemo-evaluator-sdk = [
   "nemo-relay>=0.7.3,<0.8",
   "nemo-fabric==0.3.0b1",
   "opentelemetry-proto>=1.27.0",
+  "pytrec-eval-terrier==0.5.10",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -739,6 +740,7 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "data-designer.retrieval-generate" = "nemo_data_designer_plugin.jobs.retrieval_generate:RetrievalGenerateJob"
 "data-designer.retrieval-prepare" = "nemo_data_designer_plugin.jobs.retrieval_prepare:RetrievalPrepareJob"
 "data-designer.retrieval-run" = "nemo_data_designer_plugin.jobs.retrieval_run:RetrievalRunJob"
+"evaluator.retrieve-eval" = "nemo_evaluator.jobs.retrieve_eval:RetrieveEvalJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.logging_provider"]

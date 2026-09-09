@@ -28,6 +28,7 @@ evaluator = "nemo_evaluator.sdk.resources:evaluator_sdk_resources"
 [project.entry-points."nemo.jobs"]
 "evaluator.evaluate" = "nemo_evaluator.jobs.evaluate:EvaluateJob"
 "evaluator.agent-evaluate" = "nemo_evaluator.jobs.agent_evaluate:AgentEvalJob"
+"evaluator.retrieve-eval" = "nemo_evaluator.jobs.retrieve_eval:RetrieveEvalJob"
 
 [project.entry-points."nemo.skills"]
 evaluator = "nemo_evaluator.skills:get_skills_path"
