@@ -361,7 +361,7 @@ nemo-evaluator-sdk = [
   "nemo-relay>=0.7.3,<0.8",
   "nemo-fabric==0.3.0b1",
   "opentelemetry-proto>=1.27.0",
-  "pytrec-eval-terrier==0.5.7",
+  "pytrec-eval-terrier==0.5.10",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
