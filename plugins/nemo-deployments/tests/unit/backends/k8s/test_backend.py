@@ -55,6 +55,20 @@ def test_to_k8s_defaults_empty_by_default() -> None:
     assert defaults.topology_spread_constraints == []
 
 
+def test_to_k8s_defaults_deep_copies_nested_objects() -> None:
+    # Mutating the returned defaults must not corrupt the shared executor config
+    # for later workloads (nested nodeAffinity / labelSelector are deep-copied).
+    config = K8sExecutorConfig(
+        default_affinity={"nodeAffinity": {"key": "orig"}},
+        default_topology_spread_constraints=[{"labelSelector": {"matchLabels": {"app": "orig"}}}],
+    )
+    defaults = config.to_k8s_defaults()
+    defaults.affinity["nodeAffinity"]["key"] = "mutated"
+    defaults.topology_spread_constraints[0]["labelSelector"]["matchLabels"]["app"] = "mutated"
+    assert config.default_affinity["nodeAffinity"]["key"] == "orig"
+    assert config.default_topology_spread_constraints[0]["labelSelector"]["matchLabels"]["app"] == "orig"
+
+
 def test_effective_namespace_prefers_explicit_config(monkeypatch: pytest.MonkeyPatch) -> None:
     # An explicit config value wins even when POD_NAMESPACE is set.
     monkeypatch.setenv("POD_NAMESPACE", "pod-ns")

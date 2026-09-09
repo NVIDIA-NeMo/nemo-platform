@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import re
+from copy import deepcopy
 from typing import Any
 
 from nemo_deployments_plugin.backends.k8s.compiler import ExecutorK8sDefaults
@@ -127,7 +128,7 @@ class K8sExecutorConfig(BaseModel):
         return ExecutorK8sDefaults(
             pod_annotations=dict(self.default_pod_annotations),
             node_selector=dict(self.default_node_selector),
-            tolerations=[dict(item) for item in self.default_tolerations],
-            affinity=dict(self.default_affinity),
-            topology_spread_constraints=[dict(item) for item in self.default_topology_spread_constraints],
+            tolerations=deepcopy(self.default_tolerations),
+            affinity=deepcopy(self.default_affinity),
+            topology_spread_constraints=deepcopy(self.default_topology_spread_constraints),
         )
