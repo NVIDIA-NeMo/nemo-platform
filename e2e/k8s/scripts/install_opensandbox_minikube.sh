@@ -9,15 +9,26 @@
 # setup_local_minikube_gpu.sh (or setup_local_minikube_cpu.sh), then helm-upgrade
 # the platform with sandboxClusterCapable=true.
 #
+# Charts come from published GitHub Release tarballs by default (no checkout).
+# OpenSandbox does not publish a Helm repo index; tags look like
+# helm/opensandbox-controller/0.2.0. There is no helm/opensandbox-server
+# release, so the server chart is taken from the published opensandbox umbrella
+# tarball. Overlay k8s/helm/examples/opensandbox/*.yaml so images stay on
+# controller v0.2.0 / server v0.2.1 and [secure_runtime] stays unset.
+#
 # Usage:
-#   OPENSANDBOX_DIR=/path/to/OpenSandbox ./e2e/k8s/scripts/install_opensandbox_minikube.sh
+#   ./e2e/k8s/scripts/install_opensandbox_minikube.sh
 #
 # Environment:
-#   OPENSANDBOX_DIR   Required. Checkout with kubernetes/charts/{opensandbox-controller,opensandbox-server}
-#   KUBE_NAMESPACE    Job / Helm-release namespace (default: default). Alias: NMP_NAMESPACE
-#   MINIKUBE_PROFILE  (default: minikube)
-#   SKIP_VERIFY=1     Skip k8s/helm/examples/opensandbox/verify/shared-kernel.sh
-#   HELM_TIMEOUT      Helm --wait timeout (default: 10m)
+#   OPENSANDBOX_DIR              Optional checkout with kubernetes/charts/{opensandbox-controller,opensandbox-server}
+#   OPENSANDBOX_CONTROLLER_CHART Optional chart path or .tgz URL (overrides download / checkout controller)
+#   OPENSANDBOX_SERVER_CHART     Optional chart path or .tgz URL (overrides download / checkout server)
+#   OPENSANDBOX_CONTROLLER_VERSION  GitHub Release chart version (default: 0.2.0)
+#   OPENSANDBOX_UMBRELLA_VERSION    Umbrella tarball that contains the server chart (default: 0.2.2)
+#   KUBE_NAMESPACE               Job / Helm-release namespace (default: default). Alias: NMP_NAMESPACE
+#   MINIKUBE_PROFILE             (default: minikube)
+#   SKIP_VERIFY=1                Skip k8s/helm/examples/opensandbox/verify/shared-kernel.sh
+#   HELM_TIMEOUT                 Helm --wait timeout (default: 10m)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,8 +43,21 @@ NMP_NAMESPACE="${KUBE_NAMESPACE}"
 MINIKUBE_PROFILE="${MINIKUBE_PROFILE:-minikube}"
 HELM_TIMEOUT="${HELM_TIMEOUT:-10m}"
 API_SECRET="opensandbox-server-api-key"
+OPENSANDBOX_CONTROLLER_VERSION="${OPENSANDBOX_CONTROLLER_VERSION:-0.2.0}"
+OPENSANDBOX_UMBRELLA_VERSION="${OPENSANDBOX_UMBRELLA_VERSION:-0.2.2}"
+OPENSANDBOX_RELEASES="${OPENSANDBOX_RELEASES:-https://github.com/opensandbox-group/OpenSandbox/releases/download}"
 
-for tool in kubectl helm openssl python3; do
+CHART_CACHE=""
+SERVER_VALUES=""
+cleanup() {
+    rm -f "${SERVER_VALUES:-}"
+    if [ -n "${CHART_CACHE:-}" ]; then
+        rm -rf "${CHART_CACHE}"
+    fi
+}
+trap cleanup EXIT
+
+for tool in kubectl helm openssl python3 curl tar; do
     if ! command -v "${tool}" >/dev/null 2>&1; then
         log_error "${tool} is not installed. Please install it first."
         exit 1
@@ -46,16 +70,59 @@ if ! kubectl get node >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ -z "${OPENSANDBOX_DIR:-}" ]; then
-    log_error "OPENSANDBOX_DIR is required (OpenSandbox checkout with kubernetes/charts/)."
-    exit 1
-fi
-CONTROLLER_CHART="${OPENSANDBOX_DIR}/kubernetes/charts/opensandbox-controller"
-SERVER_CHART="${OPENSANDBOX_DIR}/kubernetes/charts/opensandbox-server"
-if [ ! -d "${CONTROLLER_CHART}" ] || [ ! -d "${SERVER_CHART}" ]; then
-    log_error "OpenSandbox charts not found under ${OPENSANDBOX_DIR}/kubernetes/charts/"
-    exit 1
-fi
+download_tarball() {
+    local url="$1"
+    local dest="$2"
+    log_info "Downloading ${url}"
+    curl -fsSL -L -o "${dest}" "${url}"
+}
+
+resolve_charts() {
+    if [ -n "${OPENSANDBOX_CONTROLLER_CHART:-}" ] && [ -n "${OPENSANDBOX_SERVER_CHART:-}" ]; then
+        CONTROLLER_CHART="${OPENSANDBOX_CONTROLLER_CHART}"
+        SERVER_CHART="${OPENSANDBOX_SERVER_CHART}"
+        log_info "Using explicit chart paths/URLs"
+        return
+    fi
+    if [ -n "${OPENSANDBOX_CONTROLLER_CHART:-}" ] || [ -n "${OPENSANDBOX_SERVER_CHART:-}" ]; then
+        log_error "Set both OPENSANDBOX_CONTROLLER_CHART and OPENSANDBOX_SERVER_CHART, or neither."
+        exit 1
+    fi
+
+    if [ -n "${OPENSANDBOX_DIR:-}" ]; then
+        CONTROLLER_CHART="${OPENSANDBOX_DIR}/kubernetes/charts/opensandbox-controller"
+        SERVER_CHART="${OPENSANDBOX_DIR}/kubernetes/charts/opensandbox-server"
+        if [ ! -d "${CONTROLLER_CHART}" ] || [ ! -d "${SERVER_CHART}" ]; then
+            log_error "OpenSandbox charts not found under ${OPENSANDBOX_DIR}/kubernetes/charts/"
+            exit 1
+        fi
+        log_info "Using charts from ${OPENSANDBOX_DIR}"
+        return
+    fi
+
+    CHART_CACHE="$(mktemp -d)"
+    local controller_url="${OPENSANDBOX_RELEASES}/helm/opensandbox-controller/${OPENSANDBOX_CONTROLLER_VERSION}/opensandbox-controller-${OPENSANDBOX_CONTROLLER_VERSION}.tgz"
+    local umbrella_url="${OPENSANDBOX_RELEASES}/helm/opensandbox/${OPENSANDBOX_UMBRELLA_VERSION}/opensandbox-${OPENSANDBOX_UMBRELLA_VERSION}.tgz"
+    local controller_tgz="${CHART_CACHE}/opensandbox-controller.tgz"
+    local umbrella_tgz="${CHART_CACHE}/opensandbox.tgz"
+
+    download_tarball "${controller_url}" "${controller_tgz}"
+    download_tarball "${umbrella_url}" "${umbrella_tgz}"
+    tar -xzf "${umbrella_tgz}" -C "${CHART_CACHE}"
+
+    CONTROLLER_CHART="${controller_tgz}"
+    SERVER_CHART="${CHART_CACHE}/opensandbox/charts/opensandbox-server"
+    if [ ! -f "${CONTROLLER_CHART}" ] || [ ! -d "${SERVER_CHART}" ]; then
+        log_error "Published tarballs did not contain the expected charts."
+        log_error "Controller: ${CONTROLLER_CHART}"
+        log_error "Server: ${SERVER_CHART}"
+        log_error "OpenSandbox does not publish a helm/opensandbox-server tarball; the server chart is nested in the opensandbox umbrella chart."
+        exit 1
+    fi
+    log_info "Using published tarballs (controller ${OPENSANDBOX_CONTROLLER_VERSION}, server from umbrella ${OPENSANDBOX_UMBRELLA_VERSION})"
+}
+
+resolve_charts
 
 log_info "Installing shared-kernel OpenSandbox (control plane: ${SYSTEM_NS}, jobs: ${KUBE_NAMESPACE})"
 
@@ -91,7 +158,6 @@ json.dump(secret, sys.stdout)
 ' | kubectl apply -n "${KUBE_NAMESPACE}" -f -
 
 SERVER_VALUES="$(mktemp)"
-trap 'rm -f "${SERVER_VALUES}"' EXIT
 sed "s/REPLACE_WITH_RELEASE_NAMESPACE/${KUBE_NAMESPACE}/g" \
   "${EXAMPLES}/opensandbox-server.yaml" > "${SERVER_VALUES}"
 
