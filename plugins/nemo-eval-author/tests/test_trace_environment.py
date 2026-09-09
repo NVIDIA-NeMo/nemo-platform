@@ -6,6 +6,7 @@
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -17,7 +18,7 @@ _PLUGIN = Path(__file__).resolve().parents[1]
 _SCRIPT = _PLUGIN / "skills" / "eval-author-trace-environment" / "scripts" / "trace_environment.py"
 _SUMMARY_SCHEMA = "nemo.eval_author.trace_environment_summary.v2"
 _CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v2"
-_VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v2"
+_VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v3"
 
 
 def _run(*args: str) -> tuple[int, dict[str, Any]]:
@@ -141,6 +142,12 @@ def _review_privacy(task_dir: Path, *, reviewer_kind: str = "agent") -> None:
     assert code == 0, result
 
 
+def _record_reproducibility(task_dir: Path) -> None:
+    (task_dir / "reproducibility.json").unlink(missing_ok=True)
+    code, result = _run("record-reproducibility", "--task-dir", str(task_dir))
+    assert code == 0, result
+
+
 def _ready_environment(
     task_dir: Path,
     *,
@@ -157,8 +164,12 @@ def _ready_environment(
     verifier = f'\n[verifier]\nenvironment_mode = "{mode}"\n'
     if mode == "separate":
         verifier += 'network_mode = "no-network"\n\n[verifier.environment]\nnetwork_mode = "no-network"\n'
-    (task / "task.toml").write_text(f'schema_version = "1.1"\n{verifier}', encoding="utf-8")
+    (task / "task.toml").write_text(
+        f'schema_version = "1.1"\n{verifier}\n[environment]\nnetwork_mode = "no-network"\n',
+        encoding="utf-8",
+    )
     (task / "instruction.md").write_text("Repair the fixture.\n", encoding="utf-8")
+    (task / "environment" / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
     (task / "README.md").write_text(
         """# Repair fixture
 
@@ -194,11 +205,14 @@ The human reviewer confirmed that this fixture accurately represents the recorde
             "FROM scratch\nCOPY test.sh /tests/test.sh\n",
             encoding="utf-8",
         )
-    (task / "solution" / "solve.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    (task / "solution" / "solve.sh").write_text("#!/usr/bin/env bash\ntouch repaired\n", encoding="utf-8")
     checksum = "a" * 64
-    for arm, reward, exception in (
-        ("nop", nop_reward, None),
-        ("oracle", oracle_reward, oracle_exception),
+    for job_number, arm, reward, exception in (
+        (1, "nop-1", nop_reward, None),
+        (2, "nop-2", nop_reward, None),
+        (3, "oracle-1", oracle_reward, oracle_exception),
+        (4, "oracle-2", oracle_reward, oracle_exception),
+        (5, "negative-1", 0.0, None),
     ):
         trial = task_dir / "private" / "jobs" / arm / "task__trial"
         trial.mkdir(parents=True)
@@ -209,17 +223,26 @@ The human reviewer confirmed that this fixture accurately represents the recorde
                 "verifier_environment_mode": mode,
                 "verifier_result": {"rewards": {"reward": reward}},
                 "exception_info": exception,
+                "config": {"job_id": f"job-{job_number}"},
             },
         )
+    if mode == "separate":
+        _record_reproducibility(task_dir)
     if record_validation:
         code, result = _run(
             "record-validation",
             "--task-dir",
             str(task_dir),
             "--nop-job-dir",
-            "private/jobs/nop",
+            "private/jobs/nop-1",
+            "--nop-job-dir",
+            "private/jobs/nop-2",
             "--oracle-job-dir",
-            "private/jobs/oracle",
+            "private/jobs/oracle-1",
+            "--oracle-job-dir",
+            "private/jobs/oracle-2",
+            "--negative-job-dir",
+            "private/jobs/negative-1",
             "--harbor-version",
             "0.21.0",
         )
@@ -586,7 +609,7 @@ def test_ready_candidate_rejects_wrong_arm_reward(tmp_path: Path) -> None:
     _ready_environment(task_dir)
     validation_path = task_dir / "validation.json"
     validation = json.loads(validation_path.read_text(encoding="utf-8"))
-    validation["nop"]["reward"] = 1
+    validation["runs"]["nop"][0]["reward"] = 1
     _write_json(validation_path, validation)
     _review_privacy(task_dir)
 
@@ -644,6 +667,153 @@ def test_ready_candidate_requires_substantive_readme_sections(tmp_path: Path) ->
 
     assert code == 1
     assert "Verification explanation" in result["error"]
+
+
+def test_reproducibility_records_complete_task_tree_and_portability(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+
+    report = json.loads((task_dir / "reproducibility.json").read_text(encoding="utf-8"))
+
+    assert report["schema"] == "nemo.eval_author.trace_environment_reproducibility.v1"
+    assert report["task_tree_sha256"].startswith("sha256:")
+    assert report["file_count"] == 7
+    assert report["portability"]["state"] == "recipe_rebuildable"
+    assert report["network"] == {"agent": "no-network", "verifier": "no-network"}
+    assert report["contamination"]["passed"] is True
+
+
+def test_reproducibility_digest_covers_executable_bits(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    _review_privacy(task_dir)
+    solve = task_dir / "task" / "solution" / "solve.sh"
+    solve.chmod(solve.stat().st_mode | stat.S_IXUSR)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "reproducibility.json differs from the current task tree" in result["error"]
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "content", "reason_code"),
+    [
+        ("environment/.git/config", '[remote "origin"]\n', "git_metadata_in_agent_context"),
+        ("environment/key.txt", "Bearer abcdefghijklmnop\n", "bearer_credential"),
+        ("environment/url.txt", "https://user:password@example.test/file\n", "credentialed_url"),
+    ],
+)
+def test_reproducibility_retains_failed_contamination_evidence(
+    tmp_path: Path, relative_path: str, content: str, reason_code: str
+) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    target = task_dir / "task" / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    (task_dir / "reproducibility.json").unlink()
+
+    code, result = _run("record-reproducibility", "--task-dir", str(task_dir))
+
+    assert code == 1
+    assert result["contamination_findings"] == 1
+    report = json.loads((task_dir / "reproducibility.json").read_text(encoding="utf-8"))
+    assert report["contamination"]["passed"] is False
+    assert report["contamination"]["findings"][0]["code"] == reason_code
+
+
+def test_candidate_requires_no_network_agent_environment(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    task_toml = task_dir / "task" / "task.toml"
+    task_toml.write_text(
+        task_toml.read_text(encoding="utf-8").replace(
+            '[environment]\nnetwork_mode = "no-network"', '[environment]\nnetwork_mode = "public"'
+        ),
+        encoding="utf-8",
+    )
+    _review_privacy(task_dir)
+
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+
+    assert code == 1
+    assert "[environment].network_mode must be no-network" in result["error"]
+
+
+def test_reproducibility_rejects_solution_file_in_agent_context(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / "task" / "environment" / "answer.sh").write_bytes(
+        (task_dir / "task" / "solution" / "solve.sh").read_bytes()
+    )
+    (task_dir / "reproducibility.json").unlink()
+
+    code, result = _run("record-reproducibility", "--task-dir", str(task_dir))
+
+    assert code == 1
+    assert result["contamination_findings"] == 1
+    report = json.loads((task_dir / "reproducibility.json").read_text(encoding="utf-8"))
+    assert report["contamination"]["findings"][0]["code"] == "solution_in_agent_context"
+
+
+def test_validation_requires_independent_repeat_and_negative_jobs(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+
+    code, result = _run(
+        "record-validation",
+        "--task-dir",
+        str(task_dir),
+        "--nop-job-dir",
+        "private/jobs/nop-1",
+        "--oracle-job-dir",
+        "private/jobs/oracle-1",
+        "--negative-job-dir",
+        "private/jobs/negative-1",
+        "--harbor-version",
+        "0.21.0",
+    )
+
+    assert code == 1
+    assert "at least 2 independent nop Harbor jobs" in result["error"]
+
+
+def test_validation_requires_distinct_harbor_job_ids(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    duplicate = task_dir / "private" / "jobs" / "nop-2" / "task__trial" / "result.json"
+    payload = json.loads(duplicate.read_text(encoding="utf-8"))
+    payload["config"]["job_id"] = "job-1"
+    _write_json(duplicate, payload)
+
+    code, result = _run(
+        "record-validation",
+        "--task-dir",
+        str(task_dir),
+        "--nop-job-dir",
+        "private/jobs/nop-1",
+        "--nop-job-dir",
+        "private/jobs/nop-2",
+        "--oracle-job-dir",
+        "private/jobs/oracle-1",
+        "--oracle-job-dir",
+        "private/jobs/oracle-2",
+        "--negative-job-dir",
+        "private/jobs/negative-1",
+        "--harbor-version",
+        "0.21.0",
+    )
+
+    assert code == 1
+    assert "config.job_id values must be distinct" in result["error"]
 
 
 def test_check_detects_changed_safe_evidence(tmp_path: Path) -> None:
@@ -811,6 +981,7 @@ def test_separate_verifier_can_inherit_image_without_tests_dockerfile(tmp_path: 
     _candidate(task_dir)
     _ready_environment(task_dir, record_validation=False)
     (task_dir / "task" / "tests" / "Dockerfile").unlink()
+    _record_reproducibility(task_dir)
     _review_privacy(task_dir)
 
     code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
@@ -868,6 +1039,7 @@ def test_step_can_define_a_separate_no_network_verifier_environment(tmp_path: Pa
         + '[steps.verifier.environment]\nnetwork_mode = "no-network"\n',
         encoding="utf-8",
     )
+    _record_reproducibility(task_dir)
     _review_privacy(task_dir)
 
     code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
@@ -908,11 +1080,16 @@ def test_export_uses_a_strict_publication_whitelist(tmp_path: Path) -> None:
 
     assert code == 0, result
     assert (output / "candidate.json").is_file()
+    assert (output / "reproducibility.json").is_file()
     assert (output / "result.json").is_file()
     assert (output / "task").is_dir()
     assert not (output / "validation.json").exists()
     assert not (output / "safe").exists()
     assert not (output / "private").exists()
+    product = json.loads((output / "result.json").read_text(encoding="utf-8"))
+    assert product["schema"] == "nemo.eval_author.trace_environment_product.v2"
+    assert product["reproducibility"]["contamination_passed"] is True
+    assert product["technical_validation"]["minimum_runs"] == {"negative": 1, "nop": 2, "oracle": 2}
 
 
 def test_batch_prepare_is_resumable_and_reports_full_denominator(tmp_path: Path) -> None:

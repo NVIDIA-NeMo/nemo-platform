@@ -22,9 +22,10 @@ from urllib.parse import urlsplit
 
 SCHEMA = "nemo.eval_author.trace_environment_summary.v2"
 CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v2"
-VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v2"
+VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v3"
 PRIVACY_AUDIT_SCHEMA = "nemo.eval_author.trace_environment_privacy_audit.v1"
-EXPORT_SCHEMA = "nemo.eval_author.trace_environment_product.v1"
+REPRODUCIBILITY_SCHEMA = "nemo.eval_author.trace_environment_reproducibility.v1"
+EXPORT_SCHEMA = "nemo.eval_author.trace_environment_product.v2"
 BATCH_SCHEMA = "nemo.eval_author.trace_environment_batch.v1"
 MAX_RAW_SOURCE_BYTES = 128 * 1024 * 1024
 MAX_CANONICAL_BYTES = 25 * 1024 * 1024
@@ -161,7 +162,12 @@ _TASK_README_SECTIONS = (
 )
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 _TASK_CHECKSUM = re.compile(r"[0-9a-f]{64}")
+_IMAGE_DIGEST = re.compile(r".+@sha256:[0-9a-f]{64}$")
+_PRIVATE_KEY_BYTES = re.compile(rb"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
+_BEARER_BYTES = re.compile(rb"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}")
+_CREDENTIALED_URL_BYTES = re.compile(rb"(?i)https?://[^\s/:@]+:[^\s/@]+@")
 _BATCH_MEMBER_KEYS = frozenset({"task_id", "atif", "source_kind"})
+_MIN_VALIDATION_RUNS = {"nop": 2, "oracle": 2, "negative": 1}
 
 
 class ContractError(ValueError):
@@ -170,6 +176,11 @@ class ContractError(ValueError):
 
 def _sha256(data: bytes) -> str:
     return f"sha256:{hashlib.sha256(data).hexdigest()}"
+
+
+def _sha256_file(path: Path) -> str:
+    with path.open("rb") as stream:
+        return f"sha256:{hashlib.file_digest(stream, 'sha256').hexdigest()}"
 
 
 def _chmod_private(path: Path, *, directory: bool = False) -> None:
@@ -1061,7 +1072,219 @@ def _validate_candidate(task_dir: Path, status: str, step_ids: set[int]) -> dict
     return candidate
 
 
-def _validate_task(task_dir: Path) -> dict[str, str]:
+def _task_tree_info(root: Path) -> dict[str, Any]:
+    """Hash a task tree with unambiguous framing and executable-bit coverage."""
+
+    if root.is_symlink() or not root.is_dir():
+        raise ContractError("task must be a regular directory")
+    digest = hashlib.sha256()
+    file_count = 0
+    total_bytes = 0
+    for path in sorted(root.rglob("*"), key=lambda candidate: candidate.relative_to(root).as_posix()):
+        relative = path.relative_to(root).as_posix().encode()
+        if path.is_symlink():
+            raise ContractError(f"task tree refuses symlink: {path.relative_to(root)}")
+        if path.is_dir():
+            kind = b"directory"
+            executable = b"0"
+            payload_size = 0
+        elif path.is_file():
+            kind = b"file"
+            executable = b"1" if stat.S_IMODE(path.stat().st_mode) & 0o111 else b"0"
+            payload_size = path.stat().st_size
+            file_count += 1
+            total_bytes += payload_size
+        else:
+            raise ContractError(f"task tree contains an unsupported entry: {path.relative_to(root)}")
+        for field in (kind, relative, executable):
+            digest.update(len(field).to_bytes(8, "big"))
+            digest.update(field)
+        digest.update(payload_size.to_bytes(8, "big"))
+        if path.is_file():
+            with path.open("rb") as stream:
+                while chunk := stream.read(1024 * 1024):
+                    digest.update(chunk)
+    return {
+        "task_tree_sha256": f"sha256:{digest.hexdigest()}",
+        "file_count": file_count,
+        "total_bytes": total_bytes,
+    }
+
+
+def _dockerfile_images(task_dir: Path) -> list[dict[str, Any]]:
+    images: list[dict[str, Any]] = []
+    for path in sorted((task_dir / "task").rglob("Dockerfile")):
+        stage_aliases: dict[str, bool] = {}
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except UnicodeDecodeError as error:
+            raise ContractError(f"{path.relative_to(task_dir)} must be UTF-8 text") from error
+        for line_number, line in enumerate(lines, start=1):
+            parts = line.strip().split()
+            if not parts or parts[0].casefold() != "from":
+                continue
+            references = [part for part in parts[1:] if not part.startswith("--")]
+            if not references:
+                raise ContractError(f"{path.relative_to(task_dir)}:{line_number} has an invalid FROM instruction")
+            reference = references[0]
+            immutable = (
+                reference.casefold() == "scratch"
+                or _IMAGE_DIGEST.fullmatch(reference) is not None
+                or stage_aliases.get(reference.casefold(), False)
+            )
+            images.append(
+                {
+                    "path": str(path.relative_to(task_dir)),
+                    "line": line_number,
+                    "reference": reference,
+                    "immutable": immutable,
+                }
+            )
+            lowered = [part.casefold() for part in parts]
+            if "as" in lowered:
+                alias_index = lowered.index("as") + 1
+                if alias_index >= len(parts):
+                    raise ContractError(f"{path.relative_to(task_dir)}:{line_number} has an invalid stage alias")
+                stage_aliases[parts[alias_index].casefold()] = immutable
+    return images
+
+
+def _contamination_findings(task_dir: Path) -> tuple[list[dict[str, str]], int]:
+    task = task_dir / "task"
+    environment = task / "environment"
+    findings: list[dict[str, str]] = []
+    scanned_files = 0
+
+    for path in sorted(environment.rglob("*")):
+        relative = path.relative_to(task)
+        if path.name == ".git":
+            findings.append(
+                {
+                    "code": "git_metadata_in_agent_context",
+                    "path": str(relative),
+                    "detail": "agent build context contains Git metadata or object history",
+                }
+            )
+
+    protected_digests: dict[str, str] = {}
+    for protected_dir, code in (
+        (task / "solution", "solution_in_agent_context"),
+        (task / "tests", "tests_in_agent_context"),
+    ):
+        for path in protected_dir.rglob("*") if protected_dir.is_dir() else ():
+            if path.name != "Dockerfile" and path.is_file() and not path.is_symlink() and path.stat().st_size:
+                protected_digests.setdefault(_sha256_file(path), code)
+    for path in environment.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        code = protected_digests.get(_sha256_file(path)) if path.stat().st_size else None
+        if code is not None:
+            findings.append(
+                {
+                    "code": code,
+                    "path": str(path.relative_to(task)),
+                    "detail": "agent build context duplicates a protected task file",
+                }
+            )
+
+    for path in sorted(task.rglob("*")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        scanned_files += 1
+        relative = str(path.relative_to(task))
+        matched_codes: set[str] = set()
+        overlap = b""
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                sample = overlap + chunk
+                for code, pattern, detail in (
+                    ("private_key_material", _PRIVATE_KEY_BYTES, "task contains private key material"),
+                    ("bearer_credential", _BEARER_BYTES, "task contains a bearer credential"),
+                    (
+                        "credentialed_url",
+                        _CREDENTIALED_URL_BYTES,
+                        "task contains credentials embedded in a URL",
+                    ),
+                ):
+                    if code not in matched_codes and pattern.search(sample):
+                        findings.append({"code": code, "path": relative, "detail": detail})
+                        matched_codes.add(code)
+                overlap = sample[-4096:]
+    findings.sort(key=lambda finding: (finding["code"], finding["path"]))
+    return findings, scanned_files
+
+
+def _derive_reproducibility(task_dir: Path) -> dict[str, Any]:
+    task_contract = _validate_task(task_dir)
+    task_info = _task_tree_info(task_dir / "task")
+    images = _dockerfile_images(task_dir)
+    config = task_contract["config"]
+    metadata = config.get("metadata")
+    source_revision = None
+    if isinstance(metadata, dict):
+        for key in ("source_commit", "source_revision"):
+            if isinstance(metadata.get(key), str) and metadata[key].strip():
+                source_revision = metadata[key]
+                break
+    environment = config.get("environment")
+    configured_image = environment.get("image") if isinstance(environment, dict) else None
+    has_agent_recipe = any(image["path"] == "task/environment/Dockerfile" for image in images)
+    if isinstance(configured_image, str) and _IMAGE_DIGEST.fullmatch(configured_image):
+        portability_state = "immutable_image"
+    elif has_agent_recipe and all(image["immutable"] for image in images):
+        portability_state = "recipe_rebuildable"
+    else:
+        portability_state = "local_only"
+    findings, scanned_files = _contamination_findings(task_dir)
+    return {
+        "schema": REPRODUCIBILITY_SCHEMA,
+        **task_info,
+        "source_revision": source_revision,
+        "portability": {
+            "state": portability_state,
+            "configured_image": configured_image,
+            "container_images": images,
+        },
+        "network": {
+            "agent": task_contract["agent_network_mode"],
+            "verifier": "no-network",
+        },
+        "contamination": {
+            "passed": not findings,
+            "scanned_files": scanned_files,
+            "findings": findings,
+        },
+    }
+
+
+def _record_reproducibility(args: argparse.Namespace) -> dict[str, Any]:
+    task_dir = _ensure_task_dir(args.task_dir)
+    output = task_dir / "reproducibility.json"
+    if output.exists():
+        raise ContractError("refusing to replace existing reproducibility.json")
+    report = _derive_reproducibility(task_dir)
+    _write_json(output, report)
+    return {
+        "task_dir": str(task_dir),
+        "valid": report["contamination"]["passed"],
+        "task_tree_sha256": report["task_tree_sha256"],
+        "portability_state": report["portability"]["state"],
+        "contamination_findings": len(report["contamination"]["findings"]),
+    }
+
+
+def _validate_reproducibility(task_dir: Path) -> dict[str, Any]:
+    recorded = _load_object(task_dir / "reproducibility.json", label="environment reproducibility")
+    derived = _derive_reproducibility(task_dir)
+    if recorded != derived:
+        raise ContractError("reproducibility.json differs from the current task tree or integrity scan")
+    if not recorded["contamination"]["passed"]:
+        codes = sorted({finding["code"] for finding in recorded["contamination"]["findings"]})
+        raise ContractError(f"task contamination scan failed: {', '.join(codes)}")
+    return recorded
+
+
+def _validate_task(task_dir: Path) -> dict[str, Any]:
     environment = task_dir / "task"
     required_files = (
         environment / "README.md",
@@ -1110,12 +1333,21 @@ def _validate_task(task_dir: Path) -> dict[str, str]:
         raise ContractError("task/task.toml must contain an explicit [verifier.environment] table")
     if verifier_environment.get("network_mode") != "no-network":
         raise ContractError("[verifier.environment].network_mode must be no-network")
+    agent_environment = config.get("environment")
+    if not isinstance(agent_environment, dict) or agent_environment.get("network_mode") != "no-network":
+        raise ContractError("[environment].network_mode must be no-network")
     steps = config.get("steps", [])
     if not isinstance(steps, list):
         raise ContractError("task/task.toml steps must be an array of tables")
     for index, step in enumerate(steps, start=1):
         if not isinstance(step, dict):
             raise ContractError(f"task/task.toml step {index} must be a table")
+        step_agent_environment = step.get("environment")
+        if step_agent_environment is not None and (
+            not isinstance(step_agent_environment, dict)
+            or step_agent_environment.get("network_mode") not in {None, "no-network"}
+        ):
+            raise ContractError(f"task/task.toml step {index} agent environment network_mode must be no-network")
         step_verifier = step.get("verifier")
         if step_verifier is None:
             continue
@@ -1132,7 +1364,12 @@ def _validate_task(task_dir: Path) -> dict[str, str]:
             not isinstance(step_environment, dict) or step_environment.get("network_mode") != "no-network"
         ):
             raise ContractError(f"[steps.verifier.environment] for step {index} must set network_mode to no-network")
-    return {"verifier_environment_mode": mode, "isolation_status": "isolated"}
+    return {
+        "verifier_environment_mode": mode,
+        "isolation_status": "isolated",
+        "agent_network_mode": "no-network",
+        "config": config,
+    }
 
 
 def _job_result(task_dir: Path, value: str | Path, *, arm: str) -> tuple[Path, Path, dict[str, Any]]:
@@ -1160,7 +1397,12 @@ def _arm_from_result(task_dir: Path, job_dir: Path, result_path: Path, result: d
     reward = rewards.get("reward") if isinstance(rewards, dict) else None
     if reward is not None and (isinstance(reward, bool) or not isinstance(reward, (int, float))):
         raise ContractError("Harbor result reward must be numeric or null")
+    config = result.get("config")
+    job_id = config.get("job_id") if isinstance(config, dict) else None
+    if not isinstance(job_id, str) or not job_id.strip():
+        raise ContractError("Harbor result must record a nonempty config.job_id")
     return {
+        "job_id": job_id,
         "job_dir": str(job_dir.relative_to(task_dir.resolve())),
         "result_path": str(result_path.relative_to(task_dir.resolve())),
         "result_sha256": _sha256(result_path.read_bytes()),
@@ -1170,43 +1412,63 @@ def _arm_from_result(task_dir: Path, job_dir: Path, result_path: Path, result: d
 
 
 def _validation_from_jobs(
-    task_dir: Path, nop_job_dir: str | Path, oracle_job_dir: str | Path, harbor_version: str
+    task_dir: Path,
+    nop_job_dirs: list[str | Path],
+    oracle_job_dirs: list[str | Path],
+    negative_job_dirs: list[str | Path],
+    harbor_version: str,
 ) -> dict[str, Any]:
     if not isinstance(harbor_version, str) or not harbor_version.strip():
         raise ContractError("Harbor version must be nonempty text")
     task_contract = _validate_task(task_dir)
-    arms: dict[str, dict[str, Any]] = {}
-    trials: dict[str, dict[str, Any]] = {}
-    for arm, value in (("nop", nop_job_dir), ("oracle", oracle_job_dir)):
-        job_dir, result_path, result = _job_result(task_dir, value, arm=arm)
-        trials[arm] = result
-        arms[arm] = _arm_from_result(task_dir, job_dir, result_path, result)
-    checksums = {trial.get("task_checksum") for trial in trials.values()}
+    reproducibility = _validate_reproducibility(task_dir)
+    inputs = {"nop": nop_job_dirs, "oracle": oracle_job_dirs, "negative": negative_job_dirs}
+    for arm, minimum in _MIN_VALIDATION_RUNS.items():
+        if len(inputs[arm]) < minimum:
+            raise ContractError(f"validation requires at least {minimum} independent {arm} Harbor jobs")
+    runs: dict[str, list[dict[str, Any]]] = {arm: [] for arm in inputs}
+    trials: list[dict[str, Any]] = []
+    for arm, values in inputs.items():
+        for index, value in enumerate(values, start=1):
+            label = f"{arm} run {index}"
+            job_dir, result_path, result = _job_result(task_dir, value, arm=label)
+            trials.append(result)
+            runs[arm].append(_arm_from_result(task_dir, job_dir, result_path, result))
+    job_dirs = [run["job_dir"] for arm_runs in runs.values() for run in arm_runs]
+    job_ids = [run["job_id"] for arm_runs in runs.values() for run in arm_runs]
+    if len(job_dirs) != len(set(job_dirs)):
+        raise ContractError("validation Harbor job directories must be distinct")
+    if len(job_ids) != len(set(job_ids)):
+        raise ContractError("validation Harbor config.job_id values must be distinct")
+    checksums = {trial.get("task_checksum") for trial in trials}
     if (
         len(checksums) != 1
         or not isinstance(next(iter(checksums)), str)
         or _TASK_CHECKSUM.fullmatch(next(iter(checksums))) is None
     ):
-        raise ContractError("NOP and Oracle Harbor results must have one matching task checksum")
-    modes = {trial.get("verifier_environment_mode") for trial in trials.values()}
+        raise ContractError("all validation Harbor results must have one matching task checksum")
+    modes = {trial.get("verifier_environment_mode") for trial in trials}
     if modes != {"separate"}:
-        raise ContractError("NOP and Oracle Harbor results must both report separate verifier mode")
+        raise ContractError("all validation Harbor results must report separate verifier mode")
     mode = next(iter(modes))
     if mode != task_contract["verifier_environment_mode"]:
         raise ContractError("Harbor verifier environment mode differs from task/task.toml")
-    passed = (
-        arms["nop"]["reward"] == 0
-        and not arms["nop"]["exception_present"]
-        and arms["oracle"]["reward"] == 1
-        and not arms["oracle"]["exception_present"]
+    expected_rewards = {"nop": 0, "oracle": 1, "negative": 0}
+    passed = all(
+        run["reward"] == expected_rewards[arm] and not run["exception_present"]
+        for arm, arm_runs in runs.items()
+        for run in arm_runs
     )
     return {
         "schema": VALIDATION_SCHEMA,
         "harbor_version": harbor_version,
         "task_checksum": next(iter(checksums)),
+        "task_tree_sha256": reproducibility["task_tree_sha256"],
         "verifier_environment_mode": mode,
+        "fresh_jobs": True,
+        "minimum_runs": _MIN_VALIDATION_RUNS,
         "passed": passed,
-        **arms,
+        "runs": runs,
     }
 
 
@@ -1215,13 +1477,20 @@ def _record_validation(args: argparse.Namespace) -> dict[str, Any]:
     validation_path = task_dir / "validation.json"
     if validation_path.exists():
         raise ContractError("refusing to replace existing validation.json")
-    validation = _validation_from_jobs(task_dir, args.nop_job_dir, args.oracle_job_dir, args.harbor_version)
+    validation = _validation_from_jobs(
+        task_dir,
+        args.nop_job_dir,
+        args.oracle_job_dir,
+        args.negative_job_dir,
+        args.harbor_version,
+    )
     _write_json(validation_path, validation)
     return {
         "task_dir": str(task_dir),
         "passed": validation["passed"],
-        "nop_reward": validation["nop"]["reward"],
-        "oracle_reward": validation["oracle"]["reward"],
+        "nop_rewards": [run["reward"] for run in validation["runs"]["nop"]],
+        "oracle_rewards": [run["reward"] for run in validation["runs"]["oracle"]],
+        "negative_rewards": [run["reward"] for run in validation["runs"]["negative"]],
         "verifier_environment_mode": validation["verifier_environment_mode"],
     }
 
@@ -1232,29 +1501,41 @@ def _validate_validation(task_dir: Path) -> dict[str, Any]:
         "schema",
         "harbor_version",
         "task_checksum",
+        "task_tree_sha256",
         "verifier_environment_mode",
+        "fresh_jobs",
+        "minimum_runs",
         "passed",
-        "nop",
-        "oracle",
+        "runs",
     }
     if set(recorded) != expected_keys or recorded.get("schema") != VALIDATION_SCHEMA:
         raise ContractError("validation fields do not match the versioned contract")
     if not isinstance(recorded.get("harbor_version"), str) or not recorded["harbor_version"].strip():
         raise ContractError("validation.harbor_version must be nonempty text")
-    for arm in ("nop", "oracle"):
-        value = recorded.get(arm)
-        if not isinstance(value, dict) or set(value) != {
-            "job_dir",
-            "result_path",
-            "result_sha256",
-            "reward",
-            "exception_present",
-        }:
-            raise ContractError(f"validation.{arm} fields do not match the versioned contract")
+    if recorded.get("minimum_runs") != _MIN_VALIDATION_RUNS or recorded.get("fresh_jobs") is not True:
+        raise ContractError("validation repeat and fresh-job policy does not match the versioned contract")
+    runs = recorded.get("runs")
+    if not isinstance(runs, dict) or set(runs) != set(_MIN_VALIDATION_RUNS):
+        raise ContractError("validation.runs fields do not match the versioned contract")
+    for arm, minimum in _MIN_VALIDATION_RUNS.items():
+        values = runs.get(arm)
+        if not isinstance(values, list) or len(values) < minimum:
+            raise ContractError(f"validation.runs.{arm} does not meet the minimum run count")
+        for value in values:
+            if not isinstance(value, dict) or set(value) != {
+                "job_id",
+                "job_dir",
+                "result_path",
+                "result_sha256",
+                "reward",
+                "exception_present",
+            }:
+                raise ContractError(f"validation.runs.{arm} fields do not match the versioned contract")
     derived = _validation_from_jobs(
         task_dir,
-        recorded.get("nop", {}).get("job_dir", ""),
-        recorded.get("oracle", {}).get("job_dir", ""),
+        [run["job_dir"] for run in runs["nop"]],
+        [run["job_dir"] for run in runs["oracle"]],
+        [run["job_dir"] for run in runs["negative"]],
         recorded["harbor_version"],
     )
     if recorded != derived:
@@ -1331,6 +1612,7 @@ def _finalize(args: argparse.Namespace) -> dict[str, Any]:
             raise ContractError("no_candidate workspaces must not include validation.json")
     else:
         task_contract = _validate_task(task_dir)
+        _validate_reproducibility(task_dir)
         verifier_mode = task_contract["verifier_environment_mode"]
         isolation_status = task_contract["isolation_status"]
         review_status = "human_reviewed" if args.human_reviewed else "unreviewed"
@@ -1433,6 +1715,7 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
                 ):
                     errors.append("finalized candidate lacks a clear contextual privacy review")
                 task_contract = _validate_task(task_dir)
+                _validate_reproducibility(task_dir)
                 if environment.get("verifier_environment_mode") != task_contract["verifier_environment_mode"]:
                     errors.append("summary verifier mode does not match task/task.toml")
                 if environment.get("isolation_status") != task_contract["isolation_status"]:
@@ -1598,21 +1881,36 @@ def _export(args: argparse.Namespace) -> dict[str, Any]:
     if summary["status"] == "candidate":
         _reject_symlinks(task_dir / "task")
         shutil.copytree(task_dir / "task", output_dir / "task")
+        shutil.copy2(task_dir / "reproducibility.json", output_dir / "reproducibility.json")
+    reproducibility_summary = None
+    if summary["status"] == "candidate":
+        reproducibility = _validate_reproducibility(task_dir)
+        reproducibility_summary = {
+            "task_tree_sha256": reproducibility["task_tree_sha256"],
+            "file_count": reproducibility["file_count"],
+            "total_bytes": reproducibility["total_bytes"],
+            "source_revision": reproducibility["source_revision"],
+            "portability_state": reproducibility["portability"]["state"],
+            "agent_network_mode": reproducibility["network"]["agent"],
+            "contamination_passed": reproducibility["contamination"]["passed"],
+        }
     validation_summary = None
     if summary["environment"]["validation"] is not None:
         validation = _validate_validation(task_dir)
         validation_summary = {
             "harbor_version": validation["harbor_version"],
             "task_checksum": validation["task_checksum"],
+            "task_tree_sha256": validation["task_tree_sha256"],
             "verifier_environment_mode": validation["verifier_environment_mode"],
+            "fresh_jobs": validation["fresh_jobs"],
+            "minimum_runs": validation["minimum_runs"],
             "passed": validation["passed"],
-            "nop": {
-                "reward": validation["nop"]["reward"],
-                "exception_present": validation["nop"]["exception_present"],
-            },
-            "oracle": {
-                "reward": validation["oracle"]["reward"],
-                "exception_present": validation["oracle"]["exception_present"],
+            "runs": {
+                arm: [
+                    {"reward": run["reward"], "exception_present": run["exception_present"]}
+                    for run in validation["runs"][arm]
+                ]
+                for arm in _MIN_VALIDATION_RUNS
             },
         }
     product = {
@@ -1642,6 +1940,7 @@ def _export(args: argparse.Namespace) -> dict[str, Any]:
                 "isolation_status",
             )
         },
+        "reproducibility": reproducibility_summary,
         "technical_validation": validation_summary,
     }
     _write_json(output_dir / "result.json", product)
@@ -1679,10 +1978,17 @@ def _parser() -> argparse.ArgumentParser:
     review.add_argument("--note", required=True)
     review.set_defaults(run=_review_privacy)
 
+    reproducibility = subparsers.add_parser(
+        "record-reproducibility", help="hash the task tree and record portability and contamination evidence"
+    )
+    reproducibility.add_argument("--task-dir", required=True, type=Path)
+    reproducibility.set_defaults(run=_record_reproducibility)
+
     record = subparsers.add_parser("record-validation", help="derive proof only from retained Harbor results")
     record.add_argument("--task-dir", required=True, type=Path)
-    record.add_argument("--nop-job-dir", required=True, type=Path)
-    record.add_argument("--oracle-job-dir", required=True, type=Path)
+    record.add_argument("--nop-job-dir", required=True, action="append", type=Path)
+    record.add_argument("--oracle-job-dir", required=True, action="append", type=Path)
+    record.add_argument("--negative-job-dir", required=True, action="append", type=Path)
     record.add_argument("--harbor-version", required=True)
     record.set_defaults(run=_record_validation)
 

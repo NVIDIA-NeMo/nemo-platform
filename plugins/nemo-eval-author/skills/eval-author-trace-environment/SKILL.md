@@ -62,14 +62,15 @@ Use one workspace per task:
     safe/privacy.json
     candidate.json
     task/
+    reproducibility.json
     validation.json
     summary.json
     summary.md
 ```
 
 The original bytes, normalized canonical ATIF, safe ATIF, privacy report, audit,
-ground truth, and Harbor jobs stay ignored. Publish only through the helper's
-whitelist-only `export` command.
+ground truth, and Harbor jobs stay ignored. The declassified reproducibility
+manifest is published only through the helper's whitelist-only `export` command.
 
 `scripts/trace_environment.py init` writes the parent `.gitignore` so every
 task directory is ignored, makes directories owner-only, and refuses to replace
@@ -338,12 +339,18 @@ defines `[steps.verifier.environment]`, that environment must also set
 artifacts into the verifier environment; do not mount or copy the agent
 workspace wholesale.
 
+Read and follow `references/environment-integrity.md` for agent-network,
+contamination, portability, repeat-run, and negative-control requirements.
+
 ```toml
 [verifier]
 environment_mode = "separate"
 network_mode = "no-network"
 
 [verifier.environment]
+network_mode = "no-network"
+
+[environment]
 network_mode = "no-network"
 ```
 
@@ -385,37 +392,31 @@ Do not copy private trace payloads into the task. Include only the minimal files
 needed to reproduce the starting state. Pin external source to an exact public
 commit when it is truly required; otherwise prefer a small local fixture.
 
-Run both deterministic arms:
+Before Harbor, record the exact task tree and its static integrity scan:
 
 ```bash
-harbor run -p <task-dir>/task -a nop
-harbor run -p <task-dir>/task -a oracle
+python <skill_dir>/scripts/trace_environment.py record-reproducibility \
+  --task-dir <task-dir>
 ```
 
-NOP must finish without an exception and receive reward `0`; Oracle must finish
-without an exception and receive reward `1`. Do not weaken the verifier to make
-Oracle pass. Retain each exact Harbor job directory inside the ignored task
-workspace. Do not hand-write rewards or exception claims. Derive
-`validation.json` from the single `task__*/result.json` beneath each job:
+Run at least two independent NOP jobs, two Oracle jobs, and one task-specific
+negative-control job. Each invocation must create fresh task containers.
 
 ```bash
-python <skill_dir>/scripts/trace_environment.py record-validation \
-  --task-dir <task-dir> \
-  --nop-job-dir private/jobs/nop \
-  --oracle-job-dir private/jobs/oracle \
-  --harbor-version "$(harbor --version)"
+harbor run -p <task-dir>/task -a nop       # run twice
+harbor run -p <task-dir>/task -a oracle    # run twice
+harbor run -p <task-dir>/task -a <negative-control-agent>
 ```
 
-The helper records and hashes the exact result paths, derives rewards and
-exception presence, and requires both arms to report one task checksum and one
-verifier mode matching `task.toml`. Failed proof is still technical evidence:
-retain it, record `failed`, and validate it during `check`.
+Retain every exact Harbor job and use the reference's `record-validation`
+command. Never hand-write rewards, job IDs, exceptions, or checksums. Do not
+weaken the verifier to make Oracle pass. Failed proof remains technical evidence.
 
 If Harbor or Docker is missing, technical status is `not_run` and the environment
 is `unproven`; do not describe it as ready. NOP=0 and Oracle=1 without exceptions
 establish technical status `passed`, but do not establish human review. The
-helper independently requires the task configuration and both retained Harbor
-results to report separate verification.
+helper independently requires the task configuration and every retained Harbor
+result to report separate verification.
 
 ## Step 7: finalize and verify the summary
 
@@ -492,8 +493,9 @@ python <skill_dir>/scripts/trace_environment.py export \
 ```
 
 The command runs `check` and copies only `candidate.json`, the generalized
-`task/` when present, and a declassified `result.json`. It never copies source,
-canonical, safe, privacy-audit, ground-truth, validation, or Harbor job files.
+`task/` and `reproducibility.json` when present, and a declassified `result.json`.
+It never copies source, canonical, safe, privacy-audit, ground-truth, validation,
+or Harbor job files.
 
 Report the task ID, `candidate` or `no_candidate`, ground-truth availability and
 artifact count, required software and licensing constraints, environment
