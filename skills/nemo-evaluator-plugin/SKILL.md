@@ -114,6 +114,7 @@ under a different skills root.
 | `assets/specs/exact_match_metric.json` | Two-row offline smoke spec; submit as-is |
 | `assets/specs/llm_as_judge.json` | Online generation + judge; local-first (`NVIDIA_API_KEY`) |
 | `assets/specs/fabric_agent_eval.json` | Task-driven Fabric runner spec |
+| `assets/specs/gym_agent_eval.json` | Task-driven sandboxed Gym FileSet spec |
 | `assets/examples/plugin_sdk_examples.py` | Copyable SDK snippets for each plugin surface |
 
 ## Available Scripts
@@ -163,8 +164,9 @@ Submission accepts inline tasks or a stored `TasksetRef`. Stored tasksets are
 resolved in the target workspace.
 
 Read [Agent Evaluation](references/agent-evaluation.md) for inline tasks,
-`TasksetRef`, concurrency, fail-fast behavior, sparse-output denominators, result
-artifacts, and runner configuration.
+`TasksetRef`, concurrency, fail-fast behavior, sparse-output denominators,
+result artifacts, and runner configuration, including Gym FileSet and
+sandbox requirements.
 
 ### Prepare Fabric in a repository checkout
 

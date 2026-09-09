@@ -80,6 +80,12 @@ navigation:
               - page: Evaluate a NeMo Gym Environment
                 slug: gym-runner
                 path: ../../evaluator/agent-eval/gym-runner.mdx
+              - page: Run a Custom NeMo Gym Environment
+                slug: gym-custom-environment
+                path: ../../evaluator/agent-eval/gym-custom-environment.mdx
+              - page: Configure Sandboxed Gym for Evaluator
+                slug: gym-sandbox-configuration
+                path: ../../evaluator/agent-eval/gym-sandbox-configuration.mdx
               - page: Evaluate with a NeMo Fabric Harness
                 slug: fabric-runner
                 path: ../../evaluator/agent-eval/fabric-runner.mdx
