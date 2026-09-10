@@ -115,6 +115,21 @@ index 68be52df9..5e9a3220e 100644
                  "is_peft",
                  "peft_config",
                  "model_cache_dir",
+@@ -328,6 +330,14 @@ class AutomodelCheckpointManager:
+             print(f"Saving tokenizer (or processor) to {tokenizer_path}")
+             tokenizer.save_pretrained(tokenizer_path)
+ 
++    def finalize_async_save(self) -> None:
++        """Block until Automodel's pending model and optimizer writes complete."""
++        assert self.checkpointer is not None, (
++            "Checkpointer must be initialized before finalizing a checkpoint."
++        )
++        self.checkpointer.maybe_wait_for_staging()
++        self.checkpointer.async_wait()
++
+     def load_checkpoint(
+         self,
+         model: nn.Module,
 diff --git a/nemo_rl/utils/checkpoint.py b/nemo_rl/utils/checkpoint.py
 index 8c8de3129..eb335c3f1 100644
 --- a/nemo_rl/utils/checkpoint.py
@@ -137,6 +152,43 @@ index 8c8de3129..eb335c3f1 100644
      model_cache_dir: NotRequired[str]  # Default: ""
      model_repo_id: NotRequired[str]  # Default: ""
      is_peft: NotRequired[bool]  # Default: False
+@@ -322,20 +326,23 @@ class CheckpointManager:
+         self,
+         checkpoint_path: PathLike,
+         wait_fn: Optional[Callable[[], None]] = None,
++        on_success: Optional[Callable[[], None]] = None,
+     ) -> None:
+         """Start background finalization of a checkpoint.
+ 
+         Spawns a daemon thread that calls wait_fn (blocks until async writers
+-        finish), renames tmp_step_N to step_N, then queues old-checkpoint
+-        deletion. All writes to checkpoint_path must be complete before calling
+-        this. If a previous finalization is still active, blocks until it
+-        completes.
++        finish), renames tmp_step_N to step_N, calls on_success, then queues
++        old-checkpoint deletion. All writes to checkpoint_path must be complete
++        before calling this. If a previous finalization is still active, blocks
++        until it completes.
+ 
+         Args:
+             checkpoint_path: Path to tmp_step_N directory from init_tmp_checkpoint().
+             wait_fn: Callable that blocks until all async writes are complete.
+                 For Megatron async save: policy.finalize_async_save.
+                 For sync saves: None (rename immediately).
++            on_success: Callable invoked after the completed checkpoint is renamed.
++                Use this for success markers that must not precede async writes.
+         """
+         self.finalize_pending()
+         self._pending_checkpoint_path = Path(checkpoint_path)
+@@ -346,6 +353,8 @@ class CheckpointManager:
+                 if wait_fn is not None:
+                     wait_fn()
+                 self._rename_checkpoint(checkpoint_path)
++                if on_success is not None:
++                    on_success()
+                 # Prune old checkpoints off the critical path. Surface any
+                 # failure via a done-callback so a broken delete is not silently
+                 # swallowed (the discarded Future would otherwise hide it).
 diff --git a/3rdparty/Gym-workspace/Gym/nemo_gym/global_config.py b/3rdparty/Gym-workspace/Gym/nemo_gym/global_config.py
 --- a/3rdparty/Gym-workspace/Gym/nemo_gym/global_config.py
 +++ b/3rdparty/Gym-workspace/Gym/nemo_gym/global_config.py
@@ -446,4 +498,162 @@ index e6b658f88..2e0e7912a 100644
 +
  def test_rollouts_run_gives_up_at_the_host_deadline(ready_server):
      """With no hop left to time a rollout out, a wedged batch must still end.
+ 
+diff --git a/nemo_rl/models/policy/workers/dtensor_policy_worker_v2.py b/nemo_rl/models/policy/workers/dtensor_policy_worker_v2.py
+--- a/nemo_rl/models/policy/workers/dtensor_policy_worker_v2.py
++++ b/nemo_rl/models/policy/workers/dtensor_policy_worker_v2.py
+@@ -1387,6 +1387,13 @@ class DTensorPolicyWorkerV2Impl(
+             peft_config=self.peft_config,
+         )
+ 
++    def finalize_async_save(self) -> None:
++        """Wait for Automodel's async DCP writers before checkpoint finalization."""
++        assert self.checkpoint_manager is not None, (
++            "Checkpoint manager must be initialized before finalizing a checkpoint."
++        )
++        self.checkpoint_manager.finalize_async_save()
++
+     def load_checkpoint(
+         self,
+         weights_path: str,
+diff --git a/nemo_rl/algorithms/grpo.py b/nemo_rl/algorithms/grpo.py
+--- a/nemo_rl/algorithms/grpo.py
++++ b/nemo_rl/algorithms/grpo.py
+@@ -3465,13 +3465,11 @@ def grpo_train(
+                         checkpointer.begin_finalization(
+                             checkpoint_path,
+                             wait_fn=policy.finalize_async_save,
+-                        )
+-
+-                        # Record last-successful-checkpoint time/step for external
+-                        # monitoring (parity with async_grpo_train; see
+-                        # _write_latest_checkpoint_status).
+-                        _write_latest_checkpoint_status(
+-                            checkpointer, last_checkpoint_step=total_steps + 1
++                            on_success=lambda saved_step=total_steps + 1: (
++                                _write_latest_checkpoint_status(
++                                    checkpointer, last_checkpoint_step=saved_step
++                                )
++                            ),
+                         )
+ 
+             # Logging
+@@ -4921,12 +4919,11 @@ def async_grpo_train(
+                         checkpointer.begin_finalization(
+                             checkpoint_path,
+                             wait_fn=policy.finalize_async_save,
+-                        )
+-
+-                        # Record last-successful-checkpoint time/step for external
+-                        # monitoring (see _write_latest_checkpoint_status).
+-                        _write_latest_checkpoint_status(
+-                            checkpointer, last_checkpoint_step=step + 1
++                            on_success=lambda saved_step=step + 1: (
++                                _write_latest_checkpoint_status(
++                                    checkpointer, last_checkpoint_step=saved_step
++                                )
++                            ),
+                         )
+ 
+             # Logging
+diff --git a/tests/unit/utils/test_checkpoint.py b/tests/unit/utils/test_checkpoint.py
+--- a/tests/unit/utils/test_checkpoint.py
++++ b/tests/unit/utils/test_checkpoint.py
+@@ -727,6 +727,23 @@ class TestBeginFinalization:
+         assert call_order == ["wait_start", "wait_end"]
+         assert (checkpoint_dir / "step_1").exists()
+ 
++    def test_on_success_runs_after_wait_and_rename(self, async_manager, checkpoint_dir):
++        """Success markers must observe a fully written, finalized checkpoint."""
++        call_order = []
++
++        def mock_wait():
++            call_order.append("wait")
++
++        def on_success():
++            assert (checkpoint_dir / "step_1").exists()
++            call_order.append("success")
++
++        tmp = async_manager.init_tmp_checkpoint(1, {"loss": 0.1})
++        async_manager.begin_finalization(tmp, wait_fn=mock_wait, on_success=on_success)
++        async_manager.finalize_pending()
++
++        assert call_order == ["wait", "success"]
++
+     def test_begin_blocks_if_previous_pending(self, async_manager, checkpoint_dir):
+         """Second begin_finalization blocks until first completes."""
+         barrier = threading.Event()
+diff --git a/tests/unit/models/automodel/test_automodel_checkpoint.py b/tests/unit/models/automodel/test_automodel_checkpoint.py
+--- a/tests/unit/models/automodel/test_automodel_checkpoint.py
++++ b/tests/unit/models/automodel/test_automodel_checkpoint.py
+@@ -436,6 +436,26 @@ class TestAutomodelCheckpointManager:
+                 checkpointing_cfg=None,
+             )
+ 
++    @patch("torch.distributed.get_rank")
++    def test_finalize_async_save_waits_for_staging_and_upload(
++        self, mock_get_rank, mock_meshes
++    ):
++        """Finalization must flush both model and optimizer async DCP writes."""
++        from nemo_rl.models.automodel.checkpoint import AutomodelCheckpointManager
++
++        mock_get_rank.return_value = 0
++        mock_dp_mesh, mock_tp_mesh = mock_meshes
++        manager = AutomodelCheckpointManager(
++            dp_mesh=mock_dp_mesh,
++            tp_mesh=mock_tp_mesh,
++        )
++        manager.checkpointer = MagicMock()
++
++        manager.finalize_async_save()
++
++        manager.checkpointer.maybe_wait_for_staging.assert_called_once_with()
++        manager.checkpointer.async_wait.assert_called_once_with()
++
+     @patch("torch.distributed.get_rank")
+     def test_load_checkpoint_without_checkpointer_raises(
+         self, mock_get_rank, mock_meshes
+diff --git a/tests/unit/models/policy/test_dtensor_worker_v2.py b/tests/unit/models/policy/test_dtensor_worker_v2.py
+--- a/tests/unit/models/policy/test_dtensor_worker_v2.py
++++ b/tests/unit/models/policy/test_dtensor_worker_v2.py
+@@ -98,6 +98,17 @@ def test_dtensor_v2_update_moe_gate_bias_noop_when_unsupported():
+     DTensorPolicyWorkerV2Impl._update_moe_gate_bias_if_supported(worker)
+ 
+ 
++@pytest.mark.automodel
++@pytest.mark.skipif(not NEMO_AUTOMODEL_AVAILABLE, reason="nemo_automodel not available")
++def test_dtensor_v2_finalize_async_save_delegates_to_checkpoint_manager():
++    worker = object.__new__(DTensorPolicyWorkerV2Impl)
++    worker.checkpoint_manager = MagicMock()
++
++    DTensorPolicyWorkerV2Impl.finalize_async_save(worker)
++
++    worker.checkpoint_manager.finalize_async_save.assert_called_once_with()
++
++
+ def create_test_config(
+     model_name: str,
+     tp: int = 1,
+diff --git a/tests/unit/algorithms/test_grpo.py b/tests/unit/algorithms/test_grpo.py
+--- a/tests/unit/algorithms/test_grpo.py
++++ b/tests/unit/algorithms/test_grpo.py
+@@ -12,6 +12,7 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++import json
+ from contextlib import ExitStack, contextmanager
+ from typing import Any
+ from unittest.mock import MagicMock, patch
+@@ -2257,6 +2258,11 @@ def test_grpo_train_shutdown_on_epoch_completion(mock_grpo_components, tmp_path):
+         )
+ 
+     checkpointer.begin_finalization.assert_called_once()
++    on_success = checkpointer.begin_finalization.call_args.kwargs["on_success"]
++    status_path = tmp_path / "latest_checkpoint_status.json"
++    assert not status_path.exists()
++    on_success()
++    assert json.loads(status_path.read_text())["last_checkpoint_step"] == 1
+     checkpointer.shutdown.assert_called_once()
+ 
  
