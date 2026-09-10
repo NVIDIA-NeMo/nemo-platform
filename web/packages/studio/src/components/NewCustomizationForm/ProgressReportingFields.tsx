@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ControlledSliderWithTextInput } from '@nemo/common/src/components/form/ControlledSliderWithTextInput';
+import type { ProgressReportingConfig } from '@nemo/sdk/generated/customizer/schema';
 import { ControlledStringListInput } from '@studio/components/NewCustomizationForm/ControlledStringListInput';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import { specSliderProps } from '@studio/util/forms/specDefaults';
-import { useFormContext, type FieldPath } from 'react-hook-form';
+import { useFormContext } from 'react-hook-form';
+
+/** Every parent that carries a `progress_reporting` object. */
+type ProgressReportingParent = 'automodel.schedule' | 'unsloth.schedule' | 'rl.training';
 
 interface ProgressReportingFieldsProps {
-  /** Path of the `progress_reporting` object, e.g. `automodel.schedule.progress_reporting`. */
-  prefix: string;
+  /** Parent the `progress_reporting` object hangs off. */
+  prefix: ProgressReportingParent;
   /** Flattened spec table for the backend. */
   defaults: ReadonlyMap<string, unknown>;
   defaultsPrefix: string;
@@ -27,7 +31,8 @@ export const ProgressReportingFields = ({
   disabled,
 }: ProgressReportingFieldsProps) => {
   const { control } = useFormContext<CustomizationFormFields>();
-  const field = (name: string) => `${prefix}.${name}` as FieldPath<CustomizationFormFields>;
+  const field = <N extends keyof ProgressReportingConfig & string>(name: N) =>
+    `${prefix}.progress_reporting.${name}` as const;
 
   return (
     <>

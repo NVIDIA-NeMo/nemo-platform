@@ -2,23 +2,28 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
+import type { MlflowIntegration, WandbIntegration } from '@nemo/sdk/generated/customizer/schema';
 import { Stack, Text } from '@nvidia/foundations-react-core';
+import { ControlledJsonInput } from '@studio/components/NewCustomizationForm/ControlledJsonInput';
 import { ControlledStringListInput } from '@studio/components/NewCustomizationForm/ControlledStringListInput';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import type { CustomizationBackend } from '@studio/util/customizationBackend';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
-import { useFormContext, type FieldPath } from 'react-hook-form';
+import { useFormContext } from 'react-hook-form';
 
 /**
  * Experiment tracking for any customization backend. All three share one `IntegrationsSpec`
  * in the API, so the path prefix is the only thing that varies.
  */
+type IntegrationField =
+  | `wandb.${keyof WandbIntegration & string}`
+  | `mlflow.${keyof MlflowIntegration & string}`;
+
 export const IntegrationsSection = ({ backend }: { backend: CustomizationBackend }) => {
   const { control, formState } = useFormContext<CustomizationFormFields>();
   const disabled = formState.isSubmitting;
 
-  const field = (path: string) =>
-    `${backend}.integrations.${path}` as FieldPath<CustomizationFormFields>;
+  const field = <P extends IntegrationField>(path: P) => `${backend}.integrations.${path}` as const;
 
   return (
     <FormSection
@@ -92,13 +97,13 @@ export const IntegrationsSection = ({ backend }: { backend: CustomizationBackend
           formFieldProps={{ slotLabel: 'Description' }}
           disabled={disabled}
         />
-        <ControlledStringListInput
+        <ControlledJsonInput
           useControllerProps={{ name: field('mlflow.tags'), control }}
           formFieldProps={{
-            slotLabel: 'Tags',
-            slotInfo: 'Comma separated labels attached to the MLflow run.',
+            slotLabel: 'Tags (JSON object)',
+            slotInfo: 'Key-value pairs attached to the MLflow run.',
           }}
-          placeholder="grpo, recipe-aligned"
+          placeholder='{"team": "nemo"}'
           disabled={disabled}
         />
         <ControlledTextInput

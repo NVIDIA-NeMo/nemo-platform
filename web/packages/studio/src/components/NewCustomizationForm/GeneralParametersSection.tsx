@@ -205,7 +205,7 @@ export const GeneralParametersSection = () => {
                     disabled={disabled}
                   />
                   <ProgressReportingFields
-                    prefix="rl.training.progress_reporting"
+                    prefix="rl.training"
                     defaults={DPO_SPEC_DEFAULTS}
                     defaultsPrefix="progress_reporting"
                     disabled={disabled}
@@ -340,7 +340,7 @@ export const GeneralParametersSection = () => {
                     disabled={disabled}
                   />
                   <ProgressReportingFields
-                    prefix="automodel.schedule.progress_reporting"
+                    prefix="automodel.schedule"
                     defaults={AUTOMODEL_SPEC_DEFAULTS}
                     defaultsPrefix="schedule_progress_reporting"
                     disabled={disabled}
@@ -725,7 +725,7 @@ export const GeneralParametersSection = () => {
                   disabled={disabled}
                 />
                 <ProgressReportingFields
-                  prefix="unsloth.schedule.progress_reporting"
+                  prefix="unsloth.schedule"
                   defaults={UNSLOTH_SPEC_DEFAULTS}
                   defaultsPrefix="schedule_progress_reporting"
                   disabled={disabled}
