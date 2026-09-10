@@ -224,6 +224,7 @@ def test_convert_with_wheels_dir_writes_layout(tmp_path: Path) -> None:
     assert list((result.environment_root / "wheels").glob("*.whl"))
     assert result.dataset_dir.is_dir()
     assert result.training_jsonl.is_file()
+    assert not (result.dataset_dir / ".huggingface").exists()
 
 
 def test_convert_rejects_empty_wheels_dir(tmp_path: Path) -> None:
@@ -241,6 +242,76 @@ def test_convert_rejects_empty_wheels_dir(tmp_path: Path) -> None:
                 dataset_size=0,
             )
         )
+
+
+def test_convert_vendors_hub_dataset_and_configures_its_sandbox_path(tmp_path: Path, monkeypatch) -> None:
+    """Prompt JSONL is separate; an env loader can consume this local parquet via vf_env_args."""
+    import os
+
+    from nmp.rl.tasks.environment import convert as convert_mod
+    from nmp.rl.tasks.environment.convert import ConvertEnvironmentSpec, convert_prime_environment
+
+    wheels = tmp_path / "prebuilt"
+    wheels.mkdir()
+    (wheels / "ascii_tree-0.1.5-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+
+    developer_hf = tmp_path / "developer-hf"
+    developer_hf.mkdir()
+    (developer_hf / "should-not-copy").write_text("developer-cache", encoding="utf-8")
+    monkeypatch.setenv("HF_HOME", str(developer_hf))
+
+    class FakeDataset:
+        column_names = ["prompt", "answer"]
+
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, key: str):
+            if key == "prompt":
+                return [[{"role": "user", "content": "draw an ascii tree"}]]
+            return [""]
+
+        def to_parquet(self, path: str) -> None:
+            Path(path).write_bytes(b"PARQUET")
+
+    class FakeEnv:
+        dataset = FakeDataset()
+
+        def get_dataset(self, n: int = -1, seed: int | None = None):
+            return self.dataset
+
+    captured: dict[str, str] = {}
+
+    def _fake_load(*_a, **_k):
+        isolated = Path(os.environ["HF_HOME"])
+        captured["hf_home"] = str(isolated)
+        (isolated / "hub").mkdir(parents=True)
+        (isolated / "hub" / "datasets--primeintellect--ascii-tree").write_text("cached", encoding="utf-8")
+        return FakeEnv()
+
+    monkeypatch.setattr(convert_mod, "_install_hub_package_from_wheels", lambda *a, **k: None)
+    monkeypatch.setattr(convert_mod, "_load_verifiers_environment", _fake_load)
+
+    result = convert_prime_environment(
+        ConvertEnvironmentSpec(
+            hub_id="primeintellect/ascii-tree",
+            out_dir=tmp_path / "env",
+            dataset_dir=tmp_path / "dataset",
+            wheels_dir=wheels,
+            dataset_size=1,
+        )
+    )
+    assert (result.dataset_dir / "hub_environment.parquet").read_bytes() == b"PARQUET"
+    agent = yaml.safe_load((result.environment_root / "configs" / "verifiers_agent.yaml").read_text())
+    vf_env_args = agent["verifiers_agent"]["responses_api_agents"]["verifiers_agent"]["vf_env_args"]
+    assert vf_env_args["dataset_path"] == "/job/dataset/hub_environment.parquet"
+    assert next((result.environment_root / "wheels").glob("ascii_tree-*.whl")).read_bytes() == b"PK\x03\x04"
+
+    snap = result.dataset_dir / ".huggingface" / "hub" / "datasets--primeintellect--ascii-tree"
+    assert snap.read_text(encoding="utf-8") == "cached"
+    assert not (result.dataset_dir / ".huggingface" / "should-not-copy").exists()
+    assert captured["hf_home"] != str(developer_hf)
+    assert os.environ["HF_HOME"] == str(developer_hf)
 
 
 def test_split_train_validation_never_overlaps() -> None:

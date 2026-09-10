@@ -351,7 +351,9 @@ Gym's in-tree rows omit `agent_ref` because the owning agent config supplies it.
 
 ## Path B — a Prime Intellect / verifiers env (`adapter-wheels-v1`)
 
-The automated path, and the only one with a converter. It downloads the hub package, vendors its full wheel closure, writes both configs and the manifest, and builds the prompt JSONL.
+The automated path, and the only one with a converter. It downloads the hub package, vendors its full wheel closure, writes both configs and the manifest, and snapshots the hub environment's Hugging Face dataset into the dataset FileSet so training does not call the Hub.
+
+That snapshot is two artifacts: `hub_environment.parquet`, with `vf_env_args.dataset_path` set to `/job/dataset/hub_environment.parquet`, and `.huggingface/`, the cache populated while converting. The Gym host copies `.huggingface/` to writable `/job/work/.huggingface` and sets `HF_HOME` plus Hub/datasets offline flags before `RunHelper.start()`, so a loader that still calls `load_dataset("org/name")` resolves from that cache.
 
 **Run it on a host with internet.** Training clusters have no hub egress and consume uploaded FileSets only.
 
@@ -391,6 +393,8 @@ ascii-tree-pkg/
 ascii-tree-data/
   training.jsonl
   validation.jsonl                ← only with --validation-fraction > 0
+  hub_environment.parquet         ← `vf_env_args.dataset_path` → `/job/dataset/hub_environment.parquet`
+  .huggingface/                   ← HF cache from conversion; Gym host copies to `/job/work/.huggingface`
 ```
 
 **`pi-to-gym-conversion` vendors `x86_64` wheels today.** On an `arm64` cluster, build the closure separately and pass `--wheels-dir`.

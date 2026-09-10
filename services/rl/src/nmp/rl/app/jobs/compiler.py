@@ -89,6 +89,9 @@ from nmp.rl.schemas import DPOTraining, GRPOTraining, RlJobOutput
 logger = logging.getLogger(__name__)
 
 
+GPU_TRAINING_SHM_GIB_PER_GPU = 8
+
+
 def _get_cpu_resources() -> ResourcesSpec:
     return ResourcesSpec(
         limits=ResourcesLimitsSpec(
@@ -99,6 +102,14 @@ def _get_cpu_resources() -> ResourcesSpec:
             cpu=config.default_job_resource_cpu_request,
             memory=config.default_job_resource_memory_request,
         ),
+    )
+
+
+def _gpu_training_resources(*, num_nodes: int = 1, num_gpus: int) -> ResourcesSpec:
+    return ResourcesSpec(
+        num_nodes=num_nodes,
+        num_gpus=num_gpus,
+        shm_size=f"{GPU_TRAINING_SHM_GIB_PER_GPU * max(1, num_gpus)}Gi",
     )
 
 
@@ -473,22 +484,21 @@ def _build_training_step(
             )
         # Ray's bootstrap writes the ENDED marker + barriers under BASE_LOG_DIR.
         environment = [*environment, EnvironmentVariable(name=BASE_LOG_DIR_ENVVAR, value=shared_dir)]
-        executor = {
-            "provider": "gpu_distributed",
-            "container": container,
-            "resources": ResourcesSpec(num_nodes=num_nodes, num_gpus=num_gpus_per_node),
-        }
         resolved_profile = profile or config.default_distributed_execution_profile
+        executor = DistributedGPUExecutionProviderSpec(
+            provider="gpu_distributed",
+            container=container,
+            resources=_gpu_training_resources(num_nodes=num_nodes, num_gpus=num_gpus_per_node),
+            profile=resolved_profile if resolved_profile is not None else "default",
+        )
     else:
-        executor = {
-            "provider": "gpu",
-            "container": container,
-            "resources": ResourcesSpec(num_gpus=num_gpus_per_node),
-        }
         resolved_profile = profile or config.default_training_execution_profile
-
-    if resolved_profile is not None:
-        executor["profile"] = resolved_profile
+        executor = GPUExecutionProviderSpec(
+            provider="gpu",
+            container=container,
+            resources=_gpu_training_resources(num_gpus=num_gpus_per_node),
+            profile=resolved_profile if resolved_profile is not None else "default",
+        )
 
     return PlatformJobStep(
         name=step_name,
