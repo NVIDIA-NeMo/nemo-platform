@@ -42,8 +42,10 @@ def list_items(*, query_params: dict[str, Any] | None = None) -> Paginated[Item]
 def list_logs(*, query_params: dict[str, Any] | None = None) -> Paginated[Item, CursorPagination]: ...
 
 
-def _offset_client(pages: dict[int, list[str]], *, page_size: int = 2) -> NemoClient:
-    """Serve ``pages`` (page number -> names) with offset pagination metadata."""
+def _offset_client(
+    pages: dict[int, list[str]], *, page_size: int = 2, envelope: dict[str, Any] | None = None
+) -> NemoClient:
+    """Serve ``pages`` (page number -> names) with offset pagination metadata and optional envelope fields."""
     total_results = sum(len(v) for v in pages.values())
     calls: list[int] = []
 
@@ -55,6 +57,7 @@ def _offset_client(pages: dict[int, list[str]], *, page_size: int = 2) -> NemoCl
             200,
             json={
                 "data": [{"name": n} for n in data],
+                **(envelope or {}),
                 "pagination": {
                     "page": page,
                     "page_size": page_size,
@@ -208,6 +211,40 @@ def test_collect_offset_pages_all_pages_merges_every_page():
     assert result.pagination.total_pages == 1
     assert result.pagination.page_size == 2
     assert client.calls == [1, 2, 3]
+
+
+ENVELOPE = {"filter": {"role": "Viewer"}, "sort": "-created_at", "grouped_by": ["session_id"]}
+
+
+def test_collect_offset_pages_single_page_keeps_envelope_fields_in_wire_order():
+    """The server's sort/filter/grouped_by echo must survive into JSON output."""
+    client = _offset_client({1: ["a"]}, envelope=ENVELOPE)
+
+    dumped = collect_offset_pages(client.send(list_items()), all_pages=False).model_dump()
+
+    assert list(dumped) == ["data", "filter", "sort", "grouped_by", "pagination"]
+    assert dumped["filter"] == {"role": "Viewer"}
+    assert dumped["sort"] == "-created_at"
+    assert dumped["grouped_by"] == ["session_id"]
+
+
+def test_collect_offset_pages_all_pages_keeps_first_page_envelope():
+    client = _offset_client({1: ["a"], 2: ["b"]}, envelope=ENVELOPE)
+
+    dumped = collect_offset_pages(client.send(list_items()), all_pages=True, show_progress=False).model_dump()
+
+    assert dumped["data"] == [{"name": "a"}, {"name": "b"}]
+    assert dumped["filter"] == {"role": "Viewer"}
+    assert dumped["sort"] == "-created_at"
+    assert dumped["pagination"]["total_results"] == 2
+
+
+def test_collect_offset_pages_without_envelope_fields_emits_only_data_and_pagination():
+    client = _offset_client({1: ["a"]})
+
+    dumped = collect_offset_pages(client.send(list_items()), all_pages=False).model_dump()
+
+    assert list(dumped) == ["data", "pagination"]
 
 
 def test_collect_offset_pages_all_pages_empty():

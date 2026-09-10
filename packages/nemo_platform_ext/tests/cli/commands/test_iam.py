@@ -329,6 +329,19 @@ def test_list_passes_pagination_and_sort_and_warns() -> None:
     assert "More pages" in result.stderr
 
 
+def test_list_json_output_keeps_server_sort_and_filter() -> None:
+    recorder = Recorder([_page([BINDING], 1, 1)])
+    runner, state = make_runner(recorder)
+
+    result = runner.invoke(app, ["iam", "role-bindings", "list", "--sort", "created_at"], obj=state)
+
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.stdout)
+    assert output["sort"] == "created_at"
+    assert output["filter"] == {}
+    assert list(output) == ["data", "sort", "filter", "pagination"]
+
+
 def test_list_field_filters_are_sent_as_json_filter() -> None:
     recorder = Recorder([_page([BINDING], 1, 1)])
     runner, state = make_runner(recorder)

@@ -41,9 +41,17 @@ class AllPagesResponse:
     Used for page-number based pagination which has total_pages and total_results.
     """
 
-    def __init__(self, data: list[Any], total_items: int, total_pages: int, page_size: int | None = None):
+    def __init__(
+        self,
+        data: list[Any],
+        total_items: int,
+        total_pages: int,
+        page_size: int | None = None,
+        envelope: dict[str, Any] | None = None,
+    ):
         self.data = data
-        self.sort = None
+        self.envelope = dict(envelope or {})
+        self.sort = self.envelope.get("sort")
 
         # Create pagination info for all items
         self.pagination = type(
@@ -72,7 +80,7 @@ class AllPagesResponse:
 
         return {
             "data": serialized_data,
-            "sort": self.sort,
+            **self.envelope,
             "pagination": {
                 "page": self.pagination.page,
                 "page_size": self.pagination.page_size,
@@ -126,18 +134,33 @@ def _model_dump_item(item: Any, *, mode: str) -> Any:
     return item
 
 
-class OffsetPageResponse:
-    """One page of an offset-paginated list, keeping the server's pagination block."""
+def _envelope_fields(response: NemoPaginatedResponse[Any, Any]) -> dict[str, Any]:
+    """Return the first page's non-item envelope fields (``sort``, ``filter``, ``grouped_by``, ...) in wire order."""
+    http_response = getattr(response, "http_response", None)
+    if http_response is None:
+        return {}
+    try:
+        body = http_response.json()
+    except ValueError:
+        return {}
+    if not isinstance(body, dict):
+        return {}
+    return {key: value for key, value in body.items() if key not in {"data", "pagination"}}
 
-    def __init__(self, items: list[Any], metadata: dict[str, Any]) -> None:
+
+class OffsetPageResponse:
+    """One page of an offset-paginated list, keeping the server's envelope and pagination block."""
+
+    def __init__(self, items: list[Any], metadata: dict[str, Any], envelope: dict[str, Any] | None = None) -> None:
         self.data = items
-        self.sort = None
+        self.envelope = dict(envelope or {})
+        self.sort = self.envelope.get("sort")
         self.pagination = SimpleNamespace(**metadata)
 
     def model_dump(self, mode: str = "json") -> dict[str, Any]:
         return {
             "data": [_model_dump_item(item, mode=mode) for item in self.data],
-            "sort": self.sort,
+            **self.envelope,
             "pagination": vars(self.pagination),
         }
 
@@ -167,9 +190,10 @@ def collect_offset_pages(
     show_progress: bool = True,
 ) -> OffsetPageResponse | AllPagesResponse:
     """Return the first page, or every page merged when *all_pages* is set."""
+    envelope = _envelope_fields(response)
     if not all_pages:
         page = response.page()
-        return OffsetPageResponse(list(page.items), dict(page.metadata))
+        return OffsetPageResponse(list(page.items), dict(page.metadata), envelope)
 
     items: list[Any] = []
     total_results = 0
@@ -195,6 +219,7 @@ def collect_offset_pages(
         total_items=total_results or len(items),
         total_pages=total_pages or 1,
         page_size=page_size,
+        envelope=envelope,
     )
 
 
