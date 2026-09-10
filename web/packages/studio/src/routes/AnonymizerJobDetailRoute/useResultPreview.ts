@@ -32,7 +32,6 @@ export const useResultPreview = (
     enabled,
   });
 
-  /** `dataset.parquet` drops the entity/replacement columns; `trace.parquet` is a superset over the same rows. */
   const {
     data: trace,
     isLoading: traceLoading,

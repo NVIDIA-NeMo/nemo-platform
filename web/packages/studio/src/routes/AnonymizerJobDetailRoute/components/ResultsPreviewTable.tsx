@@ -32,38 +32,52 @@ const describeRow = (row: DataFileRow, textColumn: string | undefined): string =
 const replacementCount = (row: DataFileRow): number =>
   parseReplacements(row[REPLACEMENT_MAP_COLUMN]).length;
 
+interface PreviewRow {
+  readonly source: DataFileRow;
+  readonly index: number;
+  readonly text: string;
+  readonly count: number;
+}
+
 export const ResultsPreviewTable: FC<ResultsPreviewTableProps> = memo(
   ({ rows, textColumn, onRowClick }) => {
-    // Default columnPinning forces every column onto its literal `size`; clearing it lets the
-    // unsized "Record" column flex to fill remaining space.
     const dataViewState = useStudioDataViewState({
       defaultPageSize: RESULT_PREVIEW_ROWS,
       columnPinning: {},
     });
 
+    const previewRows = useMemo<PreviewRow[]>(
+      () =>
+        rows.map((source, index) => ({
+          source,
+          index,
+          text: describeRow(source, textColumn),
+          count: replacementCount(source),
+        })),
+      [rows, textColumn]
+    );
+
     const { pageIndex, pageSize } = dataViewState.pagination.state;
     const pageRows = useMemo(
-      () => rows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
-      [rows, pageIndex, pageSize]
+      () => previewRows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+      [previewRows, pageIndex, pageSize]
     );
 
     const makeColumns = useCallback<
-      ComponentProps<typeof StudioDataView<DataFileRow>>['makeColumns']
+      ComponentProps<typeof StudioDataView<PreviewRow>>['makeColumns']
     >(
       (col) => [
         col.display({
           id: 'record',
           header: 'Record',
-          cell: ({ row }) => (
-            <Text kind="body/regular/sm">{describeRow(row.original, textColumn)}</Text>
-          ),
+          cell: ({ row }) => <Text kind="body/regular/sm">{row.original.text}</Text>,
         }),
         col.display({
           id: 'replacements',
           header: 'Count',
           size: 100,
           enableResizing: false,
-          cell: ({ row }) => <Text kind="body/regular/sm">{replacementCount(row.original)}</Text>,
+          cell: ({ row }) => <Text kind="body/regular/sm">{row.original.count}</Text>,
         }),
         col.display({
           id: 'details',
@@ -73,24 +87,24 @@ export const ResultsPreviewTable: FC<ResultsPreviewTableProps> = memo(
           cell: ({ row }) => (
             <Button
               kind="tertiary"
-              onClick={() => onRowClick(row.original, pageIndex * pageSize + row.index)}
+              onClick={() => onRowClick(row.original.source, row.original.index)}
             >
               Details
             </Button>
           ),
         }),
       ],
-      [textColumn, onRowClick, pageIndex, pageSize]
+      [onRowClick]
     );
 
     const handleRowClick = useCallback(
-      (row: DataFileRow, index: number) => onRowClick(row, pageIndex * pageSize + index),
-      [onRowClick, pageIndex, pageSize]
+      (row: PreviewRow) => onRowClick(row.source, row.index),
+      [onRowClick]
     );
 
     return (
       <div className="flex flex-col min-h-[400px] max-h-[640px]">
-        <StudioDataView<DataFileRow>
+        <StudioDataView<PreviewRow>
           dataViewState={dataViewState}
           makeColumns={makeColumns}
           onRowClick={handleRowClick}
