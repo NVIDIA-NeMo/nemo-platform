@@ -2,20 +2,28 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
+import type { MlflowIntegration, WandbIntegration } from '@nemo/sdk/generated/customizer/schema';
 import { Stack, Text } from '@nvidia/foundations-react-core';
+import { ControlledJsonInput } from '@studio/components/NewCustomizationForm/ControlledJsonInput';
 import { ControlledStringListInput } from '@studio/components/NewCustomizationForm/ControlledStringListInput';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
+import type { CustomizationBackend } from '@studio/util/customizationBackend';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import { useFormContext } from 'react-hook-form';
 
 /**
- * Experiment-tracking configuration for RL jobs. Everything here is optional — a blank
- * field is stripped on submit so the job ships without the integration rather than with
- * an empty one.
+ * Experiment tracking for any customization backend. All three share one `IntegrationsSpec`
+ * in the API, so the path prefix is the only thing that varies.
  */
-export const RlIntegrationsSection = () => {
+type IntegrationField =
+  | `wandb.${keyof WandbIntegration & string}`
+  | `mlflow.${keyof MlflowIntegration & string}`;
+
+export const IntegrationsSection = ({ backend }: { backend: CustomizationBackend }) => {
   const { control, formState } = useFormContext<CustomizationFormFields>();
   const disabled = formState.isSubmitting;
+
+  const field = <P extends IntegrationField>(path: P) => `${backend}.integrations.${path}` as const;
 
   return (
     <FormSection
@@ -26,22 +34,22 @@ export const RlIntegrationsSection = () => {
       <Stack gap="density-md">
         <Text kind="label/bold/sm">Weights &amp; Biases</Text>
         <ControlledTextInput
-          useControllerProps={{ name: 'rl.integrations.wandb.project', control }}
+          useControllerProps={{ name: field('wandb.project'), control }}
           formFieldProps={{ slotLabel: 'Project' }}
           disabled={disabled}
         />
         <ControlledTextInput
-          useControllerProps={{ name: 'rl.integrations.wandb.name', control }}
+          useControllerProps={{ name: field('wandb.name'), control }}
           formFieldProps={{ slotLabel: 'Run Name' }}
           disabled={disabled}
         />
         <ControlledTextInput
-          useControllerProps={{ name: 'rl.integrations.wandb.entity', control }}
+          useControllerProps={{ name: field('wandb.entity'), control }}
           formFieldProps={{ slotLabel: 'Entity' }}
           disabled={disabled}
         />
         <ControlledStringListInput
-          useControllerProps={{ name: 'rl.integrations.wandb.tags', control }}
+          useControllerProps={{ name: field('wandb.tags'), control }}
           formFieldProps={{
             slotLabel: 'Tags',
             slotInfo: 'Comma separated labels attached to the W&B run.',
@@ -50,12 +58,12 @@ export const RlIntegrationsSection = () => {
           disabled={disabled}
         />
         <ControlledTextInput
-          useControllerProps={{ name: 'rl.integrations.wandb.notes', control }}
+          useControllerProps={{ name: field('wandb.notes'), control }}
           formFieldProps={{ slotLabel: 'Notes' }}
           disabled={disabled}
         />
         <ControlledTextInput
-          useControllerProps={{ name: 'rl.integrations.wandb.base_url', control }}
+          useControllerProps={{ name: field('wandb.base_url'), control }}
           formFieldProps={{
             slotLabel: 'Base URL',
             slotInfo: 'Only needed for a self-hosted W&B instance.',
@@ -63,7 +71,7 @@ export const RlIntegrationsSection = () => {
           disabled={disabled}
         />
         <ControlledTextInput
-          useControllerProps={{ name: 'rl.integrations.wandb.api_key_secret', control }}
+          useControllerProps={{ name: field('wandb.api_key_secret'), control }}
           formFieldProps={{
             slotLabel: 'API Key Secret',
             slotInfo:
@@ -75,22 +83,31 @@ export const RlIntegrationsSection = () => {
 
         <Text kind="label/bold/sm">MLflow</Text>
         <ControlledTextInput
-          useControllerProps={{ name: 'rl.integrations.mlflow.experiment_name', control }}
+          useControllerProps={{ name: field('mlflow.experiment_name'), control }}
           formFieldProps={{ slotLabel: 'Experiment Name' }}
           disabled={disabled}
         />
         <ControlledTextInput
-          useControllerProps={{ name: 'rl.integrations.mlflow.name', control }}
+          useControllerProps={{ name: field('mlflow.name'), control }}
           formFieldProps={{ slotLabel: 'Run Name' }}
           disabled={disabled}
         />
         <ControlledTextInput
-          useControllerProps={{ name: 'rl.integrations.mlflow.description', control }}
+          useControllerProps={{ name: field('mlflow.description'), control }}
           formFieldProps={{ slotLabel: 'Description' }}
           disabled={disabled}
         />
+        <ControlledJsonInput
+          useControllerProps={{ name: field('mlflow.tags'), control }}
+          formFieldProps={{
+            slotLabel: 'Tags (JSON object)',
+            slotInfo: 'Key-value pairs attached to the MLflow run.',
+          }}
+          placeholder='{"team": "nemo"}'
+          disabled={disabled}
+        />
         <ControlledTextInput
-          useControllerProps={{ name: 'rl.integrations.mlflow.tracking_uri', control }}
+          useControllerProps={{ name: field('mlflow.tracking_uri'), control }}
           formFieldProps={{ slotLabel: 'Tracking URI' }}
           disabled={disabled}
         />
