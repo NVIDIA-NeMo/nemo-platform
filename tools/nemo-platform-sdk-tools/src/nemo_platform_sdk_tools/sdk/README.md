@@ -86,4 +86,4 @@ uv run --frozen nemo-platform-sdk-tools post-generation update-pyproject
 uv run --frozen nemo-platform-sdk-tools post-generation update-all
 ```
 
-Prefer the Makefile targets (`make generate-cli-commands`, `make vendor`, and `make update-sdk`) for normal repo workflows.
+Prefer the Makefile targets (`make vendor` and `make update-sdk`) for normal repo workflows.
