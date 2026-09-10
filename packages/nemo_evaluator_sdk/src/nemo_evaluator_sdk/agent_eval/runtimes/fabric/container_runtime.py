@@ -13,8 +13,9 @@ Per task it:
 
 1. seeds ``/in`` with the composed Fabric agent config and framed input, plus the task's workspace
    seed files;
-2. execs Fabric's own CLI (``fabric run``), which writes a normalized ``RunResult`` to stdout and the
-   workspace + Relay ATIF trajectory under a fixed ``/out`` layout;
+2. runs one Fabric invocation through a seeded in-sandbox driver
+   (:mod:`~nemo_evaluator_sdk.agent_eval.runtimes.fabric.sandbox_driver`), which writes a normalized
+   ``RunResult`` to stdout and the workspace + Relay ATIF trajectory under a fixed ``/out`` layout;
 3. downloads ``/out`` across the boundary into the durable per-task evidence dir; and
 4. maps it into the shared :class:`CandidateEvidence` contract the eval metrics consume — ``result``
    (json), ``trace`` (ATIF), plus ``workspace`` (filesystem) and ``logs`` — so the workspace-file,
@@ -87,7 +88,7 @@ _MISSING_FABRIC_MSG = (
 )
 
 # Fixed in-container layout. The runtime seeds ``/in`` (agent config, input), execs Fabric's
-# CLI, and reads the produced ``/out`` subtree back across the boundary.
+# driver, and reads the produced ``/out`` subtree back across the boundary.
 _IN_DIR = "/in"
 _OUT_DIR = "/out"
 _WORKSPACE_DIR = f"{_OUT_DIR}/workspace"
@@ -96,8 +97,11 @@ _ARTIFACTS_DIR = f"{_OUT_DIR}/artifacts"
 _LOGS_DIR = f"{_OUT_DIR}/logs"
 _RESULT_PATH = f"{_OUT_DIR}/fabric_result.json"
 _FABRIC_STDERR = f"{_LOGS_DIR}/fabric-stderr.txt"
-_AGENT_PATH = f"{_IN_DIR}/agent.yaml"
+_AGENT_PATH = f"{_IN_DIR}/agent.json"
 _INPUT_PATH = f"{_IN_DIR}/input.txt"
+#: Seeded as source rather than imported: the driver runs against the sandbox's Fabric, not the host's.
+_DRIVER_SOURCE = Path(__file__).with_name("sandbox_driver.py")
+_DRIVER_PATH = f"{_IN_DIR}/{_DRIVER_SOURCE.name}"
 # In-sandbox root for a natively-injected skill bundle. It lives under ``/in`` (not ``/out``), so it is
 # never part of the downloaded ``/out`` evidence — only codex-mode skills, which must sit in the workspace
 # for the harness to self-discover them, need post-download cleanup.
@@ -294,8 +298,8 @@ class FabricContainerRuntime:
         return str(adapter_id) if adapter_id is not None else ""
 
     def _fabric_command(self) -> str:
-        """The ``fabric run`` invocation: pre-create the /out dirs Fabric chdirs into, run, capture stdout."""
-        run = f"fabric run {shlex.quote(_AGENT_PATH)} --input-file {shlex.quote(_INPUT_PATH)}"
+        """The driver invocation: pre-create the /out dirs Fabric chdirs into, run, capture stdout."""
+        run = f"python3 {shlex.quote(_DRIVER_PATH)} {shlex.quote(_AGENT_PATH)} {shlex.quote(_INPUT_PATH)}"
         return (
             f"mkdir -p {_WORKSPACE_DIR} {_RELAY_DIR} {_ARTIFACTS_DIR} {_LOGS_DIR} && "
             f"{run} > {shlex.quote(_RESULT_PATH)} 2> {shlex.quote(_FABRIC_STDERR)}"
@@ -306,16 +310,17 @@ class FabricContainerRuntime:
     ) -> tuple[dict[str, str], list[SkillProvenance]]:
         """Return (files to seed into the sandbox, skill provenances).
 
-        The agent config is written as JSON, which the Fabric CLI parses as YAML. Fabric 0.1.0rc2 removed
-        profile overlays (``--profile`` and the ``profiles`` config key are both gone), so everything —
-        the runtime's in-container settings and any natively-injected skill paths — is composed into the
-        single agent config here. When skills are injected each bundle is also rendered into the seed set
+        Everything — the runtime's in-container settings and any natively-injected skill paths — is
+        composed into the single agent config here, written as JSON for the driver to load. When skills are injected each bundle is also rendered into the seed set
         at the harness's in-sandbox discovery path (native: ``/in/skills/<name>``; codex:
         ``<workspace>/.agents/skills/<name>``).
         """
         skill_paths: list[str] = []
         provenances: list[SkillProvenance] = []
-        files: dict[str, str] = {_INPUT_PATH: task.agent_prompt()}
+        files: dict[str, str] = {
+            _INPUT_PATH: task.agent_prompt(),
+            _DRIVER_PATH: _DRIVER_SOURCE.read_text(encoding="utf-8"),
+        }
         if self._skill_set.skills and skill_mode is not None:
             if skill_mode == SKILL_MODE_CODEX_SKILLS_DIR:
                 _check_codex_skill_collision(self._skill_set.skills, task.inputs.get(SEED_FILES_INPUT_KEY) or {})
@@ -358,13 +363,17 @@ class FabricContainerRuntime:
             "workspace": _WORKSPACE_DIR,
             "artifacts": _ARTIFACTS_DIR,
         }
-        # Relay ATIF/ATOF file exporter (sdk mode), built from nemo_relay's typed config via the shared
-        # helper so it stays a single source of truth with the host runtime. Replaced wholesale.
+        # Relay's ATIF/ATOF file exporter, spanning whatever keys Fabric currently serializes it into.
         # ``agent_name`` distinguishes this runtime from the host one; ``agent_version`` records the
         # agent framework and so matches the host's value, letting an ATIF consumer group both
-        # runtimes' traces. (Neither is a real version yet — see _common.trajectory_telemetry.)
-        config["telemetry"] = _common.trajectory_telemetry(
-            relay_dir=_RELAY_DIR, agent_name=_RUNTIME_NAME, agent_version=_common.FABRIC_AGENT_VERSION
+        # runtimes' traces. (Neither is a real version yet.)
+        config.update(
+            _common.relay_telemetry_fragment(
+                config,
+                relay_dir=_RELAY_DIR,
+                agent_name=_RUNTIME_NAME,
+                agent_version=_common.FABRIC_AGENT_VERSION,
+            )
         )
 
         declared_paths = _section(config, "skills").get("paths") or []
@@ -402,26 +411,29 @@ class FabricContainerRuntime:
         # a ``skills`` list plus the historical lone ``skill`` field, matching the host FabricAgentRuntime.
         base_metadata = {**self._base_metadata(), **_skill_metadata(skill_provenances or [])}
 
-        # Gate on the exec outcome first: a timed-out or non-zero ``fabric run`` is untrustworthy even
+        # Gate on the exec outcome first: a timed-out or non-zero driver run is untrustworthy even
         # when a stale/partial fabric_result.json is left behind (the shell ``>`` redirect truncates the
         # file regardless), so never grade such a run off that file.
         if result.error_type or result.return_code != 0:
             stderr = _read_text(out_dir / "logs" / "fabric-stderr.txt") or (result.stderr or "")
             detail = stderr.strip() or result.error_type or f"exit code {result.return_code}"
             return self._failed_trial(
-                task, evidence_dir, RuntimeError(f"fabric run failed: {detail}"), extra_metadata=base_metadata
+                task,
+                evidence_dir,
+                RuntimeError(f"fabric run failed in the sandbox: {detail}"),
+                extra_metadata=base_metadata,
             )
 
         result_path = out_dir / "fabric_result.json"
         result_payload = _read_json(result_path)
-        # `fabric run` writes a normalized RunResult object (a failed harness run still produces one, with
+        # The driver writes a normalized RunResult object (a failed harness run still produces one, with
         # status != "succeeded"). A missing, non-object, or unreadable payload means no usable result.
         if not isinstance(result_payload, Mapping):
             stderr = _read_text(out_dir / "logs" / "fabric-stderr.txt") or (result.stderr or "")
             return self._failed_trial(
                 task,
                 evidence_dir,
-                RuntimeError(f"fabric run produced no usable result: {stderr.strip()}"),
+                RuntimeError(f"the sandbox produced no usable Fabric result: {stderr.strip()}"),
                 extra_metadata=base_metadata,
             )
 
