@@ -16,6 +16,7 @@ import {
   TabsTrigger,
   Text,
 } from '@nvidia/foundations-react-core';
+import { agentSpecSource, useAgentSpecFileset } from '@studio/api/agents/useAgentSpecFileset';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
 import { AGENT_OVERVIEW_ENABLED, INTAKE_ENABLED } from '@studio/constants/environment';
@@ -84,6 +85,7 @@ export const AgentDetailRoute: FC = () => {
     isDeploying,
     isDeploymentsLoading,
   } = useAgentDetails({ workspace, agentName, selectedDeploymentName });
+  const { data: specFileset } = useAgentSpecFileset(workspace, agentName);
 
   useBreadcrumbs({
     items: [
@@ -250,6 +252,7 @@ export const AgentDetailRoute: FC = () => {
               onDelete={setDeleteDeploymentTarget}
               onViewLogs={viewLogs}
               canDeploy={canDeploy}
+              currentSpecRevision={agentSpecSource(specFileset)?.revision}
             />
           </TabsContent>
 
