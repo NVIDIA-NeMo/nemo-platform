@@ -5,6 +5,8 @@
 
 import pytest
 from nemo_platform_ext.cli.core.code_generator import generate_python_code
+from nemo_platform_plugin.inference_gateway.client import InferenceGatewayClient
+from nemo_platform_plugin.inference_gateway.types import JsonBody
 from nemo_platform_plugin.models.client import ModelsClient
 from nemo_platform_plugin.models.types import CreateModelDeploymentRequest
 from nemo_platform_plugin.secrets.client import SecretsClient
@@ -48,6 +50,19 @@ def test_generate_python_code_renders_request_model_and_imports_it():
     assert 'body=PlatformSecretCreateRequest(name="hf-token", description="HF token", value="***")' in code
     assert "s3cret" not in code
     assert code.index("from nemo_platform_plugin.secrets.client") < code.index("client = SecretsClient")
+
+
+def test_generate_python_code_renders_root_model_body_positionally():
+    body = JsonBody({"model": "default/llama", "messages": [{"role": "user", "content": "hi"}]})
+    code = generate_python_code(
+        InferenceGatewayClient,
+        "provider_post",
+        {"name": "nvidia", "trailing_uri": "v1/chat/completions", "body": body},
+    )
+
+    assert "from nemo_platform_plugin.inference_gateway.types import JsonBody" in code
+    assert 'body=JsonBody({"model": "default/llama", "messages": [{"role": "user", "content": "hi"}]})' in code
+    compile(code, "<generated>", "exec")
 
 
 def test_generate_python_code_renders_query_params_dict_and_lists():

@@ -186,7 +186,13 @@ nemo agent commands""",
     # core-area: workspaces
     # core-area: files
     # core-area: models
-    # core-area: inference
+    TopLevelEntry(
+        import_path="nemo_platform_ext.cli.commands.inference:app",
+        help="Inference operations.",
+        name="inference",
+        panel="Core plugins",
+        kind="group",
+    ),
     # core-area: projects
     # core-area: adapters
     # core-area: iam

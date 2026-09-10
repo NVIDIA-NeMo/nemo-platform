@@ -48,14 +48,6 @@ API_TOP_LEVEL_ENTRIES = (
         hidden=True,
     ),
     TopLevelEntry(
-        import_path=f"{__package__}.inference:app",
-        name="inference",
-        help="Inference operations.",
-        panel="Core plugins",
-        kind="group",
-        hidden=False,
-    ),
-    TopLevelEntry(
         import_path=f"{__package__}.intake:app",
         name="intake",
         help="Intake operations.",
