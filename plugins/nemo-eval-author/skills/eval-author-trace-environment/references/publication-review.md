@@ -14,7 +14,7 @@ python <skill_dir>/scripts/trace_environment.py prepare-publication \
 
 Inspect every file in the returned `preview_dir`: all candidate notes,
 uncertainties, software and ground-truth provenance, the generated task and
-manifest when present, and the derived `result.json`. Check paths as well as
+`reproducibility.json` when present, and the derived `result.json`. Check paths as well as
 contents for private identifiers, internal locators, proprietary material, and
 other information not authorized for publication. The preview contains only the
 publication whitelist; source evidence and review notes are not part of it.
