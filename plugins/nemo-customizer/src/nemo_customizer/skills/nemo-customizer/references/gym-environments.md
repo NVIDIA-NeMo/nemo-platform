@@ -357,7 +357,7 @@ Gym's in-tree rows omit `agent_ref` because the owning agent config supplies it.
 
 The automated path, and the only one with a converter. It downloads the hub package, vendors its full wheel closure, writes both configs and the manifest, and snapshots the hub environment's Hugging Face dataset into the dataset FileSet so training does not call the Hub.
 
-That snapshot is two artifacts: `hub_environment.parquet`, with `vf_env_args.dataset_path` set to `/job/dataset/hub_environment.parquet`, and `.huggingface/`, the cache populated while converting. The Gym host copies `.huggingface/` to writable `/job/work/.huggingface` and sets `HF_HOME` plus Hub/datasets offline flags before `RunHelper.start()`, so a loader that still calls `load_dataset("org/name")` resolves from that cache.
+That snapshot is two artifacts: `hub_environment.parquet`, with `vf_env_args.dataset_path` set to `/job/dataset/hub_environment.parquet`, and `.huggingface/`, the cache populated while converting. Loaders that honor `dataset_path` read the parquet; loaders that still call `load_dataset("org/name")` resolve from the cache, offline.
 
 **Run it on a host with internet.** Training clusters have no hub egress and consume uploaded FileSets only.
 
