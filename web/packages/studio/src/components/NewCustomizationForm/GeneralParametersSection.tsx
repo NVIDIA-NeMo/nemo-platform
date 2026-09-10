@@ -14,6 +14,8 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import {
+  AUTOMODEL_PRECISION_ITEMS,
+  AUTOMODEL_RECIPE_ITEMS,
   OPTIMIZER_TYPE_ITEMS,
   UNSLOTH_GRADIENT_CHECKPOINTING_ITEMS,
   UNSLOTH_LR_SCHEDULER_ITEMS,
@@ -22,6 +24,7 @@ import {
 } from '@studio/components/NewCustomizationForm/constants';
 import { ControlledJsonInput } from '@studio/components/NewCustomizationForm/ControlledJsonInput';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
+import { ProgressReportingFields } from '@studio/components/NewCustomizationForm/ProgressReportingFields';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import {
   AUTOMODEL_SPEC_DEFAULTS,
@@ -201,6 +204,12 @@ export const GeneralParametersSection = () => {
                     step={0.01}
                     disabled={disabled}
                   />
+                  <ProgressReportingFields
+                    prefix="rl.training.progress_reporting"
+                    defaults={DPO_SPEC_DEFAULTS}
+                    defaultsPrefix="progress_reporting"
+                    disabled={disabled}
+                  />
                   <ControlledSwitch
                     useControllerProps={{ name: 'rl.training.val_at_end', control }}
                     formFieldProps={{
@@ -330,6 +339,12 @@ export const GeneralParametersSection = () => {
                     step={1}
                     disabled={disabled}
                   />
+                  <ProgressReportingFields
+                    prefix="automodel.schedule.progress_reporting"
+                    defaults={AUTOMODEL_SPEC_DEFAULTS}
+                    defaultsPrefix="schedule_progress_reporting"
+                    disabled={disabled}
+                  />
                   <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'automodel.optimizer.warmup_steps', control }}
                     formFieldProps={{ slotLabel: 'Warmup Steps' }}
@@ -401,6 +416,53 @@ export const GeneralParametersSection = () => {
                       { value: 'linear', children: 'Linear' },
                       { value: 'constant', children: 'Constant' },
                     ]}
+                    disabled={disabled}
+                  />
+                  <ControlledTextInput
+                    useControllerProps={{ name: 'automodel.dataset.validation', control }}
+                    formFieldProps={{
+                      slotLabel: 'Validation Dataset',
+                      slotInfo:
+                        'Fileset to validate against, as `workspace/name`. Leave blank to skip validation.',
+                    }}
+                    placeholder="default/my-validation-set"
+                    disabled={disabled}
+                  />
+                  <ControlledTextInput
+                    useControllerProps={{ name: 'automodel.dataset.prompt_template', control }}
+                    formFieldProps={{
+                      slotLabel: 'Prompt Template',
+                      slotInfo: 'Template applied to each example before training.',
+                    }}
+                    placeholder="{prompt} {completion}"
+                    disabled={disabled}
+                  />
+                  <ControlledSelect
+                    useControllerProps={{ name: 'automodel.training.precision', control }}
+                    formFieldProps={{
+                      slotLabel: 'Precision',
+                      slotInfo: 'Leave unset to let the backend choose for the hardware.',
+                    }}
+                    items={AUTOMODEL_PRECISION_ITEMS}
+                    disabled={disabled}
+                  />
+                  <ControlledSelect
+                    useControllerProps={{ name: 'automodel.training.recipe', control }}
+                    formFieldProps={{
+                      slotLabel: 'Recipe',
+                      slotInfo: 'Auto picks the recipe from the model architecture.',
+                    }}
+                    items={AUTOMODEL_RECIPE_ITEMS}
+                    disabled={disabled}
+                  />
+                  <ControlledTextInput
+                    useControllerProps={{ name: 'automodel.training.execution_profile', control }}
+                    formFieldProps={{
+                      slotLabel: 'Execution Profile',
+                      slotInfo:
+                        'Operator-configured GPU profile for the training step, e.g. h100. Leave blank to use the service default.',
+                    }}
+                    placeholder="Service default"
                     disabled={disabled}
                   />
                   <ControlledSelect
@@ -660,6 +722,22 @@ export const GeneralParametersSection = () => {
                   useControllerProps={{ name: 'unsloth.schedule.lr_scheduler_kwargs', control }}
                   formFieldProps={{ slotLabel: 'LR Scheduler Kwargs (JSON)' }}
                   placeholder='{ "num_cycles": 1 }'
+                  disabled={disabled}
+                />
+                <ProgressReportingFields
+                  prefix="unsloth.schedule.progress_reporting"
+                  defaults={UNSLOTH_SPEC_DEFAULTS}
+                  defaultsPrefix="schedule_progress_reporting"
+                  disabled={disabled}
+                />
+                <ControlledTextInput
+                  useControllerProps={{ name: 'unsloth.dataset.validation_path', control }}
+                  formFieldProps={{
+                    slotLabel: 'Validation Dataset',
+                    slotInfo:
+                      'Fileset to validate against, as `workspace/name`. Leave blank to skip validation.',
+                  }}
+                  placeholder="default/my-validation-set"
                   disabled={disabled}
                 />
                 <ControlledTextInput

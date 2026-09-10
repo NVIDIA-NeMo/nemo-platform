@@ -39,11 +39,14 @@ import { CustomizationCreateUnslothJobBody } from '@nemo/sdk/generated/customize
  */
 const integrationsSeed = () => ({ wandb: {}, mlflow: {} });
 
+/** Same reasoning for the shared `ProgressReportingConfig`, bound by `ProgressReportingFields`. */
+const progressReportingSeed = () => ({ progress_reporting: {} });
+
 export const AUTOMODEL_SEED = {
   model: '',
   dataset: { training: '' },
   training: { lora: {} },
-  schedule: {},
+  schedule: progressReportingSeed(),
   batch: {},
   optimizer: {},
   parallelism: {},
@@ -54,7 +57,7 @@ export const UNSLOTH_SEED = {
   model: { name: '' },
   dataset: { path: '' },
   training: { lora: {} },
-  schedule: {},
+  schedule: progressReportingSeed(),
   batch: {},
   optimizer: {},
   hardware: {},
@@ -69,7 +72,12 @@ export const UNSLOTH_SEED = {
 export const rlSeed = (type: 'dpo' | 'grpo') => ({
   model: '',
   dataset: '',
-  training: { type, parallelism: {}, ...(type === 'grpo' ? { lora: {} } : {}) },
+  training: {
+    type,
+    parallelism: {},
+    ...progressReportingSeed(),
+    ...(type === 'grpo' ? { lora: {} } : {}),
+  },
   integrations: integrationsSeed(),
 });
 

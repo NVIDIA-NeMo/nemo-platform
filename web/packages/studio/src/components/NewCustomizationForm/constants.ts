@@ -55,3 +55,19 @@ export const UNSLOTH_GRADIENT_CHECKPOINTING_ITEMS = [
   { value: UnslothTrainingSpecUseGradientCheckpointing.true, children: 'Enabled' },
   { value: UnslothTrainingSpecUseGradientCheckpointing.false, children: 'Disabled' },
 ];
+
+/** Automodel compute precision. */
+export const AUTOMODEL_PRECISION_ITEMS = [
+  { value: 'bf16', children: 'bf16' },
+  { value: 'fp16', children: 'fp16' },
+  { value: 'fp32', children: 'fp32' },
+  { value: 'fp8', children: 'fp8' },
+];
+
+/** Automodel training recipe. `auto` lets the backend pick from the model architecture. */
+export const AUTOMODEL_RECIPE_ITEMS = [
+  { value: 'auto', children: 'Auto' },
+  { value: 'sft', children: 'SFT' },
+  { value: 'bi_encoder', children: 'Bi-encoder' },
+  { value: 'cross_encoder', children: 'Cross-encoder' },
+];
