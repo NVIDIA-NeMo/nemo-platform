@@ -40,7 +40,7 @@ def client_from_platform(
 ) -> NemoClient | AsyncNemoClient:
     """Create a typed client sharing a generated platform SDK's transport.
 
-    The overloads ensure callers get the correct concrete return type.
+    The overloads preserve the sync/async pairing between platform and client.
     """
     # Prefer _custom_headers (set via with_options/set_default_headers),
     # fall back to the httpx client's actual headers (set at construction,
@@ -63,7 +63,7 @@ def client_from_platform(
     # httpx client keeps whatever timeout it was built with, so a caller's
     # ``platform.with_options(timeout=...)`` would otherwise be silently dropped
     # on the way to the typed client — the httpx client it hands over is the
-    # *same* object, with the *original* timeout still on it.
+    # *same* transport instance, with the *original* timeout still on it.
     timeout = platform.timeout
     if timeout is None:
         # ``None`` on the platform means "no timeout at all", but the typed
