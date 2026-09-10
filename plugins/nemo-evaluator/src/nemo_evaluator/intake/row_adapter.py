@@ -147,10 +147,14 @@ def _scores(row: RowScore, *, run_id: str, task_id: str, trial_id: str) -> list[
     scores: list[AgentEvalTaskScore] = []
     for metric_key, outputs in row.metrics.items():
         error = errors.get(metric_key)
-        # Error first: `score_to_evaluator_results` publishes `diagnostics[0].message` as the row's
-        # comment, and the failure is what a reader needs to see there.
+        # Error first: this is the leading general diagnostic, and the failure is what a reader
+        # needs to see when a score can eventually be published as a failed measurement.
         row_diagnostics = [
-            AgentEvalDiagnostic(severity=AgentEvalDiagnosticSeverity.WARNING, message=item.message)
+            AgentEvalDiagnostic(
+                severity=AgentEvalDiagnosticSeverity.WARNING,
+                message=item.message,
+                details=dict(item.details or {}),
+            )
             for item in diagnostics.get(metric_key, [])
         ]
         if error:

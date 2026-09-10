@@ -47,6 +47,12 @@ if TYPE_CHECKING:
     from nemo_evaluator_sdk.metrics.f1 import F1Metric
     from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
     from nemo_evaluator_sdk.metrics.number_check import NumberCheckMetric
+    from nemo_evaluator_sdk.metrics.retrieval import (
+        RetrievalMAPMetric,
+        RetrievalNDCGMetric,
+        RetrievalPrecisionMetric,
+        RetrievalRecallMetric,
+    )
     from nemo_evaluator_sdk.metrics.protocol import (
         Metric,
         MetricTypeName,
@@ -59,6 +65,7 @@ if TYPE_CHECKING:
     from nemo_evaluator_sdk.metrics.tunable_rag_evaluator import TunableRagEvaluatorMetric
     from nemo_evaluator_sdk.resolver_protocols import ModelResolver, SecretResolver
     from nemo_evaluator_sdk.resolvers import LocalModelResolver, LocalSecretResolver
+    from nemo_evaluator_sdk.retrieval.beir import BeirDataset, BeirDatasetError
     from nemo_evaluator_sdk.structured_output import (
         InferenceFn,
         InferenceStructuredOutput,
@@ -96,6 +103,7 @@ if TYPE_CHECKING:
         RangeScore,
         ReasoningParams,
         RemoteScore,
+        Retrieval,
         RubricScore,
         RunConfig,
         RunConfigOnline,
@@ -143,6 +151,10 @@ _LAZY_ATTRS: dict[str, str] = {
     "F1Metric": ".metrics.f1",
     "LLMJudgeMetric": ".metrics.llm_judge",
     "NumberCheckMetric": ".metrics.number_check",
+    "RetrievalNDCGMetric": ".metrics.retrieval",
+    "RetrievalRecallMetric": ".metrics.retrieval",
+    "RetrievalPrecisionMetric": ".metrics.retrieval",
+    "RetrievalMAPMetric": ".metrics.retrieval",
     "Metric": ".metrics.protocol",
     "MetricTypeName": ".metrics.protocol",
     "validate_metric_result": ".metrics.protocol",
@@ -156,6 +168,8 @@ _LAZY_ATTRS: dict[str, str] = {
     "SecretResolver": ".resolver_protocols",
     "LocalModelResolver": ".resolvers",
     "LocalSecretResolver": ".resolvers",
+    "BeirDataset": ".retrieval.beir",
+    "BeirDatasetError": ".retrieval.beir",
     "InferenceFn": ".structured_output",
     "InferenceStructuredOutput": ".structured_output",
     "StructuredOutput": ".structured_output",
@@ -190,6 +204,7 @@ _LAZY_ATTRS: dict[str, str] = {
     "RangeScore": ".values",
     "ReasoningParams": ".values",
     "RemoteScore": ".values",
+    "Retrieval": ".values",
     "RubricScore": ".values",
     "RunConfig": ".values",
     "RunConfigOnline": ".values",
@@ -247,6 +262,11 @@ __all__ = [
     "AgentStreamTranslator",
     "NemoAgentToolkitRemoteMetric",
     "NumberCheckMetric",
+    "Retrieval",
+    "RetrievalNDCGMetric",
+    "RetrievalRecallMetric",
+    "RetrievalPrecisionMetric",
+    "RetrievalMAPMetric",
     "RangeScore",
     "ReasoningParams",
     "RemoteMetric",
@@ -254,6 +274,8 @@ __all__ = [
     "ROUGEMetric",
     "RubricScore",
     "SecretRef",
+    "BeirDataset",
+    "BeirDatasetError",
     "SecretResolver",
     "SseFrame",
     "StringCheckMetric",

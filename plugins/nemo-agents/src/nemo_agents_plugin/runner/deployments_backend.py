@@ -38,6 +38,10 @@ from nemo_agents_plugin.runner.fabric_artifact_staging import (
     FabricArtifactStagingError,
     stage_fabric_ethos_config_files,
 )
+from nemo_agents_plugin.telemetry.intake_export import (
+    configure_intake_atif_export,
+    supports_intake_atif_export,
+)
 from nemo_agents_plugin.utils import get_base_url, get_internal_base_url
 from nemo_deployments_plugin.auth_proxy import auth_proxy_port
 from nemo_deployments_plugin.entities import (
@@ -668,6 +672,15 @@ class DeploymentsRunnerBackend(RunnerBackend):
             rewrite_target = gateway
 
         if is_fabric:
+            # Wire the trajectory export before the rebase below, so the
+            # endpoint it produces is rewritten for reachability alongside the
+            # inference URLs. No header_env here: the auth-proxy sidecar stamps
+            # identity on the way out, which is why the workload needs none.
+            # config is the caller's deployment entity; rewrite_fabric_config_base_urls
+            # deep-copies for the same reason, and wiring runs before it.
+            if supports_intake_atif_export(config):
+                config = copy.deepcopy(config)
+                configure_intake_atif_export(config, workspace=workspace, base_url=rewrite_target)
             config = rewrite_fabric_config_base_urls(config, rewrite_target)
         else:
             config = rewrite_config_base_urls(config, rewrite_target)

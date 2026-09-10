@@ -196,7 +196,6 @@ artifacts = job.download_artifacts("./artifacts")  # local output dir
 - `get_job_status()`
 - `check_if_complete(raise_if_not_complete=False)`
 - `get_result(aggregate_fields=...)`
-- `as_async()`
 
 **Platform CLI**
 
@@ -267,6 +266,14 @@ job = client.evaluator.submit(
     metric_bundle_packager=HybridMetricBundlePackager(),
 )
 ```
+
+`bundle_metric` keeps `bundle_format_version: v1` and encodes optional outputs as an additive `required` field on output entries:
+
+- `required=True` is the default and is omitted from serialized output entries, so bundles without optional outputs are unchanged and keep their existing identity.
+- `required=False` is serialized explicitly on optional output entries. Evaluator releases that predate optional outputs reject such a bundle with `outputs.N.required: Extra inputs are not permitted`, so the submitting client and the service must both run a release that supports optional outputs.
+- `required` must be a Boolean when supplied.
+
+Let the packager serialize the output contract. Do not add `required=True` to generated bundles by hand.
 
 The CLI cannot package a Python metric object or select
 `metric_bundle_packager`. After Python serializes the bundled metric into a

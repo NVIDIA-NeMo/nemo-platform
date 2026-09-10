@@ -13,6 +13,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
+import { DPO_SPEC_DEFAULTS, specSliderProps } from '@studio/util/forms/specDefaults';
 import { useFormContext } from 'react-hook-form';
 
 export const DpoParametersSection = () => {
@@ -29,7 +30,7 @@ export const DpoParametersSection = () => {
             slotInfo:
               'KL divergence coefficient from the DPO paper. Higher values keep the fine-tuned model closer to the reference policy.',
           }}
-          defaultValue={0.1}
+          {...specSliderProps(DPO_SPEC_DEFAULTS, 'ref_policy_kl_penalty')}
           min={0}
           max={1}
           step={0.01}
@@ -41,7 +42,7 @@ export const DpoParametersSection = () => {
             slotLabel: 'Preference Loss Weight',
             slotInfo: 'Scaling factor for the DPO preference (chosen vs rejected) loss term.',
           }}
-          defaultValue={1}
+          {...specSliderProps(DPO_SPEC_DEFAULTS, 'preference_loss_weight')}
           min={0}
           max={10}
           step={0.1}
@@ -54,7 +55,7 @@ export const DpoParametersSection = () => {
             slotInfo:
               'Weight for the SFT (imitation) regularization loss on the chosen response. Set to 0 to disable.',
           }}
-          defaultValue={0}
+          {...specSliderProps(DPO_SPEC_DEFAULTS, 'sft_loss_weight')}
           min={0}
           max={10}
           step={0.1}
@@ -70,7 +71,7 @@ export const DpoParametersSection = () => {
                 <ControlledSliderWithTextInput
                   useControllerProps={{ name: 'rl.training.max_grad_norm', control }}
                   formFieldProps={{ slotLabel: 'Max Gradient Norm' }}
-                  defaultValue={1.0}
+                  {...specSliderProps(DPO_SPEC_DEFAULTS, 'max_grad_norm')}
                   min={0}
                   max={10}
                   step={0.1}

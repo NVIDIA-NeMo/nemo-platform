@@ -25,9 +25,11 @@ from nemo_evaluator_sdk.inference import PostprocessResponse, PreprocessRequest
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.resolvers import LocalModelResolver, LocalSecretResolver
 from nemo_evaluator_sdk.session import begin_evaluation_session
-from nemo_evaluator_sdk.values import Agent, DatasetInput, FieldMapping, Model
+from nemo_evaluator_sdk.values import DatasetInput, FieldMapping, Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult, namespace_result
 from nemo_evaluator_sdk.values.results import AggregateFieldName, EvaluationResult
+from nemo_evaluator_sdk.values.retrieval import Retrieval
+from nemo_evaluator_sdk.values.targets import EvalTarget
 
 log = getLogger(__name__)
 
@@ -62,7 +64,7 @@ class LocalBackend:
         metric: Metric,
         metric_key: str,
         params: BackendParams,
-        target: Model | Agent | None,
+        target: EvalTarget,
         prompt_template: str | dict[str, Any] | None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None,
         preprocess_hooks: tuple[PreprocessRequest, ...] | None,
@@ -105,7 +107,7 @@ class LocalBackend:
         metric: Metric,
         metric_key: str,
         params: BackendParams,
-        target: Model | Agent | None,
+        target: EvalTarget,
         prompt_template: str | dict[str, Any] | None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None,
         preprocess_hooks: tuple[PreprocessRequest, ...] | None,
@@ -137,7 +139,7 @@ class LocalBackend:
         metrics: Sequence[Metric],
         dataset: DatasetInput | str | Path,
         params: BackendParams,
-        target: Model | Agent | None = None,
+        target: EvalTarget = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
@@ -186,9 +188,9 @@ class LocalBackend:
         metric_keys: Sequence[str],
         rows: list[dict[str, Any]],
         params: BackendParams,
-        target: Model | Agent | None,
+        target: EvalTarget,
         prompt_template: str | dict[str, Any] | None,
-        aggregate_fields: Sequence[AggregateFieldName] | None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None,
         preprocess_hooks: Sequence[PreprocessRequest] | None,
         postprocess_hooks: Sequence[PostprocessResponse] | None,
     ) -> BenchmarkEvaluationResult:
@@ -202,7 +204,7 @@ class LocalBackend:
             for metric in metrics
         ]
         metrics_built: list[tuple[str, Metric]] = list(zip(metric_keys, prepared_metrics, strict=True))
-        if target is not None:
+        if target is not None and not isinstance(target, Retrieval):
             merged_preprocess_hooks, merged_postprocess_hooks = _merge_online_hooks(
                 params=params,
                 target=target,

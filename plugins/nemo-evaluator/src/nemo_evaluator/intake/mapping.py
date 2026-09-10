@@ -13,8 +13,8 @@ Design constraints (see AALGO-289):
 
 * **Pure.** Every function reads SDK types and returns request params. No HTTP,
   no platform client, no imports from the Intake *service* (``nmp.intake.*``).
-* **Typed at the boundary.** The returned values are the generated platform
-  SDK's ``TypedDict`` params (``AtifCreateParams`` / ``EvaluatorResultCreateParams``).
+* **Typed at the boundary.** The returned values are typed-client
+  ``TypedDict`` params (``AtifCreateParams`` / ``EvaluatorResultCreateParams``).
   At runtime they are plain dicts the adapter splats into the client
   (``client.intake.ingest.atif.create(**body)``); statically, ``ty`` checks our
   field names, literals, and nested shapes against the real generated schema, so
@@ -34,7 +34,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, cast
+from typing import Literal
 
 from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
@@ -47,15 +47,16 @@ from nemo_evaluator_sdk.values.otlp import (
     set_root_span_error,
     set_span_attributes,
 )
+from nemo_evaluator_sdk.values.protocol import OUTPUT_DETAIL
 from nemo_platform.types.intake.evaluation_context_param import EvaluationContextParam
 from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
 from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
 from nemo_platform.types.intake.ingest.atif_agent_param import AtifAgentParam
 from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
 from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
-from nemo_platform.types.intake.ingest.atif_step_agent_param import AtifStepAgentParam
 from nemo_platform.types.intake.ingest.atif_step_param import AtifStepParam
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+from pydantic import RootModel
 
 logger = logging.getLogger(__name__)
 
@@ -124,13 +125,13 @@ async def atif_steps_from_trial(trial: AgentEvalTrial, *, started_at: datetime) 
 
     payload: list[AtifStepParam] = []
     for index, step in enumerate(steps):
-        dumped = step.model_dump(mode="json", exclude_none=True)
+        dumped: AtifStepParam = step.model_dump(mode="json", exclude_none=True)
         # Ingest requires one-based sequential ids, while the SDK read model leaves step_id optional.
         dumped["step_id"] = index + 1
         # Intake keys spans on start_time and falls back to its own ingest clock for a step with
         # no timestamp, which would make re-publish duplicate instead of replace.
         dumped.setdefault("timestamp", started_at.isoformat())
-        payload.append(cast(AtifStepParam, dumped))
+        payload.append(dumped)
     return payload
 
 
@@ -243,7 +244,7 @@ def trial_to_atif_ingest(
     agent: AtifAgentParam = {"name": agent_name, "version": agent_version}
     if model_name is not None:
         agent["model_name"] = model_name
-    step: AtifStepAgentParam = {
+    step: AtifStepParam = {
         "source": "agent",
         "step_id": 1,
         "message": output_text or "",
@@ -259,12 +260,13 @@ def trial_to_atif_ingest(
                 "end_timestamp": ended_at.timestamp(),
             }
         }
+    step_payload: list[AtifStepParam] = list(steps) if steps else [step]
 
     body: AtifCreateParams = {
         "schema_version": ATIF_SCHEMA_VERSION,
         "session_id": session_id_for(run_id, trial.id),
         "agent": agent,
-        "steps": list(steps) if steps else [step],
+        "steps": step_payload,
         "evaluation_context": run_task_to_evaluation_context(trial, evaluation_name=evaluation_name),
     }
     if trial.error is not None:
@@ -315,7 +317,6 @@ def score_to_evaluator_results(
         ]
         return [], skipped
 
-    comment = score.diagnostics[0].message if score.diagnostics else None
     rows: list[EvaluatorResultCreateParams] = []
     skipped: list[SkippedOutput] = []
     for output in score.outputs:
@@ -334,10 +335,26 @@ def score_to_evaluator_results(
             row["value"] = value
         if string_value is not None:
             row["string_value"] = string_value
+        comment = _comment_for_output(score, output.name)
         if comment is not None:
             row["comment"] = comment
         rows.append(row)
     return rows, skipped
+
+
+def _comment_for_output(score: AgentEvalTaskScore, output_name: str) -> str | None:
+    """Select the diagnostic comment that describes one emitted output.
+
+    A diagnostic naming this output wins; otherwise the first that names no output at all, which
+    is the one describing the score as a whole.
+    """
+    for diagnostic in score.diagnostics:
+        if diagnostic.details.get(OUTPUT_DETAIL) == output_name:
+            return diagnostic.message
+    for diagnostic in score.diagnostics:
+        if OUTPUT_DETAIL not in diagnostic.details:
+            return diagnostic.message
+    return None
 
 
 def _coerce_metric_value(value: object) -> tuple[EvaluatorResultDataType, float | None, str | None]:
@@ -354,7 +371,7 @@ def _coerce_metric_value(value: object) -> tuple[EvaluatorResultDataType, float 
     indistinguishable at the value level today (both arrive as ``str``/``Label``),
     so everything string-valued maps to TEXT until a real signal exists.
     """
-    unwrapped = getattr(value, "root", value)
+    unwrapped = value.root if isinstance(value, RootModel) else value
     if isinstance(unwrapped, bool):
         return "BOOLEAN", (1.0 if unwrapped else 0.0), None
     if isinstance(unwrapped, (int, float)):

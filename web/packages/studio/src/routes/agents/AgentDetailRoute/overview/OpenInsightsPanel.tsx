@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { InsightListItem } from '@nemo/sdk/generated/insights/schema';
 import { Button, Flex, Skeleton, Stack, Text } from '@nvidia/foundations-react-core';
-import type { InsightListItem } from '@studio/api/optimizer';
 import { DetailPanel } from '@studio/routes/agents/AgentDetailRoute/overview/DetailPanel';
 import { OpenInsightRow } from '@studio/routes/agents/AgentDetailRoute/overview/OpenInsightRow';
 import type { FC } from 'react';
