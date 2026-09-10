@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Post-generation update tool for NeMo Platform SDK.
+Post-generation update tool for NeMo Platform SDK wrapper files.
 
-This script applies customizations to the auto-generated SDK after Stainless generation.
-It handles README merging, pyproject.toml updates, and LICENSE file copying.
+Stainless generation is disabled. Keep this module limited to maintained
+wrapper and vendoring tasks.
 """
 
 import re
@@ -17,7 +17,6 @@ from typing import List, Literal, Tuple
 import tomlkit
 import typer
 from nemo_platform_sdk_tools.sdk.core.common import WRAPPER_DISTRIBUTION_NAME, SdkInfo, get_sdk_info
-from nemo_platform_sdk_tools.sdk.post_generation_exist_ok import inject_exist_ok
 from tomlkit.items import AoT, Table
 
 app = typer.Typer(
@@ -678,25 +677,6 @@ def remove_stats_file() -> None:
 
 
 @app.command()
-def save_nmp_context() -> None:
-    """
-    Save the inputs used to generate the current version of the SDK.
-    This context is used for checking if the SDK is up to date with the main OpenAPI spec and Stainless config.
-    """
-    sdk_info = get_sdk_info()
-
-    typer.echo("Saving generation context...")
-
-    nmpcontext_dir = sdk_info.sdk_dir / ".nmpcontext"
-    nmpcontext_dir.mkdir(parents=True, exist_ok=True)
-
-    shutil.copy(sdk_info.openapi_spec_file, nmpcontext_dir / "openapi.yaml")
-    shutil.copy(sdk_info.stainless_config_file, nmpcontext_dir / "stainless.yaml")
-
-    typer.echo(f"  - Copied to {nmpcontext_dir}")
-
-
-@app.command()
 def update_license_headers() -> None:
     """Update license headers in all Python files in the SDK."""
     sdk_info = get_sdk_info()
@@ -733,31 +713,6 @@ def ensure_api_image_field() -> None:
 
 @app.command()
 def update_all() -> None:
-    """Run all updates: README, pyproject.toml, LICENSE, string replacements, and license headers."""
-    typer.echo("Running all post-generation updates...")
-
-    # Run all update commands
-    update_readme()
-    typer.echo()
-    update_pyproject()
-    typer.echo()
-    copy_license()
-    typer.echo()
-    copy_build_hook()
-    typer.echo()
-    copy_source_overrides()
-    typer.echo()
-    replace_strings()
-    typer.echo()
-    update_license_headers()
-    typer.echo()
-    remove_stats_file()
-    typer.echo()
-    ensure_api_image_field()
-    typer.echo()
-    save_nmp_context()
-    typer.echo()
-    inject_exist_ok()
-    typer.echo()
-
-    typer.echo("\nAll post-generation updates completed successfully!")
+    """Disabled because full post-generation updates are tied to Stainless generation."""
+    typer.echo("Full post-generation updates are disabled; Stainless generation is disabled.", err=True)
+    raise typer.Exit(code=1)

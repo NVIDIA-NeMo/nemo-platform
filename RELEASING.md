@@ -16,16 +16,19 @@ the default branch head.
 ## Before starting a stable release
 
 Choose the exact 40-character commit SHA and the `MAJOR.MINOR.PATCH` version
-to release. The source must contain the desired generated SDKs. If the API
-surface changed since the last SDK update, update the SDKs before releasing:
+to release. If the API surface changed, update the derived OpenAPI, web SDK,
+and CLI artifacts before releasing:
 
 ```bash
 make update-sdk
 ```
 
-This regenerates the OpenAPI specifications and synchronizes the SDKs. The
-specifications intentionally retain `info.version: 0.0.0`; do not copy the
-release version into them.
+This regenerates the OpenAPI specifications and synchronizes non-Stainless
+derived artifacts. It does not regenerate the Python SDK with Stainless, and no
+automated lint proves semantic compatibility between current OpenAPI and the
+legacy Stainless-generated SDK. Manually review affected legacy SDK behavior
+for intentional API changes. The specifications intentionally retain
+`info.version: 0.0.0`; do not copy the release version into them.
 
 ## Release catalog
 

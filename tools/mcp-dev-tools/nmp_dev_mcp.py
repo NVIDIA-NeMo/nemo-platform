@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from fastmcp import FastMCP  # ty: ignore[unresolved-import]
+from fastmcp import FastMCP
 
 # Configure logging
 logging.basicConfig(
@@ -713,7 +713,7 @@ def create_server(working_dir: str | None = None) -> FastMCP:
                             test-regression, test-canary, test-coverage, test-debug,
                             test-failed, test-list, test-markers, test-clean,
                             test-policy, test-jobs-launcher, test-gpu-integration
-                   SDK/CLI: refresh-openapi, stainless, update-sdk, update-cli,
+                   SDK/CLI: refresh-openapi, update-sdk, update-cli,
                             generate-cli-commands, generate-cli-reference-docs,
                             generate-config-reference-docs
                    Vendoring: vendor, vendor-nemo-platform-ext
@@ -758,7 +758,6 @@ def create_server(working_dir: str | None = None) -> FastMCP:
             "test-jobs-launcher",
             # SDK and OpenAPI generation
             "refresh-openapi",
-            "stainless",
             "update-sdk",
             "update-cli",
             "generate-cli-commands",

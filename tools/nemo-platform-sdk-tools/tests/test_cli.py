@@ -14,7 +14,6 @@ def test_main_help_lists_preserved_command_groups() -> None:
     assert result.exit_code == 0
     assert "generate-cli" in result.output
     assert "license" in result.output
-    assert "openapi-stainless" in result.output
     assert "publish" not in result.output
     assert "vendor" in result.output
 
@@ -34,9 +33,25 @@ def test_license_generate_help_includes_output_option() -> None:
     assert "--output" in click.unstyle(result.output)
 
 
-def test_representative_sdk_help_is_registered() -> None:
+def test_stainless_config_mapper_is_not_registered() -> None:
     result = runner.invoke(app, ["openapi-stainless", "--help"])
 
-    assert result.exit_code == 0
-    assert "sync-methods" in result.output
-    assert "sync-models" in result.output
+    assert result.exit_code != 0
+    assert "No such command" in result.output
+
+
+def test_python_sdk_snapshot_commands_are_not_registered() -> None:
+    freshness_result = runner.invoke(app, ["is-up-to-date", "--help"])
+    save_context_result = runner.invoke(app, ["post-generation", "save-nmp-context", "--help"])
+
+    assert freshness_result.exit_code != 0
+    assert "No such command" in freshness_result.output
+    assert save_context_result.exit_code != 0
+    assert "No such command" in save_context_result.output
+
+
+def test_full_post_generation_update_is_disabled() -> None:
+    result = runner.invoke(app, ["post-generation", "update-all"])
+
+    assert result.exit_code == 1
+    assert "Stainless generation is disabled" in result.output
