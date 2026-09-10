@@ -616,12 +616,14 @@ class AgentEvalJob(NemoJob):
         spec = AgentEvalSpec.model_validate(config)
         tasks = [_to_runtime_task(task) for task in spec.tasks]
         target, prompt_template, params = self._resolve_target(spec.target, ctx)
+        bundle_dir = ctx.storage.persistent / AGENT_BUNDLE_DIR
         run_config = AgentEvalRunConfig(
             params=params,
             prompt_template=prompt_template,
             parallelism=spec.max_concurrent_tasks,
             labels=spec.labels,
             fail_fast=spec.fail_fast,
+            work_dir=bundle_dir,
         )
         # `run` may be injected a sync `sdk` (submitted jobs, via get_task_nemo_client) and/or an
         # `async_sdk`; forward whichever identity is present, preferring async when both are — the
