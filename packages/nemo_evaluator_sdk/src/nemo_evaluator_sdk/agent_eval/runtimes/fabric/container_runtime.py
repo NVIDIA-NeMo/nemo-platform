@@ -40,8 +40,16 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, cast
 
-from nemo_evaluator_sdk.agent_eval.runtimes.fabric import _common
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric import _common, otlp_receiver
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.image import ensure_fabric_image
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_receiver import READY_FILENAME, TRACES_PATH
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_writer import (
+    TRACES_SUBDIR,
+    fold_exports,
+    otlp_trace_path,
+    register_trace_evidence,
+    traces_dir,
+)
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
     CODEX_SKILLS_DIR,
     SKILL_MODE_CODEX_SKILLS_DIR,
@@ -62,9 +70,7 @@ from nemo_evaluator_sdk.resolver_protocols import SecretResolver
 from nemo_evaluator_sdk.resolvers import LocalSecretResolver
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.evidence import (
-    EVIDENCE_FORMAT_ATIF,
     EVIDENCE_LOGS,
-    EVIDENCE_TRACE,
     CandidateEvidence,
     EvidenceDescriptor,
 )
@@ -96,6 +102,11 @@ _RELAY_DIR = f"{_OUT_DIR}/relay"
 _ARTIFACTS_DIR = f"{_OUT_DIR}/artifacts"
 _LOGS_DIR = f"{_OUT_DIR}/logs"
 _RESULT_PATH = f"{_OUT_DIR}/fabric_result.json"
+_TRACES_DIR = f"{_OUT_DIR}/{TRACES_SUBDIR}"
+_RECEIVER_PATH = f"{_IN_DIR}/otlp_receiver.py"
+#: OTLP/HTTP's default port, on the sandbox's own loopback. Nothing else in the image binds it.
+_OTLP_PORT = 4318
+_OTLP_ENDPOINT = f"http://127.0.0.1:{_OTLP_PORT}{TRACES_PATH}"
 _FABRIC_STDERR = f"{_LOGS_DIR}/fabric-stderr.txt"
 _AGENT_PATH = f"{_IN_DIR}/agent.json"
 _INPUT_PATH = f"{_IN_DIR}/input.txt"
@@ -259,6 +270,17 @@ class FabricContainerRuntime:
                 await self._seed_workspace(sandbox, task)
                 result = await sandbox.exec(self._fabric_command(), timeout_s=DEFAULT_FABRIC_TIMEOUT_S)
                 await sandbox.download_dir(_OUT_DIR, out_dir)
+            # After download, because folding needs protobuf and the sandbox image is not
+            # guaranteed to have it.
+            folded = await asyncio.to_thread(fold_exports, traces_dir(out_dir))
+            if not folded:
+                # Zero also means the receiver never started -- no `python3`, or the port taken --
+                # and that failure is invisible from the trial otherwise.
+                logger.warning(
+                    "No OTLP export was captured for task %s; its trace falls back to ATIF. See %s.",
+                    task.id,
+                    out_dir / "logs" / "otlp-receiver.log",
+                )
             # Codex self-injection seeds each bundle inside the workspace so the harness discovers it during
             # the run; drop them from the downloaded evidence before the workspace is exposed (else the
             # injected files read as agent output to workspace-reading metrics). Native staging lives under
@@ -300,9 +322,19 @@ class FabricContainerRuntime:
     def _fabric_command(self) -> str:
         """The driver invocation: pre-create the /out dirs Fabric chdirs into, run, capture stdout."""
         run = f"python3 {shlex.quote(_DRIVER_PATH)} {shlex.quote(_AGENT_PATH)} {shlex.quote(_INPUT_PATH)}"
+        ready = shlex.quote(f"{_TRACES_DIR}/{READY_FILENAME}")
+        # Wait for the file the receiver writes once bound: Relay's first export must not arrive
+        # before there is anything listening.
         return (
-            f"mkdir -p {_WORKSPACE_DIR} {_RELAY_DIR} {_ARTIFACTS_DIR} {_LOGS_DIR} && "
-            f"{run} > {shlex.quote(_RESULT_PATH)} 2> {shlex.quote(_FABRIC_STDERR)}"
+            f"mkdir -p {_WORKSPACE_DIR} {_RELAY_DIR} {_ARTIFACTS_DIR} {_LOGS_DIR} {_TRACES_DIR} && "
+            f"python3 {shlex.quote(_RECEIVER_PATH)} {shlex.quote(_TRACES_DIR)} {_OTLP_PORT} "
+            f"> {shlex.quote(f'{_LOGS_DIR}/otlp-receiver.log')} 2>&1 & "
+            f"RECEIVER=$!; "
+            f"for _ in $(seq 1 50); do [ -f {ready} ] && break; sleep 0.1; done; "
+            f"{run} > {shlex.quote(_RESULT_PATH)} 2> {shlex.quote(_FABRIC_STDERR)}; "
+            f"STATUS=$?; "
+            f"kill $RECEIVER 2>/dev/null; wait $RECEIVER 2>/dev/null; "
+            f"exit $STATUS"
         )
 
     def _seed_files(
@@ -320,6 +352,7 @@ class FabricContainerRuntime:
         files: dict[str, str] = {
             _INPUT_PATH: task.agent_prompt(),
             _DRIVER_PATH: _DRIVER_SOURCE.read_text(encoding="utf-8"),
+            _RECEIVER_PATH: _receiver_source(),
         }
         if self._skill_set.skills and skill_mode is not None:
             if skill_mode == SKILL_MODE_CODEX_SKILLS_DIR:
@@ -373,6 +406,7 @@ class FabricContainerRuntime:
                 relay_dir=_RELAY_DIR,
                 agent_name=_RUNTIME_NAME,
                 agent_version=_common.FABRIC_AGENT_VERSION,
+                otlp_endpoint=_OTLP_ENDPOINT,
             )
         )
 
@@ -466,11 +500,7 @@ class FabricContainerRuntime:
         logs_dir = out_dir / "logs"
         if logs_dir.is_dir():
             descriptors[EVIDENCE_LOGS] = EvidenceDescriptor(kind="logs", ref=str(logs_dir))
-        atif = _find_atif(out_dir / "relay")
-        if atif is not None:
-            descriptors[EVIDENCE_TRACE] = EvidenceDescriptor(
-                kind=EVIDENCE_TRACE, format=EVIDENCE_FORMAT_ATIF, ref=str(atif)
-            )
+        register_trace_evidence(descriptors, atif=_find_atif(out_dir / "relay"), otlp=otlp_trace_path(out_dir))
         return CandidateEvidence(
             descriptors=descriptors,
             metadata={"runtime": _RUNTIME_NAME, "sandbox_provider": self._provider.name, "image": self._image},
@@ -499,6 +529,11 @@ class FabricContainerRuntime:
         # working state lives at /out inside the sandbox and is downloaded here.
         root = (config.work_dir or Path.cwd()) / "evidence" / "fabric_container"
         return root / _common.task_subdir_name(index, task.id)
+
+
+def _receiver_source() -> str:
+    """The shared receiver's own source, seeded into the sandbox and run there as a script."""
+    return (Path(otlp_receiver.__file__)).read_text(encoding="utf-8")
 
 
 def _to_mapping(config: FabricConfig | Mapping[str, Any]) -> dict[str, Any]:
