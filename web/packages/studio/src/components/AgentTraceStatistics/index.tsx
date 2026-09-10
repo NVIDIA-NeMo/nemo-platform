@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import {
   Button,
+  Card,
   Flex,
   SelectContent,
   SelectItem,
@@ -127,14 +128,15 @@ export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
       </Flex>
 
       {error ? (
-        <ErrorPanel
-          errorMessage={traceStatisticsErrorMessage(error)}
-          attributes={{
-            ErrorMessage: {
-              header: 'Trace statistics are unavailable',
-            },
-          }}
-        />
+        <Card>
+          <Flex justify="center" padding="density-2xl">
+            <ErrorMessage
+              header="Trace statistics are unavailable"
+              message={traceStatisticsErrorMessage(error)}
+              height="auto"
+            />
+          </Flex>
+        </Card>
       ) : isEmpty ? (
         <TraceStatisticsEmptyState
           onRunAgent={onRunAgent}
