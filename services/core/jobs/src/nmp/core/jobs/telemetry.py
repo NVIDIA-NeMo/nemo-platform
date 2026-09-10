@@ -17,7 +17,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from nemo_platform_plugin.jobs.telemetry import get_job_telemetry_session_id
+from nemo_platform_plugin.jobs.telemetry import get_job_telemetry_plugins, get_job_telemetry_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,7 @@ class JobRunTelemetry:
     job_type: str
     status: str
     duration_sec: float
+    plugins: list[str]
     model: str
     input_tokens: int
     output_tokens: int
@@ -174,6 +175,7 @@ def build_job_run_telemetry(
         job_type=_job_type_bucket(source),
         status=status,
         duration_sec=_duration_sec(created_at, updated_at),
+        plugins=get_job_telemetry_plugins(custom_fields),
         model=_model_data_bucket(details.get("model")),
         input_tokens=_token_count(details, "input_tokens"),
         output_tokens=_token_count(details, "output_tokens"),
@@ -189,7 +191,7 @@ def _event_parameters(event: JobRunTelemetry) -> dict[str, Any]:
         "isCi": _is_ci_environment(),
         "jobType": event.job_type,
         "durationSec": event.duration_sec,
-        "plugins": [],
+        "plugins": event.plugins,
         "model": event.model,
         "inputTokens": event.input_tokens,
         "outputTokens": event.output_tokens,

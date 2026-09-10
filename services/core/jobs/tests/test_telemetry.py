@@ -14,7 +14,10 @@ def test_build_job_run_telemetry_uses_stamped_session_id() -> None:
         source="customer project",
         status="completed",
         status_details={"model": "private-model", "input_tokens": "12", "output_tokens": 7},
-        custom_fields=build_job_telemetry_custom_fields("session-123"),
+        custom_fields=build_job_telemetry_custom_fields(
+            "session-123",
+            plugins=["nemo-data-designer-plugin", "safe_synthesizer"],
+        ),
         created_at=datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc),
         updated_at=datetime(2026, 9, 10, 12, 0, 5, tzinfo=timezone.utc),
     )
@@ -24,6 +27,7 @@ def test_build_job_run_telemetry_uses_stamped_session_id() -> None:
     assert event.job_type == "custom"
     assert event.status == "completed"
     assert event.duration_sec == 5.0
+    assert event.plugins == ["data-designer", "safe-synthesizer"]
     assert event.model == "defined"
     assert event.input_tokens == 12
     assert event.output_tokens == 7
@@ -47,7 +51,7 @@ def test_build_payload_matches_job_run_wire_contract() -> None:
         source="evaluation",
         status="cancelled",
         status_details={"input_tokens": None, "output_tokens": "bad"},
-        custom_fields=build_job_telemetry_custom_fields("session-123"),
+        custom_fields=build_job_telemetry_custom_fields("session-123", plugins=["anonymizer"]),
         created_at=None,
         updated_at=None,
     )
@@ -63,7 +67,7 @@ def test_build_payload_matches_job_run_wire_contract() -> None:
     assert params["nemoSource"] == "platform"
     assert params["taskStatus"] == "canceled"
     assert params["jobType"] == "evaluation"
-    assert params["plugins"] == []
+    assert params["plugins"] == ["anonymizer"]
     assert params["model"] == "undefined"
     assert params["inputTokens"] == -1
     assert params["outputTokens"] == -1
