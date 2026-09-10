@@ -58,26 +58,33 @@ export const ResultsPreviewTable: FC<ResultsPreviewTableProps> = memo(
     );
 
     const { pageIndex, pageSize } = dataViewState.pagination.state;
+    const sortingState = dataViewState.sorting.state;
+    const sortedRows = useMemo(() => {
+      const [sort] = sortingState;
+      if (!sort) return previewRows;
+      const compare = (a: PreviewRow, b: PreviewRow): number =>
+        sort.id === 'count' ? a.count - b.count : a.text.localeCompare(b.text);
+      return [...previewRows].sort((a, b) => (sort.desc ? -compare(a, b) : compare(a, b)));
+    }, [previewRows, sortingState]);
+
     const pageRows = useMemo(
-      () => previewRows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
-      [previewRows, pageIndex, pageSize]
+      () => sortedRows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+      [sortedRows, pageIndex, pageSize]
     );
 
     const makeColumns = useCallback<
       ComponentProps<typeof StudioDataView<PreviewRow>>['makeColumns']
     >(
       (col) => [
-        col.display({
-          id: 'record',
+        col.accessor('text', {
           header: 'Record',
-          cell: ({ row }) => <Text kind="body/regular/sm">{row.original.text}</Text>,
+          cell: ({ getValue }) => <Text kind="body/regular/sm">{getValue()}</Text>,
         }),
-        col.display({
-          id: 'replacements',
+        col.accessor('count', {
           header: 'Count',
           size: 100,
           enableResizing: false,
-          cell: ({ row }) => <Text kind="body/regular/sm">{row.original.count}</Text>,
+          cell: ({ getValue }) => <Text kind="body/regular/sm">{getValue()}</Text>,
         }),
         col.display({
           id: 'details',

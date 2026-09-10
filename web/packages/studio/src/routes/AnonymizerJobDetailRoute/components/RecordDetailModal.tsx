@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button, Flex, Modal, Text } from '@nvidia/foundations-react-core';
+import { Block, Button, Flex, Modal, Text } from '@nvidia/foundations-react-core';
 import { AnonymizerRecordView } from '@studio/components/AnonymizerRecordView/AnonymizerRecordView';
 import {
   buildAnonymizerRecord,
@@ -65,9 +65,9 @@ export const RecordDetailModal: FC<RecordDetailModalProps> = ({
         </Flex>
       }
     >
-      <div className="max-h-[70vh] overflow-auto">
+      <Block className="max-h-[70vh] overflow-auto">
         {record ? <AnonymizerRecordView outputHeading={outputHeading} record={record} /> : null}
-      </div>
+      </Block>
     </Modal>
   );
 };

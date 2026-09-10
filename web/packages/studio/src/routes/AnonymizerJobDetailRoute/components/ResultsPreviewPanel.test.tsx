@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ResultsPreviewPanel } from '@studio/routes/AnonymizerJobDetailRoute/components/ResultsPreviewPanel';
-import { fireEvent, render, screen, within } from '@studio/tests/util/render';
+import { fireEvent, render, renderRoute, screen, waitFor, within } from '@studio/tests/util/render';
+import { useState, type FC } from 'react';
 
 vi.mock('@studio/routes/AnonymizerJobDetailRoute/useResultPreview', () => ({
   useResultPreview: () => ({
@@ -50,5 +51,35 @@ describe('ResultsPreviewPanel', () => {
 
     expect(modal.getByText('Record 2 of 2')).toBeInTheDocument();
     expect(modal.getByText('Hello Jane')).toBeInTheDocument();
+  });
+
+  it('sorts preview rows from the url sort param', () => {
+    renderRoute(<ResultsPreviewPanel workspace="default" artifactUrl="default/job#results" />, {
+      history: '/anonymizer/jobs/job?sort=text',
+    });
+
+    const records = screen.getAllByText(/^Hello (John|Jane)$/).map((el) => el.textContent);
+    expect(records).toEqual(['Hello Jane', 'Hello John']);
+  });
+
+  it('closes the record preview when the artifact changes', async () => {
+    const Harness: FC = () => {
+      const [artifactUrl, setArtifactUrl] = useState('default/job#results');
+      return (
+        <>
+          <button onClick={() => setArtifactUrl('default/other#results')}>swap artifact</button>
+          <ResultsPreviewPanel workspace="default" artifactUrl={artifactUrl} />
+        </>
+      );
+    };
+    render(<Harness />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Details' })[0]);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('open');
+
+    fireEvent.click(screen.getByRole('button', { name: 'swap artifact' }));
+
+    await waitFor(() => expect(dialog).not.toHaveAttribute('open'));
   });
 });
