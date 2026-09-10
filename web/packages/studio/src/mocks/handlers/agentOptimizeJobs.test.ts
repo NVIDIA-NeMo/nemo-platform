@@ -3,9 +3,9 @@
 
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 
-const listOptimizeJobs = (filter?: unknown) => {
+const listOptimizeJobs = (filter?: unknown, workspace = 'default') => {
   const url = new URL(
-    `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/default/jobs/optimize`,
+    `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${workspace}/jobs/optimize`,
     window.location.origin
   );
   if (filter !== undefined) url.searchParams.set('filter', JSON.stringify(filter));
@@ -17,6 +17,14 @@ describe('mock optimize jobs handler', () => {
     const response = await listOptimizeJobs();
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ pagination: { total_results: 3 } });
+  });
+
+  it('scopes the list to the requested workspace', async () => {
+    const response = await listOptimizeJobs(undefined, 'staging');
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.map((job: { name: string }) => job.name)).toEqual(['staging-sweep-1']);
+    expect(body.pagination.total_results).toBe(1);
   });
 
   it('applies a supported spec.agent filter', async () => {

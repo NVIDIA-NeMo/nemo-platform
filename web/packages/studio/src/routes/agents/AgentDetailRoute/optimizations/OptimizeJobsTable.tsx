@@ -14,7 +14,7 @@ import { Banner, Text } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getWorkspaceJobDetailRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
-import { ComponentProps, type FC, useCallback } from 'react';
+import { type ComponentProps, type FC, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 
 /** Statuses that will not change again, so polling can stop. */

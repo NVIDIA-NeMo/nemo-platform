@@ -9,7 +9,8 @@ const OPTIMIZE_JOBS_URL = `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:works
 
 /**
  * Two studies for `react-agent` and one for another agent, so a test can prove the request scopes
- * the list to one agent — the handler below filters exactly as the server does.
+ * the list to one agent — the handler below filters exactly as the server does. One study lives in
+ * another workspace, so a test can prove the list is scoped to the requested workspace too.
  */
 export const mockOptimizeJobs: OptimizeJob[] = [
   {
@@ -38,6 +39,14 @@ export const mockOptimizeJobs: OptimizeJob[] = [
     status: 'error',
     created_at: '2026-08-12T09:00:00Z',
     spec: { optimize_config: 'optimize-other.yaml', agent: 'other-agent' },
+  },
+  {
+    id: 'opt-7c15',
+    name: 'staging-sweep-1',
+    workspace: 'staging',
+    status: 'completed',
+    created_at: '2026-08-11T09:00:00Z',
+    spec: { optimize_config: 'optimize-brevity.yaml', agent: 'react-agent' },
   },
 ];
 
@@ -101,8 +110,9 @@ const applyFilter = (jobs: OptimizeJob[], filter: FilterQuery): OptimizeJob[] =>
 };
 
 export const agentOptimizeJobsHandlers = [
-  http.get(OPTIMIZE_JOBS_URL, ({ request }) => {
+  http.get(OPTIMIZE_JOBS_URL, ({ request, params }) => {
     const url = new URL(request.url);
+    const workspace = String(params.workspace);
     const page = Number(url.searchParams.get('page') ?? 1);
     const pageSize = Number(url.searchParams.get('page_size') ?? 50);
     const raw = url.searchParams.get('filter');
@@ -110,7 +120,10 @@ export const agentOptimizeJobsHandlers = [
     if (!filter) {
       return HttpResponse.json({ detail: `Unsupported filter: ${raw}` }, { status: 400 });
     }
-    const matches = applyFilter(mockOptimizeJobs, filter);
+    const matches = applyFilter(
+      mockOptimizeJobs.filter((job) => job.workspace === workspace),
+      filter
+    );
     const data = matches.slice((page - 1) * pageSize, page * pageSize);
     return HttpResponse.json({
       data,
