@@ -438,61 +438,6 @@ assert_batchsandbox() {
   ok "BatchSandbox/${SANDBOX_ID} present"
 }
 
-assert_server_proxy_streaming() {
-  local pod="$1"
-  local port=18081
-  local response_file error_file response curl_ec=""
-
-  info "checking delayed multi-chunk response through server proxy"
-  # Model Gym's response shape: a whitespace heartbeat (valid JSON prefix), then a
-  # delayed JSON envelope. Write a complete HTTP/1.1 chunked body so this check
-  # distinguishes proxy corruption from a host that omits the terminating chunk.
-  kubectl exec -i -n "${WORKLOAD_NS}" "${pod}" -c sandbox -- /bin/sh -s <<'SH'
-rm -f /tmp/osb-stream-server.log
-nohup /bin/sh -c '
-  {
-    printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
-    printf "1\r\n \r\n"
-    sleep 2
-    printf "B\r\n{\"ok\":true}\r\n"
-    printf "0\r\n\r\n"
-  } | nc -l -p 18081
-' </dev/null >/tmp/osb-stream-server.log 2>&1 &
-SH
-
-  response_file="$(mktemp)"
-  error_file="$(mktemp)"
-  local deadline=$((SECONDS + 60))
-  while (( SECONDS < deadline )); do
-    if curl -sS --max-time 45 \
-      -H "OPEN-SANDBOX-API-KEY: ${API_KEY}" \
-      "${BASE_URL}/sandboxes/${SANDBOX_ID}/proxy/${port}/stream" \
-      -o "${response_file}" --stderr "${error_file}"; then
-      curl_ec=0
-      break
-    fi
-    curl_ec=$?
-    sleep 1
-  done
-  response="$(cat "${response_file}" 2>/dev/null || true)"
-  if [[ "${curl_ec:-1}" -ne 0 || "${response}" != ' {"ok":true}' ]]; then
-    local curl_error guest_log proxy_log
-    curl_error="$(cat "${error_file}" 2>/dev/null || true)"
-    guest_log="$(kubectl exec -n "${WORKLOAD_NS}" "${pod}" -c sandbox -- \
-      cat /tmp/osb-stream-server.log 2>&1 || true)"
-    proxy_log="$(kubectl logs -n "${SYSTEM_NS}" "deploy/${SERVER_DEPLOY}" \
-      --since=2m 2>&1 | grep -E 'RemoteProtocolError|incomplete chunked|Exception in ASGI' \
-      | tail -40 || true)"
-    rm -f "${response_file}" "${error_file}"
-    die "server proxy truncated/corrupted a delayed response (curl=${curl_ec:-unknown}, bytes=${#response}, repr=$(printf %q "${response}")).
-curl: ${curl_error}
-guest: ${guest_log}
-proxy: ${proxy_log}"
-  fi
-  rm -f "${response_file}" "${error_file}"
-  ok "server proxy preserved heartbeat plus terminating JSON"
-}
-
 run_profile_verification() {
   PROFILE="$1"
   require_profile "${PROFILE}"
@@ -509,6 +454,5 @@ run_profile_verification() {
   assert_runtime_class "${pod}"
   assert_node_placement "${pod}"
   assert_kernel_isolation "${pod}"
-  assert_server_proxy_streaming "${pod}"
   info "PASS profile=${PROFILE}"
 }

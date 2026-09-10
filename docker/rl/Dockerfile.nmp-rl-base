@@ -331,8 +331,9 @@ COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} --exclude=**/.git . /opt/n
 # could not be cleaned up afterwards, and anything left behind ships in the layer.
 #
 # nemo-rl-pinned-source.patch covers: NemotronH trunk layout, Automodel torch 2.11 version
-# compare, transformers dtype alias, v4_compatible checkpoint plumbing, Gym setuptools<81
-# for pkg_resources, and quoting those PEP 508 specs in Gym's bash uv-pip command.
+# compare, transformers dtype alias, v4_compatible checkpoint plumbing, DTensor async
+# checkpoint finalization, Gym setuptools<81 for pkg_resources, and quoting those PEP 508
+# specs in Gym's bash uv-pip command.
 # Drop hunks (or the file) once the corresponding pin contains the fix.
 RUN --mount=type=bind,source=docker/rl/patches,target=/patches \
     cd /opt/nemo-rl && \
