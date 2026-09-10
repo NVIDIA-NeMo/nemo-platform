@@ -10,7 +10,7 @@ import { useFormContext, type FieldPath } from 'react-hook-form';
 interface ProgressReportingFieldsProps {
   /** Path of the `progress_reporting` object, e.g. `automodel.schedule.progress_reporting`. */
   prefix: string;
-  /** Flattened spec table for the backend, and the key its `progress_reporting` sits under. */
+  /** Flattened spec table for the backend. */
   defaults: ReadonlyMap<string, unknown>;
   defaultsPrefix: string;
   disabled: boolean;
@@ -19,9 +19,6 @@ interface ProgressReportingFieldsProps {
 /**
  * The shared `ProgressReportingConfig`, which every backend carries but hangs off a
  * different parent — `schedule` on automodel and unsloth, `training` on RL.
- *
- * `time_series_metrics` decides which metrics are recorded at all, so leaving it unbound
- * meant the job details charts could only ever show whatever the backend chose by default.
  */
 export const ProgressReportingFields = ({
   prefix,

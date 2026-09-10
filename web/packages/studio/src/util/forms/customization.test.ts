@@ -143,10 +143,6 @@ describe('customizationFormSchema', () => {
 });
 
 describe('integrations across backends', () => {
-  /**
-   * All three specs hang the same `IntegrationsSpec` off them, and one section binds it for
-   * every backend — so the pruning that RL already did has to hold for the other two.
-   */
   it('drops an untouched integrations block on every backend', () => {
     const automodel = formToAutomodelCreate(validAutomodel());
     expect(automodel.spec.integrations).toBeUndefined();
@@ -196,10 +192,6 @@ describe('formToAutomodelCreate', () => {
     expect(result.spec.output).toEqual({ name: '', description: undefined });
   });
 
-  /**
-   * `...training` spreads the distillation block in whatever the training type, so an SFT
-   * job would otherwise carry teacher settings for a teacher that is not there.
-   */
   it('drops the whole distillation block for an sft job', () => {
     const data = validAutomodel();
     data.automodel.training.training_type = 'sft';

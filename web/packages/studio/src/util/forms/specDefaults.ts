@@ -30,16 +30,10 @@ import { CustomizationCreateUnslothJobBody } from '@nemo/sdk/generated/customize
  * (`model`, `dataset`) get an empty string: the form overwrites them, and Zod refuses to
  * parse without them.
  */
-/**
- * Every backend hangs the same `IntegrationsSpec` off its spec, and all three bind it
- * through `IntegrationsSection`. Present so Zod fills any default the spec declares inside
- * them; without the container, nested defaults are skipped silently.
- *
- * A factory rather than a shared literal, so the three seeds cannot alias one object.
- */
+/** Present so Zod fills the defaults nested inside; without the container it skips them. */
 const integrationsSeed = () => ({ wandb: {}, mlflow: {} });
 
-/** Same reasoning for the shared `ProgressReportingConfig`, bound by `ProgressReportingFields`. */
+/** Same reason as {@link integrationsSeed}. */
 const progressReportingSeed = () => ({ progress_reporting: {} });
 
 export const AUTOMODEL_SEED = {

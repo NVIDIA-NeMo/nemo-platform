@@ -2,16 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Select options derived from a generated enum, rather than a hand-written table.
+ * Select options derived from a generated enum, so a value the backend adds reaches the
+ * dropdown on its own — a hand-written table drops it silently instead.
  *
- * The generated enums come from the OpenAPI spec, so deriving options means a value the
- * backend adds shows up on its own. A hand-maintained label table drifts silently instead:
- * the new value is simply absent from the dropdown, and nothing fails.
- *
- * Values are shown as they are. `adamw_8bit` and `bf16` are what the API documents and what
- * the tuning references call them, so re-spelling them as "AdamW 8-bit" adds a translation
- * step without adding meaning. Pass `overrides` only where the raw value would actively
- * mislead — a `"true"`/`"false"` enum reads as a bug in a dropdown.
+ * Labels are the API value as-is. Use `overrides` only where that would mislead.
  */
 export const selectItems = <T extends Record<string, string>>(
   values: T,

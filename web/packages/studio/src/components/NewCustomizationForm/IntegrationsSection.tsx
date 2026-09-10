@@ -10,14 +10,8 @@ import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import { useFormContext, type FieldPath } from 'react-hook-form';
 
 /**
- * Experiment tracking for any customization backend.
- *
- * All three share one `IntegrationsSpec` in the API — the same `WandbIntegration` and
- * `MlflowIntegration` objects hang off each backend's spec — so the only thing that varies
- * between them is the path prefix.
- *
- * Everything here is optional: a blank field is stripped on submit so the job ships without
- * the integration rather than with an empty one.
+ * Experiment tracking for any customization backend. All three share one `IntegrationsSpec`
+ * in the API, so the path prefix is the only thing that varies.
  */
 export const IntegrationsSection = ({ backend }: { backend: CustomizationBackend }) => {
   const { control, formState } = useFormContext<CustomizationFormFields>();

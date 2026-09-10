@@ -13,11 +13,6 @@ describe('selectItems', () => {
     ]);
   });
 
-  /**
-   * The reason for deriving these rather than hand-listing them: a value the backend adds
-   * has to reach the dropdown on its own. A hand-written table drops it silently — the
-   * option is simply absent and nothing fails.
-   */
   it('covers every value of the generated enum', () => {
     const values = selectItems(UnslothOptimizerSpecOptim).map((item) => item.value);
     expect(values).toEqual(Object.values(UnslothOptimizerSpecOptim));

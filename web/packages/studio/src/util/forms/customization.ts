@@ -265,9 +265,6 @@ export const formToAutomodelCreate = (f: CustomizationFormFields): AutomodelJobs
       training: {
         ...training,
         lora: usesLora ? training.lora : undefined,
-        // The distillation block is spread in by `...training` regardless of the chosen
-        // training type, so drop it wholesale on an SFT job rather than sending the
-        // teacher settings for a teacher that is not there.
         teacher_model: isDistillation ? training.teacher_model || undefined : undefined,
         teacher_precision: isDistillation ? training.teacher_precision : undefined,
         distillation_ratio: isDistillation ? training.distillation_ratio : undefined,
