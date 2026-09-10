@@ -3002,6 +3002,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/PlatformJobStatus'
           description: The current status.
+        spec:
+          description: Filter on a path within the job's spec, e.g. `spec.target.format`.
+          title: Spec
+          additionalProperties: true
+          type: object
         updated_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -3658,6 +3663,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/PlatformJobStatus'
           description: The current status.
+        spec:
+          description: Filter on a path within the job's spec, e.g. `spec.target.format`.
+          title: Spec
+          additionalProperties: true
+          type: object
         updated_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -5663,6 +5673,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/PlatformJobStatus'
           description: The current status.
+        spec:
+          description: Filter on a path within the job's spec, e.g. `spec.target.format`.
+          title: Spec
+          additionalProperties: true
+          type: object
         updated_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
