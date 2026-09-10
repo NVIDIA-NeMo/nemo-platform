@@ -10,13 +10,20 @@ Relay will only talk to a socket, so the socket is the contract.
 from __future__ import annotations
 
 import json
+import socket
 import threading
 import urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
-from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_receiver import EXPORT_SUFFIX, READY_FILENAME, OTLPReceiver
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_receiver import (
+    EXPORT_SUFFIX,
+    PROTOBUF_MEDIA_TYPE,
+    READY_FILENAME,
+    TRACES_PATH,
+    OTLPReceiver,
+)
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_writer import (
     OTLP_FILENAME,
     fold_exports,
@@ -53,14 +60,30 @@ def test_repeated_flushes_all_survive_the_fold(receiver, tmp_path: Path) -> None
     assert span_names(otlp_trace_path(tmp_path)) == ["first", "second", "third"]
 
 
-def test_folding_twice_does_not_double_the_spans(receiver, tmp_path: Path) -> None:
-    # A caller that folds again -- a retry, or reprocessed evidence -- must not double what a
-    # span-counting metric sees.
+def test_folding_again_with_nothing_pending_leaves_the_trace_alone(receiver, tmp_path: Path) -> None:
+    # Folding consumes its inputs, so a repeat pass -- a retry, or reprocessed evidence -- is a
+    # no-op rather than a second copy of what a span-counting metric already saw.
     post(receiver.endpoint, export("only"))
 
     assert fold_exports(traces_dir(tmp_path)) == 1
     assert fold_exports(traces_dir(tmp_path)) == 0
     assert span_names(otlp_trace_path(tmp_path)) == ["only"]
+
+
+def test_folding_new_exports_appends_to_the_trace_already_written(receiver, tmp_path: Path) -> None:
+    """A later fold must extend the trace, not replace it with whatever arrived since.
+
+    The rewrite is atomic, so a fold that wrote only the pending exports would ``os.replace`` the
+    earlier spans away -- losing the first half of a run to nothing more than a second flush.
+    """
+    post(receiver.endpoint, export("first"))
+    assert fold_exports(traces_dir(tmp_path)) == 1
+
+    post(receiver.endpoint, export("second"))
+    # The return counts what this call folded, not the spans now in the trace.
+    assert fold_exports(traces_dir(tmp_path)) == 1
+
+    assert span_names(otlp_trace_path(tmp_path)) == ["first", "second"]
 
 
 def test_a_folded_export_is_not_kept_alongside_its_own_re_encoding(receiver, tmp_path: Path) -> None:
@@ -218,3 +241,106 @@ def test_a_fold_that_dies_partway_leaves_the_previous_trace_intact(receiver, tmp
 
     assert span_names(otlp_trace_path(tmp_path)) == ["first"]
     assert not list(traces_dir(tmp_path).glob("*.partial"))
+
+
+def _post_raw(endpoint: str, headers: str, body: bytes = b"") -> str:
+    """POST with hand-written headers, so a header urllib would never emit can be sent."""
+    host, _, port = endpoint.split("//", 1)[1].split("/", 1)[0].partition(":")
+    with socket.create_connection((host, int(port)), timeout=10) as connection:
+        connection.sendall(headers.encode("ascii") + body)
+        connection.settimeout(10)
+        return connection.recv(256).decode("ascii", errors="replace").splitlines()[0]
+
+
+def test_a_negative_content_length_is_refused_without_stalling_the_receiver(receiver, tmp_path: Path) -> None:
+    """A negative length must be rejected before the read, not passed to ``rfile.read``.
+
+    ``read(-1)`` consumes until EOF, so the receiver -- single-threaded, and reachable by the
+    untrusted agent sharing its loopback -- would serve nothing further until that client hung up,
+    silently costing the trial its trace.
+    """
+    status = _post_raw(
+        receiver.endpoint,
+        f"POST {TRACES_PATH} HTTP/1.1\r\nHost: localhost\r\n"
+        f"Content-Type: {PROTOBUF_MEDIA_TYPE}\r\nContent-Length: -1\r\n\r\n",
+    )
+    assert "400" in status, status
+
+    # The receiver is still serving: a real export after the bad one still lands.
+    assert post(receiver.endpoint, export("after")) == 200
+    assert fold_exports(traces_dir(tmp_path)) == 1
+    assert span_names(otlp_trace_path(tmp_path)) == ["after"]
+
+
+def test_a_spanless_export_is_consumed_rather_than_re_read(receiver, tmp_path: Path) -> None:
+    """An export carrying no spans still counts as read, so the next fold does not see it again.
+
+    Relay can flush an empty export. Left on disk it folds to nothing forever, so every later pass
+    reports zero folded — which is the signal the container runtime uses to warn that no OTLP was
+    captured at all.
+    """
+    assert post(receiver.endpoint, ExportTraceServiceRequest().SerializeToString()) == 200
+    traces = traces_dir(tmp_path)
+    assert list(traces.glob(f"*{EXPORT_SUFFIX}"))
+
+    assert fold_exports(traces) == 0
+    assert list(traces.glob(f"*{EXPORT_SUFFIX}")) == []
+    assert not otlp_trace_path(tmp_path).exists()
+
+
+def test_a_spanless_flush_does_not_disturb_a_trace_already_folded(receiver, tmp_path: Path) -> None:
+    # Consuming the empty export must not take the earlier trace with it: the partial is discarded,
+    # so `os.replace` never runs and what is already on disk stands.
+    post(receiver.endpoint, export("real"))
+    assert fold_exports(traces_dir(tmp_path)) == 1
+
+    post(receiver.endpoint, ExportTraceServiceRequest().SerializeToString())
+    assert fold_exports(traces_dir(tmp_path)) == 0
+
+    assert span_names(otlp_trace_path(tmp_path)) == ["real"]
+
+
+def test_the_path_check_reads_the_url_not_the_raw_request_target(receiver, tmp_path: Path) -> None:
+    """A query string or an absolute-form target still resolves to the traces path.
+
+    RFC 7230 lets a client send the whole URL as the request target, and comparing the raw target
+    against the path would 404 it — the export is refused and the trial silently loses its trace.
+    """
+    body = export("absolute form")
+    host = receiver.endpoint.split("//", 1)[1].split("/", 1)[0]
+    status = _post_raw(
+        receiver.endpoint,
+        f"POST http://{host}{TRACES_PATH}?compression=none HTTP/1.1\r\nHost: {host}\r\n"
+        f"Content-Type: {PROTOBUF_MEDIA_TYPE}\r\nContent-Length: {len(body)}\r\n\r\n",
+        body,
+    )
+    assert "200" in status, status
+
+    assert fold_exports(traces_dir(tmp_path)) == 1
+    assert span_names(otlp_trace_path(tmp_path)) == ["absolute form"]
+
+
+def test_an_unconsumable_export_does_not_cost_the_committed_trace(
+    receiver, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
+) -> None:
+    """Cleanup runs after the commit, so it must not raise over a trace already on disk.
+
+    Removing an input needs the same directory permission the commit did, so this is narrow --
+    an immutable file, or one held open on Windows -- but the trace is safe by then and losing it
+    to a cleanup error would be strictly worse than leaving the input behind.
+    """
+    post(receiver.endpoint, export("kept"))
+    original = Path.unlink
+
+    def refuse(self: Path, missing_ok: bool = False) -> None:
+        if self.suffix == ".pb":
+            raise PermissionError("Operation not permitted")
+        original(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", refuse)
+
+    with caplog.at_level("WARNING"):
+        assert fold_exports(traces_dir(tmp_path)) == 1
+
+    assert span_names(otlp_trace_path(tmp_path)) == ["kept"]
+    assert "duplicate its spans" in caplog.text

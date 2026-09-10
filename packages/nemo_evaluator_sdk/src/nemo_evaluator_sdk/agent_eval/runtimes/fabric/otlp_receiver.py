@@ -21,6 +21,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from types import TracebackType
+from urllib.parse import urlparse
 
 TRACES_PATH = "/v1/traces"
 PROTOBUF_MEDIA_TYPE = "application/x-protobuf"
@@ -37,7 +38,7 @@ class _Handler(BaseHTTPRequestHandler):
     timeout = REQUEST_TIMEOUT_S
 
     def do_POST(self) -> None:
-        if self.path.split("?")[0] != TRACES_PATH:
+        if urlparse(self.path).path != TRACES_PATH:
             self.send_response(404)
             self.end_headers()
             return
@@ -48,6 +49,13 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
+            self.send_response(400)
+            self.end_headers()
+            return
+        # Bounded below as well as above: ``rfile.read(-1)`` reads to EOF, so a negative length would
+        # hold this single-threaded receiver open for as long as the client kept the connection, and
+        # the agent sharing this loopback is untrusted code.
+        if length < 0:
             self.send_response(400)
             self.end_headers()
             return

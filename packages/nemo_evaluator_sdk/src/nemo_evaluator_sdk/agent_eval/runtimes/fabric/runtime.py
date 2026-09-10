@@ -400,7 +400,12 @@ class FabricAgentRuntime:
                 # spans arrive on the exporter's own schedule, and a trace folded before the last
                 # flush looks complete.
                 trace_receiver.__exit__(None, None, None)
-                fold_exports(traces_dir(evidence_dir))
+                # Guarded because this runs in `finally`, where a raise escapes the handlers above
+                # and aborts the whole gather instead of failing this one task.
+                try:
+                    fold_exports(traces_dir(evidence_dir))
+                except Exception as exc:  # noqa: BLE001 - any fold failure costs the trace, not the trial
+                    logger.warning("Could not fold the OTLP trace for task %s: %s", task.id, exc)
             if self._task_hook is not None:
                 try:
                     self._task_hook.cleanup(session=hook_session)

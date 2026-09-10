@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -75,15 +76,22 @@ def fold_exports(directory: Path) -> int:
     """Fold the receiver's stored exports into one OTLP/JSON file, returning how many were folded.
 
     Streamed through a temporary file and moved into place, so a trace larger than memory still
-    folds and folding twice cannot double the spans.
+    folds. Additive: a fold consumes its inputs, so repeating it changes nothing, and a fold that
+    finds new exports appends to the trace already written rather than replacing it.
     """
     exports = sorted(directory.glob(f"*{EXPORT_SUFFIX}"))
     if not exports:
         return 0
+    trace = directory / OTLP_FILENAME
     partial = directory / f"{OTLP_FILENAME}.partial"
     folded = 0
     try:
         with partial.open("w", encoding="utf-8") as handle:
+            # Carried forward rather than overwritten: the rewrite is atomic, so an earlier fold's
+            # spans have to be copied in or `os.replace` drops them.
+            if trace.exists():
+                with trace.open("r", encoding="utf-8") as previous:
+                    shutil.copyfileobj(previous, handle)
             for export in exports:
                 try:
                     line = export_to_json_line(export.read_bytes())
@@ -100,14 +108,34 @@ def fold_exports(directory: Path) -> int:
         raise
     if not folded:
         partial.unlink(missing_ok=True)
+        _drop(exports)
         return 0
-    os.replace(partial, directory / OTLP_FILENAME)
-    # The folded file is a lossless re-encoding of these, so keeping both would double a trace's
-    # footprint for nothing. Dropped only once the result is in place, so a fold that dies partway
-    # leaves its inputs to retry from.
-    for export in exports:
-        export.unlink(missing_ok=True)
+    os.replace(partial, trace)
+    _drop(exports)
     return folded
+
+
+def _drop(exports: list[Path]) -> None:
+    """Consume the exports a fold has read, best-effort.
+
+    Every export that got this far was either folded into the trace -- a lossless re-encoding, so
+    keeping both would double a trace's footprint -- or read and discarded as unusable. Leaving
+    either behind means the next fold re-reads it. Only a fold that *raises* keeps its inputs, so
+    there is something to retry from.
+
+    Cleanup never raises: it runs after the trace is committed, so failing here would cost the
+    caller a trace that is already safely on disk. It is loud instead, because a surviving input is
+    one a later fold would append a second time.
+    """
+    for export in exports:
+        try:
+            export.unlink(missing_ok=True)
+        except OSError as error:
+            logger.warning(
+                "Could not consume the OTLP export at %s (%s); folding this directory again would duplicate its spans.",
+                export,
+                error,
+            )
 
 
 def register_trace_evidence(
