@@ -86,7 +86,8 @@ configs to a depth of four directories and finds datasets at any depth.
 ```
 
 One JSON object goes to stdout, and `--compact` puts it on one line. The script
-writes no files; you save the report in **Step 5**.
+writes no files; capture stdout in a temporary JSON file even when the exit code
+is 1. Save the report in **Step 6**.
 
 The exit code carries the verdict, so check it:
 
@@ -146,28 +147,32 @@ report describes the repository they meant:
    declare no `datasets` or `tasks` list.
 4. `task_count` is in the range they expect. A count of zero with a passing `tasks`
    check means the config resolves tasks from a registry, not from disk.
-Report `proven`, `runnable`, and the failing check names. Never describe a suite as
-ready to run while `runnable` is `false`.
+Keep `proven`, `runnable`, and check names in the evidence. When some configs pass
+and others fail, identify the ready configs without calling the whole suite ready.
 
 ## Step 5: answer the user
 
 The user usually wants to know: "does this repo have evals, and how do I run
-them?" Answer from that angle. Do not lead with `proven=true`, Harbor internals,
-or a raw failing check. Lead with one of these shapes:
+them?" Use the bundled summary as the basis of the final assistant reply:
 
-- `I found Harbor evals, and they are ready to run.` Then show the exact command.
-- `I found Harbor evals, but they are blocked right now.` Then name the first
-  practical blocker and what to do next.
-- `I found possible Harbor evals, but I could not prove whether they run.` Then
-  explain which Python interpreter issue prevented proof.
-- `I did not find Harbor evals in this repo.` Then say discovery looked for
-  configs with nonempty `datasets` or `tasks` lists up to four directories deep.
+```bash
+<python> <skill_dir>/scripts/render_report.py --summary <discovery-json-path>
+```
 
-Mention the saved report after the verdict, not before it. Include the config
-paths and task count only as supporting detail. Keep validator wording available
-for debugging, but translate the headline into the user's workflow: run the evals,
-choose a config, start Docker, use the right Python, fix a missing dataset path,
-or confirm where the suite lives.
+Preserve its verdict, ready config choices, and next actions. Do not add internal
+check names, raw exceptions, `proven=true`, or git status to the reply. Mention the
+saved report after the verdict and next action. Do not run evals during discovery.
+If multiple configs are ready, ask which one the user wants; do not choose by filename.
+An empty Harbor scan does not establish that the repo has no other kinds of evals.
+An `error` result means discovery did not complete, not that Harbor is missing.
+
+For example, when all five configurations fail because Docker is stopped:
+
+> This repo has Harbor evals, but none of the five configurations is ready to run yet.
+>
+> Start Docker, then rerun the readiness check.
+>
+> Details are saved in `.eval-author/discovery.md`.
 
 ## Step 6: save the report
 
@@ -176,36 +181,19 @@ teammates inherit the findings instead of rerunning discovery to get them back.
 Render it with the bundled formatter:
 
 ```bash
-<skill_dir>/scripts/render_report.py <discovery-json-path> > .eval-author/discovery.md
+mkdir -p .eval-author
+<python> <skill_dir>/scripts/render_report.py <discovery-json-path> > .eval-author/discovery.md
 ```
 
 The saved report must be useful to a human first, and auditable second:
 
-1. Start with a one-sentence headline:
-   - `Ready to run.` when `proven` and `runnable` are both true.
-   - `Not ready to run.` when `proven` is true and `runnable` is false.
-   - `Could not prove readiness.` when `proven` is false.
-2. Add an `At A Glance` table with `Evals found`, `Can I run them now?`,
-   `Job configs`, `Task directories`, `Dataset directories`, and `Run command`.
-   Use `None yet` for an absent run command.
-3. Add `What to do next`:
-   - If unproven, tell the user to rerun with a Python interpreter that can
-     import Harbor. Do not discuss other checks as evidence.
-   - If runnable with a run command, show the exact command in a fenced block.
-   - If runnable with multiple configs, say each config is ready and ask which
-     one they want to run; do not invent a single command.
-   - If not runnable, list the failing required checks by config, using each
-     check's exact `name`, `message`, and `hint` when present.
-4. Add `Configs` with one subsection per config: path, per-config runnable
-   verdict, required host variables, and required failures.
-5. Add `Advisories` for warnings that do not block the suite, including
-   `ethos`, `harbor-cli`, `tasks-on-disk`, and advisory `coverage` warnings.
-6. End with `Evidence JSON` containing the stdout JSON verbatim in a fenced
-   `json` block.
-
-Use plain language for headings and connective text, but never paraphrase a
-check's `message` or `hint`; that wording is the evidence. Keep the report short
-enough to scan. Prefer bullets and tables over paragraphs.
+The formatter starts with the same summary and next actions as the assistant reply.
+It distinguishes no Harbor evals, task files without a config, unchecked configs,
+blocked configs, partly ready suites, ready suites, and discovery errors.
+The `Configs` table marks unvalidated readiness and credentials as `Not checked`.
+Common blockers appear once, with affected config paths in `Diagnostic Details`.
+Check messages and hints remain unchanged there; `Advisories` follow, and
+`Evidence JSON` preserves the original stdout JSON. Do not hand-rewrite the report.
 
 Leave the file in the working tree and say where it is. Committing it is the user's
 call, and worth suggesting. Do not touch their `.gitignore`. A rerun replaces the

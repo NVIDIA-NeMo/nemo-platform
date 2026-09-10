@@ -724,22 +724,17 @@ def test_discover_saved_report_is_human_friendly_before_json_evidence() -> None:
     required_guidance = (
         "The saved report must be useful to a human first, and auditable second",
         "does this repo have evals, and how do I run",
-        "I found Harbor evals, and they are ready to run.",
-        "I found Harbor evals, but they are blocked right now.",
-        "I found possible Harbor evals, but I could not prove whether they run.",
-        "Mention the saved report after the verdict",
-        "At A Glance",
-        "What to do next",
+        "render_report.py --summary",
+        "basis of the final assistant reply",
         "Configs",
         "Advisories",
         "Evidence JSON",
-        "stdout JSON verbatim in a fenced",
-        "never paraphrase a",
+        "preserves the original stdout JSON",
     )
     for phrase in required_guidance:
         assert phrase in body, f"discover report guidance is missing {phrase!r}"
 
-    assert body.index("What to do next") < body.index("Evidence JSON")
+    assert body.index("--summary") < body.index("Evidence JSON")
 
 
 def test_discover_unproven_outcome_has_no_run_command(suite: Path) -> None:
@@ -887,10 +882,10 @@ def test_discover_report_renderer_handles_unproven_outcome(monkeypatch: pytest.M
 
     markdown = renderer.render_report(report)
 
-    assert "I found possible Harbor evals, but I could not prove whether they run." in markdown
-    assert "| Can I run them now? | Unknown |" in markdown
-    assert "Rerun discovery with the Python interpreter for this eval suite" in markdown
-    assert "| Run command | None yet |" in markdown
+    assert "readiness has not been checked" in markdown
+    assert "| `harbor-job.yaml` | Not checked | Not checked |" in markdown
+    assert "Use the Python environment for this suite" in markdown
+    assert "No required failures" not in markdown
     assert "## Evidence JSON" in markdown
 
 
@@ -913,9 +908,8 @@ def test_discover_report_renderer_handles_not_ready_outcome(monkeypatch: pytest.
 
     markdown = renderer.render_report(report)
 
-    assert "This repo has Harbor evals, but they are not ready to run yet." in markdown
-    assert "| Can I run them now? | No |" in markdown
-    assert "Fix the blocker below, then rerun discovery before starting the evals:" in markdown
+    assert "none of the 1 configurations is ready" in markdown
+    assert "Check the dataset paths and job settings" in markdown
     assert "`resolution`: Harbor could not resolve the job: FileNotFoundError: ./no-such-dataset" in markdown
     assert "Hint: This error occurs before Harbor starts a container." in markdown
 
@@ -932,7 +926,7 @@ def test_discover_report_renderer_handles_single_ready_config(monkeypatch: pytes
     markdown = renderer.render_report(report)
 
     assert "This repo has Harbor evals, and they are ready to run." in markdown
-    assert "| Can I run them now? | Yes |" in markdown
+    assert "| `harbor-job.yaml` | Ready |" in markdown
     assert "Run the evals with:" in markdown
     assert "```bash\ncd /repo && harbor job start -c harbor-job.yaml\n```" in markdown
     assert "No required failures." in markdown
@@ -954,9 +948,97 @@ def test_discover_report_renderer_handles_multiple_ready_configs(monkeypatch: py
 
     assert "This repo has Harbor evals, and they are ready to run." in markdown
     assert "Each discovered config is ready. Pick the config you want to run" in markdown
-    assert "### `harbor-job.yaml`" in markdown
-    assert "### `second-job.yaml`" in markdown
-    assert "| Run command | None yet |" in markdown
+    assert "| `harbor-job.yaml` | Ready |" in markdown
+    assert "| `second-job.yaml` | Ready |" in markdown
+
+
+@pytest.mark.parametrize("proven", [True, False])
+def test_discover_report_renderer_empty_repo(monkeypatch: pytest.MonkeyPatch, proven: bool) -> None:
+    renderer = _import_discover_render_report(monkeypatch)
+    report = _discovery_report_fixture(proven=proven, runnable=False, configs=[], run_command=None)
+    report.update(task_count=0, dataset_paths=[])
+    summary = renderer.render_summary(report)
+    assert summary.startswith("I did not find Harbor evals")
+    assert "other kinds of evaluations" in summary
+    assert "has Harbor evals" not in summary
+    assert "Python" not in summary
+
+
+def test_discover_report_renderer_tasks_without_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    renderer = _import_discover_render_report(monkeypatch)
+    report = _discovery_report_fixture(proven=True, runnable=False, configs=[], run_command=None)
+    assert "task or dataset files, but no run configuration" in renderer.render_summary(report)
+
+
+@pytest.mark.parametrize("error", ["Not a directory: /missing", "Discovery needs Python 3.11 or later"])
+def test_discover_report_renderer_errors(monkeypatch: pytest.MonkeyPatch, error: str) -> None:
+    renderer = _import_discover_render_report(monkeypatch)
+    report = {"error": error, "hint": "Correct the input and try again."}
+    markdown = renderer.render_report(report)
+    assert "I could not inspect this repository." in markdown
+    assert error in markdown
+    assert report["hint"] in markdown
+    assert "possible Harbor evals" not in markdown
+    assert "Harbor installed" not in markdown
+    assert "## Configs" not in markdown
+
+
+@pytest.mark.parametrize("ready_count", [0, 1])
+def test_discover_report_renderer_shared_docker_blocker(monkeypatch: pytest.MonkeyPatch, ready_count: int) -> None:
+    renderer = _import_discover_render_report(monkeypatch)
+    failure = _check_fixture(
+        "backend",
+        status="fail",
+        severity="required",
+        message="Environment backend docker is not ready: SystemExit: Docker daemon is not running. Please start Docker and try again.",
+    )
+    configs = [
+        _config_fixture(path=f"config-{i}.yaml", runnable=i < ready_count, checks=[] if i < ready_count else [failure])
+        for i in range(5)
+    ]
+    report = _discovery_report_fixture(
+        proven=True, runnable=False, configs=configs, run_command=None, checks=[failure] * (5 - ready_count)
+    )
+    summary = renderer.render_summary(report)
+    assert summary.count("Start Docker") == 1
+    assert "backend" not in summary
+    assert "SystemExit" not in summary
+    if ready_count:
+        assert "1 of 5 configurations are ready" in summary
+        assert "`config-0.yaml`" in summary
+    else:
+        assert "none of the 5 configurations is ready" in summary
+    markdown = renderer.render_report(report)
+    before_evidence = markdown.split("## Evidence JSON")[0]
+    assert before_evidence.count(failure["message"]) == 1
+    for config in configs[ready_count:]:
+        assert config["path"] in before_evidence.split("## Diagnostic Details")[1]
+    assert summary in markdown
+
+
+def test_discover_report_renderer_cli_summary_and_evidence(tmp_path: Path) -> None:
+    report = _discovery_report_fixture(
+        proven=True,
+        runnable=True,
+        configs=[_config_fixture(path="job.yaml", runnable=True)],
+        run_command="cd /repo && harbor job start -c job.yaml",
+    )
+    source = json.dumps(report, separators=(",", ":")) + "\n"
+    path = tmp_path / "discovery.json"
+    path.write_text(source)
+    summary = subprocess.run(
+        [sys.executable, str(_DISCOVER_RENDER_REPORT), "--summary", str(path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    saved = subprocess.run(
+        [sys.executable, str(_DISCOVER_RENDER_REPORT), str(path)], capture_output=True, text=True, check=True
+    ).stdout
+    assert summary.strip() in saved
+    assert report["run_command"] in summary
+    assert "Evidence JSON" not in summary
+    assert source in saved
 
 
 def test_task_create_script_the_skill_names_exists() -> None:
