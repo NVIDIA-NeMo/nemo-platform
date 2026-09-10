@@ -147,6 +147,12 @@ async function resolveReleasePlan({
         .join(", ")}.`,
     );
   }
+  if (independentWheels.length > 0 && releaseType !== "stable") {
+    throw new Error(
+      "An independent wheel is versioned from its own tags, which a nightly cannot derive: " +
+        `${independentWheels.map((wheel) => wheel.id).join(", ")}.`,
+    );
+  }
 
   const { wheels, containers, includeHelm } = selection;
   const wheelIds = wheels.map((wheel) => wheel.id);
@@ -168,6 +174,13 @@ async function resolveReleasePlan({
   }
 
   const isPrerelease = PRERELEASE_VERSION_PATTERN.test(version);
+  // Sharing the platform's tag namespace would collide with a release that has nothing to do
+  // with this package, and would leave the prefix its dynamic versioning reads with no tags.
+  const taggedIndependent = independentWheels.find((wheel) => wheel.tagPrefix);
+  const releaseTag = taggedIndependent
+    ? `${taggedIndependent.tagPrefix}${version}`
+    : version;
+  const tagPrefix = taggedIndependent ? taggedIndependent.tagPrefix : "";
 
   const nightlyTimestamp =
     releaseType === "nightly"
@@ -182,6 +195,8 @@ async function resolveReleasePlan({
     sourceSha,
     version,
     isPrerelease,
+    releaseTag,
+    tagPrefix,
     releaseLabel,
     nightlyTimestamp,
     wheels,
