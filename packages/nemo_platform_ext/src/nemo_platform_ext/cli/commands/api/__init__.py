@@ -8,14 +8,6 @@ from nemo_platform_ext.cli.manifest import TopLevelEntry
 
 API_TOP_LEVEL_ENTRIES = (
     TopLevelEntry(
-        import_path=f"{__package__}.adapters:app",
-        name="adapters",
-        help="Manage adapters.",
-        panel="Core plugins",
-        kind="group",
-        hidden=True,
-    ),
-    TopLevelEntry(
         import_path=f"{__package__}.experiments:app",
         name="experiments",
         help="Manage experiments.",
@@ -60,14 +52,6 @@ API_TOP_LEVEL_ENTRIES = (
         name="intake",
         help="Intake operations.",
         panel="Functional plugins",
-        kind="group",
-        hidden=False,
-    ),
-    TopLevelEntry(
-        import_path=f"{__package__}.models:app",
-        name="models",
-        help="Manage models.",
-        panel="Core plugins",
         kind="group",
         hidden=False,
     ),
