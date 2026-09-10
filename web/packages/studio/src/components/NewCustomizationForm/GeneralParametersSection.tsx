@@ -4,6 +4,7 @@
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledSliderWithTextInput } from '@nemo/common/src/components/form/ControlledSliderWithTextInput';
 import { ControlledSwitch } from '@nemo/common/src/components/form/ControlledSwitch';
+import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import {
   AccordionContent,
   AccordionItem,
@@ -12,7 +13,13 @@ import {
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
-import { OPTIMIZER_TYPE_ITEMS } from '@studio/components/NewCustomizationForm/constants';
+import {
+  OPTIMIZER_TYPE_ITEMS,
+  UNSLOTH_GRADIENT_CHECKPOINTING_ITEMS,
+  UNSLOTH_LR_SCHEDULER_ITEMS,
+  UNSLOTH_OPTIM_ITEMS,
+  UNSLOTH_PRECISION_ITEMS,
+} from '@studio/components/NewCustomizationForm/constants';
 import { ControlledJsonInput } from '@studio/components/NewCustomizationForm/ControlledJsonInput';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
@@ -489,6 +496,95 @@ export const GeneralParametersSection = () => {
                   disabled={disabled}
                 />
                 <ControlledSliderWithTextInput
+                  useControllerProps={{ name: 'unsloth.schedule.max_steps', control }}
+                  formFieldProps={{
+                    slotLabel: 'Max Steps',
+                    slotInfo:
+                      'Hard cap on training steps. Training stops at whichever comes first, this or the epoch count.',
+                  }}
+                  {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'schedule_max_steps')}
+                  min={1}
+                  max={100000}
+                  step={1}
+                  disabled={disabled}
+                />
+                <ControlledSliderWithTextInput
+                  useControllerProps={{ name: 'unsloth.schedule.warmup_ratio', control }}
+                  formFieldProps={{
+                    slotLabel: 'Warmup Ratio',
+                    slotInfo:
+                      'Warmup length as a fraction of total steps. An alternative to Warmup Steps.',
+                  }}
+                  {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'schedule_warmup_ratio')}
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  disabled={disabled}
+                />
+                <ControlledSliderWithTextInput
+                  useControllerProps={{ name: 'unsloth.schedule.eval_steps', control }}
+                  formFieldProps={{
+                    slotLabel: 'Eval Steps',
+                    slotInfo: 'Run evaluation every N steps.',
+                  }}
+                  {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'schedule_eval_steps')}
+                  min={1}
+                  max={10000}
+                  step={1}
+                  disabled={disabled}
+                />
+                <ControlledSliderWithTextInput
+                  useControllerProps={{ name: 'unsloth.schedule.save_steps', control }}
+                  formFieldProps={{
+                    slotLabel: 'Save Steps',
+                    slotInfo: 'Write a checkpoint every N steps.',
+                  }}
+                  {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'schedule_save_steps')}
+                  min={1}
+                  max={10000}
+                  step={1}
+                  disabled={disabled}
+                />
+                <ControlledSliderWithTextInput
+                  useControllerProps={{ name: 'unsloth.schedule.logging_steps', control }}
+                  formFieldProps={{
+                    slotLabel: 'Logging Steps',
+                    slotInfo: 'Emit training metrics every N steps.',
+                  }}
+                  {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'schedule_logging_steps')}
+                  min={1}
+                  max={1000}
+                  step={1}
+                  disabled={disabled}
+                />
+                <ControlledSliderWithTextInput
+                  useControllerProps={{ name: 'unsloth.schedule.seed', control }}
+                  formFieldProps={{
+                    slotLabel: 'Seed',
+                    slotInfo: 'Random seed for reproducibility.',
+                  }}
+                  {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'schedule_seed')}
+                  min={0}
+                  max={999999}
+                  step={1}
+                  disabled={disabled}
+                />
+                <ControlledSelect
+                  useControllerProps={{ name: 'unsloth.schedule.lr_scheduler_type', control }}
+                  formFieldProps={{ slotLabel: 'LR Scheduler' }}
+                  items={UNSLOTH_LR_SCHEDULER_ITEMS}
+                  disabled={disabled}
+                />
+                <ControlledSelect
+                  useControllerProps={{ name: 'unsloth.optimizer.optim', control }}
+                  formFieldProps={{
+                    slotLabel: 'Optimizer',
+                    slotInfo: 'The 8-bit variants trade a little precision for much less VRAM.',
+                  }}
+                  items={UNSLOTH_OPTIM_ITEMS}
+                  disabled={disabled}
+                />
+                <ControlledSliderWithTextInput
                   useControllerProps={{ name: 'unsloth.schedule.warmup_steps', control }}
                   formFieldProps={{ slotLabel: 'Warmup Steps' }}
                   {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'schedule_warmup_steps')}
@@ -564,6 +660,91 @@ export const GeneralParametersSection = () => {
                   useControllerProps={{ name: 'unsloth.schedule.lr_scheduler_kwargs', control }}
                   formFieldProps={{ slotLabel: 'LR Scheduler Kwargs (JSON)' }}
                   placeholder='{ "num_cycles": 1 }'
+                  disabled={disabled}
+                />
+                <ControlledTextInput
+                  useControllerProps={{ name: 'unsloth.dataset.text_field', control }}
+                  formFieldProps={{
+                    slotLabel: 'Text Field',
+                    slotInfo: 'Column in the dataset holding the training text.',
+                  }}
+                  placeholder="text"
+                  disabled={disabled}
+                />
+                <ControlledSwitch
+                  useControllerProps={{ name: 'unsloth.dataset.packing', control }}
+                  formFieldProps={{
+                    slotLabel: 'Pack Sequences',
+                    labelPosition: 'left',
+                    slotInfo:
+                      'Concatenate short examples up to the max sequence length. Better throughput, at the cost of examples spanning a boundary.',
+                  }}
+                  disabled={disabled}
+                />
+                <ControlledSwitch
+                  useControllerProps={{ name: 'unsloth.dataset.apply_chat_template', control }}
+                  formFieldProps={{
+                    slotLabel: 'Apply Chat Template',
+                    labelPosition: 'left',
+                    slotInfo: "Wrap each example in the model's own chat format before training.",
+                  }}
+                  disabled={disabled}
+                />
+                <ControlledSelect
+                  useControllerProps={{ name: 'unsloth.hardware.precision', control }}
+                  formFieldProps={{ slotLabel: 'Precision' }}
+                  items={UNSLOTH_PRECISION_ITEMS}
+                  disabled={disabled}
+                />
+                <ControlledSelect
+                  useControllerProps={{
+                    name: 'unsloth.training.use_gradient_checkpointing',
+                    control,
+                  }}
+                  formFieldProps={{
+                    slotLabel: 'Gradient Checkpointing',
+                    slotInfo:
+                      'Recompute activations to save memory. Unsloth’s own kernel is the cheapest of the three.',
+                  }}
+                  items={UNSLOTH_GRADIENT_CHECKPOINTING_ITEMS}
+                  disabled={disabled}
+                />
+                <ControlledSwitch
+                  useControllerProps={{ name: 'unsloth.model.load_in_4bit', control }}
+                  formFieldProps={{
+                    slotLabel: 'Load in 4-bit',
+                    labelPosition: 'left',
+                    slotInfo:
+                      'Quantise the base model to 4-bit on load. On by default, and the reason unsloth fits large models on one GPU.',
+                  }}
+                  disabled={disabled}
+                />
+                <ControlledSwitch
+                  useControllerProps={{ name: 'unsloth.model.load_in_8bit', control }}
+                  formFieldProps={{
+                    slotLabel: 'Load in 8-bit',
+                    labelPosition: 'left',
+                    slotInfo: 'Quantise to 8-bit instead — more accurate than 4-bit, more VRAM.',
+                  }}
+                  disabled={disabled}
+                />
+                <ControlledSwitch
+                  useControllerProps={{ name: 'unsloth.model.trust_remote_code', control }}
+                  formFieldProps={{
+                    slotLabel: 'Trust Remote Code',
+                    labelPosition: 'left',
+                    slotInfo:
+                      'Allow the model repo to execute its own modelling code. Only enable for a source you trust.',
+                  }}
+                  disabled={disabled}
+                />
+                <ControlledTextInput
+                  useControllerProps={{ name: 'unsloth.model.dtype', control }}
+                  formFieldProps={{
+                    slotLabel: 'Model dtype',
+                    slotInfo: 'Leave unset for `auto`, which follows the hardware.',
+                  }}
+                  placeholder="auto"
                   disabled={disabled}
                 />
                 <ControlledJsonInput

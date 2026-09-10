@@ -263,6 +263,28 @@ export const LoraParametersSection = () => {
                   )}
                 </FormField>
                 <ControlledJsonInput
+                  useControllerProps={{ name: 'unsloth.training.lora.target_modules', control }}
+                  formFieldProps={{
+                    slotLabel: 'Target Modules (JSON array)',
+                    slotInfo:
+                      'Modules to attach adapters to. Left unset, the backend picks them from the model architecture.',
+                  }}
+                  placeholder='["q_proj", "v_proj"]'
+                  disabled={disabled}
+                />
+                <ControlledSliderWithTextInput
+                  useControllerProps={{ name: 'unsloth.training.lora.random_state', control }}
+                  formFieldProps={{
+                    slotLabel: 'Random State',
+                    slotInfo: 'Seed for adapter initialisation.',
+                  }}
+                  {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'training_lora_random_state')}
+                  min={0}
+                  max={999999}
+                  step={1}
+                  disabled={disabled}
+                />
+                <ControlledJsonInput
                   useControllerProps={{ name: 'unsloth.training.lora.modules_to_save', control }}
                   formFieldProps={{ slotLabel: 'Modules to Save (JSON array)' }}
                   placeholder='["lm_head", "embed_tokens"]'
