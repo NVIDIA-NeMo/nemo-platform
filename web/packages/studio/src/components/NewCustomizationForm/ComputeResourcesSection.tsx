@@ -84,6 +84,19 @@ const AutomodelParallelism = ({ disabled }: { disabled: boolean }) => {
                 step={1}
                 disabled={disabled}
               />
+              <ControlledSliderWithTextInput
+                useControllerProps={{ name: 'automodel.parallelism.expert_parallel_size', control }}
+                formFieldProps={{
+                  slotLabel: 'Expert Parallel Size',
+                  slotInfo:
+                    'Expert parallel size for MoE models. Must divide data_parallel_size × context_parallel_size, and tensor parallel size must be 1 when this is above 1.',
+                }}
+                {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'parallelism_expert_parallel_size')}
+                min={1}
+                max={8}
+                step={1}
+                disabled={disabled}
+              />
               <ControlledSwitch
                 useControllerProps={{ name: 'automodel.parallelism.sequence_parallel', control }}
                 formFieldProps={{ slotLabel: 'Sequence Parallel', labelPosition: 'left' }}

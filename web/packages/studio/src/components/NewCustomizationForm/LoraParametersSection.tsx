@@ -113,6 +113,19 @@ export const LoraParametersSection = () => {
                   />
                   <ControlledJsonInput
                     useControllerProps={{
+                      name: 'automodel.training.lora.target_modules',
+                      control,
+                    }}
+                    formFieldProps={{
+                      slotLabel: 'Target Modules (JSON array)',
+                      slotInfo:
+                        'Modules to attach adapters to. Left unset, the backend picks them from the model architecture.',
+                    }}
+                    placeholder='["q_proj", "v_proj"]'
+                    disabled={disabled}
+                  />
+                  <ControlledJsonInput
+                    useControllerProps={{
                       name: 'automodel.training.lora.exclude_modules',
                       control,
                     }}

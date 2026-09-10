@@ -286,6 +286,44 @@ export const GeneralParametersSection = () => {
                     disabled={disabled}
                   />
                   <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'automodel.schedule.max_steps', control }}
+                    formFieldProps={{
+                      slotLabel: 'Max Steps',
+                      slotInfo:
+                        'Hard cap on training steps. Training stops at whichever comes first, this or the epoch count.',
+                    }}
+                    {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'schedule_max_steps')}
+                    min={1}
+                    max={100000}
+                    step={1}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'automodel.schedule.val_check_interval', control }}
+                    formFieldProps={{
+                      slotLabel: 'Val Check Interval',
+                      slotInfo:
+                        'Validation frequency. Values ≤ 1.0 are a fraction of an epoch; values > 1.0 are a step count.',
+                    }}
+                    {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'schedule_val_check_interval')}
+                    min={0.01}
+                    max={1000}
+                    step={0.01}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'automodel.schedule.seed', control }}
+                    formFieldProps={{
+                      slotLabel: 'Seed',
+                      slotInfo: 'Random seed for reproducibility.',
+                    }}
+                    {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'schedule_seed')}
+                    min={0}
+                    max={999999}
+                    step={1}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
                     useControllerProps={{ name: 'automodel.optimizer.warmup_steps', control }}
                     formFieldProps={{ slotLabel: 'Warmup Steps' }}
                     {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'optimizer_warmup_steps')}
@@ -319,6 +357,24 @@ export const GeneralParametersSection = () => {
                     min={1e-10}
                     max={1e-6}
                     step={1e-10}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'automodel.optimizer.adam_beta1', control }}
+                    formFieldProps={{ slotLabel: 'Adam β₁' }}
+                    {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'optimizer_adam_beta1')}
+                    min={0}
+                    max={0.999}
+                    step={0.001}
+                    disabled={disabled}
+                  />
+                  <ControlledSliderWithTextInput
+                    useControllerProps={{ name: 'automodel.optimizer.adam_beta2', control }}
+                    formFieldProps={{ slotLabel: 'Adam β₂' }}
+                    {...specSliderProps(AUTOMODEL_SPEC_DEFAULTS, 'optimizer_adam_beta2')}
+                    min={0}
+                    max={0.9999}
+                    step={0.0001}
                     disabled={disabled}
                   />
                   <ControlledSelect
