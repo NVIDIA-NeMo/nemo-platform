@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  SOURCE_HF,
-  type WizardFormValues,
-} from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
 import { huggingFaceRepoIdToBaseName } from '@studio/routes/DeploymentsListRoute/huggingFaceDeploymentArtifacts';
+import { SOURCE_HF, type WizardFormValues } from '@studio/routes/NewDeploymentRoute/schema';
 import { useEffect, useState } from 'react';
 import { useFormState, useWatch, type Control, type UseFormSetValue } from 'react-hook-form';
 
