@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { FilterOperators, WithFilterOperators } from '@nemo/common/src/api/filterOperators';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
@@ -19,6 +20,10 @@ import { useNavigate } from 'react-router';
 /** Statuses that will not change again, so polling can stop. */
 const TERMINAL_STATUSES = new Set(['completed', 'error', 'cancelled']);
 
+type OptimizeJobsFilterInput = WithFilterOperators<Omit<OptimizeJobsListFilter, 'spec'>> & {
+  'spec.agent'?: FilterOperators<string>;
+};
+
 /**
  * Scope the list to one agent, optionally narrowed by a name search.
  */
@@ -27,10 +32,10 @@ const agentJobsFilter = (
   agent: string,
   search: string
 ): OptimizeJobsListFilter => {
-  const filter: Record<string, unknown> = {
+  const filter: OptimizeJobsFilterInput = {
     'spec.agent': { $in: [agent, `${workspace}/${agent}`] },
   };
-  if (search) filter.name = { $like: search };
+  if (search) filter.name = { $like: `%${search}%` };
   return JSON.stringify(filter) as unknown as OptimizeJobsListFilter;
 };
 

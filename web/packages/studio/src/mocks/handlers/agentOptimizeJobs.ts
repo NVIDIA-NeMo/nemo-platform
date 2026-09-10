@@ -42,23 +42,61 @@ export const mockOptimizeJobs: OptimizeJob[] = [
 ];
 
 interface FilterQuery {
-  'spec.agent'?: { $in?: string[] };
-  name?: { $like?: string };
+  'spec.agent'?: { $in: string[] };
+  name?: { $like: string };
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isAgentClause = (value: unknown): value is { $in: string[] } =>
+  isRecord(value) &&
+  Object.keys(value).length === 1 &&
+  Array.isArray(value.$in) &&
+  value.$in.every((entry) => typeof entry === 'string');
+
+const isNameClause = (value: unknown): value is { $like: string } =>
+  isRecord(value) && Object.keys(value).length === 1 && typeof value.$like === 'string';
 
 /**
  * The slice of the platform filter syntax this endpoint is called with: exact `$in` on the dotted
- * spec path, case-insensitive substring `$like` on the name. Modelled here rather than ignored so
- * a malformed filter (nested `spec` object, missing operator) fails the test instead of passing.
+ * spec path, `$like` with `%` wildcards on the name. Anything else — a nested `spec` object, a
+ * missing operator, an unrecognized field — is rejected the way the server rejects it, so a
+ * malformed filter fails the test instead of quietly matching every row. Returns `null` when the
+ * filter is not one this endpoint supports.
  */
-const applyFilter = (jobs: OptimizeJob[], raw: string | null): OptimizeJob[] => {
-  if (!raw) return jobs;
-  const filter = JSON.parse(raw) as FilterQuery;
+const parseFilter = (raw: string): FilterQuery | null => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+  const entries = Object.entries(parsed);
+  if (entries.length === 0) return null;
+
+  const filter: FilterQuery = {};
+  for (const [key, value] of entries) {
+    if (key === 'spec.agent' && isAgentClause(value)) filter['spec.agent'] = value;
+    else if (key === 'name' && isNameClause(value)) filter.name = value;
+    else return null;
+  }
+  return filter;
+};
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** `%` is the platform's wildcard; a substring search arrives as `%text%`. */
+const likeMatches = (value: string, pattern: string): boolean =>
+  new RegExp(`^${pattern.split('%').map(escapeRegExp).join('.*')}$`, 'i').test(value);
+
+const applyFilter = (jobs: OptimizeJob[], filter: FilterQuery): OptimizeJob[] => {
   const agents = filter['spec.agent']?.$in;
-  const like = filter.name?.$like?.toLowerCase();
+  const like = filter.name?.$like;
   return jobs.filter((job) => {
     if (agents && !agents.includes(String(job.spec?.agent ?? ''))) return false;
-    return !like || job.name.toLowerCase().includes(like);
+    return like === undefined || likeMatches(job.name, like);
   });
 };
 
@@ -67,7 +105,12 @@ export const agentOptimizeJobsHandlers = [
     const url = new URL(request.url);
     const page = Number(url.searchParams.get('page') ?? 1);
     const pageSize = Number(url.searchParams.get('page_size') ?? 50);
-    const matches = applyFilter(mockOptimizeJobs, url.searchParams.get('filter'));
+    const raw = url.searchParams.get('filter');
+    const filter = raw ? parseFilter(raw) : {};
+    if (!filter) {
+      return HttpResponse.json({ detail: `Unsupported filter: ${raw}` }, { status: 400 });
+    }
+    const matches = applyFilter(mockOptimizeJobs, filter);
     const data = matches.slice((page - 1) * pageSize, page * pageSize);
     return HttpResponse.json({
       data,
