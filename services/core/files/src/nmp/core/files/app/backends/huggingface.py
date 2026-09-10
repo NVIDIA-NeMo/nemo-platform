@@ -338,7 +338,10 @@ class HuggingfaceStorageImpl(StorageImpl):
 
     @property
     def tracked_revision(self) -> str | None:
-        return self.config.original_revision
+        # resolve_config records original_revision even when the user pinned a commit
+        # themselves, and a ref equal to what it resolved to cannot name anything else.
+        tracked = self.config.original_revision
+        return tracked if tracked and tracked != self.config.revision else None
 
     def config_at_tracked_revision(self) -> HuggingfaceStorageConfig:
         return self.config.model_copy(update={"revision": self.config.original_revision})
