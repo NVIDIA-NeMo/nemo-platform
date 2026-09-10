@@ -48,6 +48,7 @@ from nmp.core.jobs.entities import (
     PlatformJobStep,
     PlatformJobTask,
 )
+from nmp.core.jobs.telemetry import build_job_run_telemetry, emit_job_run_event
 from opentelemetry import metrics, trace
 
 logger = logging.getLogger(__name__)
@@ -1006,6 +1007,7 @@ class JobDispatcher:
             raise JobStatusUpdateSkippedError(f"Attempt does not exist: {saved_step.attempt_id}")
 
         # Determine new attempt status
+        previous_attempt_status = attempt.status
         new_attempt_status = attempt.status
 
         # Get the original step spec name from config (step entity names have suffixes for uniqueness)
@@ -1102,6 +1104,21 @@ class JobDispatcher:
                 if attempt.status == PlatformJobStatus.ERROR:
                     attempt.error_details = saved_step.error_details
                 attempt = await self.store.update(attempt)
+                if not previous_attempt_status.is_terminal() and attempt.status.is_terminal():
+                    try:
+                        job = await self.store.get_by_id(PlatformJob, attempt.job)
+                        telemetry_event = build_job_run_telemetry(
+                            source=job.source,
+                            status=attempt.status.value,
+                            status_details=attempt.status_details,
+                            custom_fields=job.custom_fields,
+                            created_at=attempt.created_at,
+                            updated_at=attempt.updated_at,
+                        )
+                        if telemetry_event is not None:
+                            emit_job_run_event(telemetry_event)
+                    except Exception:
+                        logger.debug("Failed to queue job_run telemetry", exc_info=True)
                 logger.info(
                     "Updated job attempt status",
                     extra={

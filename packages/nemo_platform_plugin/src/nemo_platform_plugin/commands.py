@@ -117,6 +117,7 @@ from nemo_platform_plugin.jobs._cli_options import (
     merge_options,
     parse_dotted_kv_list,
 )
+from nemo_platform_plugin.jobs.telemetry import merge_job_telemetry_custom_fields
 from nemo_platform_plugin.run_dependencies import LocalRunError
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pydantic import BaseModel, ValidationError
@@ -596,6 +597,7 @@ def _add_submit_command(
                 workspace=workspace,
                 profile=profile,
                 options=merged_options or None,
+                metadata=_resolve_submit_metadata(typer_ctx),
                 headers=_resolve_submit_auth_headers(typer_ctx) or None,
             )
 
@@ -632,6 +634,22 @@ def _add_submit_command(
     epilog = build_epilog(schema=schema, leaves=leaves, kind="Job", unavailable=unavailable)
     setattr(_submit, "__signature__", _build_job_submit_signature(leaves))
     group.command(name=command_name, help=help_text, epilog=epilog, rich_help_panel=rich_help_panel)(_submit)
+
+
+def _resolve_submit_metadata(typer_ctx: typer.Context) -> dict[str, object] | None:
+    state = typer_ctx.obj
+    if state is None:
+        return None
+    getter = getattr(state, "get_job_telemetry_custom_fields", None)
+    if not callable(getter):
+        return None
+    try:
+        telemetry_custom_fields = getter()
+    except Exception:
+        return None
+    if not isinstance(telemetry_custom_fields, dict) or not telemetry_custom_fields:
+        return None
+    return {"custom_fields": merge_job_telemetry_custom_fields(None, telemetry_custom_fields)}
 
 
 def _build_job_submit_signature(leaves: list[SpecLeafField]) -> inspect.Signature:
