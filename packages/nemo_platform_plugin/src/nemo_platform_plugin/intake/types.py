@@ -1,26 +1,35 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed wire shapes for the Intake APIs used by evaluator."""
+"""Typed wire shapes for the Intake APIs."""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal, NotRequired, Required, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, Required, TypedDict
 
 from nemo_platform_plugin.schema import Page
-from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, TypeAdapter, model_validator, with_config
 
 EvaluatorResultDataType = Literal["NUMERIC", "BOOLEAN", "CATEGORICAL", "TEXT"]
 TraceMode = Literal["summary", "preview", "detailed"]
+SpanMode = TraceMode
 TraceStatus = Literal["OK", "ERROR", "UNSET"] | str
+SpanKind = Literal[
+    "LLM", "CHAIN", "TOOL", "RETRIEVER", "EMBEDDING", "AGENT", "RERANKER", "EVALUATOR", "GUARDRAIL", "UNKNOWN"
+]
+SpanStatus = Literal["success", "error", "cancelled", "unknown"]
+TraceMetricBucket = Literal["total", "hour", "day", "week", "month"]
+AnnotationKind = Literal["feedback", "note", "metadata", "label"]
 
 
+@with_config(ConfigDict(extra="allow"))
 class EvaluationContextParam(TypedDict, total=False):
     evaluation_name: str
     test_case_name: str
 
 
+@with_config(ConfigDict(extra="allow"))
 class AtifAgentParam(TypedDict, total=False):
     name: Required[str]
     version: Required[str]
@@ -29,6 +38,7 @@ class AtifAgentParam(TypedDict, total=False):
     extra: NotRequired[dict[str, Any]]
 
 
+@with_config(ConfigDict(extra="allow"))
 class AtifFinalMetricsParam(TypedDict, total=False):
     total_prompt_tokens: int
     total_completion_tokens: int
@@ -57,6 +67,7 @@ class AtifStepAgentParam(TypedDict, total=False):
 AtifStepParam = dict[str, Any]
 
 
+@with_config(ConfigDict(extra="allow"))
 class AtifCreateParams(TypedDict, total=False):
     workspace: str
     evaluation_context: EvaluationContextParam
@@ -238,15 +249,434 @@ class ListTracesQueryParams(TypedDict, total=False):
     page_size: int
     sort: str
     mode: TraceMode
-    filter: TraceFilterParam
+    filter: TraceFilterParam | str
 
 
 class ListEvaluatorResultsQueryParams(TypedDict, total=False):
     page: int
     page_size: int
     sort: str
-    filter: dict[str, Any]
+    filter: dict[str, Any] | str
+
+
+class GetTraceQueryParams(TypedDict, total=False):
+    mode: TraceMode
+
+
+class TraceMetricsQueryParams(TypedDict, total=False):
+    bucket: TraceMetricBucket
+    timezone: str
+    filter: TraceFilterParam | str
+
+
+class TokenRollup(BaseModel):
+    sum: int | None = Field(default=None, ge=0)
+    mean: float | None = None
+    p90: float | None = None
+    p99: float | None = None
+
+
+class CostRollup(BaseModel):
+    sum: float | None = None
+    mean: float | None = None
+    p90: float | None = None
+    p99: float | None = None
+
+
+class LatencyRollup(BaseModel):
+    mean: float | None = None
+    p50: float | None = None
+    p90: float | None = None
+    p95: float | None = None
+    p99: float | None = None
+
+
+class TraceMetricPoint(BaseModel):
+    """One time bucket of trace metric rollups."""
+
+    bucket_start: datetime | None = Field(
+        default=None, description="Start of the bucket in the requested timezone. Omitted when bucket=total."
+    )
+    run_count: int = Field(ge=0, description="Agent runs started in this bucket.")
+    failed_run_count: int = Field(ge=0, description="Runs whose root span ended in error.")
+    input_tokens: TokenRollup
+    output_tokens: TokenRollup
+    cached_tokens: TokenRollup
+    total_tokens: TokenRollup
+    cost_usd: CostRollup
+    latency_ms: LatencyRollup
+
+
+class TraceMetrics(BaseModel):
+    """Response body for GET /traces/metrics."""
+
+    bucket: TraceMetricBucket
+    timezone: str
+    data: list[TraceMetricPoint]
+
+
+class Span(BaseModel):
+    """Span as served by Intake span reads."""
+
+    span_id: str
+    session_id: str
+    workspace: str
+    project: str | None = None
+    evaluation_context: EvaluationContextParam | None = None
+    parent_span_id: str | None = None
+    kind: SpanKind
+    name: str | None = None
+    source: str
+    trace_id: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    status: SpanStatus
+    error_type: str | None = None
+    error_message: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_id: str | None = None
+    agent_id: str | None = None
+    agent_name: str | None = None
+    tool_name: str | None = None
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    cached_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    usage_details: dict[str, int] = Field(default_factory=dict)
+    cost_total_usd: float | None = None
+    cost_input_usd: float | None = None
+    cost_output_usd: float | None = None
+    cost_details: dict[str, float] = Field(default_factory=dict)
+    input: str | None = None
+    output: str | None = None
+    raw_attributes: str | None = None
+    ingested_at: datetime
+
+
+class SpanFilterParam(TypedDict, total=False):
+    session_id: str
+    trace_id: str
+    parent_span_id: str
+    project: str
+    evaluation_name: str
+    test_case_name: str
+    evaluation_id: str
+    test_case_id: str
+    source: str
+    kind: str
+    status: str
+    model: str
+    tool_name: str
+    provider: str
+    agent_id: str
+    agent_name: str
+    started_at: dict[str, str]
+
+
+class ListSpansQueryParams(TypedDict, total=False):
+    page: int
+    page_size: int
+    sort: str
+    mode: SpanMode
+    filter: SpanFilterParam | str
+
+
+class SpanGroup(BaseModel):
+    """One group of spans returned by GET /spans/groups."""
+
+    group: dict[str, str] = Field(description="Group key values, keyed by the requested group-by fields.")
+    span_count: int = Field(ge=0, description="Number of matching spans in this group.")
+    started_at: datetime = Field(description="Start time of the earliest matching span in this group.")
+
+
+class ListSpanGroupsQueryParams(TypedDict, total=False):
+    by: Required[str]
+    page: int
+    page_size: int
+    sort: str
+    filter: SpanFilterParam | str
+
+
+class Session(BaseModel):
+    """Aggregate telemetry for one Intake session."""
+
+    id: str
+    workspace: str
+    started_at: datetime
+    ended_at: datetime | None = None
+    duration_ms: float | None = None
+    status: SpanStatus
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    cached_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    cost_usd: float | None = None
+    cost_input_usd: float | None = None
+    cost_output_usd: float | None = None
+    trace_count: int = Field(ge=0)
+    span_count: int = Field(ge=0)
+
+
+# ---------------------------------------------------------------------------
+# Annotations
+# ---------------------------------------------------------------------------
+
+
+class _AnnotationInputBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    span_id: str | None = Field(
+        default=None,
+        description="Id of the span this annotation applies to. Omit to annotate the whole session.",
+    )
+    session_id: str = Field(description="Id of the session this annotation belongs to. Always required.")
+
+
+class FeedbackAnnotationInput(_AnnotationInputBase):
+    kind: Literal["feedback"]
+    value: Literal["positive", "negative"]
+
+
+class NoteAnnotationInput(_AnnotationInputBase):
+    kind: Literal["note"]
+    text: str = Field(min_length=1, max_length=10_000)
+
+
+class MetadataAnnotationInput(_AnnotationInputBase):
+    kind: Literal["metadata"]
+    metadata: dict[str, Any] = Field(min_length=1)
+
+
+class LabelAnnotationInput(_AnnotationInputBase):
+    kind: Literal["label"]
+    value_type: Literal["text", "numeric"]
+    value: str | float
+    name: str | None = Field(default=None, max_length=256)
+
+    @model_validator(mode="after")
+    def _validate(self) -> LabelAnnotationInput:
+        if self.value_type == "numeric":
+            if not isinstance(self.value, (int, float)) or isinstance(self.value, bool):
+                raise ValueError("value_type=numeric requires a numeric `value`")
+            if self.name is None:
+                raise ValueError("value_type=numeric requires `name`")
+        elif not isinstance(self.value, str):
+            raise ValueError("value_type=text requires a string `value`")
+        return self
+
+
+AnnotationInput = Annotated[
+    FeedbackAnnotationInput | NoteAnnotationInput | MetadataAnnotationInput | LabelAnnotationInput,
+    Field(discriminator="kind"),
+]
+"""Request body for POST /annotations. The variant is selected by ``kind``."""
+
+ANNOTATION_INPUT_ADAPTER: TypeAdapter[
+    FeedbackAnnotationInput | NoteAnnotationInput | MetadataAnnotationInput | LabelAnnotationInput
+] = TypeAdapter(AnnotationInput)
+"""Validates a raw payload into the :data:`AnnotationInput` variant named by its ``kind``."""
+
+
+class _AnnotationReadBase(BaseModel):
+    annotation_id: str
+    workspace: str
+    span_id: str | None = None
+    session_id: str
+    created_by: str | None = None
+    created_at: datetime
+    ingested_at: datetime
+
+
+class FeedbackAnnotation(_AnnotationReadBase):
+    kind: Literal["feedback"]
+    value: Literal["positive", "negative"]
+
+
+class NoteAnnotation(_AnnotationReadBase):
+    kind: Literal["note"]
+    text: str
+
+
+class MetadataAnnotation(_AnnotationReadBase):
+    kind: Literal["metadata"]
+    metadata: dict[str, Any]
+
+
+class LabelAnnotation(_AnnotationReadBase):
+    kind: Literal["label"]
+    value_type: Literal["text", "numeric"]
+    value: str | float
+    name: str | None = None
+
+
+class Annotation(
+    RootModel[
+        Annotated[
+            FeedbackAnnotation | NoteAnnotation | MetadataAnnotation | LabelAnnotation,
+            Field(discriminator="kind"),
+        ]
+    ]
+):
+    """Annotation read response. The shape varies by ``kind``."""
+
+
+class AnnotationFilterParam(TypedDict, total=False):
+    span_id: str
+    session_id: str
+    kind: str
+    name: str
+    value_text: str
+    value_numeric: dict[str, float]
+    created_by: str
+    created_at: dict[str, str]
+
+
+class ListAnnotationsQueryParams(TypedDict, total=False):
+    page: int
+    page_size: int
+    sort: str
+    filter: AnnotationFilterParam | str
+
+
+# ---------------------------------------------------------------------------
+# Ingest: chat completions and direct spans
+# ---------------------------------------------------------------------------
+
+
+class ChatCompletionsIngestRequest(BaseModel):
+    """Request body for POST /ingest/chat-completions."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    evaluation_context: EvaluationContextParam | None = None
+    request: dict[str, Any] = Field(description="Flexible captured chat-completions request.")
+    response: dict[str, Any] = Field(description="Flexible captured chat-completions response.")
+    session_id: str | None = None
+    trace_id: str | None = None
+    provider: str | None = None
+    cost_usd: float | None = Field(default=None, ge=0)
+    cost_input_usd: float | None = Field(default=None, ge=0)
+    cost_output_usd: float | None = Field(default=None, ge=0)
+    cost_details: dict[str, float] = Field(default_factory=dict)
+
+
+class ChatCompletionsIngestResponse(BaseModel):
+    session_id: str
+    span_id: str
+
+
+class DirectSpanInput(BaseModel):
+    """One provider-neutral span supplied by a historical trace importer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    span_id: str
+    trace_id: str
+    session_id: str | None = None
+    parent_span_id: str | None = None
+    name: str = ""
+    kind: SpanKind = "UNKNOWN"
+    status: SpanStatus = "unknown"
+    started_at: datetime
+    ended_at: datetime | None = None
+    input: JsonValue | None = None
+    output: JsonValue | None = None
+    attributes: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class DirectSpansIngestRequest(BaseModel):
+    """Request body for POST /ingest/spans."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(description="Stable name for the source trace store, such as `langsmith` or `mlflow`.")
+    spans: list[DirectSpanInput] = Field(min_length=1, max_length=1000)
+
+
+# ---------------------------------------------------------------------------
+# Experiments
+# ---------------------------------------------------------------------------
+
+
+class ParetoConfig(BaseModel):
+    """Default X/Y metrics for an experiment's Pareto view."""
+
+    x_metric: str = Field(default="cost_usd", description="Metric plotted on the Pareto X axis.")
+    y_metric: str = Field(default="latency_ms", description="Metric plotted on the Pareto Y axis.")
+
+
+class ColumnLayout(BaseModel):
+    """Saved column order and hidden columns for an experiment's evaluations table."""
+
+    order: list[str] = Field(default_factory=list)
+    hidden: list[str] = Field(default_factory=list)
+
+
+class ExperimentCreateRequest(BaseModel):
+    """Request body for POST /experiments."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(description="Workspace-unique experiment name.")
+    description: str | None = None
+    insight_id: str | None = None
+    summary: str | None = None
+    metadata: dict[str, str] | None = None
+    default_sort: str = "-created_at"
+    pareto: ParetoConfig | None = None
+    column_layout: ColumnLayout | None = None
+    is_favorite: bool = False
+    show_evaluations_over_time: bool = False
+
+
+class ExperimentUpdateRequest(ExperimentCreateRequest):
+    """Request body for PUT /experiments/{name}."""
+
+    baseline_evaluation_name: str | None = None
+
+
+class ExperimentResponse(BaseModel):
+    """Experiment as served by the Intake API."""
+
+    id: str
+    name: str
+    workspace: str
+    description: str | None = None
+    insight_id: str | None = None
+    summary: str | None = None
+    metadata: dict[str, str] | None = None
+    default_sort: str
+    pareto: ParetoConfig = Field(default_factory=ParetoConfig)
+    column_layout: ColumnLayout | None = None
+    is_favorite: bool = False
+    show_evaluations_over_time: bool = False
+    baseline_evaluation_name: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    evaluation_count: int = 0
+
+
+class ExperimentFilterParam(TypedDict, total=False):
+    name: str
+    insight_id: str
+    is_favorite: bool
+    show_evaluations_over_time: bool
+    baseline_evaluation_name: str
+    is_deleted: bool
+    metadata: dict[str, str]
+
+
+class ListExperimentsQueryParams(TypedDict, total=False):
+    page: int
+    page_size: int
+    sort: str
+    filter: ExperimentFilterParam | str
 
 
 TracePage = Page[Trace]
 EvaluatorResultPage = Page[EvaluatorResult]
+SpanPage = Page[Span]
+SpanGroupPage = Page[SpanGroup]
+AnnotationPage = Page[Annotation]
+ExperimentPage = Page[ExperimentResponse]

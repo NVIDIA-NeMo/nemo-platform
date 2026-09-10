@@ -167,6 +167,8 @@ class TestAgentCommands:
         plugin_entry_points = {
             "data-designer": SimpleNamespace(value="fake.module:DataDesignerCLI"),
             "anonymizer": SimpleNamespace(value="fake.module:AnonymizerCLI"),
+            "experiments": SimpleNamespace(value="nmp.intake.cli:ExperimentsCLI"),
+            "intake": SimpleNamespace(value="nmp.intake.cli:IntakeCLI"),
         }
 
         with patch("nemo_platform_plugin.discovery.discover_entry_points", return_value=plugin_entry_points):
@@ -194,6 +196,6 @@ class TestAgentCommands:
             "| nemo guardrail | Functional plugins | Manage guardrails. |",
             "| nemo anonymizer | Functional plugins | Plugin commands for anonymizer. |",
             "| nemo safe-synthesizer | Functional plugins | Plugin commands for safe-synthesizer. |",
-            "| nemo experiments | Functional plugins | Manage experiments. |",
-            "| nemo intake | Functional plugins | Intake operations. |",
+            "| nemo experiments | Functional plugins | Plugin commands for experiments. |",
+            "| nemo intake | Functional plugins | Plugin commands for intake. |",
         ]

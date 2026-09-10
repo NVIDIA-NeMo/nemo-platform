@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from datetime import date, datetime
 from enum import Enum
 from textwrap import dedent
 from typing import Any, Literal
 
-from pydantic import BaseModel, SecretBytes, SecretStr
+from pydantic import BaseModel, RootModel, SecretBytes, SecretStr
 
 from nemo_platform_ext.cli.core.context import CLIContext
 
@@ -176,12 +177,13 @@ def _render_value(value: Any, imports: _ImportCollector) -> str:
     """
     if isinstance(value, (SecretStr, SecretBytes)):
         return _format_python_literal("***")
+    if isinstance(value, RootModel):
+        # The payload is the root value, whatever its shape (model, dict, list, scalar).
+        imports.add(type(value))
+        return f"{type(value).__name__}({_render_value(value.root, imports)})"
     if isinstance(value, BaseModel):
         imports.add(type(value))
         fields = value.model_dump(exclude_unset=True)
-        if not isinstance(fields, dict):
-            # RootModel: the payload is the root value.
-            return f"{type(value).__name__}({_render_value(value.root, imports)})"  # type: ignore[attr-defined]
         rendered = ", ".join(
             f"{name}={_render_value(getattr(value, name, field_value), imports)}"
             for name, field_value in fields.items()
@@ -228,6 +230,10 @@ def _append_method_call(lines: list[str], target: str, method: str, formatted_ar
 def _format_python_literal(value: Any) -> str:
     if isinstance(value, str):
         return json.dumps(value)
+    if isinstance(value, (datetime, date)):
+        # Pydantic accepts ISO-8601 strings for date/datetime fields, and the
+        # string round-trips into a model without a datetime import.
+        return json.dumps(value.isoformat())
     return repr(value)
 
 
