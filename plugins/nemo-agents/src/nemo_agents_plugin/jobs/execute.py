@@ -52,13 +52,14 @@ from nemo_agents_plugin.telemetry.intake_export import (
     configure_intake_atif_export,
     supports_intake_atif_export,
 )
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import PlatformClient, client_from_platform, platform_default_headers
 from nemo_platform_plugin.client.constants import (
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
     is_workload_identity_token_file_set,
 )
 from nemo_platform_plugin.client.oidc_factory import resolve_workload_exchange_provider
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.job_results import ResultRef
@@ -89,7 +90,6 @@ from nemo_platform_plugin.jobs.constants import (
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, parse_entity_ref
-from nemo_platform_plugin.sdk_provider import get_forwarding_headers
 from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
@@ -328,8 +328,8 @@ class ExecuteAgentJob(NemoJob):
 
         workdir = None
         if request.workdir is not None:
-            sdk = cast(AsyncNeMoPlatform, async_sdk)
-            workdir = await validate_agent_workdir(request.workdir, sdk.files, default_workspace=workspace)
+            files_client = client_from_platform(async_sdk, AsyncFilesClient)
+            workdir = await validate_agent_workdir(request.workdir, files_client, default_workspace=workspace)
 
         extension = request.extension or _make_noop_extension_config()
         validate_execute_agent_extension_config(extension.kind, extension.config)
@@ -406,7 +406,7 @@ class ExecuteAgentJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
+    def run(self, config: dict, *, ctx: JobContext, sdk: PlatformClient | None = None) -> dict:
         step_config = ExecuteAgentStepConfig.model_validate(config)
         agent_ref = f"{step_config.agent.workspace}/{step_config.agent.name}"
         # Logged before validation so a config that fails to parse still names the agent it belonged to.
@@ -429,7 +429,9 @@ class ExecuteAgentJob(NemoJob):
             if sdk is None:
                 raise RuntimeError("sdk is required to stage workdir inputs.")
             logger.info("Staging workdir inputs for agent %s.", agent_ref)
-            materialize_agent_workdir(step_config.workdir, sdk.files, fabric_dirs.workspace)
+            materialize_agent_workdir(
+                step_config.workdir, client_from_platform(sdk, FilesClient), fabric_dirs.workspace
+            )
 
         input_workdir_ref = ctx.results.save(INPUT_WORKDIR_RESULT_NAME, fabric_dirs.workspace)
 
@@ -816,7 +818,7 @@ def _configure_intake_telemetry(
     agent_config: dict[str, Any],
     *,
     workspace: str,
-    sdk: NeMoPlatform | None,
+    sdk: PlatformClient | None,
 ) -> None:
     """Wire the agent's trajectory export to Intake for this job.
 
@@ -836,7 +838,7 @@ def _configure_intake_telemetry(
         logger.warning("%s is not set; the agent will run untraced.", NMP_BASE_URL_ENVVAR)
         return
 
-    headers = get_forwarding_headers(sdk) if sdk is not None else {}
+    headers = platform_default_headers(sdk) if sdk is not None else {}
     headers.update(_workload_identity_headers(base_url))
     for name, value in headers.items():
         os.environ[_header_envvar(name)] = value
@@ -852,7 +854,7 @@ def _configure_intake_telemetry(
 def _workload_identity_headers(base_url: str) -> dict[str, str]:
     """Bearer credentials for Relay when the job runs under workload identity.
 
-    ``get_forwarding_headers`` returns only what the SDK was *constructed* with.
+    ``platform_default_headers`` returns only what the SDK was *constructed* with.
     Under workload identity that is the internal marker alone -- the bearer is
     exchanged per request by the SDK's own auth layer, which Relay's raw POST to
     Intake does not go through. Without this the export would be unauthenticated

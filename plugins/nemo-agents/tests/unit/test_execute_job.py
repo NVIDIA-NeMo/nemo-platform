@@ -6,11 +6,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -53,9 +55,10 @@ from nemo_agents_plugin.tasks.execute.workdir import (
 )
 from nemo_agents_plugin.telemetry import intake_export
 from nemo_agents_plugin.telemetry.intake_export import supports_intake_atif_export
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_platform_plugin.jobs.routes import add_job_routes
@@ -79,10 +82,47 @@ def _agent(name: str = "calc", workspace: str = "default", config_format: str = 
     return Agent(name=name, workspace=workspace, config=config, config_format=config_format)
 
 
-def _sdk_with_files(data: list[object] | None = None) -> MagicMock:
-    sdk = MagicMock()
-    sdk.files.list = AsyncMock(return_value=SimpleNamespace(data=data if data is not None else [object()]))
-    return sdk
+_FILES_LIST_PATH = re.compile(r"^/apis/files/v2/workspaces/(?P<workspace>[^/]+)/filesets/(?P<fileset>[^/]+)/files$")
+
+
+class _FilesListServer:
+    """Answers ``GET .../filesets/{name}/files`` with a fixed listing and records each lookup."""
+
+    def __init__(self, data: list[dict[str, Any]]) -> None:
+        self.data = data
+        self.calls: list[tuple[str, str, str]] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        match = _FILES_LIST_PATH.match(request.url.path)
+        assert request.method == "GET" and match is not None, f"unexpected request {request.method} {request.url}"
+        self.calls.append((match["workspace"], match["fileset"], request.url.params.get("path", "")))
+        return httpx.Response(200, json={"data": self.data})
+
+
+def _file_entry(path: str) -> dict[str, Any]:
+    return {"path": path, "size": 1, "file_ref": f"default/source#{path}", "file_url": f"/files/{path}"}
+
+
+class _AsyncSDKWithFiles(AsyncNemoClient):
+    """An async platform client whose Files API is served by :class:`_FilesListServer`."""
+
+    def __init__(self, data: list[dict[str, Any]] | None) -> None:
+        self.files_server = _FilesListServer(data if data is not None else [_file_entry("project/config.yaml")])
+        super().__init__(
+            base_url="http://test",
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(self.files_server), base_url="http://test"),
+        )
+
+
+def _sdk_with_files(data: list[dict[str, Any]] | None = None) -> _AsyncSDKWithFiles:
+    return _AsyncSDKWithFiles(data)
+
+
+def _sync_sdk() -> NemoClient:
+    def _reject(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected platform request: {request.method} {request.url}")
+
+    return NemoClient(base_url="http://test", http_client=httpx.Client(transport=httpx.MockTransport(_reject)))
 
 
 def _resolved_agent(name: str = "calc", workspace: str = "default") -> ResolvedAgentConfig:
@@ -234,7 +274,7 @@ async def test_to_spec_validates_and_canonicalizes_base_workdir() -> None:
     step_config = ExecuteAgentStepConfig.model_validate(spec)
     assert step_config.workdir is not None
     assert step_config.workdir.base_workdir == "default/source#project/"
-    sdk.files.list.assert_awaited_once_with(remote_path="default/source#project/")
+    assert sdk.files_server.calls == [("default", "source", "project/")]
 
 
 @pytest.mark.asyncio
@@ -370,8 +410,8 @@ def test_workdir_spec_allows_sibling_mount_paths() -> None:
 
 @pytest.mark.asyncio
 async def test_validate_agent_workdir_canonicalizes_refs() -> None:
-    files_client = MagicMock()
-    files_client.list = AsyncMock(return_value=SimpleNamespace(data=[object()]))
+    sdk = _sdk_with_files()
+    files_client = AsyncFilesClient.from_client(sdk)
 
     spec = await validate_agent_workdir(
         AgentWorkdir(
@@ -387,18 +427,15 @@ async def test_validate_agent_workdir_canonicalizes_refs() -> None:
     assert spec.artifact_mounts == [
         AgentWorkdirArtifactMount(ref="default/artifacts#notes.txt", mount_path="notes.txt")
     ]
-    files_client.list.assert_has_awaits(
-        [call(remote_path="default/source#project/"), call(remote_path="default/artifacts#notes.txt")]
-    )
+    assert sdk.files_server.calls == [("default", "source", "project/"), ("default", "artifacts", "notes.txt")]
 
 
-def test_materialize_agent_workdir_downloads_base_and_mounts(tmp_path: Path) -> None:
-    files_client = MagicMock()
+def test_materialize_agent_workdir_downloads_base_and_mounts(tmp_path: Path, fake_transfers) -> None:
+    files_client = FilesClient.from_client(_sync_sdk())
     calls: list[tuple[str, str]] = []
 
-    def _download(*, remote_path: str, local_path: str) -> None:
-        calls.append((remote_path, local_path))
-        local = Path(local_path)
+    def _download(local: Path, fileset: str | None, workspace: str | None, remote_path: str) -> None:
+        calls.append((remote_path, str(local)))
         local.parent.mkdir(parents=True, exist_ok=True)
         if remote_path == "default/source#project/":
             local.mkdir(parents=True, exist_ok=True)
@@ -406,7 +443,7 @@ def test_materialize_agent_workdir_downloads_base_and_mounts(tmp_path: Path) -> 
         else:
             local.write_text("mounted artifact\n")
 
-    files_client.download.side_effect = _download
+    fake_transfers.on_download = _download
     target = tmp_path / "workdir"
 
     materialize_agent_workdir(
@@ -426,13 +463,12 @@ def test_materialize_agent_workdir_downloads_base_and_mounts(tmp_path: Path) -> 
     assert (target / "notes.txt").read_text() == "mounted artifact\n"
 
 
-def test_materialize_agent_workdir_replaces_base_directory_for_directory_mount(tmp_path: Path) -> None:
-    files_client = MagicMock()
+def test_materialize_agent_workdir_replaces_base_directory_for_directory_mount(tmp_path: Path, fake_transfers) -> None:
+    files_client = FilesClient.from_client(_sync_sdk())
     calls: list[tuple[str, str]] = []
 
-    def _download(*, remote_path: str, local_path: str) -> None:
-        calls.append((remote_path, local_path))
-        local = Path(local_path)
+    def _download(local: Path, fileset: str | None, workspace: str | None, remote_path: str) -> None:
+        calls.append((remote_path, str(local)))
         local.parent.mkdir(parents=True, exist_ok=True)
         if remote_path == "default/source#project/":
             (local / "data").mkdir(parents=True)
@@ -443,7 +479,7 @@ def test_materialize_agent_workdir_replaces_base_directory_for_directory_mount(t
             local.mkdir(parents=True)
             (local / "mounted.txt").write_text("mounted artifact\n")
 
-    files_client.download.side_effect = _download
+    fake_transfers.on_download = _download
     target = tmp_path / "workdir"
 
     materialize_agent_workdir(
@@ -890,7 +926,7 @@ def test_run_invokes_success_extension(ctx: JobContext) -> None:
         agent=_resolved_agent(),
         extension=ExecuteAgentExtensionConfig(kind="example.extension", config={"agent": "research-agent"}),
     )
-    sdk = MagicMock()
+    sdk = _sync_sdk()
 
     async def _invoke(request: Any) -> FabricRuntimeResult:
         return FabricRuntimeResult(status="succeeded", output={"answer": "done"})
@@ -970,7 +1006,7 @@ def test_run_rejects_non_fabric_step_config(ctx: JobContext) -> None:
         ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx)
 
 
-def test_run_downloads_and_registers_input_workdir(ctx: JobContext) -> None:
+def test_run_downloads_and_registers_input_workdir(ctx: JobContext, fake_transfers) -> None:
     spec = ExecuteAgentStepConfig(
         request=ExecuteAgentJobConfig(
             agent="calc",
@@ -983,20 +1019,19 @@ def test_run_downloads_and_registers_input_workdir(ctx: JobContext) -> None:
             artifact_mounts=[AgentWorkdirArtifactMount(ref="default/artifacts#notes.txt", mount_path="notes.txt")],
         ),
     )
-    sdk = MagicMock()
+    sdk = _sync_sdk()
     download_calls: list[tuple[str, str]] = []
 
-    def _download(*, remote_path: str, local_path: str) -> None:
-        download_calls.append((remote_path, local_path))
-        local = Path(local_path)
+    def _download(local: Path, fileset: str | None, workspace: str | None, remote_path: str) -> None:
+        download_calls.append((remote_path, str(local)))
         local.parent.mkdir(parents=True, exist_ok=True)
         if remote_path == "default/source#project/":
             local.mkdir(parents=True, exist_ok=True)
-            Path(local_path, "config.yaml").write_text("name: calc\n")
+            (local / "config.yaml").write_text("name: calc\n")
         else:
             local.write_text("mounted artifact\n")
 
-    sdk.files.download.side_effect = _download
+    fake_transfers.on_download = _download
 
     async def _invoke(request: Any) -> FabricRuntimeResult:
         (request.base_dir / "workspace" / "answer.txt").write_text("done\n")
@@ -1018,7 +1053,7 @@ def test_run_downloads_and_registers_input_workdir(ctx: JobContext) -> None:
     assert (ctx.storage.persistent / "results" / "output_artifacts" / "artifact.txt").read_text() == "artifact\n"
 
 
-def test_run_clears_stale_input_workdir_before_materializing(ctx: JobContext) -> None:
+def test_run_clears_stale_input_workdir_before_materializing(ctx: JobContext, fake_transfers) -> None:
     spec = ExecuteAgentStepConfig(
         request=ExecuteAgentJobConfig(
             agent="calc",
@@ -1031,16 +1066,15 @@ def test_run_clears_stale_input_workdir_before_materializing(ctx: JobContext) ->
     stale_workdir = ctx.storage.ephemeral / "fabric" / "workspace"
     stale_workdir.mkdir(parents=True)
     (stale_workdir / "stale.txt").write_text("stale\n")
-    sdk = MagicMock()
+    sdk = _sync_sdk()
 
-    def _download(*, remote_path: str, local_path: str) -> None:
+    def _download(local: Path, fileset: str | None, workspace: str | None, remote_path: str) -> None:
         assert remote_path == "default/source#project/"
-        local = Path(local_path)
         assert not (local / "stale.txt").exists()
         local.mkdir(parents=True, exist_ok=True)
         (local / "config.yaml").write_text("name: calc\n")
 
-    sdk.files.download.side_effect = _download
+    fake_transfers.on_download = _download
 
     async def _invoke(request: Any) -> FabricRuntimeResult:
         return FabricRuntimeResult(status="succeeded")
@@ -1078,7 +1112,7 @@ def test_run_clears_stale_artifacts_dir_before_invoking(ctx: JobContext) -> None
     assert (saved_artifacts / "fresh.txt").read_text() == "fresh\n"
 
 
-def test_run_failed_download_does_not_register_partial_result(ctx: JobContext) -> None:
+def test_run_failed_download_does_not_register_partial_result(ctx: JobContext, fake_transfers) -> None:
     spec = ExecuteAgentStepConfig(
         request=ExecuteAgentJobConfig(
             agent="calc",
@@ -1088,8 +1122,8 @@ def test_run_failed_download_does_not_register_partial_result(ctx: JobContext) -
         agent=_resolved_agent(),
         workdir=AgentWorkdir(base_workdir="default/source#project/"),
     )
-    sdk = MagicMock()
-    sdk.files.download.side_effect = RuntimeError("download failed")
+    sdk = _sync_sdk()
+    fake_transfers.download_error = RuntimeError("download failed")
 
     with pytest.raises(RuntimeError, match="download failed"):
         ExecuteAgentJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=sdk)
@@ -1840,7 +1874,7 @@ def test_telemetry_credentials_go_to_the_environment_not_the_config(monkeypatch:
     # this variable directly, and monkeypatch can only restore what it saw first.
     header_var = "NMP_AGENT_TELEMETRY_HEADER_X_NMP_PRINCIPAL_ID"
     monkeypatch.setenv(header_var, "overwritten-by-the-call")
-    sdk = cast(NeMoPlatform, SimpleNamespace(_custom_headers={"X-NMP-Principal-Id": "service:agents"}))
+    sdk = NemoClient(base_url="http://test", default_headers={"X-NMP-Principal-Id": "service:agents"})
     config = _fabric_agent_config()
 
     _configure_intake_telemetry(config, workspace="default", sdk=sdk)
@@ -2009,7 +2043,9 @@ def test_workload_identity_jobs_export_with_a_bearer_token(monkeypatch: pytest.M
         "resolve_workload_exchange_provider",
         lambda **_kwargs: SimpleNamespace(get_access_token=lambda: "exchanged-token"),
     )
-    sdk = cast(NeMoPlatform, SimpleNamespace(_custom_headers={"X-NMP-Internal": "true"}))
+    # A supplied transport skips the client's own workload-identity bootstrap, which
+    # would otherwise contact auth discovery because the token file env var is set.
+    sdk = NemoClient(base_url="http://test", default_headers={"X-NMP-Internal": "true"}, http_client=httpx.Client())
     config = _fabric_agent_config()
 
     _configure_intake_telemetry(config, workspace="default", sdk=sdk)

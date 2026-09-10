@@ -20,7 +20,7 @@ from nemo_iron_swarm_plugin.entities import IronSwarmManifest
 from nemo_iron_swarm_plugin.jobs.manifest import DEFENDER_ENTRIES
 from nemo_iron_swarm_plugin.model_config import ANALYSIS_DEFAULT_BASE_URL, ATTACK_DEFAULT_BASE_URL
 from nemo_iron_swarm_plugin.sdk import IronSwarmPluginResource
-from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.client.adapter import PlatformClient
 from nemo_platform_plugin.iron_swarm.types import JsonMap, JsonValue
 
 # The entity's own Literal is the single source of truth for the valid presets.
@@ -32,7 +32,7 @@ class CommandContext:
     """Resolved preamble every SDK-backed command needs."""
 
     config: IronSwarmConfig
-    sdk: NeMoPlatform
+    sdk: PlatformClient
     iron_swarm: IronSwarmPluginResource
     base_url: str
     workspace: str

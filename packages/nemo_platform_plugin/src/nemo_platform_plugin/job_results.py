@@ -29,8 +29,7 @@ import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.adapter import PlatformClient, client_from_platform
 from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.jobs.client import JobsClient
@@ -158,8 +157,8 @@ class PlatformJobResults(JobResults):
     Args:
         job_name: Platform job name this sink publishes results for.
         workspace: Workspace the job lives in.
-        sdk: :class:`NeMoPlatform` handle used for both file uploads and
-            the jobs-results registration.
+        sdk: Sync platform handle (``NeMoPlatform`` or :class:`NemoClient`)
+            used for both file uploads and the jobs-results registration.
         attempt_id: Optional override for the job attempt id; when
             omitted, looked up lazily via the typed Jobs client.
     """
@@ -169,7 +168,7 @@ class PlatformJobResults(JobResults):
         *,
         job_name: str,
         workspace: str,
-        sdk: NeMoPlatform,
+        sdk: PlatformClient,
         attempt_id: str | None = None,
     ) -> None:
         self._configure_manager(

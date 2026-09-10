@@ -89,7 +89,6 @@ from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.session_lifecycle import session_expiration_is_due
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from nemo_agents_plugin.usage.cli import register_usage_commands
-from nemo_platform import NeMoPlatform
 from nemo_platform_ext.cli.chat_tui import ExitAction, StreamingResponse, run_chat_tui
 from nemo_platform_ext.cli.core.api import is_tty
 from nemo_platform_ext.cli.core.formatters import Column, format_output
@@ -98,6 +97,8 @@ from nemo_platform_ext.ui.prompts import is_interactive
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_progress import request_progress
+from nemo_platform_plugin.client.adapter import PlatformClient
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.discovery import AGENT_CLI_GROUP, discover_entry_points
 from nemo_platform_plugin.job import NemoJob
 from pydantic import ValidationError
@@ -2572,12 +2573,12 @@ def _api_request(method: str, base_url: str, path: str, *, json_body: dict[str, 
         raise typer.Exit(code=1)
 
 
-def _platform_sdk(base_url: str) -> Any:
-    """Return an auth-aware platform SDK client for fileset upload/delete."""
+def _platform_sdk(base_url: str) -> NemoClient:
+    """Return an auth-aware platform client for fileset upload/delete."""
     headers = _resolve_context_headers()
     if headers:
-        return NeMoPlatform(base_url=base_url, default_headers=headers)
-    return NeMoPlatform(base_url=base_url)
+        return NemoClient(base_url=base_url, default_headers=headers)
+    return NemoClient(base_url=base_url)
 
 
 def _agents_sdk(base_url: str, workspace: str) -> Any:
@@ -2677,19 +2678,21 @@ def _collect_text_agent_artifacts(
 
 def _clear_existing_ethos_artifacts(
     *,
-    sdk: NeMoPlatform,
+    sdk: PlatformClient,
     fileset: str,
     workspace: str,
 ) -> None:
     """Remove the previous executable snapshot while preserving durable Ethos."""
-    from nemo_platform import NotFoundError as PlatformNotFoundError
-    from nemo_platform_plugin.client.errors import NotFoundError as PluginNotFoundError
+    from filesets.transfer import delete, list_files
+    from nemo_agents_plugin.jobs.fileset_io import files_client_for
+    from nemo_platform_plugin.client.errors import NotFoundError
 
     preserved = {ETHOS_FILENAME}
+    files_client = files_client_for(sdk)
 
     try:
-        existing = sdk.files.list(fileset=fileset, workspace=workspace).data
-    except (FileNotFoundError, PlatformNotFoundError, PluginNotFoundError):
+        existing = list_files(files_client, fileset=fileset, workspace=workspace).data
+    except (FileNotFoundError, NotFoundError):
         return
 
     for artifact in existing:
@@ -2697,8 +2700,8 @@ def _clear_existing_ethos_artifacts(
         if remote_path in preserved:
             continue
         try:
-            sdk.files.delete(remote_path=remote_path, fileset=fileset, workspace=workspace)
-        except (FileNotFoundError, PlatformNotFoundError, PluginNotFoundError):
+            delete(files_client, remote_path=remote_path, fileset=fileset, workspace=workspace)
+        except (FileNotFoundError, NotFoundError):
             # Another client may have removed the same stale file after the list.
             continue
 

@@ -7,18 +7,11 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path, PurePosixPath
-from typing import Any, Protocol
 
 from filesets import FilesetPathError, build_fileset_ref, parse_fileset_ref
+from filesets.transfer import async_list_files, download
+from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from pydantic import BaseModel, Field, field_validator, model_validator
-
-
-class AsyncFilesClient(Protocol):
-    async def list(self, *, remote_path: str) -> Any: ...
-
-
-class FilesClient(Protocol):
-    def download(self, *, remote_path: str, local_path: str) -> Any: ...
 
 
 class AgentWorkdirArtifactMount(BaseModel):
@@ -89,14 +82,14 @@ async def validate_agent_workdir(
 def materialize_agent_workdir(spec: AgentWorkdir, files_client: FilesClient, target_dir: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     if spec.base_workdir is not None:
-        files_client.download(remote_path=spec.base_workdir, local_path=str(target_dir))
+        download(files_client, remote_path=spec.base_workdir, local_path=str(target_dir))
 
     for mount in spec.artifact_mounts:
         mount_local_path = target_dir / mount.mount_path
         mount_local_path.parent.mkdir(parents=True, exist_ok=True)
         if mount_local_path.is_dir() and not mount_local_path.is_symlink():
             shutil.rmtree(mount_local_path)
-        files_client.download(remote_path=mount.ref, local_path=str(mount_local_path))
+        download(files_client, remote_path=mount.ref, local_path=str(mount_local_path))
 
 
 async def _validate_ref(
@@ -113,7 +106,7 @@ async def _validate_ref(
         field=field,
         directory_like=directory_like,
     )
-    response = await files_client.list(remote_path=canonical_ref)
+    response = await async_list_files(files_client, remote_path=canonical_ref)
     if not response.data:
         if directory_like:
             raise ValueError(f"{field} must point to a non-empty directory or fileset root.")

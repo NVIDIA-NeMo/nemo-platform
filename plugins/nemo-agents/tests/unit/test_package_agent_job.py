@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 import yaml
 from nemo_agents_plugin.entities import NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_SPEC_CONFIG_FORMAT, Agent
@@ -17,7 +18,9 @@ from nemo_agents_plugin.jobs.package_agent import (
     PackageAgentJob,
     PackageAgentSpec,
 )
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.exceptions import (
     PlatformJobCompilationError,
     PlatformJobDependencyUnavailableError,
@@ -342,6 +345,44 @@ class TestRun:
                         mode="json"
                     ),
                 )
+
+
+class TestStage:
+    async def test_typed_platform_client_downloads_the_ethos_fileset(self, tmp_path: Path) -> None:
+        """A NemoClient-shaped ``async_sdk`` reaches ``stage_fabric_ethos_dir`` as a typed fileset downloader."""
+        async_sdk = AsyncNemoClient(base_url="http://test", http_client=httpx.AsyncClient())
+        captured: dict[str, Any] = {}
+
+        async def _stage(*, sdk: Any, **kwargs: Any) -> None:
+            captured["sdk"] = sdk
+
+        async def _download(client: Any, **kwargs: Any) -> None:
+            captured["client"] = client
+            captured["download"] = kwargs
+
+        spec = PackageAgentSpec(agent="my-agent", workspace="ws", agent_config=FABRIC_CONFIG)
+        with (
+            patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage),
+            patch("nemo_agents_plugin.jobs.package_agent.async_download", _download),
+        ):
+            await PackageAgentJob._stage(spec, tmp_path, async_sdk)
+            await captured["sdk"].download(local_path=str(tmp_path), fileset="my-agent-ethos", workspace="ws")
+
+        assert isinstance(captured["client"], AsyncFilesClient)
+        assert captured["client"]._http is async_sdk._http
+        assert captured["download"] == {"local_path": str(tmp_path), "fileset": "my-agent-ethos", "workspace": "ws"}
+
+    async def test_without_a_platform_client_stages_nothing(self, tmp_path: Path) -> None:
+        captured: dict[str, Any] = {}
+
+        async def _stage(*, sdk: Any, **kwargs: Any) -> None:
+            captured["sdk"] = sdk
+
+        spec = PackageAgentSpec(agent="my-agent", workspace="ws", agent_config=FABRIC_CONFIG)
+        with patch("nemo_agents_plugin.runner.fabric_artifact_staging.stage_fabric_ethos_dir", _stage):
+            await PackageAgentJob._stage(spec, tmp_path, None)
+
+        assert captured["sdk"] is None
 
 
 class TestTaskEntrypointWiring:
