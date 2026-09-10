@@ -875,11 +875,15 @@ async def test_update_job_status_from_step_emits_job_run_telemetry_on_terminal_t
     attempt = await mock_dispatcher.get_current_attempt(job.name, DEFAULT_WORKSPACE)
     assert attempt is not None
     attempt.status = PlatformJobStatus.ACTIVE
-    attempt.status_details = {"model": "nemotron", "input_tokens": 3, "output_tokens": 5}
+    attempt.status_details = {"model": "attempt-model", "input_tokens": 1}
     await mock_store.update(attempt)
 
     with patch("nmp.core.jobs.app.dispatcher.emit_job_run_event") as emit_event:
-        await mock_dispatcher.update_job_status_from_step(current_step, PlatformJobStatus.COMPLETED)
+        await mock_dispatcher.update_job_status_from_step(
+            current_step,
+            PlatformJobStatus.COMPLETED,
+            status_details={"model": "terminal-model", "input_tokens": 3, "output_tokens": 5},
+        )
 
     emit_event.assert_called_once()
     event = emit_event.call_args.args[0]
