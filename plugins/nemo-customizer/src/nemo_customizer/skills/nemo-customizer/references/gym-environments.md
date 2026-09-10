@@ -357,16 +357,19 @@ That snapshot is two artifacts: `hub_environment.parquet`, with `vf_env_args.dat
 
 **Run it on a host with internet.** Training clusters have no hub egress and consume uploaded FileSets only.
 
-`pi-to-gym-conversion` is a console script that ships with `nemo-rl-plugin`, so on an installed platform run it bare. The `uv run --package nmp-rl` prefix below is for a repo checkout.
+`pi-to-gym-conversion` is a console script that ships with `nemo-rl-plugin`, so on an installed platform run it bare. From a repo checkout, generating a dataset needs the `conversion` extra (verifiers), and it belongs in its own environment: the converter installs the untrusted hub wheel into whatever interpreter runs it, and a `uv sync` of the repo `.venv` prunes both that wheel and `verifiers` back out.
 
 ```bash
-uv run --package nmp-rl pi-to-gym-conversion \
+UV_PROJECT_ENVIRONMENT=.venv-conversion uv sync --package nmp-rl --extra conversion
+.venv-conversion/bin/pi-to-gym-conversion \
   --hub-id primeintellect/ascii-tree \
   --hub-version 0.1.5 \
   --out-dir ./ascii-tree-pkg \
   --dataset-dir ./ascii-tree-data \
   --validation-fraction 0.1
 ```
+
+`--validate-only` needs neither, so the plain `uv run --package nmp-rl pi-to-gym-conversion` used below for validation is fine from the repo `.venv`.
 
 | Flag | Use it for |
 |---|---|
@@ -541,7 +544,7 @@ The converter can do both FileSets in one step:
 
 ```bash
 export NMP_BASE_URL=http://127.0.0.1:8080
-uv run --package nmp-rl pi-to-gym-conversion \
+.venv-conversion/bin/pi-to-gym-conversion \
   --hub-id primeintellect/ascii-tree --hub-version 0.1.5 \
   --out-dir ./ascii-tree-pkg --upload --workspace default
 ```

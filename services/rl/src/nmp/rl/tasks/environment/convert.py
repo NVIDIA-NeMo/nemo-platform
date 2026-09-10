@@ -295,16 +295,8 @@ def _install_hub_package_from_wheels(wheels_dir: Path, package_name: str) -> Non
     logger.warning(
         "Installing untrusted hub package %s into the active interpreter at %s. This "
         "mutates that environment (it will no longer match uv.lock) and the package stays "
-        "importable afterwards. Run pi-to-gym-conversion in a throwaway venv if that matters.",
-        whl.name,
-        sys.executable,
-    )
-    logger.info("Installing hub package for dataset load: %s", " ".join(cmd))
-    subprocess.run(cmd, check=True)
-    logger.warning(
-        "Installing untrusted hub package %s into the active interpreter at %s. This "
-        "mutates that environment (it will no longer match uv.lock) and the package stays "
-        "importable afterwards. Run pi-to-gym-conversion in a throwaway venv if that matters.",
+        "importable afterwards. Run pi-to-gym-conversion from a dedicated conversion "
+        "environment rather than the repo .venv if that matters.",
         whl.name,
         sys.executable,
     )
@@ -318,8 +310,10 @@ def _load_verifiers_environment(vf_env_id: str, vf_env_args: dict[str, Any]) -> 
     except ImportError as exc:
         raise RuntimeError(
             "verifiers is required for pi-to-gym-conversion dataset generation; it lives in "
-            "the optional `conversion` extra — run "
-            "`uv sync --package nmp-rl --extra conversion`"
+            "the optional `conversion` extra. Sync it into a dedicated environment, not the "
+            "repo .venv, which every `flox activate` prunes back to uv.lock: "
+            "`UV_PROJECT_ENVIRONMENT=.venv-conversion uv sync --package nmp-rl "
+            "--extra conversion`, then run `.venv-conversion/bin/pi-to-gym-conversion`"
         ) from exc
 
     return vf.load_environment(vf_env_id, **vf_env_args)
