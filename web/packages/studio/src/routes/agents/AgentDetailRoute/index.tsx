@@ -18,7 +18,11 @@ import {
 } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
-import { AGENT_OVERVIEW_ENABLED, INTAKE_ENABLED } from '@studio/constants/environment';
+import {
+  AGENT_OPTIMIZATIONS_ENABLED,
+  AGENT_OVERVIEW_ENABLED,
+  INTAKE_ENABLED,
+} from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -28,6 +32,7 @@ import { DeploymentLogsView } from '@studio/routes/agents/AgentDetailRoute/Deplo
 import { DeploymentsTab } from '@studio/routes/agents/AgentDetailRoute/DeploymentsTab';
 import { DetailsTab } from '@studio/routes/agents/AgentDetailRoute/DetailsTab';
 import { EvaluationsTab } from '@studio/routes/agents/AgentDetailRoute/EvaluationsTab';
+import { OptimizeJobsTable } from '@studio/routes/agents/AgentDetailRoute/optimizations/OptimizeJobsTable';
 import { OverviewTab } from '@studio/routes/agents/AgentDetailRoute/OverviewTab';
 import { useAgentDetails } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 import { deriveWalkthroughStep } from '@studio/routes/agents/AgentDetailRoute/walkthrough';
@@ -42,7 +47,15 @@ import { type FC, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 
 const TAB_SEARCH_PARAM = 'tab';
-const DETAIL_TABS = ['overview', 'deployments', 'logs', 'chat', 'evaluations', 'details'] as const;
+const DETAIL_TABS = [
+  'overview',
+  'deployments',
+  'logs',
+  'chat',
+  'evaluations',
+  'optimizations',
+  'details',
+] as const;
 const DEFAULT_TAB = AGENT_OVERVIEW_ENABLED ? 'overview' : 'deployments';
 
 type AgentDetailTab = (typeof DETAIL_TABS)[number];
@@ -50,7 +63,8 @@ type AgentDetailTab = (typeof DETAIL_TABS)[number];
 const isAgentDetailTab = (value: string | null): value is AgentDetailTab =>
   !!value &&
   DETAIL_TABS.includes(value as AgentDetailTab) &&
-  (value !== 'overview' || AGENT_OVERVIEW_ENABLED);
+  (value !== 'overview' || AGENT_OVERVIEW_ENABLED) &&
+  (value !== 'optimizations' || AGENT_OPTIMIZATIONS_ENABLED);
 
 export const AgentDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -213,6 +227,9 @@ export const AgentDetailRoute: FC = () => {
             <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="chat">Chat</TabsTrigger>
             <TabsTrigger value="evaluations">Evaluations</TabsTrigger>
+            {AGENT_OPTIMIZATIONS_ENABLED && (
+              <TabsTrigger value="optimizations">Optimizations</TabsTrigger>
+            )}
             <TabsTrigger value="details">Details</TabsTrigger>
           </TabsList>
 
@@ -238,6 +255,12 @@ export const AgentDetailRoute: FC = () => {
               jobs={agentJobs}
             />
           </TabsContent>
+
+          {AGENT_OPTIMIZATIONS_ENABLED && (
+            <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="optimizations">
+              <OptimizeJobsTable agentName={agentName} />
+            </TabsContent>
+          )}
 
           <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="deployments">
             <DeploymentsTab
