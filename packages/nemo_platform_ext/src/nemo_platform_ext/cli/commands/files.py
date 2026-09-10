@@ -14,12 +14,13 @@ import json
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+import click
 import typer
 from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.endpoints import upload_otlp_logs
 from nemo_platform_plugin.files.types import (
     CreateFilesetRequest,
     ListFilesetsQueryParams,
-    ListFilesQueryParams,
     OtlpLogQueryRequest,
     UpdateFilesetRequest,
     UploadOtlpLogsQueryParams,
@@ -274,12 +275,18 @@ def list_files(
     files = state.typed_client(FilesClient)
     workspace = files.require_workspace(workspace)
 
-    query_params: ListFilesQueryParams | None = {"path": remote_path} if remote_path else None
+    from filesets import transfer
+    from fsspec.core import has_magic
+
+    if resolved_output_format == "code" and has_magic(remote_path):
+        raise click.UsageError(
+            "--output-format code cannot express a glob --remote-path: the pattern is matched client-side "
+            "after listing. Use a path prefix, or run the command without --output-format code."
+        )
+    query_params = transfer.list_query_params(remote_path)
     kwargs = build_kwargs(name=fileset, workspace=workspace, query_params=query_params)
     if handle_code_generation(FilesClient, "list_files", kwargs, resolved_output_format, state):
         return
-
-    from filesets import transfer
 
     response = transfer.list_files(files, fileset=fileset, workspace=workspace, remote_path=remote_path)
 
@@ -703,8 +710,10 @@ def create_logs(
     if handle_code_generation(FilesClient, "upload_otlp_logs", kwargs, resolved_output_format, state):
         return
 
-    result = state.typed_client(FilesClient).upload_otlp_logs(
-        name=name, workspace=workspace, content=content, query_params=query_params
+    # The payload is the OTLP JSON export, so label it as such rather than as opaque bytes.
+    result = state.typed_client(FilesClient).send(
+        upload_otlp_logs(name=name, workspace=workspace, content=content, query_params=query_params),
+        headers={"Content-Type": "application/json"},
     )
 
     format_output(

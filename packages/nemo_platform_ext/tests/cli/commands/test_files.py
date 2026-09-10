@@ -537,6 +537,29 @@ def test_files_list_glob_filters_client_side() -> None:
     assert [item["path"] for item in json.loads(result.stdout)] == ["data/train.jsonl"]
 
 
+def test_files_list_code_output_matches_the_prefix_query_the_command_sends() -> None:
+    recorder = Recorder()
+    runner, state = make_runner(recorder)
+
+    result = runner.invoke(app, ["files", "list", "my-fileset", "--remote-path", "data/", "-f", "code"], obj=state)
+
+    assert result.exit_code == 0, result.output
+    assert 'query_params={"path": "data/"}' in result.stdout or "query_params={'path': 'data/'}" in result.stdout
+    assert recorder.requests == []
+
+
+def test_files_list_code_output_refuses_a_glob_it_cannot_express() -> None:
+    """The glob is matched client-side after listing, so no single typed call reproduces it."""
+    recorder = Recorder()
+    runner, state = make_runner(recorder)
+
+    result = runner.invoke(app, ["files", "list", "my-fileset", "--remote-path", "*.json", "-f", "code"], obj=state)
+
+    assert result.exit_code == 2, result.output
+    assert "glob" in result.stderr
+    assert recorder.requests == []
+
+
 def test_files_list_table_output_uses_path_and_size_columns() -> None:
     recorder = Recorder([httpx.Response(200, json={"data": [FILE]})])
     runner, state = make_runner(recorder)
@@ -877,6 +900,7 @@ def test_otlp_logs_create_sends_payload_and_artifact_base_path(tmp_path: Path) -
     assert recorder.last.method == "POST"
     assert recorder.last.url.path == "/apis/files/v2/workspaces/default/filesets/my-fileset/otlp/v1/logs"
     assert dict(recorder.last.url.params) == {"artifact_base_path": "runs/1"}
+    assert recorder.last.headers["content-type"] == "application/json"
     assert json.loads(recorder.last.content) == payload
     assert json.loads(result.stdout) == {"partial_success": None}
 

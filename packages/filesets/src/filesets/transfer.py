@@ -137,9 +137,8 @@ def _resolve_upload_fileset(fileset: str | None, *, fileset_auto_create: bool) -
     raise ValueError(FILESET_REQUIRED_WITHOUT_AUTO_CREATE_MESSAGE)
 
 
-def _list_query_params(path: str, *, include_cache_status: bool) -> ListFilesQueryParams | None:
-    # For glob patterns, list all files then filter client-side.
-    # For path prefixes, the API handles filtering server-side.
+def list_query_params(path: str, *, include_cache_status: bool = False) -> ListFilesQueryParams | None:
+    """Query params ``list_files`` sends for *path*: a prefix goes to the server, a glob is filtered client-side."""
     query_params: ListFilesQueryParams = {}
     if not has_magic(path) and path:
         query_params["path"] = path
@@ -212,7 +211,7 @@ def list_files(
     response = client.list_files(
         workspace=ws,
         name=fileset,
-        query_params=_list_query_params(path, include_cache_status=include_cache_status),
+        query_params=list_query_params(path, include_cache_status=include_cache_status),
     ).data()
     return _filter_listed(list(response.data), path)
 
@@ -389,7 +388,7 @@ async def async_list_files(
     response = await client.list_files(
         workspace=ws,
         name=fileset,
-        query_params=_list_query_params(path, include_cache_status=include_cache_status),
+        query_params=list_query_params(path, include_cache_status=include_cache_status),
     )
     return _filter_listed(list(response.data().data), path)
 
