@@ -85,6 +85,7 @@ _SCRIPT_DIRS = (
     _TRACE_ENVIRONMENT_SCRIPTS_DIR,
 )
 _DISCOVER = _DISCOVER_SCRIPTS_DIR / "discover.py"
+_DISCOVER_RENDER_REPORT = _DISCOVER_SCRIPTS_DIR / "render_report.py"
 _LADDER = _DISCOVER_SCRIPTS_DIR / "providers" / "harbor" / "_ladder.py"
 _AUDIT_VALIDATE = _AUDIT_SPEC_DIR / "validate.py"
 _AUDIT_GENERATE = _AUDIT_SPEC_DIR / "generate.py"
@@ -215,6 +216,13 @@ def _import_audit_measure(monkeypatch: pytest.MonkeyPatch) -> Any:
     monkeypatch.syspath_prepend(str(_AUDIT_SPEC_DIR))
     sys.modules.pop("measure", None)
     return importlib.import_module("measure")
+
+
+def _import_discover_render_report(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Import the discover Markdown renderer as a standalone script module."""
+    monkeypatch.syspath_prepend(str(_DISCOVER_SCRIPTS_DIR))
+    sys.modules.pop("render_report", None)
+    return importlib.import_module("render_report")
 
 
 def _digest(path: Path) -> str:
@@ -700,6 +708,7 @@ def test_every_bundled_path_the_skill_names_exists() -> None:
     _, body = _frontmatter_and_body(_DISCOVER_DIR)
     for relative in (
         "scripts/discover.py",
+        "scripts/render_report.py",
         "scripts/_checks.py",
         "scripts/providers/harbor/_probe.py",
         "scripts/providers/harbor/_inventory.py",
@@ -707,6 +716,247 @@ def test_every_bundled_path_the_skill_names_exists() -> None:
     ):
         assert relative in body, f"SKILL.md no longer documents {relative}"
         assert (_DISCOVER_DIR / relative).exists(), f"SKILL.md names {relative}, which is missing on disk"
+
+
+def test_discover_saved_report_is_human_friendly_before_json_evidence() -> None:
+    """The saved discovery report should lead with the user verdict, not raw JSON."""
+    _, body = _frontmatter_and_body(_DISCOVER_DIR)
+    required_guidance = (
+        "The saved report must be useful to a human first, and auditable second",
+        "does this repo have evals, and how do I run",
+        "I found Harbor evals, and they are ready to run.",
+        "I found Harbor evals, but they are blocked right now.",
+        "I found possible Harbor evals, but I could not prove whether they run.",
+        "Mention the saved report after the verdict",
+        "At A Glance",
+        "What to do next",
+        "Configs",
+        "Advisories",
+        "Evidence JSON",
+        "stdout JSON verbatim in a fenced",
+        "never paraphrase a",
+    )
+    for phrase in required_guidance:
+        assert phrase in body, f"discover report guidance is missing {phrase!r}"
+
+    assert body.index("What to do next") < body.index("Evidence JSON")
+
+
+def test_discover_unproven_outcome_has_no_run_command(suite: Path) -> None:
+    """Missing Harbor produces the 'could not prove readiness' report path."""
+    code, report = _run_discover(suite, with_harbor=False)
+
+    assert code == 1
+    assert report["proven"] is False
+    assert report["runnable"] is False
+    assert report["run_command"] is None
+    assert _named(report, "harbor")["status"] == "fail"
+
+
+@_needs_harbor
+def test_discover_not_ready_outcome_names_required_failures(suite: Path) -> None:
+    """A proven but broken suite produces the 'not ready to run' report path."""
+    (suite / "harbor-job.yaml").write_text(
+        "job_name: fixture\ndatasets:\n  - path: ./no-such-dataset\nagents:\n  - name: oracle\n",
+        encoding="utf-8",
+    )
+
+    code, report = _run_discover(suite)
+
+    assert code == 1
+    assert report["proven"] is True
+    assert report["runnable"] is False
+    assert report["run_command"] is None
+    assert report["configs"][0]["runnable"] is False
+    assert _named(report, "resolution")["status"] == "fail"
+
+
+@_needs_harbor
+def test_discover_ready_outcome_with_one_config_includes_run_command(suite: Path) -> None:
+    """One runnable config produces the direct 'run this command' report path."""
+    code, report = _run_discover(suite)
+
+    backend = _named(report, "backend")
+    if backend["status"] != "pass":
+        pytest.skip(f"no environment backend available: {backend['message']}")
+    assert code == 0
+    assert report["proven"] is True
+    assert report["runnable"] is True
+    assert report["configs"][0]["runnable"] is True
+    assert report["run_command"] == f"cd {suite} && harbor job start -c harbor-job.yaml"
+
+
+@_needs_harbor
+def test_discover_ready_outcome_with_multiple_configs_omits_run_command(suite: Path) -> None:
+    """Multiple runnable configs ask the user to choose instead of inventing one command."""
+    (suite / "second-job.yaml").write_text(
+        "job_name: second\ndatasets:\n  - path: ./dataset\nagents:\n  - name: oracle\n",
+        encoding="utf-8",
+    )
+
+    code, report = _run_discover(suite)
+
+    backend = _named(report, "backend")
+    if backend["status"] != "pass":
+        pytest.skip(f"no environment backend available: {backend['message']}")
+    assert code == 0
+    assert report["proven"] is True
+    assert report["runnable"] is True
+    assert [config["runnable"] for config in report["configs"]] == [True, True]
+    assert [config["path"] for config in report["configs"]] == ["harbor-job.yaml", "second-job.yaml"]
+    assert report["run_command"] is None
+
+
+def _discovery_report_fixture(
+    *,
+    proven: bool,
+    runnable: bool,
+    configs: list[dict[str, Any]],
+    run_command: str | None,
+    checks: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "repo_root": "/repo",
+        "provider": "harbor",
+        "proven": proven,
+        "runnable": runnable,
+        "runtime": {
+            "python": "3.13.2",
+            "harbor_importable": proven,
+            "harbor_version": "0.21.0" if proven else None,
+            "harbor_cli": "/repo/.venv/bin/harbor",
+        },
+        "configs": configs,
+        "dataset_paths": ["dataset"],
+        "task_count": 1,
+        "ethos_path": None,
+        "fingerprint": "sha256:abc123",
+        "input_file_count": 3,
+        "discovered_at": "2026-09-10T00:00:00+00:00",
+        "checks": checks or [],
+        "run_command": run_command,
+    }
+
+
+def _config_fixture(*, path: str, runnable: bool, checks: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    return {
+        "name": path,
+        "path": path,
+        "runnable": runnable,
+        "required_env_vars": [],
+        "checks": checks or [],
+    }
+
+
+def _check_fixture(
+    name: str,
+    *,
+    status: str,
+    severity: str,
+    message: str,
+    hint: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "group": "validation",
+        "status": status,
+        "severity": severity,
+        "message": message,
+        "hint": hint,
+        "proven": True,
+    }
+
+
+def test_discover_report_renderer_handles_unproven_outcome(monkeypatch: pytest.MonkeyPatch) -> None:
+    renderer = _import_discover_render_report(monkeypatch)
+    harbor = _check_fixture(
+        "harbor",
+        status="fail",
+        severity="required",
+        message="Harbor is not importable, so nothing in this report is proven.",
+        hint="Install Harbor into the interpreter running this script, then run discovery again.",
+    )
+    report = _discovery_report_fixture(
+        proven=False,
+        runnable=False,
+        configs=[_config_fixture(path="harbor-job.yaml", runnable=False)],
+        run_command=None,
+        checks=[harbor],
+    )
+
+    markdown = renderer.render_report(report)
+
+    assert "I found possible Harbor evals, but I could not prove whether they run." in markdown
+    assert "| Can I run them now? | Unknown |" in markdown
+    assert "Rerun discovery with the Python interpreter for this eval suite" in markdown
+    assert "| Run command | None yet |" in markdown
+    assert "## Evidence JSON" in markdown
+
+
+def test_discover_report_renderer_handles_not_ready_outcome(monkeypatch: pytest.MonkeyPatch) -> None:
+    renderer = _import_discover_render_report(monkeypatch)
+    resolution = _check_fixture(
+        "resolution",
+        status="fail",
+        severity="required",
+        message="Harbor could not resolve the job: FileNotFoundError: ./no-such-dataset",
+        hint="This error occurs before Harbor starts a container.",
+    )
+    report = _discovery_report_fixture(
+        proven=True,
+        runnable=False,
+        configs=[_config_fixture(path="harbor-job.yaml", runnable=False, checks=[resolution])],
+        run_command=None,
+        checks=[resolution],
+    )
+
+    markdown = renderer.render_report(report)
+
+    assert "This repo has Harbor evals, but they are not ready to run yet." in markdown
+    assert "| Can I run them now? | No |" in markdown
+    assert "Fix the blocker below, then rerun discovery before starting the evals:" in markdown
+    assert "`resolution`: Harbor could not resolve the job: FileNotFoundError: ./no-such-dataset" in markdown
+    assert "Hint: This error occurs before Harbor starts a container." in markdown
+
+
+def test_discover_report_renderer_handles_single_ready_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    renderer = _import_discover_render_report(monkeypatch)
+    report = _discovery_report_fixture(
+        proven=True,
+        runnable=True,
+        configs=[_config_fixture(path="harbor-job.yaml", runnable=True)],
+        run_command="cd /repo && harbor job start -c harbor-job.yaml",
+    )
+
+    markdown = renderer.render_report(report)
+
+    assert "This repo has Harbor evals, and they are ready to run." in markdown
+    assert "| Can I run them now? | Yes |" in markdown
+    assert "Run the evals with:" in markdown
+    assert "```bash\ncd /repo && harbor job start -c harbor-job.yaml\n```" in markdown
+    assert "No required failures." in markdown
+
+
+def test_discover_report_renderer_handles_multiple_ready_configs(monkeypatch: pytest.MonkeyPatch) -> None:
+    renderer = _import_discover_render_report(monkeypatch)
+    report = _discovery_report_fixture(
+        proven=True,
+        runnable=True,
+        configs=[
+            _config_fixture(path="harbor-job.yaml", runnable=True),
+            _config_fixture(path="second-job.yaml", runnable=True),
+        ],
+        run_command=None,
+    )
+
+    markdown = renderer.render_report(report)
+
+    assert "This repo has Harbor evals, and they are ready to run." in markdown
+    assert "Each discovered config is ready. Pick the config you want to run" in markdown
+    assert "### `harbor-job.yaml`" in markdown
+    assert "### `second-job.yaml`" in markdown
+    assert "| Run command | None yet |" in markdown
 
 
 def test_task_create_script_the_skill_names_exists() -> None:

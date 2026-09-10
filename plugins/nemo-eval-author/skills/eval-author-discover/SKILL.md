@@ -149,12 +149,63 @@ report describes the repository they meant:
 Report `proven`, `runnable`, and the failing check names. Never describe a suite as
 ready to run while `runnable` is `false`.
 
-## Step 5: save the report
+## Step 5: answer the user
+
+The user usually wants to know: "does this repo have evals, and how do I run
+them?" Answer from that angle. Do not lead with `proven=true`, Harbor internals,
+or a raw failing check. Lead with one of these shapes:
+
+- `I found Harbor evals, and they are ready to run.` Then show the exact command.
+- `I found Harbor evals, but they are blocked right now.` Then name the first
+  practical blocker and what to do next.
+- `I found possible Harbor evals, but I could not prove whether they run.` Then
+  explain which Python interpreter issue prevented proof.
+- `I did not find Harbor evals in this repo.` Then say discovery looked for
+  configs with nonempty `datasets` or `tasks` lists up to four directories deep.
+
+Mention the saved report after the verdict, not before it. Include the config
+paths and task count only as supporting detail. Keep validator wording available
+for debugging, but translate the headline into the user's workflow: run the evals,
+choose a config, start Docker, use the right Python, fix a missing dataset path,
+or confirm where the suite lives.
+
+## Step 6: save the report
 
 Write the report to `.eval-author/discovery.md`, so the next model and the user's
 teammates inherit the findings instead of rerunning discovery to get them back.
-Lead with the JSON as front matter, verbatim, then the verdict, the failing checks
-by name, and the run command. Never paraphrase a check; its wording is the evidence.
+Render it with the bundled formatter:
+
+```bash
+<skill_dir>/scripts/render_report.py <discovery-json-path> > .eval-author/discovery.md
+```
+
+The saved report must be useful to a human first, and auditable second:
+
+1. Start with a one-sentence headline:
+   - `Ready to run.` when `proven` and `runnable` are both true.
+   - `Not ready to run.` when `proven` is true and `runnable` is false.
+   - `Could not prove readiness.` when `proven` is false.
+2. Add an `At A Glance` table with `Evals found`, `Can I run them now?`,
+   `Job configs`, `Task directories`, `Dataset directories`, and `Run command`.
+   Use `None yet` for an absent run command.
+3. Add `What to do next`:
+   - If unproven, tell the user to rerun with a Python interpreter that can
+     import Harbor. Do not discuss other checks as evidence.
+   - If runnable with a run command, show the exact command in a fenced block.
+   - If runnable with multiple configs, say each config is ready and ask which
+     one they want to run; do not invent a single command.
+   - If not runnable, list the failing required checks by config, using each
+     check's exact `name`, `message`, and `hint` when present.
+4. Add `Configs` with one subsection per config: path, per-config runnable
+   verdict, required host variables, and required failures.
+5. Add `Advisories` for warnings that do not block the suite, including
+   `ethos`, `harbor-cli`, `tasks-on-disk`, and advisory `coverage` warnings.
+6. End with `Evidence JSON` containing the stdout JSON verbatim in a fenced
+   `json` block.
+
+Use plain language for headings and connective text, but never paraphrase a
+check's `message` or `hint`; that wording is the evidence. Keep the report short
+enough to scan. Prefer bullets and tables over paragraphs.
 
 Leave the file in the working tree and say where it is. Committing it is the user's
 call, and worth suggesting. Do not touch their `.gitignore`. A rerun replaces the
@@ -168,6 +219,7 @@ evaluation provider is an added directory rather than a change to the entry poin
 | Path | Purpose |
 |---|---|
 | `scripts/discover.py` | Entry point. Owns phase order, report assembly, and the exit code, and nothing provider-specific |
+| `scripts/render_report.py` | Formats the JSON report as human-friendly Markdown while preserving verbatim evidence |
 | `scripts/_checks.py` | The check result contract, ported from the platform so both sides read alike |
 | `scripts/providers/harbor/_probe.py` | Detects whether Harbor can judge this repository. Standard library only |
 | `scripts/providers/harbor/_inventory.py` | Finds configs, datasets, and task directories. Standard library only |
