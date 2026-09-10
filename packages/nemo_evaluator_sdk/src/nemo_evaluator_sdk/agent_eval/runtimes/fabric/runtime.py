@@ -47,7 +47,6 @@ from nemo_evaluator_sdk.agent_eval.runtimes.fabric.hooks import FabricTaskRunHoo
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_receiver import OTLPReceiver
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_writer import (
     fold_exports,
-    otlp_endpoint_fields,
     otlp_trace_path,
     register_trace_evidence,
     traces_dir,
@@ -119,8 +118,6 @@ _SKILL_PROBE_PATH = "nemo-eval-skill-capability-probe"
 _WORKSPACE_EVIDENCE_KEY = "workspace"
 _WORKSPACE_EVIDENCE_KIND = "filesystem"
 # File-exporter output names we choose for the Relay ATIF/ATOF trajectory (Relay accepts these as inputs).
-_ATIF_FILENAME_TEMPLATE = "trajectory-{session_id}.atif.json"
-_ATOF_FILENAME = "events.atof.jsonl"
 # ``kind`` Fabric stamps on the promoted Relay ATIF artifact; used to surface it as trace evidence.
 _ATIF_ARTIFACT_KIND = "atif"
 
@@ -652,51 +649,15 @@ class FabricAgentRuntime:
         extra: Mapping[str, Any] | None = None,
         trace_receiver: OTLPReceiver | None = None,
     ) -> RelayObservabilityConfig:
-        # The ATIF/ATOF observability config is built from Fabric's own typed relay-config objects so
-        # Fabric owns the schema (no hand-maintained dict that silently drifts when Fabric changes it),
-        # mirroring nemo_fabric's own Harbor integration. It is handed straight to ``enable_relay`` via
-        # its ``observability=`` parameter — the SDK only configures ATIF/ATOF observability, so it needs
-        # neither a generic ``components`` list nor the legacy component-wrapped shape. nemo_fabric is
-        # already imported+validated in ``run_tasks``, so this is a cached sys.modules lookup.
-        from nemo_fabric import (  # ty: ignore[unresolved-import]
-            RelayAtifConfig,
-            RelayAtofConfig,
-            RelayAtofFileSinkConfig,
-            RelayObservabilityConfig,
-            RelayOpenTelemetryConfig,
-            RelayOpenTelemetryEndpointConfig,
-        )
-
-        relay_dir_str = str(relay_dir)
         atif_extra: dict[str, Any] | None = None
         if self._trajectory_extra or extra:
             atif_extra = {**(self._trajectory_extra or {}), **(dict(extra) if extra else {})}
-        opentelemetry = None
-        if trace_receiver is not None:
-            fields = otlp_endpoint_fields(endpoint=trace_receiver.endpoint, service_name=self._runtime_name)
-            opentelemetry = RelayOpenTelemetryConfig(
-                enabled=True, endpoints=[RelayOpenTelemetryEndpointConfig(**fields)]
-            )
-        return RelayObservabilityConfig(
-            opentelemetry=opentelemetry,
-            atif=RelayAtifConfig(
-                enabled=True,
-                output_directory=relay_dir_str,
-                filename_template=_ATIF_FILENAME_TEMPLATE,
-                agent_name=self._runtime_name,
-                agent_version=_common.FABRIC_AGENT_VERSION,
-                extra=atif_extra,
-            ),
-            atof=RelayAtofConfig(
-                enabled=True,
-                sinks=[
-                    RelayAtofFileSinkConfig(
-                        output_directory=relay_dir_str,
-                        filename=_ATOF_FILENAME,
-                        mode="overwrite",
-                    )
-                ],
-            ),
+        return _common.relay_observability(
+            relay_dir=str(relay_dir),
+            agent_name=self._runtime_name,
+            agent_version=_common.FABRIC_AGENT_VERSION,
+            extra=atif_extra,
+            otlp_endpoint=trace_receiver.endpoint if trace_receiver is not None else None,
         )
 
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
@@ -797,7 +758,7 @@ def _relay_atif_path(evidence_dir: Path) -> Path | None:
     their own sessions. Picking one under-reports and summing double-counts a root that already
     aggregates, so anything other than a single match reports nothing rather than a wrong number.
     """
-    matches = sorted((evidence_dir / _RELAY_SUBDIR).glob(_ATIF_FILENAME_TEMPLATE.format(session_id="*")))
+    matches = sorted((evidence_dir / _RELAY_SUBDIR).glob(_common.ATIF_FILENAME_TEMPLATE.format(session_id="*")))
     if len(matches) == 1:
         return matches[0]
     if matches:
