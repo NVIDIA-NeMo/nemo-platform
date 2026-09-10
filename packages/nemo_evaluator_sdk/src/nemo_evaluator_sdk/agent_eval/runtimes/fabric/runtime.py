@@ -44,6 +44,14 @@ from uuid import uuid4
 
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric import _common
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.hooks import FabricTaskRunHook, FabricTaskRunSession
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_receiver import OTLPReceiver
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_writer import (
+    fold_exports,
+    otlp_endpoint_fields,
+    otlp_trace_path,
+    register_trace_evidence,
+    traces_dir,
+)
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
     SKILL_MODE_CODEX_SKILLS_DIR,
     AgentSkill,
@@ -63,8 +71,6 @@ from nemo_evaluator_sdk.agent_eval.trials import (
 )
 from nemo_evaluator_sdk.agent_eval.workspace_seeds import SEED_FILES_INPUT_KEY, seed_workspace
 from nemo_evaluator_sdk.values.evidence import (
-    EVIDENCE_FORMAT_ATIF,
-    EVIDENCE_TRACE,
     CandidateEvidence,
     EvidenceDescriptor,
 )
@@ -308,7 +314,11 @@ class FabricAgentRuntime:
         skill_provenances: list[SkillProvenance] = []
         hook_session = FabricTaskRunSession()
         hook_extras: dict[str, Any] | None = None
+        trace_receiver: OTLPReceiver | None = None
         try:
+            # Inside the guarded block: a port it cannot bind costs this trial its trace, like any
+            # other per-task failure, rather than aborting every task in the gather.
+            trace_receiver = self._start_trace_receiver(evidence_dir)
             # Stage seed files into the workspace for their on-disk side effect; the prompt is the task
             # instruction only, so the returned paths are unused.
             await asyncio.to_thread(seed_workspace, workspace_dir, task.inputs.get(SEED_FILES_INPUT_KEY))
@@ -333,7 +343,9 @@ class FabricAgentRuntime:
             # Everything the run needs lives in one typed config: Fabric no longer layers profile
             # overlays, so the per-task workspace/model/trajectory settings are composed on last and are
             # authoritative by construction. ``add_skill_path`` appends, so config-declared skills survive.
-            task_config = self._compose_config(agent_config, evidence_dir, workspace_dir, task=task)
+            task_config = self._compose_config(
+                agent_config, evidence_dir, workspace_dir, task=task, trace_receiver=trace_receiver
+            )
             for skill_path in skill_paths:
                 task_config.add_skill_path(skill_path)
 
@@ -383,6 +395,17 @@ class FabricAgentRuntime:
                 measurements=_atif_measurements(_relay_atif_path(evidence_dir)),
             )
         finally:
+            if trace_receiver is not None:
+                # Stopped before the fold, and both before `_to_trial` reads the evidence: the
+                # spans arrive on the exporter's own schedule, and a trace folded before the last
+                # flush looks complete.
+                trace_receiver.__exit__(None, None, None)
+                # Guarded because this runs in `finally`, where a raise escapes the handlers above
+                # and aborts the whole gather instead of failing this one task.
+                try:
+                    fold_exports(traces_dir(evidence_dir))
+                except Exception as exc:  # noqa: BLE001 - any fold failure costs the trace, not the trial
+                    logger.warning("Could not fold the OTLP trace for task %s: %s", task.id, exc)
             if self._task_hook is not None:
                 try:
                     self._task_hook.cleanup(session=hook_session)
@@ -508,6 +531,7 @@ class FabricAgentRuntime:
             "result": EvidenceDescriptor(kind="json", format="json", ref=str(result_path)),
             _WORKSPACE_EVIDENCE_KEY: EvidenceDescriptor(kind=_WORKSPACE_EVIDENCE_KIND, ref=str(workspace_dir)),
         }
+        atif_path: Path | None = None
         for artifact in result.artifacts.artifacts:
             descriptors[artifact.name] = EvidenceDescriptor(
                 kind=artifact.kind or "file",
@@ -517,11 +541,9 @@ class FabricAgentRuntime:
             # Surface the Relay ATIF trajectory under the standard trace evidence key so graders
             # that consume a normalized trajectory find it.
             if artifact.kind == _ATIF_ARTIFACT_KIND:
-                descriptors[EVIDENCE_TRACE] = EvidenceDescriptor(
-                    kind=EVIDENCE_TRACE,
-                    format=EVIDENCE_FORMAT_ATIF,
-                    ref=str(artifact.path),
-                )
+                atif_path = Path(artifact.path)
+
+        register_trace_evidence(descriptors, atif=atif_path, otlp=otlp_trace_path(result_path.parent))
         return CandidateEvidence(
             descriptors=descriptors,
             metadata={
@@ -570,12 +592,19 @@ class FabricAgentRuntime:
             },
         )
 
+    def _start_trace_receiver(self, evidence_dir: Path) -> OTLPReceiver | None:
+        """A running receiver for this task's OTLP trace, or None when trajectory capture is off."""
+        if not self._capture_trajectory:
+            return None
+        return OTLPReceiver(traces_dir(evidence_dir)).__enter__()
+
     def _compose_config(
         self,
         agent_config: FabricConfig,
         evidence_dir: Path,
         workspace_dir: Path,
         task: AgentEvalTask,
+        trace_receiver: OTLPReceiver | None = None,
     ) -> FabricConfig:
         # nemo_fabric is already imported+validated in ``run_tasks``; this is a cached sys.modules
         # lookup, not a re-load, so the type is used where it's constructed instead of threaded down.
@@ -610,7 +639,7 @@ class FabricAgentRuntime:
             row_extra = {"nemo.optimizer.row_id": task.id} if task.id else None
             cfg.enable_relay(
                 output_dir=str(relay_dir),
-                observability=self._relay_config(relay_dir, extra=row_extra),
+                observability=self._relay_config(relay_dir, extra=row_extra, trace_receiver=trace_receiver),
             )
             cfg.runtime.artifacts = str(artifacts_dir)
             cfg.environment.artifacts = str(artifacts_dir)
@@ -621,6 +650,7 @@ class FabricAgentRuntime:
         self,
         relay_dir: Path,
         extra: Mapping[str, Any] | None = None,
+        trace_receiver: OTLPReceiver | None = None,
     ) -> RelayObservabilityConfig:
         # The ATIF/ATOF observability config is built from Fabric's own typed relay-config objects so
         # Fabric owns the schema (no hand-maintained dict that silently drifts when Fabric changes it),
@@ -633,13 +663,22 @@ class FabricAgentRuntime:
             RelayAtofConfig,
             RelayAtofFileSinkConfig,
             RelayObservabilityConfig,
+            RelayOpenTelemetryConfig,
+            RelayOpenTelemetryEndpointConfig,
         )
 
         relay_dir_str = str(relay_dir)
         atif_extra: dict[str, Any] | None = None
         if self._trajectory_extra or extra:
             atif_extra = {**(self._trajectory_extra or {}), **(dict(extra) if extra else {})}
+        opentelemetry = None
+        if trace_receiver is not None:
+            fields = otlp_endpoint_fields(endpoint=trace_receiver.endpoint, service_name=self._runtime_name)
+            opentelemetry = RelayOpenTelemetryConfig(
+                enabled=True, endpoints=[RelayOpenTelemetryEndpointConfig(**fields)]
+            )
         return RelayObservabilityConfig(
+            opentelemetry=opentelemetry,
             atif=RelayAtifConfig(
                 enabled=True,
                 output_directory=relay_dir_str,
