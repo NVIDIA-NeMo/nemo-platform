@@ -29,11 +29,7 @@ CLI_ROOT = Path(cli_package.__file__).parent
 
 # Modules (relative to the cli package) that still import the generated SDK.
 # Shrinks to empty as command groups migrate to typed clients.
-MIGRATING: frozenset[str] = frozenset(
-    {
-        "commands/setup.py",
-    }
-)
+MIGRATING: frozenset[str] = frozenset()
 MIGRATING_DIRS: tuple[str, ...] = ("commands/api/",)
 
 STAINLESS_PACKAGE = "nemo_platform"
@@ -112,6 +108,11 @@ print(json.dumps(results))
 # Commands that must work without the generated SDK. Migrated groups add
 # their ``--help`` and a ``-f code`` invocation (which builds the request
 # without a server) here.
+#
+# ``setup`` and ``services`` are Stainless-free themselves but are not probed
+# here: both import the local-services runner (``nmp.platform_runner.config``,
+# ``nemo_platform_ext.local.process``), which pulls in server-side packages
+# (``nmp.common.service``) that still depend on the generated SDK.
 RUNTIME_COMMANDS: list[list[str]] = [
     ["--help"],
     ["--version"],
