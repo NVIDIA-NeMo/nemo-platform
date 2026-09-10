@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
+import importlib.metadata
 import ipaddress
 import json
 import os
@@ -1501,6 +1503,116 @@ def _harbor_task_checksum(task_dir: Path) -> str:
         raise ContractError(f"Harbor could not validate the proof task: {error}") from error
 
 
+def _runtime_mode_roundtrip(model: Any) -> bool:
+    """Probe a declared provider field, without constructing a proof result."""
+    from pydantic import TypeAdapter
+
+    field = model.model_fields.get("verifier_environment_mode")
+    if field is None:
+        return False
+    adapter = TypeAdapter(field.annotation)
+    for mode in ("shared", "separate"):
+        value = adapter.validate_python(mode)
+        # Other required trial fields are deliberately absent: this is only a
+        # field serialization probe, never a validated or retained trial.
+        probe = model.model_construct(verifier_environment_mode=value)
+        if probe.model_dump(mode="json", exclude_unset=True).get("verifier_environment_mode") != mode:
+            return False
+    return True
+
+
+def _check_runtime(args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only capability preflight; version labels are informational only."""
+    checks: list[dict[str, Any]] = []
+    report: dict[str, Any] = {
+        "schema": "nemo.eval_author.trace_environment_runtime_check.v1",
+        "valid": False,
+        "scope": "single_step_proof",
+        "harbor_version": None,
+        "python_executable": sys.executable,
+        "checks": checks,
+        "execution_verified": False,
+        "hint": "Use the same existing Harbor Python environment for this check, proof receipts and Harbor jobs. "
+        "Do not install or upgrade Harbor automatically. Actual trial results must still prove separate mode.",
+    }
+
+    def check(name: str, passed: bool, message: str) -> None:
+        checks.append({"name": name, "passed": passed, "message": message})
+
+    try:
+        report["harbor_version"] = importlib.metadata.version("harbor")
+    except importlib.metadata.PackageNotFoundError:
+        # Editable/source installations may have usable APIs without metadata.
+        pass
+    try:
+        config_model = importlib.import_module("harbor.models.task.config").TaskConfig
+        result_model = importlib.import_module("harbor.models.trial.result").TrialResult
+        task_model = importlib.import_module("harbor.models.task.task").Task
+    except Exception as error:
+        # Provider import/validation exception types can change between releases.
+        # Keep an incompatible installation a structured finding, not a traceback.
+        check("provider_imports", False, f"Required Harbor APIs are unavailable ({type(error).__name__}).")
+        return report
+    check("provider_imports", True, "Required Harbor model APIs imported in this interpreter.")
+    check("task_checksum_api", hasattr(task_model, "checksum"), "Proof receipts require Harbor's Task.checksum API.")
+    try:
+        config = config_model.model_validate(
+            {
+                "environment": {"network_mode": "no-network"},
+                "verifier": {
+                    "environment_mode": "separate",
+                    "network_mode": "no-network",
+                    "environment": {"network_mode": "no-network"},
+                },
+            }
+        )
+        for name, model, expected in (
+            ("agent_network_config", config.environment, {"network_mode": "no-network"}),
+            (
+                "separate_verifier_config",
+                config.verifier,
+                {"environment_mode": "separate", "network_mode": "no-network"},
+            ),
+            ("verifier_environment_config", config.verifier.environment, {"network_mode": "no-network"}),
+        ):
+            declared = model is not None and all(key in type(model).model_fields for key in expected)
+            dumped = model.model_dump(mode="json") if declared else {}
+            check(
+                name,
+                all(dumped.get(key) == value for key, value in expected.items()),
+                "Required isolation settings must be declared and retained by Harbor, not ignored extras.",
+            )
+    except Exception as error:
+        check(
+            "isolation_config", False, f"Harbor could not retain required isolation settings ({type(error).__name__})."
+        )
+    try:
+        mode_supported = _runtime_mode_roundtrip(result_model)
+        check(
+            "trial_verifier_mode", mode_supported, "TrialResult must declare and serialize verifier_environment_mode."
+        )
+    except Exception as error:
+        check("trial_verifier_mode", False, f"Verifier-mode serialization is incompatible ({type(error).__name__}).")
+    if args.task_dir is not None:
+        task_dir = _ensure_task_dir(args.task_dir)
+        try:
+            task = task_model(task_dir / "task")
+            single_step = not task.config.steps
+            check(
+                "task_proof_shape",
+                single_step,
+                "The current proof reader requires trial-level verifier mode; multi-step proof is not certified by this preflight.",
+            )
+            checksum = task.checksum
+            check(
+                "task_checksum", isinstance(checksum, str) and bool(checksum), "Harbor must compute the task checksum."
+            )
+        except Exception as error:
+            check("task_validation", False, f"Harbor could not validate this proof task ({type(error).__name__}).")
+    report["valid"] = all(item["passed"] for item in checks)
+    return report
+
+
 def _run_input_path(task_dir: Path, job_dir: Path) -> Path:
     relative = job_dir.relative_to(task_dir).as_posix()
     return task_dir / "private" / "run-inputs" / f"{hashlib.sha256(relative.encode()).hexdigest()}.json"
@@ -2341,6 +2453,10 @@ def _export(args: argparse.Namespace) -> dict[str, Any]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    runtime = subparsers.add_parser("check-runtime", help="probe the installed Harbor proof APIs without running jobs")
+    runtime.add_argument("--task-dir", type=Path, help="also validate an authored task and its proof shape")
+    runtime.set_defaults(run=_check_runtime)
 
     init = subparsers.add_parser("init", help="create one private, gitignored task workspace")
     init.add_argument("--root", type=Path, default=Path(".eval-author/trace-environments"))
