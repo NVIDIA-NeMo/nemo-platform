@@ -1011,6 +1011,44 @@ def test_prepare_bounds_string_encoded_images_and_audits_context(tmp_path: Path)
     }
 
 
+@pytest.mark.parametrize("encoded_size", [12, 100_001])
+@pytest.mark.parametrize("location", ["observation", "text_part", "extra", "message"])
+def test_prepare_omits_repeated_image_metadata_without_losing_prose(
+    tmp_path: Path, encoded_size: int, location: str
+) -> None:
+    code, initialized = _run("init", "--root", str(tmp_path / ".eval-author"), "--task-id", "image-metadata")
+    assert code == 0, initialized
+    task_dir = Path(initialized["task_dir"])
+    payload = _atif()
+    metadata = {"type": "image", "file": {"base64": "A" * encoded_size, "caption": "synthetic diagram"}}
+    embedded = "before [metadata] " + json.dumps(metadata) + " after"
+    step = payload["steps"][1]
+    result = step["observation"]["results"][0]
+    if location == "observation":
+        result["content"] = embedded
+    elif location == "text_part":
+        result["content"] = [{"type": "text", "text": embedded}]
+    elif location == "extra":
+        result["extra"] = {"image_metadata": metadata}
+    else:
+        step["message"] = embedded
+    source = tmp_path / "source.atif.json"
+    _write_json(source, payload)
+    code, report = _run("prepare", "--task-dir", str(task_dir), "--atif", str(source), "--source-kind", "atif")
+    assert code == 0, report
+    assert (task_dir / "private/source.atif.json").read_bytes() == source.read_bytes()
+    for artifact in ("private/canonical.atif.json", "safe/trace.atif.json"):
+        text = (task_dir / artifact).read_text()
+        assert "A" * encoded_size not in text
+        assert "synthetic diagram" in text
+        if location != "extra":
+            assert "before [metadata]" in text and " after" in text
+    summary = json.loads((task_dir / "summary.json").read_text())
+    operation = summary["source"]["normalizations"][0]
+    assert operation["metadata_field_count"] == 1
+    assert operation["metadata_omitted_characters"] == encoded_size
+
+
 def test_shared_verifier_is_rejected(tmp_path: Path) -> None:
     task_dir, _ = _workspace(tmp_path)
     _candidate(task_dir)

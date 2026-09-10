@@ -600,25 +600,50 @@ def _bound_stringified_images(payload: dict[str, Any]) -> dict[str, int]:
             parts.append({"type": "text", "text": content[emitted_cursor:]})
         return parts, converted_count, converted_characters
 
-    def bound_metadata(value: Any) -> None:
+    def bound_metadata(value: Any, *, image_context: bool = False) -> Any:
         if isinstance(value, dict):
-            image_like = value.get("type") in {"image", "base64"} or (
-                isinstance(value.get("media_type"), str) and value["media_type"].startswith("image/")
+            image_like = (
+                image_context
+                or value.get("type") in {"image", "base64"}
+                or (isinstance(value.get("media_type"), str) and value["media_type"].startswith("image/"))
             )
             for key, nested in value.items():
                 if (
                     isinstance(nested, str)
-                    and len(nested) > 100_000
-                    and (key == "base64" or (key == "data" and image_like))
+                    and nested
+                    and ((key in {"base64", "data"} and image_like) or (key == "base64" and len(nested) > 100_000))
                 ):
                     counts["metadata_field_count"] += 1
                     counts["metadata_omitted_characters"] += len(nested)
                     value[key] = ""
                 else:
-                    bound_metadata(nested)
+                    value[key] = bound_metadata(nested, image_context=image_like)
         elif isinstance(value, list):
-            for nested in value:
-                bound_metadata(nested)
+            for index, nested in enumerate(value):
+                value[index] = bound_metadata(nested, image_context=image_context)
+        elif isinstance(value, str):
+            # Tool observations may repeat image metadata as JSON inside a text
+            # part, not as a structured ATIF image. Preserve surrounding prose
+            # and nonbinary metadata; never decode or execute encoded contents.
+            decoder = json.JSONDecoder()
+            fragments: list[str] = []
+            search_cursor = emitted_cursor = 0
+            while match := _IMAGE_OBJECT_START.search(value, search_cursor):
+                try:
+                    metadata, end = decoder.raw_decode(value, match.start())
+                except json.JSONDecodeError:
+                    search_cursor = match.end()
+                    continue
+                previous_count = counts["metadata_field_count"]
+                bound_metadata(metadata)
+                if counts["metadata_field_count"] != previous_count:
+                    fragments.extend((value[emitted_cursor : match.start()], json.dumps(metadata, ensure_ascii=False)))
+                    emitted_cursor = end
+                search_cursor = end
+            if fragments:
+                fragments.append(value[emitted_cursor:])
+                return "".join(fragments)
+        return value
 
     def bound_image_parts(value: Any) -> None:
         if isinstance(value, dict):

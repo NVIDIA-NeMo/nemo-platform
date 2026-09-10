@@ -145,7 +145,7 @@ and safe files of at most 25 MiB. It may make only two bounded normalizations:
 - insert a missing JSON escape when the parser-implicated quote immediately
   follows a provider-redaction placeholder; and
 - convert string-encoded ATIF image objects into image parts while omitting
-  encoded binary data and oversized image metadata.
+  encoded binary data, including image metadata embedded in text fields.
 
 Every operation, offset, count, and loss is recorded in the canonical ATIF and
 summary. Exact source bytes remain unchanged and hashed. Reject unrelated JSON
