@@ -125,7 +125,23 @@ def copy_server(gym_root: Path, out_dir: Path, rel: Path) -> Path:
     return target
 
 
-def server_config_paths(pkg_server_dir: Path, out_dir: Path, impl: str, chosen: list[str] | None) -> list[str]:
+def copy_server_configs(gym_root: Path, out_dir: Path, rel: Path, chosen: list[str] | None) -> Path:
+    """Copy the selected configs alone, leaving the implementation to the training image.
+
+    Gym resolves a server directory by name against the package's search root first and falls
+    back to the built-in of the same name when the package ships no install marker. So a
+    package carrying configs alone runs the image's own code, at the version the image was
+    built with, which is what a native-v1 package wants whenever the server is one the image
+    already provides: nothing can drift between the two copies because there is only one.
+    """
+    target = out_dir / rel / "configs"
+    target.mkdir(parents=True, exist_ok=True)
+    for cfg in select_configs(gym_root / rel, rel.parts[1], chosen):
+        shutil.copy2(cfg, target / cfg.name)
+    return out_dir / rel
+
+
+def select_configs(server_dir: Path, impl: str, chosen: list[str] | None) -> list[Path]:
     """Select the configs to load -- never all of them.
 
     A Gym server directory often ships several configs pairing it with different agents
@@ -133,10 +149,10 @@ def server_config_paths(pkg_server_dir: Path, out_dir: Path, impl: str, chosen: 
     start servers whose implementations this package does not carry. Gym's convention is that
     ``<impl>.yaml`` is the plain pairing, so that is the default; anything else is explicit.
     """
-    available = sorted((pkg_server_dir / "configs").glob("*.yaml"))
+    available = sorted((server_dir / "configs").glob("*.yaml"))
     if not available:
         raise SystemExit(
-            f"no configs/*.yaml under {pkg_server_dir}. An environment with no config starts no "
+            f"no configs/*.yaml under {server_dir}. An environment with no config starts no "
             "servers, so at least one is required."
         )
     names = {c.name: c for c in available}
@@ -144,15 +160,13 @@ def server_config_paths(pkg_server_dir: Path, out_dir: Path, impl: str, chosen: 
         missing = [c for c in chosen if c not in names]
         if missing:
             raise SystemExit(f"--config not found: {', '.join(missing)}. Available: {', '.join(sorted(names))}")
-        picked = [names[c] for c in chosen]
-    elif f"{impl}.yaml" in names:
-        picked = [names[f"{impl}.yaml"]]
-    else:
-        raise SystemExit(
-            f"no default config: expected {impl}.yaml under {pkg_server_dir}/configs. "
-            f"Pass --config explicitly. Available: {', '.join(sorted(names))}"
-        )
-    return [c.relative_to(out_dir).as_posix() for c in picked]
+        return [names[c] for c in chosen]
+    if f"{impl}.yaml" in names:
+        return [names[f"{impl}.yaml"]]
+    raise SystemExit(
+        f"no default config: expected {impl}.yaml under {server_dir}/configs. "
+        f"Pass --config explicitly. Available: {', '.join(sorted(names))}"
+    )
 
 
 def strip_inline_datasets(pkg_server_dir: Path) -> list[str]:
@@ -456,9 +470,24 @@ def main() -> int:
         "--openai-version",
         help="openai version the training image runs (wheels-v1 only). Appended the same way.",
     )
+    parser.add_argument(
+        "--reference-only",
+        action="store_true",
+        help="Ship the selected configs without the server implementation, which then resolves to "
+        "the built-in of the same name in the training image. native-v1 only, and only for a "
+        "server the image already provides: nothing can drift between package and image because "
+        "there is only one copy of the code.",
+    )
     parser.add_argument("--name", help="metadata.name. Defaults to the implementation name.")
     parser.add_argument("--description", default="")
     args = parser.parse_args()
+
+    if args.reference_only and args.format != "native-v1":
+        raise SystemExit(
+            f"--reference-only is native-v1 only, got {args.format}. The wheels formats vendor a "
+            "closure resolved from the server's own requirements.txt, which a package that ships "
+            "no server code does not have."
+        )
 
     if args.format == "wheels-v1":
         missing = [
@@ -488,9 +517,14 @@ def main() -> int:
     name = args.name or rel.parts[1].replace("_", "-")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    pkg_server_dir = copy_server(gym_root, args.out_dir, rel)
+    if args.reference_only:
+        pkg_server_dir = copy_server_configs(gym_root, args.out_dir, rel, args.config)
+    else:
+        pkg_server_dir = copy_server(gym_root, args.out_dir, rel)
     stripped = strip_inline_datasets(pkg_server_dir)
-    config_paths = server_config_paths(pkg_server_dir, args.out_dir, rel.parts[1], args.config)
+    config_paths = [
+        c.relative_to(args.out_dir).as_posix() for c in select_configs(pkg_server_dir, rel.parts[1], args.config)
+    ]
     policy_model = write_policy_model_config(args.out_dir, args.format)
     wheels = (
         vendor_wheels(
@@ -516,6 +550,7 @@ def main() -> int:
             {
                 "environment_root": str(args.out_dir),
                 "format": args.format,
+                "reference_only": args.reference_only,
                 "name": name,
                 "server": rel.as_posix(),
                 "manifest": str(manifest),
