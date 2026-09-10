@@ -72,7 +72,7 @@ class GenerateJob(NemoJob):
     job_collection_path: ClassVar[str | None] = "/jobs"
 
     @classmethod
-    async def compile(
+    async def compile(  # ty: ignore[invalid-method-override]
         cls,
         *,
         workspace: str,

@@ -137,7 +137,7 @@ class RetrieveEvalJob(NemoJob):
     job_collection_path: ClassVar[str | None] = "/retrieve-eval/jobs"
 
     @classmethod
-    async def to_spec(
+    async def to_spec(  # ty: ignore[invalid-method-override]
         cls,
         input_spec: BaseModel,
         workspace: str,
@@ -156,7 +156,7 @@ class RetrieveEvalJob(NemoJob):
         )
 
     @classmethod
-    async def compile(
+    async def compile(  # ty: ignore[invalid-method-override]
         cls,
         workspace: str,
         spec: BaseModel,
