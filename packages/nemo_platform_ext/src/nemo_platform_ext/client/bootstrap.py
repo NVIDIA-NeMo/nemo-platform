@@ -628,6 +628,24 @@ DEFAULT_RETRY_POLICY = RetryPolicy(
 )
 
 
+# Connect phase cap for CLI clients. A blackholed endpoint fails in seconds
+# rather than waiting out the full read timeout on every attempt.
+DEFAULT_CONNECT_TIMEOUT = 5.0
+DEFAULT_REQUEST_TIMEOUT = 60.0
+
+
+def resolve_timeout(timeout: float | httpx.Timeout | None) -> httpx.Timeout:
+    """Normalize a caller timeout into phase-aware httpx form.
+
+    A bare number (or ``None`` for the 60 s default) is the read/write/pool
+    budget; the connect phase is capped at :data:`DEFAULT_CONNECT_TIMEOUT`
+    separately. An explicit :class:`httpx.Timeout` is used as given.
+    """
+    if isinstance(timeout, httpx.Timeout):
+        return timeout
+    return httpx.Timeout(DEFAULT_REQUEST_TIMEOUT if timeout is None else timeout, connect=DEFAULT_CONNECT_TIMEOUT)
+
+
 def _client_headers(bootstrap: ResolvedBootstrap) -> dict[str, str]:
     """Return the default headers for a client built from *bootstrap*.
 
@@ -662,9 +680,10 @@ def build_nemo_client(
         access_token=access_token,
         extra_headers=extra_headers,
     )
+    resolved_timeout = resolve_timeout(timeout)
     http_client = httpx.Client(
         headers=_client_headers(bootstrap) or None,
-        timeout=timeout if timeout is not None else httpx.Timeout(60.0),
+        timeout=resolved_timeout,
         follow_redirects=True,
         verify=bootstrap.client_verify,
         auth=TokenProviderAuth(bootstrap.token_provider) if bootstrap.token_provider is not None else None,
@@ -674,7 +693,7 @@ def build_nemo_client(
         workspace=workspace if workspace is not None else bootstrap.workspace,
         auth=bootstrap.token_provider,
         default_headers=_client_headers(bootstrap) or None,
-        timeout=timeout,
+        timeout=resolved_timeout,
         retry=retry,
         http_client=http_client,
     )
@@ -699,9 +718,10 @@ def build_async_nemo_client(
         access_token=access_token,
         extra_headers=extra_headers,
     )
+    resolved_timeout = resolve_timeout(timeout)
     http_client = httpx.AsyncClient(
         headers=_client_headers(bootstrap) or None,
-        timeout=timeout if timeout is not None else httpx.Timeout(60.0),
+        timeout=resolved_timeout,
         follow_redirects=True,
         verify=bootstrap.client_verify,
         auth=TokenProviderAuth(bootstrap.token_provider) if bootstrap.token_provider is not None else None,
@@ -711,7 +731,7 @@ def build_async_nemo_client(
         workspace=workspace if workspace is not None else bootstrap.workspace,
         auth=bootstrap.token_provider,
         default_headers=_client_headers(bootstrap) or None,
-        timeout=timeout,
+        timeout=resolved_timeout,
         retry=retry,
         http_client=http_client,
     )
@@ -732,9 +752,10 @@ def build_direct_nemo_client(
     sent. TLS verification still honours the environment override and any
     saved cluster certificate authority.
     """
+    resolved_timeout = resolve_timeout(timeout)
     http_client = httpx.Client(
         headers=dict(default_headers) if default_headers else None,
-        timeout=timeout if timeout is not None else httpx.Timeout(60.0),
+        timeout=resolved_timeout,
         follow_redirects=True,
         verify=client_verify_from_env(certificate_authority),
     )
@@ -742,7 +763,7 @@ def build_direct_nemo_client(
         base_url=base_url,
         workspace=workspace,
         default_headers=default_headers,
-        timeout=timeout,
+        timeout=resolved_timeout,
         retry=retry,
         http_client=http_client,
     )
@@ -758,9 +779,10 @@ def build_direct_async_nemo_client(
     retry: RetryPolicy | None = DEFAULT_RETRY_POLICY,
 ) -> AsyncNemoClient:
     """Async twin of :func:`build_direct_nemo_client`."""
+    resolved_timeout = resolve_timeout(timeout)
     http_client = httpx.AsyncClient(
         headers=dict(default_headers) if default_headers else None,
-        timeout=timeout if timeout is not None else httpx.Timeout(60.0),
+        timeout=resolved_timeout,
         follow_redirects=True,
         verify=client_verify_from_env(certificate_authority),
     )
@@ -768,7 +790,7 @@ def build_direct_async_nemo_client(
         base_url=base_url,
         workspace=workspace,
         default_headers=default_headers,
-        timeout=timeout,
+        timeout=resolved_timeout,
         retry=retry,
         http_client=http_client,
     )

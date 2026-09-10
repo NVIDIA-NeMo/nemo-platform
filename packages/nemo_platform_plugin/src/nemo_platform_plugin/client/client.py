@@ -286,6 +286,10 @@ def _should_retry(
     else:
         # A response only arrives once the body has gone out on the wire.
         body_is_spent = True
+        if response.status_code == 409 and (request.client_options or {}).get("exist_ok"):
+            # The caller declared the conflict an expected outcome that send()
+            # resolves by fetching the existing entity; retrying it is wasted work.
+            return None
         decision = response.headers.get("x-should-retry") if policy.respect_retry_decision_headers else None
         if policy.respect_retry_decision_headers and response.status_code < 400:
             return None
