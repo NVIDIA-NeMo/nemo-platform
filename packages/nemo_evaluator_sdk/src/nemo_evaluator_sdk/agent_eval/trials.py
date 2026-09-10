@@ -1,9 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Trial artifacts, the runtime/serde interfaces that produce them, and the
-runtime-agnostic helpers for shaping trials from artifacts (status mapping +
-the standard evidence-key builder)."""
+"""Typed trial artifacts and runtime/serde interfaces."""
 
 from __future__ import annotations
 
@@ -11,7 +9,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any, Protocol, runtime_checkable
+from typing import Annotated, Any, Protocol, Self, runtime_checkable
 
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.metrics.protocol import Metric
@@ -133,10 +131,50 @@ class TrialError(BaseModel):
         return value
 
 
-class AgentEvalTrial(BaseModel):
-    """Durable trial artifact for one task: output, evidence, status, error, and metadata."""
+NonNegativeTokenCount = Annotated[int, Field(strict=True, ge=0)]
+FiniteNonNegativeFloat = Annotated[float, Field(ge=0, allow_inf_nan=False)]
 
-    model_config = ConfigDict(extra="forbid")
+
+class TrialMeasurements(BaseModel):
+    """Validated usage, runtime, and cost measurements for one trial."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
+
+    prompt_tokens: NonNegativeTokenCount | None = None
+    completion_tokens: NonNegativeTokenCount | None = None
+    total_tokens: NonNegativeTokenCount | None = None
+    cache_creation_tokens: NonNegativeTokenCount | None = None
+    cache_read_tokens: NonNegativeTokenCount | None = None
+    runtime_sec: FiniteNonNegativeFloat | None = None
+    cost_usd: FiniteNonNegativeFloat | None = None
+
+    @field_validator("runtime_sec", "cost_usd", mode="before")
+    @classmethod
+    def _require_real_number(cls, value: Any) -> Any:
+        if value is None:
+            return value
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError("measurement must be a real number, not a Boolean or string")
+        return value
+
+    @model_validator(mode="after")
+    def _require_canonical_total(self) -> Self:
+        if self.prompt_tokens is None or self.completion_tokens is None:
+            if self.total_tokens is not None:
+                raise ValueError("total_tokens requires prompt_tokens and completion_tokens")
+            return self
+        expected = self.prompt_tokens + self.completion_tokens
+        if self.total_tokens is None:
+            object.__setattr__(self, "total_tokens", expected)
+        elif self.total_tokens != expected:
+            raise ValueError("total_tokens must equal prompt_tokens + completion_tokens")
+        return self
+
+
+class AgentEvalTrial(BaseModel):
+    """Durable trial artifact: output, evidence, status, error, measurements, and metadata."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True, revalidate_instances="always")
 
     id: str = Field(description="Stable identifier for this trial.")
     task_id: str = Field(description="Identifier of the AgentEvalTask this trial was produced for.")
@@ -155,6 +193,10 @@ class AgentEvalTrial(BaseModel):
             "What went wrong producing this trial, when the producer reported a failure. Populated "
             "by a runner runtime. Drives AgentEvalSummary.error_trial_ids."
         ),
+    )
+    measurements: TrialMeasurements = Field(
+        default_factory=TrialMeasurements,
+        description="Validated token usage, agent runtime, and cost measurements for the trial.",
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,

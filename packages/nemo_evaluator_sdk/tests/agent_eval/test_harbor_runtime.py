@@ -300,12 +300,14 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
         AgentEvalTask(id="noreward-task", intent="z", inputs={"instruction": "r"}, metrics=[HarborRewardMetric()]),
     ]
 
-    # Direct adaptation: reward + tokens land on metadata, exception flips status to PARTIAL, evidence present.
+    # Direct adaptation: reward stays metadata while usage is typed; exceptions remain scoreable.
     trials = {t.task_id: t for t in build_trials_from_job_dir(job_dir, tasks)}
     assert trials["pass-task"].status == AgentEvalTrialStatus.COMPLETED
     assert trials["pass-task"].metadata["reward"] == 1.0
-    assert trials["pass-task"].metadata["prompt_tokens"] == 100
-    assert trials["pass-task"].metadata["cost_usd"] == 0.25
+    assert trials["pass-task"].measurements.prompt_tokens == 100
+    assert trials["pass-task"].measurements.cost_usd == 0.25
+    assert "prompt_tokens" not in trials["pass-task"].metadata
+    assert "cost_usd" not in trials["pass-task"].metadata
     assert trials["pass-task"].evidence is not None
     assert trials["fail-task"].status == AgentEvalTrialStatus.PARTIAL
     assert trials["fail-task"].error is not None
@@ -2270,8 +2272,19 @@ def _adapted_measurements(tmp_path: Path, result_data: dict[str, object]) -> dic
     }
     payload.update(result_data)
     trial = _trial_from_harbor_result(trial_dir, payload, reward_key="reward")
-    keys = ("prompt_tokens", "completion_tokens", "cache_read_tokens", "cost_usd")
-    return {key: trial.metadata[key] for key in keys if key in trial.metadata}
+    assert (
+        not {
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "cache_creation_tokens",
+            "cache_read_tokens",
+            "runtime_sec",
+            "cost_usd",
+        }
+        & trial.metadata.keys()
+    )
+    return trial.measurements.model_dump(exclude_none=True)
 
 
 def test_trial_measurements_use_one_source_and_are_total(tmp_path: Path) -> None:
@@ -2293,20 +2306,37 @@ def test_trial_measurements_use_one_source_and_are_total(tmp_path: Path) -> None
     ) == {
         "prompt_tokens": 5,
         "completion_tokens": 1,
+        "total_tokens": 6,
         "cache_read_tokens": 4,
         "cost_usd": pytest.approx(0.3),
     }
     assert _adapted_measurements(
         tmp_path, {"agent_result": {"n_input_tokens": 0, "n_output_tokens": 0, "n_cache_tokens": 0, "cost_usd": 0}}
-    ) == {"prompt_tokens": 0, "completion_tokens": 0, "cache_read_tokens": 0, "cost_usd": 0.0}
+    ) == {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cache_read_tokens": 0, "cost_usd": 0.0}
     assert (
         _adapted_measurements(tmp_path, {"agent_result": {}, "step_results": [{"agent_result": {"n_input_tokens": 9}}]})
         == {}
     )
     assert _adapted_measurements(tmp_path, {"step_results": 7}) == {}
+    assert (
+        _adapted_measurements(
+            tmp_path, {"step_results": [None, "bad", {"agent_result": 7}, {"agent_result": {"n_input_tokens": -2}}]}
+        )
+        == {}
+    )
+
+
+def test_null_top_level_agent_result_uses_step_measurements(tmp_path: Path) -> None:
     assert _adapted_measurements(
-        tmp_path, {"step_results": [None, "bad", {"agent_result": 7}, {"agent_result": {"n_input_tokens": -2}}]}
-    ) == {"prompt_tokens": -2}
+        tmp_path,
+        {
+            "agent_result": None,
+            "step_results": [
+                {"agent_result": {"n_input_tokens": 2, "n_output_tokens": 1}},
+                {"agent_result": {"n_input_tokens": 3, "n_output_tokens": 2}},
+            ],
+        },
+    ) == {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
 
 
 @pytest.mark.parametrize("bad", [True, "12", float("nan"), float("inf"), float("-inf")])
@@ -2315,6 +2345,18 @@ def test_trial_measurements_reject_malformed_values(tmp_path: Path, bad: object)
         tmp_path,
         {"agent_result": {"n_input_tokens": bad, "n_output_tokens": 2, "cost_usd": bad}},
     ) == {"completion_tokens": 2}
+
+
+def test_invalid_step_field_poisons_only_that_aggregate(tmp_path: Path) -> None:
+    assert _adapted_measurements(
+        tmp_path,
+        {
+            "step_results": [
+                {"agent_result": {"n_input_tokens": 5, "n_output_tokens": 1}},
+                {"agent_result": {"n_input_tokens": "bad", "n_output_tokens": 2}},
+            ]
+        },
+    ) == {"completion_tokens": 3}
 
 
 def test_trial_measurements_omit_numeric_and_aggregate_cost_overflow(tmp_path: Path) -> None:
@@ -2330,6 +2372,80 @@ def test_trial_measurements_omit_numeric_and_aggregate_cost_overflow(tmp_path: P
             ]
         },
     ) == {"prompt_tokens": 3}
+
+
+def test_trial_measurements_use_top_level_runtime_without_combining_steps(tmp_path: Path) -> None:
+    assert _adapted_measurements(
+        tmp_path,
+        {
+            "agent_execution": {
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "finished_at": "2026-01-01T00:00:02.500000+00:00",
+            },
+            "step_results": [
+                {
+                    "agent_execution": {
+                        "started_at": "2026-01-01T00:00:00+00:00",
+                        "finished_at": "2026-01-01T00:00:10+00:00",
+                    }
+                }
+            ],
+        },
+    ) == {"runtime_sec": 2.5}
+
+
+def test_trial_measurements_sum_step_runtime_when_top_level_is_absent(tmp_path: Path) -> None:
+    assert _adapted_measurements(
+        tmp_path,
+        {
+            "agent_execution": None,
+            "step_results": [
+                {
+                    "agent_execution": {
+                        "started_at": "2026-01-01T00:00:00+00:00",
+                        "finished_at": "2026-01-01T00:00:01+00:00",
+                    }
+                },
+                {},
+                {
+                    "agent_execution": {
+                        "started_at": "2026-01-01T00:00:03+00:00",
+                        "finished_at": "2026-01-01T00:00:05+00:00",
+                    }
+                },
+            ],
+        },
+    ) == {"runtime_sec": 3.0}
+
+
+@pytest.mark.parametrize(
+    "window",
+    [
+        {"started_at": "2026-01-01T00:00:00+00:00"},
+        {
+            "started_at": "2026-01-01T00:00:02+00:00",
+            "finished_at": "2026-01-01T00:00:01+00:00",
+        },
+    ],
+)
+def test_invalid_step_runtime_poisons_the_runtime_aggregate(tmp_path: Path, window: object) -> None:
+    assert (
+        _adapted_measurements(
+            tmp_path,
+            {
+                "step_results": [
+                    {
+                        "agent_execution": {
+                            "started_at": "2026-01-01T00:00:00+00:00",
+                            "finished_at": "2026-01-01T00:00:01+00:00",
+                        }
+                    },
+                    {"agent_execution": window},
+                ]
+            },
+        )
+        == {}
+    )
 
 
 def _write_evidence_trial(job_dir: Path, trial_name: str = "task__A1b2") -> Path:
