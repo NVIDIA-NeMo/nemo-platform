@@ -21,8 +21,10 @@ from nemo_platform import (
     not_given,
 )
 from nemo_platform._base_client import AsyncAPIClient, SyncAPIClient
+from nemo_platform._compat import cached_property
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.tls import client_verify_from_env
+from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
 
 
 def _should_bootstrap_config(
@@ -219,6 +221,12 @@ class NeMoPlatform(SyncAPIClient):
         instance = resource_cls(self)
         self.__dict__[name] = instance
         return instance
+
+    @cached_property
+    def jobs(self) -> JobsClient:
+        from nemo_platform_plugin.client.adapter import client_from_platform
+
+        return client_from_platform(self, JobsClient)
 
     def copy(
         self,
@@ -463,6 +471,12 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         instance = resource_cls(self)
         self.__dict__[name] = instance
         return instance
+
+    @cached_property
+    def jobs(self) -> AsyncJobsClient:
+        from nemo_platform_plugin.client.adapter import client_from_platform
+
+        return client_from_platform(self, AsyncJobsClient)
 
     def copy(
         self,
