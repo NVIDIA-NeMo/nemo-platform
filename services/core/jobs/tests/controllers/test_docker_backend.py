@@ -85,6 +85,7 @@ from nmp.core.jobs.controllers.backends.exceptions import (
     SchedulingDeferred,
 )
 from nmp.core.jobs.controllers.backends.workload_tokens import WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS
+from nmp.core.jobs.entities import STEP_SPEC_NAME_CONFIG_KEY
 from pydantic import ValidationError
 
 from services.core.jobs.tests.controllers.client_mocks import data_response
@@ -3233,7 +3234,7 @@ def test_persistent_storage_cleanup_rejects_non_final_step_when_job_is_terminal(
         )
     )
     docker_job._jobs.get_job_step.return_value = data_response(
-        SimpleNamespace(name="download-1", config={"_step_spec_name": "download"})
+        SimpleNamespace(name="download-1", config={STEP_SPEC_NAME_CONFIG_KEY: "download"})
     )
 
     assert (
@@ -3257,7 +3258,7 @@ def test_persistent_storage_cleanup_allows_final_step_when_job_is_terminal(docke
         )
     )
     docker_job._jobs.get_job_step.return_value = data_response(
-        SimpleNamespace(name="training-1", config={"_step_spec_name": "training"})
+        SimpleNamespace(name="training-1", config={STEP_SPEC_NAME_CONFIG_KEY: "training"})
     )
 
     assert docker_job.check_job_persistent_storage_cleanup_allowed(

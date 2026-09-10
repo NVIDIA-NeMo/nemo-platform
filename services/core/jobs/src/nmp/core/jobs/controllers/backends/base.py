@@ -46,6 +46,7 @@ from nmp.common.jobs.constants import (
 from nmp.common.platform_endpoint import parse_platform_endpoint
 from nmp.common.sdk_factory import get_entity_parts
 from nmp.core.jobs.app.providers import ComputeResources
+from nmp.core.jobs.entities import get_step_spec_name, is_final_platform_step
 from pydantic import BaseModel, model_validator
 
 logger = logging.getLogger(__name__)
@@ -420,9 +421,8 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
     def check_job_persistent_storage_cleanup_allowed(self, job: str, step_name: str, workspace: str) -> bool:
         """Return whether a completed step may delete persistent job storage.
 
-        Task resources are per-step and can be removed after each terminal step. Persistent job storage is shared
-        across all steps in an attempt, so it must survive successful intermediate steps even if the aggregate job
-        status is already terminal or temporarily stale.
+        The jobs controller owns aggregate terminal-state transitions. Backend cleanup only checks that the
+        successful resource belongs to the final configured step before deleting storage shared by the attempt.
         """
         try:
             job_response = self._jobs.get_job(name=job, workspace=workspace).data()
@@ -445,16 +445,14 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
                 f"Could not fetch job step '{job}/{step_name}' to check storage cleanup eligibility"
             ) from e
 
-        step_config = step.config if isinstance(step.config, dict) else {}
-        step_spec_name = step_config.get("_step_spec_name") or getattr(step, "name", None) or step_name
+        step_spec_name = get_step_spec_name(step.config, getattr(step, "name", None) or step_name)
 
         platform_spec = getattr(job_response, "platform_spec", None)
         steps = getattr(platform_spec, "steps", None) or []
         if not steps:
             return True
 
-        final_step_name = getattr(steps[-1], "name", None)
-        if final_step_name is None or step_spec_name == final_step_name:
+        if is_final_platform_step(platform_spec, step_spec_name):
             return True
 
         logger.debug(
@@ -464,7 +462,7 @@ class JobBackend(Generic[ExecutionProviderConfigT, ExecutionProfileConfigT], ABC
                 "job": job,
                 "step": step_name,
                 "step_spec_name": step_spec_name,
-                "final_step_name": final_step_name,
+                "final_step_name": getattr(steps[-1], "name", None),
             },
         )
         return False
