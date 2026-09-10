@@ -110,7 +110,7 @@ That writes the package plus `training.jsonl` / `validation.jsonl` and, with `--
 |-------|---------|-------|
 | `num_generations_per_prompt` | `8` | Group size for relative advantages. |
 | `num_prompts_per_step` | `null` | Derived from `batch_size / num_generations_per_prompt` when omitted. `num_prompts_per_step × num_generations_per_prompt` must be a multiple of `batch_size` (enforced by `validate_for_training`), so prefer a `num_generations_per_prompt` that divides `batch_size`. |
-| `automodel_kwargs` | `null` | Passed to `policy.dtensor_cfg.automodel_kwargs`. **Requires `training.policy_backend: "automodel"`**, which is the LoRA pairing; under `"dtensor"` it is rejected at submit rather than ignored. `{"force_hf": true}` loads stock HuggingFace modules when a model's custom Automodel backbone is not compatible with the parallelizer; a `{"backend": {...}}` block picks the Transformer-Engine / DeepEP MoE implementation. |
+| `automodel_kwargs` | `null` | Passed to `policy.dtensor_cfg.automodel_kwargs`. **Requires `training.policy_backend: "automodel"`** for either LoRA or full-weight GRPO; under `"dtensor"` it is rejected at submit rather than ignored. `{"force_hf": true}` loads stock HuggingFace modules when a model's custom Automodel backbone is not compatible with the parallelizer; a `{"backend": {...}}` block picks the Transformer-Engine / DeepEP MoE implementation. |
 | `router_aux_loss_coef` | `null` | MoE router auxiliary-loss coefficient, applied as a **top-level** HuggingFace config override. Set `0.0` for RL on a MoE model — the aux load-balancing loss is a pretraining regularizer and adds a gradient term unrelated to the reward. Models that nest their config need `hf_config_overrides` instead; a top-level key the model does not read is absorbed silently, leaving the aux loss on. |
 | `hf_config_overrides` | `null` | Passed to NeMo-RL's `policy.hf_config_overrides` verbatim, which forwards it to the training model as HuggingFace config kwargs and to vLLM as `hf_overrides`. Nesting is preserved, so this reaches models that namespace their config — Qwen3.5 reads the router coefficient under `text_config`, i.e. `{"text_config": {"router_aux_loss_coef": 0.0}}`. Setting `router_aux_loss_coef` here *and* as its own field is rejected at submit time. |
 | `vllm_tensor_parallel_size` | `null` | Tensor parallelism for the rollout engine alone. Defaults to `min(parallelism.tensor_parallel_size, parallelism.num_gpus_per_node)`. Set it when the model needs several GPUs to hold inference weights but you want the policy trained at a different tensor-parallel size. |
@@ -142,6 +142,19 @@ Lives under `training`, a **sibling of `parallelism`** and not a field on it. Th
 `dtensor` plus LoRA / expert parallelism / `automodel_kwargs` is **rejected at submit**: the worker does not implement them; left to NeMo-RL, LoRA dies in a Ray worker and the other two are ignored silently. Every conflict is listed at once.
 
 Keep the default unless the cluster's GPUs are pre-Hopper or you need Automodel's consolidated export. `megatron` is not selectable: the image builds the extra, but the compiler still emits an inert `megatron_cfg`.
+
+`v4_compatible` (`GRPOTraining.v4_compatible`, default `true`) is the compatibility control for that Automodel full-weight export. Automodel otherwise writes a transformers-v5 `config.json` that the platform's vLLM cannot load, so the compiler keeps the base checkpoint's v4 `config.json` on the published model and writes the in-memory v5 config beside it as `config.v5.json`. Set it `false` to export the v5 file as `config.json` instead. The field has no effect on `dtensor` full-weight jobs or LoRA adapters.
+
+```json
+{
+  "training": {
+    "type": "grpo",
+    "finetuning_type": "all_weights",
+    "policy_backend": "automodel",
+    "v4_compatible": false
+  }
+}
+```
 
 ### GRPO advanced (`type: "grpo"`)
 
