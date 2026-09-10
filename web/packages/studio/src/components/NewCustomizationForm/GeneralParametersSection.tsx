@@ -35,7 +35,7 @@ import {
 import { useFormContext } from 'react-hook-form';
 
 export const GeneralParametersSection = () => {
-  const { control, watch, formState } = useFormContext<CustomizationFormFields>();
+  const { control, watch, setValue, formState } = useFormContext<CustomizationFormFields>();
   const backend = watch('backend');
   const disabled = formState.isSubmitting;
 
@@ -789,6 +789,9 @@ export const GeneralParametersSection = () => {
                 />
                 <ControlledSwitch
                   useControllerProps={{ name: 'unsloth.model.load_in_4bit', control }}
+                  onChange={(checked) => {
+                    if (checked) setValue('unsloth.model.load_in_8bit', false);
+                  }}
                   formFieldProps={{
                     slotLabel: 'Load in 4-bit',
                     labelPosition: 'left',
@@ -799,6 +802,9 @@ export const GeneralParametersSection = () => {
                 />
                 <ControlledSwitch
                   useControllerProps={{ name: 'unsloth.model.load_in_8bit', control }}
+                  onChange={(checked) => {
+                    if (checked) setValue('unsloth.model.load_in_4bit', false);
+                  }}
                   formFieldProps={{
                     slotLabel: 'Load in 8-bit',
                     labelPosition: 'left',
