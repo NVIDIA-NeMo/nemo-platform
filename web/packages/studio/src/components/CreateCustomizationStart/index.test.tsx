@@ -5,6 +5,10 @@ import { DEFAULT_WORKSPACE } from '@nemo/common/src/models/constants';
 import { CreateCustomizationStart } from '@studio/components/CreateCustomizationStart';
 import { CUSTOMIZATION_TEMPLATES } from '@studio/constants/customizationTemplates';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
+import {
+  getMockCustomizationJobTemplate,
+  resetCustomizationJobTemplateMocks,
+} from '@studio/mocks/handlers/customizationJobTemplates';
 import { server } from '@studio/mocks/node';
 import { mockUseNavigate, mockUseParams } from '@studio/tests/util/mockUseParams';
 import { TestProviders } from '@studio/tests/util/TestProviders';
@@ -43,6 +47,7 @@ describe('CreateCustomizationStart', () => {
     mockUseNavigate(vi.fn());
     mockUseParams({ [ROUTE_PARAMS.workspace]: DEFAULT_WORKSPACE });
     server.use(hfRowsHandler);
+    resetCustomizationJobTemplateMocks();
   });
 
   it('offers a way in for each start option', () => {
@@ -175,6 +180,94 @@ describe('CreateCustomizationStart', () => {
         { timeout: 10_000 }
       );
       expect(onContinue).not.toHaveBeenCalledWith({ optionId: 'scratch' });
+    });
+  });
+
+  describe('saved templates', () => {
+    const SAVED = 'llama-lora-baseline';
+
+    it('lists the saved templates once the option is picked', async () => {
+      const user = userEvent.setup();
+      renderStart();
+
+      await user.click(screen.getByText('Use a saved template'));
+      expect(await screen.findByText(SAVED)).toBeInTheDocument();
+      expect(screen.getByText('unsloth-quick-iterate')).toBeInTheDocument();
+    });
+
+    it('will not continue until a template is selected', async () => {
+      const user = userEvent.setup();
+      renderStart();
+
+      await user.click(screen.getByText('Use a saved template'));
+      await screen.findByText(SAVED);
+      expect(continueButton()).toBeDisabled();
+
+      await user.click(screen.getByText(SAVED));
+      expect(continueButton()).toBeEnabled();
+    });
+
+    /**
+     * Saved templates reference models and datasets that already exist, so unlike a curated
+     * recipe there is nothing to provision — the fields go straight over.
+     */
+    it('hands over the stored fields without provisioning anything', async () => {
+      const user = userEvent.setup();
+      const onContinue = vi.fn();
+      renderStart(onContinue);
+
+      await user.click(screen.getByText('Use a saved template'));
+      await user.click(await screen.findByText(SAVED));
+      await user.click(continueButton());
+
+      expect(onContinue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          optionId: 'saved',
+          initialValues: expect.objectContaining({ backend: 'automodel' }),
+        })
+      );
+    });
+
+    /** Re-applying a template must not try to create a second model under the same name. */
+    it('regenerates the output name rather than reusing the saved one', async () => {
+      const user = userEvent.setup();
+      const onContinue = vi.fn();
+      renderStart(onContinue);
+
+      await user.click(screen.getByText('Use a saved template'));
+      await user.click(await screen.findByText(SAVED));
+      await user.click(continueButton());
+
+      const [[selection]] = onContinue.mock.calls;
+      expect(selection.initialValues.outputName).not.toBe(SAVED);
+      expect(selection.initialValues.outputName).toBeTruthy();
+    });
+
+    it('deletes a template and drops it from the list', async () => {
+      const user = userEvent.setup();
+      renderStart();
+
+      await user.click(screen.getByText('Use a saved template'));
+      await screen.findByText(SAVED);
+
+      await user.click(screen.getByRole('button', { name: `Delete template ${SAVED}` }));
+
+      await waitFor(() => expect(screen.queryByText(SAVED)).not.toBeInTheDocument());
+      expect(getMockCustomizationJobTemplate(SAVED)).toBeUndefined();
+    });
+
+    /** Deleting the picked template would otherwise leave Continue armed with a ghost. */
+    it('clears the selection when the selected template is deleted', async () => {
+      const user = userEvent.setup();
+      renderStart();
+
+      await user.click(screen.getByText('Use a saved template'));
+      await user.click(await screen.findByText(SAVED));
+      expect(continueButton()).toBeEnabled();
+
+      await user.click(screen.getByRole('button', { name: `Delete template ${SAVED}` }));
+
+      await waitFor(() => expect(continueButton()).toBeDisabled());
     });
   });
 });
