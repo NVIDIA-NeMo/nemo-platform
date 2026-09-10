@@ -590,16 +590,17 @@ def _add_submit_command(
             renderer_cls = cli.get_job_renderer(job_cls, verb="submit")
 
         def _do_submit() -> Any:
-            return scheduler.submit_remote(
-                job_cls,
-                spec_data,
-                base_url=_resolve_submit_base_url(typer_ctx, base_url=base_url, cluster=cluster),
-                workspace=workspace,
-                profile=profile,
-                options=merged_options or None,
-                metadata=_resolve_submit_metadata(typer_ctx),
-                headers=_resolve_submit_auth_headers(typer_ctx) or None,
-            )
+            submit_kwargs: dict[str, Any] = {
+                "base_url": _resolve_submit_base_url(typer_ctx, base_url=base_url, cluster=cluster),
+                "workspace": workspace,
+                "profile": profile,
+                "options": merged_options or None,
+                "headers": _resolve_submit_auth_headers(typer_ctx) or None,
+            }
+            metadata = _resolve_submit_metadata(typer_ctx)
+            if metadata is not None:
+                submit_kwargs["metadata"] = metadata
+            return scheduler.submit_remote(job_cls, spec_data, **submit_kwargs)
 
         renderer: CLIRenderer | None = None
         rctx: RendererContext | None = None
