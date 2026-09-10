@@ -131,6 +131,11 @@ RUNTIME_COMMANDS: list[list[str]] = [
     ["adapters", "list", "-f", "code"],
     ["inference", "providers", "list", "-f", "code"],
     ["inference", "--help"],
+    ["projects", "list", "-f", "code"],
+    ["iam", "role-bindings", "list", "-f", "code"],
+    ["guardrail", "configs", "list", "-f", "code"],
+    ["intake", "traces", "list", "-f", "code"],
+    ["experiments", "list", "-f", "code"],
     ["wait", "--help"],
     ["chat", "--help"],
 ]
@@ -162,7 +167,7 @@ def test_cli_runs_without_generated_sdk_installed(tmp_path: Path) -> None:
 # discovery path (``nemo_platform_plugin.discovery`` and the modules it pulls in)
 # must not need the generated SDK, or every plugin group silently disappears
 # from ``nemo --help``.
-PLUGIN_GROUPS: tuple[str, ...] = ("agents", "intake", "experiments")
+PLUGIN_GROUPS: tuple[str, ...] = ("agents", "guardrail", "intake", "experiments")
 
 
 def test_plugin_groups_are_discovered_without_generated_sdk(tmp_path: Path) -> None:
