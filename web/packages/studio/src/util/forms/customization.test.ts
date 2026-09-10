@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RlGRPOTrainingFinetuningType } from '@nemo/sdk/generated/customizer/schema';
+import { customizationJob1, customizationJob3 } from '@studio/mocks/customizer/customization-jobs';
 import {
   FORM_DEFAULTS,
   RL_DPO_TRAINING_DEFAULTS,
@@ -9,8 +10,16 @@ import {
   customizationFormSchema,
   formToAutomodelCreate,
   formToUnslothCreate,
+  getInitialFormValuesFromState,
+  jobToFormFields,
   type CustomizationFormFields,
 } from '@studio/util/forms/customization';
+import {
+  AUTOMODEL_SPEC_DEFAULTS,
+  GRPO_SPEC_DEFAULTS,
+  numberDefault,
+  stringDefault,
+} from '@studio/util/forms/specDefaults';
 
 // Deep-clone the defaults so per-test mutations (e.g. flipping finetuning_type)
 // never leak through shared nested references into FORM_DEFAULTS or other tests.
@@ -180,11 +189,18 @@ describe('formToAutomodelCreate', () => {
     expect(spec.training.lora?.use_triton).toBe(true);
   });
 
-  it('seeds the backend-default enum knobs so the UI matches the backend', () => {
+  /** Read from the spec, so the test does not go stale the next time a default changes. */
+  it('seeds the enum knobs from the spec so the UI matches the backend', () => {
     const spec = formToAutomodelCreate(validAutomodel()).spec;
-    expect(spec.training.attn_implementation).toBe('sdpa');
-    expect(spec.optimizer?.optimizer).toBe('Adam');
-    expect(spec.optimizer?.lr_decay_style).toBe('cosine');
+    expect(spec.training.attn_implementation).toBe(
+      stringDefault(AUTOMODEL_SPEC_DEFAULTS, 'training_attn_implementation')
+    );
+    expect(spec.optimizer?.optimizer).toBe(
+      stringDefault(AUTOMODEL_SPEC_DEFAULTS, 'optimizer_optimizer')
+    );
+    expect(spec.optimizer?.lr_decay_style).toBe(
+      stringDefault(AUTOMODEL_SPEC_DEFAULTS, 'optimizer_lr_decay_style')
+    );
   });
 
   it('passes through advanced automodel fields set on the form', () => {
@@ -273,39 +289,27 @@ describe('formToUnslothCreate', () => {
 });
 
 describe('GRPO defaults', () => {
-  const training = RL_GRPO_TRAINING_DEFAULTS as {
-    learning_rate: number;
-    adam_eps: number;
-    val_check_interval: number;
-  };
+  const training = RL_GRPO_TRAINING_DEFAULTS as unknown as Record<string, unknown>;
 
-  // The inherited 1e-4 is SFT-scale and collapses a full-weight policy in a few dozen
-  // steps; the platform GRPO fixtures train at 5e-6. One value covers both finetuning
-  // types -- the backend's lora.alpha/rank scaling raises the adapter's effective rate.
-  it('trains at an RL-scale learning rate, not the inherited SFT default', () => {
-    expect(training.learning_rate).toBe(5e-6);
-    expect(training.learning_rate).toBeLessThan(2e-5);
+  it('takes every value from the GRPO arm of the spec', () => {
+    expect(training.learning_rate).toBe(numberDefault(GRPO_SPEC_DEFAULTS, 'learning_rate'));
+    expect(training.adam_eps).toBe(numberDefault(GRPO_SPEC_DEFAULTS, 'adam_eps'));
+    expect(training.batch_size).toBe(numberDefault(GRPO_SPEC_DEFAULTS, 'batch_size'));
   });
 
-  // Backend default is 1e-5, overridden to Torch's 1e-8 in the shared block. Fixed
-  // for GRPO only; DPO keeps the shared value so its numerics do not shift.
-  it('matches the backend adam_eps default without touching the shared value', () => {
-    expect(training.adam_eps).toBe(1e-5);
-    expect((RL_DPO_TRAINING_DEFAULTS as { adam_eps: number }).adam_eps).toBe(1e-8);
+  it('uses the arm-specific value where DPO and GRPO differ', () => {
+    expect(training.ref_policy_kl_penalty).toBe(0);
+    expect(
+      (RL_DPO_TRAINING_DEFAULTS as unknown as Record<string, unknown>).ref_policy_kl_penalty
+    ).toBe(0.05);
   });
 
-  // The backend floors (1.0, 2.0) to "validate every step"; at or above 2 the value
-  // is unambiguously a step count.
-  it('sets a validation cadence clear of the fraction/step-count discontinuity', () => {
-    expect(training.val_check_interval).toBeGreaterThanOrEqual(2);
-    expect(Number.isInteger(training.val_check_interval)).toBe(true);
-  });
-
-  it('ships a rollout batch that is a multiple of the global batch size', () => {
-    const { grpo, rl } = validGrpo();
-    const rollout = grpo.num_prompts_per_step! * grpo.num_generations_per_prompt;
-    expect(rollout % rl.training.batch_size!).toBe(0);
-  });
+  it.each(['val_check_interval', 'max_steps', 'seed', 'min_learning_rate'])(
+    'leaves %s unset because the spec declares no default',
+    (field) => {
+      expect(training[field]).toBeUndefined();
+    }
+  );
 });
 
 describe('GRPO form validation', () => {
@@ -348,7 +352,7 @@ describe('GRPO form validation', () => {
   it.each([1, 2])('accepts Triton LoRA kernels at tensor parallel size %i', (tp) => {
     const data = validGrpo();
     data.grpo.finetuning_type = RlGRPOTrainingFinetuningType.lora;
-    data.grpo.lora.use_triton = true;
+    data.grpo.lora = { ...data.grpo.lora, use_triton: true };
     data.rl.training.parallelism = { ...data.rl.training.parallelism, tensor_parallel_size: tp };
     expect(messages(data)).toEqual([]);
   });
@@ -362,4 +366,82 @@ describe('GRPO form validation', () => {
     data.grpo.num_prompts_per_step = undefined as unknown as number;
     expect(messages(data).join(' ')).toContain('must be a multiple of the global batch size (32)');
   });
+});
+
+describe('jobToFormFields', () => {
+  it('maps an automodel job onto the automodel backend', () => {
+    const fields = jobToFormFields(customizationJob1);
+    expect(fields.backend).toBe('automodel');
+    expect(fields.automodel.model).toBe(customizationJob1.spec.model);
+    expect(fields.description).toBe(customizationJob1.description);
+  });
+
+  it('maps an unsloth job onto the unsloth backend', () => {
+    const fields = jobToFormFields(customizationJob3);
+    expect(fields.backend).toBe('unsloth');
+    expect(fields.unsloth.model.name).toBe(customizationJob3.spec.model.name);
+  });
+
+  it('generates a fresh output name rather than reusing the source job name', () => {
+    const fields = jobToFormFields(customizationJob1);
+    expect(fields.outputName).toBeTruthy();
+    expect(fields.outputName).not.toBe(customizationJob1.name);
+  });
+
+  it('strips nulls out of the stored spec so optional fields fall back to undefined', () => {
+    const jobWithNulls = {
+      ...customizationJob1,
+      spec: { ...customizationJob1.spec, optimizer: { learning_rate: null } },
+    } as unknown as typeof customizationJob1;
+    const fields = jobToFormFields(jobWithNulls);
+    expect(fields.automodel.optimizer?.learning_rate).toBeUndefined();
+  });
+});
+
+describe('getInitialFormValuesFromState', () => {
+  it('returns template initialValues as-is when the backend is valid', () => {
+    const initialValues = validAutomodel();
+    expect(getInitialFormValuesFromState({ initialValues })).toBe(initialValues);
+  });
+
+  it('converts a cloneFromJob into form fields', () => {
+    const fields = getInitialFormValuesFromState({ cloneFromJob: customizationJob1 });
+    expect(fields?.backend).toBe('automodel');
+    expect(fields?.automodel.model).toBe(customizationJob1.spec.model);
+  });
+
+  it('prefers template initialValues over cloneFromJob when both are present', () => {
+    const initialValues = validUnsloth();
+    const fields = getInitialFormValuesFromState({
+      initialValues,
+      cloneFromJob: customizationJob1,
+    });
+    expect(fields).toBe(initialValues);
+  });
+
+  it('ignores initialValues with an unrecognized backend', () => {
+    expect(getInitialFormValuesFromState({ initialValues: { backend: 'nope' } })).toBeUndefined();
+  });
+
+  it('ignores initialValues with a valid backend but no matching spec', () => {
+    expect(
+      getInitialFormValuesFromState({ initialValues: { backend: 'automodel' } })
+    ).toBeUndefined();
+    expect(
+      getInitialFormValuesFromState({ initialValues: { backend: 'unsloth' } })
+    ).toBeUndefined();
+  });
+
+  it('ignores a cloneFromJob whose spec matches no backend', () => {
+    expect(
+      getInitialFormValuesFromState({ cloneFromJob: { spec: { foo: 'bar' } } })
+    ).toBeUndefined();
+  });
+
+  it.each([undefined, null, 'string', 42, {}, { other: 1 }])(
+    'returns undefined for unrelated state (%s)',
+    (state) => {
+      expect(getInitialFormValuesFromState(state)).toBeUndefined();
+    }
+  );
 });

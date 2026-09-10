@@ -39,6 +39,7 @@ from nemo_platform_plugin.client.errors import NemoHTTPError
 from nemo_platform_plugin.client.types import RetryPolicy
 from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
@@ -166,9 +167,17 @@ class BaseJobsListFilter(Filter):
     workspace: str | None = Field(default=None, description="Workspace of the job.")
     project: str | None = Field(default=None, description="Project containing the job.")
     status: PlatformJobStatus | None = Field(default=None, description="The current status.")
+    spec: dict[str, Any] | None = Field(
+        default=None, description="Filter on a path within the job's spec, e.g. `spec.target.format`."
+    )
     updated_at: DatetimeFilter | None = Field(
         default=None, description="Jobs updated at 'gte' datetime or 'lte' datetime."
     )
+
+    @classmethod
+    def _get_entity_namespace_map(cls) -> dict[str, str]:
+        """Declare ``spec`` as a namespace so ``spec.<path>`` passes field validation."""
+        return {"spec": "data.spec"}
 
 
 class BaseJobsSortField(StrEnum):
@@ -1260,7 +1269,7 @@ def job_route_factory(
                 job_name=job,
                 workspace=workspace,
                 artifact_url=result_info.artifact_url,
-                files_sdk=sdk,
+                files_client=client_from_platform(sdk, AsyncFilesClient),
             )
             background_tasks.add_task(lambda: tmp_dir_path.cleanup_tmp_dir())
             return result_serializer.serialize(tmp_dir_path.path)

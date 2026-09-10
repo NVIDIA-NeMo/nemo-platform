@@ -11,6 +11,7 @@ from backends.k8s.k8s_helpers import sample_always_config, sample_config, with_w
 from kubernetes.client import ApiClient
 from nemo_deployments_plugin.backends.k8s.compiler import (
     DeploymentConfigError,
+    ExecutorK8sDefaults,
     _build_probe,
     build_configmap_body,
     build_env_vars,
@@ -188,7 +189,6 @@ def test_compile_applies_k8s_deployment_config() -> None:
 def test_compile_workload_identity_prefers_workload_service_account() -> None:
     config = with_workload_identity(sample_always_config(), service_account_name="workload-sa")
     k8s_config = K8sDeploymentConfig.model_validate({"serviceAccount": "pod-sa"})
-
     compiled = compile_workload(
         config=config,
         workspace="default",
@@ -201,6 +201,231 @@ def test_compile_workload_identity_prefers_workload_service_account() -> None:
     pod_spec = _serialized(compiled.pod_spec_kwargs)
     assert pod_spec["service_account_name"] == "workload-sa"
     assert any(volume["name"] == WORKLOAD_IDENTITY_VOLUME_NAME for volume in pod_spec["volumes"])
+
+
+def test_compile_applies_node_selector() -> None:
+    config = sample_always_config()
+    k8s_config = K8sDeploymentConfig.model_validate({"nodeSelector": {"gpu": "a100", "zone": "us-west1-a"}})
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=k8s_config,
+        pod_restart_policy="Always",
+    )
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    assert pod_spec["node_selector"] == {"gpu": "a100", "zone": "us-west1-a"}
+
+
+def test_compile_applies_topology_spread_constraints() -> None:
+    config = sample_always_config()
+    k8s_config = K8sDeploymentConfig.model_validate(
+        {
+            "topologySpreadConstraints": [
+                {
+                    "maxSkew": 1,
+                    "topologyKey": "kubernetes.io/hostname",
+                    "whenUnsatisfiable": "DoNotSchedule",
+                    "labelSelector": {"matchLabels": {"app": "x"}},
+                }
+            ]
+        }
+    )
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=k8s_config,
+        pod_restart_policy="Always",
+    )
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    tsc = pod_spec["topology_spread_constraints"]
+    assert len(tsc) == 1
+    assert tsc[0]["maxSkew"] == 1
+    assert tsc[0]["topologyKey"] == "kubernetes.io/hostname"
+    assert tsc[0]["whenUnsatisfiable"] == "DoNotSchedule"
+
+
+def test_compile_carries_pod_annotations() -> None:
+    config = sample_config(restart_policy="Never")
+    k8s_config = K8sDeploymentConfig.model_validate({"podAnnotations": {"sidecar.istio.io/nativeSidecar": "true"}})
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=k8s_config,
+        pod_restart_policy="Never",
+    )
+    assert compiled.pod_annotations == {"sidecar.istio.io/nativeSidecar": "true"}
+    # Annotations live on the pod-template metadata, not the pod spec.
+    assert "annotations" not in compiled.pod_spec_kwargs
+
+
+def test_compile_applies_executor_defaults() -> None:
+    # Executor-level defaults (shared by every consumer: models, agents, ...) land
+    # on a workload with no per-entity k8s config.
+    config = sample_always_config()
+    executor_defaults = ExecutorK8sDefaults(
+        pod_annotations={"sidecar.istio.io/nativeSidecar": "true"},
+        node_selector={"gpu": "a100"},
+        tolerations=[{"key": "gpu", "operator": "Equal", "value": "true", "effect": "NoSchedule"}],
+        affinity={
+            "nodeAffinity": {
+                "requiredDuringSchedulingIgnoredDuringExecution": {
+                    "nodeSelectorTerms": [{"matchExpressions": [{"key": "gpu", "operator": "In", "values": ["a100"]}]}]
+                }
+            }
+        },
+        topology_spread_constraints=[
+            {"maxSkew": 1, "topologyKey": "kubernetes.io/hostname", "whenUnsatisfiable": "DoNotSchedule"}
+        ],
+    )
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=None,
+        pod_restart_policy="Always",
+        executor_defaults=executor_defaults,
+    )
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    assert compiled.pod_annotations == {"sidecar.istio.io/nativeSidecar": "true"}
+    assert pod_spec["node_selector"] == {"gpu": "a100"}
+    assert pod_spec["tolerations"][0]["key"] == "gpu"
+    assert compiled.pod_spec_kwargs["affinity"].node_affinity is not None
+    assert pod_spec["topology_spread_constraints"][0]["topologyKey"] == "kubernetes.io/hostname"
+
+
+def test_compile_per_entity_wins_over_executor_defaults() -> None:
+    # A per-entity K8sDeploymentConfig overrides the executor default: annotations
+    # merge key-wise (entity key wins), and node_selector / tolerations are applied
+    # from the entity wholesale (executor default not additionally applied).
+    config = sample_always_config()
+    k8s_config = K8sDeploymentConfig.model_validate(
+        {
+            "podAnnotations": {"sidecar.istio.io/nativeSidecar": "false", "team": "a"},
+            "nodeSelector": {"zone": "us-west1-a"},
+            "tolerations": [{"key": "entity", "operator": "Exists"}],
+        }
+    )
+    executor_defaults = ExecutorK8sDefaults(
+        pod_annotations={"sidecar.istio.io/nativeSidecar": "true", "platform": "nmp"},
+        node_selector={"gpu": "a100"},
+        tolerations=[{"key": "platform", "operator": "Exists"}],
+    )
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=k8s_config,
+        pod_restart_policy="Always",
+        executor_defaults=executor_defaults,
+    )
+    pod_spec = _serialized(compiled.pod_spec_kwargs)
+    # Annotations: entity value wins for the shared key; non-conflicting keys from
+    # both sides are retained.
+    assert compiled.pod_annotations == {
+        "sidecar.istio.io/nativeSidecar": "false",
+        "team": "a",
+        "platform": "nmp",
+    }
+    # node_selector / tolerations: entity wins wholesale.
+    assert pod_spec["node_selector"] == {"zone": "us-west1-a"}
+    assert [t["key"] for t in pod_spec["tolerations"]] == ["entity"]
+
+
+def test_compile_empty_executor_defaults_are_noop() -> None:
+    config = sample_config(restart_policy="Never")
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=None,
+        pod_restart_policy="Never",
+        executor_defaults=ExecutorK8sDefaults(),
+    )
+    assert compiled.pod_annotations == {}
+    assert "node_selector" not in compiled.pod_spec_kwargs
+    assert "tolerations" not in compiled.pod_spec_kwargs
+    assert "affinity" not in compiled.pod_spec_kwargs
+    assert "topology_spread_constraints" not in compiled.pod_spec_kwargs
+
+
+def test_compile_pod_annotations_default_empty_without_k8s_config() -> None:
+    config = sample_config(restart_policy="Never")
+    compiled = compile_workload(
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        labels={"managed-by": "nemo-deployments"},
+        k8s_config=None,
+        pod_restart_policy="Never",
+    )
+    assert compiled.pod_annotations == {}
+
+
+def test_build_job_body_stamps_pod_annotations_on_template() -> None:
+    config = sample_config(restart_policy="Never")
+    k8s_config = K8sDeploymentConfig.model_validate({"podAnnotations": {"sidecar.istio.io/nativeSidecar": "true"}})
+    built = build_job_body(
+        job_name="default-task",
+        labels={"managed-by": "nemo-deployments"},
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        k8s_config=k8s_config,
+    )
+    template_meta = _serialized(built.job)["spec"]["template"]["metadata"]
+    assert template_meta["annotations"] == {"sidecar.istio.io/nativeSidecar": "true"}
+
+
+def test_build_job_body_omits_annotations_when_none() -> None:
+    config = sample_config(restart_policy="Never")
+    built = build_job_body(
+        job_name="default-task",
+        labels={"managed-by": "nemo-deployments"},
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        k8s_config=None,
+    )
+    template_meta = _serialized(built.job)["spec"]["template"]["metadata"]
+    assert "annotations" not in template_meta
+
+
+def test_build_deployment_body_stamps_pod_annotations_on_template() -> None:
+    config = sample_always_config()
+    k8s_config = K8sDeploymentConfig.model_validate({"podAnnotations": {"sidecar.istio.io/nativeSidecar": "true"}})
+    built = build_deployment_body(
+        resource_name="default-task",
+        labels={"managed-by": "nemo-deployments"},
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        k8s_config=k8s_config,
+    )
+    template_meta = _serialized(built.deployment)["spec"]["template"]["metadata"]
+    assert template_meta["annotations"] == {"sidecar.istio.io/nativeSidecar": "true"}
+
+
+def test_build_deployment_body_omits_annotations_when_none() -> None:
+    config = sample_always_config()
+    built = build_deployment_body(
+        resource_name="default-task",
+        labels={"managed-by": "nemo-deployments"},
+        config=config,
+        workspace="default",
+        deployment_name="task",
+        k8s_config=None,
+    )
+    template_meta = _serialized(built.deployment)["spec"]["template"]["metadata"]
+    assert "annotations" not in template_meta
 
 
 def test_compile_workload_emits_image_pull_secrets() -> None:

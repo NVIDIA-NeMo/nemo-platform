@@ -44,6 +44,18 @@ UV_CACHE_DIR_KEY = "uv_cache_dir"
 UV_VENV_DIR_KEY = "uv_venv_dir"
 # Writable /job/work subdirectory where wheels are installed for the running Gym host.
 WHEELS_V1_INSTALL_SUBDIR = "wheels-v1-site-packages"
+# Writable /job/work subdirectory Gym writes one `<rollout_id>.capture.jsonl` per rollout into.
+# Under /job/work rather than beside the Gym tree because that is the one path the job image
+# guarantees is writable by uid 1000; /opt is not, which is why gym_host.sh stages Gym to /tmp.
+MODEL_CALL_CAPTURE_SUBDIR = "model-call-captures"
+#: Gym global-config keys that turn per-model-call capture on. Off, a rollout reports one usage
+#: block summed over the turn and no timing at all, so a trace projected from it has no per-call
+#: spans -- which is the whole reason a caller wants the capture.
+OBSERVABILITY_ENABLED_KEY = "observability_enabled"
+MODEL_CALL_CAPTURE_DIR_KEY = "model_call_capture_dir"
+#: Key this host attaches a rollout's captured model calls under, on the result it returns.
+#: Namespaced so it cannot collide with a Gym field or an environment's own extras.
+MODEL_CALLS_RESULT_KEY = "_nmp_model_calls"
 # uv setting that points Gym's per-server dependency resolver at the staged wheelhouse.
 UV_FIND_LINKS_ENV_KEY = "UV_FIND_LINKS"
 NEMO_GYM_EXTRA_ROOTS_ENV_KEY = "NEMO_GYM_EXTRA_ROOTS"
@@ -124,6 +136,32 @@ def _allocate_head_server_port(global_config: dict[str, Any]) -> int:
     port = _free_port_in_range(low, high)
     global_config[HEAD_SERVER_KEY_NAME] = {"host": "0.0.0.0", "port": port}
     return port
+
+
+def model_call_capture_dir(work_path: str) -> str:
+    """Absolute directory Gym writes this host's model-call captures into. Gym requires it absolute."""
+    return os.path.abspath(os.path.join(work_path, MODEL_CALL_CAPTURE_SUBDIR))
+
+
+def _apply_model_call_capture(global_config: dict[str, Any], work_path: str) -> None:
+    """Turn Gym's per-model-call capture on, writing into a directory this host can read back.
+
+    Set rather than defaulted: a caller's global config that leaves observability off would
+    otherwise silently produce traces with no per-call timing, which is indistinguishable from a
+    model that was never called.
+
+    An unwritable work path leaves capture off instead of raising. Whether that directory can be
+    created varies by sandbox provider -- the job image is why ``gym_host.sh`` stages Gym to /tmp --
+    and a host that refuses to start is a far worse outcome than one whose traces lack timing.
+    """
+    capture_dir = model_call_capture_dir(work_path)
+    try:
+        os.makedirs(capture_dir, exist_ok=True)
+    except OSError as error:
+        print(f"gym-host: model-call capture disabled, cannot create {capture_dir}: {error}", file=sys.stderr)
+        return
+    global_config[OBSERVABILITY_ENABLED_KEY] = True
+    global_config[MODEL_CALL_CAPTURE_DIR_KEY] = capture_dir
 
 
 def _create_rollout_helper() -> Any:
@@ -374,6 +412,7 @@ def bootstrap_gym_host() -> tuple[Any, Any, Any]:
     global_config = _load_global_config_dict()
     # Apply writable uv locations before Gym creates per-component environments.
     _apply_uv_dirs(global_config)
+    _apply_model_call_capture(global_config, os.environ.get("NMP_WORK_PATH", "/job/work"))
     environment_package = _load_runtime_environment_package(
         os.environ.get("NMP_ENVIRONMENT_PATH", ""),
         required=_environment_package_required(),
@@ -415,12 +454,15 @@ def bootstrap_gym_host() -> tuple[Any, Any, Any]:
 #: ``_ng_task_index`` and assigns ``_ng_rollout_index`` itself per attempt.
 NG_TASK_INDEX = "_ng_task_index"
 NG_ROLLOUT_INDEX = "_ng_rollout_index"
+#: Present past the first attempt only, and part of the capture filename when it is.
+NG_ATTEMPT_INDEX = "_ng_attempt_index"
 #: Identifies one entry of a request's ``examples``. Opaque, owned by the caller, never read by
 #: Gym, and scoped to the request rather than durable. Gym's own indices cannot stand in for it:
 #: ``_ng_task_index`` identifies a task, so a caller running several rollouts per task has no
 #: per-example value in it, and overwriting it is not open either -- Gym groups reward-profile
-#: metrics and builds model-call capture ids by task. ``_ng_rollout_index`` would complete the
-#: pair, but Gym assigns it, so a caller cannot stamp it on the way out.
+#: metrics and builds model-call capture ids by task, as the capture id below does.
+#: ``_ng_rollout_index`` would complete the pair, but Gym assigns it, so a caller cannot stamp it
+#: on the way out.
 SG_EXAMPLE_ID = "_sg_example_id"
 
 _ROW_IDENTITY_KEYS = (NG_TASK_INDEX, NG_ROLLOUT_INDEX, SG_EXAMPLE_ID)
@@ -446,15 +488,76 @@ def _with_row_identity(result: Any, row: Any) -> Any:
     return {**result, **missing} if missing else result
 
 
+def _capture_filename(result: dict) -> str | None:
+    """Gym's capture filename for this rollout, or None when it did not name one.
+
+    Gym keys a capture ``"{task}-{rollout}"``, suffixed ``-a{attempt}`` past the first attempt
+    (``nemo_gym.rollout_correlation``). A result missing either index has no capture written for it
+    either, so there is nothing to look for rather than something to search for.
+    """
+    task = result.get(NG_TASK_INDEX)
+    rollout = result.get(NG_ROLLOUT_INDEX)
+    if not isinstance(task, int) or not isinstance(rollout, int) or isinstance(task, bool) or isinstance(rollout, bool):
+        return None
+    attempt = result.get(NG_ATTEMPT_INDEX)
+    suffix = f"-a{attempt}" if isinstance(attempt, int) and not isinstance(attempt, bool) and attempt > 0 else ""
+    return f"{task}-{rollout}{suffix}.capture.jsonl"
+
+
+def _read_capture(capture_dir: str, result: dict, *, budget: int) -> tuple[list[dict], int]:
+    """This rollout's captured model calls and the bytes they cost, or ``([], 0)``.
+
+    Returns nothing rather than raising on every failure here -- a missing, unreadable, or
+    oversized capture costs the trace its per-call timing, and must not cost the caller the rollout
+    it is attached to.
+    """
+    name = _capture_filename(result)
+    if name is None or budget <= 0:
+        return [], 0
+    path = os.path.join(capture_dir, name)
+    try:
+        if os.path.getsize(path) > budget:
+            # Dropped whole rather than truncated: half a capture would project into a trace that
+            # looks complete and silently under-reports the calls the agent actually made.
+            return [], 0
+        with open(path, "rb") as handle:
+            data = handle.read()
+        raw = data.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return [], 0
+    calls = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        try:
+            call = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(call, dict):
+            calls.append(call)
+    # Bytes, not characters: the budget is spent against a byte cap, and `len` on the decoded text
+    # counts code points -- a CJK capture reports about a third of what it costs on the wire.
+    return (calls, len(data)) if calls else ([], 0)
+
+
 async def _collect_rollout_results(
     examples: list[dict],
     head_server_config: Any,
     rollout_helper: Any,
+    capture_dir: str | None = None,
+    capture_budget: int = 0,
 ) -> list[dict]:
     results: list[dict] = []
+    remaining = capture_budget
     for task in rollout_helper.run_examples(examples=examples, head_server_config=head_server_config):
         row, nemo_gym_result = await task
-        results.append(_with_row_identity(nemo_gym_result, row))
+        result = _with_row_identity(nemo_gym_result, row)
+        if capture_dir is not None:
+            calls, spent = _read_capture(capture_dir, result, budget=remaining)
+            if calls:
+                remaining -= spent
+                result = {**result, MODEL_CALLS_RESULT_KEY: calls}
+        results.append(result)
     return results
 
 
@@ -476,6 +579,8 @@ def submit_rollouts(
     examples: list[dict],
     head_server_config: Any,
     rollout_helper: Any,
+    capture_dir: str | None = None,
+    capture_budget: int = 0,
 ) -> concurrent.futures.Future[list[dict]]:
     """Start ``examples`` on the shared loop and return without waiting.
 
@@ -485,7 +590,7 @@ def submit_rollouts(
     # Handler threads hand work to the one loop, so concurrent /rollouts/run calls interleave on
     # it rather than each running a loop of its own.
     return asyncio.run_coroutine_threadsafe(
-        _collect_rollout_results(examples, head_server_config, rollout_helper),
+        _collect_rollout_results(examples, head_server_config, rollout_helper, capture_dir, capture_budget),
         _ensure_event_loop(),
     )
 
@@ -494,8 +599,10 @@ def run_rollouts_sync(
     examples: list[dict],
     head_server_config: Any,
     rollout_helper: Any,
+    capture_dir: str | None = None,
+    capture_budget: int = 0,
 ) -> list[dict]:
-    return submit_rollouts(examples, head_server_config, rollout_helper).result()
+    return submit_rollouts(examples, head_server_config, rollout_helper, capture_dir, capture_budget).result()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -509,7 +616,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        if not _READY:
+        # Must match do_POST: a host that passes /health and then 503s every rollout is
+        # invisible to wait_ready.
+        if not _READY or _HEAD_SERVER_CONFIG is None or _ROLLOUT_HELPER is None:
             body = json.dumps({"status": "starting"}).encode("utf-8")
             self.send_response(503)
         else:
@@ -566,7 +675,17 @@ class Handler(BaseHTTPRequestHandler):
         # servers filter their own 200s.
         print(f"gym-host: rollouts/run <- {len(examples)} example(s)", flush=True)
         started = time.monotonic()
-        future = submit_rollouts(examples, _HEAD_SERVER_CONFIG, _ROLLOUT_HELPER)
+        future = submit_rollouts(
+            examples,
+            _HEAD_SERVER_CONFIG,
+            _ROLLOUT_HELPER,
+            capture_dir=model_call_capture_dir(os.environ.get("NMP_WORK_PATH", "/job/work")),
+            # Captures share the response with the rollouts they annotate, and a response over
+            # the cap is refused whole -- so an unbudgeted capture would turn "traces too big"
+            # into "every result lost". Half leaves the records themselves the same room they
+            # have today; past it, captures stop and rollouts still return.
+            capture_budget=self.max_response_bytes // 2,
+        )
 
         # Committed to 200 before the work is done, so the first byte leaves immediately and no hop
         # can mistake a long batch for a dead one. Everything judgeable from the request alone was

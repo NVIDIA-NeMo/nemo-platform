@@ -140,6 +140,18 @@ describe('ModelDropdown', () => {
       expect(onLoadMore).not.toHaveBeenCalled();
     });
 
+    it('shows the loading message instead of the empty state while paging past filtered-out pages', () => {
+      renderOpen({
+        groups: [],
+        hasMore: true,
+        isLoadingMore: true,
+        emptyMessage: 'No models found',
+      });
+
+      expect(screen.getByText('Loading models...')).toBeInTheDocument();
+      expect(screen.queryByText('No models found')).not.toBeInTheDocument();
+    });
+
     it('shows the done message only after the last page', async () => {
       const { rerender } = renderOpen({
         onLoadMore: vi.fn(),

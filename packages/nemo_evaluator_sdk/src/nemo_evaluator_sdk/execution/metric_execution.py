@@ -32,7 +32,7 @@ from nemo_evaluator_sdk.execution.pipeline import (
     GeneratedSampleScoringPipeline,
     PipelineRuntime,
 )
-from nemo_evaluator_sdk.execution.samples import build_offline_sample
+from nemo_evaluator_sdk.execution.samples import build_offline_sample, build_retrieval_sample
 from nemo_evaluator_sdk.execution.scoring import (
     empty_evaluation_result,
     finalize_evaluation_result,
@@ -64,6 +64,8 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_evaluator_sdk.values.retrieval import Retrieval
+from nemo_evaluator_sdk.values.targets import EvalTarget
 from openai import AsyncOpenAI
 
 log = getLogger(__name__)
@@ -218,7 +220,7 @@ def _resolve_online_prompt_template(
 def _merge_online_hooks(
     *,
     params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None,
-    target: Model | Agent | None,
+    target: EvalTarget,
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None,
     postprocess_hooks: Sequence[inference.PostprocessResponse] | None,
 ) -> tuple[list[inference.PreprocessRequest], list[inference.PostprocessResponse]]:
@@ -528,7 +530,7 @@ class ComputeMetricPipeline:
     rows: list[dict[str, Any]]
     parallelism: int
     metric: Metric
-    target: Model | Agent | None
+    target: EvalTarget
     metric_key: str
     prompt_template: str | dict[str, Any] | None
     params: RunConfig | RunConfigOnline | RunConfigOnlineModel
@@ -592,13 +594,33 @@ class ComputeMetricPipeline:
         postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
     ) -> None: ...
 
+    # Rankings are already resolved by the time the pipeline runs, so this target scores rows
+    # without inference: no prompt template, no client, no inference function.
+    @overload
     def __init__(
         self,
         *,
         rows: list[dict[str, Any]],
         parallelism: int,
         metric: Metric,
-        target: Model | Agent | None,
+        target: Retrieval,
+        metric_key: str,
+        params: RunConfigOnlineModel,
+        prompt_template: None = None,
+        inference_fn: None = None,
+        client: None = None,
+        default_headers: None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        *,
+        rows: list[dict[str, Any]],
+        parallelism: int,
+        metric: Metric,
+        target: EvalTarget,
         metric_key: str,
         prompt_template: str | dict[str, Any] | None = None,
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel,
@@ -628,6 +650,8 @@ class ComputeMetricPipeline:
             for hook in self.postprocess_hooks or ():
                 response = hook.postprocess(response, id=f"{index}")
             return response
+        if isinstance(self.target, Retrieval):
+            return build_retrieval_sample(row, self.target.rankings)
 
         if self.prompt_template is None:
             raise ValueError("prompt_template is required for service online evaluation")
@@ -841,7 +865,7 @@ async def evaluate_metric(
     metric: Metric,
     *,
     rows: list[dict[str, Any]],
-    target: Model | Agent | None = None,
+    target: EvalTarget = None,
     prompt_template: str | dict[str, Any] | None = None,
     params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
@@ -868,7 +892,7 @@ async def _evaluate_metric_in_session(
     *,
     metric: Metric,
     rows: list[dict[str, Any]],
-    target: Model | Agent | None,
+    target: EvalTarget,
     prompt_template: str | dict[str, Any] | None,
     params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None,
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None,
@@ -878,72 +902,87 @@ async def _evaluate_metric_in_session(
 
     client_close_fn = None
 
-    merged_preprocess_hooks, merged_postprocess_hooks = _merge_online_hooks(
-        params=params,
-        target=target,
-        preprocess_hooks=preprocess_hooks,
-        postprocess_hooks=postprocess_hooks,
-    )
-    if isinstance(target, Model):
+    if isinstance(target, Retrieval):
+        # Guaranteed by resolve_params, which coerces every config to online-model form for a
+        # retrieval target.
         params = cast(RunConfigOnlineModel, params)
-        inference_fn = (
-            metric.inference_fn if isinstance(metric, InferenceMetricBase) else inference.make_inference_request
-        )
-        await resolve_target_structured_output_mode(
-            preprocess_hooks=merged_preprocess_hooks,
-            model=target,
-            inference_fn=inference_fn,
-            params=params,
-        )
-        resolved_prompt_template = _resolve_online_prompt_template(prompt_template, target, rows[0])
-        client = inference.new_inference_client(target)
-        client_close_fn = client.close
         pipeline = ComputeMetricPipeline(
             rows=rows,
             parallelism=params.parallelism,
             metric=metric,
             target=target,
             metric_key=metric_type_name(metric),
-            prompt_template=resolved_prompt_template,
             params=params,
-            inference_fn=inference_fn,
-            client=client,
-            default_headers=None,
-            preprocess_hooks=merged_preprocess_hooks,
-            postprocess_hooks=merged_postprocess_hooks,
-        )
-    elif isinstance(target, AgentBase):
-        params = cast(RunConfigOnline, params)
-        if prompt_template is None:
-            raise ValueError("prompt_template is required for agent online evaluation")
-
-        client = new_agent_inference_client()
-        client_close_fn = client.aclose
-
-        pipeline = ComputeMetricPipeline(
-            rows=rows,
-            parallelism=params.parallelism,
-            metric=metric,
-            target=target,
-            metric_key=metric_type_name(metric),
-            prompt_template=prompt_template,
-            params=params,
-            inference_fn=make_agent_inference_request,
-            client=client,
-            preprocess_hooks=merged_preprocess_hooks,
-            postprocess_hooks=merged_postprocess_hooks,
+            preprocess_hooks=preprocess_hooks,
+            postprocess_hooks=postprocess_hooks,
         )
     else:
-        pipeline = ComputeMetricPipeline(
-            rows=rows,
-            parallelism=params.parallelism,
-            metric=metric,
-            target=None,
-            metric_key=metric_type_name(metric),
+        merged_preprocess_hooks, merged_postprocess_hooks = _merge_online_hooks(
             params=params,
-            preprocess_hooks=merged_preprocess_hooks,
-            postprocess_hooks=merged_postprocess_hooks,
+            target=target,
+            preprocess_hooks=preprocess_hooks,
+            postprocess_hooks=postprocess_hooks,
         )
+        if isinstance(target, Model):
+            params = cast(RunConfigOnlineModel, params)
+            inference_fn = (
+                metric.inference_fn if isinstance(metric, InferenceMetricBase) else inference.make_inference_request
+            )
+            await resolve_target_structured_output_mode(
+                preprocess_hooks=merged_preprocess_hooks,
+                model=target,
+                inference_fn=inference_fn,
+                params=params,
+            )
+            resolved_prompt_template = _resolve_online_prompt_template(prompt_template, target, rows[0])
+            client = inference.new_inference_client(target)
+            client_close_fn = client.close
+            pipeline = ComputeMetricPipeline(
+                rows=rows,
+                parallelism=params.parallelism,
+                metric=metric,
+                target=target,
+                metric_key=metric_type_name(metric),
+                prompt_template=resolved_prompt_template,
+                params=params,
+                inference_fn=inference_fn,
+                client=client,
+                default_headers=None,
+                preprocess_hooks=merged_preprocess_hooks,
+                postprocess_hooks=merged_postprocess_hooks,
+            )
+        elif isinstance(target, AgentBase):
+            params = cast(RunConfigOnline, params)
+            if prompt_template is None:
+                raise ValueError("prompt_template is required for agent online evaluation")
+
+            client = new_agent_inference_client()
+            client_close_fn = client.aclose
+
+            pipeline = ComputeMetricPipeline(
+                rows=rows,
+                parallelism=params.parallelism,
+                metric=metric,
+                target=target,
+                metric_key=metric_type_name(metric),
+                prompt_template=prompt_template,
+                params=params,
+                inference_fn=make_agent_inference_request,
+                client=client,
+                preprocess_hooks=merged_preprocess_hooks,
+                postprocess_hooks=merged_postprocess_hooks,
+            )
+        else:
+            pipeline = ComputeMetricPipeline(
+                rows=rows,
+                parallelism=params.parallelism,
+                metric=metric,
+                target=None,
+                metric_key=metric_type_name(metric),
+                params=params,
+                preprocess_hooks=merged_preprocess_hooks,
+                postprocess_hooks=merged_postprocess_hooks,
+            )
 
     try:
         completed = await run_generated_sample_scoring_pipeline(pipeline)

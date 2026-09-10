@@ -68,6 +68,26 @@ def test_health_not_ready():
         server.server_close()
 
 
+def test_health_is_not_ready_until_the_rollout_helpers_are(ready_server):
+    """/health must gate on what do_POST gates on.
+
+    Reporting ready off ``_READY`` alone lets a host pass ``wait_ready`` and then refuse every
+    rollout with 503 bootstrap_failed -- a state the caller has no way to observe until it has
+    already committed a batch.
+    """
+    import urllib.error
+    import urllib.request
+
+    runtime._ROLLOUT_HELPER = None
+    try:
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            urllib.request.urlopen(f"{ready_server}/health", timeout=5)
+        assert excinfo.value.code == 503
+        assert json.loads(excinfo.value.read())["status"] == "starting"
+    finally:
+        runtime._ROLLOUT_HELPER = _FakeRolloutHelper()
+
+
 def test_health_ready(ready_server):
     import urllib.request
 
@@ -918,3 +938,154 @@ def test_concurrent_rollout_batches_interleave_on_that_loop():
     results = [future.result(timeout=10) for future in futures]
 
     assert [len(batch) for batch in results] == [1, 1, 1, 1]
+
+
+def _capture_line(**overrides):
+    call = {"model_call_id": "c0", "status_code": 200, "started_at": 1.5, "completed_at": 1.75}
+    return json.dumps({**call, **overrides})
+
+
+def test_capture_is_enabled_so_a_rollout_records_per_call_timing(tmp_path):
+    # Set, not defaulted: a caller's global config that left observability off would produce traces
+    # with no per-call timing, which reads the same as a model that was never called.
+    config = {"observability_enabled": False}
+
+    runtime._apply_model_call_capture(config, str(tmp_path))
+
+    assert config["observability_enabled"] is True
+    assert config["model_call_capture_dir"] == str(tmp_path / runtime.MODEL_CALL_CAPTURE_SUBDIR)
+    assert (tmp_path / runtime.MODEL_CALL_CAPTURE_SUBDIR).is_dir()
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        ({"_ng_task_index": 0, "_ng_rollout_index": 1}, "0-1.capture.jsonl"),
+        ({"_ng_task_index": 0, "_ng_rollout_index": 1, "_ng_attempt_index": 0}, "0-1.capture.jsonl"),
+        ({"_ng_task_index": 0, "_ng_rollout_index": 1, "_ng_attempt_index": 2}, "0-1-a2.capture.jsonl"),
+        ({"_ng_task_index": 0}, None),
+        ({"_ng_task_index": True, "_ng_rollout_index": 1}, None),
+    ],
+)
+def test_capture_filename_follows_gyms_rollout_id(result, expected):
+    assert runtime._capture_filename(result) == expected
+
+
+def test_a_capture_is_read_back_onto_its_rollout(tmp_path):
+    # Trailing blank line included: Gym appends per call, so a partially-flushed file has one.
+    (tmp_path / "0-1.capture.jsonl").write_text(f"{_capture_line()}\n\n", encoding="utf-8")
+
+    calls, spent = runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10_000)
+
+    assert [call["model_call_id"] for call in calls] == ["c0"]
+    assert spent > 0
+
+
+def test_a_capture_over_budget_is_dropped_whole_rather_than_truncated(tmp_path):
+    # Half a capture would project into a trace that looks complete while under-reporting the calls
+    # the agent actually made.
+    (tmp_path / "0-1.capture.jsonl").write_text(f"{_capture_line()}\n{_capture_line(model_call_id='c1')}\n")
+
+    calls, spent = runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10)
+
+    assert calls == []
+    assert spent == 0
+
+
+@pytest.mark.parametrize("body", ["", "{not json}\n", "[1, 2]\n"])
+def test_an_unreadable_capture_costs_the_timing_not_the_rollout(tmp_path, body):
+    (tmp_path / "0-1.capture.jsonl").write_text(body, encoding="utf-8")
+
+    assert runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10_000) == ([], 0)
+
+
+def test_a_missing_capture_is_not_an_error(tmp_path):
+    assert runtime._read_capture(str(tmp_path), {"_ng_task_index": 9, "_ng_rollout_index": 9}, budget=10_000) == ([], 0)
+
+
+def test_an_unwritable_work_path_disables_capture_rather_than_failing_the_host(tmp_path):
+    # Whether the work path is writable varies by sandbox provider. A host that refuses to start is
+    # a far worse outcome than one whose traces lack per-call timing.
+    unwritable = tmp_path / "file-not-a-dir"
+    unwritable.write_text("", encoding="utf-8")
+    config = {}
+
+    runtime._apply_model_call_capture(config, str(unwritable))
+
+    assert config == {}
+
+
+class _IndexedRolloutHelper:
+    """Yields a result per example, carrying the rollout identity a capture is keyed by."""
+
+    def run_examples(self, examples, head_server_config=None):
+        async def _one(row):
+            return row, {"response": {"output": []}, "reward": 0.0, **row}
+
+        return [_one(row) for row in examples]
+
+
+def _rollout_examples(count):
+    return [{"_ng_task_index": i, "_ng_rollout_index": 0} for i in range(count)]
+
+
+async def _collect(tmp_path, examples, budget):
+    return await runtime._collect_rollout_results(examples, MagicMock(), _IndexedRolloutHelper(), str(tmp_path), budget)
+
+
+def test_each_rollouts_capture_is_attached_to_its_own_result(tmp_path):
+    # The whole point of the hop: without this the record crosses the wire bare and the trace it
+    # projects into has no per-call timing.
+    for index in range(2):
+        (tmp_path / f"{index}-0.capture.jsonl").write_text(f"{_capture_line(model_call_id=f'c{index}')}\n")
+
+    results = asyncio.run(_collect(tmp_path, _rollout_examples(2), 10_000))
+
+    attached = [[call["model_call_id"] for call in result[runtime.MODEL_CALLS_RESULT_KEY]] for result in results]
+    assert attached == [["c0"], ["c1"]]
+
+
+def test_the_budget_is_spent_across_rollouts_not_per_rollout(tmp_path):
+    # Captures share one response, so the budget has to deplete. Applied per rollout instead, a
+    # large run would blow the response cap and the host would refuse every result.
+    for index in range(3):
+        (tmp_path / f"{index}-0.capture.jsonl").write_text(f"{_capture_line(model_call_id=f'c{index}')}\n")
+    one_capture = (tmp_path / "0-0.capture.jsonl").stat().st_size
+
+    results = asyncio.run(_collect(tmp_path, _rollout_examples(3), one_capture * 2))
+
+    # The first two fit; the third finds nothing left and returns without its capture.
+    assert [runtime.MODEL_CALLS_RESULT_KEY in result for result in results] == [True, True, False]
+
+
+def test_rollouts_still_return_when_no_capture_was_written(tmp_path):
+    # The reward and output stand on their own; only the per-call timing is missing.
+    results = asyncio.run(_collect(tmp_path, _rollout_examples(2), 10_000))
+
+    assert len(results) == 2
+    assert all(runtime.MODEL_CALLS_RESULT_KEY not in result for result in results)
+
+
+def test_capture_spend_is_measured_in_bytes_not_characters(tmp_path):
+    # The budget is spent against a byte cap. `len` on decoded text counts code points, so a CJK
+    # capture would report about a third of what it costs on the wire -- the aggregate then
+    # overshoots `max_response_bytes`, and an oversized response is refused whole.
+    # `ensure_ascii=False` on purpose: escaped to \uXXXX the file would be pure ASCII, byte count
+    # would equal character count, and the test would pass against the bug it is written for.
+    payload = json.dumps(
+        {"model_call_id": "c0", "note": "四十二といえば生命、宇宙、そして万物についての究極の疑問の答え"},
+        ensure_ascii=False,
+    )
+    path = tmp_path / "0-1.capture.jsonl"
+    path.write_text(f"{payload}\n", encoding="utf-8")
+    assert path.stat().st_size > len(payload) + 1, "test data must be genuinely multibyte"
+
+    _, spent = runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10_000)
+
+    assert spent == path.stat().st_size
+
+
+def test_a_capture_that_is_not_valid_utf8_costs_the_timing_not_the_rollout(tmp_path):
+    (tmp_path / "0-1.capture.jsonl").write_bytes(b'{"model_call_id": "\xff\xfe"}\n')
+
+    assert runtime._read_capture(str(tmp_path), {"_ng_task_index": 0, "_ng_rollout_index": 1}, budget=10_000) == ([], 0)

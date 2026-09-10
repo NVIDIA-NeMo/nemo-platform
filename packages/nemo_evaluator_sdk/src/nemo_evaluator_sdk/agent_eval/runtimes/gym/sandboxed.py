@@ -20,6 +20,10 @@ host's ``/rollouts/run`` and writes the returned records where the parser expect
 Attribution survives that hop because the host copies each example's ``_ng_task_index`` onto its
 result. Nothing here joins by position.
 
+Gym's model-call captures make the same hop: the host enables capture, reads each rollout's file,
+and returns it on the record. This runner writes them back out in the layout the CLI runner's parser
+expects, so per-call timing reaches a trace either way.
+
 The host itself is provisioned by ``sandboxed-gym``: start a session, take its rollout URL and
 token off the descriptor, and hand them to this runner.
 """
@@ -29,24 +33,28 @@ from __future__ import annotations
 import json
 import logging
 import tempfile
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import httpx
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import DEFAULT_REWARD_KEY
-from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import _materialize_dataset, _source_datasets
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import materialize_dataset, source_datasets
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import NG_ROLLOUT_INDEX, NG_TASK_INDEX
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import (
-    _aggregate_scores_from_gym,
-    _ensure_fresh_output,
-    _read_run_aggregations,
-    _require_full_coverage,
-    _trials_from_rollouts,
+    aggregate_scores_from_gym,
+    capture_filename,
+    ensure_fresh_output,
+    read_run_aggregations,
+    require_full_coverage,
+    trials_from_rollouts,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
 from nemo_evaluator_sdk.values.results import AggregateScore
 from pydantic import BaseModel, ConfigDict, Field
+from sandboxed_gym.host.models import MIN_PROXY_CUTOFF_S
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +62,68 @@ logger = logging.getLogger(__name__)
 #: duplicated rather than imported so this module carries no dependency on that package: a caller
 #: who has a session descriptor already has the token, and the header name is part of the contract.
 PROXY_AUTH_HEADER = "X-Sandboxed-Gym-Token"
+
+
+#: Key the sandboxed host attaches a rollout's captured model calls under. Mirrors
+#: ``sandboxed_gym.runtime.gym_host_runtime.MODEL_CALLS_RESULT_KEY``, duplicated rather than
+#: imported so this runner carries no dependency on that package -- a caller with a session
+#: descriptor never needs it installed.
+MODEL_CALLS_RESULT_KEY = "_nmp_model_calls"
+#: Where captures are written locally, matching the CLI runtime's ``model_call_capture_dir``.
+_CAPTURE_SUBDIR = "model_calls"
+
+
+def _stamp_rollout_indices(examples: list[dict[str, Any]]) -> None:
+    """Number each example within its task, as Gym's CLI preprocessing does.
+
+    ``run_examples`` does not assign ``_ng_rollout_index`` -- only ``gym eval run`` does, while
+    preprocessing the dataset. Without it Gym's ``maybe_rollout_id_from_run_body`` returns None, so
+    it writes **no model-call capture at all**, and the trial falls back to a synthesized id.
+    Confirmed by running a real sandboxed rollout: the capture directory was created and stayed
+    empty until the index was supplied.
+
+    Only where the row is silent, so a caller that numbers its own repeats keeps its numbering.
+    """
+    seen: dict[Any, int] = {}
+    for example in examples:
+        if example.get(NG_ROLLOUT_INDEX) is not None:
+            continue
+        task = example.get(NG_TASK_INDEX)
+        example[NG_ROLLOUT_INDEX] = seen[task] = seen.get(task, -1) + 1
+
+
+def _unpack_model_call_captures(records: list[dict[str, Any]], work_dir: Path) -> Path | None:
+    """Write each record's captured model calls to disk, and return the directory holding them.
+
+    The captures cross the wire attached to their rollout, but the parser reads them from a
+    directory, so they are unpacked here. Deliberately on-disk rather than passed in memory: one
+    code path reads a capture whichever runner produced it, so a parsing bug cannot hide in the
+    sandboxed runner and not the CLI one.
+
+    Mutates each record to drop the transport key, so the ``rollouts.jsonl`` this runner writes is
+    the shape Gym itself would have written.
+
+    Returns None when no record carried a capture -- an older host, or a run where none was
+    written. Passing a directory that will never contain anything would make the parser warn once
+    per trial about a capture nobody asked for.
+    """
+    capture_dir = work_dir / _CAPTURE_SUBDIR
+    written = 0
+    for record in records:
+        calls = record.pop(MODEL_CALLS_RESULT_KEY, None)
+        name = capture_filename(record) if isinstance(calls, list) and calls else None
+        if name is None:
+            continue
+        capture_dir.mkdir(parents=True, exist_ok=True)
+        (capture_dir / name).write_text(
+            "".join(f"{json.dumps(call)}\n" for call in calls),
+            encoding="utf-8",
+        )
+        written += 1
+    if not written:
+        logger.info("Sandboxed Gym host returned no model-call captures; traces will carry no per-call timing.")
+        return None
+    return capture_dir
 
 
 class SandboxedGymRuntimeConfig(BaseModel):
@@ -101,7 +171,7 @@ class SandboxedGymAgentTaskRunner:
         returns rollout records writes no such file. Implemented anyway so this runner satisfies the
         same protocol as the CLI one and starts reporting if the host grows the sidecar.
         """
-        return _aggregate_scores_from_gym(self._run_aggregations)
+        return aggregate_scores_from_gym(self._run_aggregations)
 
     def runner_info(self) -> RunnerInfo:
         """Identify the runner and the host it collected from.
@@ -128,7 +198,7 @@ class SandboxedGymAgentTaskRunner:
             headers[PROXY_AUTH_HEADER] = self._config.auth_token
         return headers
 
-    def _decode_body(self, response: httpx.Response) -> Any:
+    def _decode_body(self, response: httpx.Response, elapsed: float | None = None) -> Any:
         """Decode a 2xx rollout body, naming the host when there is nothing decodable in it.
 
         The host commits its 200 before the batch finishes and pads the open connection with
@@ -147,12 +217,28 @@ class SandboxedGymAgentTaskRunner:
             raise RuntimeError(
                 f"sandboxed Gym host returned a body that is not UTF-8 from {self._config.rollout_url}: {exc}"
             ) from exc
+        if not text:
+            if elapsed is not None and elapsed < MIN_PROXY_CUTOFF_S:
+                raise RuntimeError(
+                    f"sandboxed Gym host at {self._config.rollout_url} answered and then sent "
+                    f"nothing in {elapsed:.1f}s -- too fast to have been cut in transit, so it "
+                    f"died before it could write; check whether the sandbox was OOMKilled or "
+                    f"evicted"
+                )
+            raise RuntimeError(
+                f"sandboxed Gym host at {self._config.rollout_url} sent no body at all"
+                + (f" in {elapsed:.1f}s" if elapsed is not None else "")
+                + " -- nothing was ever written. Either it died before writing anything (check the "
+                "sandbox for an OOMKill or an eviction), or its image predates the rollout "
+                "heartbeat and the proxy cut the silent request at its own cap. Without a "
+                "Content-Length the body ends at the close, so this client cannot tell them apart"
+            )
         if not text.strip():
             raise RuntimeError(
                 f"sandboxed Gym host at {self._config.rollout_url} answered and then stopped "
-                f"without sending a `results` envelope ({len(response.content)} byte(s) of heartbeat "
-                f"only); it most likely died mid-batch -- check whether the sandbox was OOMKilled "
-                f"or evicted"
+                f"without sending a `results` envelope ({len(response.content)} byte(s) of "
+                f"heartbeat, then silence); it most likely died mid-batch -- check whether the "
+                f"sandbox was OOMKilled or evicted"
             )
         try:
             # The host heartbeats leading whitespace while a batch runs; json tolerates it.
@@ -168,12 +254,14 @@ class SandboxedGymAgentTaskRunner:
 
     async def _collect(self, examples: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """POST the examples and return the host's rollout records."""
+        started = time.monotonic()
         async with httpx.AsyncClient(timeout=self._config.timeout_s) as client:
             response = await client.post(
                 self._config.rollout_url,
                 json={"examples": examples},
                 headers=self._request_headers(),
             )
+        elapsed = time.monotonic() - started
         if response.status_code >= 400:
             # The body is the host's own error envelope; it names which example or server failed,
             # which the status code alone does not.
@@ -181,7 +269,7 @@ class SandboxedGymAgentTaskRunner:
                 f"sandboxed Gym host returned {response.status_code} from {self._config.rollout_url}: "
                 f"{response.text[:2000]}"
             )
-        body = self._decode_body(response)
+        body = self._decode_body(response, elapsed)
         error = body.get("error") if isinstance(body, Mapping) else None
         if error is not None:
             # The host commits its 200 before the batch finishes, so that it can hold the
@@ -215,26 +303,31 @@ class SandboxedGymAgentTaskRunner:
         work_dir.mkdir(parents=True, exist_ok=True)
 
         rollouts_path = work_dir / "rollouts.jsonl"
-        _ensure_fresh_output(rollouts_path)
+        ensure_fresh_output(rollouts_path)
 
         # Same materialization the CLI runner uses, so the rows the host sees are the rows Gym
         # would have read, and `_ng_task_index` is stamped by the same code.
         input_path = work_dir / "gym_input.jsonl"
-        index_to_task_id = _materialize_dataset(tasks, input_path)
+        index_to_task_id = materialize_dataset(tasks, input_path)
         examples = [json.loads(line) for line in input_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         if cfg.agent_ref_name:
             # Only where the row is silent: a dataset that names its own agent per row keeps doing so,
             # which is how multi-agent Gym datasets are meant to work.
             for example in examples:
                 example.setdefault("agent_ref", {"name": cfg.agent_ref_name})
+        _stamp_rollout_indices(examples)
         logger.info(
             "Collecting %d example(s) from %s via sandboxed Gym host %s.",
             len(examples),
-            _source_datasets(tasks),
+            source_datasets(tasks),
             cfg.rollout_url,
         )
 
         records = await self._collect(examples)
+
+        # Before the records are written: unpacking strips the transport key, and `rollouts.jsonl`
+        # has to be the shape Gym itself would have written for the shared parser to read it.
+        capture_dir = _unpack_model_call_captures(records, work_dir)
 
         # Written where the parser expects it, so the records are read by exactly the code that
         # reads the CLI runner's output -- including its handling of records with no usable index.
@@ -243,7 +336,9 @@ class SandboxedGymAgentTaskRunner:
             encoding="utf-8",
         )
 
-        self._run_aggregations = _read_run_aggregations(rollouts_path)
-        trials = _trials_from_rollouts(rollouts_path, tasks, index_to_task_id, reward_key=cfg.reward_key)
-        _require_full_coverage(tasks, covered_task_ids={trial.task_id for trial in trials}, rollouts_path=rollouts_path)
+        self._run_aggregations = read_run_aggregations(rollouts_path)
+        trials = trials_from_rollouts(
+            rollouts_path, tasks, index_to_task_id, reward_key=cfg.reward_key, capture_dir=capture_dir
+        )
+        require_full_coverage(tasks, covered_task_ids={trial.task_id for trial in trials}, rollouts_path=rollouts_path)
         return trials

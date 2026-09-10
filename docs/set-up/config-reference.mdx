@@ -170,6 +170,10 @@ auth:
     default_expires_in_seconds: 2592000
     # Maximum finite lifetime accepted when creating Scoped Access Keys. Set to null to allow explicit no-expiration requests. | default: 2592000
     max_expires_in_seconds: 2592000
+    # Default grace period in seconds for a rotated-out Scoped Access Key, used when grace_period_seconds is omitted from POST /v2/access-keys/{jti}/rotate. The key remains usable for this long after rotation before it is treated as revoked. Gives callers a dual-active window to cut over to the newly issued key. | default: 172800
+    rotation_grace_period_seconds: 172800
+    # Maximum grace period accepted when a caller explicitly requests grace_period_seconds on POST /v2/access-keys/{jti}/rotate. Set to null to allow any explicitly requested grace period. | default: 2592000
+    max_rotation_grace_period_seconds: 2592000
   # Port to run the service on | default: 8000
   port: 8000
   # Refresh interval for policy data in seconds | default: 30
@@ -534,6 +538,16 @@ models:
         default_storage_class:
         # default: '200Gi'
         default_pvc_size: 200Gi
+        # Platform-default pod annotations applied to every k8s model deployment/job (all engines). Merged key-wise into the compiled K8sDeploymentConfig; a per-entity annotation for the same key wins over the platform default. Used to ship the Istio native-sidecar annotation so a mesh-injected proxy terminates when a puller Job's main container exits.
+        default_pod_annotations: {}
+        # Platform-default nodeSelector applied to every k8s model deployment/job (all engines).
+        default_node_selector: {}
+        # Platform-default pod tolerations applied to every k8s model deployment/job (all engines).
+        default_tolerations: []
+        # Platform-default pod affinity applied to every k8s model deployment/job (all engines) when the deployment does not already set an affinity. Raw Kubernetes affinity object (nodeAffinity / podAffinity / podAntiAffinity).
+        default_affinity: {}
+        # Platform-default pod topology spread constraints applied to every k8s model deployment/job (all engines) when the deployment does not already set them. Each entry is a raw Kubernetes topologySpreadConstraint object.
+        default_topology_spread_constraints: []
         # default: 'nvcr.io/nim/meta/llama-3.1-8b-instruct'
         default_nimservice_image: nvcr.io/nim/meta/llama-3.1-8b-instruct
         # default: '1.8.5'

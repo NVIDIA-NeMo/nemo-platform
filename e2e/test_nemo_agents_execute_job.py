@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import json
 import tarfile
+import time
 from typing import Any
 
 import pytest
@@ -65,6 +66,29 @@ def _download_execute_job_result(sdk: NeMoPlatform, workspace: str, job_name: st
 
 def _result_names(results: dict[str, Any]) -> set[str]:
     return {str(result["name"]) for result in results.get("data", [])}
+
+
+def _wait_for_agent_spans(
+    sdk: NeMoPlatform,
+    *,
+    workspace: str,
+    agent_name: str,
+    timeout: float = 120.0,
+    poll_interval: float = 2.0,
+) -> list[Any]:
+    """Poll Intake for the agent's trajectory.
+
+    Ingest is asynchronous: Relay posts the trajectory as the run finishes, and
+    Intake writes it behind the API, so a job reporting ``completed`` does not
+    mean the spans are queryable yet.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        page = sdk.intake.spans.list(workspace=workspace, filter={"agent_name": agent_name}, page_size=50)
+        spans = list(page.data or [])
+        if spans or time.monotonic() >= deadline:
+            return spans
+        time.sleep(poll_interval)
 
 
 def _tar_member_names(content: bytes) -> set[str]:
@@ -258,6 +282,12 @@ def test_fabric_agent_invocation_job_runs_and_saves_results(sdk: NeMoPlatform, w
         assert "write_file" in run_result_json
         assert "generated-report.md" in run_result_json
         assert TEST_AGENT_RESPONSE in run_result_json
+
+        # Nobody configured an export: the job wires the agent's trajectory to
+        # this workspace's Intake, using the platform URL reachable from the
+        # task pod and the identity the platform gave the job.
+        spans = _wait_for_agent_spans(sdk, workspace=workspace, agent_name=agent_name)
+        assert spans, "the agent ran but no trajectory reached Intake"
     finally:
         delete_agent_if_exists(sdk, workspace=workspace, name=agent_name)
 

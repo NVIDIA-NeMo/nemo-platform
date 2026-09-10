@@ -70,7 +70,7 @@ This project loads local developer preferences from @AGENTS.local.md. You MUST r
 
 ## Git Workflow
 
-- Git branches should follow the pattern `[git-issue-number]-<descriptive-branch-name>/<username>` where the GitLab issue number is inserted as a prefix if known, the branch name follows, the `/<username>` suffix is included (not email address, just username), and kebab case is used.
+- Git branches should follow the pattern `<descriptive-branch-name>/<username>` where the branch name comes first, the `/<username>` suffix is included (not email address, just username), and kebab case is used. Do NOT embed an issue/ticket number in the branch name — branch names are public and issue trackers may be private, so a tracker ID in a branch name leaks private references.
 - Always pass `-s` to `git commit` (DCO sign-off). This includes amends, fixups, and any commit variant.
 
 ### Squashing Commits
@@ -122,6 +122,7 @@ A plugin can ship a web UI that Studio loads at runtime and renders **inside its
 ### Python Style notes
 
 - Always prefer concrete type hints over string based ones. DO NOT import these types under TYPE_CHECKING. Instead prefer to import the types a regular import when possible.
+- Keep NeMo Platform SDK and typed client naming distinct. Variables holding generated `NeMoPlatform` or `AsyncNeMoPlatform` instances should be named `sdk` or `async_sdk`. Variables holding `nemo_platform_plugin` typed clients should be named `client`, `async_client`, or service-specific names such as `files_client`, `jobs_client`, or `models_client`. Do not name typed clients `sdk`, and do not merge generated SDKs and typed clients into one public type; adapt at the boundary with `client_from_platform`.
 
 ### Python Package Management
 

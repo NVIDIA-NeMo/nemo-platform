@@ -7,22 +7,35 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterable, AsyncIterator, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import httpx
 import pytest
 from nemo_evaluator.intake.publish import PublishError, _token_final_metrics, publish_to_intake
-from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, TrialError
+from nemo_evaluator_sdk.agent_eval.trials import (
+    AgentEvalTrial,
+    AgentEvalTrialStatus,
+    AgentOutput,
+    TrialError,
+    TrialMeasurements,
+)
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
-from nemo_platform import AsyncNeMoPlatform, NotFoundError, UnprocessableEntityError
+from nemo_platform_plugin.client.errors import NotFoundError, UnprocessableEntityError
+from nemo_platform_plugin.intake.client import AsyncIntakeClient
+from nemo_platform_plugin.intake.types import (
+    AtifCreateRequest,
+    EvaluatorResultCreateRequest,
+    IngestResponse,
+    ListTracesQueryParams,
+)
+from pydantic import ValidationError
 
 # --- fakes ------------------------------------------------------------------
 
@@ -45,7 +58,7 @@ class _FakeOtlpTraces:
 
     async def create(self, **kwargs: Any) -> object:
         self._calls.append(kwargs)
-        return SimpleNamespace(errors=list(self._errors))
+        return SimpleNamespace(data=lambda: IngestResponse(errors=list(self._errors)))
 
 
 class _FakeEvaluatorResults:
@@ -84,18 +97,24 @@ class _FakeEvaluations:
         self._calls = calls
         self._missing = missing
 
-    async def retrieve(self, name: str, *, workspace: str) -> object:
+    async def get(self, name: str, *, workspace: str) -> object:
         self._calls.append({"name": name, "workspace": workspace})
         if self._missing:
             raise NotFoundError(
-                "evaluation not found",
-                response=httpx.Response(404, request=httpx.Request("GET", "http://intake/evaluations")),
-                body=None,
+                httpx.Response(404, request=httpx.Request("GET", "http://intake/evaluations")),
             )
-        return SimpleNamespace(name=name)
+        return SimpleNamespace(data=lambda: SimpleNamespace(name=name))
 
 
-class _FakeClient:
+class _FakePaginatedResponse:
+    def __init__(self, items: AsyncIterator[object]) -> None:
+        self._items = items
+
+    def items(self) -> AsyncIterator[object]:
+        return self._items
+
+
+class _FakeClient(AsyncIntakeClient):
     def __init__(
         self,
         *,
@@ -107,24 +126,53 @@ class _FakeClient:
         otlp_errors: list[str] | None = None,
         evaluation_missing: bool = False,
     ) -> None:
-        self.workspace = workspace
+        self._workspace = workspace
         self.evaluation_calls: list[dict[str, Any]] = []
-        self.evaluations = _FakeEvaluations(self.evaluation_calls, missing=evaluation_missing)
+        self._evaluations = _FakeEvaluations(self.evaluation_calls, missing=evaluation_missing)
         self.atif_calls: list[dict[str, Any]] = []
         self.otlp_calls: list[dict[str, Any]] = []
         self.eval_calls: list[dict[str, Any]] = []
-        self.intake = SimpleNamespace(
-            ingest=SimpleNamespace(
-                atif=atif or _FakeAtif(self.atif_calls, fail=atif_fail),
-                otlp=SimpleNamespace(v1=SimpleNamespace(traces=_FakeOtlpTraces(self.otlp_calls, errors=otlp_errors))),
-            ),
-            evaluator_results=_FakeEvaluatorResults(self.eval_calls, fail_session=fail_eval_session),
-            traces=_FakeTraces(root_span_id=root_span_id),
+        self._atif = atif or _FakeAtif(self.atif_calls, fail=atif_fail)
+        self._otlp_traces = _FakeOtlpTraces(self.otlp_calls, errors=otlp_errors)
+        self._evaluator_results = _FakeEvaluatorResults(self.eval_calls, fail_session=fail_eval_session)
+        self._traces = _FakeTraces(root_span_id=root_span_id)
+
+    async def create_atif(self, *, workspace: str | None = None, body: AtifCreateRequest) -> object:
+        payload = dict(body.root)
+        payload["workspace"] = workspace or self.workspace
+        await self._atif.create(**payload)
+        return SimpleNamespace(data=lambda: None)
+
+    async def create_otlp_traces(
+        self,
+        *,
+        workspace: str | None = None,
+        content: bytes | Iterable[bytes] | AsyncIterable[bytes],
+    ) -> object:
+        return await self._otlp_traces.create(workspace=workspace or self.workspace, body=content)
+
+    async def create_evaluator_result(
+        self, *, workspace: str | None = None, body: EvaluatorResultCreateRequest
+    ) -> object:
+        payload = body.model_dump(mode="json", exclude_none=True)
+        payload["workspace"] = workspace or self.workspace
+        result = await self._evaluator_results.create(**payload)
+        return SimpleNamespace(data=lambda: result)
+
+    async def list_traces(
+        self, *, workspace: str | None = None, query_params: ListTracesQueryParams | None = None
+    ) -> _FakePaginatedResponse:
+        params = query_params or {}
+        return _FakePaginatedResponse(
+            self._traces.list(workspace=workspace or self.workspace or "", filter=dict(params.get("filter") or {}))
         )
 
+    async def get_evaluation(self, *, workspace: str | None = None, name: str) -> object:
+        return await self._evaluations.get(name, workspace=workspace or self.workspace or "")
 
-def _client(**kwargs: Any) -> AsyncNeMoPlatform:
-    return cast(AsyncNeMoPlatform, _FakeClient(**kwargs))
+
+def _client(**kwargs: Any) -> _FakeClient:
+    return _FakeClient(**kwargs)
 
 
 # --- fixtures ---------------------------------------------------------------
@@ -203,7 +251,7 @@ async def test_publishes_trajectory_and_scores() -> None:
         ],
     )
     client = _FakeClient()
-    report = await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+    report = await publish_to_intake(result, client=client, experiment_id="exp-1")
 
     assert len(client.atif_calls) == 1
     assert client.atif_calls[0]["session_id"] == "run-1:t-1"
@@ -228,6 +276,25 @@ async def test_publishes_trajectory_and_scores() -> None:
     )
 
 
+async def test_publish_revalidates_model_copy_corrupted_measurements_before_network_calls() -> None:
+    trial = _trial("t-1").model_copy(update={"measurements": TrialMeasurements(prompt_tokens=8, completion_tokens=2)})
+    result = _result([trial], [])
+    corrupted_measurements = trial.measurements.model_copy(update={"prompt_tokens": -1})
+    corrupted_trial = trial.model_copy(update={"measurements": corrupted_measurements})
+    corrupted_result = result.model_copy(update={"trials": [corrupted_trial]})
+    client = _FakeClient()
+
+    with pytest.raises(ValidationError):
+        await publish_to_intake(
+            corrupted_result,
+            client=client,
+            experiment_id="exp-1",
+        )
+
+    assert client.evaluation_calls == []
+    assert (client.otlp_calls, client.atif_calls, client.eval_calls) == ([], [], [])
+
+
 async def test_an_unknown_evaluation_fails_the_run_before_any_trial_is_written() -> None:
     # OTLP ingest does not check the evaluation exists the way ATIF ingest does, so without this
     # guard the primary path would write spans against an evaluation that cannot hold them.
@@ -238,7 +305,7 @@ async def test_an_unknown_evaluation_fails_the_run_before_any_trial_is_written()
     client = _FakeClient(evaluation_missing=True)
 
     with pytest.raises(PublishError, match="does not exist"):
-        await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+        await publish_to_intake(result, client=client, experiment_id="exp-1")
 
     assert client.evaluation_calls == [{"name": "exp-1", "workspace": "default"}]
     assert (client.otlp_calls, client.atif_calls, client.eval_calls) == ([], [], [])
@@ -253,7 +320,7 @@ async def test_multiple_trials_each_get_their_own_session_and_span() -> None:
         ],
     )
     client = _FakeClient()
-    report = await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+    report = await publish_to_intake(result, client=client, experiment_id="exp-1")
 
     assert len(client.atif_calls) == 2
     assert report.trial_count == 2
@@ -264,7 +331,7 @@ async def test_multiple_trials_each_get_their_own_session_and_span() -> None:
 async def test_trial_without_scores_still_ingests_trajectory() -> None:
     result = _result(trials=[_trial("t-1")], scores=[])
     client = _FakeClient()
-    report = await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+    report = await publish_to_intake(result, client=client, experiment_id="exp-1")
 
     assert len(client.atif_calls) == 1
     assert len(client.eval_calls) == 0
@@ -274,9 +341,7 @@ async def test_trial_without_scores_still_ingests_trajectory() -> None:
 async def test_explicit_workspace_overrides_client_default() -> None:
     result = _result(trials=[_trial("t-1")], scores=[])
     client = _FakeClient(workspace="default")
-    report = await publish_to_intake(
-        result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1", workspace="ws-2"
-    )
+    report = await publish_to_intake(result, client=client, experiment_id="exp-1", workspace="ws-2")
     assert report.workspace == "ws-2"
     assert client.atif_calls[0]["workspace"] == "ws-2"
 
@@ -285,7 +350,7 @@ async def test_missing_workspace_raises() -> None:
     result = _result(trials=[_trial("t-1")], scores=[])
     client = _FakeClient(workspace=None)
     with pytest.raises(ValueError, match="workspace"):
-        await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+        await publish_to_intake(result, client=client, experiment_id="exp-1")
 
 
 async def test_unresolvable_span_raises_publish_error() -> None:
@@ -295,14 +360,14 @@ async def test_unresolvable_span_raises_publish_error() -> None:
     )
     client = _FakeClient(root_span_id=None)
     with pytest.raises(PublishError, match="No root span"):
-        await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+        await publish_to_intake(result, client=client, experiment_id="exp-1")
 
 
 async def test_ingest_failure_propagates() -> None:
     result = _result(trials=[_trial("t-1")], scores=[])
     client = _FakeClient(atif_fail=True)
     with pytest.raises(RuntimeError, match="atif ingest 400"):
-        await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+        await publish_to_intake(result, client=client, experiment_id="exp-1")
 
 
 async def test_failed_and_non_finite_scores_are_skipped_and_reported() -> None:
@@ -318,7 +383,7 @@ async def test_failed_and_non_finite_scores_are_skipped_and_reported() -> None:
         ],
     )
     client = _FakeClient()
-    report = await publish_to_intake(result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1")
+    report = await publish_to_intake(result, client=client, experiment_id="exp-1")
 
     # Only the finite, completed output is sent to Intake.
     assert {call["name"] for call in client.eval_calls} == {"accuracy.score"}
@@ -342,9 +407,7 @@ async def test_one_trial_failure_does_not_block_others_and_is_reported() -> None
     client = _FakeClient(fail_eval_session="run-1:t-2")
 
     with pytest.raises(PublishError) as excinfo:
-        await publish_to_intake(
-            result, platform=cast(AsyncNeMoPlatform, client), experiment_id="exp-1", max_concurrency=1
-        )
+        await publish_to_intake(result, client=client, experiment_id="exp-1", max_concurrency=1)
 
     # The healthy trial still published despite the other failing.
     assert any(call["session_id"] == "run-1:t-1" for call in client.eval_calls)
@@ -366,9 +429,7 @@ class _RejectRichTrajectoryAtif:
         self._calls.append(kwargs)
         if len(kwargs["steps"]) > 1:
             raise UnprocessableEntityError(
-                "steps: rejected",
-                response=httpx.Response(422, request=httpx.Request("POST", "http://test/atif")),
-                body=None,
+                httpx.Response(422, request=httpx.Request("POST", "http://test/atif")),
             )
 
 
@@ -406,7 +467,7 @@ async def test_a_rejected_trajectory_falls_back_instead_of_failing_the_trial(tmp
 
     report = await publish_to_intake(
         _result([trial], [_score("t-1", "m", [MetricOutput(name="score", value=1.0)])]),
-        platform=client,
+        client=client,
         experiment_id="eval-1",
         workspace="ws-1",
     )
@@ -438,7 +499,7 @@ async def test_a_trial_with_an_otlp_trace_publishes_otlp_and_skips_atif() -> Non
 
     report = await publish_to_intake(
         _result([_otlp_trial()], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
-        platform=client,
+        client=client,
         experiment_id="exp-1",
         agent_name="a",
     )
@@ -458,7 +519,7 @@ async def test_the_published_otlp_payload_carries_the_stamped_identity() -> None
 
     await publish_to_intake(
         _result([_otlp_trial()], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
-        platform=client,
+        client=client,
         experiment_id="exp-1",
         agent_name="a",
     )
@@ -480,7 +541,7 @@ async def test_a_trial_without_an_otlp_trace_still_publishes_atif() -> None:
 
     await publish_to_intake(
         _result([_trial("t-1")], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
-        platform=client,
+        client=client,
         experiment_id="exp-1",
         agent_name="a",
     )
@@ -499,7 +560,7 @@ async def test_an_otlp_trace_with_no_single_root_falls_back_to_atif() -> None:
             [_otlp_trial(extra_spans=[second_root])],
             [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])],
         ),
-        platform=client,
+        client=client,
         experiment_id="exp-1",
         agent_name="a",
     )
@@ -514,7 +575,12 @@ async def test_trial_totals_land_on_the_root_span_only() -> None:
     child = {"traceId": _OTLP_TRACE_ID, "spanId": "aabbccddeeff0011", "parentSpanId": _OTLP_SPAN_ID, "name": "child"}
     trial = _otlp_trial(extra_spans=[child]).model_copy(
         update={
-            "metadata": {"prompt_tokens": 120, "completion_tokens": 45, "cache_read_tokens": 30, "cost_usd": 0.134},
+            "measurements": TrialMeasurements(
+                prompt_tokens=120,
+                completion_tokens=45,
+                cache_read_tokens=30,
+                cost_usd=0.134,
+            ),
             "error": TrialError(type="Timeout", message="agent exceeded its budget"),
         }
     )
@@ -522,7 +588,7 @@ async def test_trial_totals_land_on_the_root_span_only() -> None:
 
     await publish_to_intake(
         _result([trial], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
-        platform=client,
+        client=client,
         experiment_id="exp-1",
         agent_name="a",
     )
@@ -555,7 +621,7 @@ async def test_a_root_span_with_no_usable_id_falls_back_to_atif() -> None:
             [_otlp_trial(span_id="0000000000000000")],
             [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])],
         ),
-        platform=client,
+        client=client,
         experiment_id="exp-1",
         agent_name="a",
     )
@@ -573,7 +639,7 @@ async def test_a_span_without_a_start_time_is_given_the_runs() -> None:
 
     await publish_to_intake(
         _result([_otlp_trial()], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
-        platform=client,
+        client=client,
         experiment_id="exp-1",
         agent_name="a",
     )
@@ -595,7 +661,7 @@ async def test_a_failed_trial_marks_its_root_span_failed() -> None:
 
     await publish_to_intake(
         _result([trial], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
-        platform=client,
+        client=client,
         experiment_id="exp-1",
         agent_name="a",
     )
@@ -615,7 +681,7 @@ async def test_a_partly_rejected_otlp_batch_fails_the_trial_instead_of_scoring_i
     with pytest.raises(PublishError, match="Intake rejected 1 span"):
         await publish_to_intake(
             _result([_otlp_trial()], [_score("t-1", "accuracy", [MetricOutput(name="score", value=1.0)])]),
-            platform=client,
+            client=client,
             experiment_id="exp-1",
             agent_name="a",
         )

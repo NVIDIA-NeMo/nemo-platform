@@ -19,12 +19,13 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Coroutine, Mapping
 from types import FrameType
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 from urllib.parse import urlparse
 
 from sandboxed_gym.broker import EpisodeBrokerServer
 from sandboxed_gym.config import BrokerEndpoint
 from sandboxed_gym.host.models import (
+    MIN_PROXY_CUTOFF_S,
     GymHostEgressRule,
     GymHostHandle,
     GymHostSpec,
@@ -44,10 +45,6 @@ from sandboxed_gym.serve_config import (
 LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
-#: Below this a request cannot have been cut for staying open too long, so the host went away
-#: instead. Only used to choose which hint an error carries.
-MIN_PROXY_CUTOFF_S = 30.0
 
 
 class RolloutTransportError(RuntimeError):
@@ -342,7 +339,7 @@ class SandboxedGymSession:
         self,
         *,
         cfg: SandboxedGymServeConfig,
-        broker_server: EpisodeBrokerServer,
+        broker_server: EpisodeBroker,
         broker: BrokerEndpoint,
         host_provider: SandboxedGymHostProvider,
         host: GymHostHandle,
@@ -509,7 +506,7 @@ class SandboxedGymSession:
                 retryable=False,
                 origin="client",
             )
-        return self._decode_results(payload)
+        return self._decode_results(payload, time.monotonic() - started)
 
     def _in_transit_error(
         self, detail: str, chunk: list[dict[str, Any]], started: float, *, retryable: bool
@@ -555,7 +552,7 @@ class SandboxedGymSession:
             origin="proxy",
         )
 
-    def _decode_results(self, payload: bytes) -> list[Any]:
+    def _decode_results(self, payload: bytes, elapsed: float | None = None) -> list[Any]:
         try:
             # Strict, and caught rather than avoided: errors="replace" would let a body with one
             # corrupt byte still parse, handing the caller U+FFFD where the host wrote data.
@@ -566,15 +563,31 @@ class SandboxedGymSession:
                 retryable=False,
                 origin="sandbox",
             ) from exc
+        if not body:
+            if elapsed is not None and elapsed < MIN_PROXY_CUTOFF_S:
+                raise RolloutTransportError(
+                    f"the sandboxed Gym host answered and then sent nothing in {elapsed:.1f}s -- "
+                    f"too fast to have been cut in transit, so it died before it could write; "
+                    f"check whether the sandbox was OOMKilled or evicted",
+                    retryable=False,
+                    origin="sandbox",
+                )
+            raise RolloutTransportError(
+                "the sandboxed Gym host sent no body at all"
+                + (f" in {elapsed:.1f}s" if elapsed is not None else "")
+                + " -- nothing was ever written. Either it died before writing anything (check the "
+                "sandbox for an OOMKill or an eviction), or its image predates the rollout "
+                "heartbeat and the proxy cut the silent request at its own cap (check "
+                "sandbox.image). A dropped connection and a truncated one are indistinguishable "
+                "to this client",
+                retryable=False,
+                origin="sandbox",
+            )
         if not body.strip():
-            # Heartbeats and nothing else: the host committed its 200, padded the connection while
-            # it worked, and then went away without ever writing the envelope -- an OOMKill or an
-            # evicted pod mid-batch. Reported as the sandbox failing rather than as malformed JSON,
-            # which is what `json.loads` alone would have called it.
             raise RolloutTransportError(
                 f"the sandboxed Gym host answered and then stopped without sending a result "
-                f"envelope ({len(payload)} byte(s) of heartbeat only); it most likely died "
-                f"mid-batch -- check whether the sandbox was OOMKilled or evicted",
+                f"envelope ({len(payload)} byte(s) of heartbeat, then silence); it most likely "
+                f"died mid-batch -- check whether the sandbox was OOMKilled or evicted",
                 retryable=False,
                 origin="sandbox",
             )
@@ -633,40 +646,76 @@ class SandboxedGymSession:
             LOGGER.exception("Failed to shut down episode broker")
 
 
+class EpisodeBroker(Protocol):
+    """All the orchestrator needs of a broker: somewhere to start it, and a way to stop it.
+
+    Narrow on purpose -- anything added here couples the orchestrator to how a broker is hosted,
+    which is the caller's choice to make.
+    """
+
+    def start(self) -> BrokerEndpoint: ...
+
+    def shutdown(self) -> None: ...
+
+
 class SandboxedGymOrchestrator:
     """Start episode broker, provision Gym host, return a live session."""
 
-    def start(self, cfg: SandboxedGymServeConfig | Mapping[str, Any]) -> SandboxedGymSession:
+    def start(
+        self,
+        cfg: SandboxedGymServeConfig | Mapping[str, Any],
+        *,
+        broker: EpisodeBroker | None = None,
+    ) -> SandboxedGymSession:
+        """Bring up a session, hosting the broker in this process unless given one.
+
+        The default hosts it on a background thread here, which suits a caller that rarely
+        creates episodes -- an ordinary evaluation creates none. Pass a broker that runs
+        elsewhere when they are created heavily: a SWE rollout crosses the broker on every
+        ``exec``, and that traffic would otherwise contend for this process's GIL.
+
+        A supplied broker is configured by its owner; ``cfg.episode_broker`` is not applied to it.
+        """
         if not isinstance(cfg, SandboxedGymServeConfig):
             cfg = SandboxedGymServeConfig.model_validate(cfg)
 
-        broker_cfg = cfg.broker_config()
-        broker_server = EpisodeBrokerServer(broker_cfg)
-        broker = broker_server.start()
+        broker_server: EpisodeBroker = broker if broker is not None else EpisodeBrokerServer(cfg.broker_config())
+        broker_endpoint = broker_server.start()
 
-        host_spec = build_gym_host_spec(cfg, broker)
-        host_provider = get_host_provider(cfg.host_provider, cfg.sandbox.host_provider_options)
-        # Use one loop for create, wait-ready, and destroy. A new asyncio.run() for
-        # each call closes the SDK client that create_host just built.
-        async_runner = _SessionAsyncRunner()
-        host: GymHostHandle | None = None
+        # The broker is serving from here on, so every later failure has to release it --
+        # including provider selection, which rejects an unknown name or a bad option. An
+        # injected broker can be a Ray actor, which would otherwise outlive this process.
         try:
-            host = async_runner.run(host_provider.create_host(host_spec))
-            async_runner.run(host_provider.wait_ready(host, cfg.sandbox.ready_timeout_s))
+            host_spec = build_gym_host_spec(cfg, broker_endpoint)
+            host_provider = get_host_provider(cfg.host_provider, cfg.sandbox.host_provider_options)
+            # Use one loop for create, wait-ready, and destroy. A new asyncio.run() for
+            # each call closes the SDK client that create_host just built.
+            async_runner = _SessionAsyncRunner()
+            host: GymHostHandle | None = None
+            try:
+                host = async_runner.run(host_provider.create_host(host_spec))
+                async_runner.run(host_provider.wait_ready(host, cfg.sandbox.ready_timeout_s))
+            except Exception:
+                if host is not None:
+                    try:
+                        async_runner.run(host_provider.destroy_host(host))
+                    except Exception:
+                        LOGGER.exception("Failed to destroy sandboxed Gym host after startup failure")
+                async_runner.close()
+                raise
         except Exception:
-            if host is not None:
-                try:
-                    async_runner.run(host_provider.destroy_host(host))
-                except Exception:
-                    LOGGER.exception("Failed to destroy sandboxed Gym host after startup failure")
-            broker_server.shutdown()
-            async_runner.close()
+            # A supplied broker is the caller's code. Let its failure be logged rather than
+            # replace the startup error that is the reason we are here.
+            try:
+                broker_server.shutdown()
+            except Exception:
+                LOGGER.exception("Failed to shut down episode broker after startup failure")
             raise
 
         return SandboxedGymSession(
             cfg=cfg,
             broker_server=broker_server,
-            broker=broker,
+            broker=broker_endpoint,
             host_provider=host_provider,
             host=host,
             async_runner=async_runner,

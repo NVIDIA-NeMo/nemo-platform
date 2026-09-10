@@ -20,11 +20,14 @@ import pytest
 from nemo_evaluator_sdk.agent_eval.runtimes.gym import discover_gym_tasks
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import NG_ROLLOUT_INDEX, NG_TASK_INDEX
 from nemo_evaluator_sdk.agent_eval.runtimes.gym.sandboxed import (
+    MODEL_CALLS_RESULT_KEY,
     PROXY_AUTH_HEADER,
     SandboxedGymAgentTaskRunner,
     SandboxedGymRuntimeConfig,
+    _stamp_rollout_indices,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig
+from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_OTLP, EVIDENCE_TRACE
 
 ROLLOUT_URL = "http://gym-host.example/rollouts/run"
 
@@ -47,10 +50,12 @@ class _FakeHost:
 
     def __init__(
         self,
+        *,
         status: int = 200,
         body: Any = None,
         content: bytes | None = None,
         rewards: dict[int, float] | None = None,
+        model_calls: list[dict[str, Any]] | None = None,
     ) -> None:
         self.requests: list[httpx.Request] = []
         self.posted: list[dict[str, Any]] = []
@@ -58,6 +63,7 @@ class _FakeHost:
         self._body = body
         self._content = content
         self._rewards = rewards
+        self._model_calls = model_calls
 
     def transport(self) -> httpx.MockTransport:
         def handle(request: httpx.Request) -> httpx.Response:
@@ -71,9 +77,13 @@ class _FakeHost:
             results = [
                 {
                     NG_TASK_INDEX: example[NG_TASK_INDEX],
-                    NG_ROLLOUT_INDEX: 0,
+                    # Echoed, never invented: Gym's `run_examples` copies the row's identity onto
+                    # the result and assigns nothing of its own. A fake that supplies an index the
+                    # caller failed to send would hide exactly the bug this mirrors.
+                    NG_ROLLOUT_INDEX: example.get(NG_ROLLOUT_INDEX),
                     "reward": rewards.get(example[NG_TASK_INDEX], 1.0),
                     "response": f"answer-{example[NG_TASK_INDEX]}",
+                    **({MODEL_CALLS_RESULT_KEY: self._model_calls} if self._model_calls else {}),
                 }
                 for example in self.posted
             ]
@@ -197,6 +207,56 @@ async def test_a_heartbeat_only_200_names_the_host_as_the_failure(tasks, tmp_pat
     assert "error" in message.lower() or "results" in message.lower()
 
 
+async def test_a_body_free_200_names_both_causes(tasks, tmp_path, monkeypatch) -> None:
+    """Zero bytes, not even heartbeat padding.
+
+    A host that died before writing and a silent host whose request the proxy truncated arrive
+    identically, because without a Content-Length the body ends at the close. The runner must
+    offer both and the check for each, not pick one.
+    """
+    host = _FakeHost(content=b"")
+    runner = runner_against(host, monkeypatch)
+    # The runner times its own POST; a MockTransport answers instantly, so stand in for the wait.
+    monkeypatch.setattr(
+        "nemo_evaluator_sdk.agent_eval.runtimes.gym.sandboxed.time.monotonic",
+        _clock_advancing_by(180.0),
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    message = str(excinfo.value)
+    assert ROLLOUT_URL in message
+    assert "OOMKill" in message
+    assert "predates the rollout heartbeat" in message
+
+
+async def test_a_body_free_200_that_arrived_fast_blames_the_sandbox_alone(tasks, tmp_path, monkeypatch) -> None:
+    host = _FakeHost(content=b"")
+    runner = runner_against(host, monkeypatch)
+    monkeypatch.setattr(
+        "nemo_evaluator_sdk.agent_eval.runtimes.gym.sandboxed.time.monotonic",
+        _clock_advancing_by(2.0),
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    message = str(excinfo.value)
+    assert "OOMKilled" in message
+    assert "heartbeat" not in message
+
+
+def _clock_advancing_by(delta: float):
+    """A monotonic clock whose second reading is ``delta`` later than its first."""
+    readings = iter((0.0, delta))
+
+    def _clock() -> float:
+        return next(readings, delta)
+
+    return _clock
+
+
 async def test_a_non_json_200_names_the_host_rather_than_the_decoder(tasks, tmp_path, monkeypatch) -> None:
     """A non-empty body that is not JSON is a broken response contract, not an evaluator bug.
 
@@ -268,3 +328,103 @@ def test_runner_info_records_the_host_but_not_the_token() -> None:
     assert info.config["mode"] == "sandboxed"
     assert info.config["rollout_url"] == ROLLOUT_URL
     assert "sk-secret-value" not in json.dumps(info.config), "the token must not reach the run bundle"
+
+
+def _model_call(call_id: str, started_at: float) -> dict[str, Any]:
+    return {
+        "model_call_id": call_id,
+        "model_ref": {"name": "policy_model"},
+        "status_code": 200,
+        "started_at": started_at,
+        "completed_at": started_at + 0.25,
+        "latency_ttft_ms": 12.5,
+        "response": {"usage": {"input_tokens": 5, "output_tokens": 2}},
+    }
+
+
+async def test_captures_from_the_host_become_timed_per_call_spans(tasks, tmp_path, monkeypatch) -> None:
+    # The point of the whole hop: without the capture a trial's trace is one AGENT span and no
+    # timing, which is what this runner produced before.
+    host = _FakeHost(model_calls=[_model_call("c0", 1788534870.5), _model_call("c1", 1788534871.0)])
+    runner = runner_against(host, monkeypatch)
+
+    trials = await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    trial = trials[0]
+    assert trial.evidence is not None
+    resource_spans = await (await trial.evidence.trace(EVIDENCE_TRACE, format=EVIDENCE_FORMAT_OTLP)).resource_spans()
+    llm = [
+        span
+        for resource_span in resource_spans
+        for scope_spans in resource_span.scope_spans
+        for span in scope_spans.spans
+        for attribute in span.attributes
+        if attribute.key == "openinference.span.kind" and attribute.value.string_value == "LLM"
+    ]
+    assert len(llm) == 2
+    assert all(span.start_time_unix_nano > 0 and span.end_time_unix_nano > span.start_time_unix_nano for span in llm)
+
+
+async def test_the_raw_capture_is_kept_as_its_own_evidence(tasks, tmp_path, monkeypatch) -> None:
+    # The OTLP view is a projection of the capture, and a projection is not a reason to lose what it
+    # was projected from.
+    host = _FakeHost(model_calls=[_model_call("c0", 1788534870.5)])
+    runner = runner_against(host, monkeypatch)
+
+    trials = await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    assert trials[0].evidence is not None
+    assert trials[0].evidence.get("ng_trajectory") is not None
+
+
+async def test_the_transport_key_never_reaches_the_rollouts_file(tasks, tmp_path, monkeypatch) -> None:
+    # `rollouts.jsonl` is read by the same parser as the CLI runner's output, so it has to be the
+    # shape Gym itself would have written -- this key is ours, not Gym's.
+    host = _FakeHost(model_calls=[_model_call("c0", 1788534870.5)])
+    runner = runner_against(host, monkeypatch)
+
+    await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    written = (tmp_path / "gym_run" / "rollouts.jsonl").read_text(encoding="utf-8")
+    assert MODEL_CALLS_RESULT_KEY not in written
+
+
+async def test_a_host_that_returns_no_captures_still_produces_trials(tasks, tmp_path, monkeypatch) -> None:
+    # An older host, or a run where the work path was unwritable. The trial's reward and output
+    # stand on their own; only the per-call timing is missing.
+    runner = runner_against(_FakeHost(), monkeypatch)
+
+    trials = await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    assert len(trials) == len(tasks)
+    assert not (tmp_path / "gym_run" / "model_calls").exists()
+
+
+async def test_examples_carry_a_rollout_index_so_gym_will_capture(tasks, tmp_path, monkeypatch) -> None:
+    # `run_examples` assigns no `_ng_rollout_index` -- only `gym eval run`'s preprocessing does.
+    # Without it Gym's `maybe_rollout_id_from_run_body` returns None and it writes *no capture at
+    # all*. Found by running a real sandboxed rollout, whose capture directory stayed empty.
+    host = _FakeHost()
+    runner = runner_against(host, monkeypatch)
+
+    await runner.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
+
+    assert all(example.get(NG_ROLLOUT_INDEX) is not None for example in host.posted)
+
+
+def test_rollout_indices_number_repeats_within_each_task() -> None:
+    # Per task, not across the batch: the index distinguishes repeats of one task, and a global
+    # counter would make every rollout look like a different task's first attempt.
+    examples = [{NG_TASK_INDEX: 0}, {NG_TASK_INDEX: 1}, {NG_TASK_INDEX: 0}]
+
+    _stamp_rollout_indices(examples)
+
+    assert [example[NG_ROLLOUT_INDEX] for example in examples] == [0, 0, 1]
+
+
+def test_a_caller_that_numbers_its_own_repeats_keeps_its_numbering() -> None:
+    examples = [{NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 7}, {NG_TASK_INDEX: 0}]
+
+    _stamp_rollout_indices(examples)
+
+    assert [example[NG_ROLLOUT_INDEX] for example in examples] == [7, 0]

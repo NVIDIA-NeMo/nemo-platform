@@ -20,7 +20,8 @@ class EvaluatorConfig(NemoConfig):
     gym_tasks_image: str | None = Field(
         default=None,
         description=(
-            "Optional fully qualified image reference for Gym agent-evaluation jobs. Override with "
+            "Optional fully qualified image reference for colocated Gym agent-evaluation jobs. Sandboxed Gym "
+            "jobs use the platform CPU tasks image and launch Gym in `sandbox_runtime_image`. Override with "
             "NEMO_EVALUATOR_GYM_TASKS_IMAGE; when set, this bypasses platform image registry/tag qualification."
         ),
     )
@@ -49,7 +50,9 @@ class EvaluatorConfig(NemoConfig):
     )
     sandbox_runtime_image: str | None = Field(
         default=None,
-        description="Image the sandboxed Gym host runs. Must carry NeMo-Gym and the host runtime.",
+        description="Optional fully qualified image for the sandboxed Gym host. When unset, the deployment "
+        "uses the qualified `nmp-gym-host` image matching the platform registry and tag. Set this only to "
+        "override that release-coupled default.",
     )
     sandbox_episode_backend: Literal["opensandbox", "memory"] = Field(
         default="opensandbox",

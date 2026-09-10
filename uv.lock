@@ -39,7 +39,7 @@ members = [
     "nemo-experimentalist-plugin",
     "nemo-guardrails-plugin",
     "nemo-insights-plugin",
-    "nemo-iron-swarm-plugin",
+    "nemo-agent-hardener-plugin",
     "nemo-nb",
     "nemo-optimization-plugin",
     "nemo-platform",
@@ -87,7 +87,7 @@ constraints = [
     { name = "datamodel-code-generator", specifier = ">=0.71.0" },
     { name = "diffusers", specifier = ">=0.38.0" },
     { name = "filelock", specifier = ">=3.20.3" },
-    { name = "gitpython", specifier = ">=3.1.58" },
+    { name = "gitpython", specifier = ">=3.1.60" },
     { name = "joserfc", specifier = ">=1.7.2" },
     { name = "json-repair", specifier = ">=0.60.1" },
     { name = "jupyter-server", specifier = ">=2.20.0" },
@@ -113,7 +113,7 @@ constraints = [
     { name = "nemo-fabric-adapters-deepagents", specifier = "==0.3.0b1" },
     { name = "nemo-fabric-adapters-hermes", specifier = "==0.3.0b1" },
     { name = "nemo-fabric-runtime", specifier = "==0.3.0b1" },
-    { name = "nltk", specifier = ">=3.10.0" },
+    { name = "nltk", specifier = ">=3.10.3" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "postcss", specifier = ">=8.5.10" },
     { name = "pyasn1", specifier = ">=0.6.4" },
@@ -2031,7 +2031,7 @@ http = [
 
 [[package]]
 name = "garak-api"
-version = "0.15.1"
+version = "0.16.0"
 source = { editable = "packages/garak_api" }
 dependencies = [
     { name = "aiohttp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -2095,14 +2095,14 @@ wheels = [
 
 [[package]]
 name = "gitpython"
-version = "3.1.58"
+version = "3.1.61"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "gitdb", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/26/d6/5f358ff283325580c2003a6d953aea18cfe10ae87b46f5ebc80fa3a386dc/gitpython-3.1.58.tar.gz", hash = "sha256:621416df10ef3fd0e19fabf9172ddeed0fa704d353d04f194eec56a625a95b22", size = 228498, upload-time = "2026-08-04T15:05:49.47Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/61/3285044215fb596bf093e39ccb96ece0a1076a8ca57a61e069a6a33cdb1b/gitpython-3.1.61.tar.gz", hash = "sha256:f51c24d8c0f733a195447385f5774a5dfe8767f5acfd7994a33755644c6ecc95", size = 231680, upload-time = "2026-08-28T11:01:13.761Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/0c/9d8752098bc442f0726e64aa6135940b3a96809915d1aa4206c1bb97881d/gitpython-3.1.58-py3-none-any.whl", hash = "sha256:d331e722577f0fd7fc1f857419b3ecc07af66282b933d2a4d95f84a042fdd50f", size = 220183, upload-time = "2026-08-04T15:05:48.025Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/5e/49cc172da4d0578644ba37cec5cb365b1fefc603b26edea9bcac1c7f830a/gitpython-3.1.61-py3-none-any.whl", hash = "sha256:8ab28c9da863cdd9e7d7694ec46cf3e6c9a12d8a30a1acd3447aec11975d530c", size = 222118, upload-time = "2026-08-28T11:01:12.262Z" },
 ]
 
 [[package]]
@@ -4562,6 +4562,7 @@ dependencies = [
     { name = "pandas", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pyarrow", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pytrec-eval-terrier", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "ragas", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "rouge-score", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "sacrebleu", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -4591,7 +4592,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "harbor", marker = "python_full_version >= '3.12' and extra == 'harbor'", specifier = ">=0.16.1" },
+    { name = "harbor", marker = "python_full_version >= '3.12' and extra == 'harbor'", specifier = ">=0.20,<0.21" },
     { name = "httpx", specifier = ">=0.27.0,<1" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "jsonpath-ng", specifier = ">=1.7.0" },
@@ -4609,6 +4610,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=1.5.3" },
     { name = "pyarrow", specifier = ">=19.0.1" },
     { name = "pydantic", specifier = ">=2.10.6" },
+    { name = "pytrec-eval-terrier", specifier = "==0.5.10" },
     { name = "ragas", specifier = "==0.4.3" },
     { name = "rouge-score", specifier = "==0.1.2" },
     { name = "sacrebleu", specifier = ">=2.5.1" },
@@ -4643,7 +4645,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "harbor", specifier = ">=0.16" },
+    { name = "harbor", specifier = ">=0.20,<0.21" },
     { name = "httpx" },
     { name = "nemo-evaluator-sdk", editable = "packages/nemo_evaluator_sdk" },
     { name = "nemo-insights-plugin", editable = "plugins/nemo-insights" },
@@ -4838,6 +4840,7 @@ dependencies = [
     { name = "nemo-fabric-adapters-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-relay", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nooa", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "opentelemetry-exporter-otlp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "opentelemetry-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -4851,10 +4854,11 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx" },
-    { name = "nemo-fabric-adapter-contract", specifier = ">=0.3.0b1" },
-    { name = "nemo-fabric-adapters-common", specifier = ">=0.3.0b1" },
+    { name = "nemo-fabric-adapter-contract", specifier = "==0.3.0b1" },
+    { name = "nemo-fabric-adapters-common", specifier = "==0.3.0b1" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
+    { name = "nemo-relay", specifier = ">=0.7,<0.8" },
     { name = "nooa", specifier = ">=0.0.9" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.42.1" },
     { name = "opentelemetry-sdk", specifier = ">=1.42.1" },
@@ -4865,9 +4869,9 @@ requires-dist = [
 ]
 
 [[package]]
-name = "nemo-iron-swarm-plugin"
+name = "nemo-agent-hardener-plugin"
 version = "0.1.0"
-source = { editable = "plugins/nemo-iron-swarm" }
+source = { editable = "plugins/nemo-agent-hardener" }
 dependencies = [
     { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-agents-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5034,6 +5038,7 @@ all = [
     { name = "nemo-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-relay", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-safe-synthesizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemoguardrails", extra = ["tracing"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "ngcsdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5369,6 +5374,7 @@ nemo-evaluator-sdk = [
     { name = "pandas", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pyarrow", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pytrec-eval-terrier", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "ragas", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "rouge-score", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "sacrebleu", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5400,6 +5406,7 @@ nemo-insights-plugin = [
     { name = "nemo-fabric-adapter-contract", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-fabric-adapters-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-relay", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nooa", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "opentelemetry-exporter-otlp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "opentelemetry-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5565,6 +5572,7 @@ plugins = [
     { name = "nemo-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-relay", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-safe-synthesizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemoguardrails", extra = ["tracing"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-automodel", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5669,6 +5677,7 @@ services = [
     { name = "nemo-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-sdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-relay", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-safe-synthesizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemoguardrails", extra = ["tracing"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "ngcsdk", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5915,10 +5924,10 @@ requires-dist = [
     { name = "gunicorn", marker = "extra == 'nemo-safe-synthesizer-plugin'", specifier = ">=23.0.0" },
     { name = "gunicorn", marker = "extra == 'plugins'", specifier = ">=23.0.0" },
     { name = "gunicorn", marker = "extra == 'services'", specifier = ">=23.0.0" },
-    { name = "harbor", marker = "extra == 'all'", specifier = ">=0.16" },
-    { name = "harbor", marker = "extra == 'nemo-experimentalist-plugin'", specifier = ">=0.16" },
-    { name = "harbor", marker = "extra == 'plugins'", specifier = ">=0.16" },
-    { name = "harbor", marker = "extra == 'services'", specifier = ">=0.16" },
+    { name = "harbor", marker = "extra == 'all'", specifier = ">=0.20,<0.21" },
+    { name = "harbor", marker = "extra == 'nemo-experimentalist-plugin'", specifier = ">=0.20,<0.21" },
+    { name = "harbor", marker = "extra == 'plugins'", specifier = ">=0.20,<0.21" },
+    { name = "harbor", marker = "extra == 'services'", specifier = ">=0.20,<0.21" },
     { name = "httpx", marker = "extra == 'all'" },
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27.0" },
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27.2" },
@@ -6034,14 +6043,14 @@ requires-dist = [
     { name = "nemo-fabric", extras = ["claude", "codex", "relay"], marker = "extra == 'nemo-agents-plugin'", specifier = "==0.3.0b1" },
     { name = "nemo-fabric", extras = ["claude", "codex", "relay"], marker = "extra == 'plugins'", specifier = "==0.3.0b1" },
     { name = "nemo-fabric", extras = ["claude", "codex", "relay"], marker = "extra == 'services'", specifier = "==0.3.0b1" },
-    { name = "nemo-fabric-adapter-contract", marker = "extra == 'all'", specifier = ">=0.3.0b1" },
-    { name = "nemo-fabric-adapter-contract", marker = "extra == 'nemo-insights-plugin'", specifier = ">=0.3.0b1" },
-    { name = "nemo-fabric-adapter-contract", marker = "extra == 'plugins'", specifier = ">=0.3.0b1" },
-    { name = "nemo-fabric-adapter-contract", marker = "extra == 'services'", specifier = ">=0.3.0b1" },
-    { name = "nemo-fabric-adapters-common", marker = "extra == 'all'", specifier = ">=0.3.0b1" },
-    { name = "nemo-fabric-adapters-common", marker = "extra == 'nemo-insights-plugin'", specifier = ">=0.3.0b1" },
-    { name = "nemo-fabric-adapters-common", marker = "extra == 'plugins'", specifier = ">=0.3.0b1" },
-    { name = "nemo-fabric-adapters-common", marker = "extra == 'services'", specifier = ">=0.3.0b1" },
+    { name = "nemo-fabric-adapter-contract", marker = "extra == 'all'", specifier = "==0.3.0b1" },
+    { name = "nemo-fabric-adapter-contract", marker = "extra == 'nemo-insights-plugin'", specifier = "==0.3.0b1" },
+    { name = "nemo-fabric-adapter-contract", marker = "extra == 'plugins'", specifier = "==0.3.0b1" },
+    { name = "nemo-fabric-adapter-contract", marker = "extra == 'services'", specifier = "==0.3.0b1" },
+    { name = "nemo-fabric-adapters-common", marker = "extra == 'all'", specifier = "==0.3.0b1" },
+    { name = "nemo-fabric-adapters-common", marker = "extra == 'nemo-insights-plugin'", specifier = "==0.3.0b1" },
+    { name = "nemo-fabric-adapters-common", marker = "extra == 'plugins'", specifier = "==0.3.0b1" },
+    { name = "nemo-fabric-adapters-common", marker = "extra == 'services'", specifier = "==0.3.0b1" },
     { name = "nemo-fabric-adapters-deepagents", marker = "extra == 'all'", specifier = "==0.3.0b1" },
     { name = "nemo-fabric-adapters-deepagents", marker = "extra == 'nemo-agents-plugin'", specifier = "==0.3.0b1" },
     { name = "nemo-fabric-adapters-deepagents", marker = "extra == 'plugins'", specifier = "==0.3.0b1" },
@@ -6102,7 +6111,11 @@ requires-dist = [
     { name = "nemo-platform-sdk", marker = "extra == 'rl-service'", editable = "sdk/python/nemo-platform" },
     { name = "nemo-platform-sdk", marker = "extra == 'services'", editable = "sdk/python/nemo-platform" },
     { name = "nemo-platform-sdk", marker = "extra == 'unsloth-service'", editable = "sdk/python/nemo-platform" },
+    { name = "nemo-relay", marker = "extra == 'all'", specifier = ">=0.7,<0.8" },
     { name = "nemo-relay", marker = "extra == 'nemo-evaluator-sdk'", specifier = ">=0.7.3,<0.8" },
+    { name = "nemo-relay", marker = "extra == 'nemo-insights-plugin'", specifier = ">=0.7,<0.8" },
+    { name = "nemo-relay", marker = "extra == 'plugins'", specifier = ">=0.7,<0.8" },
+    { name = "nemo-relay", marker = "extra == 'services'", specifier = ">=0.7,<0.8" },
     { name = "nemo-safe-synthesizer", marker = "extra == 'all'", specifier = "==0.1.7" },
     { name = "nemo-safe-synthesizer", marker = "extra == 'nemo-safe-synthesizer-plugin'", specifier = "==0.1.7" },
     { name = "nemo-safe-synthesizer", marker = "extra == 'plugins'", specifier = "==0.1.7" },
@@ -6380,6 +6393,7 @@ requires-dist = [
     { name = "python-on-whales", marker = "extra == 'nemo-agents-plugin'", specifier = ">=0.60" },
     { name = "python-on-whales", marker = "extra == 'plugins'", specifier = ">=0.60" },
     { name = "python-on-whales", marker = "extra == 'services'", specifier = ">=0.60" },
+    { name = "pytrec-eval-terrier", marker = "extra == 'nemo-evaluator-sdk'", specifier = "==0.5.10" },
     { name = "pyyaml", marker = "extra == 'all'", specifier = ">=6.0.0" },
     { name = "pyyaml", marker = "extra == 'all'", specifier = ">=6.0.2" },
     { name = "pyyaml", marker = "extra == 'all'", specifier = ">=6.0.3" },
@@ -6614,6 +6628,7 @@ nemo-evaluator-sdk = [
     { name = "pandas", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pyarrow", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pytrec-eval-terrier", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "ragas", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "rouge-score", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "sacrebleu", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6672,6 +6687,7 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'nemo-evaluator-sdk'", specifier = ">=2.10.6" },
     { name = "pydantic", marker = "extra == 'nemo-platform-sdk'", specifier = ">=2.0.0,<3" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
+    { name = "pytrec-eval-terrier", marker = "extra == 'nemo-evaluator-sdk'", specifier = "==0.5.10" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "pyyaml", marker = "extra == 'nemo-platform-sdk'", specifier = ">=6.0.0" },
     { name = "ragas", marker = "extra == 'nemo-evaluator-sdk'", specifier = "==0.4.3" },
@@ -6729,6 +6745,7 @@ nemo-evaluator-sdk = [
     { name = "pandas", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pyarrow", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pytrec-eval-terrier", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "ragas", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "rouge-score", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "sacrebleu", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6782,6 +6799,7 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'nemo-evaluator-sdk'", specifier = ">=19.0.1" },
     { name = "pydantic", specifier = ">=2.0.0,<3" },
     { name = "pydantic", marker = "extra == 'nemo-evaluator-sdk'", specifier = ">=2.10.6" },
+    { name = "pytrec-eval-terrier", marker = "extra == 'nemo-evaluator-sdk'", specifier = "==0.5.10" },
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "ragas", marker = "extra == 'nemo-evaluator-sdk'", specifier = "==0.4.3" },
     { name = "requests", specifier = ">=2.31.0" },
@@ -7255,12 +7273,14 @@ core-services = [
 cpu-tasks = [
     { name = "nemo-anonymizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-data-designer-plugin", extra = ["retrieval-sdg"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-evaluator-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-hello-world", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "sandboxed-gym", extra = ["opensandbox", "server"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 dev = [
     { name = "acme-strategies", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7281,7 +7301,7 @@ dev = [
     { name = "myst-parser", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-anonymizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-data-designer-plugin", extra = ["retrieval-sdg"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-iron-swarm-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-agent-hardener-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-nb", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-ext", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7388,18 +7408,6 @@ gpu-tasks = [
     { name = "nmp-models", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-gym-task-orchestrator = [
-    { name = "nemo-anonymizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-data-designer-plugin", extra = ["retrieval-sdg"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-evaluator-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-optimization-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-hello-world", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "sandboxed-gym", extra = ["opensandbox"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
 insights = [
     { name = "nemo-insights-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
@@ -7495,12 +7503,14 @@ core-services = [
 cpu-tasks = [
     { name = "nemo-anonymizer-plugin", editable = "plugins/nemo-anonymizer" },
     { name = "nemo-data-designer-plugin", extras = ["retrieval-sdg"], editable = "plugins/nemo-data-designer" },
+    { name = "nemo-evaluator-plugin", editable = "plugins/nemo-evaluator" },
     { name = "nemo-optimization-plugin", editable = "plugins/nemo-optimization" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nmp-common", editable = "packages/nmp_common" },
     { name = "nmp-hello-world", editable = "services/hello-world" },
     { name = "nmp-platform", editable = "packages/nmp_platform" },
+    { name = "sandboxed-gym", extras = ["server", "opensandbox"], editable = "packages/sandboxed_gym" },
 ]
 dev = [
     { name = "acme-strategies", marker = "python_full_version < '3.14'", editable = "plugins/nemo-experimentalist/examples/acme-strategies" },
@@ -7521,7 +7531,7 @@ dev = [
     { name = "myst-parser", specifier = ">=4.0.0" },
     { name = "nemo-anonymizer-plugin", editable = "plugins/nemo-anonymizer" },
     { name = "nemo-data-designer-plugin", extras = ["retrieval-sdg"], editable = "plugins/nemo-data-designer" },
-    { name = "nemo-iron-swarm-plugin", editable = "plugins/nemo-iron-swarm" },
+    { name = "nemo-agent-hardener-plugin", editable = "plugins/nemo-agent-hardener" },
     { name = "nemo-nb", editable = "packages/nemo_nb" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-ext", editable = "packages/nemo_platform_ext" },
@@ -7632,18 +7642,6 @@ gpu-tasks = [
     { name = "nmp-models", editable = "services/core/models" },
     { name = "nmp-platform", editable = "packages/nmp_platform" },
 ]
-gym-task-orchestrator = [
-    { name = "nemo-anonymizer-plugin", editable = "plugins/nemo-anonymizer" },
-    { name = "nemo-data-designer-plugin", extras = ["retrieval-sdg"], editable = "plugins/nemo-data-designer" },
-    { name = "nemo-evaluator-plugin", editable = "plugins/nemo-evaluator" },
-    { name = "nemo-optimization-plugin", editable = "plugins/nemo-optimization" },
-    { name = "nemo-platform", editable = "packages/nemo_platform" },
-    { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
-    { name = "nmp-common", editable = "packages/nmp_common" },
-    { name = "nmp-hello-world", editable = "services/hello-world" },
-    { name = "nmp-platform", editable = "packages/nmp_platform" },
-    { name = "sandboxed-gym", extras = ["opensandbox"], editable = "packages/sandboxed_gym" },
-]
 insights = [{ name = "nemo-insights-plugin", editable = "plugins/nemo-insights" }]
 nmp-base = [
     { name = "nemo-platform", editable = "packages/nemo_platform" },
@@ -7714,7 +7712,7 @@ wheels = [
 
 [[package]]
 name = "nltk"
-version = "3.10.2"
+version = "3.10.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7723,9 +7721,9 @@ dependencies = [
     { name = "regex", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "tqdm", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/16/24d639531e73cbc6884fb251d116dfe469df9c595e0dcf24668c54d0e8d3/nltk-3.10.2.tar.gz", hash = "sha256:fcfd80fb77931868cea8357573c79838b8abc609942ef9914d1c9f6070d4645c", size = 3101716, upload-time = "2026-08-05T09:56:20.657Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e0/e6/fe51d2bb1a3b446f59c5c8165999a9fee208bc346af90a7cbf7657bc0d75/nltk-3.10.3.tar.gz", hash = "sha256:bb9327a461c3811c2fa4900e03840401f2126adfb30c0072827c433bd2444ea4", size = 5137152, upload-time = "2026-08-12T23:46:37.258Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/2b/bf677eb32ca6684b270c0d19ab133c2271e9f3375997e5a8dd2b08e3152d/nltk-3.10.2-py3-none-any.whl", hash = "sha256:2c7ccacb765c5e26b0cb60fb1b57080af522c6924d12a714a243305ba3637412", size = 1725815, upload-time = "2026-08-05T09:56:09.657Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/6d/ebd2af4640b12168fdf0cb74b6118df2f32a2f62ec7e0c06fbfd80706639/nltk-3.10.3-py3-none-any.whl", hash = "sha256:ff9598a8e20518ee0d557745890cc4435b9578489e2dcbc69c4f81fa060caf7c", size = 1798643, upload-time = "2026-08-12T23:44:13.478Z" },
 ]
 
 [[package]]
@@ -10721,6 +10719,24 @@ wheels = [
 ]
 
 [[package]]
+name = "pytrec-eval-terrier"
+version = "0.5.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "scipy", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/96/4925a95e4865a647bc74d3bb052243d12a3c8e8a34909d7d097b5a4d08c5/pytrec_eval_terrier-0.5.10.tar.gz", hash = "sha256:eaaf20580d17b5575a233e04dab8a4cbcc01a7e45be8cf547c07f0a2bb3e7eb9", size = 18634, upload-time = "2025-10-20T16:50:18.098Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d3/ca/f0edd9df08c08c96d2f088c298cfb824c3ee816302ac1f911ecb1bfdd681/pytrec_eval_terrier-0.5.10-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:e28c3c14728713cdbad165964e2d1aba96b0fc7445a5a13168b398e9bd3bbd08", size = 137179, upload-time = "2025-10-20T16:51:07.809Z" },
+    { url = "https://files.pythonhosted.org/packages/73/55/e02a14b0d3ac520849f66391f03c6783b3383fd23a19372d07a2280b815e/pytrec_eval_terrier-0.5.10-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:689ee541d72c27d14ae15cd1f11d2cb86cf9bdc880f5e8af9c5dbbdd47663d4d", size = 304845, upload-time = "2025-10-20T16:54:17.791Z" },
+    { url = "https://files.pythonhosted.org/packages/76/9c/9020b700199b09ebdfc6dbadae81641a49555c4ee21dedbe2aa98af601b5/pytrec_eval_terrier-0.5.10-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:3f02118dadd3c09b71462bb26e405e49bd10fe0c60bcc169fcd31454a4256dc2", size = 1327965, upload-time = "2025-10-20T16:54:18.743Z" },
+    { url = "https://files.pythonhosted.org/packages/93/21/71a0dee7e2cd368237432af6bf6051ffde03370730dc1666cd39494c82a7/pytrec_eval_terrier-0.5.10-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:fcf96c33446c16de8db78e829c5279f7404ceaaf6b502bb5a6a3669b06051601", size = 137186, upload-time = "2025-10-20T16:50:22.941Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/8c/2494edf20d726bdd3ee0a20dc5ed84351c6cc6ccc17b11b474e315808762/pytrec_eval_terrier-0.5.10-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8455485f1faf6759f1be11b12c904d1c749ba5db7e2b6f414aa56e19533ce069", size = 304917, upload-time = "2025-10-20T16:54:20.486Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/51/7611546afb55548e65db35354a63b90d5fd5ea593fc64e5993088bf61415/pytrec_eval_terrier-0.5.10-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:e7cc9666305281b0ca1873761dc71cd3f0863e6d759f00a12fd363aa2d558d6f", size = 1327998, upload-time = "2025-10-20T16:54:21.375Z" },
+]
+
+[[package]]
 name = "pytz"
 version = "2026.3.post1"
 source = { registry = "https://pypi.org/simple" }
@@ -12362,7 +12378,6 @@ dependencies = [
     { name = "wheel", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "xformers", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and 'linux' in sys_platform" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/46/0b/fb9344ea1bc745a2a113f8db502e4d8d7c8111db28ae3196a51228ee5518/unsloth-2026.8.4.tar.gz", hash = "sha256:e34d07f68e66c287769695ab7930508467584b2439a6f639158f44230f70993d", size = 84321638, upload-time = "2026-08-05T07:32:54.93Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/13/a2e9e26ae8e826a6d68e9279e96ca9ba096f9489cfbacf5927f3a08cdc48/unsloth-2026.8.4-py3-none-any.whl", hash = "sha256:c180cc5bae5597f420eaf3d27f92ac8c3fd0bf4d4c51ffed71e23dd36c569bfe", size = 79350425, upload-time = "2026-08-05T07:32:49.984Z" },
 ]
