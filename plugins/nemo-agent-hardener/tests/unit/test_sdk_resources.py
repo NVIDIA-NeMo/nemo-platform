@@ -146,7 +146,9 @@ def test_manifest_update_validate_and_inspect_use_typed_requests(monkeypatch: py
 
         def inspect_project(self, *, workspace: str, body: InspectProjectRequest) -> Any:
             captured["inspect"] = (workspace, body)
-            return types.SimpleNamespace(data=lambda: InspectProjectResponse(dockerfile=body.dockerfile or "Dockerfile"))
+            return types.SimpleNamespace(
+                data=lambda: InspectProjectResponse(dockerfile=body.dockerfile or "Dockerfile")
+            )
 
     def _client_from_platform(_platform: Any, client_cls: Any) -> Any:
         assert client_cls is AgentHardenerClient
