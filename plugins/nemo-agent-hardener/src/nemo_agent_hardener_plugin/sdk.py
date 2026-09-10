@@ -120,7 +120,9 @@ def _run_war_game(
     if models:
         spec["models"] = models
     if benign_suite:
-        spec["benign_suite_fileset"] = upload_file_to_fileset(sync_sdk, Path(benign_suite), workspace=workspace)
+        spec["benign_suite_fileset"] = upload_file_to_fileset(
+            sync_sdk, Path(benign_suite), workspace=workspace, prefix="benign-suite"
+        )
     return _to_json_map(NemoJobScheduler().run_local(AgentHardenerRunJob, spec, workspace=workspace, sdk=sync_sdk))
 
 

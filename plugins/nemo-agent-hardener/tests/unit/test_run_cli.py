@@ -34,7 +34,9 @@ def test_sdk_run_uploads_benign_suite_into_spec(tmp_path: Path, monkeypatch: pyt
 
     monkeypatch.setattr(sdk_module, "NemoJobScheduler", _Scheduler)
     monkeypatch.setattr(
-        sdk_module, "upload_file_to_fileset", lambda _sdk, path, *, workspace: f"{workspace}/uploaded-{path.name}"
+        sdk_module,
+        "upload_file_to_fileset",
+        lambda _sdk, path, *, workspace, prefix="hitlog": f"{workspace}/uploaded-{path.name}",
     )
 
     suite = _write_suite(tmp_path / "suite.csv")
@@ -84,7 +86,9 @@ def test_async_sdk_run_builds_sync_client_and_uploads_benign_suite(
     monkeypatch.setattr(sdk_module, "NemoJobScheduler", _Scheduler)
     monkeypatch.setattr(sdk_module, "make_sdk", _fake_make_sdk)
     monkeypatch.setattr(
-        sdk_module, "upload_file_to_fileset", lambda sdk, path, *, workspace: f"{workspace}/uploaded-{path.name}"
+        sdk_module,
+        "upload_file_to_fileset",
+        lambda sdk, path, *, workspace, prefix="hitlog": f"{workspace}/uploaded-{path.name}",
     )
 
     suite = _write_suite(tmp_path / "suite.csv")
