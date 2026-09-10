@@ -866,7 +866,9 @@ nemo-data-designer-plugin = { source = "../../plugins/nemo-data-designer/src/nem
 nemo-deployments-plugin = { source = "../../plugins/nemo-deployments/src/nemo_deployments_plugin", module = "nemo_deployments_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-evaluator-plugin = { source = "../../plugins/nemo-evaluator/src/nemo_evaluator", module = "nemo_evaluator", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-experimentalist-plugin = { source = "../../plugins/nemo-experimentalist/src/nemo_experimentalist_plugin", module = "nemo_experimentalist_plugin", inherit = { "entry-points" = ["nemo.*"] } }
-nemo-insights-plugin = { source = "../../plugins/nemo-insights/src/nemo_insights_plugin", module = "nemo_insights_plugin", inherit = { "entry-points" = ["nemo.*"] } }
+# shared_data mirrors the standalone plugin's wheel shared-data: Fabric resolves
+# adapter descriptors from <sys.prefix>/share/nemo-fabric/adapters at runtime.
+nemo-insights-plugin = { source = "../../plugins/nemo-insights/src/nemo_insights_plugin", module = "nemo_insights_plugin", inherit = { "entry-points" = ["nemo.*"] }, shared_data = { "../../insights-analyst.fabric-adapter.json" = "share/nemo-fabric/adapters/insights-analyst/insights-analyst.fabric-adapter.json" } }
 # Required by agents.optimize (OptimizeJob lives here; agents plugin imports it at router setup).
 nemo-optimization-plugin = { source = "../../plugins/nemo-optimization/src/nemo_optimization", module = "nemo_optimization", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-guardrails-plugin = { source = "../../plugins/nemo-guardrails/src/nemo_guardrails_plugin", module = "nemo_guardrails_plugin", inherit = { "entry-points" = ["nemo.*"] } }
