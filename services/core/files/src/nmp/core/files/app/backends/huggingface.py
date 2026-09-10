@@ -336,6 +336,13 @@ class HuggingfaceStorageImpl(StorageImpl):
             endpoint=self.config.endpoint,
         )
 
+    @property
+    def tracked_revision(self) -> str | None:
+        return self.config.original_revision
+
+    def config_at_tracked_revision(self) -> HuggingfaceStorageConfig:
+        return self.config.model_copy(update={"revision": self.config.original_revision})
+
     async def resolve_config(self) -> HuggingfaceStorageConfig:
         """Resolve the revision to a specific commit SHA.
 

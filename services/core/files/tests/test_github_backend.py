@@ -138,6 +138,36 @@ class TestResolveConfig:
                 await _impl().resolve_config()
 
 
+class TestTrackedRevision:
+    def test_a_pinned_fileset_tracks_the_ref_it_was_resolved_from(self):
+        impl = _impl(_config(revision="abc123", original_revision="main"))
+
+        assert impl.tracked_revision == "main"
+        assert impl.config_at_tracked_revision().revision == "main"
+
+    def test_a_fileset_created_from_a_sha_tracks_nothing(self):
+        assert _impl(_config(revision="abc123")).tracked_revision is None
+
+    @pytest.mark.asyncio
+    async def test_re_resolving_the_tracked_ref_moves_the_pinned_revision(self):
+        session = _session_for(lambda _url: _FakeResponse(json_body={"sha": "newsha"}))
+        impl = _impl(_config(revision="oldsha", original_revision="main"))
+
+        with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
+            resolved = await GithubStorageImpl(impl.config_at_tracked_revision(), {}).resolve_config()
+
+        assert resolved.revision == "newsha"
+        assert resolved.original_revision == "main"
+        assert session.requests[0][0].endswith("/repos/acme/agents/commits/main")
+
+    def test_the_repository_and_directory_survive_a_re_resolution(self):
+        impl = _impl(_config(revision="oldsha", original_revision="main", path="agents/calc"))
+
+        source = impl.config_at_tracked_revision()
+
+        assert (source.owner, source.repo, source.path) == ("acme", "agents", "agents/calc")
+
+
 class TestListFiles:
     @pytest.mark.asyncio
     async def test_returns_blobs_and_skips_trees(self):

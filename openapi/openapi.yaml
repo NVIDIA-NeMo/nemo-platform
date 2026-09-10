@@ -2290,6 +2290,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/files/v2/workspaces/{workspace}/filesets/{name}/refresh:
+    post:
+      tags:
+      - Files
+      summary: Refresh Fileset Revision
+      description: 'Re-resolve a fileset''s tracked revision against its source.
+
+
+        A fileset created from a mutable ref is pinned to an immutable id so its
+
+        contents cannot shift under a deployment. This re-resolves that same ref and
+
+        repoints the fileset at whatever it names now. Everything else about the
+
+        storage config, including the repository and directory, is left alone.
+
+
+        Deployments stage the fileset when they are created, so existing deployments
+
+        keep serving the revision they were staged from.'
+      operationId: refresh_fileset_apis_files_v2_workspaces__workspace__filesets__name__refresh_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilesetOutput'
+        '409':
+          description: Fileset does not track a mutable revision
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/guardrails/v2/workspaces/{workspace}/checks:
     post:
       tags:
