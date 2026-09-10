@@ -9,9 +9,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import typer
-from nemo_platform_ext.cli.commands.api.inference.deployments import create_deployments
+from nemo_platform_ext.cli.commands.inference.deployments import create_deployments
 from nemo_platform_ext.cli.commands.jobs import create_jobs, watch_platform_job
 from nemo_platform_ext.cli.core.job_watch_renderer import JobWatchRenderResult
+from nemo_platform_plugin.models.client import ModelsClient
+from nemo_platform_plugin.models.types import CreateModelDeploymentRequest
 
 PLATFORM_SPEC_JSON = '{"steps":[{"name":"step-one","executor":{"provider":"cpu","container":{"image":"x"}}}]}'
 
@@ -44,6 +46,22 @@ def _ctx(client: object) -> SimpleNamespace:
     return SimpleNamespace(obj=state)
 
 
+def _patch_jobs_client(jobs_client: MagicMock):
+    """Make ``JobsClient.from_client(...)`` in the jobs module hand back *jobs_client*."""
+    jobs_client_cls = MagicMock()
+    jobs_client_cls.from_client.return_value = jobs_client
+    return patch("nemo_platform_ext.cli.commands.jobs.JobsClient", jobs_client_cls)
+
+
+def _deployments_ctx(client: object, created: object) -> SimpleNamespace:
+    """CLI context whose typed ModelsClient returns *created* from ``create_deployment``."""
+    ctx = _ctx(client)
+    models_client = MagicMock()
+    models_client.create_deployment.return_value = _Response(created)
+    ctx.obj.typed_client.return_value = models_client
+    return ctx
+
+
 def _assert_created_job_request(jobs_client: MagicMock, *, workspace: str = "test-workspace") -> None:
     jobs_client.create_job.assert_called_once()
     call_kwargs = jobs_client.create_job.call_args.kwargs
@@ -70,7 +88,7 @@ def test_jobs_create_watch_uses_sdk_watcher_and_outputs_created_job() -> None:
             "nemo_platform_ext.cli.commands.jobs.handle_code_generation",
             return_value=False,
         ) as handle_code_generation,
-        patch("nemo_platform_ext.cli.commands.jobs.client_from_platform", return_value=jobs_client),
+        _patch_jobs_client(jobs_client),
         patch("nemo_platform_ext.cli.commands.jobs.format_output") as format_output,
         patch(
             "nemo_platform_ext.cli.commands.jobs.render_job_watch_events",
@@ -135,7 +153,7 @@ def test_jobs_create_watch_exits_when_renderer_reports_failure() -> None:
 
     with (
         patch("nemo_platform_ext.cli.commands.jobs.handle_code_generation", return_value=False),
-        patch("nemo_platform_ext.cli.commands.jobs.client_from_platform", return_value=jobs_client),
+        _patch_jobs_client(jobs_client),
         patch(
             "nemo_platform_ext.cli.commands.jobs.render_job_watch_events",
             return_value=JobWatchRenderResult.FAILED,
@@ -164,7 +182,7 @@ def test_jobs_create_watch_exits_130_when_renderer_reports_interrupted() -> None
 
     with (
         patch("nemo_platform_ext.cli.commands.jobs.handle_code_generation", return_value=False),
-        patch("nemo_platform_ext.cli.commands.jobs.client_from_platform", return_value=jobs_client),
+        _patch_jobs_client(jobs_client),
         patch(
             "nemo_platform_ext.cli.commands.jobs.render_job_watch_events",
             return_value=JobWatchRenderResult.INTERRUPTED,
@@ -198,7 +216,7 @@ def test_jobs_create_watch_has_no_default_timeout() -> None:
             "nemo_platform_ext.cli.commands.jobs.handle_code_generation",
             return_value=False,
         ) as handle_code_generation,
-        patch("nemo_platform_ext.cli.commands.jobs.client_from_platform", return_value=jobs_client),
+        _patch_jobs_client(jobs_client),
         patch(
             "nemo_platform_ext.cli.commands.jobs.render_job_watch_events",
             return_value=JobWatchRenderResult.SUCCEEDED,
@@ -233,7 +251,7 @@ def test_jobs_create_wait_uses_quiet_waiter_and_outputs_created_job() -> None:
             "nemo_platform_ext.cli.commands.jobs.handle_code_generation",
             return_value=False,
         ) as handle_code_generation,
-        patch("nemo_platform_ext.cli.commands.jobs.client_from_platform", return_value=jobs_client),
+        _patch_jobs_client(jobs_client),
         patch("nemo_platform_ext.cli.commands.jobs.format_output") as format_output,
         patch("nemo_platform_ext.cli.commands.jobs.wait_for_platform_job", return_value=True) as wait_for_job,
         patch("nemo_platform_ext.cli.commands.jobs.render_job_watch_events") as render_events,
@@ -301,7 +319,7 @@ def test_jobs_create_wait_uses_waiter_default_timeout() -> None:
             "nemo_platform_ext.cli.commands.jobs.handle_code_generation",
             return_value=False,
         ) as handle_code_generation,
-        patch("nemo_platform_ext.cli.commands.jobs.client_from_platform", return_value=jobs_client),
+        _patch_jobs_client(jobs_client),
         patch("nemo_platform_ext.cli.commands.jobs.wait_for_platform_job", return_value=True) as wait_for_job,
     ):
         create_jobs(
@@ -327,7 +345,7 @@ def test_jobs_create_wait_exits_when_waiter_reports_failure() -> None:
 
     with (
         patch("nemo_platform_ext.cli.commands.jobs.handle_code_generation", return_value=False),
-        patch("nemo_platform_ext.cli.commands.jobs.client_from_platform", return_value=jobs_client),
+        _patch_jobs_client(jobs_client),
         patch("nemo_platform_ext.cli.commands.jobs.wait_for_platform_job", return_value=False),
         pytest.raises(typer.Exit) as exc_info,
     ):
@@ -370,7 +388,7 @@ def test_jobs_watch_command_uses_sdk_watcher() -> None:
     jobs_client.watch_job.return_value = events
 
     with (
-        patch("nemo_platform_ext.cli.commands.jobs.client_from_platform", return_value=jobs_client),
+        _patch_jobs_client(jobs_client),
         patch(
             "nemo_platform_ext.cli.commands.jobs.render_job_watch_events",
             return_value=JobWatchRenderResult.SUCCEEDED,
@@ -409,7 +427,7 @@ def test_jobs_watch_command_exits_130_when_renderer_reports_interrupted() -> Non
     jobs_client.watch_job.return_value = object()
 
     with (
-        patch("nemo_platform_ext.cli.commands.jobs.client_from_platform", return_value=jobs_client),
+        _patch_jobs_client(jobs_client),
         patch(
             "nemo_platform_ext.cli.commands.jobs.render_job_watch_events",
             return_value=JobWatchRenderResult.INTERRUPTED,
@@ -433,21 +451,20 @@ def test_jobs_watch_command_exits_130_when_renderer_reports_interrupted() -> Non
 
 
 def test_inference_deployment_create_exits_when_wait_fails() -> None:
-    deployments = MagicMock()
-    deployments.create.return_value = SimpleNamespace(name="deployment-a")
-    client = SimpleNamespace(inference=SimpleNamespace(deployments=deployments))
+    client = object()
+    ctx = _deployments_ctx(client, SimpleNamespace(name="deployment-a"))
 
     with (
-        patch("nemo_platform_ext.cli.commands.api.inference.deployments.handle_code_generation", return_value=False),
-        patch("nemo_platform_ext.cli.commands.api.inference.deployments.format_output"),
+        patch("nemo_platform_ext.cli.commands.inference.deployments.handle_code_generation", return_value=False),
+        patch("nemo_platform_ext.cli.commands.inference.deployments.format_output"),
         patch(
-            "nemo_platform_ext.cli.commands.api.inference.deployments.wait_for_inference_deployment",
+            "nemo_platform_ext.cli.commands.inference.deployments.wait_for_inference_deployment",
             return_value=False,
         ) as wait_for_inference_deployment,
         pytest.raises(typer.Exit) as exc_info,
     ):
         create_deployments(
-            _ctx(client),
+            ctx,
             name="deployment-a",
             workspace="test-workspace",
             config="deployment-config",
@@ -468,19 +485,18 @@ def test_inference_deployment_create_exits_when_wait_fails() -> None:
 
 
 def test_inference_deployment_create_watch_uses_waiter() -> None:
-    deployments = MagicMock()
-    deployments.create.return_value = SimpleNamespace(name="deployment-a")
-    client = SimpleNamespace(inference=SimpleNamespace(deployments=deployments))
-    ctx = _ctx(client)
+    client = object()
+    created = SimpleNamespace(name="deployment-a")
+    ctx = _deployments_ctx(client, created)
 
     with (
         patch(
-            "nemo_platform_ext.cli.commands.api.inference.deployments.handle_code_generation",
+            "nemo_platform_ext.cli.commands.inference.deployments.handle_code_generation",
             return_value=False,
         ) as handle_code_generation,
-        patch("nemo_platform_ext.cli.commands.api.inference.deployments.format_output") as format_output,
+        patch("nemo_platform_ext.cli.commands.inference.deployments.format_output") as format_output,
         patch(
-            "nemo_platform_ext.cli.commands.api.inference.deployments.wait_for_inference_deployment",
+            "nemo_platform_ext.cli.commands.inference.deployments.wait_for_inference_deployment",
             return_value=True,
         ) as wait_for_inference_deployment,
     ):
@@ -495,15 +511,11 @@ def test_inference_deployment_create_watch_uses_waiter() -> None:
             poll_interval=10,
         )
 
-    expected_kwargs = {
-        "workspace": "test-workspace",
-        "config": "deployment-config",
-        "name": "deployment-a",
-    }
+    expected_body = CreateModelDeploymentRequest.model_validate({"config": "deployment-config", "name": "deployment-a"})
     handle_code_generation.assert_called_once_with(
-        ["inference", "deployments"],
-        "create",
-        expected_kwargs,
+        ModelsClient,
+        "create_deployment",
+        {"workspace": "test-workspace", "body": expected_body},
         None,
         ctx.obj,
         watch_config={"type": "inference_deployment", "resource_label": "deployment"},
@@ -511,7 +523,13 @@ def test_inference_deployment_create_watch_uses_waiter() -> None:
         wait_config=None,
         wait_options=None,
     )
-    deployments.create.assert_called_once_with(**expected_kwargs)
+    ctx.obj.typed_client.assert_called_once_with(ModelsClient)
+    ctx.obj.typed_client.return_value.create_deployment.assert_called_once_with(
+        workspace="test-workspace", body=expected_body, exist_ok=False
+    )
+    assert ctx.obj.typed_client.return_value.create_deployment.call_args.kwargs["body"].model_dump(
+        exclude_unset=True
+    ) == {"name": "deployment-a", "config": "deployment-config"}
     format_output.assert_called_once()
     wait_for_inference_deployment.assert_called_once_with(
         client,
@@ -523,12 +541,11 @@ def test_inference_deployment_create_watch_uses_waiter() -> None:
 
 
 def test_inference_deployment_create_rejects_wait_and_watch_together() -> None:
-    deployments = MagicMock()
-    client = SimpleNamespace(inference=SimpleNamespace(deployments=deployments))
+    ctx = _deployments_ctx(object(), SimpleNamespace(name="deployment-a"))
 
     with pytest.raises(SystemExit) as exc_info:
         create_deployments(
-            _ctx(client),
+            ctx,
             name="deployment-a",
             workspace="test-workspace",
             config="deployment-config",
@@ -537,4 +554,4 @@ def test_inference_deployment_create_rejects_wait_and_watch_together() -> None:
         )
 
     assert exc_info.value.code == 2
-    deployments.create.assert_not_called()
+    ctx.obj.typed_client.return_value.create_deployment.assert_not_called()
