@@ -77,7 +77,7 @@ def test_build_payload_matches_job_run_wire_contract() -> None:
 
 def test_redact_endpoint_strips_query_and_credentials() -> None:
     assert (
-        _redact_endpoint("https://user:secret@example.test:8443/events?api_key=secret")
+        _redact_endpoint("https://marker@example.test:8443/events?debug=value")
         == "https://example.test:8443/events?<redacted>"
     )
 
@@ -93,7 +93,7 @@ async def test_send_job_run_event_skips_non_https_endpoint(monkeypatch: pytest.M
         updated_at=None,
     )
     assert event is not None
-    monkeypatch.setenv("NEMO_TELEMETRY_ENDPOINT", "http://user:secret@example.test/events?api_key=secret")
+    monkeypatch.setenv("NEMO_TELEMETRY_ENDPOINT", "http://marker@example.test/events?debug=value")
 
     with patch("nmp.core.jobs.telemetry.httpx.AsyncClient") as async_client:
         await _send_job_run_event(event)
