@@ -59,6 +59,8 @@ Use one workspace per task:
     private/source.atif.json
     private/canonical.atif.json
     private/privacy-audit.json
+    private/publications/<digest>/
+    private/publication-review.json
     private/ground-truth/
     safe/trace.atif.json
     safe/privacy.json
@@ -168,8 +170,9 @@ and user home paths.
 The helper also writes `private/privacy-audit.json`: a complete string-field and
 character denominator, URL hosts, and candidate name, organization, and street
 address findings. These are contextual leads, not automatic claims. Review every
-text field in `safe/trace.atif.json`, every audit finding and host, and the
-generalized task files, then record who performed the review:
+text field in `safe/trace.atif.json`, every audit finding and host, then record
+who performed this trace review. Generated task files do not exist yet; review
+the complete publication separately after finalization.
 
 ```bash
 python <skill_dir>/scripts/trace_environment.py review-privacy \
@@ -461,7 +464,8 @@ python <skill_dir>/scripts/trace_environment.py check \
 
 The helper derives environment status rather than accepting a claimed status:
 failed technical proof becomes `failed`; passed proof with the required separate
-no-network verification and `--human-reviewed` becomes `ready`; every other
+no-network verification, `--human-reviewed`, and no required software whose
+availability is `unknown` becomes `ready`; every other
 candidate is `unproven`. A shared verifier is a contract error rather than an
 unproven candidate. The human-review flag means a human supplied or reviewed
 Relevant experience and the generalized task. It is distinct from the earlier
@@ -494,22 +498,13 @@ python <skill_dir>/scripts/trace_environment.py batch-status \
 `denominator` must equal the selected source set. Never report only candidates
 or successes. A malformed workspace remains in the `batch-status` report with
 status `invalid` and makes the report invalid without hiding other member rows.
-For publication, export each finalized workspace to a new,
-nonexistent destination:
 
-```bash
-python <skill_dir>/scripts/trace_environment.py export \
-  --task-dir <task-dir> \
-  --output-dir <dataset-product-dir>
-```
-
-The command runs `check` and copies only `candidate.json`, the generalized
-`task/` and `reproducibility.json` when present, and a declassified `result.json`.
-It never copies source, canonical, safe, privacy-audit, ground-truth, validation,
-or Harbor job files. It preserves task-file executable bits while making the
-export readable, so the published task matches its task-tree digest.
-Public results report image pinning separately from unverified dependency
-closure and distinguish distinct jobs from unverified container freshness.
+Before any export, including `no_candidate`, read and follow
+`references/publication-review.md`. Prepare the complete private publication
+preview, review every exported file and path, and attest its exact digest before
+exporting. Trace privacy review and `--human-reviewed` do not replace this gate.
+Any change to the public product requires a new publication review; a successful
+`check` alone is not publication approval.
 
 Report the task ID, `candidate` or `no_candidate`, ground-truth availability and
 artifact count, required software and licensing constraints, environment

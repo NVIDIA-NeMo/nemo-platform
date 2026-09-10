@@ -26,6 +26,7 @@ CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v2"
 VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v5"
 RUN_INPUT_SCHEMA = "nemo.eval_author.trace_environment_run_input.v1"
 PRIVACY_AUDIT_SCHEMA = "nemo.eval_author.trace_environment_privacy_audit.v1"
+PUBLICATION_REVIEW_SCHEMA = "nemo.eval_author.trace_environment_publication_review.v1"
 REPRODUCIBILITY_SCHEMA = "nemo.eval_author.trace_environment_reproducibility.v3"
 EXPORT_SCHEMA = "nemo.eval_author.trace_environment_product.v3"
 BATCH_SCHEMA = "nemo.eval_author.trace_environment_batch.v1"
@@ -928,7 +929,8 @@ def _validate_requirements(value: Any, step_ids: set[int]) -> list[dict[str, Any
         label = f"candidate.requirements[{index}]"
         if not isinstance(requirement, dict) or set(requirement) != _REQUIREMENT_KEYS:
             raise ContractError(f"{label} fields do not match the versioned contract")
-        if not isinstance(requirement.get("description"), str) or not requirement["description"].strip():
+        description = requirement.get("description")
+        if not isinstance(description, str) or not description.strip():
             raise ContractError(f"{label}.description must be nonempty text")
         _evidence_steps(requirement.get("evidence_steps"), step_ids, label=f"{label}.evidence_steps")
     return value
@@ -1658,10 +1660,11 @@ def _validation_from_jobs(
     if len(job_ids) != len(set(job_ids)):
         raise ContractError("validation Harbor config.job_id values must be distinct")
     checksums = {trial.get("task_checksum") for trial in trials}
+    retained_checksum = next(iter(checksums))
     if (
         len(checksums) != 1
-        or not isinstance(next(iter(checksums)), str)
-        or _TASK_CHECKSUM.fullmatch(next(iter(checksums))) is None
+        or not isinstance(retained_checksum, str)
+        or _TASK_CHECKSUM.fullmatch(retained_checksum) is None
     ):
         raise ContractError("all validation Harbor results must have one matching task checksum")
     modes = {trial.get("verifier_environment_mode") for trial in trials}
@@ -1679,7 +1682,7 @@ def _validation_from_jobs(
     return {
         "schema": VALIDATION_SCHEMA,
         "harbor_version": harbor_version,
-        "task_checksum": next(iter(checksums)),
+        "task_checksum": retained_checksum,
         "task_tree_sha256": reproducibility["task_tree_sha256"],
         "verifier_environment_mode": mode,
         "distinct_jobs": True,
@@ -1807,6 +1810,24 @@ def _summary_markdown(summary: dict[str, Any]) -> str:
     )
 
 
+def _environment_status(
+    candidate: dict[str, Any], technical_status: str, isolation_status: str, review_status: str
+) -> str:
+    if technical_status == "failed":
+        return "failed"
+    unknown_required = any(
+        item["required"] and item["availability"] == "unknown" for item in candidate["software_requirements"]
+    )
+    if (
+        technical_status == "passed"
+        and isolation_status == "isolated"
+        and review_status == "human_reviewed"
+        and not unknown_required
+    ):
+        return "ready"
+    return "unproven"
+
+
 def _finalize(args: argparse.Namespace) -> dict[str, Any]:
     task_dir = _ensure_task_dir(args.task_dir)
     summary = _load_summary(task_dir)
@@ -1847,12 +1868,7 @@ def _finalize(args: argparse.Namespace) -> dict[str, Any]:
             technical_status = "passed" if validation["passed"] else "failed"
         else:
             technical_status = "not_run"
-        if technical_status == "failed":
-            environment_status = "failed"
-        elif technical_status == "passed" and isolation_status == "isolated" and args.human_reviewed:
-            environment_status = "ready"
-        else:
-            environment_status = "unproven"
+        environment_status = _environment_status(candidate, technical_status, isolation_status, review_status)
 
     reasons = list(args.reason)
     if args.status == "no_candidate" and not reasons:
@@ -1908,7 +1924,7 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
     else:
         errors.append("source has not been prepared")
     privacy = summary.get("privacy")
-    if isinstance(privacy, dict):
+    if isinstance(privacy, dict) and isinstance(source, dict):
         try:
             privacy_payload = _load_object(task_dir / privacy["path"], label="privacy report")
             if privacy != {"path": privacy["path"], "audit_path": privacy["audit_path"], **privacy_payload}:
@@ -1952,16 +1968,13 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
                     expected_technical = "passed" if validation["passed"] else "failed"
                     if environment.get("technical_status") != expected_technical:
                         errors.append("summary technical status does not match Harbor evidence")
-                    expected_status = "failed"
-                    if validation["passed"]:
-                        expected_status = (
-                            "ready"
-                            if task_contract["isolation_status"] == "isolated"
-                            and environment.get("review_status") == "human_reviewed"
-                            else "unproven"
-                        )
+                    expected_status = _environment_status(
+                        candidate, expected_technical, task_contract["isolation_status"], environment["review_status"]
+                    )
                     if environment.get("status") != expected_status:
-                        errors.append("summary environment status does not match proof, review, and isolation")
+                        errors.append(
+                            "summary environment status does not match proof, review, isolation, and software"
+                        )
                     if environment.get("validation") != "validation.json":
                         errors.append("summary omits retained Harbor validation")
                 elif environment.get("technical_status") != "not_run":
@@ -2095,24 +2108,21 @@ def _reject_symlinks(root: Path) -> None:
             raise ContractError(f"safe export refuses symlink: {path.relative_to(root.parent)}")
 
 
-def _export(args: argparse.Namespace) -> dict[str, Any]:
-    task_dir = _ensure_task_dir(args.task_dir)
+def _write_publication(task_dir: Path, output_dir: Path) -> None:
+    """Render the complete publication inside an owner-private staging directory."""
+
     summary = _load_summary(task_dir)
     if summary["status"] == "pending":
         raise ContractError("finalize the task workspace before export")
     checked = _check(argparse.Namespace(task_dir=task_dir))
     if not checked["valid"]:
         raise ContractError(f"task workspace check failed: {'; '.join(checked['errors'])}")
-    output_dir = args.output_dir.resolve()
-    if output_dir.is_relative_to(task_dir) or ".eval-author" in output_dir.parts:
-        raise ContractError("export directory must be outside every private .eval-author workspace")
-    if output_dir.exists():
-        raise ContractError(f"refusing to replace existing export directory: {output_dir}")
-    output_dir.mkdir(parents=True)
+    _reject_symlinks(task_dir / "candidate.json")
     candidate = _load_object(task_dir / "candidate.json", label="candidate")
     shutil.copy2(task_dir / "candidate.json", output_dir / "candidate.json")
     if summary["status"] == "candidate":
         _reject_symlinks(task_dir / "task")
+        _reject_symlinks(task_dir / "reproducibility.json")
         shutil.copytree(task_dir / "task", output_dir / "task")
         shutil.copy2(task_dir / "reproducibility.json", output_dir / "reproducibility.json")
     reproducibility_summary = None
@@ -2184,9 +2194,106 @@ def _export(args: argparse.Namespace) -> dict[str, Any]:
             path.chmod(0o644 | (stat.S_IMODE(path.stat().st_mode) & 0o111))
         elif path.is_dir():
             path.chmod(0o755)
+
+
+def _publication_inventory(root: Path) -> dict[str, Any]:
+    tree = _task_tree_info(root)
+    # The task digest tracks whether a file is executable; publication review
+    # additionally binds exact permission bits for every entry (except the root).
+    modes = {path.relative_to(root).as_posix(): stat.S_IMODE(path.stat().st_mode) for path in sorted(root.rglob("*"))}
+    digest = _sha256(json.dumps({"tree": tree, "modes": modes}, sort_keys=True).encode())
+    return {"sha256": digest, "file_count": tree["file_count"], "total_bytes": tree["total_bytes"]}
+
+
+def _prepare_publication(args: argparse.Namespace) -> dict[str, Any]:
+    task_dir = _ensure_task_dir(args.task_dir)
+    publications = task_dir / "private" / "publications"
+    if (task_dir / "private").is_symlink() or publications.is_symlink():
+        raise ContractError("publication staging directories must not be symlinks")
+    _mkdir_private(task_dir / "private")
+    _mkdir_private(publications)
+    # Keep each preview, including superseded ones, as private review evidence.
+    with tempfile.TemporaryDirectory(prefix="staging-", dir=publications) as temporary:
+        preview = Path(temporary) / "product"
+        _mkdir_private(preview)
+        _write_publication(task_dir, preview)
+        inventory = _publication_inventory(preview)
+        destination = publications / inventory["sha256"].removeprefix("sha256:")
+        if destination.exists():
+            if _publication_inventory(destination) != inventory:
+                raise ContractError("retained publication preview changed; preserve it and prepare a new workspace")
+        else:
+            preview.rename(destination)
+    return {"task_dir": str(task_dir), "preview_dir": str(destination), **inventory}
+
+
+def _review_publication(args: argparse.Namespace) -> dict[str, Any]:
+    task_dir = _ensure_task_dir(args.task_dir)
+    if not args.note.strip():
+        raise ContractError("publication review note must be nonempty")
+    if (task_dir / "private").is_symlink() or (task_dir / "private/publications").is_symlink():
+        raise ContractError("publication staging directories must not be symlinks")
+    preview = args.preview_dir
+    if not preview.is_absolute():
+        preview = task_dir / preview
+    if preview.is_symlink():
+        raise ContractError("publication preview must not be a symlink")
+    preview = preview.resolve()
+    if preview.parent != task_dir / "private/publications":
+        raise ContractError("review requires a retained private publication preview")
+    inventory = _publication_inventory(preview)
+    if inventory["sha256"] != args.sha256 or preview.name != args.sha256.removeprefix("sha256:"):
+        raise ContractError("publication preview does not match the reviewed digest")
+    with tempfile.TemporaryDirectory(dir=task_dir / "private") as temporary:
+        current = Path(temporary)
+        _write_publication(task_dir, current)
+        if _publication_inventory(current) != inventory:
+            raise ContractError("publication preview is stale; prepare and review the current product")
+    _write_json(
+        task_dir / "private/publication-review.json",
+        {
+            "schema": PUBLICATION_REVIEW_SCHEMA,
+            "publication": inventory,
+            "reviewer_kind": args.reviewer_kind,
+            "note": args.note.strip(),
+        },
+    )
+    return {"task_dir": str(task_dir), "reviewed": True, **inventory}
+
+
+def _export(args: argparse.Namespace) -> dict[str, Any]:
+    task_dir = _ensure_task_dir(args.task_dir)
+    if (task_dir / "private").is_symlink():
+        raise ContractError("publication staging directories must not be symlinks")
+    _mkdir_private(task_dir / "private")
+    output_dir = args.output_dir.resolve()
+    if output_dir.is_relative_to(task_dir) or ".eval-author" in output_dir.parts:
+        raise ContractError("export directory must be outside every private .eval-author workspace")
+    if output_dir.exists():
+        raise ContractError(f"refusing to replace existing export directory: {output_dir}")
+    review_path = task_dir / "private/publication-review.json"
+    if not review_path.is_file():
+        raise ContractError("export requires prepare-publication and review-publication for every product")
+    _reject_symlinks(review_path)
+    review = _load_object(review_path, label="publication review")
+    if (
+        set(review) != {"schema", "publication", "reviewer_kind", "note"}
+        or review.get("schema") != PUBLICATION_REVIEW_SCHEMA
+        or review.get("reviewer_kind") not in ("agent", "human")
+        or not isinstance(review.get("note"), str)
+        or not review["note"].strip()
+    ):
+        raise ContractError("publication review does not match the versioned contract")
+    with tempfile.TemporaryDirectory(dir=task_dir / "private") as temporary:
+        staged = Path(temporary)
+        _write_publication(task_dir, staged)
+        if _publication_inventory(staged) != review["publication"]:
+            raise ContractError("publication review is stale; prepare and review the current product")
+        # Publish the checked snapshot, never reread mutable source files after review.
+        shutil.copytree(staged, output_dir)
     output_dir.chmod(0o755)
     return {
-        "task_id": summary["task_id"],
+        "task_id": task_dir.name,
         "output_dir": str(output_dir),
         "files": sorted(str(path.relative_to(output_dir)) for path in output_dir.rglob("*") if path.is_file()),
     }
@@ -2260,6 +2367,20 @@ def _parser() -> argparse.ArgumentParser:
     batch_status.add_argument("--root", type=Path, default=Path(".eval-author/trace-environments"))
     batch_status.add_argument("--manifest", required=True, type=Path)
     batch_status.set_defaults(run=_batch_status)
+
+    publication = subparsers.add_parser("prepare-publication", help="stage the exact public product for private review")
+    publication.add_argument("--task-dir", required=True, type=Path)
+    publication.set_defaults(run=_prepare_publication)
+
+    publication_review = subparsers.add_parser(
+        "review-publication", help="attest review of an exact publication preview"
+    )
+    publication_review.add_argument("--task-dir", required=True, type=Path)
+    publication_review.add_argument("--preview-dir", required=True, type=Path)
+    publication_review.add_argument("--sha256", required=True)
+    publication_review.add_argument("--reviewer-kind", choices=("agent", "human"), required=True)
+    publication_review.add_argument("--note", required=True)
+    publication_review.set_defaults(run=_review_publication)
 
     export = subparsers.add_parser("export", help="publish only the reviewed candidate, task, and result summary")
     export.add_argument("--task-dir", required=True, type=Path)
