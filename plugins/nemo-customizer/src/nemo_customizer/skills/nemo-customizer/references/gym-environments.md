@@ -137,9 +137,13 @@ Step 2's requirements are unpinned on purpose (`wheelhouse_requirements`): the w
 |---|---|---|
 | `native-v1` | An index, per the server's `requirements.txt` | **Yes** |
 | `wheels-v1` | The package's `wheels/`, for whatever it vendors | **No**, if the closure covers step 1 as well |
-| `adapter-wheels-v1` | The package's `wheels/`, plus the agent harness's own requirements | **Yes** — see below |
+| `adapter-wheels-v1` | The package's complete `wheels/` closure, including the agent harness dependencies | **No** |
 
-**`adapter-wheels-v1` requires network at job start.** The wheelhouse covers the hub environment; the `verifiers_agent` harness builds its venv from its own `requirements.txt`, which carries `verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@<tag>`. A converted hub env needs egress to GitHub even with a complete FileSet. Do not promise an offline run.
+The converter resolves the hub environment and `verifiers_agent` together. Source-only
+releases are built into wheels on the internet-connected conversion host, and conversion
+fails if any pinned distribution is still missing from `wheels/`. The image-bundled agent
+harness uses the matching `verifiers` version pin, allowing Gym to resolve it from the
+FileSet with `UV_OFFLINE=1` instead of following a Git URL.
 
 Egress is operator config, never a job field: `NMP_RL_SANDBOX_ALLOW_INTERNET`, plus `NMP_RL_SANDBOX_PUBLIC_DNS_ALLOW` for hosts outside NeMo-RL's built-in `*.com` / `*.org` allowance (e.g. `hub.primeintellect.ai`). Check with the operator before committing a user to `native-v1` on a deny-default cluster. Details: `rl-kubernetes-runtime.md` § **Sandboxed Gym (GRPO)**.
 

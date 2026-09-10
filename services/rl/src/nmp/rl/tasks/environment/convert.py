@@ -28,6 +28,8 @@ from nmp.rl.tasks.environment.package import (
     write_dataset_jsonl,
 )
 from nmp.rl.tasks.environment.validate import validate_dataset_rows
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import InvalidVersion, Version
 
 logger = logging.getLogger(__name__)
@@ -133,6 +135,41 @@ def _run_pip_download(
     subprocess.run(cmd, check=True)
 
 
+def _build_downloaded_sdists(wheels_dir: Path) -> None:
+    """Build every source artifact into a wheel while the conversion host has egress."""
+    sdists = sorted(path for path in wheels_dir.iterdir() if path.is_file() and path.suffix != ".whl")
+    for sdist in sdists:
+        cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--wheel-dir",
+            str(wheels_dir),
+            "--no-deps",
+            str(sdist),
+        ]
+        logger.info("Building wheel from source artifact: %s", " ".join(cmd))
+        subprocess.run(cmd, check=True)
+        sdist.unlink()
+
+
+def _assert_complete_wheel_closure(wheels_dir: Path, requirements_file: Path) -> None:
+    """Ensure every pinned distribution has a wheel in the package."""
+    required = {
+        canonicalize_name(Requirement(line).name)
+        for raw_line in requirements_file.read_text(encoding="utf-8").splitlines()
+        if (line := raw_line.strip()) and not line.startswith(("#", "-"))
+    }
+    provided = {canonicalize_name(str(parse_wheel_filename(wheel.name)[0])) for wheel in wheels_dir.glob("*.whl")}
+    missing = sorted(required - provided)
+    if missing:
+        raise RuntimeError(
+            "adapter-wheels-v1 requires a complete offline wheel closure; "
+            f"no wheel was produced for: {', '.join(missing)}"
+        )
+
+
 def _wheel_platform_tags(wheel: Path) -> list[str]:
     """Platform tags a wheel declares, e.g. ``manylinux2014_x86_64.manylinux_2_17_x86_64``."""
     return wheel.stem.rsplit("-", 1)[-1].split(".")
@@ -177,19 +214,13 @@ def download_hub_wheels(
     packages = [spec.verifiers_spec, hub_requirement, *spec.extra_wheels]
     pinned = _compile_pinned_requirements(work_dir, packages, extra_index_url=PRIME_HUB_SIMPLE_INDEX)
     _run_pip_download(wheels_dir, requirements_file=pinned, extra_index_url=PRIME_HUB_SIMPLE_INDEX)
+    _build_downloaded_sdists(wheels_dir)
     downloaded = sorted(wheels_dir.glob("*.whl"))
     if not downloaded:
         raise RuntimeError(
             f"pip download produced no wheels for {packages!r}; adapter-wheels-v1 requires a wheel closure"
         )
-    sdists = sorted(p.name for p in wheels_dir.iterdir() if p.is_file() and p.suffix != ".whl")
-    if sdists:
-        logger.warning(
-            "Not vendoring %d source-only artifact(s): %s. They are excluded from the "
-            "package and must be satisfied when the Gym server venv is built.",
-            len(sdists),
-            ", ".join(sdists),
-        )
+    _assert_complete_wheel_closure(wheels_dir, pinned)
     assert_wheels_target_platform(wheels_dir)
     return wheels_dir
 

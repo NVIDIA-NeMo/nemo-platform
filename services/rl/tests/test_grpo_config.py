@@ -156,6 +156,7 @@ def test_compile_grpo_config_sandboxed_paths(
     assert cfg["env"]["should_use_nemo_gym"] is True
     assert nemo_gym["sandboxed"] is True
     assert nemo_gym["environment_path"] == "/job/environment"
+    assert nemo_gym["environment_offline"] is True
     # The master reads the dataset itself, so the dataloader path stays on job storage
     # even though the sandbox sees the same file at /job/dataset.
     assert cfg["data"]["train"]["data_path"] == str(dataset_pvc / "training.jsonl")
@@ -506,12 +507,16 @@ def test_sandbox_egress_comes_from_the_compiled_step_not_service_config(
     assert step.gym is not None
     step.gym.allow_internet = False
 
-    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    nemo_gym = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]
+    sandbox = nemo_gym["sandbox"]
     assert sandbox["allow_internet"] is False
+    assert nemo_gym["environment_offline"] is True
 
     step.gym.allow_internet = True
-    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    nemo_gym = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]
+    sandbox = nemo_gym["sandbox"]
     assert sandbox["allow_internet"] is True
+    assert nemo_gym["environment_offline"] is False
 
 
 def test_public_dns_allow_reaches_the_sandbox_network_policy(

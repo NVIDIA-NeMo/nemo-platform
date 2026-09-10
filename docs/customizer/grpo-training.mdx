@@ -93,9 +93,10 @@ A `wheels-v1` job runs with no egress only when `wheels/` carries all of:
 
 The virtualenv is created empty, so nothing carries over from the image. Completeness of `wheels/` is what makes an offline run work, not the format name. Full detail: [GRPO Environment Packages](/documentation/customizer-reference/tutorials/grpo-environment-packages#dependencies).
 
-<Warning>
-`adapter-wheels-v1` requires network access when the job starts. The package `wheels/` directory covers the hub environment; `verifiers_agent` also installs `verifiers` from GitHub.
-</Warning>
+`adapter-wheels-v1` can run without network access at job start. Its converter builds
+source-only dependencies such as `verifiers` into wheels, and the image-bundled harness
+uses a version requirement that can resolve from that wheelhouse. Conversion still
+requires an internet-connected host.
 
 Egress is an operator setting, not a job field: `NMP_RL_SANDBOX_ALLOW_INTERNET`, plus `NMP_RL_SANDBOX_PUBLIC_DNS_ALLOW` for hosts outside the built-in `*.com` / `*.org` allowance. Ask your platform operator which is configured before choosing a format.
 

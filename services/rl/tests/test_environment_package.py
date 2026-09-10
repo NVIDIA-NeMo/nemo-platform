@@ -408,6 +408,7 @@ def test_download_hub_wheels_resolves_before_downloading(tmp_path: Path, monkeyp
             dest = Path(cmd[cmd.index("--dest") + 1])
             dest.mkdir(parents=True, exist_ok=True)
             (dest / "ascii_tree-0.1.5-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+            (dest / "xxhash-4.0.0-cp313-cp313-manylinux_2_17_x86_64.whl").write_bytes(b"PK\x03\x04")
         return None
 
     monkeypatch.setattr(convert_mod.subprocess, "run", _fake_run)
@@ -430,6 +431,58 @@ def test_download_hub_wheels_resolves_before_downloading(tmp_path: Path, monkeyp
         "ascii-tree==0.1.5",
         "xxhash==4.0.0",
     ]
+
+
+def test_download_hub_wheels_builds_sdists_and_requires_complete_closure(tmp_path: Path, monkeypatch) -> None:
+    """Source-only releases must become wheels; silently dropping them breaks offline Gym."""
+    from nmp.rl.tasks.environment import convert as convert_mod
+
+    commands: list[list[str]] = []
+
+    def _fake_run(cmd, **kwargs):
+        commands.append(cmd)
+        if "compile" in cmd:
+            Path(cmd[cmd.index("--output-file") + 1]).write_text(
+                "ascii-tree==0.1.5\nverifiers @ git+https://example.test/verifiers.git@v0.1.14\n",
+                encoding="utf-8",
+            )
+        elif "download" in cmd:
+            dest = Path(cmd[cmd.index("--dest") + 1])
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / "ascii_tree-0.1.5-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+            (dest / "verifiers-0.1.14.zip").write_bytes(b"source")
+        elif "wheel" in cmd:
+            dest = Path(cmd[cmd.index("--wheel-dir") + 1])
+            (dest / "verifiers-0.1.14-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+        return None
+
+    monkeypatch.setattr(convert_mod.subprocess, "run", _fake_run)
+
+    wheels = convert_mod.download_hub_wheels(
+        convert_mod.ConvertEnvironmentSpec(
+            hub_id="primeintellect/ascii-tree",
+            out_dir=tmp_path / "env",
+        ),
+        work_dir=tmp_path / "work",
+    )
+
+    wheel_cmd = next(cmd for cmd in commands if "wheel" in cmd)
+    assert "--no-deps" in wheel_cmd
+    assert not (wheels / "verifiers-0.1.14.zip").exists()
+    assert (wheels / "verifiers-0.1.14-py3-none-any.whl").is_file()
+
+
+def test_complete_wheel_closure_rejects_missing_distribution(tmp_path: Path) -> None:
+    from nmp.rl.tasks.environment import convert as convert_mod
+
+    wheels = tmp_path / "wheels"
+    wheels.mkdir()
+    (wheels / "ascii_tree-0.1.5-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("ascii-tree==0.1.5\nverifiers==0.1.14\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="no wheel was produced for: verifiers"):
+        convert_mod._assert_complete_wheel_closure(wheels, requirements)
 
 
 def test_install_hub_package_does_not_build_sdist_deps(tmp_path: Path, monkeypatch) -> None:

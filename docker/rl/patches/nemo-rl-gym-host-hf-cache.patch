@@ -57,3 +57,10 @@ diff --git a/nemo_rl/environments/sandbox/gym_host_runtime.py b/nemo_rl/environm
      # Registered before nemo_gym is imported below: Gym's _augment_sys_path() folds the
      # extra roots into sys.path at import time, and server directories are resolved during
      # RunHelper.start.
+diff --git a/3rdparty/Gym-workspace/Gym/responses_api_agents/verifiers_agent/requirements.txt b/3rdparty/Gym-workspace/Gym/responses_api_agents/verifiers_agent/requirements.txt
+--- a/3rdparty/Gym-workspace/Gym/responses_api_agents/verifiers_agent/requirements.txt
++++ b/3rdparty/Gym-workspace/Gym/responses_api_agents/verifiers_agent/requirements.txt
+@@ -1,2 +1,2 @@
+ -e nemo-gym[dev] @ ../../
+-verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@v0.1.14
++verifiers==0.1.14

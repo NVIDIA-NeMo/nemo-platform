@@ -202,9 +202,9 @@ def _warn_if_v4_compatible_on_v5_checkpoint(model_path: str, v4_compatible: bool
         )
 
 
-# Formats whose wheels/ is a complete closure, so the job can resolve without an index.
-# adapter-wheels-v1 ships wheels too, but its agent harness still installs from GitHub.
-OFFLINE_ENVIRONMENT_FORMATS = frozenset({"wheels-v1"})
+# Formats whose wheels/ can be a complete closure. This is capability, not policy:
+# sandbox egress configuration decides whether uv is actually forced offline.
+OFFLINE_CAPABLE_ENVIRONMENT_FORMATS = frozenset({"wheels-v1", "adapter-wheels-v1"})
 
 
 def _read_manifest(environment_path: str | None) -> dict:
@@ -219,10 +219,10 @@ def _read_manifest(environment_path: str | None) -> dict:
     return manifest if isinstance(manifest, dict) else {}
 
 
-def _environment_is_offline(environment_path: str | None) -> bool:
+def _environment_supports_offline(environment_path: str | None) -> bool:
     """Whether the package promises a self-sufficient wheelhouse."""
 
-    return _read_manifest(environment_path).get("format") in OFFLINE_ENVIRONMENT_FORMATS
+    return _read_manifest(environment_path).get("format") in OFFLINE_CAPABLE_ENVIRONMENT_FORMATS
 
 
 def _read_manifest_config_paths(environment_path: str | None) -> list[str]:
@@ -311,7 +311,7 @@ def _build_nemo_gym_env_config(
     if config_paths:
         nemo_gym["config_paths"] = config_paths
 
-    offline_environment = _environment_is_offline(manifest_root)
+    offline_environment = sandboxed and not gym.allow_internet and _environment_supports_offline(manifest_root)
     if offline_environment:
         nemo_gym["environment_offline"] = True
 
