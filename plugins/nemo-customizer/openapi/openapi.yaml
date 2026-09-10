@@ -2523,6 +2523,13 @@ components:
             only backend with expert parallelism and automodel_kwargs). `all_weights`
             requires `dtensor` (stock HuggingFace on PyTorch FSDP2, also the pre-Hopper
             option). Omit it to get the supported one.
+        v4_compatible:
+          type: boolean
+          title: V4 Compatible
+          description: Keep the base checkpoint's transformers-v4 config.json on the
+            trained export. The platform's vLLM cannot read the v5 config Automodel
+            otherwise writes. Set false to export that v5 config instead.
+          default: true
         val_at_start:
           type: boolean
           title: Val At Start
