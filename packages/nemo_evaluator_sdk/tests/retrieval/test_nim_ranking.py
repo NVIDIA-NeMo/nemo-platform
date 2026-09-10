@@ -56,6 +56,45 @@ async def test_ranking_client_rewrites_reranking_and_embeddings_routes() -> None
 
 
 @pytest.mark.asyncio
+async def test_ranking_client_uses_nvidia_hosted_rerank_contract() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            request=request,
+            content=json.dumps(
+                {
+                    "results": [
+                        {"index": 1, "relevance_score": 0.8},
+                        {"index": 0, "relevance_score": 0.1},
+                    ]
+                }
+            ),
+            headers={"content-type": "application/json"},
+        )
+
+    model = Model(
+        url="https://platform.test/apis/inference-gateway/v2/workspaces/default/model/reranker/-/v1",
+        host_url="https://inference-api.nvidia.com/v1",
+        name="nvidia-nvidia-llama-nemotron-rerank-vl-1b-v2",
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        ranked = await NimRankingClient(model=model).rank("q", ["first", "second"], client=client)
+
+    assert ranked == [(1, 0.8), (0, 0.1)]
+    assert requests[0].url == (
+        "https://platform.test/apis/inference-gateway/v2/workspaces/default/model/reranker/-/v1/rerank"
+    )
+    assert json.loads(requests[0].content) == {
+        "model": "nvidia-nvidia-llama-nemotron-rerank-vl-1b-v2",
+        "query": "q",
+        "documents": ["first", "second"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_ranking_client_retries_non_finite_logits() -> None:
     attempts = 0
 
