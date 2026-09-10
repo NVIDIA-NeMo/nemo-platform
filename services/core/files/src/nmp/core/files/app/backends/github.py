@@ -9,6 +9,7 @@ import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote, urlencode
 
 import aiohttp
 from nmp.common.files.storage_config import GithubStorageConfig as GithubStorageConfig
@@ -83,8 +84,25 @@ class GithubStorageImpl(StorageImpl):
             headers["Authorization"] = f"Bearer {token}"
         return headers
 
-    def _api_url(self, suffix: str) -> str:
-        return f"{self.config.api_base_url.rstrip('/')}/repos/{self._repo_slug}/{suffix}"
+    def _api_url(self, *segments: str, **query: str) -> str:
+        """Build a repository API URL, encoding each segment and query value.
+
+        Encoding is what keeps a ``#`` or ``?`` in a filename or ref from
+        truncating the URL and dropping the revision the fileset is pinned to.
+        """
+        path = "/".join(quote(segment, safe="/:") for segment in segments if segment)
+        url = f"{self.config.api_base_url.rstrip('/')}/repos/{quote(self._repo_slug, safe='/')}"
+        if path:
+            url = f"{url}/{path}"
+        return f"{url}?{urlencode(query)}" if query else url
+
+    def _subject_at_revision(self) -> str:
+        scope = f"{self._repo_slug}/{self.config.path}" if self.config.path else self._repo_slug
+        return f"{scope} at {self.config.revision}"
+
+    def _tree_ref(self) -> str:
+        """Address the configured directory directly, so the listing is scoped to it."""
+        return f"{self.config.revision}:{self.config.path}" if self.config.path else self.config.revision
 
     def _repo_path(self, path: str) -> str:
         return f"{self.config.path}/{path}" if self.config.path else path
@@ -98,20 +116,13 @@ class GithubStorageImpl(StorageImpl):
         except aiohttp.ClientError as exc:
             raise GithubUnavailableError(f"Could not reach GitHub to read {subject}: {exc}") from exc
 
-    @property
-    def tracked_revision(self) -> str | None:
-        # resolve_config records original_revision even when the user pinned a commit
-        # themselves, and a ref equal to what it resolved to cannot name anything else.
-        tracked = self.config.original_revision
-        return tracked if tracked and tracked != self.config.revision else None
-
     def config_at_tracked_revision(self) -> GithubStorageConfig:
         return self.config.model_copy(update={"revision": self.config.original_revision})
 
     async def resolve_config(self) -> GithubStorageConfig:
         """Pin the revision to a commit SHA so the fileset cannot shift under a deployment."""
         commit = await self._get_json(
-            self._api_url(f"commits/{self.config.revision}"),
+            self._api_url("commits", self.config.revision),
             f"revision {self.config.revision} of {self._repo_slug}",
         )
         sha = commit.get("sha") if isinstance(commit, dict) else None
@@ -124,30 +135,30 @@ class GithubStorageImpl(StorageImpl):
 
     async def list_files(self, path: str | None = None) -> list[FileInfo]:
         tree = await self._get_json(
-            self._api_url(f"git/trees/{self.config.revision}?recursive=1"),
-            f"{self._repo_slug} at {self.config.revision}",
+            self._api_url("git", "trees", self._tree_ref(), recursive="1"),
+            self._subject_at_revision(),
         )
 
         if not isinstance(tree, dict) or not isinstance(tree.get("tree"), list):
             raise GithubBackendError(f"GitHub returned no file list for {self._repo_slug}")
         if tree.get("truncated") is True:
             raise GithubConfigError(
-                f"{self._repo_slug} is too large for GitHub to list in one request; "
-                "point the fileset at a directory within it"
+                f"{self._subject_at_revision()} is too large for GitHub to list in one request; "
+                "point the fileset at a smaller directory within it"
             )
 
-        prefix = f"{self.config.path}/" if self.config.path else ""
-        wanted = f"{path.strip('/')}" if path else ""
+        # Entries are relative to the tree that was asked for, which is already the
+        # configured directory.
+        wanted = path.strip("/") if path else ""
 
         files: list[FileInfo] = []
         for entry in tree["tree"]:
             if not isinstance(entry, dict) or entry.get("type") != "blob":
                 continue
-            entry_path = entry.get("path")
-            if not isinstance(entry_path, str) or (prefix and not entry_path.startswith(prefix)):
+            relative = entry.get("path")
+            if not isinstance(relative, str):
                 continue
 
-            relative = entry_path[len(prefix) :]
             if wanted and relative != wanted and not relative.startswith(f"{wanted}/"):
                 continue
             size = entry.get("size")
@@ -159,7 +170,7 @@ class GithubStorageImpl(StorageImpl):
 
     async def download(self, path: str, byte_range: ByteRange | None) -> AsyncIterator[bytes]:
         """Stream a file's bytes from the contents API, which serves private repos too."""
-        url = self._api_url(f"contents/{self._repo_path(path)}?ref={self.config.revision}")
+        url = self._api_url("contents", self._repo_path(path), ref=self.config.revision)
         headers = self._headers(RAW_MEDIA_TYPE)
         if byte_range is not None:
             headers["Range"] = f"bytes={byte_range.start}-{byte_range.end}"
@@ -182,7 +193,14 @@ class GithubStorageImpl(StorageImpl):
 
     async def validate_storage(self):
         validate_external_host(self.config.api_base_url)
-        await self._get_json(self._api_url("").rstrip("/"), f"repository {self._repo_slug}")
+        await self._get_json(self._api_url(), f"repository {self._repo_slug}")
+        if self.config.path:
+            # Without this a directory that is not in the repository reads as an
+            # empty fileset rather than a misconfigured one.
+            await self._get_json(
+                self._api_url("git", "trees", self._tree_ref()),
+                f"directory {self.config.path!r} in {self._repo_slug}",
+            )
 
     async def upload(
         self,

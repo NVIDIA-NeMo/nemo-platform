@@ -19,7 +19,9 @@ from nmp.core.files.app.backends.github import (
     GithubUnavailableError,
     raise_for_github_status,
 )
+from nmp.core.files.app.external_hosts import ExternalHostNotAllowedError
 from nmp.core.files.exceptions import NotFoundError
+from pydantic import ValidationError
 
 
 class _FakeContent:
@@ -192,20 +194,15 @@ class TestListFiles:
         assert [(f.path, f.size) for f in files] == [("agent.yaml", 80), ("mcps/calculator.py", 20)]
 
     @pytest.mark.asyncio
-    async def test_strips_the_configured_directory_prefix(self):
-        session = _session_for(
-            lambda _url: _FakeResponse(
-                json_body=_tree(
-                    _blob("agents/calc/agent.yaml"),
-                    _blob("agents/other/agent.yaml"),
-                    _blob("README.md"),
-                )
-            )
-        )
+    async def test_asks_github_only_for_the_configured_directory(self):
+        session = _session_for(lambda _url: _FakeResponse(json_body=_tree(_blob("agent.yaml"))))
         with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
-            files = await _impl(_config(path="agents/calc")).list_files()
+            files = await _impl(_config(revision="abc123", path="agents/calc")).list_files()
 
         assert [f.path for f in files] == ["agent.yaml"]
+        # Scoping the request is what keeps a large repository listable; filtering a
+        # whole-repo tree here would still hit GitHub's truncation limit.
+        assert "/git/trees/abc123:agents/calc?" in session.requests[0][0]
 
     @pytest.mark.asyncio
     async def test_filters_to_a_requested_subpath(self):
@@ -338,5 +335,47 @@ class TestValidateStorage:
     @pytest.mark.asyncio
     async def test_rejects_a_host_outside_the_allowlist(self):
         impl = _impl(_config(api_base_url="https://github.internal.example.com/api/v3"))
-        with pytest.raises(Exception, match="not"):
+        with pytest.raises(ExternalHostNotAllowedError):
             await impl.validate_storage()
+
+    @pytest.mark.asyncio
+    async def test_refuses_a_directory_that_is_not_in_the_repository(self):
+        session = _session_for(
+            lambda url: _FakeResponse(status=404) if "git/trees" in url else _FakeResponse(json_body={})
+        )
+        with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
+            with pytest.raises(GithubConfigError, match="agents/calc"):
+                await _impl(_config(path="agents/calc")).validate_storage()
+
+
+class TestUrlEncoding:
+    @pytest.mark.asyncio
+    async def test_a_hash_in_a_filename_does_not_truncate_the_url(self):
+        session = _session_for(lambda _url: _FakeResponse(chunks=(b"x",)))
+        with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
+            stream = await _impl(_config(revision="abc123")).download("notes/re#lease.md", None)
+            [chunk async for chunk in stream]
+
+        url = session.requests[0][0]
+        # Left raw, "#" would make the rest of the URL a fragment and drop the ref,
+        # serving the default branch instead of the revision the fileset is pinned to.
+        assert url.endswith("/contents/notes/re%23lease.md?ref=abc123")
+
+    @pytest.mark.asyncio
+    async def test_a_slash_in_a_branch_name_survives(self):
+        session = _session_for(lambda _url: _FakeResponse(json_body={"sha": "abc123"}))
+        with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
+            await _impl(_config(revision="release/0.6")).resolve_config()
+
+        assert session.requests[0][0].endswith("/commits/release/0.6")
+
+    @pytest.mark.parametrize("field", ["owner", "repo", "path", "revision"])
+    def test_a_dot_segment_is_refused(self, field: str):
+        # yarl resolves ".." away before the request is sent, so a dot segment would
+        # address a repository other than the one the rest of the config names.
+        with pytest.raises(ValidationError, match="path segment"):
+            GithubStorageConfig(**{"owner": "acme", "repo": "agents", field: "../../../user"})
+
+    def test_a_multi_segment_owner_is_refused(self):
+        with pytest.raises(ValidationError, match="single path segment"):
+            GithubStorageConfig(owner="acme/evil", repo="agents")
