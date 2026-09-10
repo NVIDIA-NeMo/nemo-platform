@@ -76,6 +76,33 @@ def test_generate_python_code_renders_query_params_dict_and_lists():
     assert 'query_params={"page": 2, "page_size": 10, "sort": ["name", "-created_at"]}' in code
 
 
+def test_generate_python_code_renders_datetimes_as_iso_strings():
+    from datetime import UTC, datetime
+
+    from pydantic import BaseModel
+
+    class Stamped(BaseModel):
+        started_at: datetime
+
+    body = Stamped(started_at=datetime(2026, 8, 14, tzinfo=UTC))
+    code = generate_python_code(SecretsClient, "create_secret", {"body": body})
+
+    assert 'Stamped(started_at="2026-08-14T00:00:00+00:00")' in code
+    assert "datetime.datetime" not in code
+
+
+def test_generate_python_code_renders_root_models_by_root_value():
+    from pydantic import RootModel
+
+    class Payload(RootModel[dict[str, object]]):
+        pass
+
+    body = Payload({"schema_version": "v1", "agent": {"name": "b"}})
+    code = generate_python_code(SecretsClient, "create_secret", {"body": body})
+
+    assert 'body=Payload({"schema_version": "v1", "agent": {"name": "b"}})' in code
+
+
 def test_generate_python_code_multiline_for_many_args():
     code = generate_python_code(
         SecretsClient,
