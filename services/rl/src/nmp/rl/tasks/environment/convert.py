@@ -276,7 +276,12 @@ def vendor_hub_environment_dataset(env: Any, dataset_dir: Path) -> Path:
 
 
 def _install_hub_package_from_wheels(wheels_dir: Path, package_name: str) -> None:
-    """Install the hub env from the vendored closure so ``load_environment`` can run."""
+    """Install only the hub env wheel so ``load_environment`` can import it.
+
+    ``--no-deps`` because ``verifiers`` comes from the conversion extra, and the
+    download dir can still contain sdists (e.g. ``verifiers-*.zip``) that pip would
+    otherwise try to build, needing hatchling and failing ``--no-index``.
+    """
     whl = _hub_package_wheel(wheels_dir, package_name)
     cmd = [
         sys.executable,
@@ -284,9 +289,18 @@ def _install_hub_package_from_wheels(wheels_dir: Path, package_name: str) -> Non
         "pip",
         "install",
         "--no-index",
-        f"--find-links={wheels_dir}",
+        "--no-deps",
         str(whl),
     ]
+    logger.warning(
+        "Installing untrusted hub package %s into the active interpreter at %s. This "
+        "mutates that environment (it will no longer match uv.lock) and the package stays "
+        "importable afterwards. Run pi-to-gym-conversion in a throwaway venv if that matters.",
+        whl.name,
+        sys.executable,
+    )
+    logger.info("Installing hub package for dataset load: %s", " ".join(cmd))
+    subprocess.run(cmd, check=True)
     logger.warning(
         "Installing untrusted hub package %s into the active interpreter at %s. This "
         "mutates that environment (it will no longer match uv.lock) and the package stays "

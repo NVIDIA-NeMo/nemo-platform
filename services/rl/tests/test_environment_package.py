@@ -432,6 +432,27 @@ def test_download_hub_wheels_resolves_before_downloading(tmp_path: Path, monkeyp
     ]
 
 
+def test_install_hub_package_does_not_build_sdist_deps(tmp_path: Path, monkeypatch) -> None:
+    """Hub install must not rebuild verifiers from a zip sitting next to the wheel."""
+    from nmp.rl.tasks.environment import convert as convert_mod
+
+    wheels = tmp_path / "wheels"
+    wheels.mkdir()
+    whl = wheels / "ascii_tree-0.1.5-py3-none-any.whl"
+    whl.write_bytes(b"PK\x03\x04")
+    (wheels / "verifiers-0.1.14.zip").write_bytes(b"not-a-wheel")
+    captured: list[list[str]] = []
+
+    def _fake_run(cmd, **kwargs):
+        captured.append(cmd)
+
+    monkeypatch.setattr(convert_mod.subprocess, "run", _fake_run)
+    convert_mod._install_hub_package_from_wheels(wheels, "ascii_tree")
+    assert captured and "--no-deps" in captured[0]
+    assert "--find-links" not in " ".join(captured[0])
+    assert str(whl) in captured[0]
+
+
 def test_download_hub_wheels_requirements_in_lists_env_and_verifiers(tmp_path: Path, monkeypatch) -> None:
     """Both roots have to reach the resolver, or the closure is missing one of them."""
     from nmp.rl.tasks.environment import convert as convert_mod
