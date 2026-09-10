@@ -18,8 +18,11 @@ import type {
 } from '@studio/routes/agents/AgentsListRoute/NewAgentModal/type';
 import YAML from 'yaml';
 
-/** Convention only — the Agent entity stores no reference to it. */
-export const agentSpecFilesetName = (agentName: string): string => `${agentName}-spec`;
+/**
+ * Convention only — the Agent entity stores no reference to it. Must match
+ * `ethos_fileset_name` in the agents plugin, which is what deployments stage from.
+ */
+export const agentSpecFilesetName = (agentName: string): string => `${agentName}-ethos`;
 
 export const tooManyPickedFiles = (pickedCount: number): string | undefined =>
   pickedCount > MAX_PICKED_FILES
