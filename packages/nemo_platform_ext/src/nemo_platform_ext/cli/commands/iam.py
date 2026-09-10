@@ -28,7 +28,11 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import (
+    build_request_body,
+    read_data_input_with_flags,
+    validate_required_fields,
+)
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -137,9 +141,9 @@ def create_role_bindings(
         {"principal": _PRINCIPAL_HELP, "role": _ROLE_HELP},
     )
 
-    body = RoleBindingInput(principal=input_payload["principal"], role=input_payload["role"])
-    if "workspace" in input_payload:
-        body = body.model_copy(update={"workspace": input_payload["workspace"]})
+    body = build_request_body(
+        RoleBindingInput, input_payload, exclude={"wait_role_propagation"}, command_name="iam role-bindings create"
+    )
     query_params = _role_propagation_query_params(input_payload.get("wait_role_propagation"))
 
     state: CLIContext = ctx.obj

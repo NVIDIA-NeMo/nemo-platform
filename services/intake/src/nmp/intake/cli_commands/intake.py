@@ -20,7 +20,12 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import (
+    build_request_body,
+    read_data_input_with_flags,
+    read_payload,
+    validate_required_fields,
+)
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -950,7 +955,12 @@ def create_evaluator_results(
 
     # Evaluator results upsert on (session, span, name) server-side and never 409, so
     # --exist-ok has nothing to resolve against and is accepted without effect.
-    body = EvaluatorResultCreateRequest.model_validate(without_keys(input_payload, {"workspace", "exist_ok"}))
+    body = build_request_body(
+        EvaluatorResultCreateRequest,
+        input_payload,
+        exclude={"workspace", "exist_ok"},
+        command_name="intake evaluator-results create",
+    )
     kwargs = build_kwargs(workspace=input_payload.get("workspace"), body=body)
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
@@ -1190,7 +1200,9 @@ def create_atif(
         },
     )
 
-    body = AtifCreateRequest.model_validate(without_keys(input_payload, {"workspace"}))
+    body = build_request_body(
+        AtifCreateRequest, input_payload, exclude={"workspace"}, command_name="intake ingest atif create"
+    )
     kwargs = build_kwargs(workspace=input_payload.get("workspace"), body=body)
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
@@ -1314,7 +1326,12 @@ def create_chat_completions(
         },
     )
 
-    body = ChatCompletionsIngestRequest.model_validate(without_keys(input_payload, {"workspace"}))
+    body = build_request_body(
+        ChatCompletionsIngestRequest,
+        input_payload,
+        exclude={"workspace"},
+        command_name="intake ingest chat-completions create",
+    )
     kwargs = build_kwargs(workspace=input_payload.get("workspace"), body=body)
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
@@ -1383,7 +1400,9 @@ def create_spans(
         },
     )
 
-    body = DirectSpansIngestRequest.model_validate(without_keys(input_payload, {"workspace"}))
+    body = build_request_body(
+        DirectSpansIngestRequest, input_payload, exclude={"workspace"}, command_name="intake ingest spans create"
+    )
     kwargs = build_kwargs(workspace=input_payload.get("workspace"), body=body)
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)

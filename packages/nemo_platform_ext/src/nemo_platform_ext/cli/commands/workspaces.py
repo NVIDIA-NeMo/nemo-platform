@@ -31,7 +31,11 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import (
+    build_request_body,
+    read_data_input_with_flags,
+    validate_required_fields,
+)
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -164,9 +168,12 @@ def create_workspaces(
         },
     )
 
-    body = CreateWorkspaceRequest(name=input_payload["name"])
-    if "description" in input_payload:
-        body = body.model_copy(update={"description": input_payload["description"]})
+    body = build_request_body(
+        CreateWorkspaceRequest,
+        input_payload,
+        exclude={"wait_role_propagation", "exist_ok"},
+        command_name="workspaces create",
+    )
     query_params = _create_workspace_query_params(input_payload.get("wait_role_propagation"))
     resolved_exist_ok = bool(input_payload.get("exist_ok", False))
 
@@ -362,9 +369,7 @@ def update_workspaces(
     if description is not None:
         input_payload["description"] = description
 
-    body = UpdateWorkspaceRequest()
-    if "description" in input_payload:
-        body = body.model_copy(update={"description": input_payload["description"]})
+    body = build_request_body(UpdateWorkspaceRequest, input_payload, command_name="workspaces update")
 
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
@@ -448,9 +453,12 @@ def create_members(
     )
 
     resolved_workspace = input_payload.get("workspace")
-    body = CreateWorkspaceMemberRequest(principal=input_payload["principal"])
-    if "roles" in input_payload:
-        body = body.model_copy(update={"roles": list(input_payload["roles"])})
+    body = build_request_body(
+        CreateWorkspaceMemberRequest,
+        input_payload,
+        exclude={"workspace", "wait_role_propagation"},
+        command_name="workspaces members create",
+    )
     query_params = _member_query_params(input_payload.get("wait_role_propagation"))
 
     state: CLIContext = ctx.obj
@@ -616,7 +624,12 @@ def update_members(
     )
 
     resolved_workspace = input_payload.get("workspace")
-    body = UpdateWorkspaceMemberRequest(roles=list(input_payload["roles"]))
+    body = build_request_body(
+        UpdateWorkspaceMemberRequest,
+        input_payload,
+        exclude={"workspace", "wait_role_propagation"},
+        command_name="workspaces members update",
+    )
     query_params = _member_query_params(input_payload.get("wait_role_propagation"))
 
     state: CLIContext = ctx.obj

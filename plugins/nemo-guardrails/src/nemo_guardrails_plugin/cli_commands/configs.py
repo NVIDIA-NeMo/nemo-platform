@@ -21,7 +21,12 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import (
+    build_request_body,
+    read_data_input_with_flags,
+    read_payload,
+    validate_required_fields,
+)
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -126,11 +131,12 @@ def create_configs(
         },
     )
 
-    body = CreateGuardrailConfigRequest(name=input_payload["name"])
-    if "description" in input_payload:
-        body = body.model_copy(update={"description": input_payload["description"]})
-    if "data" in input_payload:
-        body = body.model_copy(update={"data": input_payload["data"]})
+    body = build_request_body(
+        CreateGuardrailConfigRequest,
+        input_payload,
+        exclude={"workspace", "exist_ok"},
+        command_name="guardrail configs create",
+    )
     resolved_workspace = input_payload.get("workspace")
     resolved_exist_ok = bool(input_payload.get("exist_ok", False))
 
@@ -324,11 +330,9 @@ def update_configs(
     if description is not None:
         input_payload["description"] = description
 
-    body = UpdateGuardrailConfigRequest()
-    if "description" in input_payload:
-        body = body.model_copy(update={"description": input_payload["description"]})
-    if "data" in input_payload:
-        body = body.model_copy(update={"data": input_payload["data"]})
+    body = build_request_body(
+        UpdateGuardrailConfigRequest, input_payload, exclude={"workspace"}, command_name="guardrail configs update"
+    )
     resolved_workspace = input_payload.get("workspace")
 
     state: CLIContext = ctx.obj

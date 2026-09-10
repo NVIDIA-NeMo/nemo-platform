@@ -30,7 +30,7 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_payload, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import build_request_body, read_payload, validate_required_fields
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -127,7 +127,7 @@ def create_prompts(
 
     request_workspace = pop_workspace(input_payload)
     request_exist_ok = pop_exist_ok(input_payload)
-    body = CreatePromptRequest.model_validate(input_payload)
+    body = build_request_body(CreatePromptRequest, input_payload, command_name="inference prompts create")
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
 
@@ -336,7 +336,7 @@ def update_prompts(
         input_payload["tools"] = read_payload("tools", tools)
 
     request_workspace = pop_workspace(input_payload)
-    body = UpdatePromptRequest.model_validate(input_payload)
+    body = build_request_body(UpdatePromptRequest, input_payload, command_name="inference prompts update")
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
 

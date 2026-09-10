@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
 from nemo_guardrails_plugin.cli_commands.configs import app as configs_app
@@ -15,7 +15,12 @@ from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
 from nemo_platform_ext.cli.core.formatters import format_output
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
-from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import (
+    build_request_body,
+    read_data_input_with_flags,
+    read_payload,
+    validate_required_fields,
+)
 from nemo_platform_ext.cli.core.types import EntityOutputFormatOption
 from nemo_platform_plugin.guardrail.client import GuardrailClient
 from nemo_platform_plugin.guardrail.types import GuardrailCheckRequest
@@ -254,8 +259,9 @@ def check_guardrail(
         },
     )
 
-    body_payload: dict[str, Any] = {key: value for key, value in input_payload.items() if key != "workspace"}
-    body = GuardrailCheckRequest.model_validate(body_payload)
+    body = build_request_body(
+        GuardrailCheckRequest, input_payload, exclude={"workspace"}, command_name="guardrail check"
+    )
     kwargs = build_kwargs(workspace=input_payload.get("workspace"), body=body)
 
     state: CLIContext = ctx.obj

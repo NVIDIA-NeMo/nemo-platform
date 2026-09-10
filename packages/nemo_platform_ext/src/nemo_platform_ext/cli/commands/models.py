@@ -31,7 +31,12 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import (
+    build_request_body,
+    read_data_input_with_flags,
+    read_payload,
+    validate_required_fields,
+)
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -77,10 +82,6 @@ def _filter_query(value: str | dict[str, Any] | None) -> str | None:
     if isinstance(value, dict):
         return json.dumps(value)
     return value
-
-
-def _without_keys(payload: dict[str, Any], keys: set[str]) -> dict[str, Any]:
-    return {key: value for key, value in payload.items() if key not in keys}
 
 
 def _list_models_query_params(
@@ -255,7 +256,9 @@ def create_models(
 
     request_workspace = cast(str | None, input_payload.get("workspace"))
     request_exist_ok = bool(input_payload.get("exist_ok", False))
-    body = CreateModelEntityRequest.model_validate(_without_keys(input_payload, {"workspace", "exist_ok"}))
+    body = build_request_body(
+        CreateModelEntityRequest, input_payload, exclude={"workspace", "exist_ok"}, command_name="models create"
+    )
 
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
@@ -553,7 +556,9 @@ def update_models(
 
     request_workspace = cast(str | None, input_payload.get("workspace"))
     query_params = _get_model_query_params(cast(bool | None, input_payload.get("verbose")))
-    body = UpdateModelEntityRequest.model_validate(_without_keys(input_payload, {"workspace", "verbose"}))
+    body = build_request_body(
+        UpdateModelEntityRequest, input_payload, exclude={"workspace", "verbose"}, command_name="models update"
+    )
 
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
@@ -661,7 +666,9 @@ def create_adapters(
     )
 
     request_workspace = cast(str | None, input_payload.get("workspace"))
-    body = CreateModelAdapterRequest.model_validate(_without_keys(input_payload, {"workspace"}))
+    body = build_request_body(
+        CreateModelAdapterRequest, input_payload, exclude={"workspace"}, command_name="models adapters create"
+    )
 
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
@@ -765,7 +772,9 @@ def update_adapters(
 
     request_workspace = cast(str | None, input_payload.get("workspace"))
     request_model_name = cast(str, input_payload["model_name"])
-    body = UpdateAdapterRequest.model_validate(_without_keys(input_payload, {"workspace", "model_name"}))
+    body = build_request_body(
+        UpdateAdapterRequest, input_payload, exclude={"workspace", "model_name"}, command_name="models adapters update"
+    )
 
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)

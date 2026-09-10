@@ -34,6 +34,16 @@ class MissingRequiredFieldsError(Exception):
         super().__init__(f"Missing required fields: {missing_str}")
 
 
+class UnknownInputFieldsError(Exception):
+    """Raised when ``--input-data`` / ``--input-file`` carries keys the request does not define."""
+
+    def __init__(self, unknown_fields: list[str], command_name: str, known_fields: list[str]):
+        self.unknown_fields = unknown_fields
+        self.command_name = command_name
+        self.known_fields = known_fields
+        super().__init__(f"Unknown fields: {', '.join(unknown_fields)}")
+
+
 class InvalidSearchPatternError(Exception):
     """Raised when --filter is given JSON that fails to parse or an otherwise unusable value."""
 
@@ -346,6 +356,13 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
                 console.print(f"  [cyan]{opt_name}[/] [yellow]<{metavar}>[/]")
         console.print()
         console.print("[yellow]Hint:[/] Provide via CLI flags or [cyan]--input-file[/]/[cyan]--input-data[/].")
+        raise typer.Exit(code=2)
+    elif isinstance(error, UnknownInputFieldsError):
+        console.print(f"[bold bright_green]Usage:[/] {prog} [GLOBAL OPTIONS] {error.command_name} [OPTIONS]")
+        console.print(f"Try [cyan]{prog} {error.command_name} --help[/] for help.")
+        console.print()
+        console.print(f"[bold red]Error:[/] Unknown input fields: {', '.join(error.unknown_fields)}")
+        console.print(f"[yellow]Hint:[/] Accepted fields: {', '.join(error.known_fields)}.")
         raise typer.Exit(code=2)
     elif isinstance(error, InvalidSearchPatternError):
         if error.parse_error:

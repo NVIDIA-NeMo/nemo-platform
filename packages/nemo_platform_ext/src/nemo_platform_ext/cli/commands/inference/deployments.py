@@ -36,7 +36,7 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import build_request_body, validate_required_fields
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -156,7 +156,7 @@ def create_deployments(
 
     request_workspace = pop_workspace(input_payload)
     request_exist_ok = pop_exist_ok(input_payload)
-    body = CreateModelDeploymentRequest.model_validate(input_payload)
+    body = build_request_body(CreateModelDeploymentRequest, input_payload, command_name="inference deployments create")
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
 
@@ -474,7 +474,7 @@ def update_deployments(
     )
 
     request_workspace = pop_workspace(input_payload)
-    body = UpdateModelDeploymentRequest.model_validate(input_payload)
+    body = build_request_body(UpdateModelDeploymentRequest, input_payload, command_name="inference deployments update")
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
 
@@ -562,7 +562,9 @@ def update_status_deployments(
     query_params: UpdateDeploymentStatusQueryParams | None = None
     if request_version is not None:
         query_params = {"version": str(request_version)}
-    body = UpdateModelDeploymentStatusRequest.model_validate(input_payload)
+    body = build_request_body(
+        UpdateModelDeploymentStatusRequest, input_payload, command_name="inference deployments update-status"
+    )
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
 

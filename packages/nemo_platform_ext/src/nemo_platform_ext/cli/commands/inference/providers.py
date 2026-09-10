@@ -35,7 +35,7 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_payload, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import build_request_body, read_payload, validate_required_fields
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -202,7 +202,7 @@ def create_providers(
 
     request_workspace = pop_workspace(input_payload)
     request_exist_ok = pop_exist_ok(input_payload)
-    body = CreateModelProviderRequest.model_validate(input_payload)
+    body = build_request_body(CreateModelProviderRequest, input_payload, command_name="inference providers create")
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
 
@@ -497,7 +497,7 @@ def update_providers(
     )
 
     request_workspace = pop_workspace(input_payload)
-    body = UpsertModelProviderRequest.model_validate(input_payload)
+    body = build_request_body(UpsertModelProviderRequest, input_payload, command_name="inference providers update")
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
 
@@ -590,7 +590,9 @@ def update_status_providers(
         input_payload["status_message"] = status_message
 
     request_workspace = pop_workspace(input_payload)
-    body = UpdateModelProviderStatusRequest.model_validate(input_payload)
+    body = build_request_body(
+        UpdateModelProviderStatusRequest, input_payload, command_name="inference providers update-status"
+    )
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
 

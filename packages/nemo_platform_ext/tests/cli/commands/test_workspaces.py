@@ -754,6 +754,56 @@ def test_members_update_roles_from_stdin_payload() -> None:
     assert json.loads(recorder.last.content) == {"roles": ["Viewer"]}
 
 
+@pytest.mark.parametrize("roles", ["Editor", 5])
+def test_members_update_rejects_scalar_roles_before_sending(roles: object) -> None:
+    """A bare string must not be split into per-character roles (that revoked the member's real role)."""
+    recorder = Recorder([])
+    runner, state = make_runner(recorder)
+
+    result = runner.invoke(
+        app,
+        ["workspaces", "members", "update", "user-123", "--input-data", json.dumps({"roles": roles})],
+        obj=state,
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "Invalid input" in result.stderr
+    assert "roles" in result.stderr
+    assert recorder.requests == []
+
+
+def test_members_create_rejects_scalar_roles_before_sending() -> None:
+    recorder = Recorder([])
+    runner, state = make_runner(recorder)
+
+    result = runner.invoke(
+        app,
+        ["workspaces", "members", "create", "--input-data", json.dumps({"principal": "u", "roles": "Editor"})],
+        obj=state,
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "Invalid input" in result.stderr
+    assert recorder.requests == []
+
+
+def test_unknown_input_field_is_a_usage_error() -> None:
+    """A typo in --input-data fails loudly instead of being dropped by pydantic's extra=ignore."""
+    recorder = Recorder([])
+    runner, state = make_runner(recorder)
+
+    result = runner.invoke(
+        app,
+        ["workspaces", "create", "--input-data", json.dumps({"name": "ml-team", "descripton": "typo"})],
+        obj=state,
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "Unknown input fields: descripton" in result.stderr
+    assert "Accepted fields: description, name" in result.stderr
+    assert recorder.requests == []
+
+
 def test_members_update_requires_roles() -> None:
     recorder = Recorder([])
     runner, state = make_runner(recorder)

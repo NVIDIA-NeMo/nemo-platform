@@ -20,7 +20,12 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import (
+    build_request_body,
+    read_data_input_with_flags,
+    read_payload,
+    validate_required_fields,
+)
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -34,7 +39,7 @@ from nemo_platform_plugin.intake.types import (
     ExperimentUpdateRequest,
     ListExperimentsQueryParams,
 )
-from nmp.intake.cli_commands.common import list_query_params, without_keys
+from nmp.intake.cli_commands.common import list_query_params
 
 app = create_typer_app(name="experiments", help="Manage experiments")
 
@@ -161,7 +166,9 @@ def create_experiments(
         },
     )
 
-    body = ExperimentCreateRequest.model_validate(without_keys(input_payload, {"workspace", "exist_ok"}))
+    body = build_request_body(
+        ExperimentCreateRequest, input_payload, exclude={"workspace", "exist_ok"}, command_name="experiments create"
+    )
     kwargs = build_kwargs(
         workspace=input_payload.get("workspace"),
         body=body,
@@ -423,11 +430,10 @@ def update_experiments(
         },
     )
 
-    body_payload: dict[str, Any] = {
-        "name": input_payload["body_name"],
-        **without_keys(input_payload, {"workspace", "body_name"}),
-    }
-    body = ExperimentUpdateRequest.model_validate(body_payload)
+    body_payload: dict[str, Any] = {"name": input_payload["body_name"], **input_payload}
+    body = build_request_body(
+        ExperimentUpdateRequest, body_payload, exclude={"workspace", "body_name"}, command_name="experiments update"
+    )
     kwargs = build_kwargs(name=path_name, workspace=input_payload.get("workspace"), body=body)
 
     state: CLIContext = ctx.obj

@@ -27,7 +27,11 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import (
+    build_request_body,
+    read_data_input_with_flags,
+    validate_required_fields,
+)
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -127,9 +131,9 @@ def create_projects(
     validate_required_fields(input_payload, ["name"], "projects create", {"name": _NAME_HELP})
 
     resolved_workspace = input_payload.get("workspace")
-    body = CreateProjectRequest(name=input_payload["name"])
-    if "description" in input_payload:
-        body = body.model_copy(update={"description": input_payload["description"]})
+    body = build_request_body(
+        CreateProjectRequest, input_payload, exclude={"workspace", "exist_ok"}, command_name="projects create"
+    )
     resolved_exist_ok = bool(input_payload.get("exist_ok", False))
 
     state: CLIContext = ctx.obj
@@ -317,9 +321,9 @@ def update_projects(
         input_payload["description"] = description
 
     resolved_workspace = input_payload.get("workspace")
-    body = UpdateProjectRequest()
-    if "description" in input_payload:
-        body = body.model_copy(update={"description": input_payload["description"]})
+    body = build_request_body(
+        UpdateProjectRequest, input_payload, exclude={"workspace"}, command_name="projects update"
+    )
 
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)

@@ -37,7 +37,12 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import (
+    build_request_body,
+    read_data_input_with_flags,
+    read_payload,
+    validate_required_fields,
+)
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -408,7 +413,7 @@ def create_filesets(
 
     workspace = input_payload.pop("workspace", None)
     exist_ok = input_payload.pop("exist_ok", None)
-    body = CreateFilesetRequest.model_validate(input_payload)
+    body = build_request_body(CreateFilesetRequest, input_payload, command_name="files filesets create")
 
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
@@ -620,7 +625,7 @@ def update_filesets(
         input_payload["purpose"] = purpose
 
     workspace = input_payload.pop("workspace", None)
-    body = UpdateFilesetRequest.model_validate(input_payload)
+    body = build_request_body(UpdateFilesetRequest, input_payload, command_name="files filesets update")
 
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)

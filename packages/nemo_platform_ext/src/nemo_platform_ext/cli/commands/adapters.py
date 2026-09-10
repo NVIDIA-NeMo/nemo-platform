@@ -28,7 +28,12 @@ from nemo_platform_ext.cli.core.formatters import (
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import (
+    build_request_body,
+    read_data_input_with_flags,
+    read_payload,
+    validate_required_fields,
+)
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -72,10 +77,6 @@ def _filter_query(value: str | dict[str, Any] | None) -> str | None:
     if isinstance(value, dict):
         return json.dumps(value)
     return value
-
-
-def _without_keys(payload: dict[str, Any], keys: set[str]) -> dict[str, Any]:
-    return {key: value for key, value in payload.items() if key not in keys}
 
 
 def _list_adapters_query_params(
@@ -192,7 +193,9 @@ def create_adapters(
     )
 
     request_workspace = cast(str | None, input_payload.get("workspace"))
-    body = CreateAdapterRequest.model_validate(_without_keys(input_payload, {"workspace"}))
+    body = build_request_body(
+        CreateAdapterRequest, input_payload, exclude={"workspace"}, command_name="adapters create"
+    )
 
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
@@ -363,7 +366,7 @@ def patch_adapters(
         input_payload["fileset"] = fileset
 
     request_workspace = cast(str | None, input_payload.get("workspace"))
-    body = UpdateAdapterRequest.model_validate(_without_keys(input_payload, {"workspace"}))
+    body = build_request_body(UpdateAdapterRequest, input_payload, exclude={"workspace"}, command_name="adapters patch")
 
     state: CLIContext = ctx.obj
     resolved_output_format = state.get_output_format(output_format)
