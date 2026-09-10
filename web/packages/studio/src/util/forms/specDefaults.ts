@@ -30,6 +30,15 @@ import { CustomizationCreateUnslothJobBody } from '@nemo/sdk/generated/customize
  * (`model`, `dataset`) get an empty string: the form overwrites them, and Zod refuses to
  * parse without them.
  */
+/**
+ * Every backend hangs the same `IntegrationsSpec` off its spec, and all three bind it
+ * through `IntegrationsSection`. Present so Zod fills any default the spec declares inside
+ * them; without the container, nested defaults are skipped silently.
+ *
+ * A factory rather than a shared literal, so the three seeds cannot alias one object.
+ */
+const integrationsSeed = () => ({ wandb: {}, mlflow: {} });
+
 export const AUTOMODEL_SEED = {
   model: '',
   dataset: { training: '' },
@@ -38,6 +47,7 @@ export const AUTOMODEL_SEED = {
   batch: {},
   optimizer: {},
   parallelism: {},
+  integrations: integrationsSeed(),
 };
 
 export const UNSLOTH_SEED = {
@@ -48,6 +58,7 @@ export const UNSLOTH_SEED = {
   batch: {},
   optimizer: {},
   hardware: {},
+  integrations: integrationsSeed(),
 };
 
 /**
@@ -59,9 +70,7 @@ export const rlSeed = (type: 'dpo' | 'grpo') => ({
   model: '',
   dataset: '',
   training: { type, parallelism: {}, ...(type === 'grpo' ? { lora: {} } : {}) },
-  // Bound by RlIntegrationsSection. Present so Zod fills any default the spec declares
-  // inside them; without the container, nested defaults are skipped silently.
-  integrations: { wandb: {}, mlflow: {} },
+  integrations: integrationsSeed(),
 });
 
 const specOf = <T>(schema: { parse: (input: unknown) => { spec: T } }, seed: unknown): T =>

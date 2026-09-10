@@ -11,6 +11,7 @@ import {
   type RlJobInput,
   type RlJobsJobRequest,
   type UnslothJobInput,
+  type IntegrationsSpec,
   type UnslothJobsJobRequest,
 } from '@nemo/sdk/generated/customizer/schema';
 import { CustomizationCreateAutomodelJobBody } from '@nemo/sdk/generated/customizer/zod/automodel-jobs';
@@ -260,6 +261,7 @@ export const formToAutomodelCreate = (f: CustomizationFormFields): AutomodelJobs
     description: f.description || undefined,
     spec: {
       ...f.automodel,
+      integrations: cleanIntegrations(f.automodel.integrations),
       training: {
         ...training,
         lora: usesLora ? training.lora : undefined,
@@ -282,8 +284,8 @@ export const formToAutomodelCreate = (f: CustomizationFormFields): AutomodelJobs
  * empty values, then drop a provider whose fields are all empty, then the whole block.
  */
 const cleanIntegrations = (
-  integrations: RlJobInput['integrations']
-): RlJobInput['integrations'] => {
+  integrations: IntegrationsSpec | undefined | null
+): IntegrationsSpec | undefined => {
   if (!integrations) return undefined;
   const prune = <T extends object>(obj: T | undefined | null): T | undefined => {
     if (!obj) return undefined;
@@ -455,6 +457,7 @@ export const formToUnslothCreate = (f: CustomizationFormFields): UnslothJobsJobR
     description: f.description || undefined,
     spec: {
       ...f.unsloth,
+      integrations: cleanIntegrations(f.unsloth.integrations),
       model: usesLora
         ? f.unsloth.model
         : { ...f.unsloth.model, load_in_4bit: false, load_in_8bit: false },

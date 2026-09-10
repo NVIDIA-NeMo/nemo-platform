@@ -142,6 +142,37 @@ describe('customizationFormSchema', () => {
   });
 });
 
+describe('integrations across backends', () => {
+  /**
+   * All three specs hang the same `IntegrationsSpec` off them, and one section binds it for
+   * every backend — so the pruning that RL already did has to hold for the other two.
+   */
+  it('drops an untouched integrations block on every backend', () => {
+    const automodel = formToAutomodelCreate(validAutomodel());
+    expect(automodel.spec.integrations).toBeUndefined();
+
+    const unsloth = formToUnslothCreate(validUnsloth());
+    expect(unsloth.spec.integrations).toBeUndefined();
+  });
+
+  it('keeps a configured provider and drops the empty one', () => {
+    const data = validAutomodel();
+    data.automodel.integrations = { wandb: { project: 'my-project' }, mlflow: {} };
+
+    const { integrations } = formToAutomodelCreate(data).spec;
+    expect(integrations?.wandb).toEqual({ project: 'my-project' });
+    expect(integrations?.mlflow).toBeUndefined();
+  });
+
+  it('treats a blank string as no value rather than an empty name', () => {
+    const data = validUnsloth();
+    data.unsloth.integrations = { wandb: { project: '   ', entity: 'acme' } };
+
+    const { integrations } = formToUnslothCreate(data).spec;
+    expect(integrations?.wandb).toEqual({ entity: 'acme' });
+  });
+});
+
 describe('formToAutomodelCreate', () => {
   it('maps output name and description onto the job and spec.output', () => {
     const data = validAutomodel();
