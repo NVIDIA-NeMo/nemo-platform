@@ -119,7 +119,7 @@ rung's failure often disappears once you fix a higher one.
 | Check | What it means and what to do |
 |---|---|
 | `harbor` | Harbor is not importable by this interpreter. Re-run with the interpreter from **Before you start** |
-| `config` | No config file declares a nonempty `datasets` or `tasks` list. Confirm with the user where their suite lives |
+| `config` | No config file declares a nonempty `datasets` or `tasks` list. Confirm the location if an existing suite is expected. If the user has no evals and asked to build them, follow `eval-author-first-eval` |
 | `config-parse` | A config file did not parse. Either PyYAML is missing, which means the wrong interpreter, or the file's YAML is broken. The hint says which |
 | `schema` | Harbor rejected the config's shape. The message carries the offending field path |
 | `resolution` | Harbor could not turn the config into a job. Usually a `datasets[].path` that does not exist. This fails before any container starts |
@@ -141,9 +141,11 @@ report describes the repository they meant:
 
 1. `proven` is `true`. When it is `false`, report only that Harbor is missing.
 2. `repo_root` is the repository they named.
-3. `configs` lists the suite they care about. An empty list on a repository they
-   described as having evals means the configs sit deeper than four directories, or
-   declare no `datasets` or `tasks` list.
+3. `configs` lists the suite they care about. An empty list can mean no suite,
+   another framework, or configs beyond the supported search depth or shape.
+   Resolve that distinction from repository evidence and user intent. For users
+   with no evals who requested authoring, hand off to `eval-author-first-eval`;
+   for inventory-only requests, report absence and offer that next step.
 4. `task_count` is in the range they expect. A count of zero with a passing `tasks`
    check means the config resolves tasks from a registry, not from disk.
 Report `proven`, `runnable`, and the failing check names. Never describe a suite as

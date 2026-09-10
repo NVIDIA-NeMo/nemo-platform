@@ -4,7 +4,8 @@
 
 name: eval-author
 description: >-
-  Work on evaluation suites in a user's repository, derive an environment from
+  Build first evals from a required Ethos or work on existing evaluation suites
+  in a user's repository, derive an environment from
   trace evidence, or understand an agent run from NeMo Intake. Owns the evidence
   standard that every Eval Author sub-flow
   follows. Use when the user asks "help me with my evals",
@@ -13,6 +14,8 @@ description: >-
   and changes none of the user's source. The selected sub-flow uses the
   provider's supported tools and saves its findings under `.eval-author/`.
 triggers:
+  - help me build evals for my agent
+  - my agent has no evals yet
   - help me with the evals in this repo
   - what is the state of the eval suite here
   - I inherited a repo with Harbor tasks in it
@@ -21,6 +24,7 @@ triggers:
   - create an evaluation environment from a trace
   - which eval author step do I need
 not-for:
+  - eval-author-first-eval (use to establish Ethos and build first evals without prior coverage or traces)
   - eval-author-discover (use to run the discovery pass and get a runnable verdict)
   - eval-author-audit (use to generate, validate, measure, or aggregate audit.md coverage)
   - eval-author-task-create (use to create and prove one Harbor task from an actionable audit gap)
@@ -57,6 +61,9 @@ The authority depends on the sub-flow:
 
 - For suite discovery, Harbor's validators judge runnability. A file's presence
   doesn't prove that Harbor accepts it.
+- For first evals, Ethos establishes intended behavior. NOP, Oracle, and a
+  known incorrect result establish task proof; the user's agent run establishes
+  its baseline. A plan alone is not proof of runnability.
 - For audit-spec validation, the bundled schema and validator judge the finite
   `audit.md` coverage denominator.
 - For task creation, Harbor's Oracle judges task solvability and verifier
@@ -91,6 +98,7 @@ and the boundaries; the sub-flow carries the steps.
 
 | Sub-flow | Use it to |
 |---|---|
+| `eval-author-first-eval` | Establish required Ethos, plan cases even without Harbor, and build and prove a first task when prerequisites are available |
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
 | `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, write per-method coverage/details files for one ATIF trace, then aggregate coverage reports |
 | `eval-author-task-create` | Create one Harbor-native task from one actionable uncovered tool, prove it with Oracle, and accept it only when repeated measured runs close the gap |
@@ -102,6 +110,20 @@ coverage denominator, measures traces against it, and aggregates deterministic
 coverage reports. `eval-author-task-create` consumes only actionable tool gaps
 from that report and uses Harbor's native task scaffolder rather than guessing a
 task layout.
+
+### Users with no evals
+
+For a user asking to build their first evals, read
+[`eval-author-first-eval`](../eval-author-first-eval/SKILL.md). Do not route an
+explicit “no evals yet” request through discovery just to produce a missing-config
+failure. The first-eval flow requires Ethos and uses available Ethos creation
+skills when needed. Harbor is required for scaffolding and execution, not for
+establishing Ethos or planning cases.
+
+If suite existence is unclear, inspect briefly: absent Harbor configuration
+does not prove that no evals exist. Preserve other frameworks and standalone
+tasks. For an inventory-only request, report absence and offer first-eval
+authoring; do not start creating evals without that intent.
 
 ## Boundaries
 
@@ -116,9 +138,15 @@ user, not to you.
   requested audit artifacts; `eval-author-task-create` writes only drafts,
   proposals, job outputs, and measurements there; `eval-author-trace-environment`
   writes only private, gitignored task workspaces there.
+  `eval-author-first-eval` writes plans, drafts, configs, and jobs there. Its
+  required Ethos handoff uses `nemo-explore` and `nemo-ethos` under their own
+  output, validation, and permission rules; Eval Author itself does not write
+  or modify source-of-truth Ethos files.
 - **A missing tool is a finding, not a task.** When the provider is not installed,
   say so and stop short of proving anything. Report what you found regardless, and
   do not install the provider into the user's environment.
+  For first evals, retain useful planning progress and provide installation
+  guidance while leaving scaffolding and execution blocked until verification.
 - **Do not run without approval.** Discovery proves an existing suite can run and
   hands over the command. Task creation may run Oracle locally, then starts
   real-agent jobs only when the user explicitly asked for or approved that spend.

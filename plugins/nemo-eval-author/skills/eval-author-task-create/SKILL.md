@@ -17,6 +17,7 @@ triggers:
   - close audit coverage gaps
   - turn uncovered_items into Harbor tasks
 not-for:
+  - eval-author-first-eval (use when no evals or measured coverage report exist yet)
   - eval-author (use for the shared standard and routing)
   - eval-author-audit (use to create the denominator and coverage report)
   - eval-author-discover (use to prove an existing suite is runnable)
