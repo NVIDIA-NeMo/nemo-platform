@@ -8,14 +8,6 @@ from nemo_platform_ext.cli.manifest import TopLevelEntry
 
 API_TOP_LEVEL_ENTRIES = (
     TopLevelEntry(
-        import_path=f"{__package__}.guardrail:app",
-        name="guardrail",
-        help="Manage guardrails.",
-        panel="Functional plugins",
-        kind="group",
-        hidden=False,
-    ),
-    TopLevelEntry(
         import_path=f"{__package__}.iam:app",
         name="iam",
         help="IAM operations.",

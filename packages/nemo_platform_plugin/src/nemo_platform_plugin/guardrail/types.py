@@ -29,7 +29,7 @@ class GuardrailConfig(BaseModel):
     workspace: str
     project: str | None = None
     description: str | None = None
-    data: dict[str, Any] = Field(default_factory=dict, description="Guardrail configuration data")
+    data: dict[str, Any] | None = Field(default=None, description="Guardrail configuration data")
     id: str
     created_at: datetime
     created_by: str | None = None
