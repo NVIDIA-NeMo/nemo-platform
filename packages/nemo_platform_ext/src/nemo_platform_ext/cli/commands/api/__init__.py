@@ -79,12 +79,4 @@ API_TOP_LEVEL_ENTRIES = (
         kind="group",
         hidden=True,
     ),
-    TopLevelEntry(
-        import_path=f"{__package__}.workspaces:app",
-        name="workspaces",
-        help="Manage workspaces.",
-        panel="Core plugins",
-        kind="group",
-        hidden=False,
-    ),
 )

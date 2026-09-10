@@ -275,15 +275,52 @@ def test_entities_api_command_is_not_registered():
 def test_members_api_command_is_nested_under_workspaces():
     runner = CliRunner()
     sys.modules.pop("nemo_platform_ext.cli.commands.api.members", None)
-    sys.modules.pop("nemo_platform_ext.cli.commands.api.workspaces", None)
-    sys.modules.pop("nemo_platform_ext.cli.commands.api.workspaces.members", None)
+    sys.modules.pop("nemo_platform_ext.cli.commands.workspaces", None)
 
     result = runner.invoke(app, ["workspaces", "members", "--help"])
 
     assert result.exit_code == 0
     assert "Manage members" in result.stdout
-    assert "nemo_platform_ext.cli.commands.api.workspaces.members" in sys.modules
+    assert "nemo_platform_ext.cli.commands.workspaces" in sys.modules
     assert "nemo_platform_ext.cli.commands.api.members" not in sys.modules
+
+
+def test_workspaces_group_help_loads_on_demand():
+    runner = CliRunner()
+    sys.modules.pop("nemo_platform_ext.cli.commands.workspaces", None)
+
+    result = runner.invoke(app, ["workspaces", "--help"])
+
+    assert result.exit_code == 0
+    assert "Manage workspaces" in result.stdout
+    for command in ("create", "delete", "list", "get", "update", "members"):
+        assert f"\n  {command}" in result.stdout
+    assert "nemo_platform_ext.cli.commands.workspaces" in sys.modules
+
+
+def test_workspaces_no_arg_help_exits_successfully():
+    runner = CliRunner()
+    qs_config = QuickstartConfig(auth_enabled=False)
+
+    with patch("nemo_platform_ext.quickstart.QuickstartConfig.load", return_value=qs_config):
+        result = runner.invoke(app, ["workspaces"])
+
+    assert result.exit_code == 0
+    assert "Usage:" in result.stdout
+    assert "Manage workspaces" in result.stdout
+
+
+def test_workspaces_list_help_includes_stream_option():
+    runner = CliRunner()
+    qs_config = QuickstartConfig(auth_enabled=False)
+
+    with patch("nemo_platform_ext.quickstart.QuickstartConfig.load", return_value=qs_config):
+        result = runner.invoke(app, ["workspaces", "list", "--help"])
+
+    assert result.exit_code == 0
+    assert "--stream" in result.stdout
+    assert "--all-pages" in result.stdout
+    assert "--output-format, --output, -f" in result.stdout
 
 
 def test_members_api_command_is_not_registered_at_top_level():
