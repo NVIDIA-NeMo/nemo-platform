@@ -6,7 +6,8 @@ from __future__ import annotations
 import httpx
 import pytest
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.adapter import PlatformClient, client_from_platform, platform_default_headers
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.types import RetryPolicy
 from nemo_platform_plugin.jobs import endpoints
 from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
@@ -159,3 +160,35 @@ def test_client_from_platform_carries_disabled_timeout() -> None:
 
     # Not the transport's 60s: httpx reads an all-None Timeout as "wait forever".
     assert client._timeout == httpx.Timeout(None)
+
+
+def test_platform_client_protocol_matches_both_platform_handle_shapes() -> None:
+    http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
+    generated = NeMoPlatform(base_url="http://test", workspace="ws", http_client=http_client)
+    typed = NemoClient(base_url="http://test", workspace="ws", http_client=http_client)
+
+    assert isinstance(generated, PlatformClient)
+    assert isinstance(typed, PlatformClient)
+    assert isinstance(AsyncNemoClient(base_url="http://test", http_client=httpx.AsyncClient()), PlatformClient)
+    assert not isinstance(object(), PlatformClient)
+
+
+def test_platform_default_headers_reads_typed_client_headers() -> None:
+    http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
+    client = NemoClient(base_url="http://test", default_headers={"X-NMP-Internal": "true"}, http_client=http_client)
+
+    headers = platform_default_headers(client)
+
+    assert headers == {"X-NMP-Internal": "true"}
+    headers["mutated"] = "yes"
+    assert client.default_headers == {"X-NMP-Internal": "true"}
+
+
+def test_platform_default_headers_reads_generated_sdk_custom_headers() -> None:
+    http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
+    platform = NeMoPlatform(
+        base_url="http://test", default_headers={"X-NMP-Principal-Id": "service:agents"}, http_client=http_client
+    )
+
+    assert platform_default_headers(platform) == {"X-NMP-Principal-Id": "service:agents"}
+    assert platform_default_headers(AsyncNemoClient(base_url="http://test", http_client=httpx.AsyncClient())) == {}

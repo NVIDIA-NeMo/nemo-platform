@@ -14,9 +14,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_ext.config import get_context
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.adapter import PlatformClient, client_from_platform
 from nemo_platform_plugin.models.client import AsyncModelsClient
 from nemo_platform_plugin.models.refs import parse_workspace_name_ref
 from nemo_platform_plugin.models.types import ModelEntity, ModelProvider
@@ -174,7 +173,7 @@ async def _served_model_name(
 
 
 async def resolve_model_clients(
-    async_sdk: AsyncNeMoPlatform,
+    async_sdk: PlatformClient,
     refs: ConfiguredModelRefs | None = None,
 ) -> ConfiguredModelClients:
     """Resolve configured Model Entities and construct each distinct client once."""

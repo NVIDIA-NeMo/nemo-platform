@@ -9,8 +9,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-
 SyncResourceT = TypeVar("SyncResourceT")
 AsyncResourceT = TypeVar("AsyncResourceT")
 
@@ -35,7 +33,5 @@ class NemoPluginSDKResources(Generic[SyncResourceT, AsyncResourceT]):
 
 
 __all__ = [
-    "AsyncNeMoPlatform",
-    "NeMoPlatform",
     "NemoPluginSDKResources",
 ]

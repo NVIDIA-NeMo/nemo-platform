@@ -28,16 +28,17 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 
 import yaml
+from filesets.transfer import async_download
 from nemo_agents_plugin.entities import (
     AGENT_CONFIG_FILENAME,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
     Agent,
     ethos_fileset_name,
 )
-from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.adapter import PlatformClient, client_from_platform
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.job_results import ResultRef
@@ -82,6 +83,22 @@ _HOST_BUILD_REQUIREMENT = (
     "`nemo agents package --agent <agent.yaml>` and pass the resulting tag to "
     "`nemo agents deploy --image`."
 )
+
+
+class _EthosFilesetDownloader:
+    """Fileset downloader for :func:`stage_fabric_ethos_dir` backed by a typed Files client."""
+
+    def __init__(self, files_client: AsyncFilesClient) -> None:
+        self._files_client = files_client
+
+    async def download(
+        self,
+        *,
+        local_path: str,
+        fileset: str | None = None,
+        workspace: str | None = None,
+    ) -> None:
+        await async_download(self._files_client, local_path=local_path, fileset=fileset, workspace=workspace)
 
 
 class PackageAgentInput(BaseModel):
@@ -250,7 +267,7 @@ class PackageAgentJob(NemoJob):
         if entity_client is not None:
             return cast(NemoEntitiesClient, entity_client)
         if async_sdk is not None:
-            return NemoEntitiesClient(client_from_platform(cast(AsyncNeMoPlatform, async_sdk), AsyncEntitiesClient))
+            return NemoEntitiesClient(client_from_platform(async_sdk, AsyncEntitiesClient))
         raise PlatformJobCompilationError(
             "Packaging requires a platform client to resolve the agent entity, but none was injected."
         )
@@ -317,9 +334,7 @@ class PackageAgentJob(NemoJob):
                 "help until the Jobs service is restarted with a platform client."
             )
         try:
-            profiles = (
-                await client_from_platform(cast(AsyncNeMoPlatform, async_sdk), AsyncJobsClient).get_execution_profiles()
-            ).data()
+            profiles = (await client_from_platform(async_sdk, AsyncJobsClient).get_execution_profiles()).data()
         except Exception as exc:
             raise PlatformJobDependencyUnavailableError(
                 f"Unable to resolve execution profile '{profile}': the Jobs service is temporarily "
@@ -342,7 +357,7 @@ class PackageAgentJob(NemoJob):
         config: dict,
         *,
         ctx: JobContext | None = None,
-        async_sdk: AsyncNeMoPlatform | None = None,
+        async_sdk: PlatformClient | None = None,
     ) -> dict:
         """Stage the agent's spec fileset into a temp build context, build, and optionally push."""
         from nemo_agents_plugin.container.builder import build_fabric_agent_image, resolve_image_id
@@ -420,7 +435,7 @@ class PackageAgentJob(NemoJob):
         return ctx.results.save(PACKAGE_RESULT_NAME, path)
 
     @staticmethod
-    async def _stage(cfg: PackageAgentSpec, build_dir: Path, async_sdk: AsyncNeMoPlatform | None) -> None:
+    async def _stage(cfg: PackageAgentSpec, build_dir: Path, async_sdk: PlatformClient | None) -> None:
         """Download the ``{agent}-ethos`` fileset into *build_dir*.
 
         Must run before ``agent.yaml`` is written — staging clears the tree first.
@@ -440,5 +455,7 @@ class PackageAgentJob(NemoJob):
             agent_name=cfg.agent,
             agent_config=cfg.agent_config,
             base_dir=build_dir,
-            sdk=async_sdk.files if async_sdk is not None else None,
+            sdk=_EthosFilesetDownloader(client_from_platform(async_sdk, AsyncFilesClient))
+            if async_sdk is not None
+            else None,
         )

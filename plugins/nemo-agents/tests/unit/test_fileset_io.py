@@ -6,10 +6,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
-from nemo_agents_plugin.jobs.fileset_io import resolve_output, resolve_staged_config, split_fileset_ref
+from nemo_agents_plugin.jobs.fileset_io import (
+    files_client_for,
+    resolve_output,
+    resolve_staged_config,
+    split_fileset_ref,
+    upload_to_fileset,
+)
+from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.refs import FilesetRef
 
@@ -26,13 +32,25 @@ def test_split_fileset_ref_rejects_invalid_refs(ref: str) -> None:
         split_fileset_ref(ref, "default")
 
 
-def test_resolve_staged_config_fileset_downloads_via_sdk(tmp_path: Path, ctx: JobContext) -> None:
-    sdk = MagicMock()
+def test_files_client_for_shares_the_platform_transport(make_platform_client) -> None:
+    sdk = make_platform_client(workspace="ws")
 
-    def _fake_download(local_path: str, fileset: str, workspace: str) -> None:
-        Path(local_path, "optimize.yml").write_text("optimizer: {}")
+    files_client = files_client_for(sdk)
 
-    sdk.files.download.side_effect = _fake_download
+    assert isinstance(files_client, FilesClient)
+    assert files_client._http is sdk._http
+    assert files_client.workspace == "ws"
+
+
+def test_resolve_staged_config_fileset_downloads_via_sdk(
+    tmp_path: Path, ctx: JobContext, fake_transfers, make_platform_client
+) -> None:
+    sdk = make_platform_client()
+
+    def _fake_download(local_path: Path, fileset: str | None, workspace: str | None, remote_path: str) -> None:
+        (local_path / "optimize.yml").write_text("optimizer: {}")
+
+    fake_transfers.on_download = _fake_download
 
     with resolve_staged_config(
         "optimize.yml",
@@ -46,8 +64,9 @@ def test_resolve_staged_config_fileset_downloads_via_sdk(tmp_path: Path, ctx: Jo
         assert resolved.name == "optimize.yml"
         assert resolved.read_text() == "optimizer: {}"
 
-    sdk.files.download.assert_called_once()
-    kwargs = sdk.files.download.call_args.kwargs
+    assert len(fake_transfers.downloads) == 1
+    kwargs = fake_transfers.downloads[0]
+    assert kwargs["client"]._http is sdk._http
     assert kwargs["fileset"] == "nemo-agent-optimize-calc"
     assert kwargs["workspace"] == "default"
 
@@ -79,9 +98,8 @@ def test_resolve_staged_config_empty_fileset_ref_is_invalid(ctx: JobContext) -> 
             pass
 
 
-def test_resolve_staged_config_rejects_path_escape(ctx: JobContext) -> None:
-    sdk = MagicMock()
-    sdk.files.download.side_effect = lambda local_path, fileset, workspace: None
+def test_resolve_staged_config_rejects_path_escape(ctx: JobContext, fake_transfers, make_platform_client) -> None:
+    sdk = make_platform_client()
     with pytest.raises(ValueError, match="outside the downloaded fileset"):
         with resolve_staged_config(
             "../evil.yml",
@@ -100,32 +118,50 @@ def test_resolve_output_none_uses_persistent_results(ctx: JobContext) -> None:
         assert base.is_dir()
 
 
-def test_resolve_output_fileset_uploads_on_clean_exit(ctx: JobContext) -> None:
-    sdk = MagicMock()
-    sdk.files.upload.return_value = MagicMock(name="fake-fileset")
+def test_resolve_output_fileset_uploads_on_clean_exit(ctx: JobContext, fake_transfers, make_platform_client) -> None:
+    sdk = make_platform_client()
 
     with resolve_output(FilesetRef("optimize-out"), workspace="default", ctx=ctx, sdk=sdk, kind="optimize"):
         pass
 
-    sdk.files.upload.assert_called_once()
-    kwargs = sdk.files.upload.call_args.kwargs
+    assert len(fake_transfers.uploads) == 1
+    kwargs = fake_transfers.uploads[0]
+    assert kwargs["client"]._http is sdk._http
     assert kwargs["fileset"] == "optimize-out"
     assert kwargs["workspace"] == "default"
     assert kwargs["fileset_auto_create"] is True
     assert kwargs["local_path"].endswith("/")
 
 
-def test_resolve_output_fileset_skips_upload_when_body_raises(ctx: JobContext) -> None:
-    sdk = MagicMock()
+def test_resolve_output_fileset_skips_upload_when_body_raises(
+    ctx: JobContext, fake_transfers, make_platform_client
+) -> None:
+    sdk = make_platform_client()
     with pytest.raises(RuntimeError, match="boom"):
         with resolve_output(FilesetRef("optimize-out"), workspace="default", ctx=ctx, sdk=sdk, kind="optimize"):
             raise RuntimeError("boom")
-    sdk.files.upload.assert_not_called()
+    assert fake_transfers.uploads == []
 
 
-def test_resolve_output_empty_fileset_ref_is_invalid(ctx: JobContext) -> None:
-    sdk = MagicMock()
+def test_resolve_output_empty_fileset_ref_is_invalid(ctx: JobContext, fake_transfers, make_platform_client) -> None:
+    sdk = make_platform_client()
     with pytest.raises(ValueError, match="invalid entity reference"):
         with resolve_output(FilesetRef(""), workspace="default", ctx=ctx, sdk=sdk, kind="optimize"):
             pass
-    sdk.files.upload.assert_not_called()
+    assert fake_transfers.uploads == []
+
+
+def test_upload_to_fileset_uploads_directory_contents_with_auto_create(
+    tmp_path: Path, fake_transfers, make_platform_client
+) -> None:
+    sdk = make_platform_client()
+
+    upload_to_fileset(tmp_path, fileset="opt-out", workspace="ws", sdk=sdk)
+
+    assert len(fake_transfers.uploads) == 1
+    kwargs = fake_transfers.uploads[0]
+    assert kwargs["client"]._http is sdk._http
+    assert kwargs["local_path"] == str(tmp_path) + "/"
+    assert kwargs["fileset"] == "opt-out"
+    assert kwargs["workspace"] == "ws"
+    assert kwargs["fileset_auto_create"] is True

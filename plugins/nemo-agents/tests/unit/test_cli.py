@@ -4,16 +4,16 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Sequence
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import AbstractContextManager, ExitStack, contextmanager
 from importlib import import_module
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 import httpx
 import pytest
+from filesets.transfer import ListFilesResponse
 from nemo_agents_plugin.cli import (
     MAX_ETHOS_STAGED_BYTES,
     MAX_ETHOS_STAGED_FILES,
@@ -23,6 +23,9 @@ from nemo_agents_plugin.cli import (
     _upload_ethos_fileset,
 )
 from nemo_agents_plugin.entities import AGENT_SPEC_FILENAME
+from nemo_platform_plugin.client.client import NemoClient
+from nemo_platform_plugin.files.client import FilesClient
+from nemo_platform_plugin.files.types import FilesetFileOutput
 from typer.testing import CliRunner
 
 
@@ -35,36 +38,67 @@ class _ValidatedAgentConfig:
 
 
 class _FakeEthosFiles:
+    """Stand-in for the ``filesets.transfer`` list/delete helpers ``_clear_existing_ethos_artifacts`` drives.
+
+    ``patched()`` routes ``filesets.transfer.list_files`` / ``delete`` here and
+    asserts each call carries a typed Files client derived from the CLI's
+    platform client (``sdk``).
+    """
+
     def __init__(self, existing_paths: Sequence[str] = (), *, delete_error: Exception | None = None) -> None:
         self.existing_paths = existing_paths
         self.delete_error = delete_error
         self.deleted: list[str] = []
+        self.sdk = NemoClient(base_url="http://test")
 
-    def list(self, *, fileset: str, workspace: str) -> SimpleNamespace:
+    def _check_client(self, client: object) -> None:
+        assert isinstance(client, FilesClient)
+        assert client._http is self.sdk._http
+
+    def list_files(self, client: object, *, fileset: str, workspace: str) -> ListFilesResponse:
+        self._check_client(client)
         assert fileset == "fabric-agent-ethos"
         assert workspace == "default"
-        return SimpleNamespace(data=[SimpleNamespace(path=path) for path in self.existing_paths])
+        return ListFilesResponse(
+            data=[FilesetFileOutput(path=path, size=0, file_ref="", file_url="") for path in self.existing_paths]
+        )
 
-    def delete(self, *, remote_path: str, fileset: str, workspace: str) -> None:
+    def delete(self, client: object, *, remote_path: str, fileset: str, workspace: str) -> None:
+        self._check_client(client)
         assert fileset == "fabric-agent-ethos"
         assert workspace == "default"
         self.deleted.append(remote_path)
         if self.delete_error is not None:
             raise self.delete_error
 
+    def patched(self) -> AbstractContextManager[Any]:
+        return _patch_all(
+            patch("filesets.transfer.list_files", self.list_files),
+            patch("filesets.transfer.delete", self.delete),
+            patch("nemo_agents_plugin.cli._platform_sdk", return_value=self.sdk),
+        )
+
+
+@contextmanager
+def _patch_all(*patches: AbstractContextManager[Any]) -> Iterator[None]:
+    with ExitStack() as stack:
+        for entry in patches:
+            stack.enter_context(entry)
+        yield
+
 
 def _upload_ethos_snapshot(agent_root: Path, *, existing_paths: Sequence[str] = ()) -> tuple[set[str], list[str]]:
     files = _FakeEthosFiles(existing_paths)
-    sdk = SimpleNamespace(files=files)
     uploaded: set[str] = set()
 
     def _capture_upload(local_dir: Path, *, fileset: str, workspace: str, sdk: Any) -> None:
         assert fileset == "fabric-agent-ethos"
         assert workspace == "default"
+        assert sdk is files.sdk
         uploaded.update(path.relative_to(local_dir).as_posix() for path in local_dir.rglob("*") if path.is_file())
 
     with (
-        patch("nemo_agents_plugin.cli._platform_sdk", return_value=sdk),
+        files.patched(),
         patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", _capture_upload),
     ):
         _upload_ethos_fileset(
@@ -456,9 +490,8 @@ def test_create_fabric_uploads_ethos_fileset(tmp_path: Path, monkeypatch: pytest
         _install_mock_transport(handler),
         patch("nemo_agents_plugin.fabric.validation.validate_platform_agent_config", _validate_platform_agent_config),
         patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", fake_upload),
-        patch("nemo_agents_plugin.cli._platform_sdk") as mock_sdk,
+        files.patched(),
     ):
-        mock_sdk.return_value = SimpleNamespace(base_url="http://test", files=files)
         result = CliRunner().invoke(
             app,
             ["create", "--name", "fabric-agent", "--agent-config", str(config), "--base-url", "http://test"],
@@ -552,7 +585,6 @@ def test_upload_ethos_fileset_preserves_remote_ethos_over_local(tmp_path: Path) 
     (agent_root / "ETHOS.md").write_text("# Local Ethos\n", encoding="utf-8")
     remote = {"ETHOS.md": b"# Remote Ethos\n"}
     files = _FakeEthosFiles(list(remote))
-    sdk = SimpleNamespace(files=files)
 
     def _capture_upload(local_dir: Path, **_: Any) -> None:
         remote.update(
@@ -562,7 +594,7 @@ def test_upload_ethos_fileset_preserves_remote_ethos_over_local(tmp_path: Path) 
         )
 
     with (
-        patch("nemo_agents_plugin.cli._platform_sdk", return_value=sdk),
+        files.patched(),
         patch("nemo_agents_plugin.jobs.fileset_io.upload_to_fileset", _capture_upload),
     ):
         _upload_ethos_fileset(

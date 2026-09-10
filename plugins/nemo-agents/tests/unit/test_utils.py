@@ -19,9 +19,11 @@ Covers:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import yaml
 from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob, EvaluateAgentSpec
@@ -38,6 +40,7 @@ from nemo_agents_plugin.utils import (
     temp_injected_config,
     validate_llm_models,
 )
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.refs import EndpointURL, FilesetRef, LocalDir
 from nemo_platform_plugin.run_dependencies import LocalRunError
@@ -756,7 +759,7 @@ class TestResolveOutput:
         with job._resolve_output(
             FilesetRef("eval-results"),
             workspace="default",
-            sdk=sentinel_sdk,  # type: ignore[arg-type]
+            sdk=sentinel_sdk,
             ctx=ctx,
         ) as base:
             (base / "summary.json").write_text("{}")
@@ -788,7 +791,7 @@ class TestResolveOutput:
         with job._resolve_output(
             FilesetRef("prod/eval-results"),
             workspace="default",
-            sdk=object(),  # type: ignore[arg-type]  # type: ignore[arg-type]
+            sdk=object(),
             ctx=ctx,
         ) as _:
             pass
@@ -818,7 +821,7 @@ class TestResolveOutput:
             with job._resolve_output(
                 FilesetRef("eval-results"),
                 workspace="default",
-                sdk=object(),  # type: ignore[arg-type]
+                sdk=object(),
                 ctx=ctx,
             ) as base:
                 (base / "partial.json").write_text("{}")
@@ -863,41 +866,29 @@ class TestResolveOutput:
         evaluation artifacts on the floor.
         """
         job = EvaluateAgentJob()
-        with pytest.raises(LocalRunError, match="sdk: NeMoPlatform"):
+        with pytest.raises(LocalRunError, match="platform 'sdk' client"):
             with job._resolve_output(FilesetRef("eval-results"), workspace="default", sdk=None, ctx=ctx):
                 pass
 
-    def test_upload_to_fileset_delegates_to_sdk_files(self) -> None:
-        """``_upload_to_fileset`` is a thin wrapper over ``sdk.files.upload``."""
-
-        class _StubFiles:
-            def __init__(self) -> None:
-                self.calls: list[dict[str, object]] = []
-
-            def upload(self, **kwargs: object) -> object:
-                self.calls.append(kwargs)
-                return type("_Fileset", (), {"name": kwargs["fileset"]})()
-
-        class _StubSDK:
-            def __init__(self) -> None:
-                self.files = _StubFiles()
-
-        sdk = _StubSDK()
+    def test_upload_to_fileset_delegates_to_typed_files_transfer(self, fake_transfers, make_platform_client) -> None:
+        """``_upload_to_fileset`` is a thin wrapper over ``filesets.transfer.upload``."""
+        sdk = make_platform_client()
         EvaluateAgentJob._upload_to_fileset(
             Path("/tmp/eval-out"),
             fileset="eval-results",
             workspace="prod",
-            sdk=sdk,  # type: ignore[arg-type]  # type: ignore[arg-type]
+            sdk=sdk,
         )
 
-        assert sdk.files.calls == [
-            {
-                "local_path": "/tmp/eval-out/",
-                "fileset": "eval-results",
-                "workspace": "prod",
-                "fileset_auto_create": True,
-            }
-        ]
+        assert len(fake_transfers.uploads) == 1
+        upload = fake_transfers.uploads[0]
+        assert upload["client"]._http is sdk._http
+        assert {key: value for key, value in upload.items() if key != "client"} == {
+            "local_path": "/tmp/eval-out/",
+            "fileset": "eval-results",
+            "workspace": "prod",
+            "fileset_auto_create": True,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -1379,31 +1370,18 @@ llms:
 # ---------------------------------------------------------------------------
 
 
-def _make_not_found_error(message: str) -> Any:
-    """Build a real :class:`nemo_platform.NotFoundError` for use as an SDK side-effect.
-
-    The Stainless-generated exception requires a ``response`` and ``body``;
-    we hand-roll a minimal stub rather than pulling in :mod:`unittest.mock`
-    just for this — keeps the test module's import surface small and
-    matches the existing stub-class style used throughout this file.
-    """
-    from nemo_platform import NotFoundError
-
-    class _StubResponse:
-        status_code = 404
-        headers: dict[str, str] = {}
-        request = None
-
-    return NotFoundError(message=message, response=_StubResponse(), body={"detail": message})  # type: ignore[arg-type]
+_VIRTUAL_MODELS_PATH = re.compile(
+    r"^/apis/inference-gateway/v2/workspaces/(?P<workspace>[^/]+)/virtual-models/(?P<name>[^/]+)$"
+)
 
 
 class _RecordingVirtualModels:
-    """Stub for ``sdk.inference.virtual_models`` that records ``retrieve`` calls.
+    """In-memory VirtualModels API that records ``GET .../virtual-models/{name}`` lookups.
 
-    ``missing`` is the set of ``model_name`` values that should raise
-    :class:`nemo_platform.NotFoundError`; everything else returns a sentinel
-    object.  ``side_effect`` overrides this to raise an arbitrary exception
-    on every call (used to exercise the soft-fail branch).
+    ``missing`` is the set of ``model_name`` values that answer 404 (which the
+    typed client raises as :class:`NotFoundError`); everything else answers
+    200.  ``side_effect`` overrides this to raise an arbitrary exception on
+    every call (used to exercise the soft-fail branch).
     """
 
     def __init__(
@@ -1416,23 +1394,24 @@ class _RecordingVirtualModels:
         self.side_effect = side_effect
         self.calls: list[dict[str, str]] = []
 
-    def retrieve(self, *, name: str, workspace: str) -> object:
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        match = _VIRTUAL_MODELS_PATH.match(request.url.path)
+        assert request.method == "GET" and match is not None, f"unexpected request {request.method} {request.url}"
+        name, workspace = match["name"], match["workspace"]
         self.calls.append({"name": name, "workspace": workspace})
         if self.side_effect is not None:
             raise self.side_effect
         if name in self.missing:
-            raise _make_not_found_error(f"VirtualModel {name!r} not found")
-        return object()
+            return httpx.Response(404, json={"detail": f"VirtualModel {name!r} not found"})
+        return httpx.Response(200, json={"name": name, "workspace": workspace})
 
 
-class _StubInference:
-    def __init__(self, virtual_models: _RecordingVirtualModels) -> None:
-        self.virtual_models = virtual_models
-
-
-class _StubSDKWithVirtualModels:
-    def __init__(self, virtual_models: _RecordingVirtualModels) -> None:
-        self.inference = _StubInference(virtual_models)
+def _StubSDKWithVirtualModels(virtual_models: _RecordingVirtualModels) -> NemoClient:
+    """A typed platform client whose only reachable API is *virtual_models*."""
+    return NemoClient(
+        base_url="http://test",
+        http_client=httpx.Client(transport=httpx.MockTransport(virtual_models), base_url="http://test"),
+    )
 
 
 class TestValidateLLMModels:
@@ -1447,7 +1426,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="default", sdk=sdk)
 
         assert vms.calls == [{"name": "shared-model", "workspace": "default"}]
 
@@ -1467,7 +1446,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="default", sdk=sdk)
 
         assert vms.calls == [{"name": "nvidia-nemotron", "workspace": "default"}]
 
@@ -1487,7 +1466,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="default", sdk=sdk)
 
         calls = sorted((c["workspace"], c["name"]) for c in vms.calls)
         assert calls == [("default", "plain-model"), ("prod", "foo")]
@@ -1507,7 +1486,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="default", sdk=sdk)
 
         assert vms.calls == [{"name": "foo", "workspace": "default"}]
 
@@ -1524,7 +1503,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="default", sdk=sdk)
 
         assert vms.calls == []
 
@@ -1538,7 +1517,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]
+        validate_llm_models(config, workspace="ws", sdk=sdk)
 
         names = sorted(call["name"] for call in vms.calls)
         assert names == ["model-a", "model-b"]
@@ -1554,7 +1533,7 @@ class TestValidateLLMModels:
         sdk = _StubSDKWithVirtualModels(vms)
 
         with pytest.raises(ValueError) as exc_info:
-            validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]  # type: ignore[arg-type]
+            validate_llm_models(config, workspace="default", sdk=sdk)
 
         message = str(exc_info.value)
         # Names the missing model + the YAML key + the workspace, and points
@@ -1680,7 +1659,7 @@ class TestValidateLLMModels:
         with caplog.at_level("WARNING"):
             # Must not raise — the underlying eval/optimize call will surface
             # the real error if the model truly isn't reachable.
-            validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
+            validate_llm_models(config, workspace="ws", sdk=sdk)
 
         assert any("Could not validate LLM" in record.message for record in caplog.records)
 
@@ -1722,7 +1701,7 @@ class TestPreflightValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        preflight_validate_llm_models(config_path, workspace="ws", sdk=sdk)  # type: ignore[arg-type]  # type: ignore[arg-type]
+        preflight_validate_llm_models(config_path, workspace="ws", sdk=sdk)
 
         assert vms.calls == [{"name": "real-model", "workspace": "ws"}]
 
@@ -1789,7 +1768,7 @@ class TestPreflightValidateLLMModels:
         sdk = _StubSDKWithVirtualModels(vms)
 
         with pytest.raises(ValueError) as exc_info:
-            preflight_validate_llm_models(config_path, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+            preflight_validate_llm_models(config_path, workspace="default", sdk=sdk)
 
         # Sanity-check the message shape; full message coverage lives in
         # TestValidateLLMModels.

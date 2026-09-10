@@ -16,8 +16,10 @@ from typing import Any, Iterator
 from urllib.parse import urlsplit
 
 import yaml
-from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform_plugin.client.adapter import PlatformClient, client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.entities import parse_qualified_name
+from nemo_platform_plugin.virtual_models.client import VirtualModelsClient
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ _ENV_VAR_PATTERN = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Z
 # LLM ``_type`` values that resolve through the platform Inference Gateway —
 # i.e. their ``model_name`` should correspond to a VirtualModel registered in
 # the workspace.  Other types (e.g. direct cloud SDKs) bypass IGW and are not
-# validatable through ``sdk.inference.virtual_models``.
+# validatable through the Inference Gateway VirtualModels API.
 _IGW_LLM_TYPES = frozenset({"openai", "nim"})
 
 # Fabric model providers that speak through Platform's OpenAI-compatible IGW
@@ -361,7 +363,7 @@ def validate_llm_models(
     config: dict[str, Any],
     *,
     workspace: str,
-    sdk: NeMoPlatform,
+    sdk: PlatformClient,
 ) -> None:
     """Pre-flight check that every IGW-routed LLM in *config* exists as a VirtualModel.
 
@@ -369,7 +371,7 @@ def validate_llm_models(
     :data:`_IGW_LLM_TYPES`, strips a leading ``{workspace}/`` qualifier from
     ``model_name`` (mirroring IGW's OpenAI proxy — the VM route takes
     workspace as its own path segment, so the bare name is what it expects)
-    then calls ``sdk.inference.virtual_models.retrieve(name, workspace=workspace)``.
+    then calls ``VirtualModelsClient.get_virtual_model(name, workspace=workspace)``.
     Names are deduplicated *after* stripping so the same model declared under
     multiple LLM keys (e.g. agent + judge) costs one network call.
 
@@ -393,8 +395,9 @@ def validate_llm_models(
     Args:
         config: A NAT workflow / eval / optimize config dict, post env-var
             expansion.  Not mutated.
-        workspace: Workspace name passed to the VirtualModels SDK call.
-        sdk: Sync platform SDK handle.
+        workspace: Workspace name passed to the VirtualModels lookup.
+        sdk: Sync platform handle (``NeMoPlatform`` or ``NemoClient``); the
+            typed VirtualModels client is derived from it.
     """
     llms = config.get("llms")
     if not isinstance(llms, dict):
@@ -429,10 +432,11 @@ def validate_llm_models(
     if not to_check:
         return
 
+    virtual_models = client_from_platform(sdk, VirtualModelsClient)
     missing: list[tuple[str, str]] = []  # (qualified_name, llm_key)
     for (target_ws, target_name), llm_key in to_check.items():
         try:
-            sdk.inference.virtual_models.retrieve(name=target_name, workspace=target_ws)
+            virtual_models.get_virtual_model(name=target_name, workspace=target_ws)
         except NotFoundError:
             missing.append((f"{target_ws}/{target_name}", llm_key))
         except Exception as exc:  # pragma: no cover - defensive soft-fail
@@ -466,7 +470,7 @@ def preflight_validate_llm_models(
     config_path: Path,
     *,
     workspace: str,
-    sdk: NeMoPlatform | None,
+    sdk: PlatformClient | None,
     agent_config: dict[str, Any] | None = None,
 ) -> None:
     """Load *config_path*, expand env vars, optionally merge an agent config, and validate.

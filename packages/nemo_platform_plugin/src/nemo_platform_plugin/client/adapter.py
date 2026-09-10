@@ -19,7 +19,7 @@ Usage::
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Protocol, TypeVar, cast, overload
+from typing import Protocol, TypeVar, cast, overload, runtime_checkable
 
 import httpx
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
@@ -27,6 +27,24 @@ from nemo_platform_plugin.client.types import RetryPolicy
 
 SyncT = TypeVar("SyncT", bound=NemoClient)
 AsyncT = TypeVar("AsyncT", bound=AsyncNemoClient)
+
+
+@runtime_checkable
+class PlatformClient(Protocol):
+    """Structural shape shared by every platform handle :func:`client_from_platform` accepts.
+
+    Satisfied by :class:`NemoClient` / :class:`AsyncNemoClient` and by the
+    generated ``NeMoPlatform`` / ``AsyncNeMoPlatform`` SDK classes. Use it to
+    annotate ``sdk`` / ``async_sdk`` parameters that are only forwarded to
+    :func:`client_from_platform`, so the annotating module does not need to
+    import the generated SDK.
+    """
+
+    @property
+    def base_url(self) -> str | httpx.URL: ...
+
+    @property
+    def workspace(self) -> str | None: ...
 
 
 class _PlatformClient(Protocol):
@@ -38,6 +56,19 @@ class _PlatformClient(Protocol):
     _client: httpx.Client | httpx.AsyncClient
 
     def _prepare_url(self, url: str) -> httpx.URL: ...
+
+
+def platform_default_headers(platform: object) -> dict[str, str]:
+    """Return a copy of the default headers *platform* sends on every request.
+
+    Reads ``default_headers`` off a :class:`NemoClient` / :class:`AsyncNemoClient`
+    and ``_custom_headers`` off a generated ``NeMoPlatform`` SDK instance, so
+    callers forwarding identity headers through a non-SDK HTTP client do not
+    need to know which platform handle they were given.
+    """
+    if isinstance(platform, (NemoClient, AsyncNemoClient)):
+        return dict(platform.default_headers)
+    return dict(cast(_PlatformClient, platform)._custom_headers)
 
 
 @overload
