@@ -1150,9 +1150,8 @@ def build_trials_from_job_dir(
     Reads ``<job_dir>/<task>__<hash>/result.json`` (the top-level aggregate
     ``<job_dir>/result.json`` is skipped because it is not nested). Each Harbor
     trial whose ``task_name`` matches a supplied task id becomes one trial, with
-    the verifier reward, exception type, and token/cost measurements stamped on
-    ``metadata`` and standard evidence descriptors pointing at the trial's
-    on-disk artifacts.
+    the verifier reward in ``metadata``, typed error and measurement fields, and
+    standard evidence descriptors pointing at the trial's on-disk artifacts.
     """
     validate_reward_key(reward_key)
     job_path = Path(job_dir)

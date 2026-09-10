@@ -349,6 +349,16 @@ async def test_fabric_runtime_maps_atif_artifact_to_trace_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     atif = _FakeArtifact("relay_atif", "atif", tmp_path / "trajectory.atif.json", "application/json")
+    atif.path.write_text(
+        json.dumps(
+            {
+                "schema_version": "ATIF-v1.7",
+                "steps": [_step(prompt_tokens=8, completion_tokens=2)],
+                "final_metrics": {"total_cost_usd": 0.25},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
         return _FakeResult(status="succeeded", output={"response": "ok"}, artifacts=[atif])
@@ -365,6 +375,14 @@ async def test_fabric_runtime_maps_atif_artifact_to_trace_evidence(
     trace = evidence.descriptors[EVIDENCE_TRACE]
     assert trace.format == EVIDENCE_FORMAT_ATIF
     assert trace.ref == str(tmp_path / "trajectory.atif.json")
+    assert trials[0].measurements.model_dump(exclude_none=True) == {
+        "prompt_tokens": 8,
+        "completion_tokens": 2,
+        "total_tokens": 10,
+        "cost_usd": 0.25,
+    }
+    assert trials[0].measurements.runtime_sec is None
+    assert "prompt_tokens" not in trials[0].metadata
 
 
 def _workspace_from_config(config: Any) -> Path:
@@ -661,6 +679,13 @@ async def test_fabric_runtime_maps_timeout_to_failed_trial(tmp_path: Path, monke
 
     async def fake_wait_for(awaitable: Any, timeout: float) -> Any:
         awaitable.close()
+        evidence_dir = next((tmp_path / "fabric").glob("*/000000-task-1"))
+        relay_dir = evidence_dir / "relay"
+        relay_dir.mkdir(exist_ok=True)
+        (relay_dir / "trajectory-timeout.atif.json").write_text(
+            json.dumps({"schema_version": "ATIF-v1.7", "steps": [_step(prompt_tokens=5, completion_tokens=1)]}),
+            encoding="utf-8",
+        )
         raise TimeoutError
 
     monkeypatch.setattr(fabric_runtime.asyncio, "wait_for", fake_wait_for)
@@ -670,6 +695,7 @@ async def test_fabric_runtime_maps_timeout_to_failed_trial(tmp_path: Path, monke
 
     assert trials[0].status == "failed"
     assert trials[0].metadata["error_type"] == "TimeoutError"
+    assert trials[0].measurements.total_tokens == 6
 
 
 @pytest.mark.asyncio
@@ -1115,6 +1141,10 @@ def _step(**metrics: int) -> dict[str, Any]:
     return {"source": "agent", "message": "", "metrics": metrics}
 
 
+def _measurement_values(path: Path | None) -> dict[str, int | float]:
+    return fabric_runtime._atif_measurements(path).model_dump(exclude_none=True)
+
+
 def test_final_metrics_totals_are_projected_onto_the_token_keys(tmp_path: Path) -> None:
     path = _atif(
         tmp_path,
@@ -1128,9 +1158,10 @@ def test_final_metrics_totals_are_projected_onto_the_token_keys(tmp_path: Path) 
             },
         },
     )
-    assert fabric_runtime._atif_token_metadata(path) == {
+    assert _measurement_values(path) == {
         "prompt_tokens": 358,
         "completion_tokens": 19324,
+        "total_tokens": 19682,
         "cache_read_tokens": 3984621,
     }
 
@@ -1143,9 +1174,10 @@ def test_steps_are_summed_when_the_trajectory_has_no_aggregate_block(tmp_path: P
             "steps": [_step(prompt_tokens=100, completion_tokens=10), _step(prompt_tokens=58, cached_tokens=7)],
         },
     )
-    assert fabric_runtime._atif_token_metadata(path) == {
+    assert _measurement_values(path) == {
         "prompt_tokens": 158,
         "completion_tokens": 10,
+        "total_tokens": 168,
         "cache_read_tokens": 7,
     }
 
@@ -1161,7 +1193,12 @@ def test_a_partial_aggregate_does_not_suppress_the_fields_only_the_steps_report(
             "final_metrics": {"total_steps": 2, "total_cost_usd": 0.12},
         },
     )
-    assert fabric_runtime._atif_token_metadata(path) == {"prompt_tokens": 158, "completion_tokens": 10}
+    assert _measurement_values(path) == {
+        "prompt_tokens": 158,
+        "completion_tokens": 10,
+        "total_tokens": 168,
+        "cost_usd": 0.12,
+    }
 
 
 def test_a_reported_total_wins_over_the_step_sum_for_that_field_alone(tmp_path: Path) -> None:
@@ -1174,10 +1211,10 @@ def test_a_reported_total_wins_over_the_step_sum_for_that_field_alone(tmp_path: 
             "final_metrics": {"total_prompt_tokens": 358},
         },
     )
-    assert fabric_runtime._atif_token_metadata(path) == {"prompt_tokens": 358, "completion_tokens": 10}
+    assert _measurement_values(path) == {"prompt_tokens": 358, "completion_tokens": 10, "total_tokens": 368}
 
 
-def test_an_unvalidatable_aggregate_still_falls_back_to_the_steps(tmp_path: Path) -> None:
+def test_an_invalid_aggregate_field_is_omitted_instead_of_falling_back(tmp_path: Path) -> None:
     path = _atif(
         tmp_path,
         {
@@ -1186,21 +1223,44 @@ def test_an_unvalidatable_aggregate_still_falls_back_to_the_steps(tmp_path: Path
             "final_metrics": {"total_prompt_tokens": "not-an-int"},
         },
     )
-    assert fabric_runtime._atif_token_metadata(path) == {"prompt_tokens": 158}
+    assert _measurement_values(path) == {}
 
 
 def test_a_trajectory_with_no_counts_anywhere_records_nothing(tmp_path: Path) -> None:
     path = _atif(tmp_path, {"schema_version": "ATIF-v1.7", "steps": [_step()], "final_metrics": {}})
-    assert fabric_runtime._atif_token_metadata(path) == {}
+    assert _measurement_values(path) == {}
 
 
-@pytest.mark.parametrize("payload", ["[]", "{ not json", '"a string"'])
+@pytest.mark.parametrize("payload", ["[]", "{ not json", '"a string"', '{"steps": 7}'])
 def test_an_unreadable_trajectory_records_nothing_rather_than_failing(tmp_path: Path, payload: str) -> None:
     path = tmp_path / "trajectory-abc.atif.json"
     path.write_text(payload, encoding="utf-8")
-    assert fabric_runtime._atif_token_metadata(path) == {}
+    assert _measurement_values(path) == {}
 
 
 def test_a_missing_trajectory_records_nothing(tmp_path: Path) -> None:
-    assert fabric_runtime._atif_token_metadata(None) == {}
-    assert fabric_runtime._atif_token_metadata(tmp_path / "absent.atif.json") == {}
+    assert _measurement_values(None) == {}
+    assert _measurement_values(tmp_path / "absent.atif.json") == {}
+
+
+@pytest.mark.parametrize(
+    ("value", "is_float", "expected"),
+    [
+        (0, False, True),
+        (1.5, True, True),
+        (1.5, False, False),
+        (True, False, False),
+        (-1, False, False),
+        (float("nan"), True, False),
+        (float("inf"), True, False),
+        ("1", False, False),
+    ],
+)
+def test_valid_atif_measurement(value: object, is_float: bool, expected: bool) -> None:
+    assert fabric_runtime._valid_atif_measurement(value, is_float=is_float) is expected
+
+
+def test_sum_step_metric_treats_missing_steps_as_unmeasured_and_non_list_as_invalid() -> None:
+    assert fabric_runtime._sum_step_metric({}, "prompt_tokens", is_float=False) == (None, True)
+    assert fabric_runtime._sum_step_metric({"steps": None}, "prompt_tokens", is_float=False) == (None, True)
+    assert fabric_runtime._sum_step_metric({"steps": 7}, "prompt_tokens", is_float=False) == (None, False)

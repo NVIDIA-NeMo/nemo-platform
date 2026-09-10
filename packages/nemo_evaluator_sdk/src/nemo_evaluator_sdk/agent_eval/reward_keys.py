@@ -28,8 +28,7 @@ RewardKeyRejection = Literal["invalid_key", "reserved_key"]
 HarborRewardValueRejection = Literal["boolean", "non_numeric", "non_finite"]
 
 #: Trial-metadata keys carrying one parsed Harbor reward mapping. Named here rather than spelled
-#: at each writer and reader, the same reason :data:`~nemo_evaluator_sdk.agent_eval.metrics.TOKEN_KEYS`
-#: exists.
+#: independently at each writer and reader so the durable vocabulary stays centralized.
 REWARD_DETAILS_KEY = "reward_details"
 REWARD_REJECTIONS_KEY = "reward_rejections"
 REWARD_ENTRY_REJECTIONS_KEY = "reward_entry_rejections"
