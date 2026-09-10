@@ -148,6 +148,12 @@ class TestTrackedRevision:
     def test_a_fileset_created_from_a_sha_tracks_nothing(self):
         assert _impl(_config(revision="abc123")).tracked_revision is None
 
+    def test_a_sha_recorded_as_its_own_original_tracks_nothing(self):
+        """resolve_config records the requested ref even when it was already a commit."""
+        impl = _impl(_config(revision="abc123", original_revision="abc123"))
+
+        assert impl.tracked_revision is None
+
     @pytest.mark.asyncio
     async def test_re_resolving_the_tracked_ref_moves_the_pinned_revision(self):
         session = _session_for(lambda _url: _FakeResponse(json_body={"sha": "newsha"}))
