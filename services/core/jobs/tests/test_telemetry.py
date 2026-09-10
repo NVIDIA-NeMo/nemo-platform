@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from unittest.mock import patch
 
+import pytest
 from nemo_platform_plugin.jobs.telemetry import build_job_telemetry_custom_fields
-from nmp.core.jobs.telemetry import build_job_run_telemetry, build_payload
+from nmp.core.jobs.telemetry import _redact_endpoint, _send_job_run_event, build_job_run_telemetry, build_payload
 
 
 def test_build_job_run_telemetry_uses_stamped_session_id() -> None:
@@ -71,3 +73,29 @@ def test_build_payload_matches_job_run_wire_contract() -> None:
     assert params["model"] == "undefined"
     assert params["inputTokens"] == -1
     assert params["outputTokens"] == -1
+
+
+def test_redact_endpoint_strips_query_and_credentials() -> None:
+    assert (
+        _redact_endpoint("https://user:secret@example.test:8443/events?api_key=secret")
+        == "https://example.test:8443/events?<redacted>"
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_job_run_event_skips_non_https_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    event = build_job_run_telemetry(
+        source="job",
+        status="completed",
+        status_details={},
+        custom_fields=build_job_telemetry_custom_fields("session-123"),
+        created_at=None,
+        updated_at=None,
+    )
+    assert event is not None
+    monkeypatch.setenv("NEMO_TELEMETRY_ENDPOINT", "http://user:secret@example.test/events?api_key=secret")
+
+    with patch("nmp.core.jobs.telemetry.httpx.AsyncClient") as async_client:
+        await _send_job_run_event(event)
+
+    async_client.assert_not_called()

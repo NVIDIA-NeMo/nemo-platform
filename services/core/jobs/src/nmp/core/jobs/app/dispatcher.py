@@ -1107,10 +1107,12 @@ class JobDispatcher:
                 if not previous_attempt_status.is_terminal() and attempt.status.is_terminal():
                     try:
                         job = await self.store.get_by_id(PlatformJob, attempt.job)
+                        status_details = dict(attempt.status_details or {})
+                        status_details.update(saved_step.status_details or {})
                         telemetry_event = build_job_run_telemetry(
                             source=job.source,
                             status=attempt.status.value,
-                            status_details=attempt.status_details,
+                            status_details=status_details,
                             custom_fields=job.custom_fields,
                             created_at=attempt.created_at,
                             updated_at=attempt.updated_at,

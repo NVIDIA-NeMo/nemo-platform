@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from importlib import metadata
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 import httpx
 from nemo_platform_plugin.jobs.telemetry import get_job_telemetry_plugins, get_job_telemetry_session_id
@@ -102,8 +102,30 @@ def _cpu_architecture() -> str:
     return platform.machine() or "undefined"
 
 
-def _telemetry_endpoint() -> str:
-    return os.getenv("NEMO_TELEMETRY_ENDPOINT", DEFAULT_ENDPOINT)
+def _telemetry_endpoint() -> str | None:
+    endpoint = os.getenv("NEMO_TELEMETRY_ENDPOINT", DEFAULT_ENDPOINT)
+    try:
+        parsed = urlsplit(endpoint)
+    except ValueError:
+        logger.debug("Skipping job_run telemetry because endpoint is invalid: %s", _redact_endpoint(endpoint))
+        return None
+    if parsed.scheme.lower() != "https" or not parsed.netloc:
+        logger.debug("Skipping job_run telemetry because endpoint is not HTTPS: %s", _redact_endpoint(endpoint))
+        return None
+    return endpoint
+
+
+def _redacted_netloc(parsed: SplitResult) -> str:
+    host = parsed.hostname
+    if host is None:
+        return parsed.netloc.rsplit("@", 1)[-1]
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    return f"{host}:{port}" if port is not None else host
 
 
 def _redact_endpoint(endpoint: str) -> str:
@@ -112,7 +134,7 @@ def _redact_endpoint(endpoint: str) -> str:
     except ValueError:
         return "<invalid-endpoint>"
     query = "<redacted>" if parsed.query else ""
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment))
+    return urlunsplit((parsed.scheme, _redacted_netloc(parsed), parsed.path, query, parsed.fragment))
 
 
 def _source_client_version() -> str:
@@ -244,6 +266,8 @@ async def _send_job_run_event(event: JobRunTelemetry) -> None:
     if not _telemetry_enabled():
         return
     endpoint = _telemetry_endpoint()
+    if endpoint is None:
+        return
     try:
         async with httpx.AsyncClient(timeout=SEND_TIMEOUT_SECONDS) as client:
             response = await client.post(endpoint, json=build_payload(event))
