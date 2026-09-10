@@ -1127,8 +1127,23 @@ def _dockerfile_images(task_dir: Path) -> list[dict[str, Any]]:
         logical_line = ""
         first_line = 1
         escape = "\\"
+        parser_directives = True
+        frontend_seen = False
         for line_number, line in enumerate(lines, start=1):
             stripped = line.strip()
+            if parser_directives:
+                directive = re.fullmatch(r"#\s*(syntax|escape|check)\s*=\s*(.*?)\s*", stripped, re.IGNORECASE)
+                if directive is None:
+                    parser_directives = False
+                elif directive[1].casefold() == "syntax":
+                    if frontend_seen or not directive[2] or len(directive[2].split()) != 1:
+                        raise ContractError(
+                            f"{path.relative_to(task_dir)}:{line_number} has an invalid syntax directive"
+                        )
+                    frontend_seen = True
+                    frontend = _image_reference(path, task_dir, line_number, "frontend", directive[2], set())
+                    frontend["immutable"] = _IMAGE_DIGEST.fullmatch(directive[2]) is not None
+                    images.append(frontend)
             if stripped.lower().startswith("# escape="):
                 escape = stripped.split("=", 1)[1].strip()
             if not stripped or stripped.startswith("#"):
@@ -2108,6 +2123,30 @@ def _reject_symlinks(root: Path) -> None:
             raise ContractError(f"safe export refuses symlink: {path.relative_to(root.parent)}")
 
 
+def _copy_publication_file(source: Path, destination: Path) -> None:
+    """Copy only file bytes and normalized executable bits, never source metadata."""
+
+    if source.is_symlink() or not source.is_file():
+        raise ContractError("publication source must be a regular file")
+    with source.open("rb") as incoming, destination.open("xb") as outgoing:
+        shutil.copyfileobj(incoming, outgoing)
+    destination.chmod(0o644 | (stat.S_IMODE(source.stat().st_mode) & 0o111))
+
+
+def _copy_publication_tree(source: Path, destination: Path) -> None:
+    """Keep the new root private while copying; do not propagate directory xattrs."""
+
+    _reject_symlinks(source)
+    destination.mkdir(mode=0o700, parents=True, exist_ok=False)
+    for path in sorted(source.iterdir()):
+        target = destination / path.name
+        if path.is_dir():
+            _copy_publication_tree(path, target)
+            target.chmod(0o755)
+        else:
+            _copy_publication_file(path, target)
+
+
 def _write_publication(task_dir: Path, output_dir: Path) -> None:
     """Render the complete publication inside an owner-private staging directory."""
 
@@ -2119,12 +2158,12 @@ def _write_publication(task_dir: Path, output_dir: Path) -> None:
         raise ContractError(f"task workspace check failed: {'; '.join(checked['errors'])}")
     _reject_symlinks(task_dir / "candidate.json")
     candidate = _load_object(task_dir / "candidate.json", label="candidate")
-    shutil.copy2(task_dir / "candidate.json", output_dir / "candidate.json")
+    _copy_publication_file(task_dir / "candidate.json", output_dir / "candidate.json")
     if summary["status"] == "candidate":
         _reject_symlinks(task_dir / "task")
         _reject_symlinks(task_dir / "reproducibility.json")
-        shutil.copytree(task_dir / "task", output_dir / "task")
-        shutil.copy2(task_dir / "reproducibility.json", output_dir / "reproducibility.json")
+        _copy_publication_tree(task_dir / "task", output_dir / "task")
+        _copy_publication_file(task_dir / "reproducibility.json", output_dir / "reproducibility.json")
     reproducibility_summary = None
     if summary["status"] == "candidate":
         reproducibility = _validate_reproducibility(task_dir)
@@ -2290,7 +2329,7 @@ def _export(args: argparse.Namespace) -> dict[str, Any]:
         if _publication_inventory(staged) != review["publication"]:
             raise ContractError("publication review is stale; prepare and review the current product")
         # Publish the checked snapshot, never reread mutable source files after review.
-        shutil.copytree(staged, output_dir)
+        _copy_publication_tree(staged, output_dir)
     output_dir.chmod(0o755)
     return {
         "task_id": task_dir.name,

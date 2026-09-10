@@ -25,7 +25,7 @@ python <skill_dir>/scripts/trace_environment.py record-reproducibility \
 ```
 
 The manifest hashes every task path, file byte, directory, and executable bit.
-It records a declared source revision, Dockerfile base images, external
+It records a declared source revision, Dockerfile base and `# syntax=` frontend images, external
 `COPY --from` and `RUN --mount=from=...` image dependencies, configured agent,
 verifier and step `docker_image` references, network modes,
 and one image-reference state: `local_only`, `image_pinned_recipe`, or
@@ -34,7 +34,10 @@ and every inventoried external image is pinned by digest. Local named or numeric
 build stages are distinguished from external images. Unresolved variable-based
 references keep the task `local_only`. A configured agent image is immutable
 only when its reference contains a SHA-256 digest and all inventoried image
-dependencies are immutable. Use Harbor's `docker_image` field, not `image`.
+dependencies are immutable. Mutable or unresolved frontend references keep the
+recipe `local_only`; pin an external frontend by digest too. Only active parser
+directives before a blank line, ordinary comment, or build instruction count.
+Use Harbor's `docker_image` field, not `image`.
 These states describe image pinning only. The manifest and public result
 explicitly report `dependency_closure: "unverified"`: arbitrary package
 downloads, tool installations, and external build inputs are not proven

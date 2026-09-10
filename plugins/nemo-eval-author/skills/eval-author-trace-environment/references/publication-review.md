@@ -36,6 +36,9 @@ python <skill_dir>/scripts/trace_environment.py review-publication \
 This records a contextual attestation, not an automatic safety verdict or a
 cryptographic proof that a reviewer read the files. It is bound to every exported
 byte, path, and entry permission; the private preview root itself stays owner-only.
+Staging and export copy file contents and normalized executable bits only, not
+source extended attributes or other source filesystem metadata. Directory
+metadata is not copied either; keep private context out of publication contents.
 Re-review a newly prepared preview after any publication change. Superseded
 previews remain private. `check` establishes workspace consistency, not
 publication approval. Historical workspaces also require this new review before

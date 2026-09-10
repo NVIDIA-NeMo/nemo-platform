@@ -1351,6 +1351,38 @@ def test_publication_review_rejects_tampered_preview(tmp_path: Path, change: str
     assert not (task_dir / "private/publication-review.json").exists()
 
 
+@pytest.mark.skipif(not hasattr(os, "setxattr"), reason="extended attributes require OS support")
+@pytest.mark.parametrize("status", ["candidate", "no_candidate"])
+def test_publication_omits_source_extended_attributes(tmp_path: Path, status: str) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir, status=status)
+    if status == "candidate":
+        _ready_environment(task_dir, record_validation=False)
+    _review_privacy(task_dir)
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", status)
+    assert code == 0, result
+    sources = [task_dir / "candidate.json"]
+    if status == "candidate":
+        sources.extend([task_dir / "reproducibility.json", task_dir / "task", task_dir / "task/tests/test.sh"])
+    attribute = "user.fixture_note"
+    for path in sources:
+        os.setxattr(path, attribute, b"fixture metadata before review")
+    preview = _review_publication(task_dir)
+    preview_dir = Path(preview["preview_dir"])
+    for path in sources:
+        assert attribute not in os.listxattr(preview_dir / path.relative_to(task_dir))
+        os.setxattr(path, attribute, b"fixture metadata changed after review")
+    output = tmp_path / "product"
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+    assert code == 0, result
+    for path in sources:
+        assert os.getxattr(path, attribute) == b"fixture metadata changed after review"
+        assert attribute not in os.listxattr(output / path.relative_to(task_dir))
+    for path in output.rglob("*"):
+        if path.is_file():
+            assert path.read_bytes() == (preview_dir / path.relative_to(output)).read_bytes()
+
+
 @pytest.mark.parametrize("executable_bits", [0, stat.S_IXUSR, stat.S_IXGRP, stat.S_IXOTH, 0o111])
 def test_export_preserves_executable_bits_and_task_digest(tmp_path: Path, executable_bits: int) -> None:
     task_dir, _ = _workspace(tmp_path)
@@ -1737,6 +1769,38 @@ def test_portability_tracks_multiple_run_mounts(tmp_path: Path, source: str, pin
     assert report["portability"]["state"] == ("image_pinned_recipe" if pinned else "local_only")
     mounts = [image for image in report["portability"]["container_images"] if image["instruction"] == "run_mount"]
     assert [(item["reference"], item["internal_stage"]) for item in mounts] == [("builder", True), (source, internal)]
+
+
+@pytest.mark.parametrize(
+    "reference,pinned",
+    [("docker/dockerfile:1", False), ("docker/dockerfile@sha256:" + "a" * 64, True), ("${FRONTEND}", False)],
+)
+@pytest.mark.parametrize("location", ["environment", "tests"])
+def test_portability_inventories_dockerfile_frontend(
+    tmp_path: Path, reference: str, pinned: bool, location: str
+) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / f"task/{location}/Dockerfile").write_text(f"# syntax={reference}\nFROM scratch\n")
+    _record_reproducibility(task_dir)
+    report = json.loads((task_dir / "reproducibility.json").read_text())
+    assert report["portability"]["state"] == ("image_pinned_recipe" if pinned else "local_only")
+    frontends = [item for item in report["portability"]["container_images"] if item["instruction"] == "frontend"]
+    assert len(frontends) == 1
+    assert frontends[0]["reference"] == reference
+    assert frontends[0]["immutable"] is pinned
+    assert frontends[0]["internal_stage"] is False
+
+
+@pytest.mark.parametrize("prefix", ["\n", "# ordinary comment\n", "FROM scratch\n"])
+def test_portability_ignores_inactive_syntax_comments(tmp_path: Path, prefix: str) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / "task/environment/Dockerfile").write_text(prefix + "# syntax=docker/dockerfile:1\nFROM scratch\n")
+    _record_reproducibility(task_dir)
+    report = json.loads((task_dir / "reproducibility.json").read_text())
+    assert report["portability"]["state"] == "image_pinned_recipe"
+    assert not any(item["instruction"] == "frontend" for item in report["portability"]["container_images"])
 
 
 @pytest.mark.parametrize(
