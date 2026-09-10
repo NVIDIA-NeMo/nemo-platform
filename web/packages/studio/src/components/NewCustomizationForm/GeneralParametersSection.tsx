@@ -666,7 +666,7 @@ export const GeneralParametersSection = () => {
                 />
                 <ControlledSliderWithTextInput
                   useControllerProps={{ name: 'unsloth.optimizer.adam_beta1', control }}
-                  formFieldProps={{ slotLabel: 'Adam Beta1' }}
+                  formFieldProps={{ slotLabel: 'Adam β₁' }}
                   {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'optimizer_adam_beta1')}
                   min={0}
                   max={1}
@@ -675,7 +675,7 @@ export const GeneralParametersSection = () => {
                 />
                 <ControlledSliderWithTextInput
                   useControllerProps={{ name: 'unsloth.optimizer.adam_beta2', control }}
-                  formFieldProps={{ slotLabel: 'Adam Beta2' }}
+                  formFieldProps={{ slotLabel: 'Adam β₂' }}
                   {...specSliderProps(UNSLOTH_SPEC_DEFAULTS, 'optimizer_adam_beta2')}
                   min={0}
                   max={1}

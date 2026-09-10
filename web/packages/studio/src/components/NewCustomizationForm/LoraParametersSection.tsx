@@ -18,6 +18,7 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { ControlledJsonInput } from '@studio/components/NewCustomizationForm/ControlledJsonInput';
+import { ControlledStringListInput } from '@studio/components/NewCustomizationForm/ControlledStringListInput';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import {
@@ -108,29 +109,29 @@ export const LoraParametersSection = () => {
                 <Stack gap="density-md" className="pt-density-md">
                   <ControlledSwitch
                     useControllerProps={{ name: 'automodel.training.lora.use_triton', control }}
-                    formFieldProps={{ slotLabel: 'Use Triton kernel', labelPosition: 'left' }}
+                    formFieldProps={{ slotLabel: 'Use Triton Kernels', labelPosition: 'left' }}
                     disabled={disabled}
                   />
-                  <ControlledJsonInput
+                  <ControlledStringListInput
                     useControllerProps={{
                       name: 'automodel.training.lora.target_modules',
                       control,
                     }}
                     formFieldProps={{
-                      slotLabel: 'Target Modules (JSON array)',
+                      slotLabel: 'Target Modules',
                       slotInfo:
                         'Modules to attach adapters to. Left unset, the backend picks them from the model architecture.',
                     }}
-                    placeholder='["q_proj", "v_proj"]'
+                    placeholder="q_proj, v_proj"
                     disabled={disabled}
                   />
-                  <ControlledJsonInput
+                  <ControlledStringListInput
                     useControllerProps={{
                       name: 'automodel.training.lora.exclude_modules',
                       control,
                     }}
-                    formFieldProps={{ slotLabel: 'Exclude Modules (JSON array)' }}
-                    placeholder='["*.out_proj"]'
+                    formFieldProps={{ slotLabel: 'Exclude Modules' }}
+                    placeholder="*.out_proj"
                     disabled={disabled}
                   />
                 </Stack>
@@ -262,14 +263,14 @@ export const LoraParametersSection = () => {
                     </SelectRoot>
                   )}
                 </FormField>
-                <ControlledJsonInput
+                <ControlledStringListInput
                   useControllerProps={{ name: 'unsloth.training.lora.target_modules', control }}
                   formFieldProps={{
-                    slotLabel: 'Target Modules (JSON array)',
+                    slotLabel: 'Target Modules',
                     slotInfo:
                       'Modules to attach adapters to. Left unset, the backend picks them from the model architecture.',
                   }}
-                  placeholder='["q_proj", "v_proj"]'
+                  placeholder="q_proj, v_proj"
                   disabled={disabled}
                 />
                 <ControlledSliderWithTextInput
