@@ -19,9 +19,9 @@ SECOND_SHA = "2" * 40
 
 
 class _FakeResponse:
-    def __init__(self, sha: str):
+    def __init__(self, sha: str, status: int = 200):
         self._sha = sha
-        self.status = 200
+        self.status = status
         self.headers: dict[str, str] = {}
 
     async def json(self) -> dict[str, Any]:
@@ -37,16 +37,19 @@ class _FakeResponse:
 class _FakeSession:
     """Answers every GitHub API read with one commit SHA."""
 
-    def __init__(self, sha: str):
+    def __init__(self, sha: str, status: int = 200):
         self.sha = sha
+        self.status = status
+        self.requests: list[str] = []
 
     def get(self, url: str, **_kwargs):
-        return _FakeResponse(self.sha)
+        self.requests.append(url)
+        return _FakeResponse(self.sha, status=self.status)
 
 
 @contextmanager
-def _github_at(sha: str) -> Iterator[_FakeSession]:
-    session = _FakeSession(sha)
+def _github_at(sha: str, status: int = 200) -> Iterator[_FakeSession]:
+    session = _FakeSession(sha, status=status)
     with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
         yield session
 
@@ -70,13 +73,16 @@ class TestRefreshFileset:
             created = _create_github_fileset(client, name)
         assert created["storage"]["revision"] == FIRST_SHA
 
-        with _github_at(SECOND_SHA):
+        with _github_at(SECOND_SHA) as github:
             response = client.post(f"{FILESETS_URL}/{name}/refresh")
 
         assert response.status_code == 200, response.text
         storage = response.json()["storage"]
         assert storage["revision"] == SECOND_SHA
         assert storage["original_revision"] == "main"
+        # The ref is what gets re-resolved; re-resolving the pinned SHA would report
+        # the same move without ever asking about the branch.
+        assert any(url.endswith("/commits/main") for url in github.requests), github.requests
 
         # The refreshed revision is what a later read serves, not just what the call returned.
         assert client.get(f"{FILESETS_URL}/{name}").json()["storage"]["revision"] == SECOND_SHA
@@ -122,6 +128,28 @@ class TestRefreshFileset:
         response = client.post(f"{FILESETS_URL}/{name}/refresh")
 
         assert response.status_code == 409
+
+    def test_reports_github_being_unavailable(self, client: httpx.Client) -> None:
+        name = f"gh-down-{uuid.uuid4().hex[:8]}"
+        with _github_at(FIRST_SHA):
+            _create_github_fileset(client, name)
+
+        with _github_at(SECOND_SHA, status=503):
+            response = client.post(f"{FILESETS_URL}/{name}/refresh")
+
+        assert response.status_code == 502
+        assert client.get(f"{FILESETS_URL}/{name}").json()["storage"]["revision"] == FIRST_SHA
+
+    def test_reports_a_ref_github_no_longer_has(self, client: httpx.Client) -> None:
+        name = f"gh-gone-{uuid.uuid4().hex[:8]}"
+        with _github_at(FIRST_SHA):
+            _create_github_fileset(client, name)
+
+        with _github_at(SECOND_SHA, status=404):
+            response = client.post(f"{FILESETS_URL}/{name}/refresh")
+
+        assert response.status_code == 400
+        assert client.get(f"{FILESETS_URL}/{name}").json()["storage"]["revision"] == FIRST_SHA
 
     def test_reports_a_fileset_that_does_not_exist(self, client: httpx.Client) -> None:
         response = client.post(f"{FILESETS_URL}/never-created/refresh")

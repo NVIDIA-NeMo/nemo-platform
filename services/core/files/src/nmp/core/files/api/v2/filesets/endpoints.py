@@ -631,12 +631,18 @@ async def refresh_fileset(
                 f"Fileset '{workspace}/{name}' does not track a revision that can be refreshed",
             )
 
-        storage = await storage_impl_factory(storage_impl.config_at_tracked_revision(), secrets).resolve_config()
+        tracked_impl = storage_impl_factory(storage_impl.config_at_tracked_revision(), secrets)
+        # The host allowlist is enforced at create time; re-check it here so a host
+        # removed from it since then stops being reachable through a refresh.
+        await tracked_impl.validate_storage()
+        storage = await tracked_impl.resolve_config()
     except ExternalHostNotAllowedError as exc:
         raise HTTPException(
             HTTP_400_BAD_REQUEST,
             f"Storage host or endpoint not in allowed list: {exc}",
         ) from exc
+    except ExternalHostInvalidError as exc:
+        raise HTTPException(HTTP_400_BAD_REQUEST, f"Invalid URL for external host: {exc}") from exc
     except (SecretNotFoundError, SecretAccessDeniedError) as exc:
         logger.warning(f"Secret unavailable while refreshing {workspace}/{name}: {exc}")
         raise HTTPException(HTTP_400_BAD_REQUEST, f"Secret unavailable: {exc}") from exc
