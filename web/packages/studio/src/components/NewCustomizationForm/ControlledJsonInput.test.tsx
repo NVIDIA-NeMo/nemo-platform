@@ -129,6 +129,28 @@ describe('schema errors', () => {
     expect(await screen.findByText('Invalid JSON')).toBeInTheDocument();
   });
 
+  /**
+   * Unparseable text leaves the last parsed value in the form, so the resolver error is
+   * still live underneath. Typing over a rejected value is the case where both errors
+   * exist at once, and the parse error is the one the user can act on.
+   */
+  it('prefers the parse error while a resolver error is still outstanding', async () => {
+    const user = userEvent.setup();
+    render(<ValidatedHarness />);
+    const textbox = screen.getByRole('textbox');
+
+    await user.type(textbox, '[[1, 2, 3]');
+    await screen.findByText(/expected object|expected record/i);
+
+    // Appending rather than clearing: unparseable text leaves the rejected value in the
+    // form, so the resolver error stays live. Clearing would store `undefined`, which the
+    // optional field accepts, and the resolver error would go away on its own.
+    await user.type(textbox, '{{');
+
+    expect(await screen.findByText('Invalid JSON')).toBeInTheDocument();
+    expect(screen.queryByText(/expected object|expected record/i)).not.toBeInTheDocument();
+  });
+
   it('shows no error for a valid object', async () => {
     const user = userEvent.setup();
     render(<ValidatedHarness />);

@@ -142,6 +142,16 @@ describe('NewCustomizationForm', () => {
 
     expect(fourBit).not.toBeChecked();
     expect(eightBit).not.toBeChecked();
+
+    // Each switch clears the other through its own handler, so the 8-bit side needs the
+    // same check: turning it on takes 4-bit off, and turning it back off leaves it off.
+    await user.click(eightBit);
+    expect(eightBit).toBeChecked();
+    expect(fourBit).not.toBeChecked();
+
+    await user.click(eightBit);
+    expect(eightBit).not.toBeChecked();
+    expect(fourBit).not.toBeChecked();
   });
 
   it('shows the validation banner and does not submit when required fields are missing', async () => {
