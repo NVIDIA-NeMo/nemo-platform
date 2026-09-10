@@ -48,11 +48,12 @@ export const OverviewTab: FC<OverviewTabProps> = ({
   onRunEvaluation,
 }) => {
   const navigate = useNavigate();
-  const [range, setRange] = useState<TraceStatisticsRange>('month');
+  const [range, setRange] = useState<TraceStatisticsRange>('max');
   const {
     summary,
     buckets,
     isPending,
+    isPlaceholderData,
     error: traceMetricsError,
   } = useAgentTraceMetrics({
     workspace,
@@ -63,8 +64,9 @@ export const OverviewTab: FC<OverviewTabProps> = ({
   const experiments = useMemo(() => toRecentExperiments(evals), [evals]);
   const awaitingTelemetry =
     !isPending &&
+    !isPlaceholderData &&
     !traceMetricsError &&
-    range === 'month' &&
+    range === 'max' &&
     (summary === null || summary.totalTraces === 0);
   const {
     insights,

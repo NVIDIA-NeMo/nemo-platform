@@ -27,7 +27,7 @@ import { AxiosError } from 'axios';
 import { ListTree } from 'lucide-react';
 import { type FC } from 'react';
 
-const RANGE_OPTIONS: TraceStatisticsRange[] = ['day', 'week', 'month'];
+const RANGE_OPTIONS: TraceStatisticsRange[] = ['day', 'week', 'month', 'max'];
 
 const isTraceStatisticsRange = (value: unknown): value is TraceStatisticsRange =>
   typeof value === 'string' && (RANGE_OPTIONS as string[]).includes(value);
@@ -139,7 +139,7 @@ export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
         <TraceStatisticsEmptyState
           onRunAgent={onRunAgent}
           onLearnMore={onLearnMore}
-          onExpandRange={range === 'month' ? undefined : () => onRangeChange('month')}
+          onExpandRange={range === 'max' ? undefined : () => onRangeChange('max')}
         />
       ) : (
         <>

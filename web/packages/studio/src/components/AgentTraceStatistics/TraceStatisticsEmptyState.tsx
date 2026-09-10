@@ -44,7 +44,7 @@ export const TraceStatisticsEmptyState: FC<Props> = ({
             ) : null}
             {onExpandRange ? (
               <Button kind="tertiary" onClick={onExpandRange}>
-                Look back a month
+                Look back further
               </Button>
             ) : null}
           </Flex>

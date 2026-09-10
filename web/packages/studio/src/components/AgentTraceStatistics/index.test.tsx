@@ -74,7 +74,7 @@ describe('AgentTraceStatistics', () => {
       />
     );
 
-    expect(screen.getByText('No traces yet')).toBeInTheDocument();
+    expect(screen.getByText('No traces')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /run the agent/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /set up tracing/i })).toBeInTheDocument();
     expect(screen.queryByText('Total traces')).not.toBeInTheDocument();
@@ -93,7 +93,7 @@ describe('AgentTraceStatistics', () => {
       />
     );
 
-    expect(screen.queryByText('No traces yet')).not.toBeInTheDocument();
+    expect(screen.queryByText('No traces')).not.toBeInTheDocument();
   });
 
   it('offers to widen a narrow empty range and reports the change', async () => {
@@ -107,16 +107,16 @@ describe('AgentTraceStatistics', () => {
       />
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /look back a month/i }));
-    expect(onRangeChange).toHaveBeenCalledWith('month');
+    await userEvent.click(screen.getByRole('button', { name: /look back further/i }));
+    expect(onRangeChange).toHaveBeenCalledWith('max');
   });
 
   it('does not offer to widen when already on the longest range', () => {
     renderRoute(
-      <AgentTraceStatistics summary={null} buckets={[]} range="month" onRangeChange={noop} />
+      <AgentTraceStatistics summary={null} buckets={[]} range="max" onRangeChange={noop} />
     );
 
-    expect(screen.queryByRole('button', { name: /look back a month/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /look back further/i })).not.toBeInTheDocument();
   });
 
   it('forwards a network-level failure message rather than a hardcoded one', () => {
@@ -135,7 +135,7 @@ describe('AgentTraceStatistics', () => {
     expect(screen.getByText('Trace statistics are unavailable')).toBeInTheDocument();
     expect(screen.getByText(/\[ERR_NETWORK\] Network Error/)).toBeInTheDocument();
     expect(screen.queryByText('Total traces')).not.toBeInTheDocument();
-    expect(screen.queryByText('No traces yet')).not.toBeInTheDocument();
+    expect(screen.queryByText('No traces')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /view traces/i })).not.toBeInTheDocument();
   });
 

@@ -16,6 +16,7 @@ const RANGE_MS: Record<TraceStatisticsRange, number> = {
   day: 24 * 60 * 60 * 1000,
   week: 7 * 24 * 60 * 60 * 1000,
   month: 30 * 24 * 60 * 60 * 1000,
+  max: 90 * 24 * 60 * 60 * 1000,
 };
 
 /** Buckets align to the viewer's day, not UTC, so "yesterday" on the chart is their yesterday. */
@@ -66,6 +67,8 @@ interface UseAgentTraceMetricsResult {
   summary: TraceStatisticsSummary | null;
   buckets: TraceStatisticsBucket[];
   isPending: boolean;
+  /** `summary` is still the previous range's data, kept on screen while the new range loads. */
+  isPlaceholderData: boolean;
   error: unknown;
 }
 
@@ -95,6 +98,7 @@ export const useAgentTraceMetrics = ({
   const {
     data: totals,
     isPending: isTotalsPending,
+    isPlaceholderData: isTotalsPlaceholder,
     error: totalsError,
   } = useGetTraceMetrics(workspace, { bucket: 'total', timezone, filter }, queryOptions);
 
@@ -123,6 +127,7 @@ export const useAgentTraceMetrics = ({
     summary,
     buckets,
     isPending: isEnabled ? isTotalsPending || isSeriesPending : enabled,
+    isPlaceholderData: isEnabled && isTotalsPlaceholder,
     error: isEnabled ? (totalsError ?? seriesError) : null,
   };
 };
