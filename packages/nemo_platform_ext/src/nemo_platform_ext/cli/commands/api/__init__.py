@@ -15,20 +15,4 @@ API_TOP_LEVEL_ENTRIES = (
         kind="group",
         hidden=False,
     ),
-    TopLevelEntry(
-        import_path=f"{__package__}.iam:app",
-        name="iam",
-        help="IAM operations.",
-        panel="Core plugins",
-        kind="group",
-        hidden=True,
-    ),
-    TopLevelEntry(
-        import_path=f"{__package__}.projects:app",
-        name="projects",
-        help="Manage projects.",
-        panel="Core plugins",
-        kind="group",
-        hidden=True,
-    ),
 )

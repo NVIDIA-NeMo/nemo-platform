@@ -211,7 +211,14 @@ nemo agent commands""",
         panel="Core plugins",
         kind="group",
     ),
-    # core-area: projects
+    TopLevelEntry(
+        import_path="nemo_platform_ext.cli.commands.projects:app",
+        help="Manage projects.",
+        name="projects",
+        panel="Core plugins",
+        kind="group",
+        hidden=True,
+    ),
     TopLevelEntry(
         import_path="nemo_platform_ext.cli.commands.adapters:app",
         help="Manage adapters.",
@@ -220,7 +227,14 @@ nemo agent commands""",
         kind="group",
         hidden=True,
     ),
-    # core-area: iam
+    TopLevelEntry(
+        import_path="nemo_platform_ext.cli.commands.iam:app",
+        help="IAM operations.",
+        name="iam",
+        panel="Core plugins",
+        kind="group",
+        hidden=True,
+    ),
     TopLevelEntry(
         import_path="nemo_platform_ext.cli.commands.plugins:app",
         help="""\
