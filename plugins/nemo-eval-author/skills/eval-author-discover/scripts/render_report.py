@@ -20,8 +20,11 @@ def _required_failures(report: dict[str, Any]) -> list[dict[str, Any]]:
 def _action(check: dict[str, Any]) -> str:
     name = check.get("name")
     message = str(check.get("message", "")).lower()
-    if name == "backend" and "docker" in message and "daemon is not running" in message:
-        return "Start Docker, then rerun the readiness check."
+    if name == "backend" and "docker" in message:
+        return (
+            "Check Docker access with `docker info`. If this session is sandboxed, retry with permission to access "
+            "Docker, then rerun discovery in that same environment. Start Docker only if it is confirmed stopped."
+        )
     return {
         "backend": "Check the evaluation environment's setup, then rerun the readiness check.",
         "config": "Confirm where the Harbor configuration lives; discovery searches up to four directories deep.",
@@ -77,6 +80,12 @@ def render_summary(report: dict[str, Any]) -> str:
         headline = f"This repo has Harbor evals: {len(ready)} of {len(configs)} configurations are ready to run."
         headline += "\n\nYou can choose a ready configuration: " + ", ".join(f"`{c['path']}`" for c in ready) + "."
         headline += "\n\nFor the blocked configurations:"
+    elif any(
+        c.get("name") == "backend" and "docker" in str(c.get("message", "")).lower() for c in _required_failures(report)
+    ):
+        headline = (
+            "This repo has Harbor evals, but I could not verify readiness because the Docker preflight check failed."
+        )
     else:
         headline = f"This repo has Harbor evals, but none of the {len(configs)} configurations is ready to run yet."
     # Group common actions so one unavailable service does not produce a wall of failures.

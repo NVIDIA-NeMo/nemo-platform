@@ -984,13 +984,25 @@ def test_discover_report_renderer_errors(monkeypatch: pytest.MonkeyPatch, error:
 
 
 @pytest.mark.parametrize("ready_count", [0, 1])
-def test_discover_report_renderer_shared_docker_blocker(monkeypatch: pytest.MonkeyPatch, ready_count: int) -> None:
+@pytest.mark.parametrize(
+    "docker_error",
+    [
+        "SystemExit: Docker daemon is not running. Please start Docker and try again.",
+        "PermissionError: permission denied accessing Docker socket",
+        "Cannot connect to the Docker daemon",
+    ],
+)
+def test_discover_report_renderer_shared_docker_blocker(
+    monkeypatch: pytest.MonkeyPatch,
+    ready_count: int,
+    docker_error: str,
+) -> None:
     renderer = _import_discover_render_report(monkeypatch)
     failure = _check_fixture(
         "backend",
         status="fail",
         severity="required",
-        message="Environment backend docker is not ready: SystemExit: Docker daemon is not running. Please start Docker and try again.",
+        message=f"Environment backend docker is not ready: {docker_error}",
     )
     configs = [
         _config_fixture(path=f"config-{i}.yaml", runnable=i < ready_count, checks=[] if i < ready_count else [failure])
@@ -1000,20 +1012,31 @@ def test_discover_report_renderer_shared_docker_blocker(monkeypatch: pytest.Monk
         proven=True, runnable=False, configs=configs, run_command=None, checks=[failure] * (5 - ready_count)
     )
     summary = renderer.render_summary(report)
-    assert summary.count("Start Docker") == 1
+    assert summary.count("Check Docker access") == 1
+    assert "Start Docker only if it is confirmed stopped" in summary
+    assert "Docker is stopped" not in summary
+    assert "same environment" in summary
     assert "backend" not in summary
     assert "SystemExit" not in summary
     if ready_count:
         assert "1 of 5 configurations are ready" in summary
         assert "`config-0.yaml`" in summary
     else:
-        assert "none of the 5 configurations is ready" in summary
+        assert "could not verify readiness" in summary
     markdown = renderer.render_report(report)
     before_evidence = markdown.split("## Evidence JSON")[0]
     assert before_evidence.count(failure["message"]) == 1
     for config in configs[ready_count:]:
         assert config["path"] in before_evidence.split("## Diagnostic Details")[1]
     assert summary in markdown
+
+
+def test_discover_docker_access_retry_guidance() -> None:
+    _, body = _frontmatter_and_body(_DISCOVER_DIR)
+    assert "retry `docker info`" in body
+    assert "rerun the full discovery command" in body
+    assert "Do not bypass a denied request" in body
+    assert "`docker info` alone does not prove eval readiness" in body
 
 
 def test_discover_report_renderer_cli_summary_and_evidence(tmp_path: Path) -> None:

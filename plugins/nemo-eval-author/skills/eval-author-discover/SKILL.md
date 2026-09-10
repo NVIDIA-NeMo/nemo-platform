@@ -128,7 +128,7 @@ rung's failure often disappears once you fix a higher one.
 | `coverage` | Harbor silently dropped task directories that exist on disk. Harbor skips unparseable tasks without raising, so treat this as a real defect, not noise |
 | `credentials` | Reports the host variables the suite needs. Confirm each one is set before running; a missing key surfaces as a failed trial, not a clear error |
 | `agent` | The named built-in agent does not exist, or the `import_path` does not import. Check the message for which |
-| `backend` | The environment backend failed preflight. For `docker`, confirm the daemon is running with `docker info` |
+| `backend` | The environment backend failed preflight. For Docker, verify access as described in Step 4; the error alone does not establish that Docker is stopped |
 | `round-trip` | The Harbor CLI rejected the config file's bytes. This is the weakest rung: it round-trips the schema only, so it can pass while `resolution` fails |
 | `harbor-cli` | Advisory. No `harbor` executable exists on `PATH`, so the `round-trip` rung cannot run |
 | `compatibility` | The installed Harbor does not expose the resolved task list, so `tasks`, `coverage`, and `credentials` cannot run. Install a Harbor version that exposes it |
@@ -136,6 +136,20 @@ rung's failure often disappears once you fix a higher one.
 | `tasks-on-disk` | Advisory, and always unproven. A count of directories holding a `task.toml` |
 
 ## Step 4: verify before you report
+
+When Docker preflight fails, do not translate Harbor's "daemon is not running"
+message into a claim that Docker is stopped. The same error can result from a
+sandbox denying access to the Docker socket or a different Docker context.
+
+1. Run `docker info` in the environment used for discovery.
+2. If sandbox access may be the cause, retry `docker info` with the tool's normal
+   permission mechanism for host Docker access. Do not bypass a denied request.
+3. If that succeeds, rerun the full discovery command with the same repository,
+   Python interpreter, Docker context, and approved access. Replace the saved JSON
+   and Markdown with the new results; `docker info` alone does not prove eval readiness.
+4. If access is denied or Docker remains unreachable, report that readiness could
+   not be verified from this session. Preserve the diagnostics. Suggest starting
+   Docker only after confirming it is stopped; do not start services yourself.
 
 Discovery changes none of the user's source, so verification means confirming the
 report describes the repository they meant:
@@ -166,11 +180,11 @@ If multiple configs are ready, ask which one the user wants; do not choose by fi
 An empty Harbor scan does not establish that the repo has no other kinds of evals.
 An `error` result means discovery did not complete, not that Harbor is missing.
 
-For example, when all five configurations fail because Docker is stopped:
+For example, when Docker preflight fails and host access has not been verified:
 
-> This repo has Harbor evals, but none of the five configurations is ready to run yet.
+> This repo has Harbor evals, but I could not verify readiness because the Docker preflight check failed.
 >
-> Start Docker, then rerun the readiness check.
+> Check Docker access from this session, then rerun discovery with the necessary permission.
 >
 > Details are saved in `.eval-author/discovery.md`.
 
