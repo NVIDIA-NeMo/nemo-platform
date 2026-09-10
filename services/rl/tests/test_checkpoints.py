@@ -6,12 +6,14 @@
 import json
 from pathlib import Path
 
+import pytest
 from nmp.rl.tasks.training.backends.nemo_rl.checkpoints import (
     copy_hf_full_weights,
     copy_lora_adapter,
     find_dcp_weights_root,
     find_hf_full_weight_root,
     find_lora_adapter_root,
+    is_peft_publication,
 )
 
 
@@ -207,30 +209,76 @@ def test_copy_full_weights_prefers_consolidated_export(tmp_path: Path):
     assert (output / "tokenizer_config.json").is_file()
 
 
-def test_copy_leaves_multi_rank_shards_in_place(tmp_path: Path):
+def test_copy_rejects_multi_rank_shards(tmp_path: Path):
     checkpoint = tmp_path / "step_20"
     model_dir = checkpoint / "policy" / "weights" / "model"
     _write_hf_shard(model_dir, "shard-00001-model-00001-of-00001.safetensors")
     _write_hf_shard(model_dir, "shard-00002-model-00001-of-00001.safetensors")
 
-    output = tmp_path / "output"
-    copy_hf_full_weights(checkpoint, model_dir, output)
-
-    assert (output / "shard-00001-model-00001-of-00001.safetensors").is_file()
-    assert (output / "shard-00002-model-00001-of-00001.safetensors").is_file()
-    assert not (output / "model.safetensors").exists()
+    with pytest.raises(ValueError, match="save_consolidated"):
+        copy_hf_full_weights(checkpoint, model_dir, tmp_path / "output")
 
 
-def test_copy_leaves_multi_file_shards_in_place(tmp_path: Path):
+def test_copy_rejects_multi_file_shards(tmp_path: Path):
     checkpoint = tmp_path / "step_20"
     model_dir = checkpoint / "policy" / "weights" / "model"
     _write_hf_shard(model_dir, "shard-00001-model-00001-of-00002.safetensors")
     _write_hf_shard(model_dir, "shard-00001-model-00002-of-00002.safetensors")
+
+    with pytest.raises(ValueError, match="save_consolidated"):
+        copy_hf_full_weights(checkpoint, model_dir, tmp_path / "output")
+
+
+def test_copy_keeps_shard_names_when_an_index_maps_them(tmp_path: Path):
+    """An index resolves tensors to files, so the tree loads and the names must not move."""
+    checkpoint = tmp_path / "step_20"
+    model_dir = checkpoint / "policy" / "weights" / "model"
+    _write_hf_shard(model_dir, "shard-00001-model-00001-of-00002.safetensors")
+    _write_hf_shard(model_dir, "shard-00001-model-00002-of-00002.safetensors")
+    (model_dir / "model.safetensors.index.json").write_text(
+        json.dumps(
+            {
+                "metadata": {"total_size": 14},
+                "weight_map": {
+                    "a.weight": "shard-00001-model-00001-of-00002.safetensors",
+                    "b.weight": "shard-00001-model-00002-of-00002.safetensors",
+                },
+            }
+        )
+    )
 
     output = tmp_path / "output"
     copy_hf_full_weights(checkpoint, model_dir, output)
 
     assert (output / "shard-00001-model-00001-of-00002.safetensors").is_file()
     assert (output / "shard-00001-model-00002-of-00002.safetensors").is_file()
-    assert not (output / "model-00001-of-00002.safetensors").exists()
-    assert not (output / "model.safetensors.index.json").exists()
+    assert (output / "model.safetensors.index.json").is_file()
+
+
+def test_copy_keeps_a_single_shard_named_by_an_index(tmp_path: Path):
+    """Even the promotable layout must stay put when an index already names the file."""
+    checkpoint = tmp_path / "step_20"
+    model_dir = checkpoint / "policy" / "weights" / "model"
+    _write_hf_shard(model_dir, "shard-00001-model-00001-of-00001.safetensors")
+    (model_dir / "model.safetensors.index.json").write_text(
+        json.dumps(
+            {
+                "metadata": {"total_size": 7},
+                "weight_map": {"a.weight": "shard-00001-model-00001-of-00001.safetensors"},
+            }
+        )
+    )
+
+    output = tmp_path / "output"
+    copy_hf_full_weights(checkpoint, model_dir, output)
+
+    assert (output / "shard-00001-model-00001-of-00001.safetensors").is_file()
+    assert not (output / "model.safetensors").exists()
+
+
+def test_peft_publication_requires_an_adapter_on_disk():
+    adapter = Path("/tmp/adapter")
+    assert is_peft_publication(requested_lora=True, adapter_root=adapter) is True
+    assert is_peft_publication(requested_lora=True, adapter_root=None) is False
+    assert is_peft_publication(requested_lora=False, adapter_root=adapter) is False
+    assert is_peft_publication(requested_lora=False, adapter_root=None) is False

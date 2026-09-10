@@ -132,19 +132,16 @@ That writes the package plus `training.jsonl` / `validation.jsonl` and, with `--
 
 Lives under `training`, a **sibling of `parallelism`** and not a field on it. The value picks the NeMo-RL policy worker, which picks the Ray actor's venv and kernels.
 
-**Each `finetuning_type` currently has exactly one supported backend.** LoRA supports the `automodel` backend and `all_weights` supports `dtensor`; leave `policy_backend` unset to select the right one for each.
+**Leave `policy_backend` unset to get the default for each `finetuning_type`.** LoRA requires `automodel`. Full-weight defaults to `dtensor` and may be set to `automodel` when you want a consolidated HuggingFace export.
 
-| `finetuning_type` | Backend | Worker | Notes |
+| `finetuning_type` | Default backend | Worker | Notes |
 |---|---|---|---|
-| `"lora"` | `"automodel"` | `DTensorPolicyWorkerV2` (`_v2: true`) | Also the only backend with `expert_parallel_size > 1` and `automodel_kwargs`. Needs Transformer Engine, so **Hopper or newer** |
-| `"all_weights"` | `"dtensor"` | `DTensorPolicyWorker` | Stock HuggingFace + PyTorch FSDP2, no Transformer Engine — also the **pre-Hopper** option. No LoRA, expert parallelism or `automodel_kwargs` |
+| `"lora"` | `"automodel"` | `DTensorPolicyWorkerV2` (`_v2: true`) | Required pairing. Also the only backend with `expert_parallel_size > 1` and `automodel_kwargs`. Needs Transformer Engine, so **Hopper or newer** |
+| `"all_weights"` | `"dtensor"` | `DTensorPolicyWorker` | Stock HuggingFace + PyTorch FSDP2, no Transformer Engine — also the **pre-Hopper** option. Set `policy_backend: "automodel"` to train full weights on V2 instead. `dtensor` still rejects LoRA, expert parallelism, and `automodel_kwargs` |
 
-Both directions are **rejected at submit**, for different reasons:
+`dtensor` plus LoRA / expert parallelism / `automodel_kwargs` is **rejected at submit**: the worker does not implement them; left to NeMo-RL, LoRA dies in a Ray worker and the other two are ignored silently. Every conflict is listed at once.
 
-- **`dtensor` + LoRA / expert parallelism / `automodel_kwargs`** — the worker does not implement them; left to NeMo-RL, LoRA dies in a Ray worker and the other two are ignored silently. Every conflict is listed at once.
-- **`automodel` + `all_weights`** — trains correctly, then saves a checkpoint the publisher cannot read, so the job would fail after the GPUs have done the work.
-
-Keep the default unless the cluster's GPUs are pre-Hopper. `megatron` is not selectable: the image builds the extra, but the compiler still emits an inert `megatron_cfg`.
+Keep the default unless the cluster's GPUs are pre-Hopper or you need Automodel's consolidated export. `megatron` is not selectable: the image builds the extra, but the compiler still emits an inert `megatron_cfg`.
 
 ### GRPO advanced (`type: "grpo"`)
 
@@ -208,7 +205,7 @@ The last two default to `true` on this platform, where the underlying library de
 - Omitting `lora` while asking for `finetuning_type: "lora"` is fine: defaults are filled in.
 - `lora_merged` is rejected at the schema level, so a merged checkpoint is not reachable from a GRPO job. To serve merged weights, train full-weight instead.
 
-**The backend follows `training.policy_backend`, and `_v2: true` follows that field and nothing else.** Left unset it resolves from `finetuning_type`: `lora` gets `automodel`, `all_weights` gets `dtensor`. Naming the other one is **rejected at submit**. Note the consequence for comparisons: a LoRA run and a full-weight run use **different workers**, so their results are not directly comparable.
+**The backend follows `training.policy_backend`, and `_v2: true` follows that field and nothing else.** Left unset it resolves from `finetuning_type`: `lora` gets `automodel`, `all_weights` gets `dtensor`. `dtensor` plus LoRA is **rejected at submit**. `automodel` plus `all_weights` is allowed. Note the consequence for comparisons: a LoRA run and a default full-weight run use **different workers**, so their results are not directly comparable.
 
 ### Using a GRPO adapter
 

@@ -60,6 +60,14 @@ _HF_SKIP_NAMES = {
 # shard-<rank>-model-<i>-of-<n>.safetensors
 _AUTOMODEL_SHARD_RE = re.compile(r"^shard-\d+-(model-\d+-of-(\d+)\.safetensors)$")
 
+# What lets from_pretrained resolve a tensor to one of several weight files.
+_HF_WEIGHT_INDEX = "model.safetensors.index.json"
+
+
+def is_peft_publication(*, requested_lora: bool, adapter_root: Path | None) -> bool:
+    """True when the published tree is a LoRA adapter rather than full weights."""
+    return requested_lora and adapter_root is not None
+
 
 def find_lora_adapter_root(checkpoint_path: Path) -> Path | None:
     """Return the directory holding ``adapter_config.json``, or None if there is none."""
@@ -149,7 +157,9 @@ def _flatten_hf_metadata(model_dir: Path, output_path: Path) -> None:
 def _promote_automodel_shards(output_path: Path) -> None:
     """Rename a single-rank, single-file Automodel shard to ``model.safetensors``.
 
-    Multi-rank or multi-file shards need consolidation and are left unchanged.
+    ``shard-<rank>-model-*-of-*`` files are DCP rank slices. Spanning several files is
+    only loadable with an index, which Automodel writes under ``consolidated/`` rather
+    than beside the shards, so fail when neither is present.
     """
     groups: dict[str, list[Path]] = {}
     totals: set[int] = set()
@@ -161,17 +171,20 @@ def _promote_automodel_shards(output_path: Path) -> None:
     if not groups:
         return
 
+    if (output_path / _HF_WEIGHT_INDEX).is_file():
+        # The index names the files it maps, so renaming would invalidate it.
+        logger.info(f"Publishing Automodel shards under {output_path} as indexed by {_HF_WEIGHT_INDEX}")
+        return
+
     one_rank_per_file = all(len(files) == 1 for files in groups.values())
     one_logical_file = len(groups) == 1 and totals == {1}
     if not (one_rank_per_file and one_logical_file):
-        logger.warning(
-            "Publishing Automodel shard names as-is under %s (%d files, %d logical HF files); "
-            "from_pretrained needs a consolidated export.",
-            output_path,
-            sum(len(files) for files in groups.values()),
-            len(groups),
+        n_files = sum(len(files) for files in groups.values())
+        raise ValueError(
+            f"Cannot publish Automodel rank shards under {output_path}: {n_files} shard files "
+            f"across {len(groups)} logical HF file(s), and no {_HF_WEIGHT_INDEX} to resolve "
+            "tensors against them. Training must write model/consolidated via save_consolidated."
         )
-        return
 
     (shard,) = next(iter(groups.values()))
     target = output_path / "model.safetensors"
@@ -206,6 +219,7 @@ def copy_hf_full_weights(checkpoint_path: Path, weights_root: Path, output_path:
     """Copy a HuggingFace full-weight tree to ``output_path``.
 
     Flattens ``.hf_metadata`` onto the output root and does not copy optimizer state.
+    Raises ``ValueError`` if the tree is Automodel rank shards without a consolidated export.
     """
     output_path.mkdir(parents=True, exist_ok=True)
     for item in weights_root.iterdir():

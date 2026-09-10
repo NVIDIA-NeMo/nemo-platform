@@ -2521,8 +2521,9 @@ components:
           description: NeMo-RL policy worker that trains the model. `lora` requires
             `automodel` (NeMo Automodel + Transformer Engine, Hopper or newer; the
             only backend with expert parallelism and automodel_kwargs). `all_weights`
-            requires `dtensor` (stock HuggingFace on PyTorch FSDP2, also the pre-Hopper
-            option). Omit it to get the supported one.
+            defaults to `dtensor` (stock HuggingFace on PyTorch FSDP2, also the pre-Hopper
+            option) and may be set to `automodel` for a consolidated HuggingFace export.
+            Omit it to get the default for the finetuning type.
         v4_compatible:
           type: boolean
           title: V4 Compatible

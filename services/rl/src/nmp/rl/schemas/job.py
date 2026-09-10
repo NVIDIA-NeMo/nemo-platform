@@ -264,8 +264,9 @@ class GRPOTraining(_TrainingBase):
         default=None,
         description="NeMo-RL policy worker that trains the model. `lora` requires `automodel` "
         "(NeMo Automodel + Transformer Engine, Hopper or newer; the only backend with expert "
-        "parallelism and automodel_kwargs). `all_weights` requires `dtensor` (stock HuggingFace "
-        "on PyTorch FSDP2, also the pre-Hopper option). Omit it to get the supported one.",
+        "parallelism and automodel_kwargs). `all_weights` defaults to `dtensor` (stock HuggingFace "
+        "on PyTorch FSDP2, also the pre-Hopper option) and may be set to `automodel` for a "
+        "consolidated HuggingFace export. Omit it to get the default for the finetuning type.",
     )
     v4_compatible: bool = Field(
         default=True,
@@ -527,12 +528,10 @@ class GRPOTraining(_TrainingBase):
     def _policy_backend_supports_requested_features(self) -> Self:
         """Reject pairings the backend does not support, before the job reaches a GPU.
 
-        ``dtensor`` asserts ``lora_cfg.enabled is False`` and ignores the other two;
-        ``automodel`` trains full weights but saves a checkpoint the publisher cannot read.
+        ``dtensor`` asserts ``lora_cfg.enabled is False`` and ignores expert parallelism
+        and ``automodel_kwargs``. ``automodel`` trains LoRA and full weights.
         """
         if self.policy_backend is not PolicyBackend.DTENSOR:
-            if self.finetuning_type != "lora":
-                raise ValueError(f"finetuning_type='{self.finetuning_type}' requires policy_backend='dtensor'.")
             return self
         conflicts = []
         if self.finetuning_type == "lora":

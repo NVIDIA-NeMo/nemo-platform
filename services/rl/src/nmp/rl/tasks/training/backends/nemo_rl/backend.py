@@ -39,6 +39,7 @@ from nmp.rl.tasks.training.backends.nemo_rl.checkpoints import (
     find_dcp_weights_root,
     find_hf_full_weight_root,
     find_lora_adapter_root,
+    is_peft_publication,
 )
 from nmp.rl.tasks.training.chat_templates import apply_chat_template_to_checkpoint
 from nmp.rl.tasks.training.errors.parser import parse_error_from_output
@@ -281,18 +282,24 @@ class NemoRLBackend(TrainingBackend):
         DCP is converted when ``.metadata`` is present.
         """
         logger.info("Processing created checkpoint")
-        is_lora = customizer_config.training.finetuning_type == FinetuningType.LORA
+        requested_lora = customizer_config.training.finetuning_type == FinetuningType.LORA
+        adapter_root = find_lora_adapter_root(checkpoint_path) if requested_lora else None
 
-        if is_lora:
-            adapter_root = find_lora_adapter_root(checkpoint_path)
-            if adapter_root is not None:
-                logger.info("Copying LoRA adapter from %s to %s", adapter_root, output_path)
-                copy_lora_adapter(checkpoint_path, adapter_root, output_path)
-                return CheckpointInfo(
-                    path=str(output_path),
-                    format=CheckpointFormat.HF_PEFT,
-                    precision=customizer_config.model.precision,
+        if is_peft_publication(requested_lora=requested_lora, adapter_root=adapter_root):
+            if adapter_root is None:
+                searched = ", ".join(str(path) for path in LORA_ADAPTER_SEARCH_PATHS)
+                raise FileNotFoundError(
+                    "LoRA adapter publication was selected but adapter_config.json was not found "
+                    f"under {checkpoint_path} (searched {searched})."
                 )
+            logger.info("Copying LoRA adapter from %s to %s", adapter_root, output_path)
+            copy_lora_adapter(checkpoint_path, adapter_root, output_path)
+            return CheckpointInfo(
+                path=str(output_path),
+                format=CheckpointFormat.HF_PEFT,
+                precision=customizer_config.model.precision,
+            )
+        if requested_lora:
             logger.warning(
                 "No adapter_config.json under %s (searched %s); falling back to full-weight publication",
                 checkpoint_path,
@@ -316,12 +323,12 @@ class NemoRLBackend(TrainingBackend):
         if library_config and library_config.config_dict:
             chat_template = library_config.config_dict.get("policy", {}).get("tokenizer", {}).get("chat_template")
 
-        if chat_template and not is_lora:
+        if chat_template:
             apply_chat_template_to_checkpoint(hf_checkpoint_path, chat_template)
             logger.debug("Applied chat template to checkpoint")
 
         return CheckpointInfo(
             path=str(hf_checkpoint_path),
-            format=CheckpointFormat.HF_PEFT if is_lora else CheckpointFormat.HF,
+            format=CheckpointFormat.HF,
             precision=customizer_config.model.precision,
         )

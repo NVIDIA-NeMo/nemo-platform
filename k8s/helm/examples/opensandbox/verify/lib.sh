@@ -10,6 +10,7 @@ set -euo pipefail
 
 VALUES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SYSTEM_NS="${SYSTEM_NS:-opensandbox-system}"
+KUBE_CONTEXT="${KUBE_CONTEXT:-}"
 LOCAL_PORT="${LOCAL_PORT:-0}"  # 0 = pick a free port
 READY_TIMEOUT_S="${READY_TIMEOUT_S:-300}"
 SANDBOX_IMAGE="${SANDBOX_IMAGE:-docker.io/library/busybox:1.36}"
@@ -38,6 +39,14 @@ json_field() {
   local json="$1"
   local expr="$2"
   python3 -c "import json,sys; o=json.load(sys.stdin); print(${expr})" <<<"${json}"
+}
+
+kubectl() {
+  if [[ -n "${KUBE_CONTEXT}" ]]; then
+    command kubectl --context "${KUBE_CONTEXT}" "$@"
+  else
+    command kubectl "$@"
+  fi
 }
 
 cleanup() {
@@ -144,21 +153,46 @@ start_port_forward() {
   die "port-forward/health failed; see /tmp/osb-pf-${SERVER_SVC}.log"
 }
 
-batchsandbox_names() {
-  kubectl get batchsandboxes -n "${WORKLOAD_NS}" --no-headers \
-    -o custom-columns=NAME:.metadata.name 2>/dev/null | awk 'NF' | sort || true
+# Names of BatchSandboxes whose object JSON contains the request marker.
+batchsandbox_names_for_request() {
+  local marker="$1"
+  python3 - "${WORKLOAD_NS}" "${marker}" "${KUBE_CONTEXT}" <<'PY'
+import json, os, subprocess, sys
+
+ns, marker, context = sys.argv[1], sys.argv[2], sys.argv[3]
+cmd = ["kubectl"]
+if context:
+    cmd += ["--context", context]
+cmd += ["get", "batchsandboxes", "-n", ns, "-o", "json"]
+p = subprocess.run(cmd, capture_output=True, text=True)
+if p.returncode != 0:
+    sys.exit(0)
+try:
+    items = json.loads(p.stdout or "{}").get("items") or []
+except json.JSONDecodeError:
+    sys.exit(0)
+for item in items:
+    if marker in json.dumps(item, default=str):
+        name = (item.get("metadata") or {}).get("name")
+        if name:
+            print(name)
+PY
 }
 
 # Prints unschedulable details and returns 0 if this sandbox cannot be scheduled.
 unschedulable_report() {
   local sid="$1"
-  python3 - "${sid}" "${WORKLOAD_NS}" <<'PY'
+  python3 - "${sid}" "${WORKLOAD_NS}" "${KUBE_CONTEXT}" <<'PY'
 import json, subprocess, sys
 
-sid, ns = sys.argv[1], sys.argv[2]
+sid, ns, context = sys.argv[1], sys.argv[2], sys.argv[3]
 
 def kubectl_json(*args):
-    p = subprocess.run(["kubectl", *args], capture_output=True, text=True)
+    cmd = ["kubectl"]
+    if context:
+        cmd += ["--context", context]
+    cmd += list(args)
+    p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0:
         return {}
     try:
@@ -206,7 +240,8 @@ fail_if_unschedulable() {
 
 create_sandbox() {
   info "creating sandbox image=${SANDBOX_IMAGE} (timeout ${READY_TIMEOUT_S}s)"
-  local body before curl_out curl_err curl_ec=""
+  local body curl_out curl_err curl_ec="" request_id
+  request_id="$(python3 -c 'import uuid; print(uuid.uuid4())')"
   body="$(python3 - <<PY
 import json
 print(json.dumps({
@@ -217,11 +252,11 @@ print(json.dumps({
   "metadata": {
     "purpose": "runtime-verify",
     "profile": "${PROFILE}",
+    "nmp-verify-request": "${request_id}",
   },
 }))
 PY
 )"
-  before="$(batchsandbox_names)"
   curl_out="$(mktemp)"
   curl_err="$(mktemp)"
   curl -sS --fail --max-time "${READY_TIMEOUT_S}" -X POST "${BASE_URL}/v1/sandboxes" \
@@ -235,7 +270,7 @@ PY
   while (( SECONDS < deadline )); do
     if [[ -z "${SANDBOX_ID}" ]]; then
       local name
-      name="$(comm -13 <(printf '%s\n' "${before}") <(batchsandbox_names) | awk 'NF' | head -1)"
+      name="$(batchsandbox_names_for_request "${request_id}" | awk 'NF' | head -1)"
       if [[ -n "${name}" ]]; then
         SANDBOX_ID="${name}"
       fi
@@ -250,6 +285,10 @@ PY
     fi
     sleep 20
   done
+  if [[ -n "${CURL_PID}" ]] && ! kill -0 "${CURL_PID}" 2>/dev/null; then
+    wait "${CURL_PID}" && curl_ec=0 || curl_ec=$?
+    CURL_PID=""
+  fi
   if [[ -n "${CURL_PID}" ]]; then
     kill "${CURL_PID}" 2>/dev/null || true
     wait "${CURL_PID}" 2>/dev/null || true

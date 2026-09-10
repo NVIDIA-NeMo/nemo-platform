@@ -26,7 +26,7 @@
 #   OPENSANDBOX_CONTROLLER_VERSION  GitHub Release chart version (default: 0.2.0)
 #   OPENSANDBOX_UMBRELLA_VERSION    Umbrella tarball that contains the server chart (default: 0.2.2)
 #   KUBE_NAMESPACE               Job / Helm-release namespace (default: default). Alias: NMP_NAMESPACE
-#   MINIKUBE_PROFILE             (default: minikube)
+#   MINIKUBE_PROFILE             kubectl/helm --context (default: minikube). Does not change the current kubeconfig context.
 #   SKIP_VERIFY=1                Skip k8s/helm/examples/opensandbox/verify/shared-kernel.sh
 #   HELM_TIMEOUT                 Helm --wait timeout (default: 10m)
 set -euo pipefail
@@ -37,10 +37,11 @@ source "${SCRIPT_DIR}/lib.sh"
 
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 EXAMPLES="${REPO_ROOT}/k8s/helm/examples/opensandbox"
-SYSTEM_NS="${SYSTEM_NS:-opensandbox-system}"
+CONTROL_PLANE_NS="opensandbox-system"
 KUBE_NAMESPACE="${KUBE_NAMESPACE:-${NMP_NAMESPACE:-default}}"
 NMP_NAMESPACE="${KUBE_NAMESPACE}"
 MINIKUBE_PROFILE="${MINIKUBE_PROFILE:-minikube}"
+export KUBE_CONTEXT="${KUBE_CONTEXT:-${MINIKUBE_PROFILE}}"
 HELM_TIMEOUT="${HELM_TIMEOUT:-10m}"
 API_SECRET="opensandbox-server-api-key"
 OPENSANDBOX_CONTROLLER_VERSION="${OPENSANDBOX_CONTROLLER_VERSION:-0.2.0}"
@@ -56,6 +57,14 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+
+kubectl() {
+    command kubectl --context "${KUBE_CONTEXT}" "$@"
+}
+
+helm() {
+    command helm --kube-context "${KUBE_CONTEXT}" "$@"
+}
 
 for tool in kubectl helm openssl python3 curl tar; do
     if ! command -v "${tool}" >/dev/null 2>&1; then
@@ -124,9 +133,9 @@ resolve_charts() {
 
 resolve_charts
 
-log_info "Installing shared-kernel OpenSandbox (control plane: ${SYSTEM_NS}, jobs: ${KUBE_NAMESPACE})"
+log_info "Installing shared-kernel OpenSandbox (control plane: ${CONTROL_PLANE_NS}, jobs: ${KUBE_NAMESPACE}, context: ${KUBE_CONTEXT})"
 
-kubectl create namespace "${SYSTEM_NS}" --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace "${CONTROL_PLANE_NS}" --dry-run=client -o yaml | kubectl apply -f -
 kubectl create namespace "${KUBE_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
 log_info "Applying BatchSandbox template ConfigMap..."
@@ -139,17 +148,17 @@ if ! kubectl get secret nvcrimagepullsecret -n "${KUBE_NAMESPACE}" >/dev/null 2>
     exit 1
 fi
 
-if kubectl get secret "${API_SECRET}" -n "${SYSTEM_NS}" >/dev/null 2>&1; then
-    log_info "Reusing existing ${API_SECRET} in ${SYSTEM_NS}"
+if kubectl get secret "${API_SECRET}" -n "${CONTROL_PLANE_NS}" >/dev/null 2>&1; then
+    log_info "Reusing existing ${API_SECRET} in ${CONTROL_PLANE_NS}"
 else
-    log_info "Creating ${API_SECRET} in ${SYSTEM_NS}"
+    log_info "Creating ${API_SECRET} in ${CONTROL_PLANE_NS}"
     kubectl create secret generic "${API_SECRET}" \
-      -n "${SYSTEM_NS}" \
+      -n "${CONTROL_PLANE_NS}" \
       --from-literal=api-key="$(openssl rand -hex 32)"
 fi
 
 log_info "Copying ${API_SECRET} into job namespace ${KUBE_NAMESPACE}..."
-kubectl get secret "${API_SECRET}" -n "${SYSTEM_NS}" -o json | python3 -c '
+kubectl get secret "${API_SECRET}" -n "${CONTROL_PLANE_NS}" -o json | python3 -c '
 import json, sys
 secret = json.load(sys.stdin)
 for key in ("uid", "resourceVersion", "creationTimestamp", "namespace", "managedFields"):
@@ -163,19 +172,19 @@ sed "s/REPLACE_WITH_RELEASE_NAMESPACE/${KUBE_NAMESPACE}/g" \
 
 log_info "Helm upgrade opensandbox-controller..."
 helm upgrade --install opensandbox-controller "${CONTROLLER_CHART}" \
-  --namespace "${SYSTEM_NS}" \
+  --namespace "${CONTROL_PLANE_NS}" \
   --wait --timeout "${HELM_TIMEOUT}" \
   -f "${EXAMPLES}/opensandbox-controller.yaml"
 
 log_info "Helm upgrade opensandbox-server..."
 helm upgrade --install opensandbox-server "${SERVER_CHART}" \
-  --namespace "${SYSTEM_NS}" \
+  --namespace "${CONTROL_PLANE_NS}" \
   --wait --timeout "${HELM_TIMEOUT}" \
   -f "${SERVER_VALUES}"
 
 log_info "Restarting opensandbox-server to pick up the BatchSandbox template..."
-kubectl rollout restart deployment/opensandbox-server -n "${SYSTEM_NS}"
-kubectl rollout status deployment/opensandbox-server -n "${SYSTEM_NS}" --timeout "${HELM_TIMEOUT}"
+kubectl rollout restart deployment/opensandbox-server -n "${CONTROL_PLANE_NS}"
+kubectl rollout status deployment/opensandbox-server -n "${CONTROL_PLANE_NS}" --timeout "${HELM_TIMEOUT}"
 
 if [ "${SKIP_VERIFY:-}" != "1" ]; then
     log_info "Verifying shared-kernel OpenSandbox..."
@@ -187,14 +196,14 @@ fi
 log_info "=========================================="
 log_info "OpenSandbox shared-kernel install complete"
 log_info "=========================================="
-log_info "Control plane: ${SYSTEM_NS}"
+log_info "Control plane: ${CONTROL_PLANE_NS}"
 log_info "Job namespace: ${KUBE_NAMESPACE}"
-log_info "Service DNS:   opensandbox-server.${SYSTEM_NS}.svc.cluster.local"
+log_info "Service DNS:   opensandbox-server.${CONTROL_PLANE_NS}.svc.cluster.local"
 log_info ""
 log_info "Point the platform Helm release at the server (then helm upgrade):"
 log_info "  sandboxClusterCapable: true"
 log_info "  opensandbox:"
-log_info "    domain: opensandbox-server.${SYSTEM_NS}.svc.cluster.local"
+log_info "    domain: opensandbox-server.${CONTROL_PLANE_NS}.svc.cluster.local"
 log_info "    protocol: http"
 log_info "    apiKeySecret: ${API_SECRET}"
 log_info "    apiKeySecretKey: api-key"
