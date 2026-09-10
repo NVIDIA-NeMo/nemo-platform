@@ -229,7 +229,7 @@ def test_root_help_includes_lazy_api_commands():
     runner = CliRunner()
     sys.modules.pop("nemo_platform_ext.cli.commands.api.entities", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.api.experiments", None)
-    sys.modules.pop("nemo_platform_ext.cli.commands.api.files", None)
+    sys.modules.pop("nemo_platform_ext.cli.commands.files", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.api.intake", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.auth", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.use_cases.chat", None)
@@ -250,7 +250,7 @@ def test_root_help_includes_lazy_api_commands():
     assert "entities" not in result.stdout
     assert "nemo_platform_ext.cli.commands.api.entities" not in sys.modules
     assert "nemo_platform_ext.cli.commands.api.experiments" not in sys.modules
-    assert "nemo_platform_ext.cli.commands.api.files" not in sys.modules
+    assert "nemo_platform_ext.cli.commands.files" not in sys.modules
     assert "nemo_platform_ext.cli.commands.api.intake" not in sys.modules
     assert "nemo_platform_ext.cli.commands.auth" not in sys.modules
     assert "nemo_platform_ext.cli.commands.use_cases.chat" not in sys.modules
@@ -361,13 +361,13 @@ def test_auth_command_and_hidden_context_option_remain_invokable():
 
 def test_lazy_api_group_help_loads_on_demand():
     runner = CliRunner()
-    sys.modules.pop("nemo_platform_ext.cli.commands.api.files", None)
+    sys.modules.pop("nemo_platform_ext.cli.commands.files", None)
     result = runner.invoke(app, ["files", "--help"])
 
     assert result.exit_code == 0
     assert "Manage files" in result.stdout
     assert "filesets" in result.stdout
-    assert "nemo_platform_ext.cli.commands.api.files" in sys.modules
+    assert "nemo_platform_ext.cli.commands.files" in sys.modules
 
 
 @pytest.mark.parametrize(
