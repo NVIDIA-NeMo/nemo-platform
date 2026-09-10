@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import email.utils
+import inspect
 import json
 import logging
 import os
@@ -486,6 +487,15 @@ class BaseNemoClient(Generic[HttpClientT]):
             headers.update(request.extra_headers)
         return headers or None
 
+    def _needs_auth_header(self, headers: Mapping[str, str] | None) -> bool:
+        """Whether this attempt must carry a freshly resolved bearer token.
+
+        Explicit ``Authorization`` values (per-call ``headers=`` or client defaults)
+        stay authoritative; otherwise the token provider is consulted on every
+        HTTP attempt so retries and later pages never replay an expired token.
+        """
+        return self._auth is not None and not _has_header(headers, _AUTHORIZATION_HEADER)
+
     def _is_binary(self, request: PreparedRequest) -> bool:
         return request.response_type is BinaryContent
 
@@ -807,14 +817,8 @@ class NemoClient(BaseNemoClient[httpx.Client]):
         if headers:
             request = request.with_headers(headers)
 
-        # Inject auth header if a TokenProvider is configured.
-        # NOTE: If a 401 occurs despite this, a future enhancement could
-        # call provider.force_refresh() and retry once. The proactive
-        # refresh margin (60s) makes this unlikely in practice.
-        if self._auth:
-            token = self._auth.get_access_token()
-            request = request.with_headers({"Authorization": f"Bearer {token}"})
-
+        # The bearer token is resolved per HTTP attempt (see _authorized_headers),
+        # not once per logical request, so retries and later pages use a live token.
         url = self._resolve_path(request)
         req_headers = self._request_headers(request)
         params = self._resolve_query_params(request)
@@ -848,6 +852,15 @@ class NemoClient(BaseNemoClient[httpx.Client]):
             body = _parse_response_body(request.response_type, raw)
         return NemoResponse(http_response=raw, body=body, request=request)
 
+    def _authorized_headers(self, headers: dict[str, str] | None) -> dict[str, str] | None:
+        """Return *headers* with a bearer token resolved for this attempt when the provider owns auth."""
+        if self._auth is None or not self._needs_auth_header(headers):
+            return headers
+        token = self._auth.get_access_token()
+        if inspect.isawaitable(token):
+            raise TypeError("Async token provider used on a synchronous client; use AsyncNemoClient.")
+        return {**(headers or {}), _AUTHORIZATION_HEADER: f"Bearer {token}"}
+
     def _request_with_retry(
         self,
         request: PreparedRequest,
@@ -860,7 +873,11 @@ class NemoClient(BaseNemoClient[httpx.Client]):
         last_response: httpx.Response | None = None
         for attempt in range(retry.max_retries + 1 if retry else 1):
             try:
-                kwargs: dict = {"content": request.content, "headers": headers, "params": params}
+                kwargs: dict = {
+                    "content": request.content,
+                    "headers": self._authorized_headers(headers),
+                    "params": params,
+                }
                 if self._timeout is not None:
                     kwargs["timeout"] = self._timeout
                 raw = self._http.request(request.method, url, **kwargs)
@@ -894,7 +911,11 @@ class NemoClient(BaseNemoClient[httpx.Client]):
         for attempt in range(retry.max_retries + 1 if retry else 1):
             yielded = False
             try:
-                kwargs: dict = {"content": request.content, "headers": headers, "params": params}
+                kwargs: dict = {
+                    "content": request.content,
+                    "headers": self._authorized_headers(headers),
+                    "params": params,
+                }
                 if self._timeout is not None:
                     kwargs["timeout"] = self._timeout
                 with self._http.stream(request.method, url, **kwargs) as raw:
@@ -1064,9 +1085,6 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
         if headers:
             request = request.with_headers(headers)
 
-        if self._auth:
-            request = request.with_headers({"Authorization": f"Bearer {await resolve_token_async(self._auth)}"})
-
         url = self._resolve_path(request)
         req_headers = self._request_headers(request)
         params = self._resolve_query_params(request)
@@ -1100,6 +1118,13 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
             body = _parse_response_body(request.response_type, raw)
         return NemoResponse(http_response=raw, body=body, request=request)
 
+    async def _authorized_headers(self, headers: dict[str, str] | None) -> dict[str, str] | None:
+        """Return *headers* with a bearer token resolved for this attempt when the provider owns auth."""
+        if self._auth is None or not self._needs_auth_header(headers):
+            return headers
+        token = await resolve_token_async(self._auth)
+        return {**(headers or {}), _AUTHORIZATION_HEADER: f"Bearer {token}"}
+
     async def _request_with_retry(
         self,
         request: PreparedRequest,
@@ -1112,7 +1137,11 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
         last_response: httpx.Response | None = None
         for attempt in range(retry.max_retries + 1 if retry else 1):
             try:
-                kwargs: dict = {"content": request.content, "headers": headers, "params": params}
+                kwargs: dict = {
+                    "content": request.content,
+                    "headers": await self._authorized_headers(headers),
+                    "params": params,
+                }
                 if self._timeout is not None:
                     kwargs["timeout"] = self._timeout
                 raw = await self._http.request(request.method, url, **kwargs)
@@ -1146,7 +1175,11 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
         for attempt in range(retry.max_retries + 1 if retry else 1):
             yielded = False
             try:
-                kwargs: dict = {"content": request.content, "headers": headers, "params": params}
+                kwargs: dict = {
+                    "content": request.content,
+                    "headers": await self._authorized_headers(headers),
+                    "params": params,
+                }
                 if self._timeout is not None:
                     kwargs["timeout"] = self._timeout
                 async with self._http.stream(request.method, url, **kwargs) as raw:
