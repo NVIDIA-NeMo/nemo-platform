@@ -98,7 +98,7 @@ export const OverviewTab: FC<OverviewTabProps> = ({
             onRunAgent={onRunAgent}
             isPending={isPending}
             caption={bucketAdverbForRange(range)}
-            error={traceMetricsError ?? insightsError}
+            error={traceMetricsError}
           />
         )}
         <RecentExperimentsPanel
