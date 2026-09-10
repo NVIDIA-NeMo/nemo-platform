@@ -27,6 +27,8 @@ class FileInfo:
 
 
 class StorageImpl(ABC):
+    config: BaseStorageConfig
+
     @abstractmethod
     async def list_files(self, path: str | None = None) -> list[FileInfo]: ...
 
@@ -77,11 +79,11 @@ class StorageImpl(ABC):
         """The mutable ref this fileset was created from, if it tracks one.
 
         The counterpart to :meth:`resolve_config`: a backend that pins a mutable
-        ref to an immutable id at create time returns that original ref here, so
+        ref to an immutable id at create time reports that original ref here, so
         the fileset can be re-resolved against it later. None when the fileset was
         created from an already-immutable id, which has nothing to move to.
         """
-        return None
+        return self.config.tracked_revision
 
     def config_at_tracked_revision(self) -> BaseStorageConfig:
         """Return the config pointed back at :attr:`tracked_revision` for re-resolution.

@@ -19,7 +19,7 @@ from typing import (
 
 from nemo_platform_plugin.config import nmp_user_data_dir
 from nemo_platform_plugin.schema import SecretRef
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 
 class StorageConfigType(StrEnum):
@@ -37,6 +37,27 @@ class StorageConfigType(StrEnum):
 DEFAULT_READ_CHUNK_SIZE = 1 * 1024 * 1024
 
 
+def _tracked_revision(revision: str, original_revision: str | None) -> str | None:
+    """Return the ref *revision* was resolved from, when that ref can still move.
+
+    Resolution records the original revision even when the user pinned an
+    immutable id themselves, and a ref equal to what it resolved to cannot name
+    anything else.
+    """
+    return original_revision if original_revision and original_revision != revision else None
+
+
+def _reject_relative_segments(field: str, value: str) -> str:
+    """Refuse values that would re-point a URL built from them at another resource.
+
+    ``..`` is resolved away by the URL layer before the request is sent, so a
+    dot segment escapes the repository the rest of the config names.
+    """
+    if any(segment in (".", "..") for segment in value.split("/")):
+        raise ValueError(f"{field} must not contain '.' or '..' path segments, got {value!r}")
+    return value
+
+
 class BaseStorageConfig(BaseModel):
     read_chunk_size: int = Field(
         default=DEFAULT_READ_CHUNK_SIZE,
@@ -48,6 +69,20 @@ class BaseStorageConfig(BaseModel):
     def get_secret_references(self) -> dict[str, SecretRef]:
         """Get the secret references for the storage config."""
         return {}
+
+    @property
+    def pinned_revision(self) -> str:
+        """The immutable id this storage is pinned to, empty when it pins nothing."""
+        return ""
+
+    @property
+    def tracked_revision(self) -> str | None:
+        """The mutable ref :attr:`pinned_revision` was resolved from, if it can still move.
+
+        None when the fileset was created from an already-immutable id, which has
+        nothing to move to.
+        """
+        return None
 
     @property
     def owns_storage_data(self) -> bool:
@@ -143,6 +178,14 @@ class HuggingfaceStorageConfig(BaseStorageConfig):
         description="Huggingface Hub endpoint URL. Use for self-hosted instances.",
     )
 
+    @property
+    def pinned_revision(self) -> str:
+        return self.revision
+
+    @property
+    def tracked_revision(self) -> str | None:
+        return _tracked_revision(self.revision, self.original_revision)
+
     def get_secret_references(self) -> dict[str, SecretRef]:
         return {"token": self.token_secret} if self.token_secret else {}
 
@@ -178,7 +221,27 @@ class GithubStorageConfig(BaseStorageConfig):
     @field_validator("path")
     @classmethod
     def strip_path_slashes(cls, v: str) -> str:
-        return v.strip("/")
+        return _reject_relative_segments("path", v.strip("/"))
+
+    @field_validator("owner", "repo")
+    @classmethod
+    def reject_multi_segment_names(cls, v: str, info: ValidationInfo) -> str:
+        if "/" in v:
+            raise ValueError(f"{info.field_name} must name a single path segment, got {v!r}")
+        return _reject_relative_segments(info.field_name or "value", v)
+
+    @field_validator("revision")
+    @classmethod
+    def reject_relative_revision(cls, v: str) -> str:
+        return _reject_relative_segments("revision", v)
+
+    @property
+    def pinned_revision(self) -> str:
+        return self.revision
+
+    @property
+    def tracked_revision(self) -> str | None:
+        return _tracked_revision(self.revision, self.original_revision)
 
     def get_secret_references(self) -> dict[str, SecretRef]:
         return {"token": self.token_secret} if self.token_secret else {}
