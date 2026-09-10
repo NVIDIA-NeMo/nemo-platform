@@ -9,14 +9,14 @@ import type { FC, ReactNode } from 'react';
 /** Whatever the chosen option still needs. "Build from scratch" needs nothing. */
 export const StartOptionDetail: FC<StartOptionDetailProps> = ({
   option,
-  selectedTemplate,
+  selectedTemplateId,
   onSelectTemplate,
 }) => {
   let content: ReactNode = null;
 
   if (option.id === 'template') {
     content = (
-      <TemplateGrid selectedTemplate={selectedTemplate} onSelectTemplate={onSelectTemplate} />
+      <TemplateGrid selectedTemplateId={selectedTemplateId} onSelectTemplate={onSelectTemplate} />
     );
   }
 

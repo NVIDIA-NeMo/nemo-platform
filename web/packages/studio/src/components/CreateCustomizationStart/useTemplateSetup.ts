@@ -11,7 +11,6 @@ import {
 import {
   getModelsListModelsQueryKey,
   useModelsCreateModel,
-  useModelsUpdateModel,
 } from '@nemo/sdk/generated/platform/models';
 import { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 import type { CustomizationTemplate } from '@studio/constants/customizationTemplates';
@@ -45,7 +44,6 @@ export const useTemplateSetup = (workspace: string): UseTemplateSetupResult => {
   const { mutateAsync: createFileset } = useFilesCreateFileset();
   const { mutateAsync: uploadFile } = useFilesUploadFile();
   const { mutateAsync: createModel } = useModelsCreateModel();
-  const { mutateAsync: updateModel } = useModelsUpdateModel();
 
   const run = async (template: CustomizationTemplate): Promise<CustomizationFormFields | null> => {
     setError(null);
@@ -76,20 +74,10 @@ export const useTemplateSetup = (workspace: string): UseTemplateSetupResult => {
             ? { trust_remote_code: model.trustRemoteCode }
             : {}),
         };
-        const createdModel = await swallowConflict(createModel({ workspace, data: modelEntity }));
-        // A conflict means the entity is already there but may point somewhere stale.
-        if (!createdModel) {
-          await updateModel({
-            workspace,
-            name: model.name,
-            data: {
-              fileset: modelEntity.fileset,
-              ...(model.trustRemoteCode !== undefined
-                ? { trust_remote_code: model.trustRemoteCode }
-                : {}),
-            },
-          });
-        }
+        // A conflict means something already holds this name. It is not necessarily ours —
+        // a user who registered the same checkpoint themselves owns an entity we would be
+        // repointing — so the existing one is left alone and reused as-is.
+        await swallowConflict(createModel({ workspace, data: modelEntity }));
       }
 
       const datasetFiles = await fetchAndConvertDataset(

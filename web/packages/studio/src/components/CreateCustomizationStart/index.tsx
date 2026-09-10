@@ -1,15 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import {
   Banner,
   Block,
-  Button,
   Flex,
   Grid,
   GridItem,
   PageHeader,
-  Spinner,
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
@@ -18,7 +17,6 @@ import { StartOptionDetail } from '@studio/components/CreateCustomizationStart/S
 import type {
   CreateCustomizationStartProps,
   StartOptionId,
-  TemplateSelection,
 } from '@studio/components/CreateCustomizationStart/types';
 import { useTemplateSetup } from '@studio/components/CreateCustomizationStart/useTemplateSetup';
 import { StartOptionCard } from '@studio/components/StartOptions/StartOptionCard';
@@ -36,7 +34,7 @@ export const CreateCustomizationStart: FC<CreateCustomizationStartProps> = ({
   onContinue,
 }) => {
   const [selectedId, setSelectedId] = useState<StartOptionId | null>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateSelection | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   const { run: runTemplateSetup, statusLabel, error: templateError } = useTemplateSetup(workspace);
   const isSettingUp = statusLabel !== '';
@@ -44,15 +42,19 @@ export const CreateCustomizationStart: FC<CreateCustomizationStartProps> = ({
   const selectedOption = START_OPTIONS.find((option) => option.id === selectedId) ?? null;
 
   const selectOption = (optionId: StartOptionId) => {
+    // Provisioning registers models and uploads a dataset, which takes long enough that the
+    // cards stay clickable behind the disabled Continue button. Changing the selection then
+    // would leave a finished setup pointing at a recipe the user has moved off.
+    if (isSettingUp) return;
     setSelectedId(optionId);
-    setSelectedTemplate(null);
+    setSelectedTemplateId(null);
   };
 
   // A tile, plus that option's own payload.
   const canContinue =
     selectedOption !== null &&
     !isSettingUp &&
-    (selectedOption.id !== 'template' || selectedTemplate !== null);
+    (selectedOption.id !== 'template' || selectedTemplateId !== null);
 
   const handleContinue = async () => {
     if (!selectedOption) return;
@@ -60,14 +62,18 @@ export const CreateCustomizationStart: FC<CreateCustomizationStartProps> = ({
       onContinue({ optionId: 'scratch' });
       return;
     }
-    if (selectedOption.id !== 'template' || !selectedTemplate) return;
+    if (selectedOption.id !== 'template' || !selectedTemplateId) return;
 
-    const template = CUSTOMIZATION_TEMPLATES.find((t) => t.id === selectedTemplate.id);
+    const template = CUSTOMIZATION_TEMPLATES.find((t) => t.id === selectedTemplateId);
     if (!template) return;
     // Registering the model and loading the dataset has to finish before the form can
     // reference them, so it happens here rather than on the next screen.
     const initialValues = await runTemplateSetup(template);
-    if (initialValues) onContinue({ optionId: 'template', initialValues });
+    // The guard above stops the selection moving, but the await still spans a render — only
+    // hand over values that match what is selected now.
+    if (initialValues && selectedTemplateId === template.id) {
+      onContinue({ optionId: 'template', initialValues });
+    }
   };
 
   return (
@@ -100,9 +106,10 @@ export const CreateCustomizationStart: FC<CreateCustomizationStartProps> = ({
           {selectedOption ? (
             <StartOptionDetail
               option={selectedOption}
-              workspace={workspace}
-              selectedTemplate={selectedTemplate}
-              onSelectTemplate={setSelectedTemplate}
+              selectedTemplateId={selectedTemplateId}
+              onSelectTemplate={(id) => {
+                if (!isSettingUp) setSelectedTemplateId(id);
+              }}
             />
           ) : null}
 
@@ -125,24 +132,22 @@ export const CreateCustomizationStart: FC<CreateCustomizationStartProps> = ({
               {BLOCKED_HINT[selectedOption.id]}
             </Text>
           ) : null}
-          <Button
+          <LoadingButton
             color="brand"
             kind="primary"
+            loading={isSettingUp}
             onClick={() => void handleContinue()}
             disabled={!canContinue}
           >
             {isSettingUp ? (
-              <Flex align="center" gap="density-xs">
-                <Spinner size="small" className="h-4 w-4" aria-label="Setting up" />
-                {statusLabel}
-              </Flex>
+              statusLabel
             ) : (
               <>
                 Continue
                 <ArrowRight size={16} aria-hidden />
               </>
             )}
-          </Button>
+          </LoadingButton>
         </Flex>
       ) : null}
     </Stack>
