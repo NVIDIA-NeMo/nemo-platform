@@ -227,7 +227,7 @@ def test_generated_api_group_no_arg_help_exits_successfully():
 
 def test_root_help_includes_lazy_api_commands():
     runner = CliRunner()
-    sys.modules.pop("nemo_platform_ext.cli.commands.api.entities", None)
+    sys.modules.pop("nemo_platform_ext.cli.commands.entities", None)
     sys.modules.pop("nmp.intake.cli", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.files", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.auth", None)
@@ -248,7 +248,7 @@ def test_root_help_includes_lazy_api_commands():
     assert "intake" in result.stdout
     assert "Plugin commands for intake." in result.stdout
     assert "entities" not in result.stdout
-    assert "nemo_platform_ext.cli.commands.api.entities" not in sys.modules
+    assert "nemo_platform_ext.cli.commands.entities" not in sys.modules
     assert "nmp.intake.cli" not in sys.modules
     assert "nemo_platform_ext.cli.commands.files" not in sys.modules
     assert "nemo_platform_ext.cli.commands.auth" not in sys.modules
@@ -262,18 +262,18 @@ def test_root_help_includes_lazy_api_commands():
 
 def test_entities_api_command_is_not_registered():
     runner = CliRunner()
-    sys.modules.pop("nemo_platform_ext.cli.commands.api.entities", None)
+    sys.modules.pop("nemo_platform_ext.cli.commands.entities", None)
 
     result = runner.invoke(app, ["entities", "--help"])
 
     assert result.exit_code != 0
     assert "No such command 'entities'" in result.stderr
-    assert "nemo_platform_ext.cli.commands.api.entities" not in sys.modules
+    assert "nemo_platform_ext.cli.commands.entities" not in sys.modules
 
 
 def test_members_api_command_is_nested_under_workspaces():
     runner = CliRunner()
-    sys.modules.pop("nemo_platform_ext.cli.commands.api.members", None)
+    sys.modules.pop("nemo_platform_ext.cli.commands.members", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.workspaces", None)
 
     result = runner.invoke(app, ["workspaces", "members", "--help"])
@@ -281,7 +281,7 @@ def test_members_api_command_is_nested_under_workspaces():
     assert result.exit_code == 0
     assert "Manage members" in result.stdout
     assert "nemo_platform_ext.cli.commands.workspaces" in sys.modules
-    assert "nemo_platform_ext.cli.commands.api.members" not in sys.modules
+    assert "nemo_platform_ext.cli.commands.members" not in sys.modules
 
 
 def test_workspaces_group_help_loads_on_demand():
@@ -324,13 +324,13 @@ def test_workspaces_list_help_includes_stream_option():
 
 def test_members_api_command_is_not_registered_at_top_level():
     runner = CliRunner()
-    sys.modules.pop("nemo_platform_ext.cli.commands.api.members", None)
+    sys.modules.pop("nemo_platform_ext.cli.commands.members", None)
 
     result = runner.invoke(app, ["members", "--help"])
 
     assert result.exit_code != 0
     assert "No such command 'members'" in result.stderr
-    assert "nemo_platform_ext.cli.commands.api.members" not in sys.modules
+    assert "nemo_platform_ext.cli.commands.members" not in sys.modules
 
 
 def test_jobs_watch_command_is_registered():
@@ -495,16 +495,16 @@ def test_build_top_level_lazy_entries_prefers_plugin_over_api_name_collision():
     plugin_entry_points = {
         "custom-plugin": SimpleNamespace(value="nemo_custom_plugin.cli:CustomPluginCLI"),
     }
-    api_entries = (
+    module_entries = (
         TopLevelEntry(
-            import_path="nemo_platform_ext.cli.commands.api.custom_plugin:app",
+            import_path="nemo_platform_ext.cli.commands.custom_plugin:app",
             name="custom-plugin",
             help="Custom plugin operations.",
             panel="Functional plugins",
             kind="group",
         ),
         TopLevelEntry(
-            import_path="nemo_platform_ext.cli.commands.api.files:app",
+            import_path="nemo_platform_ext.cli.commands.files:app",
             name="files",
             help="Manage files.",
             panel="Core plugins",
@@ -513,8 +513,7 @@ def test_build_top_level_lazy_entries_prefers_plugin_over_api_name_collision():
     )
 
     with (
-        patch("nemo_platform_ext.cli.app.TOP_LEVEL_ENTRIES", ()),
-        patch("nemo_platform_ext.cli.app.API_TOP_LEVEL_ENTRIES", api_entries),
+        patch("nemo_platform_ext.cli.app.TOP_LEVEL_ENTRIES", module_entries),
         patch(
             "nemo_platform_ext.cli.app._installed_plugin_command_entry_points",
             return_value=plugin_entry_points,
@@ -531,7 +530,7 @@ def test_build_top_level_lazy_entries_prefers_plugin_over_api_name_collision():
 def test_plugin_entry_point_name_collision_is_skipped(caplog):
     entries = (
         TopLevelEntry(
-            import_path="nemo_platform_ext.cli.commands.api.files:app",
+            import_path="nemo_platform_ext.cli.commands.files:app",
             name="files",
             help="Manage files.",
             panel="Core plugins",
