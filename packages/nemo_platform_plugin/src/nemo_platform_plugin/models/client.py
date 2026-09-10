@@ -37,7 +37,11 @@ import time
 from datetime import datetime
 from typing import Protocol
 
-from models import (
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.client.errors import NotFoundError
+from nemo_platform_plugin.client.method import method
+from nemo_platform_plugin.models import endpoints
+from nemo_platform_plugin.models.refs import (
     ResolvedModelReference,
     first_provider_ref,
     model_entity_route_openai_url,
@@ -45,10 +49,6 @@ from models import (
     resolved_model_reference,
     warn_provider_host_url_resolution_failure,
 )
-from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
-from nemo_platform_plugin.client.errors import NotFoundError
-from nemo_platform_plugin.client.method import method
-from nemo_platform_plugin.models import endpoints
 from nemo_platform_plugin.models.types import ModelDeployment, ModelEntity
 
 _INFERENCE_GATEWAY_PREFIX = "/apis/inference-gateway/v2/workspaces"

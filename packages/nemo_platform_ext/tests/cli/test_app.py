@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import click
-import nemo_platform
 import pytest
 import typer
 from click.testing import CliRunner as ClickCliRunner
@@ -20,6 +19,7 @@ from nemo_platform_ext.cli.core.lazy_load import (
     lazy_plugin_loader,
 )
 from nemo_platform_ext.cli.manifest import TopLevelEntry, build_top_level_entries
+from nemo_platform_ext.cli.version import client_version
 from nemo_platform_ext.quickstart.config import QuickstartConfig
 from nemo_platform_plugin.cli import NemoCLI
 from typer.testing import CliRunner
@@ -32,7 +32,7 @@ def test_version_flag(flag):
     result = runner.invoke(app, [flag])
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == f"nemo version {nemo_platform.__version__}"
+    assert result.stdout.strip() == f"nemo version {client_version()}"
 
 
 def test_version_flag_before_command():
@@ -41,7 +41,7 @@ def test_version_flag_before_command():
     result = runner.invoke(app, ["--version", "projects", "list"])
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == f"nemo version {nemo_platform.__version__}"
+    assert result.stdout.strip() == f"nemo version {client_version()}"
 
 
 def test_help_includes_getting_started():

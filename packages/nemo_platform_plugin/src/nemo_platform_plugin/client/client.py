@@ -627,6 +627,30 @@ class BaseNemoClient(Generic[HttpClientT]):
     def inference(self: NemoClient | AsyncNemoClient) -> _InferenceNamespace:
         return _InferenceNamespace(self)
 
+    def __getattr__(self, name: str) -> Any:
+        """Resolve ``nemo.sdk`` plugin resource namespaces as client attributes.
+
+        Only reached when normal attribute lookup fails. Plugin resources are
+        built with the sync or async factory matching this client and cached on
+        the instance, so ``client.example`` resolves the same object each time.
+        """
+        if name.startswith("_"):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
+
+        from nemo_platform_plugin.discovery import discover_sdk
+
+        resources = discover_sdk().get(name)
+        if resources is None:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
+
+        factory = resources.async_resource if isinstance(self, AsyncNemoClient) else resources.sync_resource
+        if factory is None:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute {name!r}")
+
+        instance = factory(self)
+        self.__dict__[name] = instance
+        return instance
+
     def _resolve_query_params(self, request: PreparedRequest) -> dict[str, str | int | bool] | None:
         """Filter out None values and JSON-serialize dicts/lists in query params."""
         if request.query_params is None:

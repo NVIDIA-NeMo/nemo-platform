@@ -1,17 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Adapter to create a :class:`NemoClient` from an existing :class:`NeMoPlatform`.
+"""Adapter to create a typed client from an existing platform client.
 
-This bridges the legacy ``NeMoPlatform`` SDK with the new typed client,
-allowing plugins registered via ``NemoPluginSDKResources`` to use the
-new endpoint/client infrastructure internally.
+Accepts either a legacy ``NeMoPlatform`` SDK instance or a :class:`NemoClient`
+/ :class:`AsyncNemoClient`, so plugins registered via ``NemoPluginSDKResources``
+can use the typed endpoint/client infrastructure regardless of which platform
+client the caller holds.
 
 Usage::
 
     from nemo_platform_plugin.client.adapter import client_from_platform
 
-    def make_sync_resource(platform: NeMoPlatform) -> NemoClient:
+    def make_sync_resource(platform: object) -> NemoClient:
         return client_from_platform(platform, NemoClient)
 """
 
@@ -49,10 +50,28 @@ def client_from_platform(
     platform: object,
     client_cls: type[NemoClient] | type[AsyncNemoClient],
 ) -> NemoClient | AsyncNemoClient:
-    """Create a typed client sharing a generated platform SDK's transport.
+    """Create a typed client sharing a platform client's transport.
+
+    When *platform* is already a :class:`NemoClient` or :class:`AsyncNemoClient`
+    the typed client is derived with ``client_cls.from_client`` and shares its
+    auth, headers, retry policy, and transport. Otherwise *platform* is treated
+    as a generated ``NeMoPlatform`` SDK instance.
 
     The overloads ensure callers get the correct concrete return type.
     """
+    if isinstance(platform, AsyncNemoClient):
+        if not issubclass(client_cls, AsyncNemoClient):
+            raise TypeError("AsyncNemoClient requires an AsyncNemoClient class")
+        if isinstance(platform, client_cls):
+            return platform
+        return client_cls.from_client(platform)
+    if isinstance(platform, NemoClient):
+        if not issubclass(client_cls, NemoClient):
+            raise TypeError("NemoClient requires a NemoClient class")
+        if isinstance(platform, client_cls):
+            return platform
+        return client_cls.from_client(platform)
+
     platform_client = cast(_PlatformClient, platform)
 
     # Prefer _custom_headers (set via with_options/set_default_headers),

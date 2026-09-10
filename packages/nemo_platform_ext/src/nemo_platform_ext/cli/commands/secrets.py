@@ -1,16 +1,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# NOTE: This file is auto-generated
+"""``nemo secrets`` command group, backed by the typed Secrets client."""
+
 from __future__ import annotations
 
-from importlib import import_module as _importlib_import_module
 from typing import Annotated
 
 import typer
+from nemo_platform_plugin.secrets.client import SecretsClient
+from nemo_platform_plugin.secrets.types import (
+    ListSecretsQueryParams,
+    PlatformSecretCreateRequest,
+    PlatformSecretUpdateRequest,
+)
+from pydantic import SecretStr
 
 from nemo_platform_ext.cli.core.api import build_kwargs
-from nemo_platform_ext.cli.core.api import merge_filter_dict as merge_filter_dict
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
@@ -21,11 +27,8 @@ from nemo_platform_ext.cli.core.formatters import (
     validate_stream_output_format,
 )
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
-from nemo_platform_ext.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
-from nemo_platform_ext.cli.core.stdin_utils import (
-    resolve_secret_value,
-    validate_required_fields,
-)
+from nemo_platform_ext.cli.core.pagination import PaginationType, collect_offset_pages, warn_if_more_pages
+from nemo_platform_ext.cli.core.stdin_utils import resolve_secret_value, validate_required_fields
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -34,11 +37,18 @@ from nemo_platform_ext.cli.core.types import (
     StreamOutputOption,
 )
 
-_cli_child_admin = _importlib_import_module("nemo_platform_ext.cli.commands.api.secrets.admin")
+app = create_typer_app(name="secrets", help="Manage secrets.")
+admin_app = create_typer_app(name="admin", help="Manage admin")
+app.add_typer(admin_app, name="admin")
 
-app = create_typer_app(name="secrets", help="Manage secrets")
 
-app.add_typer(_cli_child_admin.app, name="admin")
+def _list_secrets_query_params(page: int | None, page_size: int | None) -> ListSecretsQueryParams | None:
+    query_params: ListSecretsQueryParams = {}
+    if page is not None:
+        query_params["page"] = page
+    if page_size is not None:
+        query_params["page_size"] = page_size
+    return query_params or None
 
 
 @app.command("access")
@@ -52,21 +62,18 @@ def access_secrets(
 ) -> None:
     """Access the value of a secret."""
     state: CLIContext = ctx.obj
-    output_format = state.get_output_format(output_format)
+    resolved_output_format = state.get_output_format(output_format)
 
-    kwargs = build_kwargs(
-        workspace=workspace,
-    )
-    if handle_code_generation(["secrets"], "access", kwargs, output_format, state):
+    kwargs = build_kwargs(name=name, workspace=workspace)
+    if handle_code_generation(SecretsClient, "access_secret", kwargs, resolved_output_format, state):
         return
 
-    client = state.get_client()
-    result = client.secrets.access(name, **kwargs)
+    result = state.typed_client(SecretsClient).access_secret(name=name, workspace=workspace)
 
     format_output(
         result,
         is_list=False,
-        output_format=output_format,
+        output_format=resolved_output_format,
         no_truncate=state.get_no_truncate(),
         timestamp_format=state.get_timestamp_format(),
     )
@@ -104,7 +111,7 @@ def create_secrets(
     [dim]# Read secret from environment variable[/]
     echo "$API_KEY" | nemo secrets create my-secret --from-file -
     """
-    input_payload = {}
+    input_payload: dict[str, str] = {}
 
     if workspace is not None:
         input_payload["workspace"] = workspace
@@ -127,22 +134,24 @@ def create_secrets(
     )
     secret_data = resolve_secret_value(from_file, value, required=True, command_name="secrets create")
     assert secret_data is not None  # required=True guarantees non-None
+    assert name is not None  # validate_required_fields guarantees non-None
 
-    all_kwargs = {k: v for k, v in input_payload.items() if k not in ("from_file", "value")}
-    all_kwargs["value"] = "***"
+    body = PlatformSecretCreateRequest(name=name, value=SecretStr(secret_data))
+    if description is not None:
+        body = body.model_copy(update={"description": description})
     state: CLIContext = ctx.obj
-    output_format = state.get_output_format(output_format)
-    if handle_code_generation(["secrets"], "create", all_kwargs, output_format, state):
+    resolved_output_format = state.get_output_format(output_format)
+    if handle_code_generation(
+        SecretsClient, "create_secret", {"workspace": workspace, "body": body}, output_format, state
+    ):
         return
 
-    all_kwargs["value"] = secret_data
-    client = state.get_client()
-    result = client.secrets.create(**all_kwargs)
+    result = state.typed_client(SecretsClient).create_secret(workspace=workspace, body=body)
 
     format_output(
         result,
         is_list=False,
-        output_format=output_format,
+        output_format=resolved_output_format,
         no_truncate=state.get_no_truncate(),
         timestamp_format=state.get_timestamp_format(),
     )
@@ -158,12 +167,7 @@ def delete_secrets(
 ) -> None:
     """Delete a secret."""
     state: CLIContext = ctx.obj
-    client = state.get_client()
-
-    kwargs = build_kwargs(
-        workspace=workspace,
-    )
-    client.secrets.delete(name, **kwargs)
+    state.typed_client(SecretsClient).delete_secret(name=name, workspace=workspace)
 
     typer.echo("✓ Deleted successfully")
 
@@ -184,46 +188,34 @@ def list_secrets(
 ) -> None:
     """List available secrets"""
     state: CLIContext = ctx.obj
-    output_format = state.get_output_format(output_format)
-    validate_stream_output_format(output_format, stream)
+    resolved_output_format = state.get_output_format(output_format)
+    validate_stream_output_format(resolved_output_format, stream)
 
-    check_output_columns_with_format(columns, output_format)
+    check_output_columns_with_format(columns, resolved_output_format)
 
     default_columns = [
         Column("name", None),
         Column("workspace", None),
         Column("created_at", None),
     ]
+    output_columns: str | list[Column] | None = columns
     if columns is None or str(columns).strip() == "default":
-        columns = default_columns
+        output_columns = default_columns
 
-    kwargs = build_kwargs(
-        workspace=workspace,
-        page=page,
-        page_size=page_size,
-    )
-
-    if handle_code_generation(["secrets"], "list", kwargs, output_format, state):
+    query_params = _list_secrets_query_params(page, page_size)
+    kwargs = build_kwargs(workspace=workspace, query_params=query_params)
+    if handle_code_generation(SecretsClient, "list_secrets", kwargs, resolved_output_format, state, result="list"):
         return
 
-    client = state.get_client()
-    path_args = ()
+    response = state.typed_client(SecretsClient).list_secrets(workspace=workspace, query_params=query_params)
     pagination_type = PaginationType.PAGE_NUMBER
-    if all_pages:
-        items = fetch_all_pages(
-            client.secrets.list,
-            path_args=path_args,
-            body_args=kwargs,
-            pagination_type=pagination_type,
-        )
-    else:
-        items = client.secrets.list(*path_args, **kwargs)
+    items = collect_offset_pages(response, all_pages=all_pages)
 
     format_output(
         items,
         is_list=True,
-        output_format=output_format,
-        output_columns=columns,
+        output_format=resolved_output_format,
+        output_columns=output_columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
         stream=stream,
@@ -243,21 +235,18 @@ def retrieve_secrets(
 ) -> None:
     """Retrieve a secret by its name."""
     state: CLIContext = ctx.obj
-    output_format = state.get_output_format(output_format)
+    resolved_output_format = state.get_output_format(output_format)
 
-    kwargs = build_kwargs(
-        workspace=workspace,
-    )
-    if handle_code_generation(["secrets"], "retrieve", kwargs, output_format, state):
+    kwargs = build_kwargs(name=name, workspace=workspace)
+    if handle_code_generation(SecretsClient, "get_secret", kwargs, resolved_output_format, state):
         return
 
-    client = state.get_client()
-    result = client.secrets.retrieve(name, **kwargs)
+    result = state.typed_client(SecretsClient).get_secret(name=name, workspace=workspace)
 
     format_output(
         result,
         is_list=False,
-        output_format=output_format,
+        output_format=resolved_output_format,
         no_truncate=state.get_no_truncate(),
         timestamp_format=state.get_timestamp_format(),
     )
@@ -295,32 +284,50 @@ def update_secrets(
     [dim]# Read secret from environment variable[/]
     echo "$API_KEY" | nemo secrets update my-secret --from-file -
     """
-    input_payload = {}
-
-    if workspace is not None:
-        input_payload["workspace"] = workspace
-    if description is not None:
-        input_payload["description"] = description
-
-    all_kwargs = {"name": name, **input_payload}
     secret_data = resolve_secret_value(from_file, value, required=False)
+    body = PlatformSecretUpdateRequest()
+    if description is not None:
+        body = body.model_copy(update={"description": description})
     if secret_data is not None:
-        all_kwargs["value"] = "***"
+        body = body.model_copy(update={"value": SecretStr(secret_data)})
 
     state: CLIContext = ctx.obj
-    output_format = state.get_output_format(output_format)
-    if handle_code_generation(["secrets"], "update", all_kwargs, output_format, state):
+    resolved_output_format = state.get_output_format(output_format)
+    kwargs = build_kwargs(name=name, workspace=workspace, body=body)
+    if handle_code_generation(SecretsClient, "update_secret", kwargs, resolved_output_format, state):
         return
 
-    if secret_data is not None:
-        all_kwargs["value"] = secret_data
-    client = state.get_client()
-    result = client.secrets.update(**all_kwargs)
+    result = state.typed_client(SecretsClient).update_secret(name=name, workspace=workspace, body=body)
 
     format_output(
         result,
         is_list=False,
-        output_format=output_format,
+        output_format=resolved_output_format,
+        no_truncate=state.get_no_truncate(),
+        timestamp_format=state.get_timestamp_format(),
+    )
+
+
+@admin_app.command("rotate-encryption-keys")
+@collect_warnings
+@handle_errors
+def rotate_encryption_keys_admin(
+    ctx: typer.Context,
+    output_format: EntityOutputFormatOption = None,
+) -> None:
+    """Rotate encryption keys for all platform secrets."""
+    state: CLIContext = ctx.obj
+    resolved_output_format = state.get_output_format(output_format)
+
+    if handle_code_generation(SecretsClient, "rotate_encryption_keys", {}, resolved_output_format, state):
+        return
+
+    result = state.typed_client(SecretsClient).rotate_encryption_keys()
+
+    format_output(
+        result,
+        is_list=False,
+        output_format=resolved_output_format,
         no_truncate=state.get_no_truncate(),
         timestamp_format=state.get_timestamp_format(),
     )
