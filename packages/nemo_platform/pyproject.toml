@@ -337,8 +337,8 @@ nemo-deployments-plugin = [
 nemo-evaluator-plugin = [
   "cloudpickle>=3.1.1",
   "nemo-evaluator-sdk",
-  "nemo-platform-plugin",
   "nemo-platform-sdk",
+  "nemo-platform-plugin",
   "pydantic>=2.12.0",
   "typer>=0.20.0",
 ]
@@ -361,13 +361,14 @@ nemo-evaluator-sdk = [
   "nemo-relay>=0.7.3,<0.8",
   "nemo-fabric==0.3.0b1",
   "opentelemetry-proto>=1.27.0",
+  "pytrec-eval-terrier==0.5.10",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-experimentalist-plugin = [
   "pydantic>=2",
   "httpx",
-  "harbor>=0.16",
+  "harbor>=0.20,<0.21",
   "nemo-evaluator-sdk",
   "opentelemetry-proto>=1.42.1",
   "protobuf>=6.0.0",
@@ -392,9 +393,10 @@ nemo-guardrails-plugin = [
 nemo-insights-plugin = [
   "fastapi>=0.115",
   "httpx",
-  "nemo-fabric-adapter-contract>=0.3.0b1",
-  "nemo-fabric-adapters-common>=0.3.0b1",
+  "nemo-fabric-adapter-contract==0.3.0b1",
+  "nemo-fabric-adapters-common==0.3.0b1",
   "nemo-platform-plugin",
+  "nemo-relay>=0.7,<0.8",
   "nooa>=0.0.9",
   "opentelemetry-exporter-otlp>=1.42.1",
   "opentelemetry-sdk>=1.42.1",
@@ -739,6 +741,7 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "data-designer.retrieval-generate" = "nemo_data_designer_plugin.jobs.retrieval_generate:RetrievalGenerateJob"
 "data-designer.retrieval-prepare" = "nemo_data_designer_plugin.jobs.retrieval_prepare:RetrievalPrepareJob"
 "data-designer.retrieval-run" = "nemo_data_designer_plugin.jobs.retrieval_run:RetrievalRunJob"
+"evaluator.retrieve-eval" = "nemo_evaluator.jobs.retrieve_eval:RetrieveEvalJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.logging_provider"]

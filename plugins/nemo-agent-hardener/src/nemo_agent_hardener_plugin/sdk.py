@@ -16,34 +16,64 @@ import asyncio
 import itertools
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 from nemo_agent_hardener_plugin.cli.client import base_url, make_sdk
-from nemo_agent_hardener_plugin.entities import AGENT_HARDENER_MANIFEST_TYPE, AGENT_HARDENER_RUN_TYPE
 from nemo_agent_hardener_plugin.filesets import upload_file_to_fileset
 from nemo_agent_hardener_plugin.jobs.defenses import compose_defense
 from nemo_agent_hardener_plugin.jobs.run import AgentHardenerRunJob
 from nemo_agent_hardener_plugin.jobs.synth_benign import AgentHardenerSynthBenignJob
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.agent_hardener.client import AgentHardenerClient
+from nemo_platform_plugin.agent_hardener.types import (
+    AGENT_HARDENER_MANIFEST_TYPE,
+    AGENT_HARDENER_RUN_TYPE,
+    InspectProjectRequest,
+    JsonMap,
+    JsonValue,
+    ManifestInit,
+    ManifestUpdate,
+    ValidateModelRequest,
+    WarGameModels,
+)
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.entities.client import EntitiesClient
-from nemo_platform_plugin.entities.types import ListEntitiesQueryParams
+from nemo_platform_plugin.entities.types import Entity, ListEntitiesQueryParams
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
+from pydantic import BaseModel, TypeAdapter
+
+_JSON_MAP_ADAPTER = TypeAdapter(JsonMap)
+ModelSelection = WarGameModels | dict[str, dict[str, str]]
 
 
-def _run_to_dict(entity: Any) -> dict[str, Any]:
+def _to_json_map(value: object) -> JsonMap:
+    return _JSON_MAP_ADAPTER.validate_python(value)
+
+
+def _model_to_json_map(model: BaseModel) -> JsonMap:
+    return _to_json_map(model.model_dump(mode="json"))
+
+
+def _models_to_json_map(models: ModelSelection | None) -> JsonMap | None:
+    if models is None:
+        return None
+    if isinstance(models, WarGameModels):
+        return _model_to_json_map(models)
+    return _model_to_json_map(WarGameModels.model_validate(models))
+
+
+def _run_to_dict(entity: Entity) -> JsonMap:
     """Flatten an entity-store record into a flat dict for display."""
-    data = dict(getattr(entity, "data", {}) or {})
-    data["name"] = getattr(entity, "name", "")
-    created = getattr(entity, "created_at", None)
+    data = _to_json_map(entity.data or {})
+    data["name"] = entity.name
+    created = entity.created_at
     if created is not None:
         data["created_at"] = str(created)
     return data
 
 
 def _run_war_game(
-    sync_sdk: Any,
+    sync_sdk: NeMoPlatform,
     *,
     config: str | None,
     manifest_id: str | None,
@@ -55,8 +85,8 @@ def _run_war_game(
     defenders: list[str] | None = None,
     attack_intensity: str | None = None,
     replay_hitlog_fileset: str | None = None,
-    models: dict[str, Any] | None = None,
-) -> dict:
+    models: JsonMap | None = None,
+) -> JsonMap:
     """Blocking war-game launch shared by the sync and async resources.
 
     ``run_local`` runs the job synchronously and the job downloads its filesets (benign suite, replay
@@ -81,7 +111,7 @@ def _run_war_game(
             f"{', '.join(unsupported)} cannot be combined with a local 'config' manifest — "
             "set them in the manifest's own `overrides:` block instead."
         )
-    spec: dict[str, Any] = {"config": config, "manifest_id": manifest_id, "env_file": env_file}
+    spec: dict[str, JsonValue] = {"config": config, "manifest_id": manifest_id, "env_file": env_file}
     spec.update({key: value for key, value in overlay.items() if value is not None})
     if rounds is not None:
         spec["rounds"] = rounds
@@ -91,35 +121,35 @@ def _run_war_game(
         spec["models"] = models
     if benign_suite:
         spec["benign_suite_fileset"] = upload_file_to_fileset(sync_sdk, Path(benign_suite), workspace=workspace)
-    return NemoJobScheduler().run_local(AgentHardenerRunJob, spec, workspace=workspace, sdk=sync_sdk)
+    return _to_json_map(NemoJobScheduler().run_local(AgentHardenerRunJob, spec, workspace=workspace, sdk=sync_sdk))
 
 
-def _run_synth_benign(sync_sdk: Any, *, manifest_id: str, env_file: str | None, interview: str, workspace: str) -> dict:
+def _run_synth_benign(
+    sync_sdk: NeMoPlatform, *, manifest_id: str, env_file: str | None, interview: str, workspace: str
+) -> JsonMap:
     """Blocking benign-suite synthesis for a saved manifest, shared by the sync and async resources.
 
     Materializes the manifest, runs native ``agent-hardener synth-benign`` (TTY interview), and caches the
     reviewed suite on the manifest entity through the sync ``sdk``.
     """
-    spec: dict[str, Any] = {"manifest_id": manifest_id, "env_file": env_file, "interview": interview}
-    return NemoJobScheduler().run_local(AgentHardenerSynthBenignJob, spec, workspace=workspace, sdk=sync_sdk)
+    spec: dict[str, JsonValue] = {"manifest_id": manifest_id, "env_file": env_file, "interview": interview}
+    return _to_json_map(
+        NemoJobScheduler().run_local(AgentHardenerSynthBenignJob, spec, workspace=workspace, sdk=sync_sdk)
+    )
 
 
-def _list_newest(platform: NeMoPlatform, entity_type: str, *, workspace: str, limit: int) -> list[dict[str, Any]]:
+def _list_newest(entities: EntitiesClient, entity_type: str, *, workspace: str, limit: int) -> list[JsonMap]:
     """Return at most *limit* records of *entity_type*, newest first.
 
     ``entities.list`` returns a ``SyncDefaultPagination`` whose ``__iter__`` auto-paginates, so
     ``page_size`` bounds the *page*, not the total — iterating it walks the entire history. We ask for
     one page of *limit* and take only that page's items, which is a single request.
     """
-    page = (
-        client_from_platform(platform, EntitiesClient)
-        .list_entities(
-            entity_type=entity_type,
-            workspace=workspace,
-            query_params=ListEntitiesQueryParams(sort="-created_at", page_size=limit),
-        )
-        .page()
-    )
+    page = entities.list_entities(
+        entity_type=entity_type,
+        workspace=workspace,
+        query_params=ListEntitiesQueryParams(sort="-created_at", page_size=limit),
+    ).page()
     return [_run_to_dict(item) for item in itertools.islice(page.items, limit)]
 
 
@@ -129,10 +159,15 @@ class _RunsResource:
     def __init__(self, platform: NeMoPlatform) -> None:
         self._platform = platform
 
-    def list(self, *, workspace: str = "default", limit: int = 20) -> Sequence[dict[str, Any]]:
-        return _list_newest(self._platform, AGENT_HARDENER_RUN_TYPE, workspace=workspace, limit=limit)
+    def list(self, *, workspace: str = "default", limit: int = 20) -> Sequence[JsonMap]:
+        return _list_newest(
+            client_from_platform(self._platform, EntitiesClient),
+            AGENT_HARDENER_RUN_TYPE,
+            workspace=workspace,
+            limit=limit,
+        )
 
-    def latest(self, *, workspace: str = "default") -> dict[str, Any] | None:
+    def latest(self, *, workspace: str = "default") -> JsonMap | None:
         runs = self.list(workspace=workspace, limit=1)
         return runs[0] if runs else None
 
@@ -147,49 +182,53 @@ class _ManifestsResource:
     def __init__(self, platform: NeMoPlatform) -> None:
         self._platform = platform
 
-    @staticmethod
-    def _base(workspace: str) -> str:
-        return f"/apis/agent-hardener/v2/workspaces/{workspace}/manifests"
+    def _client(self) -> AgentHardenerClient:
+        return client_from_platform(self._platform, AgentHardenerClient)
 
-    def list(self, *, workspace: str = "default", limit: int = 20) -> Sequence[dict[str, Any]]:
-        return _list_newest(self._platform, AGENT_HARDENER_MANIFEST_TYPE, workspace=workspace, limit=limit)
+    def list(self, *, workspace: str = "default", limit: int = 20) -> Sequence[JsonMap]:
+        return _list_newest(
+            client_from_platform(self._platform, EntitiesClient),
+            AGENT_HARDENER_MANIFEST_TYPE,
+            workspace=workspace,
+            limit=limit,
+        )
 
-    def get(self, name: str, *, workspace: str = "default") -> dict[str, Any]:
+    def get(self, name: str, *, workspace: str = "default") -> JsonMap:
         """Read one saved manifest (``GET /manifests/{name}``)."""
-        return self._platform.get(f"{self._base(workspace)}/{name}", cast_to=dict[str, Any])
+        return _model_to_json_map(self._client().get_manifest(name=name, workspace=workspace).data())
 
-    def validate_model(self, *, workspace: str = "default", **body: Any) -> dict[str, Any]:
+    def validate_model(self, *, workspace: str = "default", **body: object) -> JsonMap:
         """Probe a model choice (``POST /model-config/validate``); *body* is a ``ValidateModelRequest``.
 
         Backs Studio's "Test connection" button and the CLI's set-time model preflight.
         """
-        base = f"/apis/agent-hardener/v2/workspaces/{workspace}/model-config/validate"
-        return self._platform.post(base, body=body, cast_to=dict[str, Any])
+        request = ValidateModelRequest.model_validate(body)
+        return _model_to_json_map(self._client().validate_model(workspace=workspace, body=request).data())
 
-    def create(self, *, workspace: str = "default", **body: Any) -> dict[str, Any]:
+    def create(self, *, workspace: str = "default", **body: object) -> JsonMap:
         """Create a manifest (``POST /manifests``); *body* is a ``ManifestInit``."""
-        return self._platform.post(self._base(workspace), body=body, cast_to=dict[str, Any])
+        request = ManifestInit.model_validate(body)
+        return _model_to_json_map(self._client().create_manifest(workspace=workspace, body=request).data())
 
-    def update(self, name: str, *, workspace: str = "default", **body: Any) -> dict[str, Any]:
+    def update(self, name: str, *, workspace: str = "default", **body: object) -> JsonMap:
         """Edit a saved manifest (``PATCH /manifests/{name}``); *body* is a ``ManifestUpdate``."""
-        return self._platform.patch(f"{self._base(workspace)}/{name}", body=body, cast_to=dict[str, Any])
+        request = ManifestUpdate.model_validate(body)
+        return _model_to_json_map(self._client().update_manifest(name=name, workspace=workspace, body=request).data())
 
-    def refresh(self, name: str, *, workspace: str = "default") -> dict[str, Any]:
+    def refresh(self, name: str, *, workspace: str = "default") -> JsonMap:
         """Re-resolve a frozen agent-source manifest against the agent as it is now."""
-        return self._platform.post(f"{self._base(workspace)}/{name}/refresh", body={}, cast_to=dict[str, Any])
+        return _model_to_json_map(self._client().refresh_manifest(name=name, workspace=workspace).data())
 
     def inspect_project(
         self, project_fileset: str, *, dockerfile: str | None = None, workspace: str = "default"
-    ) -> dict[str, Any]:
+    ) -> JsonMap:
         """Read an uploaded project bundle (``POST /manifests/inspect-project``).
 
         Returns the derived manifest fields plus ``unresolved`` — the fields the project cannot state
         about itself, which the caller must supply.
         """
-        body: dict[str, Any] = {"project_fileset": project_fileset}
-        if dockerfile:
-            body["dockerfile"] = dockerfile
-        return self._platform.post(f"{self._base(workspace)}/inspect-project", body=body, cast_to=dict[str, Any])
+        request = InspectProjectRequest(project_fileset=project_fileset, dockerfile=dockerfile)
+        return _model_to_json_map(self._client().inspect_project(workspace=workspace, body=request).data())
 
 
 class AgentHardenerPluginResource:
@@ -225,8 +264,8 @@ class AgentHardenerPluginResource:
         defenders: list[str] | None = None,
         attack_intensity: str | None = None,
         replay_hitlog_fileset: str | None = None,
-        models: dict[str, Any] | None = None,
-    ) -> dict:
+        models: ModelSelection | None = None,
+    ) -> JsonMap:
         """Run the war-game locally against a local ``config`` manifest or a saved ``manifest_id``.
 
         A saved ``manifest_id`` materializes the manifest and reuses its cached benign suite (from a prior
@@ -248,7 +287,7 @@ class AgentHardenerPluginResource:
             defenders=defenders,
             attack_intensity=attack_intensity,
             replay_hitlog_fileset=replay_hitlog_fileset,
-            models=models,
+            models=_models_to_json_map(models),
         )
 
     def synth_benign(
@@ -258,7 +297,7 @@ class AgentHardenerPluginResource:
         env_file: str | None = None,
         interview: str = "interactive",
         workspace: str | None = None,
-    ) -> dict:
+    ) -> JsonMap:
         """Synthesize a saved manifest's benign suite and cache it on the manifest.
 
         Shells out to native ``agent-hardener synth-benign`` (its own TTY interview). ``interview`` is
@@ -281,28 +320,35 @@ class AgentHardenerPluginResource:
         driver: str | None = None,
         workspace: str | None = None,
         profile: str | None = None,
-    ) -> dict:
+    ) -> JsonMap:
         """Submit the war-game to the platform executor (remote-capable path Studio uses).
 
         Pass a saved ``manifest_id`` (Studio) or a ready ``config`` path. ``driver="service"`` selects
         the Studio-driven interview/review HITL; omit it for the one-shot run.
         """
-        spec = {"manifest_id": manifest_id, "config": config, "env_file": env_file, "driver": driver}
-        return NemoJobScheduler().submit_remote(
-            AgentHardenerRunJob, spec, base_url=base_url(), workspace=workspace or "default", profile=profile
+        spec: dict[str, JsonValue] = {
+            "manifest_id": manifest_id,
+            "config": config,
+            "env_file": env_file,
+            "driver": driver,
+        }
+        return _to_json_map(
+            NemoJobScheduler().submit_remote(
+                AgentHardenerRunJob, spec, base_url=base_url(), workspace=workspace or "default", profile=profile
+            )
         )
 
     def sanity_check(
         self,
         *,
         manifest_id: str,
-        mitigations: dict[str, Any],
+        mitigations: JsonMap,
         selected_defense_ids: list[str],
         replay_hitlog_fileset: str,
         env_file: str | None = None,
         workspace: str | None = None,
         profile: str | None = None,
-    ) -> dict:
+    ) -> JsonMap:
         """Submit a validate-only war-game: freeze the chosen defenses and replay the recorded attacks + benign.
 
         Composes the selected subset of the run's recommended defenses (guardrails + policy) into the victim's
@@ -311,7 +357,7 @@ class AgentHardenerPluginResource:
         produced ``validation`` job result holds the per-item verdicts.
         """
         guardrails_toml, policy_yaml = compose_defense(mitigations, selected_defense_ids)
-        spec = {
+        spec: dict[str, JsonValue] = {
             "manifest_id": manifest_id,
             "driver": "service",
             "validate_only": True,
@@ -320,8 +366,10 @@ class AgentHardenerPluginResource:
             "defense_guardrails": guardrails_toml,
             "defense_policy": policy_yaml,
         }
-        return NemoJobScheduler().submit_remote(
-            AgentHardenerRunJob, spec, base_url=base_url(), workspace=workspace or "default", profile=profile
+        return _to_json_map(
+            NemoJobScheduler().submit_remote(
+                AgentHardenerRunJob, spec, base_url=base_url(), workspace=workspace or "default", profile=profile
+            )
         )
 
 
@@ -344,8 +392,8 @@ class AsyncAgentHardenerPluginResource:
         defenders: list[str] | None = None,
         attack_intensity: str | None = None,
         replay_hitlog_fileset: str | None = None,
-        models: dict[str, Any] | None = None,
-    ) -> dict:
+        models: ModelSelection | None = None,
+    ) -> JsonMap:
         """Async twin of :meth:`AgentHardenerPluginResource.run`.
 
         ``run_local`` and the job it drives are synchronous and reach the platform through a *sync*
@@ -368,7 +416,7 @@ class AsyncAgentHardenerPluginResource:
             defenders=defenders,
             attack_intensity=attack_intensity,
             replay_hitlog_fileset=replay_hitlog_fileset,
-            models=models,
+            models=_models_to_json_map(models),
         )
 
     async def synth_benign(
@@ -378,7 +426,7 @@ class AsyncAgentHardenerPluginResource:
         env_file: str | None = None,
         interview: str = "interactive",
         workspace: str | None = None,
-    ) -> dict:
+    ) -> JsonMap:
         """Async twin of :meth:`AgentHardenerPluginResource.synth_benign` (runs the blocking flow off-loop)."""
         sync_sdk = make_sdk(str(self._platform.base_url))
         return await asyncio.to_thread(

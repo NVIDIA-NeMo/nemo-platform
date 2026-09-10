@@ -365,7 +365,7 @@ def test_run_war_game_requires_config_or_manifest_id() -> None:
 
     with pytest.raises(ValueError, match="config.*manifest_id"):
         sdk_module._run_war_game(
-            SimpleNamespace(), config=None, manifest_id=None, env_file=None, workspace="d", benign_suite=None
+            make_sdk(), config=None, manifest_id=None, env_file=None, workspace="d", benign_suite=None
         )
 
 

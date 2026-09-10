@@ -434,6 +434,11 @@ class TestEvaluator:
         finally:
             if evaluator_module is not None:
                 sys.modules["nemo_evaluator_sdk.execution.evaluator"] = evaluator_module
+                # import_module also rebinds `evaluator` on the parent package, and that binding is
+                # what monkeypatch's string form resolves. Leaving the duplicate there sends later
+                # patches to a module object nobody holds a reference to, so the patch silently
+                # misses and the real call runs.
+                setattr(sys.modules["nemo_evaluator_sdk.execution"], "evaluator", evaluator_module)
 
     def test_run_sync_uses_async_backend_through_run_bridge(self):
         expected = _empty_benchmark_result()

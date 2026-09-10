@@ -170,6 +170,10 @@ auth:
     default_expires_in_seconds: 2592000
     # Maximum finite lifetime accepted when creating Scoped Access Keys. Set to null to allow explicit no-expiration requests. | default: 2592000
     max_expires_in_seconds: 2592000
+    # Default grace period in seconds for a rotated-out Scoped Access Key, used when grace_period_seconds is omitted from POST /v2/access-keys/{jti}/rotate. The key remains usable for this long after rotation before it is treated as revoked. Gives callers a dual-active window to cut over to the newly issued key. | default: 172800
+    rotation_grace_period_seconds: 172800
+    # Maximum grace period accepted when a caller explicitly requests grace_period_seconds on POST /v2/access-keys/{jti}/rotate. Set to null to allow any explicitly requested grace period. | default: 2592000
+    max_rotation_grace_period_seconds: 2592000
   # Port to run the service on | default: 8000
   port: 8000
   # Refresh interval for policy data in seconds | default: 30

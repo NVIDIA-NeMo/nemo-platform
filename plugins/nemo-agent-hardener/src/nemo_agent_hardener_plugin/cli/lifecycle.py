@@ -15,6 +15,7 @@ import typer
 from nemo_agent_hardener_plugin.cli import checks, credentials, provisioning
 from nemo_agent_hardener_plugin.cli._shared import (
     command_context,
+    json_string_list,
     models_from_flags,
     parse_env_pairs,
     preflight_models,
@@ -281,7 +282,7 @@ def register(app: typer.Typer) -> None:
             preflight_models(ctx, models)
             body["models"] = models
         try:
-            manifest = ctx.sdk.agent_hardener.manifests.create(workspace=ctx.workspace, **body)
+            manifest = ctx.agent_hardener.manifests.create(workspace=ctx.workspace, **body)
         except Exception as exc:
             typer.secho(f"Error: could not create manifest — {exc}", fg="red")
             raise typer.Exit(code=1) from exc
@@ -289,9 +290,11 @@ def register(app: typer.Typer) -> None:
         # A project manifest already printed these while deriving; repeating them here reads as two
         # separate problems rather than one.
         if manifest.get("source_type") != "project":
-            for warning in manifest.get("warnings") or []:
+            for warning in json_string_list(manifest.get("warnings")):
                 typer.secho(f"  ! {warning}", fg="yellow")
         manifest_name = str(manifest.get("name") or body["name"])
+        secrets = json_string_list(manifest.get("secrets"))
+        egress = json_string_list(manifest.get("egress"))
         typer.secho(f"Saved manifest '{manifest_name}'", fg="green")
         source = manifest.get("agent") or manifest.get("project_fileset") or "?"
         image = manifest.get("dockerfile") or "(generic, built from the project)"
@@ -300,8 +303,8 @@ def register(app: typer.Typer) -> None:
             f"  image     {image}\n"
             f"  workflow  {manifest.get('workflow') or '(none)'}\n"
             f"  victim    port {manifest.get('port', '?')}\n"
-            f"  secrets   {', '.join(manifest.get('secrets') or [])}\n"
-            f"  egress    {', '.join(manifest.get('egress') or []) or '(none — outbound calls are blocked)'}"
+            f"  secrets   {', '.join(secrets)}\n"
+            f"  egress    {', '.join(egress) or '(none — outbound calls are blocked)'}"
         )
 
         # Runnable, not just readable: `run --config` takes this file. Prefer
@@ -331,18 +334,20 @@ def register(app: typer.Typer) -> None:
         """
         ctx = command_context(workspace, preflight=False)
         try:
-            manifest = ctx.sdk.agent_hardener.manifests.refresh(manifest_id, workspace=ctx.workspace)
+            manifest = ctx.agent_hardener.manifests.refresh(manifest_id, workspace=ctx.workspace)
         except Exception as exc:
             typer.secho(f"Error: could not refresh manifest '{manifest_id}' — {exc}", fg="red")
             raise typer.Exit(code=1) from exc
 
-        for warning in manifest.get("warnings") or []:
+        for warning in json_string_list(manifest.get("warnings")):
             typer.secho(f"  ! {warning}", fg="yellow")
+        secrets = json_string_list(manifest.get("secrets"))
+        egress = json_string_list(manifest.get("egress"))
         typer.secho(f"Refreshed manifest '{manifest_id}' from {manifest.get('agent', '?')}", fg="green")
         typer.echo(
             f"  victim    port {manifest.get('port', '?')}\n"
-            f"  secrets   {', '.join(manifest.get('secrets') or [])}\n"
-            f"  egress    {', '.join(manifest.get('egress') or []) or '(none — outbound calls are blocked)'}"
+            f"  secrets   {', '.join(secrets)}\n"
+            f"  egress    {', '.join(egress) or '(none — outbound calls are blocked)'}"
         )
 
     @app.command()
@@ -354,7 +359,7 @@ def register(app: typer.Typer) -> None:
         # No preflight: reading run records doesn't need Docker/OpenShell/the venvs.
         ctx = command_context(workspace, preflight=False)
         ws = ctx.workspace
-        runs = ctx.sdk.agent_hardener.runs.list(workspace=ws, limit=limit)
+        runs = ctx.agent_hardener.runs.list(workspace=ws, limit=limit)
         if not runs:
             typer.echo(f"No Agent Hardener runs in workspace '{ws}'.")
             return

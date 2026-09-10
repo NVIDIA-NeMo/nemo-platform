@@ -381,7 +381,7 @@
         {
           "package": {
             "name": "golang.org/x/net",
-            "version": "0.56.0",
+            "version": "0.58.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -391,7 +391,7 @@
         {
           "package": {
             "name": "golang.org/x/sys",
-            "version": "0.46.0",
+            "version": "0.47.0",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -401,152 +401,11 @@
         {
           "package": {
             "name": "golang.org/x/text",
-            "version": "0.38.0",
+            "version": "0.41.0",
             "ecosystem": "Go"
           },
-          "groups": [
-            {
-              "ids": [
-                "GO-2026-5970"
-              ],
-              "aliases": [
-                "CVE-2026-56852",
-                "GO-2026-5970"
-              ],
-              "max_severity": ""
-            }
-          ],
           "licenses": [
             "BSD-3-Clause"
-          ],
-          "vulnerabilities": [
-            {
-              "affected": [
-                {
-                  "database_specific": {
-                    "source": "https://vuln.go.dev/ID/GO-2026-5970.json"
-                  },
-                  "ecosystem_specific": {
-                    "imports": [
-                      {
-                        "path": "golang.org/x/text/unicode/norm",
-                        "symbols": [
-                          "Form.Append",
-                          "Form.AppendString",
-                          "Form.Bytes",
-                          "Form.FirstBoundary",
-                          "Form.FirstBoundaryInString",
-                          "Form.IsNormal",
-                          "Form.IsNormalString",
-                          "Form.LastBoundary",
-                          "Form.NextBoundary",
-                          "Form.NextBoundaryInString",
-                          "Form.Properties",
-                          "Form.PropertiesString",
-                          "Form.QuickSpan",
-                          "Form.QuickSpanString",
-                          "Form.Span",
-                          "Form.SpanString",
-                          "Form.String",
-                          "Form.Transform",
-                          "Iter.Init",
-                          "Iter.InitString",
-                          "Iter.Next",
-                          "Iter.Seek",
-                          "nextComposed",
-                          "normReader.Read",
-                          "normWriter.Write"
-                        ]
-                      }
-                    ]
-                  },
-                  "package": {
-                    "ecosystem": "Go",
-                    "name": "golang.org/x/text",
-                    "purl": "pkg:golang/golang.org/x/text"
-                  },
-                  "ranges": [
-                    {
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {
-                          "fixed": "0.39.0"
-                        }
-                      ],
-                      "type": "SEMVER"
-                    }
-                  ]
-                }
-              ],
-              "aliases": [
-                "CVE-2026-56852"
-              ],
-              "credits": [
-                {
-                  "name": "Viky Choi (\"vikychoi\" on GitHub)"
-                }
-              ],
-              "database_specific": {
-                "review_status": "REVIEWED",
-                "url": "https://pkg.go.dev/vuln/GO-2026-5970"
-              },
-              "details": "A norm.Iter can enter an infinite loop when handling input containing invalid UTF-8 bytes.",
-              "id": "GO-2026-5970",
-              "modified": "2026-08-14T10:42:20.494473428Z",
-              "published": "2026-07-14T17:29:56Z",
-              "references": [
-                {
-                  "type": "REPORT",
-                  "url": "https://go.dev/issue/80142"
-                },
-                {
-                  "type": "FIX",
-                  "url": "https://go.dev/cl/794100"
-                }
-              ],
-              "related": [
-                "CGA-jjqc-qfr4-frh9",
-                "RHSA-2026:40964",
-                "RHSA-2026:41020",
-                "RHSA-2026:42083",
-                "RHSA-2026:42230",
-                "RHSA-2026:42241",
-                "RHSA-2026:43015",
-                "RHSA-2026:43119",
-                "RHSA-2026:43311",
-                "RHSA-2026:43554",
-                "RHSA-2026:43581",
-                "RHSA-2026:43716",
-                "RHSA-2026:43797",
-                "RHSA-2026:43799",
-                "RHSA-2026:43801",
-                "RHSA-2026:43803",
-                "RHSA-2026:43852",
-                "RHSA-2026:43866",
-                "RHSA-2026:43873",
-                "RHSA-2026:43906",
-                "RHSA-2026:44151",
-                "RHSA-2026:44152",
-                "RHSA-2026:44162",
-                "RHSA-2026:44430",
-                "RHSA-2026:44451",
-                "RHSA-2026:44479",
-                "RHSA-2026:46953",
-                "RHSA-2026:46960",
-                "RHSA-2026:46988",
-                "RHSA-2026:48306",
-                "RHSA-2026:49317",
-                "RHSA-2026:49360",
-                "RHSA-2026:51065",
-                "RHSA-2026:52912",
-                "RHSA-2026:54364",
-                "RHSA-2026:54549"
-              ],
-              "schema_version": "1.8.0",
-              "summary": "Infinite loop on invalid input in golang.org/x/text"
-            }
           ]
         },
         {
@@ -572,7 +431,7 @@
         {
           "package": {
             "name": "google.golang.org/grpc",
-            "version": "1.83.0",
+            "version": "1.83.2",
             "ecosystem": "Go"
           },
           "licenses": [
@@ -1582,7 +1441,7 @@
               },
               "details": "When processing HTTP/2 SETTINGS frames, transport will enter an infinite loop of writing CONTINUATION frames if it receives a SETTINGS_MAX_FRAME_SIZE with a value of 0.",
               "id": "GO-2026-4918",
-              "modified": "2026-08-26T10:42:13.935325149Z",
+              "modified": "2026-09-09T10:41:44.822078575Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -1603,7 +1462,6 @@
                 }
               ],
               "related": [
-                "CGA-v7v4-9r6p-x7fc",
                 "RHSA-2026:22112",
                 "RHSA-2026:22120",
                 "RHSA-2026:22121",
@@ -1612,7 +1470,13 @@
                 "RHSA-2026:49702",
                 "RHSA-2026:49712",
                 "RHSA-2026:57649",
-                "RHSA-2026:57845"
+                "RHSA-2026:57845",
+                "RHSA-2026:60668",
+                "RHSA-2026:61253",
+                "RHSA-2026:63091",
+                "RHSA-2026:63636",
+                "RHSA-2026:63637",
+                "RHSA-2026:63639"
               ],
               "schema_version": "1.7.5",
               "summary": "Infinite loop in HTTP/2 transport when given bad SETTINGS_MAX_FRAME_SIZE in net/http/internal/http2 in golang.org/x/net"
@@ -1675,7 +1539,7 @@
               },
               "details": "Validating certificate chains which use policies is unexpectedly inefficient when certificates in the chain contain a very large number of policy mappings, possibly causing denial of service.\n\nThis only affects validation of otherwise trusted certificate chains, issued by a root CA in the VerifyOptions.Roots CertPool, or in the system certificate pool.",
               "id": "GO-2026-4946",
-              "modified": "2026-08-18T10:44:11.281425070Z",
+              "modified": "2026-09-09T10:41:45.268140841Z",
               "published": "2026-04-07T22:53:49Z",
               "references": [
                 {
@@ -1692,7 +1556,6 @@
                 }
               ],
               "related": [
-                "CGA-mhq6-cw97-rcc6",
                 "RHSA-2026:10217",
                 "RHSA-2026:10219",
                 "RHSA-2026:16021",
@@ -1763,6 +1626,9 @@
                 "RHSA-2026:49944",
                 "RHSA-2026:51288",
                 "RHSA-2026:54757",
+                "RHSA-2026:61906",
+                "RHSA-2026:61907",
+                "RHSA-2026:65534",
                 "RHSA-2026:7291",
                 "RHSA-2026:7385"
               ],
@@ -1827,7 +1693,7 @@
               },
               "details": "During chain building, the amount of work that is done is not correctly limited when a large number of intermediate certificates are passed in VerifyOptions.Intermediates, which can lead to a denial of service. This affects both direct users of crypto/x509 and users of crypto/tls.",
               "id": "GO-2026-4947",
-              "modified": "2026-08-27T10:40:55.503365235Z",
+              "modified": "2026-09-09T10:41:45.128974034Z",
               "published": "2026-04-07T22:53:49Z",
               "references": [
                 {
@@ -1844,7 +1710,6 @@
                 }
               ],
               "related": [
-                "CGA-crmm-287q-6v8j",
                 "RHSA-2026:10217",
                 "RHSA-2026:10219",
                 "RHSA-2026:10704",
@@ -1944,7 +1809,12 @@
                 "RHSA-2026:56785",
                 "RHSA-2026:56852",
                 "RHSA-2026:56910",
-                "RHSA-2026:57482"
+                "RHSA-2026:57482",
+                "RHSA-2026:59830",
+                "RHSA-2026:60018",
+                "RHSA-2026:61906",
+                "RHSA-2026:61907",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.7.5",
               "summary": "Unexpected work during chain building in crypto/x509"
@@ -2023,7 +1893,7 @@
               },
               "details": "On Unix systems, opening a file in an os.Root improperly follows symlinks to locations outside of the Root when the final path component of the a path is a symbolic link and the path ends in /.\n\nFor example, 'root.Open(\"symlink/\")' will open \"symlink\" even when \"symlink\" is a symbolic link pointing outside of the root.",
               "id": "GO-2026-4970",
-              "modified": "2026-08-26T10:42:12.359696413Z",
+              "modified": "2026-08-31T10:25:58.863192906Z",
               "published": "2026-07-07T21:34:47Z",
               "references": [
                 {
@@ -2053,7 +1923,8 @@
                 "RHSA-2026:49702",
                 "RHSA-2026:49712",
                 "RHSA-2026:57361",
-                "RHSA-2026:57649"
+                "RHSA-2026:57649",
+                "RHSA-2026:61253"
               ],
               "schema_version": "1.7.5",
               "summary": "Root escape via symlink plus trailing slash in os"
@@ -2226,7 +2097,7 @@
               },
               "details": "ReverseProxy can forward queries containing parameters not visible to Rewrite functions.\n\nWhen used with a Rewrite function, or a Director function which parses query parameters, ReverseProxy sanitizes the forwarded request to remove query parameters which are not parsed by url.ParseQuery. ReverseProxy does not take ParseQuery's limit on the total number of query parameters (controlled by GODEBUG=urlmaxqueryparams=N) into account. This can permit ReverseProxy to forward a request containing a query parameter that is not visible to the Rewrite function.\n\nFor example, the query \"a1=x&a2=x&...&a10000=x&hidden=y\" can forward the parameter \"hidden=y\" while hiding it from the proxy's Rewrite function.",
               "id": "GO-2026-4976",
-              "modified": "2026-08-26T10:42:13.613573145Z",
+              "modified": "2026-08-31T10:25:58.969613045Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -2251,7 +2122,8 @@
                 "RHSA-2026:23264",
                 "RHSA-2026:49702",
                 "RHSA-2026:49712",
-                "RHSA-2026:57649"
+                "RHSA-2026:57649",
+                "RHSA-2026:61253"
               ],
               "schema_version": "1.7.5",
               "summary": "ReverseProxy forwards queries with more than urlmaxqueryparams parameters in net/http/httputil"
@@ -2313,7 +2185,7 @@
               },
               "details": "Pathological inputs could cause DoS through consumePhrase when parsing an email address according to RFC 5322.",
               "id": "GO-2026-4977",
-              "modified": "2026-08-27T10:40:56.254046158Z",
+              "modified": "2026-09-09T10:41:44.965353151Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -2330,7 +2202,6 @@
                 }
               ],
               "related": [
-                "CGA-m28j-j59g-3rp3",
                 "RHSA-2026:17713",
                 "RHSA-2026:17714",
                 "RHSA-2026:22112",
@@ -2345,7 +2216,26 @@
                 "RHSA-2026:57482",
                 "RHSA-2026:57649",
                 "RHSA-2026:57845",
-                "RHSA-2026:57914"
+                "RHSA-2026:57914",
+                "RHSA-2026:59830",
+                "RHSA-2026:60018",
+                "RHSA-2026:61253",
+                "RHSA-2026:62406",
+                "RHSA-2026:62407",
+                "RHSA-2026:62753",
+                "RHSA-2026:62754",
+                "RHSA-2026:62803",
+                "RHSA-2026:63022",
+                "RHSA-2026:63163",
+                "RHSA-2026:63332",
+                "RHSA-2026:63636",
+                "RHSA-2026:64818",
+                "RHSA-2026:65116",
+                "RHSA-2026:65117",
+                "RHSA-2026:65153",
+                "RHSA-2026:65335",
+                "RHSA-2026:65336",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.7.5",
               "summary": "Quadratic string concatenation in consumePhrase in net/mail"
@@ -2409,7 +2299,7 @@
               },
               "details": "If a trusted template author were to write a <script> tag containing an empty 'type' attribute or a 'type' attribute with an ASCII whitespace, the execution of the template would incorrectly escape any data passed into the <script> block.",
               "id": "GO-2026-4980",
-              "modified": "2026-08-26T10:42:12.936338833Z",
+              "modified": "2026-08-31T10:25:58.429372080Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -2434,7 +2324,8 @@
                 "RHSA-2026:23264",
                 "RHSA-2026:49702",
                 "RHSA-2026:49712",
-                "RHSA-2026:57649"
+                "RHSA-2026:57649",
+                "RHSA-2026:61253"
               ],
               "schema_version": "1.7.5",
               "summary": "Escaper bypass leads to XSS in html/template"
@@ -2498,7 +2389,7 @@
               },
               "details": "When using LookupCNAME with the cgo DNS resolver, a very long CNAME response can trigger a double-free of C memory and a crash.",
               "id": "GO-2026-4981",
-              "modified": "2026-08-27T10:40:56.084810179Z",
+              "modified": "2026-09-09T10:41:44.902883288Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -2515,7 +2406,6 @@
                 }
               ],
               "related": [
-                "CGA-xr8m-473w-fvfq",
                 "RHSA-2026:22112",
                 "RHSA-2026:22120",
                 "RHSA-2026:22121",
@@ -2558,7 +2448,11 @@
                 "RHSA-2026:56852",
                 "RHSA-2026:56910",
                 "RHSA-2026:57482",
-                "RHSA-2026:57649"
+                "RHSA-2026:57649",
+                "RHSA-2026:60018",
+                "RHSA-2026:61253",
+                "RHSA-2026:61313",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.7.5",
               "summary": "Crash when handling long CNAME response in net"
@@ -2622,7 +2516,7 @@
               },
               "details": "CVE-2026-27142 fixed a vulnerability in which URLs were not correctly escaped inside of a <meta> tag's <content> attribute. If the URL content were to insert ASCII whitespaces around the '=' rune inside of the <content> attribute, the escaper would fail to similarly escape it, leading to XSS.",
               "id": "GO-2026-4982",
-              "modified": "2026-08-26T10:42:13.543888394Z",
+              "modified": "2026-08-31T10:25:58.456781741Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -2647,7 +2541,8 @@
                 "RHSA-2026:23264",
                 "RHSA-2026:49702",
                 "RHSA-2026:49712",
-                "RHSA-2026:57649"
+                "RHSA-2026:57649",
+                "RHSA-2026:61253"
               ],
               "schema_version": "1.7.5",
               "summary": "Bypass of meta content URL escaping causes XSS in html/template"
@@ -2716,7 +2611,7 @@
               },
               "details": "Well-crafted inputs reaching ParseAddress, ParseAddressList, and ParseDate were able to trigger excessive CPU exhaustion and memory allocations.",
               "id": "GO-2026-4986",
-              "modified": "2026-08-27T10:40:55.531671412Z",
+              "modified": "2026-09-09T10:41:45.192129893Z",
               "published": "2026-05-07T19:21:40Z",
               "references": [
                 {
@@ -2733,7 +2628,6 @@
                 }
               ],
               "related": [
-                "CGA-h3rh-hg4q-4x4p",
                 "RHSA-2026:22112",
                 "RHSA-2026:22120",
                 "RHSA-2026:22121",
@@ -2748,7 +2642,22 @@
                 "RHSA-2026:57482",
                 "RHSA-2026:57649",
                 "RHSA-2026:57845",
-                "RHSA-2026:57914"
+                "RHSA-2026:57914",
+                "RHSA-2026:59830",
+                "RHSA-2026:60018",
+                "RHSA-2026:61253",
+                "RHSA-2026:62406",
+                "RHSA-2026:62407",
+                "RHSA-2026:62753",
+                "RHSA-2026:62754",
+                "RHSA-2026:62803",
+                "RHSA-2026:63022",
+                "RHSA-2026:65116",
+                "RHSA-2026:65117",
+                "RHSA-2026:65153",
+                "RHSA-2026:65335",
+                "RHSA-2026:65336",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.7.5",
               "summary": "Quadratic string concatentation in consumeComment in net/mail"
@@ -2883,7 +2792,7 @@
               },
               "details": "The ToASCII and ToUnicode functions incorrectly accept Punycode-encoded labels that decode to an ASCII-only label. For example, ToUnicode(\"xn--example-.com\") incorrectly returns the name \"example.com\" rather than an error.\n\nThis behavior can lead to privilege escalation in programs using the idna package. For example, a program which performs privilege checks on the ASCII hostname may reject \"example.com\" but permit \"xn--example-.com\". If that program subsequently converts the ASCII hostname to Unicode, it will inadvertently permits access to the Unicode name \"example.com\".",
               "id": "GO-2026-5026",
-              "modified": "2026-08-27T10:40:55.701358857Z",
+              "modified": "2026-09-09T10:41:45.015776377Z",
               "published": "2026-05-22T02:46:43Z",
               "references": [
                 {
@@ -2904,7 +2813,6 @@
                 }
               ],
               "related": [
-                "CGA-frmm-xgw5-xmhr",
                 "RHSA-2026:23262",
                 "RHSA-2026:23264",
                 "RHSA-2026:30853",
@@ -2958,7 +2866,13 @@
                 "RHSA-2026:59549",
                 "RHSA-2026:59562",
                 "RHSA-2026:60315",
-                "RHSA-2026:60354"
+                "RHSA-2026:60354",
+                "RHSA-2026:61245",
+                "RHSA-2026:61253",
+                "RHSA-2026:63134",
+                "RHSA-2026:65153",
+                "RHSA-2026:65359",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.9.0",
               "summary": "Invoking failure to reject ASCII-only Punycode-encoded labels in golang.org/x/net/idna"
@@ -3023,7 +2937,7 @@
               },
               "details": "(*x509.Certificate).VerifyHostname previously called matchHostnames in a loop over all DNS Subject Alternative Name (SAN) entries. This caused strings.Split(host, \".\") to execute repeatedly on the same input hostname.\n\nWith a large DNS SAN list, verification costs scaled quadratically based on the number of SAN entries multiplied by the hostname's label count. Because x509.Verify validates hostnames before building the certificate chain, this overhead occurred even for untrusted certificates.",
               "id": "GO-2026-5037",
-              "modified": "2026-08-27T10:40:55.774191231Z",
+              "modified": "2026-08-31T10:25:59.049614921Z",
               "published": "2026-06-02T21:39:47Z",
               "references": [
                 {
@@ -3079,7 +2993,8 @@
                 "RHSA-2026:57482",
                 "RHSA-2026:57649",
                 "RHSA-2026:60315",
-                "RHSA-2026:60354"
+                "RHSA-2026:60354",
+                "RHSA-2026:61253"
               ],
               "schema_version": "1.7.5",
               "summary": "Inefficient candidate hostname parsing in crypto/x509"
@@ -3141,7 +3056,7 @@
               },
               "details": "Decoding a maliciously-crafted MIME header containing many invalid encoded-words can consume excessive CPU.",
               "id": "GO-2026-5038",
-              "modified": "2026-08-27T10:40:55.670011028Z",
+              "modified": "2026-09-09T10:41:45.329595306Z",
               "published": "2026-06-02T21:39:47Z",
               "references": [
                 {
@@ -3158,7 +3073,6 @@
                 }
               ],
               "related": [
-                "CGA-434v-wc8g-cmvq",
                 "RHSA-2026:23262",
                 "RHSA-2026:23264",
                 "RHSA-2026:29980",
@@ -3166,7 +3080,16 @@
                 "RHSA-2026:38995",
                 "RHSA-2026:57361",
                 "RHSA-2026:57456",
-                "RHSA-2026:57482"
+                "RHSA-2026:57482",
+                "RHSA-2026:60018",
+                "RHSA-2026:62631",
+                "RHSA-2026:63091",
+                "RHSA-2026:63119",
+                "RHSA-2026:63124",
+                "RHSA-2026:65116",
+                "RHSA-2026:65117",
+                "RHSA-2026:65153",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.7.5",
               "summary": "Quadratic complexity in WordDecoder.DecodeHeader in mime"
@@ -3228,7 +3151,7 @@
               },
               "details": "When returning errors, functions in the net/textproto package would include its input as part of the error. This might allow an attacker to inject misleading content to errors that are printed or logged.",
               "id": "GO-2026-5039",
-              "modified": "2026-08-26T10:42:13.995378464Z",
+              "modified": "2026-08-31T10:25:58.939163086Z",
               "published": "2026-06-02T21:39:47Z",
               "references": [
                 {
@@ -3253,7 +3176,8 @@
                 "RHSA-2026:38995",
                 "RHSA-2026:49702",
                 "RHSA-2026:49712",
-                "RHSA-2026:57649"
+                "RHSA-2026:57649",
+                "RHSA-2026:61253"
               ],
               "schema_version": "1.7.5",
               "summary": "Arbitrary inputs are included in errors without any escaping in net/textproto"
@@ -3425,7 +3349,7 @@
               },
               "details": "Enforce a recursion limit in Unmarshal to prevent stack exhaustion when parsing deeply-nested, recursive structures.",
               "id": "GO-2026-5972",
-              "modified": "2026-08-27T10:40:56.331317121Z",
+              "modified": "2026-09-09T10:41:44.771097598Z",
               "published": "2026-08-13T21:43:54Z",
               "references": [
                 {
@@ -3442,12 +3366,42 @@
                 }
               ],
               "related": [
-                "CGA-qffm-j2p3-c942",
                 "RHSA-2026:54835",
                 "RHSA-2026:54836",
                 "RHSA-2026:60304",
                 "RHSA-2026:60305",
-                "RHSA-2026:60306"
+                "RHSA-2026:60306",
+                "RHSA-2026:61882",
+                "RHSA-2026:62404",
+                "RHSA-2026:62405",
+                "RHSA-2026:62406",
+                "RHSA-2026:62407",
+                "RHSA-2026:62577",
+                "RHSA-2026:62578",
+                "RHSA-2026:62602",
+                "RHSA-2026:62631",
+                "RHSA-2026:62753",
+                "RHSA-2026:62754",
+                "RHSA-2026:62803",
+                "RHSA-2026:63022",
+                "RHSA-2026:63119",
+                "RHSA-2026:63124",
+                "RHSA-2026:63127",
+                "RHSA-2026:63130",
+                "RHSA-2026:63136",
+                "RHSA-2026:63163",
+                "RHSA-2026:63332",
+                "RHSA-2026:64777",
+                "RHSA-2026:64786",
+                "RHSA-2026:64788",
+                "RHSA-2026:64818",
+                "RHSA-2026:65116",
+                "RHSA-2026:65117",
+                "RHSA-2026:65153",
+                "RHSA-2026:65335",
+                "RHSA-2026:65336",
+                "RHSA-2026:65359",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.9.0",
               "summary": "Enforce maximum recursion depth in encoding/asn1"
@@ -3519,7 +3473,7 @@
               },
               "details": "Previously, DecodeElement would reset the depth counter causing it to never fire; this could lead to stack exhaustion.",
               "id": "GO-2026-6088",
-              "modified": "2026-08-27T10:40:55.859602845Z",
+              "modified": "2026-09-09T10:41:45.100095872Z",
               "published": "2026-08-13T21:43:54Z",
               "references": [
                 {
@@ -3536,12 +3490,31 @@
                 }
               ],
               "related": [
-                "CGA-6mxx-fmwg-96cr",
                 "RHSA-2026:54835",
                 "RHSA-2026:54836",
+                "RHSA-2026:57415",
                 "RHSA-2026:60304",
                 "RHSA-2026:60305",
-                "RHSA-2026:60306"
+                "RHSA-2026:60306",
+                "RHSA-2026:61882",
+                "RHSA-2026:62404",
+                "RHSA-2026:62405",
+                "RHSA-2026:62406",
+                "RHSA-2026:62407",
+                "RHSA-2026:62602",
+                "RHSA-2026:62631",
+                "RHSA-2026:62753",
+                "RHSA-2026:62754",
+                "RHSA-2026:62803",
+                "RHSA-2026:63022",
+                "RHSA-2026:63163",
+                "RHSA-2026:65116",
+                "RHSA-2026:65117",
+                "RHSA-2026:65153",
+                "RHSA-2026:65335",
+                "RHSA-2026:65336",
+                "RHSA-2026:65359",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.9.0",
               "summary": "Add recursion depth guard during decode in encoding/xml"
@@ -3613,7 +3586,7 @@
               },
               "details": "When a server is configured to support unencrypted HTTP/2, it reads a few bytes from each new connection to see if they contain the HTTP/2 client preface. ReadHeaderTimeout is unexpectedly not being applied when doing this.",
               "id": "GO-2026-6089",
-              "modified": "2026-08-27T10:40:56.117338024Z",
+              "modified": "2026-09-09T10:41:44.795874573Z",
               "published": "2026-08-13T21:43:54Z",
               "references": [
                 {
@@ -3630,12 +3603,37 @@
                 }
               ],
               "related": [
-                "CGA-gx4x-f625-2c45",
                 "RHSA-2026:54835",
                 "RHSA-2026:54836",
                 "RHSA-2026:60304",
                 "RHSA-2026:60305",
-                "RHSA-2026:60306"
+                "RHSA-2026:60306",
+                "RHSA-2026:61882",
+                "RHSA-2026:62404",
+                "RHSA-2026:62405",
+                "RHSA-2026:62406",
+                "RHSA-2026:62407",
+                "RHSA-2026:62578",
+                "RHSA-2026:62602",
+                "RHSA-2026:62631",
+                "RHSA-2026:62753",
+                "RHSA-2026:62754",
+                "RHSA-2026:62803",
+                "RHSA-2026:63022",
+                "RHSA-2026:63119",
+                "RHSA-2026:63124",
+                "RHSA-2026:63163",
+                "RHSA-2026:63332",
+                "RHSA-2026:64777",
+                "RHSA-2026:64786",
+                "RHSA-2026:64818",
+                "RHSA-2026:65116",
+                "RHSA-2026:65117",
+                "RHSA-2026:65153",
+                "RHSA-2026:65335",
+                "RHSA-2026:65336",
+                "RHSA-2026:65359",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.9.0",
               "summary": "Apply ReadHeaderTimeout when doing unencrypted HTTP/2 check in net/http"
@@ -3713,7 +3711,7 @@
               },
               "details": "Handshake messages, such as KeyUpdate, are always considered as state-advancing, regardless of whether a handshake has been completed or not. As a result, a malicious client can keep sending KeyUpdate messages to force the server to keep performing key derivation operations indefinitely.",
               "id": "GO-2026-6090",
-              "modified": "2026-08-27T10:40:56.009119218Z",
+              "modified": "2026-09-09T10:41:44.923727330Z",
               "published": "2026-08-13T21:43:54Z",
               "references": [
                 {
@@ -3730,12 +3728,42 @@
                 }
               ],
               "related": [
-                "CGA-j6x6-9m4j-6xmr",
                 "RHSA-2026:54835",
                 "RHSA-2026:54836",
                 "RHSA-2026:60304",
                 "RHSA-2026:60305",
-                "RHSA-2026:60306"
+                "RHSA-2026:60306",
+                "RHSA-2026:61882",
+                "RHSA-2026:62404",
+                "RHSA-2026:62405",
+                "RHSA-2026:62406",
+                "RHSA-2026:62407",
+                "RHSA-2026:62577",
+                "RHSA-2026:62578",
+                "RHSA-2026:62602",
+                "RHSA-2026:62631",
+                "RHSA-2026:62753",
+                "RHSA-2026:62754",
+                "RHSA-2026:62803",
+                "RHSA-2026:63022",
+                "RHSA-2026:63119",
+                "RHSA-2026:63124",
+                "RHSA-2026:63127",
+                "RHSA-2026:63130",
+                "RHSA-2026:63136",
+                "RHSA-2026:63163",
+                "RHSA-2026:63332",
+                "RHSA-2026:64777",
+                "RHSA-2026:64786",
+                "RHSA-2026:64788",
+                "RHSA-2026:64818",
+                "RHSA-2026:65116",
+                "RHSA-2026:65117",
+                "RHSA-2026:65153",
+                "RHSA-2026:65335",
+                "RHSA-2026:65336",
+                "RHSA-2026:65359",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.9.0",
               "summary": "Limit handshake messages we are willing to accept post-handshake in crypto/tls"
@@ -3805,7 +3833,7 @@
               },
               "details": "Previously, pathological inputs could close an unescaped '/' early, allowing for attack-controlled data to inject arbitrary content, potentially leading to XSS.",
               "id": "GO-2026-6091",
-              "modified": "2026-08-27T10:40:55.687979669Z",
+              "modified": "2026-09-09T10:41:45.366511365Z",
               "published": "2026-08-13T21:43:54Z",
               "references": [
                 {
@@ -3822,12 +3850,36 @@
                 }
               ],
               "related": [
-                "CGA-rch4-p96c-xj2v",
                 "RHSA-2026:54835",
                 "RHSA-2026:54836",
                 "RHSA-2026:60304",
                 "RHSA-2026:60305",
-                "RHSA-2026:60306"
+                "RHSA-2026:60306",
+                "RHSA-2026:61882",
+                "RHSA-2026:62404",
+                "RHSA-2026:62405",
+                "RHSA-2026:62406",
+                "RHSA-2026:62407",
+                "RHSA-2026:62602",
+                "RHSA-2026:62753",
+                "RHSA-2026:62754",
+                "RHSA-2026:62803",
+                "RHSA-2026:63022",
+                "RHSA-2026:63119",
+                "RHSA-2026:63124",
+                "RHSA-2026:63130",
+                "RHSA-2026:63136",
+                "RHSA-2026:63163",
+                "RHSA-2026:63332",
+                "RHSA-2026:64777",
+                "RHSA-2026:64818",
+                "RHSA-2026:65116",
+                "RHSA-2026:65117",
+                "RHSA-2026:65153",
+                "RHSA-2026:65335",
+                "RHSA-2026:65336",
+                "RHSA-2026:65359",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.9.0",
               "summary": "Fix Javascript regexp context tracking in html/template"
@@ -3892,7 +3944,7 @@
               },
               "details": "Previously, resolving relative paths containing parent directory ('..') segments performed string conversions and buffer rewrites on each step, resulting in quadratic time complexity and high memory allocation overhead.\n\nNow, path resolution operates on a byte buffer using index-based backtracking for '..' segments, eliminating the quadratic time complexity and significantly reducing memory allocations.",
               "id": "GO-2026-6218",
-              "modified": "2026-08-27T10:40:55.715603469Z",
+              "modified": "2026-09-09T10:41:45.410131638Z",
               "published": "2026-08-13T21:43:54Z",
               "references": [
                 {
@@ -3909,12 +3961,42 @@
                 }
               ],
               "related": [
-                "CGA-9mpc-jg3h-hrj4",
                 "RHSA-2026:54835",
                 "RHSA-2026:54836",
                 "RHSA-2026:60304",
                 "RHSA-2026:60305",
-                "RHSA-2026:60306"
+                "RHSA-2026:60306",
+                "RHSA-2026:61882",
+                "RHSA-2026:62404",
+                "RHSA-2026:62405",
+                "RHSA-2026:62406",
+                "RHSA-2026:62407",
+                "RHSA-2026:62577",
+                "RHSA-2026:62578",
+                "RHSA-2026:62602",
+                "RHSA-2026:62631",
+                "RHSA-2026:62753",
+                "RHSA-2026:62754",
+                "RHSA-2026:62803",
+                "RHSA-2026:63022",
+                "RHSA-2026:63119",
+                "RHSA-2026:63124",
+                "RHSA-2026:63127",
+                "RHSA-2026:63130",
+                "RHSA-2026:63136",
+                "RHSA-2026:63163",
+                "RHSA-2026:63332",
+                "RHSA-2026:64777",
+                "RHSA-2026:64786",
+                "RHSA-2026:64788",
+                "RHSA-2026:64818",
+                "RHSA-2026:65116",
+                "RHSA-2026:65117",
+                "RHSA-2026:65153",
+                "RHSA-2026:65335",
+                "RHSA-2026:65336",
+                "RHSA-2026:65359",
+                "RHSA-2026:65534"
               ],
               "schema_version": "1.9.0",
               "summary": "Avoid quadratic complexity in resolvePath in net/url"

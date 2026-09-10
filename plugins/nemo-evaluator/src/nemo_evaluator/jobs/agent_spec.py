@@ -138,9 +138,10 @@ class HarborRunnerTarget(BaseModel):
 class GymRunnerTarget(BaseModel):
     """Generate trials by driving a NeMo Gym environment through the SDK's :class:`GymAgentTaskRunner`.
 
-    Gym runs locally in the job container (the ``gym`` CLI must be installed in the same environment
-    as this SDK). The environment dataset is recovered from the tasks at run time — the runner stamps
-    ``gym_dataset_path`` onto each task via ``discover_gym_tasks``, mirroring the Harbor pattern.
+    The deployment chooses colocated execution in the Gym task container or a separate sandboxed
+    Gym host. An environment FileSet requires the sandboxed path. The environment dataset is
+    recovered from the tasks at run time — ``discover_gym_tasks`` records the source row data needed
+    to materialize the selected tasks for rollout collection.
     """
 
     model_config = ConfigDict(extra="forbid")

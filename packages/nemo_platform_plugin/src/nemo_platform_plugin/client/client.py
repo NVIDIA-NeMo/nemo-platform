@@ -29,7 +29,7 @@ from datetime import timezone
 from functools import cache
 from pathlib import Path
 from typing import Any, Generic, Self, TypeVar, cast, get_args, get_origin, overload
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 from nemo_platform_plugin.client.auth import (
@@ -77,6 +77,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 60.0
 _AUTHORIZATION_HEADER = "Authorization"
 _PRINCIPAL_ID_HEADER = "X-NMP-Principal-Id"
+_DEFAULT_ORIGIN_PORTS = {"http": 80, "https": 443}
 
 
 def _has_header(headers: Mapping[str, str] | None, name: str) -> bool:
@@ -84,6 +85,18 @@ def _has_header(headers: Mapping[str, str] | None, name: str) -> bool:
         return False
     normalized = name.lower()
     return any(header.lower() == normalized for header in headers)
+
+
+def _url_origin(url: str) -> tuple[str, str, int | None] | None:
+    parsed = urlsplit(url)
+    if not parsed.scheme or parsed.hostname is None:
+        return None
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    scheme = parsed.scheme.lower()
+    return scheme, parsed.hostname, port if port is not None else _DEFAULT_ORIGIN_PORTS.get(scheme)
 
 
 @overload
@@ -397,6 +410,11 @@ class BaseNemoClient(Generic[HttpClientT]):
     def base_url(self) -> str:
         return self._base_url
 
+    def is_platform_url(self, url: str) -> bool:
+        """Return whether *url* has the same origin as this client's platform base URL."""
+        origin = _url_origin(url)
+        return origin is not None and origin == _url_origin(self._base_url)
+
     @property
     def _client(self) -> httpx.Client | httpx.AsyncClient:
         """Underlying httpx transport.
@@ -415,6 +433,17 @@ class BaseNemoClient(Generic[HttpClientT]):
     @property
     def workspace(self) -> str | None:
         return self._workspace
+
+    def resolve_workspace(self, workspace: str | None = None) -> str:
+        """Return the explicit workspace, client default, or platform default."""
+        return workspace or self._workspace or "default"
+
+    def require_workspace(self, workspace: str | None = None) -> str:
+        """Return the explicit workspace or client default, raising if neither is set."""
+        resolved_workspace = workspace or self._workspace
+        if resolved_workspace is None:
+            raise ValueError("workspace must be provided when the client has no default workspace")
+        return resolved_workspace
 
     @property
     def retry(self) -> RetryPolicy | None:
@@ -575,6 +604,12 @@ class BaseNemoClient(Generic[HttpClientT]):
         from nemo_platform_plugin.projects.client import AsyncProjectsClient, ProjectsClient
 
         return self._resource_client(ProjectsClient, AsyncProjectsClient)
+
+    @property
+    def intake(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.intake.client import AsyncIntakeClient, IntakeClient
+
+        return self._resource_client(IntakeClient, AsyncIntakeClient)
 
     @property
     def data_designer(self) -> NemoClient | AsyncNemoClient:
@@ -924,6 +959,20 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
             http_client=client._http,
             url_resolver=client._url_resolver,
         )
+
+    def with_http_client(self, http_client: httpx.AsyncClient) -> Self:
+        """Return a copy of this client using a different async transport."""
+        transport_owner = AsyncNemoClient(
+            base_url=self.base_url,
+            workspace=self.workspace,
+            auth=self._auth,
+            default_headers=self._default_headers or None,
+            timeout=self._timeout,
+            retry=self._retry,
+            http_client=http_client,
+            url_resolver=self._url_resolver,
+        )
+        return type(self).from_client(transport_owner)
 
     @overload
     async def send(
