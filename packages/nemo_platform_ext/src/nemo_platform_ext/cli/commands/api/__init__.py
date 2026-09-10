@@ -16,14 +16,6 @@ API_TOP_LEVEL_ENTRIES = (
         hidden=False,
     ),
     TopLevelEntry(
-        import_path=f"{__package__}.files:app",
-        name="files",
-        help="Manage files.",
-        panel="Core plugins",
-        kind="group",
-        hidden=False,
-    ),
-    TopLevelEntry(
         import_path=f"{__package__}.guardrail:app",
         name="guardrail",
         help="Manage guardrails.",

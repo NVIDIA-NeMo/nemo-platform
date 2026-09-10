@@ -190,7 +190,13 @@ nemo agent commands""",
         panel="Core plugins",
         kind="group",
     ),
-    # core-area: files
+    TopLevelEntry(
+        import_path="nemo_platform_ext.cli.commands.files:app",
+        help="Manage files.",
+        name="files",
+        panel="Core plugins",
+        kind="group",
+    ),
     TopLevelEntry(
         import_path="nemo_platform_ext.cli.commands.models:app",
         help="Manage models.",
