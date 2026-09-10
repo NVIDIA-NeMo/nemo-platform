@@ -16,6 +16,7 @@ import {
   TabsTrigger,
   Text,
 } from '@nvidia/foundations-react-core';
+import { FABRIC_CONFIG_FORMAT } from '@studio/api/agents/usePackageAgent';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
 import { AGENT_OVERVIEW_ENABLED, INTAKE_ENABLED } from '@studio/constants/environment';
@@ -38,7 +39,7 @@ import {
 } from '@studio/routes/agents/AgentDetailRoute/walkthroughStorage';
 import { getAgentsListRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import { ClipboardCheck, Dot, ListTree, Rocket } from 'lucide-react';
-import { type FC, useEffect, useRef, useState } from 'react';
+import { type FC, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 
 const TAB_SEARCH_PARAM = 'tab';
@@ -127,6 +128,26 @@ export const AgentDetailRoute: FC = () => {
 
   const modelNames = getAgentModelNames(agent?.config);
   const canDeploy = !!agent?.config;
+  // Narrower than canDeploy: NAT workflows package from a source checkout.
+  const canPackage = agent?.config_format === FABRIC_CONFIG_FORMAT;
+  // Survives closing the deploy modal, but not a change of agent: the route is
+  // reused across agentName, so an unscoped tag would deploy one agent's image
+  // under another's name.
+  const [builtImage, setBuiltImage] = useState<{ agent: string; image: string } | undefined>();
+  const builtImageForAgent = builtImage?.agent === agentName ? builtImage?.image : undefined;
+  // Stable identity, and a no-op when nothing changed: the panel reports the tag
+  // from an effect keyed on this callback, so a new closure or a new object here
+  // re-runs it forever.
+  const rememberBuiltImage = useCallback(
+    (image: string) => {
+      setBuiltImage((current) =>
+        current?.agent === agentName && current?.image === image
+          ? current
+          : { agent: agentName ?? '', image }
+      );
+    },
+    [agentName]
+  );
 
   const canRunEvaluation = !!agentName && canDeploy;
 
@@ -250,6 +271,13 @@ export const AgentDetailRoute: FC = () => {
               onDelete={setDeleteDeploymentTarget}
               onViewLogs={viewLogs}
               canDeploy={canDeploy}
+              workspace={workspace}
+              canPackage={canPackage}
+              onImageBuilt={(image) => {
+                rememberBuiltImage(image);
+                setCreateDeploymentOpen(true);
+              }}
+              onImageAvailable={rememberBuiltImage}
             />
           </TabsContent>
 
@@ -295,6 +323,7 @@ export const AgentDetailRoute: FC = () => {
           open
           agent={agentName}
           workspace={workspace}
+          initialImage={builtImageForAgent}
           onClose={() => setCreateDeploymentOpen(false)}
         />
       )}

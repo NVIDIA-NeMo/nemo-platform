@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
@@ -11,36 +12,29 @@ import {
   useAgentsCreateDeployment,
 } from '@nemo/sdk/generated/agents/agent-deployments';
 import { useAgentsListAgents } from '@nemo/sdk/generated/agents/agents';
-import { Stack } from '@nvidia/foundations-react-core';
+import { Accordion, Stack } from '@nvidia/foundations-react-core';
+import { AGENT_CONTAINER_DEPLOYMENTS_ENABLED } from '@studio/constants/environment';
 import { useQueryClient } from '@tanstack/react-query';
-import { type FC, useEffect } from 'react';
+import { type FC, useEffect, useState } from 'react';
 import { type SubmitHandler, useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-const deploymentFormSchema = z
-  .object({
-    name: z.string().optional(),
-    agent: z.string().min(1, 'Agent is required'),
-    deploymentMode: z.enum(['subprocess', 'docker', 'k8s']),
-    image: z.string().optional(),
-  })
-  .superRefine(({ deploymentMode, image }, context) => {
-    if (deploymentMode !== 'subprocess' && !image?.trim()) {
-      context.addIssue({
-        code: 'custom',
-        path: ['image'],
-        message: 'Container image is required for Docker and Kubernetes deployments',
-      });
-    }
-  });
+// Whether a container deployment needs an image depends on the server's configured
+// default, which only the server knows. It rejects the request; we surface that.
+const deploymentFormSchema = z.object({
+  name: z.string().optional(),
+  agent: z.string().min(1, 'Agent is required'),
+  deploymentMode: z.enum(['subprocess', 'docker', 'k8s']),
+  image: z.string().optional(),
+});
 
 type DeploymentFormData = z.infer<typeof deploymentFormSchema>;
 
-const makeDefaultValues = (agent?: string): DeploymentFormData => ({
+const makeDefaultValues = (agent?: string, image?: string): DeploymentFormData => ({
   name: '',
   agent: agent ?? '',
-  deploymentMode: 'subprocess',
-  image: '',
+  deploymentMode: image && AGENT_CONTAINER_DEPLOYMENTS_ENABLED ? 'docker' : 'subprocess',
+  image: image ?? '',
 });
 
 interface CreateDeploymentModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
@@ -48,6 +42,8 @@ interface CreateDeploymentModalProps extends Pick<FormModalProps, 'open' | 'onCl
   agent?: string;
   /** Override the workspace inferred from the current path. */
   workspace: string;
+  /** A freshly built tag to deploy, so the image does not have to be retyped. */
+  initialImage?: string;
 }
 
 export const CreateDeploymentModal: FC<CreateDeploymentModalProps> = ({
@@ -55,6 +51,7 @@ export const CreateDeploymentModal: FC<CreateDeploymentModalProps> = ({
   onClose,
   agent: agentProp,
   workspace,
+  initialImage,
 }) => {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -90,7 +87,11 @@ export const CreateDeploymentModal: FC<CreateDeploymentModalProps> = ({
         agent: data.agent,
         ...(data.name ? { name: data.name } : {}),
         deployment_mode: data.deploymentMode,
-        ...(data.deploymentMode !== 'subprocess' && data.image ? { image: data.image.trim() } : {}),
+        // Trim before testing, so a whitespace-only entry omits the field rather
+        // than sending an empty one.
+        ...(data.deploymentMode !== 'subprocess' && data.image?.trim()
+          ? { image: data.image.trim() }
+          : {}),
       },
     });
 
@@ -102,15 +103,25 @@ export const CreateDeploymentModal: FC<CreateDeploymentModalProps> = ({
     formState: { errors },
   } = useForm({
     resolver: zodResolver(deploymentFormSchema),
-    defaultValues: makeDefaultValues(agentProp),
+    defaultValues: makeDefaultValues(agentProp, initialImage),
     disabled: isPending,
     mode: 'onChange',
   });
   const deploymentMode = watch('deploymentMode');
 
+  // Opened when a packaged tag arrives, so the prefilled image is not hidden behind
+  // a disclosure the user never opened.
+  const [advancedOpen, setAdvancedOpen] = useState<string | undefined>(
+    initialImage ? 'advanced' : undefined
+  );
+
   useEffect(() => {
-    resetForm(makeDefaultValues(agentProp));
-  }, [agentProp, resetForm]);
+    if (initialImage) setAdvancedOpen('advanced');
+  }, [initialImage]);
+
+  useEffect(() => {
+    resetForm(makeDefaultValues(agentProp, initialImage));
+  }, [agentProp, initialImage, resetForm]);
 
   const reset = () => {
     resetMutation();
@@ -130,12 +141,10 @@ export const CreateDeploymentModal: FC<CreateDeploymentModalProps> = ({
     }
   };
 
-  const errorMessage =
-    createError instanceof Error
-      ? createError.message
-      : createError
-        ? 'An error occurred'
-        : undefined;
+  // The server owns whether an image is required, so its message has to reach the user.
+  const errorMessage = createError
+    ? getErrorMessage(createError as Error, 'An error occurred')
+    : undefined;
 
   return (
     <FormModal
@@ -157,29 +166,52 @@ export const CreateDeploymentModal: FC<CreateDeploymentModalProps> = ({
             slotError: errors.name?.message,
           }}
         />
-        <ControlledSelect
-          useControllerProps={{ control, name: 'deploymentMode' }}
-          items={[
-            { value: 'subprocess', children: 'Subprocess' },
-            { value: 'docker', children: 'Docker' },
-            { value: 'k8s', children: 'Kubernetes' },
-          ]}
-          formFieldProps={{
-            slotLabel: 'Runtime',
-            slotInfo:
-              'Use Docker for a local container image or Kubernetes for a cluster deployment.',
-          }}
-        />
-        {deploymentMode !== 'subprocess' && (
-          <ControlledTextInput
-            useControllerProps={{ control, name: 'image' }}
-            name="image"
-            label="Container Image"
-            placeholder="nvcr.io/org/team/agent:tag"
-            formFieldProps={{
-              slotError: errors.image?.message,
-              slotInfo: 'The backend pulls this image using its configured registry credentials.',
-            }}
+        {/* Subprocess covers the common case and needs nothing else. Runtime and image
+            are the container path, so they sit behind a disclosure rather than in front
+            of everyone — and the whole section is absent when the platform refuses
+            container deployments, since there would be nothing advanced to choose. */}
+        {AGENT_CONTAINER_DEPLOYMENTS_ENABLED && (
+          <Accordion
+            className="[&>div]:border-b-0"
+            value={advancedOpen}
+            onValueChange={setAdvancedOpen}
+            items={[
+              {
+                value: 'advanced',
+                chevronPosition: 'start',
+                slotTrigger: `${advancedOpen === 'advanced' ? 'Hide' : 'Show'} Advanced`,
+                slotContent: (
+                  <Stack gap="density-lg" className="pt-density-md">
+                    <ControlledSelect
+                      useControllerProps={{ control, name: 'deploymentMode' }}
+                      items={[
+                        { value: 'subprocess', children: 'Subprocess' },
+                        { value: 'docker', children: 'Docker' },
+                        { value: 'k8s', children: 'Kubernetes' },
+                      ]}
+                      formFieldProps={{
+                        slotLabel: 'Runtime',
+                        slotInfo:
+                          'Use Docker for a local container image or Kubernetes for a cluster deployment.',
+                      }}
+                    />
+                    {deploymentMode !== 'subprocess' && (
+                      <ControlledTextInput
+                        useControllerProps={{ control, name: 'image' }}
+                        name="image"
+                        label="Container Image"
+                        placeholder="nvcr.io/org/team/agent:tag"
+                        formFieldProps={{
+                          slotError: errors.image?.message,
+                          slotInfo:
+                            'The backend pulls this image using its configured registry credentials. Leave empty to use the deployment default, if one is configured.',
+                        }}
+                      />
+                    )}
+                  </Stack>
+                ),
+              },
+            ]}
           />
         )}
         {!agentProp && (
