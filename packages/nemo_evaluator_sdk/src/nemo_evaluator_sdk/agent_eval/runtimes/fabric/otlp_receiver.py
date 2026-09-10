@@ -10,8 +10,8 @@ downloaded when the task ends.
 
 Standard library only, and it stays that way: the sandbox image ships Fabric and its harnesses, not
 this package, so an import of anything else would have to be installed there first. That is also
-why each export is stored verbatim rather than as OTLP/JSON -- decoding needs protobuf, which the
-image does not guarantee, so :func:`nemo_evaluator_sdk...otlp_writer.fold_exports` does it later.
+why each export is stored verbatim rather than as OTLP/JSON: decoding needs protobuf, which the
+image does not guarantee, so it happens after the exports are back on the host.
 """
 
 from __future__ import annotations
