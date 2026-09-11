@@ -17,5 +17,10 @@
 
 from __future__ import annotations
 
-from .ingest_response import IngestResponse as IngestResponse
-from .trace_create_params import TraceCreateParams as TraceCreateParams
+from typing_extensions import TypedDict
+
+__all__ = ["TraceCreateParams"]
+
+
+class TraceCreateParams(TypedDict, total=False):
+    workspace: str
