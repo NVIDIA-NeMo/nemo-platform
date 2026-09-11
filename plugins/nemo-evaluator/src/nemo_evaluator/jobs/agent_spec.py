@@ -27,7 +27,7 @@ from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.agents import AgentBase
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ModelTarget(BaseModel):
@@ -262,6 +262,13 @@ class _AgentEvalTaskCommon(BaseModel):
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
 
+    @field_validator("id")
+    @classmethod
+    def _id_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("task id must not be empty")
+        return value
+
 
 class AgentEvalTaskInput(_AgentEvalTaskCommon):
     """Submitter-facing task DTO: metrics may be inline bundles or stored-metric references."""
@@ -372,6 +379,11 @@ class AgentEvalInputSpec(_AgentEvalSpecCommon):
         # inline list must carry at least one task, mirroring the canonical spec's ``min_length=1``.
         if isinstance(self.tasks, list) and not self.tasks:
             raise ValueError("provide at least one task, or a `tasks` taskset reference")
+        if isinstance(self.tasks, list):
+            ids = [task.id for task in self.tasks]
+            duplicates = sorted({task_id for task_id in ids if ids.count(task_id) > 1})
+            if duplicates:
+                raise ValueError(f"duplicate inline task ids: {duplicates}")
         return self
 
 
@@ -379,6 +391,14 @@ class AgentEvalSpec(_AgentEvalSpecCommon):
     """Canonical agent-evaluation spec: tasks with all metric references resolved to inline."""
 
     tasks: list[AgentEvalTaskSpec] = Field(min_length=1, description="Tasks to evaluate; at least one is required.")
+
+    @model_validator(mode="after")
+    def _reject_duplicate_task_ids(self) -> Self:
+        ids = [task.id for task in self.tasks]
+        duplicates = sorted({task_id for task_id in ids if ids.count(task_id) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate agent-eval task ids: {duplicates}")
+        return self
 
     @model_validator(mode="after")
     def _reject_unresolved_metric_model_refs(self) -> Self:

@@ -463,6 +463,26 @@ def test_input_spec_rejects_empty_inline_task_list() -> None:
         AgentEvalInputSpec(tasks=[], target=_runner_target("openai/gpt-5.4"))
 
 
+@pytest.mark.parametrize("task_id", ["", "  \t"])
+def test_input_spec_rejects_blank_inline_task_id(task_id: str) -> None:
+    with pytest.raises(ValueError, match="task id must not be empty"):
+        AgentEvalInputSpec(
+            tasks=[AgentEvalTaskInput(id=task_id, intent="Answer.", inputs={})],
+            target=_runner_target("openai/gpt-5.4"),
+        )
+
+
+def test_input_spec_rejects_duplicate_inline_task_ids() -> None:
+    with pytest.raises(ValueError, match=r"duplicate inline task ids: \['task-1'\]"):
+        AgentEvalInputSpec(
+            tasks=[
+                AgentEvalTaskInput(id="task-1", intent="Answer first.", inputs={}),
+                AgentEvalTaskInput(id="task-1", intent="Answer second.", inputs={}),
+            ],
+            target=_runner_target("openai/gpt-5.4"),
+        )
+
+
 async def test_to_spec_resolves_inline_task_metrics_without_a_platform() -> None:
     # Inline metrics need no entity client/SDK; refs would, but none are used here.
     input_spec = AgentEvalInputSpec(
