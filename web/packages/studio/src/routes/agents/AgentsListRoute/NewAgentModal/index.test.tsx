@@ -113,7 +113,7 @@ const renderModal = () =>
     ],
   });
 
-/** The prompt tab is the default, so upload tests have to switch before the form exists. */
+/** Upload tests have to switch tabs before the form exists. */
 const openUploadTab = async (dialog: HTMLElement) => {
   fireEvent.click(within(dialog).getByRole('tab', { name: 'Upload agent' }));
   await screen.findByTestId('agent-directory-input');
@@ -128,11 +128,13 @@ const submit = async (dialog: HTMLElement, user: ReturnType<typeof userEvent.set
 };
 
 describe('NewAgentModal coding agent prompt tab', () => {
-  it('opens on the prompt, so an agent already in a repository needs no upload', async () => {
+  it('reaches the prompt in one click, so an agent already in a repository needs no upload', async () => {
+    const user = userEvent.setup();
     mockPlatform();
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: 'Coding agent prompt' }));
 
     expect(within(dialog).getByRole('tab', { name: 'Coding agent prompt' })).toHaveAttribute(
       'aria-selected',
@@ -148,6 +150,7 @@ describe('NewAgentModal coding agent prompt tab', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: 'Coding agent prompt' }));
     // The prompt editor is a lazily imported chunk, so it can miss the default find timeout.
     await user.click(
       await within(dialog).findByRole('button', { name: 'Copy to clipboard' }, { timeout: 10_000 })
@@ -161,10 +164,12 @@ describe('NewAgentModal coding agent prompt tab', () => {
   });
 
   it('offers Close rather than Create, since the prompt has nothing to submit', async () => {
+    const user = userEvent.setup();
     mockPlatform();
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: 'Coding agent prompt' }));
 
     expect(within(dialog).getByRole('button', { name: 'Close' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Create' })).not.toBeInTheDocument();
@@ -404,5 +409,88 @@ describe('NewAgentModal folder drop', () => {
 
     await waitFor(() => expect(created).toHaveLength(1));
     expect([...uploaded].sort()).toEqual(['agent.yaml', 'mcps/calculator.py']);
+  });
+});
+
+describe('NewAgentModal imported traces tab', () => {
+  const mockTraces = (agentNames: (string | undefined)[], registered: string[] = []) => {
+    server.use(
+      http.get('*/apis/intake/v2/workspaces/:workspace/traces', () =>
+        HttpResponse.json({
+          data: agentNames.map((agent_name, index) => ({
+            trace_id: `t-${index}`,
+            root_span_id: `s-${index}`,
+            started_at: '2026-01-01T00:00:00Z',
+            ...(agent_name ? { agent_name } : {}),
+          })),
+        })
+      ),
+      http.get('*/apis/agents/v2/workspaces/:workspace/agents', () =>
+        HttpResponse.json({ data: registered.map((name) => ({ name, workspace })) })
+      )
+    );
+  };
+
+  it('lands on the traces tab and offers each distinct agent seen in them', async () => {
+    const user = userEvent.setup();
+    mockPlatform();
+    mockTraces(['billing-agent', 'billing-agent', 'research-agent', undefined]);
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+
+    expect(
+      within(dialog).getByRole('tab', { name: 'Create from Imported traces' })
+    ).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(await within(dialog).findByRole('combobox', { name: /imported traces/i }));
+    // Deduped, and a trace with no agent contributes nothing.
+    expect(await screen.findByRole('option', { name: 'billing-agent' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'research-agent' })).toBeInTheDocument();
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+  });
+
+  it('leaves out agents that are registered already', async () => {
+    const user = userEvent.setup();
+    mockPlatform();
+    mockTraces(['billing-agent', 'research-agent'], ['research-agent']);
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+
+    await user.click(await within(dialog).findByRole('combobox', { name: /imported traces/i }));
+    expect(await screen.findByRole('option', { name: 'billing-agent' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'research-agent' })).not.toBeInTheDocument();
+  });
+
+  it('says so when every traced agent is already registered', async () => {
+    mockPlatform();
+    mockTraces(['research-agent'], ['research-agent']);
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+
+    expect(await within(dialog).findByTestId('no-traced-agents')).toHaveTextContent(
+      'already registered'
+    );
+  });
+
+  it('creates the chosen agent and cannot submit before one is chosen', async () => {
+    const user = userEvent.setup();
+    const { created } = mockPlatform();
+    mockTraces(['billing-agent']);
+
+    renderModal();
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled();
+
+    await user.click(await within(dialog).findByRole('combobox', { name: /imported traces/i }));
+    await user.click(await screen.findByRole('option', { name: 'billing-agent' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(created).toHaveLength(1));
+    // Telemetry carries no config, and the platform defaults an empty one.
+    expect(created[0]).toMatchObject({ name: 'billing-agent', config: {} });
   });
 });
