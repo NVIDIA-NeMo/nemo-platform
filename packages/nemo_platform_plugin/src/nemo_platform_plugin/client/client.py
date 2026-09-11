@@ -776,6 +776,12 @@ class NemoClient(BaseNemoClient[httpx.Client]):
         if self._owns_http:
             self._http.close()
 
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.close()
+
     @overload
     def send(
         self,
@@ -1048,6 +1054,21 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
             url_resolver=client._url_resolver,
         )
 
+    async def close(self) -> None:
+        """Close the underlying async HTTP transport."""
+        if self._owns_http:
+            await self._http.aclose()
+
+    async def aclose(self) -> None:
+        """Alias for compatibility with httpx-style async resources."""
+        await self.close()
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        await self.close()
+
     def with_http_client(self, http_client: httpx.AsyncClient) -> Self:
         """Return a copy of this client using a different async transport."""
         transport_owner = AsyncNemoClient(
@@ -1062,11 +1083,6 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
             url_resolver=self._url_resolver,
         )
         return type(self).from_client(transport_owner)
-
-    async def aclose(self) -> None:
-        """Close the underlying async HTTP transport."""
-        if self._owns_http:
-            await self._http.aclose()
 
     @overload
     async def send(
