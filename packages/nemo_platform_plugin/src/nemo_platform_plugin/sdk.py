@@ -9,7 +9,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.adapter import PlatformClient
 
 SyncResourceT = TypeVar("SyncResourceT")
