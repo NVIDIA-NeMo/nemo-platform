@@ -150,7 +150,7 @@ class NeMoPlatform(SyncAPIClient):
         access_token: str | None = None,
         timeout: float | Timeout | None | NotGiven = not_given,
         max_retries: int = DEFAULT_MAX_RETRIES,
-        default_headers: Mapping[str, str] | None = None,
+        default_headers: Mapping[str, str | Omit] | None = None,
         default_query: Mapping[str, object] | None = None,
         # Configure a custom httpx client.
         # We provide a `DefaultHttpxClient` class that you can pass to retain the default values we use for `limits`, `timeout` & `follow_redirects`.
@@ -411,8 +411,8 @@ class NeMoPlatform(SyncAPIClient):
         timeout: float | Timeout | None | NotGiven = not_given,
         http_client: httpx.Client | None = None,
         max_retries: int | NotGiven = not_given,
-        default_headers: Mapping[str, str] | None = None,
-        set_default_headers: Mapping[str, str] | None = None,
+        default_headers: Mapping[str, str | Omit] | None = None,
+        set_default_headers: Mapping[str, str | Omit] | None = None,
         default_query: Mapping[str, object] | None = None,
         set_default_query: Mapping[str, object] | None = None,
         _extra_kwargs: Mapping[str, Any] = {},
@@ -536,7 +536,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         access_token: str | None = None,
         timeout: float | Timeout | None | NotGiven = not_given,
         max_retries: int = DEFAULT_MAX_RETRIES,
-        default_headers: Mapping[str, str] | None = None,
+        default_headers: Mapping[str, str | Omit] | None = None,
         default_query: Mapping[str, object] | None = None,
         # Configure a custom httpx client.
         # We provide a `DefaultAsyncHttpxClient` class that you can pass to retain the default values we use for `limits`, `timeout` & `follow_redirects`.
@@ -819,8 +819,8 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         timeout: float | Timeout | None | NotGiven = not_given,
         http_client: httpx.AsyncClient | None = None,
         max_retries: int | NotGiven = not_given,
-        default_headers: Mapping[str, str] | None = None,
-        set_default_headers: Mapping[str, str] | None = None,
+        default_headers: Mapping[str, str | Omit] | None = None,
+        set_default_headers: Mapping[str, str | Omit] | None = None,
         default_query: Mapping[str, object] | None = None,
         set_default_query: Mapping[str, object] | None = None,
         _extra_kwargs: Mapping[str, Any] = {},

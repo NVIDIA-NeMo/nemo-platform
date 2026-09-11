@@ -8,7 +8,6 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-import fsspec.asyn
 from filesets import FilesetFileSystem, FilesetPathError, parse_fileset_ref
 from nemo_evaluator.filesets import FilesetRef
 from nemo_platform_plugin.client.client import NemoClient
@@ -46,7 +45,7 @@ def _download_fileset_contents(*, sdk: NemoClient, workspace: str, fileset: str,
     """Download a FileSet root's contents directly into ``destination``."""
     files_client = FilesClient.from_client(sdk)
     fs = FilesetFileSystem(client=files_client)
-    fsspec.asyn.sync(fs.loop, fs._get, f"{workspace}/{fileset}/", str(destination), True)
+    fs.get(f"{workspace}/{fileset}/", str(destination), recursive=True)
 
 
 class EnvironmentStageJob(NemoJob):

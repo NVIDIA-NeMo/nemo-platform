@@ -24,7 +24,7 @@ from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.common.config.base import AuthConfig, Configuration, DatabaseConfig, PlatformConfig, ServiceConfig
 from nmp.common.entities.client import EntityClient
 from nmp.common.service import Service
-from nmp.common.service.dependencies import get_entity_client, get_sdk_client
+from nmp.common.service.dependencies import get_entity_client, get_sdk_client, get_sync_sdk_client
 from nmp.core.entities.config import EntitiesConfig
 from nmp.core.entities.service import EntitiesService
 from nmp.core.inference_gateway.config import InferenceGatewayConfig
@@ -176,23 +176,16 @@ def _create_svc(
     return svc
 
 
-def _install_asgi_files_resource(sdk: NeMoPlatform, async_http_client: httpx.AsyncClient) -> None:
+def _install_asgi_files_resource(sdk: NeMoPlatform) -> None:
     """Route sync SDK file uploads through the in-process test app."""
     from filesets.resources import FilesResource
     from nemo_platform_plugin.client.adapter import client_from_platform
-    from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
+    from nemo_platform_plugin.files.client import FilesClient
 
-    base_url = str(sdk.base_url).rstrip("/")
     files_client = client_from_platform(sdk, FilesClient)
     sdk.__dict__["files"] = FilesResource(
         sdk,
         files_client=files_client,
-        async_files_client=AsyncFilesClient(
-            base_url=base_url,
-            workspace=sdk.workspace,
-            default_headers=files_client._default_headers or None,
-            http_client=async_http_client,
-        ),
     )
     original_copy: Callable[..., NeMoPlatform] = sdk.copy
 
@@ -200,6 +193,7 @@ def _install_asgi_files_resource(sdk: NeMoPlatform, async_http_client: httpx.Asy
         *,
         workspace: str | None = None,
         base_url: str | httpx.URL | None = None,
+        inference_base_url: str | httpx.URL | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
         http_client: httpx.Client | None = None,
         max_retries: int | NotGiven = not_given,
@@ -212,6 +206,7 @@ def _install_asgi_files_resource(sdk: NeMoPlatform, async_http_client: httpx.Asy
         clone = original_copy(
             workspace=workspace,
             base_url=base_url,
+            inference_base_url=inference_base_url,
             timeout=timeout,
             http_client=http_client,
             max_retries=max_retries,
@@ -221,7 +216,7 @@ def _install_asgi_files_resource(sdk: NeMoPlatform, async_http_client: httpx.Asy
             set_default_query=set_default_query,
             _extra_kwargs={} if _extra_kwargs is None else _extra_kwargs,
         )
-        _install_asgi_files_resource(clone, async_http_client)
+        _install_asgi_files_resource(clone)
         return clone
 
     sdk.__dict__["copy"] = copy_with_asgi_files
@@ -445,12 +440,6 @@ def create_test_client(
         services_to_start = [_create_svc(svc, configs) for svc in services_to_create]
         services_to_start = order_services_by_dependencies(services_to_start)
 
-        # Clear any stale SDK client from previous tests BEFORE creating app.
-        # This prevents service startup code from using a previous test's http transport.
-        from nmp.common import sdk_factory as sdk_factory_module
-
-        sdk_factory_module._test_http_client = None
-
         # Create transport and http_client BEFORE the app, so we can inject the client
         # into create_app() for middleware (AuthorizationMiddleware). We set transport.app
         # after app creation - this works because no requests are made until setup completes.
@@ -461,9 +450,7 @@ def create_test_client(
         pdp_timeout = Configuration.get_service_config(AuthConfig).policy_decision_point_request_timeout_seconds
         async_http_client = httpx.AsyncClient(transport=transport, base_url="http://testserver", timeout=pdp_timeout)
 
-        # Both callouts target this in-process ASGI app in tests. Pass them
-        # explicitly so production callers never assume the PDP transport can
-        # also reach the auth-service lifecycle endpoint.
+        # Both auth callouts target this in-process ASGI app in tests.
         app = create_app(
             services_to_start,
             http_client=async_http_client,
@@ -484,15 +471,12 @@ def create_test_client(
             # Store on app.state so tests can access it via test_client.app.state.access_log
             app.state.access_log = access_log_instance
 
-        # Configure module-level http client as FALLBACK for direct callers of
-        # get_async_platform_sdk()/get_platform_sdk() that don't use DependencyProvider.
-        # The primary injection path is through DependencyProvider (see below). These
-        # module-level variables will be removed once all direct callers are migrated.
-        # See architecture/docs/http-client-injection.md for details.
-        sdk_factory_module._test_http_client = async_http_client
-        stack.callback(lambda: setattr(sdk_factory_module, "_test_http_client", None))
+        from nmp.common.sdk_factory import get_async_platform_sdk
 
-        async_sdk = AsyncNeMoPlatform(base_url="http://testserver", http_client=async_http_client, workspace=workspace)
+        async_sdk = get_async_platform_sdk(
+            base_url="http://testserver",
+            http_client=async_http_client,
+        ).copy(workspace=workspace)
 
         # Create the EntityClient (used for DI and optionally yielded)
         entity_client = EntityClient(client_from_platform(async_sdk, AsyncEntitiesClient))
@@ -551,7 +535,19 @@ def create_test_client(
                 http_client=sdk_http_client,
                 max_retries=0,
             )
-            _install_asgi_files_resource(sdk, async_http_client)
+            _install_asgi_files_resource(sdk)
+
+            for svc in services_to_start:
+                svc.dependency_provider._sync_http_client = sdk_http_client
+                svc.dependency_provider._sync_sdk_client = sdk
+
+            if get_sync_sdk_client not in all_overrides:
+                from nmp.common.sdk_factory import get_request_scoped_sync_sdk
+
+                def _get_request_scoped_sync_test_sdk() -> NeMoPlatform:
+                    return get_request_scoped_sync_sdk(sdk)
+
+                app.dependency_overrides[get_sync_sdk_client] = _get_request_scoped_sync_test_sdk
 
             # Trigger middleware stack build with a health check (which skips auth).
             client.get("/health")

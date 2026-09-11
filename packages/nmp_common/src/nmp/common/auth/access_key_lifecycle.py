@@ -49,14 +49,11 @@ class AccessKeyLifecycleAuthenticator:
 
     def _get_sdk(self) -> AsyncNeMoPlatform:
         if self._sdk is None:
-            # Import lazily to avoid an auth -> SDK factory import cycle. The
-            # factory attaches PlatformRequestRouter, which owns service
-            # discovery and transport selection for /apis/auth requests.
-            from nmp.common.sdk_factory import get_async_platform_sdk, with_options_preserving_request_router
+            # Import lazily to avoid an auth -> SDK factory import cycle.
+            from nmp.common.sdk_factory import get_async_platform_sdk
 
             sdk = get_async_platform_sdk(http_client=self._http_client)
-            self._sdk = with_options_preserving_request_router(
-                sdk,
+            self._sdk = sdk.with_options(
                 max_retries=0,
                 _extra_kwargs={"_strict_response_validation": True},
             )

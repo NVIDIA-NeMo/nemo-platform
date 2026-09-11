@@ -293,15 +293,15 @@ async def middleware() -> AsyncIterator[GuardrailsMiddleware]:
     """A started middleware with a mocked SDK and a real cache.
 
     Owns startup AND shutdown so any pool-owned resources are released
-    between tests. The platform SDK is an :class:`AsyncMock` so
-    ``await self._sdk.close()`` succeeds in shutdown.
+    between tests. The platform SDK is injected the same way IGW injects
+    its caller-owned SDK at runtime.
     """
     instance = GuardrailsMiddleware()
     instance._inject_cache(MagicMock())
     mock_sdk = AsyncMock()
     mock_sdk._custom_headers = {}
-    with patch("nemo_guardrails_plugin.middleware.get_async_platform_sdk", return_value=mock_sdk):
-        await instance.on_startup()
+    instance._inject_platform_sdk(mock_sdk)
+    await instance.on_startup()
     try:
         yield instance
     finally:
@@ -2125,9 +2125,9 @@ class TestLifecycle:
 
         mock_sdk = AsyncMock()
         mock_sdk._custom_headers = {}
+        instance._inject_platform_sdk(mock_sdk)
         try:
             with (
-                patch("nemo_guardrails_plugin.middleware.get_async_platform_sdk", return_value=mock_sdk),
                 patch(
                     "nemo_guardrails_plugin.middleware.get_common_service_config",
                     return_value=SimpleNamespace(log_level=log_level),
@@ -2141,36 +2141,36 @@ class TestLifecycle:
             if instance._sdk is not None:
                 await instance.on_shutdown()
 
-    async def test_on_shutdown_closes_sdk_and_cache(self) -> None:
+    async def test_on_shutdown_detaches_sdk_and_closes_cache(self) -> None:
         instance = GuardrailsMiddleware()
         instance._inject_cache(MagicMock())
 
         mock_sdk = AsyncMock()
-        with patch("nemo_guardrails_plugin.middleware.get_async_platform_sdk", return_value=mock_sdk):
-            await instance.on_startup()
+        instance._inject_platform_sdk(mock_sdk)
+        await instance.on_startup()
 
         assert instance._rails_cache is not None
         assert instance._stable_cache is not None
         await instance.on_shutdown()
 
-        mock_sdk.close.assert_awaited_once()
+        mock_sdk.close.assert_not_awaited()
         assert instance._rails_cache is None
         assert instance._stable_cache is None
 
-    async def test_on_shutdown_closes_sdk_even_when_cache_close_raises(self) -> None:
+    async def test_on_shutdown_detaches_sdk_even_when_cache_close_raises(self) -> None:
         instance = GuardrailsMiddleware()
         instance._inject_cache(MagicMock())
 
         mock_sdk = AsyncMock()
-        with patch("nemo_guardrails_plugin.middleware.get_async_platform_sdk", return_value=mock_sdk):
-            await instance.on_startup()
+        instance._inject_platform_sdk(mock_sdk)
+        await instance.on_startup()
 
         assert instance._rails_cache is not None
         with patch.object(instance._rails_cache, "close", new=AsyncMock(side_effect=RuntimeError("cache boom"))):
             with pytest.raises(RuntimeError, match="cache boom"):
                 await instance.on_shutdown()
 
-        mock_sdk.close.assert_awaited_once()
+        mock_sdk.close.assert_not_awaited()
         assert instance._sdk is None
         assert instance._rails_cache is None
         assert instance._stable_cache is None

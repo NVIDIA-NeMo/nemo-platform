@@ -393,7 +393,7 @@ class BaseClient(Generic[_HttpxClientT, _DefaultStreamT]):
         _strict_response_validation: bool,
         max_retries: int = DEFAULT_MAX_RETRIES,
         timeout: float | Timeout | None = DEFAULT_TIMEOUT,
-        custom_headers: Mapping[str, str] | None = None,
+        custom_headers: Headers | None = None,
         custom_query: Mapping[str, object] | None = None,
     ) -> None:
         self._version = version
@@ -869,7 +869,7 @@ class SyncAPIClient(BaseClient[httpx.Client, Stream[Any]]):
         max_retries: int = DEFAULT_MAX_RETRIES,
         timeout: float | Timeout | None | NotGiven = not_given,
         http_client: httpx.Client | None = None,
-        custom_headers: Mapping[str, str] | None = None,
+        custom_headers: Headers | None = None,
         custom_query: Mapping[str, object] | None = None,
         _strict_response_validation: bool,
     ) -> None:
@@ -1452,7 +1452,7 @@ class AsyncAPIClient(BaseClient[httpx.AsyncClient, AsyncStream[Any]]):
         max_retries: int = DEFAULT_MAX_RETRIES,
         timeout: float | Timeout | None | NotGiven = not_given,
         http_client: httpx.AsyncClient | None = None,
-        custom_headers: Mapping[str, str] | None = None,
+        custom_headers: Headers | None = None,
         custom_query: Mapping[str, object] | None = None,
     ) -> None:
         if not is_given(timeout):

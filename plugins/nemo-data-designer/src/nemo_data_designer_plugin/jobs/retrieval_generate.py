@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import ClassVar, cast
 
-from data_designer_nemo.context import create_data_designer_context
+from data_designer_nemo.context import create_validation_context
 from nemo_data_designer_plugin.jobs.retrieval_common import retrieval_step, work_dir
 from nemo_data_designer_plugin.jobs.retrieval_spec import RetrievalGenerateJobConfig, RetrievalGenerateStepConfig
 from nemo_data_designer_plugin.retrieval.corpus import materialize_corpus
@@ -37,7 +37,7 @@ class RetrievalGenerateJob(NemoJob):
     ) -> BaseModel:
         async_sdk = cast(AsyncNeMoPlatform, async_sdk)
         job_config = cast(RetrievalGenerateJobConfig, input_spec)
-        dd_ctx = create_data_designer_context(async_sdk, workspace)
+        dd_ctx = create_validation_context(async_sdk, workspace)
         model_configs = build_retrieval_model_configs(
             provider=job_config.provider,
             chat_provider=job_config.chat_provider,

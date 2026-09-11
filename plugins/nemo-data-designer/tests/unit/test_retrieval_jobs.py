@@ -139,7 +139,7 @@ async def test_retrieval_prepare_compile_uses_one_container_profile() -> None:
     dd_ctx = AsyncMock()
     dd_ctx.get_model_providers = AsyncMock(return_value=providers)
     with patch(
-        "nemo_data_designer_plugin.jobs.retrieval_generate.create_data_designer_context",
+        "nemo_data_designer_plugin.jobs.retrieval_generate.create_validation_context",
         return_value=dd_ctx,
     ):
         step = await RetrievalGenerateJob.to_spec(
@@ -346,7 +346,7 @@ async def test_retrieval_run_compile_chains_generate_then_prepare() -> None:
         prepare=RetrievalPrepareJobConfig(enable_mining=False),
     )
     with patch(
-        "nemo_data_designer_plugin.jobs.retrieval_generate.create_data_designer_context",
+        "nemo_data_designer_plugin.jobs.retrieval_generate.create_validation_context",
         return_value=dd_ctx,
     ):
         compiled = await RetrievalRunJob.compile(
