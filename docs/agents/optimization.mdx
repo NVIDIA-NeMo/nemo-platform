@@ -486,9 +486,8 @@ nemo agents optimize prepare-fileset \
 - the YAML parses and enables an optimizer with a non-empty search space;
 - there is an Agent under Test — either an inline
   `schema_version: fabric.agent/v1alpha1` package or a resolvable `--agent`;
-- every path the config references (dataset, `eval.fabric.base_dir`,
-  `eval.run_hook.path` / `agent_src`, MCP `config_paths`) is relative and
-  present under `--source`;
+- every path the config references (dataset, `eval.fabric.base_dir`) is
+  relative and present under `--source`;
 - no absolute host path would be shipped to the worker.
 
 Use `--dry-run` to validate without uploading, and `--no-check-models` to skip

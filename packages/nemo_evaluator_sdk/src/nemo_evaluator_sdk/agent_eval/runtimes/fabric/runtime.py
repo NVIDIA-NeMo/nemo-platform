@@ -49,7 +49,6 @@ from uuid import uuid4
 
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric import _common
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric._sandbox_execution import SandboxExecution
-from nemo_evaluator_sdk.agent_eval.runtimes.fabric.hooks import FabricTaskRunHook, FabricTaskRunSession
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.image import ensure_fabric_image
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_receiver import OTLPReceiver
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_writer import (
@@ -135,7 +134,7 @@ class FabricAgentRuntime:
     ``examples/fabric_harness_runtimes.py`` for full Codex and Hermes config examples.
 
     Pass ``sandbox=`` to run each task inside a sandbox from that provider instead of on the host.
-    ``image`` and ``secrets`` only apply there; ``base_dir`` and ``task_hook`` only apply on the host.
+    ``image`` and ``secrets`` only apply there; ``base_dir`` only applies on the host.
     """
 
     def __init__(
@@ -150,7 +149,6 @@ class FabricAgentRuntime:
         trajectory_extra: Mapping[str, Any] | None = None,
         runtime_name: str = _RUNTIME_NAME,
         skills: Sequence[AgentSkill] | None = None,
-        task_hook: FabricTaskRunHook | None = None,
         sandbox: SandboxProvider | None = None,
         image: str | None = None,
         secrets: Mapping[str, SecretRef] | None = None,
@@ -160,11 +158,8 @@ class FabricAgentRuntime:
                 raise ValueError("image= selects the sandbox image; pass sandbox=<SandboxProvider> with it")
             if secrets:
                 raise ValueError("secrets= are injected into a sandbox; pass sandbox=<SandboxProvider> with them")
-        else:
-            if task_hook is not None:
-                raise ValueError("task_hook is not supported in sandbox mode: the hook runs on the host config")
-            if base_dir is not None:
-                raise ValueError("base_dir is not supported in sandbox mode: the config is seeded into /in")
+        elif base_dir is not None:
+            raise ValueError("base_dir is not supported in sandbox mode: the config is seeded into /in")
         self._config = _common.to_mapping(config)
         self._model = model
         self._base_dir = Path(base_dir).expanduser() if base_dir is not None else None
@@ -174,7 +169,6 @@ class FabricAgentRuntime:
         self._trajectory_extra = dict(trajectory_extra) if trajectory_extra else None
         self._runtime_name = runtime_name
         self._skill_set = SkillSet(tuple(skills or ()))
-        self._task_hook = task_hook
         self._sandbox = sandbox
         # Optional prebuilt image: the trial runs inside it, so it must contain the Fabric CLI + adapter.
         # None -> stock harness-agnostic image built on first run.
@@ -393,7 +387,6 @@ class FabricAgentRuntime:
         workspace_dir = evidence_dir / _WORKSPACE_SUBDIR
         workspace_dir.mkdir(parents=True, exist_ok=True)
         run = _common.TaskRun(workspace_dir=workspace_dir, relay_dir=evidence_dir / _RELAY_SUBDIR)
-        hook_session = FabricTaskRunSession()
         trace_receiver: OTLPReceiver | None = None
         try:
             # Inside the guarded block: a port it cannot bind costs this trial its trace, like any
@@ -426,15 +419,6 @@ class FabricAgentRuntime:
             for skill_path in skill_paths:
                 task_config.add_skill_path(skill_path)
 
-            if self._task_hook is not None:
-                task_config = self._task_hook.prepare(
-                    config=task_config,
-                    task=task,
-                    evidence_dir=evidence_dir,
-                    workspace_dir=workspace_dir,
-                    session=hook_session,
-                )
-
             result = await asyncio.wait_for(
                 # ``Fabric.run`` folds the per-invocation input + request id into a ``RunRequest``.
                 client.run(
@@ -444,17 +428,6 @@ class FabricAgentRuntime:
                 ),
                 timeout=self._timeout_s,
             )
-            # Always try to harvest MCP binding results. Hermes often ends with
-            # ``completed=false`` / empty finals after a successful tool call; the binding
-            # audit is still the authoritative analyzer output for scoring.
-            if self._task_hook is not None:
-                try:
-                    run.hook_extras = self._task_hook.after_success(task=task, result=result, session=hook_session)
-                except Exception as exc:  # noqa: BLE001 - binding harvest must not abort the batch
-                    logger.warning("Fabric task hook after_success failed: %s", exc)
-                    if result.status == "succeeded":
-                        raise
-                    run.hook_extras = None
             run.result = _common.ResultView.from_result(result)
         except Exception as exc:  # noqa: BLE001 - a task failure must not abort the whole run
             run.error = exc
@@ -470,11 +443,6 @@ class FabricAgentRuntime:
                     fold_exports(traces_dir(evidence_dir))
                 except Exception as exc:  # noqa: BLE001 - any fold failure costs the trace, not the trial
                     logger.warning("Could not fold the OTLP trace for task %s: %s", task.id, exc)
-            if self._task_hook is not None:
-                try:
-                    self._task_hook.cleanup(session=hook_session)
-                except Exception:  # noqa: BLE001 - hook cleanup must not mask the trial outcome
-                    pass
         return run
 
     async def _finish_task(
@@ -524,7 +492,6 @@ class FabricAgentRuntime:
         result_path = evidence_dir / _RESULT_FILENAME
         result_path.write_text(json.dumps(result.payload, indent=2, default=str), encoding="utf-8")
 
-        extras = dict(run.hook_extras) if run.hook_extras else {}
         base_metadata: dict[str, Any] = {
             "runtime": self._runtime_name,
             "harness": result.harness,
@@ -535,45 +502,14 @@ class FabricAgentRuntime:
             **run.metadata,
             # Skill provenance (name + content hash + injection mode) for the A/B diff.
             **self._skill_metadata(run.skill_provenances),
-            **extras,
         }
 
         if result.status != "succeeded":
-            # Hermes may report a non-success final message after a successful MCP tool
-            # call. Prefer the binding audit result over a hard fail when present.
-            binding_result = _first_mcp_binding_result(extras)
-            analysis = binding_result if binding_result is not None else extras.get("analyzer_analysis")
-            if analysis is not None:
-                base_metadata = {
-                    **base_metadata,
-                    "fabric_status": result.status,
-                    "recovered_from_mcp_binding": True,
-                }
-                return AgentEvalTrial(
-                    id=f"{task.id}:{self._runtime_name}",
-                    task_id=task.id,
-                    status=AgentEvalTrialStatus.COMPLETED,
-                    output=AgentOutput(
-                        output_text=json.dumps(analysis, default=str),
-                        response=result.output,
-                        metadata={**base_metadata, "evidence_dir": str(evidence_dir)},
-                    ),
-                    evidence=self._evidence(run, result, result_path, evidence_dir, atif_path=atif_path),
-                    measurements=measurements,
-                    metadata={**base_metadata, "generated": True, "agent_ok": True},
-                )
             return self._failed_trial(
                 task, evidence_dir, result.failure(), extra_metadata=base_metadata, measurements=measurements
             )
 
-        # Author / mcp_run_binding hooks may attach a structured result. Prefer that when the
-        # harness returns an empty final message after a successful tool call.
         output_text = _common.extract_output_text(result.output)
-        if not output_text or not str(output_text).strip():
-            binding_result = _first_mcp_binding_result(extras)
-            analysis = binding_result if binding_result is not None else extras.get("analyzer_analysis")
-            if analysis is not None:
-                output_text = json.dumps(analysis, default=str)
         return AgentEvalTrial(
             id=f"{task.id}:{self._runtime_name}",
             task_id=task.id,
@@ -751,17 +687,6 @@ def _remove_injected_bundle(workspace_dir: Path, location: str) -> None:
         except OSError:
             break
         parent = parent.parent
-
-
-def _first_mcp_binding_result(extras: Mapping[str, Any]) -> Any | None:
-    """Return the first ``mcp_bindings.<server>.result`` payload, if any."""
-    bindings = extras.get("mcp_bindings")
-    if not isinstance(bindings, Mapping):
-        return None
-    for entry in bindings.values():
-        if isinstance(entry, Mapping) and "result" in entry:
-            return entry.get("result")
-    return None
 
 
 def _atif_path(run: _common.TaskRun) -> Path | None:

@@ -138,35 +138,6 @@ def test_rejects_numeric_optimization_with_an_empty_search_space(tmp_path: Path)
         preflight_bundle(tmp_path, "optimize.yml")
 
 
-def test_checks_hook_and_mcp_assets(tmp_path: Path) -> None:
-    config = full_config(
-        run_hook={
-            "type": "mcp_run_binding",
-            "agent_src": "analyzer",
-            "bindings": [
-                {
-                    "server": "email-phishing-analyzer",
-                    "executable": "${PHISHING_MCP_BIN}",
-                    "config_paths": ["analyzer-inference-api.yaml"],
-                }
-            ],
-        }
-    )
-    make_bundle(tmp_path, config, files={"dataset.json": DATASET})
-
-    with pytest.raises(BundlePreflightError) as excinfo:
-        preflight_bundle(tmp_path, "optimize.yml")
-    message = str(excinfo.value)
-    assert "eval.run_hook.agent_src" in message
-    assert "eval.run_hook.bindings[0].config_paths[0]" in message
-    # ``${...}`` is expanded from the task environment, so it is not resolved here.
-    assert "executable" not in message
-
-    (tmp_path / "analyzer").mkdir()
-    (tmp_path / "analyzer-inference-api.yaml").write_text("servers: {}\n")
-    assert preflight_bundle(tmp_path, "optimize.yml")["eval"]["run_hook"]["type"] == "mcp_run_binding"
-
-
 def test_ignores_a_dataset_staged_from_its_own_fileset(tmp_path: Path) -> None:
     config = full_config()
     config["eval"]["general"]["dataset"] = {"file_path": "default/evals#rows.json"}

@@ -145,7 +145,6 @@ result = AgentEvaluator().run_sync(
 | `trajectory_extra` | no | extra fields merged into the captured trajectory |
 | `runtime_name` | no | the name recorded on `runner_info`, default `fabric` |
 | `skills` | no | skills injected into the agent's workspace |
-| `task_hook` | no | a `FabricTaskRunHook` invoked around each task run; host mode only |
 | `sandbox` | no | a `SandboxProvider`; when set, each task runs inside a sandbox (see below) |
 | `image` | no | the sandbox image; only valid with `sandbox` |
 | `secrets` | no | secret references injected as environment variables inside the sandbox; only valid with `sandbox` |
@@ -259,8 +258,8 @@ runtime = FabricAgentRuntime(config=config, sandbox=DockerSandboxProvider())
 | `secrets` | no | `{env_var: SecretRef}` resolved by the orchestrator and injected into the sandbox |
 
 `model`, `timeout_s`, `capture_trajectory`, `trajectory_extra`, `skills`, `work_root`, and
-`runtime_name` behave the same in both modes. `base_dir` and `task_hook` only apply on the host and
-are rejected together with `sandbox`; `image` and `secrets` are rejected without it.
+`runtime_name` behave the same in both modes. `base_dir` only applies on the host and is rejected
+together with `sandbox`; `image` and `secrets` are rejected without it.
 
 Both modes lay evidence out the same way under the per-task directory and expose the same `result`,
 `trace`, and `workspace` evidence, so the same metrics score either. Sandbox trials additionally carry

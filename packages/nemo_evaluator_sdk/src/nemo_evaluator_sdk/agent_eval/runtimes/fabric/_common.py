@@ -212,7 +212,6 @@ class TaskRun:
     skill_provenances: list[SkillProvenance] = field(default_factory=list)
     result: ResultView | None = None
     error: Exception | None = None
-    hook_extras: Mapping[str, Any] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

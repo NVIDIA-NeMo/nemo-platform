@@ -37,17 +37,6 @@ _TASK = AgentEvalTask(
 )
 
 
-class _Hook:
-    def prepare(self, config: Any, task: Any, evidence_dir: Any, workspace_dir: Any, session: Any) -> Any:
-        return config
-
-    def after_success(self, task: Any, result: Any, session: Any) -> dict[str, Any] | None:
-        return None
-
-    def cleanup(self, session: Any) -> None:
-        return None
-
-
 def _seeded_agent(provider: _FakeProvider) -> dict[str, Any]:
     return json.loads(provider.seeded["/in/agent.json"])
 
@@ -63,8 +52,6 @@ def test_secrets_without_a_sandbox_are_rejected() -> None:
 
 
 def test_host_only_settings_are_rejected_in_sandbox_mode() -> None:
-    with pytest.raises(ValueError, match="task_hook is not supported in sandbox mode"):
-        FabricAgentRuntime(_CONFIG, sandbox=_FakeProvider(), task_hook=_Hook())  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="base_dir is not supported in sandbox mode"):
         FabricAgentRuntime(_CONFIG, sandbox=_FakeProvider(), base_dir="/agents")  # type: ignore[arg-type]
 
