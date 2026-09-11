@@ -10,8 +10,8 @@ from collections.abc import Iterator
 from typing import BinaryIO
 
 import pyarrow.parquet as pq
-from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
-from nemo_datasets_plugin.profiler.readers.base import FilePreview, ReadResult, register_reader
+from nemo_profiler_plugin.dataset.readers.base import FilePreview, ReadResult, register_reader
+from nemo_profiler_plugin.source import FileEntry, FileSource
 
 # Rows per batch. Small enough that the working set is independent of the dataset, large enough
 # that per-batch overhead stays invisible.

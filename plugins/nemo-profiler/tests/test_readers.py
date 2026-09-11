@@ -8,8 +8,8 @@ import io
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
-from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader, is_unsupported_data
+from nemo_profiler_plugin.dataset.readers.base import detect_format, get_reader, is_unsupported_data
+from nemo_profiler_plugin.source import FileEntry, LocalFileSource
 
 PARQUET_ROWS = [
     {"prompt": "a", "score": 1},
@@ -351,13 +351,13 @@ def test_a_failed_reader_import_is_not_latched(monkeypatch):
     # blamed a missing reader for a broken pyarrow and the real cause reached nobody.
     import builtins
 
-    from nemo_datasets_plugin.profiler.readers import base
+    from nemo_profiler_plugin.dataset.readers import base
 
     monkeypatch.setattr(base, "_builtins_loaded", False)
     real_import = builtins.__import__
 
     def failing(name, *args, **kwargs):
-        if name.startswith("nemo_datasets_plugin.profiler.readers"):
+        if name.startswith("nemo_profiler_plugin.dataset.readers"):
             raise ImportError("simulated broken pyarrow")
         return real_import(name, *args, **kwargs)
 
@@ -372,7 +372,7 @@ def test_parquet_read_honours_the_same_batch_ceiling_as_batches(tmp_path):
     # `read` passed `row_cap` straight to `iter_batches`, so a large cap asked pyarrow for one
     # RecordBatch that size and `to_pylist`-ed it -- materializing the cap, from the contract method
     # whose sibling exists precisely to avoid that.
-    from nemo_datasets_plugin.profiler.readers import parquet as parquet_module
+    from nemo_profiler_plugin.dataset.readers import parquet as parquet_module
 
     pq.write_table(pa.table({"a": pa.array(range(50))}), tmp_path / "train.parquet")
     entry = FileEntry(path="train.parquet", size_bytes=1)
@@ -400,7 +400,7 @@ def test_an_over_long_line_costs_that_line_and_not_the_file(monkeypatch):
     # `.jsonl` -- is one line as long as the file. Iterating the stream allocated the whole thing as
     # one bytes object, then again for `.strip()`, then the parsed tree, all before discovering it
     # was not a row. `row_cap` cannot help: the cap is checked after the line has been read.
-    from nemo_datasets_plugin.profiler.readers import jsonl as jsonl_module
+    from nemo_profiler_plugin.dataset.readers import jsonl as jsonl_module
 
     monkeypatch.setattr(jsonl_module, "_MAX_LINE_BYTES", 64)
     stream = io.BytesIO(b'{"a": 1}\n{"pretty": [' + b"1," * 200 + b'1]}\n{"b": 2}\n')
@@ -416,7 +416,7 @@ def test_a_line_of_exactly_the_bound_is_read_not_discarded(monkeypatch):
     # Reading exactly `_MAX_LINE_BYTES` could not tell "stopped at the limit" from "longer than the
     # limit", so a final line of exactly the bound -- read whole, with nothing left of it -- was
     # thrown away as over-long.
-    from nemo_datasets_plugin.profiler.readers import jsonl as jsonl_module
+    from nemo_profiler_plugin.dataset.readers import jsonl as jsonl_module
 
     monkeypatch.setattr(jsonl_module, "_MAX_LINE_BYTES", 16)
     exactly = b'{"bb": 1234567}'  # 15 bytes of JSON
@@ -434,7 +434,7 @@ def test_a_line_of_exactly_the_bound_is_read_not_discarded(monkeypatch):
 def test_the_prefix_pair_columns_are_found_when_they_appear_in_a_later_batch():
     # Resolution is bounded by rows examined, not by "the first batch": line-delimited rows are
     # ragged and a column can first appear well into a file.
-    from nemo_datasets_plugin.profiler.classify import PrefixPairFold
+    from nemo_profiler_plugin.dataset.classify import PrefixPairFold
 
     shared = "The capital of France is " * 4
     fold = PrefixPairFold()

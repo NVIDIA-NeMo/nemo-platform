@@ -27,8 +27,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, SchemaFold
-from nemo_platform_plugin.files.dataset_profile import (
+from nemo_platform_plugin.files.profile import (
     CategoricalStats,
     ColumnStats,
     Evidence,
@@ -38,6 +37,7 @@ from nemo_platform_plugin.files.dataset_profile import (
     Quantiles,
     TextStats,
 )
+from nemo_profiler_plugin.dataset.schema import MAX_COLUMNS, SchemaFold
 
 # A quotable enumeration holds at most this many distinct values.
 _MAX_ENUM_VALUES = 32

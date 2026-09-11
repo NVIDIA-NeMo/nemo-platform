@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Module entry point: ``python -m nemo_datasets_plugin.tasks.profile``."""
+"""Module entry point: ``python -m nemo_profiler_plugin.tasks.profile``."""
 
 import logging
 import signal
 import sys
 from types import FrameType
 
-from nemo_datasets_plugin.tasks.profile.run import run
+from nemo_profiler_plugin.tasks.profile.run import run
 
 logger = logging.getLogger(__name__)
 

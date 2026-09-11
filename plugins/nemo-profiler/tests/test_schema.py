@@ -4,8 +4,8 @@
 """Tests for row-schema derivation (from a declared arrow schema and from sampled rows)."""
 
 import pyarrow as pa
-from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, SchemaFold, arrow_schema_was_capped, derive_features
-from nemo_platform_plugin.files.dataset_profile import FeatureSchema
+from nemo_platform_plugin.files.profile import FeatureSchema
+from nemo_profiler_plugin.dataset.schema import MAX_COLUMNS, SchemaFold, arrow_schema_was_capped, derive_features
 
 
 def _fields(feature: FeatureSchema | None) -> list[FeatureSchema]:

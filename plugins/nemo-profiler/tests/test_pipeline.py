@@ -10,12 +10,12 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
-from nemo_datasets_plugin.profiler.partition import group_partitions
-from nemo_datasets_plugin.profiler.pipeline import MIN_ROWS_PER_FILE, _peek_files, _per_file_cap, profile
-from nemo_datasets_plugin.profiler.readers.base import FilePreview
-from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
-from nemo_platform_plugin.files.dataset_profile import DatasetProfile
+from nemo_platform_plugin.files.profile import DatasetProfile
+from nemo_profiler_plugin.dataset.partition import group_partitions
+from nemo_profiler_plugin.dataset.pipeline import MIN_ROWS_PER_FILE, _peek_files, _per_file_cap, profile
+from nemo_profiler_plugin.dataset.readers.base import FilePreview
+from nemo_profiler_plugin.dataset.splits import infer_data_files, resolve_splits
+from nemo_profiler_plugin.source import FileEntry, LocalFileSource
 
 FIXED_TIME = datetime(2026, 7, 13, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -724,7 +724,7 @@ def test_profile_from_value_dataset_is_a_chat_dataset(tmp_path):
 def test_profile_degrades_one_partition_when_measurement_fails(tmp_path, monkeypatch):
     # Reads are isolated per file, but schema/stats/classification ran unguarded, so one odd value
     # could abort an otherwise complete profile. Structure must survive a measurement failure.
-    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+    from nemo_profiler_plugin.dataset import pipeline as pipeline_module
 
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}, {"a": 2}])
     monkeypatch.setattr(pipeline_module, "classify", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
@@ -756,7 +756,7 @@ def test_a_read_failure_does_not_look_like_a_measurement_failure(tmp_path):
 
 
 def test_a_measurement_failure_does_not_look_like_a_read_failure(tmp_path, monkeypatch):
-    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+    from nemo_profiler_plugin.dataset import pipeline as pipeline_module
 
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])
     monkeypatch.setattr(pipeline_module, "classify", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
@@ -774,7 +774,7 @@ def test_one_unmeasurable_column_does_not_cost_the_partition_its_classification(
     # The narrow guard, end to end. The column's failure reaches the profile as evidence, and
     # everything the partition could still establish -- the other column's stats, the roles, the
     # dataset type -- survives it.
-    from nemo_datasets_plugin.profiler import stats as stats_module
+    from nemo_profiler_plugin.dataset import stats as stats_module
 
     real_observe = stats_module.RoutedAccumulator._observe
 
@@ -796,7 +796,7 @@ def test_one_unmeasurable_column_does_not_cost_the_partition_its_classification(
 
 
 def test_a_measurement_failure_is_scoped_to_its_own_partition(tmp_path, monkeypatch):
-    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+    from nemo_profiler_plugin.dataset import pipeline as pipeline_module
 
     real_classify = pipeline_module.classify
 
@@ -826,7 +826,7 @@ def test_a_file_that_fails_partway_still_counts_what_it_contributed(tmp_path, mo
     # written after it. A fold cannot give rows back: batches already folded are in the statistics
     # whatever happens next, and counting the file as unread left `examples_scanned` describing fewer
     # rows than the stats were built from.
-    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+    from nemo_profiler_plugin.dataset import pipeline as pipeline_module
 
     _write_parquet(tmp_path / "train.parquet", [{"a": i} for i in range(4000)])
     real_update = pipeline_module._PartitionFolds.update
@@ -897,7 +897,7 @@ def test_a_footer_count_survives_a_failure_part_way_through_the_data(tmp_path, m
     # count it already gave. Discarding it made a whole split's `num_examples` unknown over one bad
     # shard, where the contract has it counting every file's rows "whether or not that file was read
     # to the end" -- and left the fileset reporting an unknown size whose splits each knew theirs.
-    from nemo_datasets_plugin.profiler.readers import parquet as parquet_module
+    from nemo_profiler_plugin.dataset.readers import parquet as parquet_module
 
     _write_parquet(tmp_path / "train.parquet", [{"a": i} for i in range(5000)])
 
@@ -1005,7 +1005,7 @@ def test_split_file_counts_account_for_every_data_file(tmp_path):
 def test_profile_isolates_detected_format_with_no_reader(tmp_path, monkeypatch):
     # If detect_format recognizes an extension the registry has no reader for, that file must be
     # isolated like a corrupt one, not crash the whole profile.
-    from nemo_datasets_plugin.profiler.readers import base
+    from nemo_profiler_plugin.dataset.readers import base
 
     monkeypatch.setitem(base._EXTENSION_FORMATS, ".xyz", "xyz-no-reader")
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])
@@ -1081,7 +1081,7 @@ def test_a_file_that_failed_peek_but_read_fine_keeps_its_columns(tmp_path, monke
     # the declared schema is built from the other files and `RowFold` folds `row.get(name)` over
     # declared names only, so every column the unpeekable file alone witnessed vanished: no feature,
     # no stat, and no FileError to point at, because the read itself succeeded.
-    from nemo_datasets_plugin.profiler.readers import parquet as parquet_module
+    from nemo_profiler_plugin.dataset.readers import parquet as parquet_module
 
     _write_parquet(tmp_path / "a.parquet", [{"prompt": "p", "extra": "only here"}])
     _write_parquet(tmp_path / "b.parquet", [{"prompt": "q"}])
@@ -1121,8 +1121,8 @@ def test_discovery_is_scoped_to_the_file_that_needs_it(tmp_path, monkeypatch):
     # are walked to find the columns it alone witnesses. That flag was set for the whole partition,
     # which put the same per-row key walk on every healthy shard -- one bad file in five hundred
     # paying for all of them. The condition is per file, so the flag is too.
-    from nemo_datasets_plugin.profiler import stats as stats_module
-    from nemo_datasets_plugin.profiler.readers import parquet as parquet_module
+    from nemo_profiler_plugin.dataset import stats as stats_module
+    from nemo_profiler_plugin.dataset.readers import parquet as parquet_module
 
     shards, rows_each = 8, 50
     for i in range(shards):
@@ -1204,7 +1204,7 @@ def test_a_file_abandoned_mid_read_does_not_quote_the_prefix_it_managed(tmp_path
     # folds a prefix, and raises -- and the gate used to exclude any file that reported an error,
     # on the assumption that a failed file failed *to open*. So the first batch's distinct values
     # were published as the column's controlled vocabulary while `examples_complete` said False.
-    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+    from nemo_profiler_plugin.dataset import pipeline as pipeline_module
 
     # `label` shows only en/fr before the failure point and de/ja/zh after it.
     rows = [{"label": ("en", "fr")[i % 2] if i < 2048 else ("de", "ja", "zh")[i % 3]} for i in range(4000)]
@@ -1234,7 +1234,7 @@ def test_a_shard_lost_before_it_yielded_a_row_still_quotes(tmp_path, monkeypatch
     # A file that raised before yielding a row contributed nothing to measure, so the vocabulary of
     # the files that *were* read is entire. Pinned here against the mid-read case above, which is
     # the distinction the two share a line of code for.
-    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+    from nemo_profiler_plugin.dataset import pipeline as pipeline_module
 
     _write_parquet(tmp_path / "train.parquet", [{"label": t} for t in ("en", "fr", "en")])
     _write_parquet(tmp_path / "extra.parquet", [{"label": "de"}])

@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import cast
 
-import nemo_datasets_plugin.tasks.profile.run as run_mod
+import nemo_profiler_plugin.tasks.profile.run as run_mod
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest

@@ -17,14 +17,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nemo_datasets_plugin.profiler.stats import ColumnProbes
-from nemo_platform_plugin.files.dataset_profile import (
+from nemo_platform_plugin.files.profile import (
     ColumnStats,
     Evidence,
     FeatureSchema,
     PartitionClassification,
     Verifiability,
 )
+from nemo_profiler_plugin.dataset.stats import ColumnProbes
 
 # Column-name aliases -> role. Score is handled separately (name alias + numeric dtype gate).
 _ALIAS_ROLES = {

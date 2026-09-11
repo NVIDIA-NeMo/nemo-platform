@@ -24,20 +24,7 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
 import pyarrow as pa
-from nemo_datasets_plugin.profiler.classify import PrefixPairFold, classify
-from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
-from nemo_datasets_plugin.profiler.partition import group_partitions
-from nemo_datasets_plugin.profiler.readers.base import (
-    COMPRESSION_EXTENSIONS,
-    FilePreview,
-    detect_format,
-    get_reader,
-    is_unsupported_data,
-)
-from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, arrow_schema_was_capped, derive_features
-from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
-from nemo_datasets_plugin.profiler.stats import RowFold, quote_enumerations
-from nemo_platform_plugin.files.dataset_profile import (
+from nemo_platform_plugin.files.profile import (
     ColumnStats,
     Coverage,
     DatasetProfile,
@@ -48,6 +35,19 @@ from nemo_platform_plugin.files.dataset_profile import (
     PartitionProfile,
     SplitProfile,
 )
+from nemo_profiler_plugin.dataset.classify import PrefixPairFold, classify
+from nemo_profiler_plugin.dataset.partition import group_partitions
+from nemo_profiler_plugin.dataset.readers.base import (
+    COMPRESSION_EXTENSIONS,
+    FilePreview,
+    detect_format,
+    get_reader,
+    is_unsupported_data,
+)
+from nemo_profiler_plugin.dataset.schema import MAX_COLUMNS, arrow_schema_was_capped, derive_features
+from nemo_profiler_plugin.dataset.splits import infer_data_files, resolve_splits
+from nemo_profiler_plugin.dataset.stats import RowFold, quote_enumerations
+from nemo_profiler_plugin.source import FileEntry, FileSource
 
 PROFILER_NAME = "nemo-dataset-profiler"
 PROFILER_VERSION = "0.1.0"

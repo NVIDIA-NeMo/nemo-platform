@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 import pyarrow as pa
-from nemo_platform_plugin.files.dataset_profile import FeatureSchema
+from nemo_platform_plugin.files.profile import FeatureSchema
 
 # A list element carrying either key set is a chat message, giving the column the `messages` dtype.
 # Both spellings are common; recognizing only `{role, content}` typed much public chat data as a

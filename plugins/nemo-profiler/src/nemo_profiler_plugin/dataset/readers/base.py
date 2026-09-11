@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Protocol
 
 import pyarrow as pa
-from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
+from nemo_profiler_plugin.source import FileEntry, FileSource
 
 
 @dataclass(frozen=True)
@@ -93,7 +93,7 @@ def _load_builtin_readers() -> None:
     global _builtins_loaded
     if _builtins_loaded:
         return
-    from nemo_datasets_plugin.profiler.readers import jsonl, parquet  # noqa: F401  self-registering
+    from nemo_profiler_plugin.dataset.readers import jsonl, parquet  # noqa: F401  self-registering
 
     # Set only once the import has actually run. Setting it first latched a failure permanently: a
     # broken pyarrow raised once, inside `_peek_files`' guard where the reason was swallowed, and

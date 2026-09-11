@@ -22,8 +22,6 @@ import os
 import tempfile
 from pathlib import Path
 
-from nemo_datasets_plugin.profiler.file_source import FileSource, LocalFileSource
-from nemo_datasets_plugin.profiler.pipeline import DEFAULT_ROW_BUDGET, profile
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.constants import (
@@ -33,6 +31,8 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_WORKSPACE_ENVVAR,
 )
 from nemo_platform_plugin.sdk_provider import get_platform_sdk
+from nemo_profiler_plugin.dataset.pipeline import DEFAULT_ROW_BUDGET, profile
+from nemo_profiler_plugin.source import FileSource, LocalFileSource
 
 logger = logging.getLogger(__name__)
 

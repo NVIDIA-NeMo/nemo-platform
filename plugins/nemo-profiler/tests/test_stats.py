@@ -7,7 +7,8 @@ import math
 import random
 
 import pytest
-from nemo_datasets_plugin.profiler.stats import (
+from nemo_platform_plugin.files.profile import ColumnStats, FeatureSchema
+from nemo_profiler_plugin.dataset.stats import (
     _MAX_ENUM_VALUES,
     _MAX_ROLE_CHARS,
     _MAX_ROLES_SEEN,
@@ -21,7 +22,6 @@ from nemo_datasets_plugin.profiler.stats import (
     _LengthHistogram,
     quote_enumerations,
 )
-from nemo_platform_plugin.files.dataset_profile import ColumnStats, FeatureSchema
 
 
 def _measure(features, rows):
@@ -368,7 +368,7 @@ def test_the_infinities_are_distinct_values_even_though_the_extrema_skip_them():
 
 
 def test_an_infinity_does_not_turn_a_three_valued_column_into_a_label():
-    from nemo_datasets_plugin.profiler.classify import classify
+    from nemo_profiler_plugin.dataset.classify import classify
 
     features = [_feature("prompt", "string"), _feature("completion", "string"), _feature("label", "float64")]
     rows = [{"prompt": "p", "completion": "c", "label": v} for v in (0.0, 1.0, float("inf"), 0.0, 1.0, float("inf"))]
@@ -596,7 +596,7 @@ def test_refuses_to_quote_a_vocabulary_larger_than_the_cap():
 
 
 def test_the_fold_reports_the_cap_it_hit_at_either_level():
-    from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS
+    from nemo_profiler_plugin.dataset.schema import MAX_COLUMNS
 
     # Reported by the fold that stopped, not read off the length of what came back: a partition with
     # exactly MAX_COLUMNS columns is complete and the same length as one that was cut short.

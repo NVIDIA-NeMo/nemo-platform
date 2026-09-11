@@ -13,7 +13,7 @@ from datetime import datetime
 
 import pytest
 import yaml
-from nemo_platform_plugin.files.dataset_profile import (
+from nemo_platform_plugin.files.profile import (
     PROFILE_SCHEMA_VERSION,
     ColumnStats,
     Coverage,

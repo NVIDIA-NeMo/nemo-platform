@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from nemo_datasets_plugin.profiler.file_source import FileEntry
+from nemo_profiler_plugin.source import FileEntry
 
 # Strips a shard suffix like "-00000" or "-00000-of-00003" from a file stem. A bare trailing number
 # must be zero-padded to count: `-\d{2,}` alone also matched years and versions, turning

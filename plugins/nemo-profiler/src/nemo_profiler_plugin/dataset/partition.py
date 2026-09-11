@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from nemo_datasets_plugin.profiler.file_source import FileEntry
-from nemo_datasets_plugin.profiler.splits import is_split_directory
+from nemo_profiler_plugin.dataset.splits import is_split_directory
+from nemo_profiler_plugin.source import FileEntry
 
 
 def _top_dir(path: str) -> str:

@@ -1,11 +1,18 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# NeMo Datasets Plugin
+# NeMo Profiler Plugin
 
-The dataset profiler. Reads a fileset of dataset files and produces a `DatasetProfile`: what
-partitions and splits are there, what the row schema is, per-column statistics, and a classification
-of what kind of training data this is.
+Profiles the contents of a fileset. One kind ships today — the dataset profiler in `dataset/`, which
+reads a fileset of dataset files and produces a `DatasetProfile`: what partitions and splits are
+there, what the row schema is, per-column statistics, and a classification of what kind of training
+data this is.
+
+The plugin is named for the capability rather than the domain because the fileset is the unit being
+profiled, not the dataset. Model source files live in filesets too, and a model profiler is the
+expected next kind. What the kinds share is the `FileSource` seam in `source.py`, which is
+format-agnostic; what they do not share is the analysis or its dependencies, which is why each
+engine gets its own subpackage under this plugin rather than a package of its own.
 
 A fileset lands in the platform and someone wants to fine-tune on it. To decide anything they need to
 know whether it is trainable, in what shape, at what sequence budget, and which files are the train
@@ -18,7 +25,7 @@ so folds, bounded accumulators and bucketed histograms are all downstream of tha
 
 ## What it produces
 
-One artifact, described by `nemo_platform_plugin.files.dataset_profile.DatasetProfile`:
+One artifact, described by `nemo_platform_plugin.files.profile.DatasetProfile`:
 
 | Block | Answers |
 |---|---|
@@ -38,14 +45,14 @@ answer that from a few hundred bytes of profile rather than a pass over the file
 The profiler runs as a job task, not a `nemo` CLI command:
 
 ```bash
-python -m nemo_datasets_plugin.tasks.profile
+python -m nemo_profiler_plugin.tasks.profile
 ```
 
 Directly, against a directory:
 
 ```python
-from nemo_datasets_plugin.profiler.file_source import LocalFileSource
-from nemo_datasets_plugin.profiler.pipeline import profile
+from nemo_profiler_plugin.source import LocalFileSource
+from nemo_profiler_plugin.dataset.pipeline import profile
 
 result = profile(LocalFileSource("/path/to/dataset"))
 print(result.model_dump_json(indent=2))
@@ -540,14 +547,14 @@ flowchart TD
 
 | Module | Responsibility |
 |---|---|
-| `profiler/file_source.py` | the `FileSource` seam — `list_files()` + `open()`, the only way the core touches storage. `LocalFileSource` covers a directory on disk; a ranged-read source over the Files API is a later drop-in behind the same two methods |
-| `profiler/readers/` | one stateless handler per format, resolved by extension. `peek()` for what a file declares, `batches()` for its rows |
-| `profiler/partition.py` | groups files into partitions by top-level directory |
-| `profiler/splits.py` | resolves splits from paths, and rebuilds a `data_files` glob per split |
-| `profiler/schema.py` | derives the `features` tree, from a declared arrow schema or folded out of rows |
-| `profiler/stats.py` | the per-column accumulators and the content probes |
-| `profiler/classify.py` | interprets schema + stats + probes into roles and classification axes |
-| `profiler/pipeline.py` | drives all of the above and assembles the envelope |
+| `source.py` | the `FileSource` seam — `list_files()` + `open()`, the only way a profiler touches storage. `LocalFileSource` covers a directory on disk; a ranged-read source over the Files API is a later drop-in behind the same two methods. Sits above `dataset/` because it is format-agnostic: a model profiler reads its files through the same seam |
+| `dataset/readers/` | one stateless handler per format, resolved by extension. `peek()` for what a file declares, `batches()` for its rows |
+| `dataset/partition.py` | groups files into partitions by top-level directory |
+| `dataset/splits.py` | resolves splits from paths, and rebuilds a `data_files` glob per split |
+| `dataset/schema.py` | derives the `features` tree, from a declared arrow schema or folded out of rows |
+| `dataset/stats.py` | the per-column accumulators and the content probes |
+| `dataset/classify.py` | interprets schema + stats + probes into roles and classification axes |
+| `dataset/pipeline.py` | drives all of the above and assembles the envelope |
 
 ## Design decisions
 
@@ -633,8 +640,8 @@ Verified against real Hugging Face datasets. Reproduce with:
 
 ```python
 from huggingface_hub import snapshot_download
-from nemo_datasets_plugin.profiler.file_source import LocalFileSource
-from nemo_datasets_plugin.profiler.pipeline import profile
+from nemo_profiler_plugin.source import LocalFileSource
+from nemo_profiler_plugin.dataset.pipeline import profile
 
 d = snapshot_download("openai/gsm8k", repo_type="dataset",
                       local_dir="gsm8k", allow_patterns=["*.parquet"])
@@ -756,5 +763,5 @@ field, which changes how the prompt template should be built.
 ## Tests
 
 ```bash
-uv run pytest plugins/nemo-datasets/tests/ -q
+uv run pytest plugins/nemo-profiler/tests/ -q
 ```

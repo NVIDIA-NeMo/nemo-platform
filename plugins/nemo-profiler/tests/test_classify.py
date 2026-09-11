@@ -3,15 +3,15 @@
 
 """Tests for classification: role assignment, format/prompt-form axes, and dataset type."""
 
-from nemo_datasets_plugin.profiler.classify import PrefixPairFold, classify
-from nemo_datasets_plugin.profiler.stats import RowFold
-from nemo_platform_plugin.files.dataset_profile import (
+from nemo_platform_plugin.files.profile import (
     CategoricalStats,
     ColumnStats,
     FeatureSchema,
     MessageStats,
     Quantiles,
 )
+from nemo_profiler_plugin.dataset.classify import PrefixPairFold, classify
+from nemo_profiler_plugin.dataset.stats import RowFold
 
 
 def _probes(features, rows):
@@ -442,7 +442,7 @@ def test_a_shared_prefix_has_to_be_long_enough_not_to_be_a_turn_of_phrase():
 
 def test_an_embedded_prompt_is_claimed_at_half_the_pairs_and_not_below():
     # The rate that turns counted pairs into a stated finding, `>= 0.5`.
-    from nemo_datasets_plugin.profiler.classify import PrefixPair, _implicit_prompt_evidence
+    from nemo_profiler_plugin.dataset.classify import PrefixPair, _implicit_prompt_evidence
 
     features = [_f("chosen", "string"), _f("rejected", "string")]
     classify(features, {})  # assigns the chosen/rejected roles the evidence function reads
@@ -519,8 +519,8 @@ def test_the_pair_is_found_after_the_first_batch_has_gone_by():
     # The search is bounded by rows rather than by "the first batch" because line-delimited rows are
     # ragged: an optional column can first appear well into a file. That was the stated design and
     # it never worked, because the budget was set to exactly one batch of rows.
-    from nemo_datasets_plugin.profiler.classify import _RESOLVE_ROW_BUDGET
-    from nemo_datasets_plugin.profiler.readers.jsonl import _BATCH_ROWS
+    from nemo_profiler_plugin.dataset.classify import _RESOLVE_ROW_BUDGET
+    from nemo_profiler_plugin.dataset.readers.jsonl import _BATCH_ROWS
 
     assert _RESOLVE_ROW_BUDGET > _BATCH_ROWS, "a budget of one batch is not a budget"
 
