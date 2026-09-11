@@ -159,14 +159,40 @@ user, not to you.
   workspace. No sub-flow discovers accounts, ingests data, uploads files, or
   changes a remote resource.
 
-## Reporting
+## Communicating with the user
 
-Lead with the verdict or outcome, then the evidence.
+### Onboarding and intent questions
+
+When helping someone create their first evals, lead with what they will gain:
+a few repeatable checks they can run after changing their agent. Explain Ethos
+in ordinary language before asking for intent: it records what the agent should
+do, its boundaries, and what success means, so the checks have a target.
+Then ask a concrete question grounded in the agent's workflows. The user's
+answer is part of designing the evals, not a validation verdict.
+
+This introduction belongs in the message containing the first intent question,
+even if an earlier progress message already mentioned the workflow. Preserve it
+when using `nemo-explore` or another prerequisite skill: that skill owns the
+interview requirements, while first-eval owns the onboarding context. A required
+skill disclosure may follow separately; it must not replace that context.
+
+Report Harbor version, importability, and readiness when those facts help the
+user resolve a setup problem or understand execution. They are not the opening
+headline for a first-eval conversation. Follow the first-eval skill's opening
+example and explain Harbor's role before reporting its status.
+
+### Validation and result reports
+
+For completed discovery, validation, or execution reports, lead with the verdict
+or outcome, then the evidence. This format does not apply to onboarding or an
+intent question while establishing Ethos.
 
 State whether the findings are proven, whether the suite is ready, and the names
 of the checks that failed. Never describe a suite as ready while a required check
 fails, and never present an observation as proof. When a sub-flow could not reach
-its provider, the only honest headline is that nothing was proven.
+its provider, the validation report must say that nothing was proven. This does
+not prevent a first-eval conversation from explaining the planned value and
+making design progress within its prerequisite rules.
 
 For a trace, use `success`, `failure`, or `unknown`. Tie key moments and findings
 to span IDs, evaluator result IDs, or source symbols. A healthy trace doesn't

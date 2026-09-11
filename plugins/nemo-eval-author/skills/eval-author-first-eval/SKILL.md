@@ -75,6 +75,13 @@ not authored evaluation cases; case design still waits for Ethos. If the user
 already supplied the intended scope, acknowledge it and ask only the next
 question required by the Ethos flow. Avoid repeating this introduction on resume.
 
+The first message asking for intent must itself explain both the value of the
+starter suite and Ethos, even if a preceding progress update mentioned them.
+After reading `nemo-explore`, return to this opening before composing its first
+question. The handoff changes which interview steps to follow, not how to ground
+the user. Use the core skill's onboarding rules here; its verdict-first format
+is reserved for validation and result reports.
+
 Explain the practical reason for a question rather than using a quotation from
 a skill as the explanation. If the assistant must disclose a skill-imposed
 pause or permission requirement, keep that disclosure brief and separate from
