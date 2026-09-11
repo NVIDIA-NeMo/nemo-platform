@@ -35,7 +35,7 @@ starting state. Do not require a previous run or manufacture a coverage report
 to enter `eval-author-task-create`. The first milestone is a small working suite
 the user understands and can rerun. Modest coverage is acceptable: do not require
 comprehensive coverage, difficult tasks, repeated agent success, or trace-driven
-optimization before delivering it. Explain what the starter checks measure and
+optimization before delivering it. Explain what the starter eval cases measure and
 where they are weak. A working suite and strong evaluation quality are separate
 claims.
 
@@ -44,36 +44,60 @@ claims.
 ### Ground the user before asking for intent
 
 Before the first intent question, explain the outcome in ordinary language:
-we will build a few repeatable checks of the agent's behavior, so the user can
-see what works and rerun the checks after changes. Briefly inspect the agent's
+we will build a starter eval set for the selected agent: a few customer scenarios
+with criteria for scoring its responses. The user can rerun these evals after
+changes to see whether performance improves or regresses. Briefly inspect the agent's
 README and entry point to make this explanation concrete. Lead with that value,
 not an installation inventory, missing-file report, or skill requirement.
 
 Explain **ETHOS.md** on first mention: it records what the agent is supposed
-to do, its boundaries, and what success looks like, giving the checks a target.
+to do, its boundaries, and what success looks like, giving the evals a target.
 If it exists, summarize the relevant intent instead of asking the user to
-recreate it. If missing, explain that we will capture that intent locally first.
+recreate it. If missing, explain that we will capture that intent first. The
+opening need not describe the document as “local” or refer to the requested skill.
 Use the shared local Ethos procedure below, carrying this user-facing context
 into its questions and review. Keep questions concrete and rooted in the
 agent's actual workflows; avoid abstract choices such as “demo versus production
 accountability” unless the user's goal requires that distinction.
 
-For an airline demo with no Ethos, an opening could be:
+After the outcome sentence, show a short bulleted requirements list. For each
+item, explain its purpose and observed status: Ethos defines the target behavior;
+Harbor builds and runs the evals; a connection to the actual agent enables
+scoring its responses. Distinguish requirements for creating tasks from those
+for running the agent. Use statuses supported by inspection, such as found,
+missing, or not yet checked. Installed Harbor does not establish that an agent
+connection works. If Harbor is missing, say planning can proceed and setup is
+needed before creating runnable tasks. Mention credentials or Docker only when
+the selected execution path requires them. Keep commands and version details
+out of this list unless needed to resolve setup.
 
-> We'll build a few repeatable checks for this airline agent, so you can see
-> whether it handles common requests correctly and rerun those checks after changes.
+For an airline demo with no Ethos and verified Harbor, an opening could be:
+
+> We'll build a starter eval set for your airline customer-service agent: a few
+> customer scenarios with criteria for scoring the agent's responses. You can
+> rerun these evals after changes to see whether performance improves or regresses.
 >
-> First, we'll capture what the agent is supposed to do in **ETHOS.md**—a short
-> description of its purpose, boundaries, and what success looks like. That gives
-> us something to test against.
+> Here's what we need:
 >
-> For this demo, should we focus on answering baggage questions, changing seats,
-> and helping with disrupted flights?
+> - **ETHOS.md — to create:** Records the agent's intended behavior, boundaries,
+>   and success criteria, giving the evals a target. We'll capture that first.
+> - **Harbor — installed:** Builds and runs the evals and records their results.
+> - **Agent connection — not yet checked:** Lets the suite send requests to your
+>   agent and score its responses. This is needed to measure the agent itself.
+>
+> Should the starter eval set focus on baggage-policy answers, seat changes,
+> and disrupted-flight rebooking using the demo policies, or is another workflow
+> more important?
 
 Adapt the examples to repository evidence. These are proposed areas of intent,
 not authored evaluation cases; case design still waits for Ethos. If the user
 already supplied the intended scope, acknowledge it and ask only the next
 missing intent question. Avoid repeating this introduction on resume.
+
+Use “starter eval set” for the collection and “eval case” for each scenario in
+user-facing explanations. Introduce an eval case as a request with criteria for
+scoring the response. Reserve “sanity checks” for validation of the eval cases
+themselves; use Harbor's technical term “task” when discussing its files or CLI.
 
 The first message asking for intent must itself explain both the value of the
 starter suite and Ethos, even if a preceding progress update mentioned them.
@@ -129,7 +153,7 @@ Do not run suite discovery just to report a missing config in an empty repositor
 
 Run this prerequisite check without making its version or importability the
 opening message. Introduce **Harbor** when explaining execution or a setup
-blocker: it runs the checks from a fresh starting environment and records each
+blocker: it runs the eval cases from a fresh starting environment and records each
 result. If available, say there is nothing to set up for Harbor at this step.
 Keep version and interpreter details in the saved report unless troubleshooting
 requires the user to act on them.
@@ -269,36 +293,56 @@ of an outcome. Do not present successful setup as high-quality evaluation.
 
 ### Explain the completed milestone
 
-Lead the completion message with what the user now has: name the created checks
-and the behavior they cover. Explain that each task pairs a customer request with
+Lead the completion message with what the user now has: name the created eval cases
+and explain each in a bullet describing the customer behavior being evaluated,
+rather than listing topic labels alone. Explain that each task pairs a customer request with
 a rule for judging the response. Translate observed sanity results into their
 meaning: doing nothing failed and the prepared reference solution passed, so
-these examples exercise the checks successfully. Do not describe NOP as an empty
+these examples exercise the scoring rules successfully. Do not describe NOP as an empty
 answer unless that is what the task actually tested. These results do not prove
 the rules judge every answer correctly or measure the user's agent.
 
 Then state whether the actual agent ran. If it did, summarize its observed
 results. If integration is missing, explain the concrete next step in everyday
-terms: connect the suite to the agent's actual entry point so the checks can send
+terms: connect the suite to the agent's actual entry point so the evals can send
 it requests and score its responses. Name the entry point only when verified;
 introduce “Harbor adapter” only if that technical detail helps the user act.
+Distinguish configuration validation and an agent connection's setup check from
+an actual agent run: neither provides performance scores. If another prerequisite
+blocks execution, name the observed blocker and the action needed to resolve it,
+then explain that the next run will score the agent's actual responses. For a
+missing credential, name the required environment variable and tell the user to
+configure it in the execution environment, without requesting its secret value.
+Do not bury the next step solely in the linked report.
 Explain practical limits, such as a wording assertion rejecting a correct
-paraphrase. Link the saved checks and results, with rerun instructions clearly
+paraphrase. Link the saved eval cases and results, with rerun instructions clearly
 labeled as either task sanity checks or an actual agent evaluation.
 
 For example, when supported by the recorded results:
 
-> You now have three runnable baggage checks: allowance limits, missing-bag
-> guidance, and unknown fees. Each includes a customer question and a rule for
-> judging the answer.
+> Your **starter eval set is ready**, with three eval cases:
 >
-> Doing nothing failed each check, and the prepared reference solutions passed.
-> That confirms the checks run and distinguish those examples.
+> - **Baggage limits:** Does the agent explain the allowance and size/weight limits
+>   in the demo policy?
+> - **Missing-bag guidance:** Does it tell the customer how to report a missing bag?
+> - **Unspecified overweight fees:** Does it acknowledge that the policy doesn't
+>   specify a fee, rather than inventing one?
 >
-> We haven't tested your airline agent yet. The next step is to connect the suite
-> to its Triage entry point so it can ask your agent these questions and score
-> its actual responses. The current rules look for specific wording, so they
-> may reject a correct answer phrased differently.
+> Each case includes a customer request and criteria for scoring the response.
+> I ran them with no action and with prepared reference solutions: doing nothing
+> failed, and the reference solutions passed. This confirms the cases run and
+> distinguish those examples.
+>
+> Harbor validated the eval configuration, and the connection to your Triage
+> agent passed its setup check. **We haven't measured the agent's responses yet**
+> because `OPENAI_API_KEY` isn't set in the execution environment.
+>
+> Next, configure that key in your environment so we can run the three cases
+> against your agent and get its first scores.
+>
+> These initial scoring rules look for specific wording, so a correct answer
+> phrased differently might fail. The first agent run will help us identify
+> where those rules need improvement.
 
 Adapt this to the actual milestone and include the real artifact link. Keep raw
 scores, interpreter details, and full commands in the saved report unless useful
@@ -308,6 +352,18 @@ Preserve any explicit host disclosure requirement for a genuine approval or
 blocker.
 
 Treat traces and improvement as the next stage, not a prerequisite for setup.
+At the final handoff, explain that the starter eval set covers only the selected
+behaviors. Remind the user to review and keep ETHOS.md up to date as the agent
+changes: it should capture the whole selected agent's intended workflows,
+boundaries, and success criteria, including areas not yet evaluated. Link their
+actual Ethos and call out known gaps without claiming those areas are covered by
+the starter evals. For example:
+
+> These first eval cases cover baggage answers. Your ETHOS.md should describe
+> the whole airline agent, including its other intended workflows and boundaries.
+> Review it for missing areas and keep it current as the agent changes; we can
+> use that broader intent to expand the eval set over time.
+
 Explain that traces reveal the agent's steps and tool calls, helping identify
 failure patterns, missing coverage, and weak checks. Point to actual trace
 artifacts when emitted; if absent, explain the adapter or instrumentation work

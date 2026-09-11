@@ -40,6 +40,16 @@ outcomes, boundaries, principles, and future direction only where answers are
 missing. Keep the current agent, model, and runtime unless the user asks to change
 them. End ordinary intent messages with the question, not procedural footnotes.
 
+Ethos describes the selected agent's overall intended behavior, not just the
+behaviors chosen for its starter eval set. Choosing baggage answers for the first
+evals does not remove seat changes or other supported workflows from the agent's
+scope. Preserve broader confirmed intent and record unconfirmed areas in Open
+Questions; do not infer approval from implementation. During document review,
+explain any remaining gaps and distinguish the initial eval focus from the
+agent's full purpose and boundaries. A deliberately limited first eval set need
+not wait for every unrelated detail to be settled, but do not present a partial
+Ethos as a complete description of the agent.
+
 Use [the local template](../templates/ETHOS.md). Fill it with actual answers and
 repository evidence; do not present implementation as approved intent. A concrete
 Role and Purpose & Outcomes are needed to design useful evals. Record other
@@ -79,11 +89,30 @@ Report what was actually checked and distinguish structural inspection from a
 parser-backed check. Do not claim platform or schema-parser validation you did
 not run. Fix local structural errors before calling the file complete.
 
-Summarize the agent's intended role, outcome, and boundaries in a short paragraph,
-link the saved file, and ask the user to confirm or correct that summary unless
-they already approved the exact content. Keep a written draft while awaiting
-review. After local checks and content review, return the exact path to the
-calling first-eval or audit flow. No upload step follows.
+Give the user an explicit opportunity to review the generated document before
+using it. Say that ETHOS.md has been generated, link the saved file, and briefly
+summarize its intended role, outcome, and boundaries. Explain what comes next in
+the calling flow, then end with a direct question asking whether the document
+looks right or needs changes. For first-eval, for example:
+
+> I've generated your [ETHOS.md](<actual-saved-path>) for review. It describes
+> the agent's intended baggage-policy behavior and limits it to the demo policies.
+>
+> Once you confirm it, we'll use it to create a starter eval set: a few customer
+> scenarios with criteria for scoring the agent's responses.
+>
+> Does ETHOS.md look right, or would you like to change anything before we move on?
+
+Adapt the summary and next step to the actual agent and calling flow; for audit,
+explain that the reviewed Ethos will define the behaviors whose coverage is
+measured. Do not append skill quotations or procedural justification.
+
+Keep the saved draft and wait for the user's answer before designing eval cases
+or generating an audit from it. Approval of interview answers alone is not review
+of the generated document. If changes are requested, update and recheck the file,
+then offer the revised document for review. Skip this prompt only when the user
+has already approved the exact saved content. After local checks and explicit
+content review, return the exact path to the calling flow. No upload step follows.
 
 ## Recovery
 

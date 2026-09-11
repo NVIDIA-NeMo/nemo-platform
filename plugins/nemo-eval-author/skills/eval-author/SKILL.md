@@ -169,9 +169,14 @@ user, not to you.
 ### Onboarding and intent questions
 
 When helping someone create their first evals, lead with what they will gain:
-a few repeatable checks they can run after changing their agent. Explain Ethos
+a starter eval set for their agent, with customer scenarios and criteria for
+scoring its responses. Explain that they can rerun these evals after changes to
+see whether performance improves or regresses. Call each scenario an “eval case.”
+Follow the first-eval opening with a short bulleted requirements list,
+explaining each requirement's purpose and observed status. Explain Ethos
 in ordinary language before asking for intent: it records what the agent should
-do, its boundaries, and what success means, so the checks have a target.
+do, its boundaries, and what success means, so the evals have a target.
+The opening need not call Ethos “local” or say the requested skill explains it.
 Then ask a concrete question grounded in the agent's workflows. The user's
 answer is part of designing the evals, not a validation verdict.
 
@@ -182,7 +187,7 @@ review remain part of the first-eval onboarding conversation.
 
 An ordinary intent question gathers information needed to do the requested work.
 It is not a request for permission to continue or, by itself, a blocked-work
-report. Explain why the answer helps define the checks, then end with the
+report. Explain why the answer helps define the evals, then end with the
 question. Do not append skill names, file paths, requirement quotes, or interview
 mechanics just to justify asking it. Missing Ethos being actively created through
 the available interview is part of onboarding; unavailable prerequisites or
