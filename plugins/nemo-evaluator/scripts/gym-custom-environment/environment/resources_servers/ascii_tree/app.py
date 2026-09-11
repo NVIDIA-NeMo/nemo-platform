@@ -41,12 +41,12 @@ class AsciiTreeVerifyResponse(BaseVerifyResponse):
 
 
 def _field(value: Any, name: str, default: Any = None) -> Any:
-    """Read one field from a response object or decoded mapping."""
+    """Read a field from either SDK response models or decoded test mappings."""
     return value.get(name, default) if isinstance(value, dict) else getattr(value, name, default)
 
 
 def assistant_text(response: Any) -> str:
-    """Collect assistant text from a Responses API payload."""
+    """Join assistant output-text parts in their original response order."""
     return "".join(
         _field(content, "text", "")
         for output in _field(response, "output", [])
@@ -65,8 +65,9 @@ class AsciiTreeResourcesServer(SimpleResourcesServer):
         self,
         body: AsciiTreeVerifyRequest,
     ) -> AsciiTreeVerifyResponse:
-        """Extract the assistant response, calculate its reward, and return evidence."""
+        """Score one Gym turn and return both the reward and readable evidence."""
         observed_text = assistant_text(body.response)
+
         return AsciiTreeVerifyResponse(
             **body.model_dump(),
             reward=ascii_tree_reward(observed_text, body.answer),

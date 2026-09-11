@@ -23,7 +23,11 @@ class CommandError(RuntimeError):
 
 
 class CommandRunner:
-    """Run argument-vector commands without shell interpolation."""
+    """Run the few external tools needed during local preparation.
+
+    Platform resources are managed through the Python SDK; this wrapper is
+    limited to workstation tools such as ``uv`` and ``kubectl``.
+    """
 
     def __init__(self, *, working_directory: Path) -> None:
         """Configure the working directory shared by child processes."""
@@ -37,7 +41,7 @@ class CommandRunner:
         input_text: str | None = None,
         output_path: Path | None = None,
     ) -> str:
-        """Run a command, optionally supply stdin, and return captured stdout."""
+        """Run to completion and optionally preserve stdout as workflow evidence."""
         try:
             result = subprocess.run(
                 list(arguments),
@@ -86,7 +90,7 @@ class CommandRunner:
         environment: Mapping[str, str] | None = None,
         stdout: TextIO | int | None = None,
     ) -> subprocess.Popen[str]:
-        """Start a long-running command and return its process handle."""
+        """Start a background helper, such as a temporary ``kubectl`` port-forward."""
         return subprocess.Popen(
             list(arguments),
             cwd=self.working_directory,

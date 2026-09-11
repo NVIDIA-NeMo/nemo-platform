@@ -25,9 +25,15 @@ from commands import CommandRunner
 SCRIPT_DIRECTORY = Path(__file__).resolve().parent
 ENVIRONMENT_TEMPLATE = SCRIPT_DIRECTORY / "environment"
 WHEEL_SOURCE = SCRIPT_DIRECTORY / "scorer"
+
+# Cache converted data and built wheels by their inputs so repeated manual runs
+# spend their time on the Platform workflow rather than local preparation.
 WHEEL_CACHE = Path(tempfile.gettempdir()) / "nmp-gym-custom-environment-wheel-cache"
 FIXTURE_CACHE = Path(tempfile.gettempdir()) / "nmp-gym-custom-environment-fixture-cache"
 SCORER_DISTRIBUTION = "nmp_ascii_tree_evaluator"
+
+# Pin the small upstream fixture so every developer exercises the same prompts
+# and expected answers.
 PRIME_FIXTURE_HUB_ID = "primeintellect/ascii-tree"
 PRIME_FIXTURE_HUB_VERSION = "0.1.5"
 PRIME_FIXTURE_SIZE = 2
@@ -49,7 +55,7 @@ def _fixture_cache_path() -> Path:
 
 
 def _valid_fixture_cache(cache_path: Path) -> bool:
-    """Return whether a cached conversion contains the expected usable rows."""
+    """Check that cached conversion output is complete enough to reuse safely."""
     if not cache_path.is_file():
         return False
     try:
@@ -89,11 +95,14 @@ def _convert_fixture(
         _copy_cached_fixture(cache_path, converter_dataset)
         return
 
+    # Remove partial output from an interrupted conversion before rebuilding.
     if cache_path.exists():
         cache_path.unlink()
     cache_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        # Keep Prime Intellect's optional conversion dependencies out of the
+        # repository environment used by the rest of this workflow.
         runner.run(
             [
                 "uv",
@@ -125,6 +134,8 @@ def _convert_fixture(
 
         shutil.copy2(converted_dataset, cache_path)
     finally:
+        # Only training.jsonl is part of this example. The converter's generated
+        # environment and dataset snapshot can be large and are not reused.
         if converter_environment.exists():
             shutil.rmtree(converter_environment)
         if converter_dataset.exists():
@@ -156,13 +167,16 @@ def _adapt_dataset(converter_dataset: Path, dataset_output: Path) -> int:
 
 
 def _wheel_source_digest() -> str:
-    """Hash scorer source paths and contents for deterministic cache invalidation."""
+    """Hash scorer paths and contents so source changes invalidate its wheel."""
     digest = hashlib.sha256()
     source_files = sorted(
         path for path in WHEEL_SOURCE.rglob("*") if path.is_file() and "__pycache__" not in path.parts
     )
     for source_file in source_files:
         relative_path = source_file.relative_to(WHEEL_SOURCE)
+
+        # Separators prevent different path/content combinations from producing
+        # the same byte stream.
         digest.update(relative_path.as_posix().encode())
         digest.update(b"\0")
         digest.update(source_file.read_bytes())
@@ -171,7 +185,7 @@ def _wheel_source_digest() -> str:
 
 
 def _cached_scorer_wheel(runner: CommandRunner) -> Path:
-    """Return a source-matched scorer wheel, building it only when absent."""
+    """Reuse the wheel matching the current scorer source, or build it once."""
     cache_directory = WHEEL_CACHE / _wheel_source_digest()
     cached_wheels = sorted(cache_directory.glob(f"{SCORER_DISTRIBUTION}-*.whl"))
     if cached_wheels:
@@ -221,7 +235,11 @@ def prepare_example(
     environment_output: Path,
     dataset_output: Path,
 ) -> dict[str, Any]:
-    """Build the default complete environment and dataset for generic validation."""
+    """Produce the complete package and dataset used by the default workflow.
+
+    The returned summary is merged into preparation evidence by ``workflow.py``;
+    all concrete paths are written beneath the caller's run directory.
+    """
     _convert_fixture(
         runner,
         converter_environment=converter_environment,

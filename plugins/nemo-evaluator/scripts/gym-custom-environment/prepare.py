@@ -28,7 +28,7 @@ from sandboxed_gym.environment_package import (
 
 @dataclass(frozen=True, slots=True)
 class PreparedEnvironment:
-    """Validated environment and dataset metadata consumed by later stages."""
+    """Carry validated paths and manifest details into upload and verification."""
 
     root: Path
     dataset: Path
@@ -63,18 +63,23 @@ def _copy_custom_inputs(
     environment_output: Path,
     dataset_output: Path,
 ) -> None:
-    """Copy caller-owned package and dataset into the isolated run directory."""
+    """Copy caller-owned inputs without modifying their original files."""
     if not environment_source.is_dir():
         raise ValueError(f"environment directory does not exist: {environment_source}")
     if not dataset_source.is_file():
         raise ValueError(f"dataset does not exist or is not a file: {dataset_source}")
+
+    # A nested source or destination could erase inputs when an old run
+    # directory is removed, or recursively copy the output into itself.
     _require_safe_copy(environment_source, environment_output, label="environment")
     _require_safe_copy(dataset_source, dataset_output, label="dataset")
 
     if environment_output.exists():
         shutil.rmtree(environment_output)
+
     environment_output.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(environment_source, environment_output)
+
     dataset_output.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(dataset_source, dataset_output)
 
@@ -91,6 +96,7 @@ def _select_resources_server(
                 f"available servers: {', '.join(sorted(available_servers))}"
             )
         return requested_server
+
     if len(available_servers) != 1:
         raise ValueError(
             "environment must declare exactly one resources server or select one with "
@@ -106,12 +112,14 @@ def inspect_prepared_inputs(
     requested_resources_server: str | None,
     input_mode: str,
 ) -> PreparedEnvironment:
-    """Validate staged inputs and derive all component metadata dynamically."""
+    """Validate staged inputs and derive runtime choices from their contents."""
     environment_package = load_environment_package(environment)
     if not isinstance(environment_package, WheelsV1Package):
         actual_format = type(environment_package).__name__
         raise ValueError(f"expected a wheels-v1 package, got {actual_format}")
 
+    # Resource-server names come from the package itself; the workflow contains
+    # no knowledge of the bundled example's ``ascii_tree`` server.
     components = inspect_environment_components(environment_package)
     resources_server = _select_resources_server(
         components.resources_servers,
@@ -121,6 +129,8 @@ def inspect_prepared_inputs(
     if not tasks:
         raise ValueError(f"Gym discovered no tasks in {dataset}")
 
+    # Keep this summary independent of SDK/Pydantic models so it can be logged,
+    # serialized as evidence, and passed between workflow stages predictably.
     return PreparedEnvironment(
         root=environment_package.root,
         dataset=dataset.resolve(),
@@ -141,7 +151,11 @@ def prepare_custom_inputs(
     dataset_output: Path,
     requested_resources_server: str | None,
 ) -> PreparedEnvironment:
-    """Copy and validate a developer-provided environment package and dataset."""
+    """Stage and inspect a developer-provided wheels-v1 package and Gym dataset.
+
+    Validation happens once against the source tree to preserve symlink checks,
+    then again against the exact copy that later stages upload.
+    """
     # Validate the caller-owned tree before copying so symlinks cannot be
     # dereferenced into apparently valid files inside the run directory.
     source_package = load_environment_package(environment_source)
