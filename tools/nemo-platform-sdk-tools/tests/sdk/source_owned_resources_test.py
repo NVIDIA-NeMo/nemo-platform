@@ -15,6 +15,9 @@ from nemo_platform_sdk_tools.sdk.source_owned_resources import (
 )
 
 JOBS = SourceOwnedResource(resource_name="jobs", path_prefixes=("/apis/jobs/v2",))
+AUTH = SourceOwnedResource(resource_name="auth", path_prefixes=("/apis/auth/authenticate",))
+ACCESS_KEYS = SourceOwnedResource(resource_name="access_keys", path_prefixes=("/apis/auth/v2/access-keys",))
+IAM = SourceOwnedResource(resource_name="iam", path_prefixes=("/apis/auth/v2/iam", "/apis/auth/v2/authz"))
 WIDGETS = SourceOwnedResource(resource_name="widgets", path_prefixes=("/apis/widgets/v2",))
 
 
@@ -22,7 +25,10 @@ def _endpoint(path: str) -> OpenAPIEndpoint:
     return OpenAPIEndpoint(method="get", path=path)
 
 
-def test_default_source_owned_resource_registry_contains_jobs() -> None:
+def test_default_source_owned_resource_registry_contains_migrated_resources() -> None:
+    assert AUTH in SOURCE_OWNED_RESOURCE_EXCLUSIONS
+    assert ACCESS_KEYS in SOURCE_OWNED_RESOURCE_EXCLUSIONS
+    assert IAM in SOURCE_OWNED_RESOURCE_EXCLUSIONS
     assert JOBS in SOURCE_OWNED_RESOURCE_EXCLUSIONS
 
 

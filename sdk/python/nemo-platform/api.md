@@ -7,7 +7,6 @@
 from nemo_platform.types import (
     APIEndpointData,
     AuthContext,
-    AuthDiscoveryResponse,
     BackendFormat,
     DatasetMetadataContent,
     DatetimeFilter,
@@ -18,14 +17,11 @@ from nemo_platform.types import (
     GenericSortField,
     HTTPValidationError,
     InferenceParams,
-    JsonWebKey,
-    JsonWebKeySetResponse,
     LinearLayerSpec,
     MambaConfig,
     MoEConfig,
     ModelMetadataContent,
     ModelSpec,
-    OidcDiscoveryResponse,
     PaginationData,
     PlatformJobLog,
     PlatformJobLogPage,
@@ -35,8 +31,6 @@ from nemo_platform.types import (
     ToolCallConfig,
     ToolCallingMetadataContent,
     ValidationError,
-    WorkloadTokenExchangeErrorResponse,
-    WorkloadTokenExchangeResponse,
 )
 ```
 
@@ -58,8 +52,6 @@ from nemo_platform.types import (
 
 # [Secrets](src/nemo_platform/resources/secrets/api.md)
 
-# [Iam](src/nemo_platform/resources/iam/api.md)
-
 # [Projects](src/nemo_platform/resources/projects/api.md)
 
 # [Adapters](src/nemo_platform/resources/adapters/api.md)
@@ -69,7 +61,3 @@ from nemo_platform.types import (
 # [Evaluations](src/nemo_platform/resources/evaluations/api.md)
 
 # [Experiments](src/nemo_platform/resources/experiments/api.md)
-
-# [Auth](src/nemo_platform/resources/auth/api.md)
-
-# [AccessKeys](src/nemo_platform/resources/access_keys/api.md)

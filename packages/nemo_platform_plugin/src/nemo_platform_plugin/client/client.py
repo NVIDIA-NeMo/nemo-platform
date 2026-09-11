@@ -576,6 +576,24 @@ class BaseNemoClient(Generic[HttpClientT]):
         return self._resource_client(JobsClient, AsyncJobsClient)
 
     @property
+    def auth(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.auth.client import AsyncAuthenticationClient, AuthenticationClient
+
+        return self._resource_client(AuthenticationClient, AsyncAuthenticationClient)
+
+    @property
+    def access_keys(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.auth.access_keys.client import AccessKeysClient, AsyncAccessKeysClient
+
+        return self._resource_client(AccessKeysClient, AsyncAccessKeysClient)
+
+    @property
+    def iam(self) -> NemoClient | AsyncNemoClient:
+        from nemo_platform_plugin.iam.client import AsyncIAMClient, IAMClient
+
+        return self._resource_client(IAMClient, AsyncIAMClient)
+
+    @property
     def agents(self) -> NemoClient | AsyncNemoClient:
         from nemo_platform_plugin.agents.client import AgentsClient, AsyncAgentsClient
 
