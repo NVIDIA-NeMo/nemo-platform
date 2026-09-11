@@ -90,7 +90,10 @@ class StorageImpl(ABC):
 
         Only meaningful when :attr:`tracked_revision` is set; callers check first.
         """
-        raise NotImplementedError()
+        tracked = self.tracked_revision
+        if tracked is None:
+            raise NotImplementedError(f"{type(self.config).__name__} tracks no revision to re-resolve against")
+        return self.config.model_copy(update={"revision": tracked})
 
     async def get_file(self, path: str) -> FileInfo:
         files = await self.list_files(path)

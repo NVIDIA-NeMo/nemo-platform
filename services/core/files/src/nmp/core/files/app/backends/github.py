@@ -127,9 +127,6 @@ class GithubStorageImpl(StorageImpl):
         except aiohttp.ClientError as exc:
             raise GithubUnavailableError(f"Could not reach GitHub to read {subject}: {exc}") from exc
 
-    def config_at_tracked_revision(self) -> GithubStorageConfig:
-        return self.config.model_copy(update={"revision": self.config.original_revision})
-
     async def resolve_config(self) -> GithubStorageConfig:
         """Pin the revision to a commit SHA so the fileset cannot shift under a deployment."""
         commit = await self._get_json(
