@@ -192,6 +192,16 @@ def _accepted_field_names(model_cls: type[BaseModel]) -> list[str]:
     return names
 
 
+def _accepted_input_names(model_cls: type[BaseModel]) -> list[str]:
+    """Return each field's accepted input name, preferring its alias.
+
+    The internal Pydantic field name may differ from what a caller types
+    (e.g. ``schema_`` with ``alias="schema"``), so the user-facing hint must
+    advertise the alias, not the field name.
+    """
+    return [field.alias or field.validation_alias or name for name, field in model_cls.model_fields.items()]
+
+
 def build_request_body(
     model_cls: type[RequestModelT],
     payload: Mapping[str, Any],
@@ -216,7 +226,7 @@ def build_request_body(
     if field_model is not None:
         unknown = sorted(set(body) - set(_accepted_field_names(field_model)))
         if unknown:
-            raise UnknownInputFieldsError(unknown, command_name, sorted(field_model.model_fields))
+            raise UnknownInputFieldsError(unknown, command_name, sorted(_accepted_input_names(field_model)))
     return model_cls.model_validate(body)
 
 

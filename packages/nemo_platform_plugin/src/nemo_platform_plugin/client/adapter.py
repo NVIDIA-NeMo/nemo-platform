@@ -12,7 +12,7 @@ Usage::
 
     from nemo_platform_plugin.client.adapter import client_from_platform
 
-    def make_sync_resource(platform: object) -> NemoClient:
+    def make_sync_resource(platform: PlatformClient) -> NemoClient:
         return client_from_platform(platform, NemoClient)
 """
 
@@ -58,7 +58,7 @@ class _PlatformClient(Protocol):
     def _prepare_url(self, url: str) -> httpx.URL: ...
 
 
-def platform_default_headers(platform: object) -> dict[str, str]:
+def platform_default_headers(platform: PlatformClient) -> dict[str, str]:
     """Return a copy of the default headers *platform* sends on every request.
 
     Reads ``default_headers`` off a :class:`NemoClient` / :class:`AsyncNemoClient`
@@ -72,13 +72,13 @@ def platform_default_headers(platform: object) -> dict[str, str]:
 
 
 @overload
-def client_from_platform(platform: object, client_cls: type[SyncT]) -> SyncT: ...
+def client_from_platform(platform: PlatformClient, client_cls: type[SyncT]) -> SyncT: ...
 @overload
-def client_from_platform(platform: object, client_cls: type[AsyncT]) -> AsyncT: ...
+def client_from_platform(platform: PlatformClient, client_cls: type[AsyncT]) -> AsyncT: ...
 
 
 def client_from_platform(
-    platform: object,
+    platform: PlatformClient,
     client_cls: type[NemoClient] | type[AsyncNemoClient],
 ) -> NemoClient | AsyncNemoClient:
     """Create a typed client sharing a platform client's transport.

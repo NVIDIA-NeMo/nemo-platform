@@ -249,7 +249,7 @@ def test_build_request_body_rejects_unknown_keys_with_accepted_list() -> None:
 
     assert excinfo.value.unknown_fields == ["descripton", "extra"]
     assert excinfo.value.command_name == "things create"
-    assert excinfo.value.known_fields == ["description", "name", "schema_"]
+    assert excinfo.value.known_fields == ["description", "name", "schema"]
 
 
 def test_build_request_body_validates_types() -> None:

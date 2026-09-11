@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import PlatformClient
 
 SyncResourceT = TypeVar("SyncResourceT")
 AsyncResourceT = TypeVar("AsyncResourceT")
@@ -26,8 +27,8 @@ class NemoPluginSDKResources(Generic[SyncResourceT, AsyncResourceT]):
     entry-point surface.
     """
 
-    sync_resource: Callable[[Any], SyncResourceT] | None = None
-    async_resource: Callable[[Any], AsyncResourceT] | None = None
+    sync_resource: Callable[[PlatformClient], SyncResourceT] | None = None
+    async_resource: Callable[[PlatformClient], AsyncResourceT] | None = None
 
     def __post_init__(self) -> None:
         if self.sync_resource is None and self.async_resource is None:

@@ -98,9 +98,9 @@ def generate_python_code(
 
     lifecycle_mode = "watch" if watch_config else "wait" if wait_config else None
 
-    if _lifecycle_uses_deadline(lifecycle_type, lifecycle_mode):
+    if _lifecycle_uses_deadline(lifecycle_type):
         lines.append("import time")
-    if _lifecycle_uses_status_error_handling(lifecycle_type, lifecycle_mode):
+    if _lifecycle_uses_status_error_handling(lifecycle_type):
         lines.append(
             "from nemo_platform import APIConnectionError, APIStatusError, APITimeoutError, NeMoPlatform, NotFoundError"
         )
@@ -182,16 +182,12 @@ def _format_python_literal(value: Any) -> str:
     return repr(value)
 
 
-def _lifecycle_uses_deadline(lifecycle_type: object, mode: str | None) -> bool:
-    return lifecycle_type in _LIFECYCLE_TYPES_WITH_DEADLINES and not (
-        lifecycle_type == _PLATFORM_JOB_LIFECYCLE and mode == "watch"
-    )
+def _lifecycle_uses_deadline(lifecycle_type: object) -> bool:
+    return lifecycle_type in _LIFECYCLE_TYPES_WITH_DEADLINES
 
 
-def _lifecycle_uses_status_error_handling(lifecycle_type: object, mode: str | None) -> bool:
-    return lifecycle_type in _LIFECYCLE_TYPES_WITH_STATUS_ERROR_HANDLING and not (
-        lifecycle_type == _PLATFORM_JOB_LIFECYCLE and mode == "watch"
-    )
+def _lifecycle_uses_status_error_handling(lifecycle_type: object) -> bool:
+    return lifecycle_type in _LIFECYCLE_TYPES_WITH_STATUS_ERROR_HANDLING
 
 
 def _require_timeout(timeout: Any, lifecycle_type: object, mode: str | None) -> Any:

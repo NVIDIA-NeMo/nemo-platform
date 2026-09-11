@@ -526,6 +526,13 @@ class BaseNemoClient(Generic[HttpClientT]):
             client.with_options(timeout=300).update_fileset(...)
         """
         clone = copy.copy(self)
+        # Cached plugin resources were built against the original transport and
+        # must be rebuilt against the clone's options.
+        cached = self.__dict__.get("_cached_resources")
+        if cached:
+            for name in cached:
+                clone.__dict__.pop(name, None)
+            clone.__dict__["_cached_resources"] = set(cached)
         if headers:
             clone._default_headers = {**self._default_headers, **headers}
         if retry is not None:
@@ -663,6 +670,7 @@ class BaseNemoClient(Generic[HttpClientT]):
 
         instance = factory(self)
         self.__dict__[name] = instance
+        self.__dict__.setdefault("_cached_resources", set()).add(name)
         return instance
 
     def _resolve_query_params(self, request: PreparedRequest) -> dict[str, str | int | bool] | None:
