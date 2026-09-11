@@ -4,8 +4,10 @@
 import importlib
 import sys
 
+import pytest
 
-def test_typed_client_import_does_not_load_analysis_runtime() -> None:
+
+def test_typed_client_import_does_not_load_analysis_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     for module_name in [
         "nemo_insights_plugin.client",
         "nemo_insights_plugin.endpoints",
@@ -13,7 +15,7 @@ def test_typed_client_import_does_not_load_analysis_runtime() -> None:
         "nemo_insights_plugin.jobs.analyze",
         "nemo_insights_plugin.analyst.run",
     ]:
-        sys.modules.pop(module_name, None)
+        monkeypatch.delitem(sys.modules, module_name, raising=False)
 
     importlib.import_module("nemo_insights_plugin.client")
 

@@ -4,7 +4,8 @@
 """SDK sub-resources for periodic analysis opt-in configs and run status."""
 
 from datetime import datetime
-from typing import Protocol, TypedDict
+from enum import Enum
+from typing import Protocol, TypeAlias, TypedDict
 
 from nemo_insights_plugin.client import AsyncInsightsClient, InsightsClient
 from nemo_insights_plugin.entities import (
@@ -26,11 +27,19 @@ from nemo_insights_plugin.types import ListAnalysisConfigsQueryParams, ListAnaly
 
 class _AnalysisRunStatusPatch(TypedDict, total=False):
     status: AnalysisConfigStatus
-    last_successful_run_at: datetime
-    last_attempted_at: datetime
-    last_completed_at: datetime
+    last_successful_run_at: datetime | None
+    last_attempted_at: datetime | None
+    last_completed_at: datetime | None
     last_submitted_job: str
     last_error: str
+
+
+class _Unset(Enum):
+    VALUE = "unset"
+
+
+_UNSET = _Unset.VALUE
+_NullableDatetimeUpdate: TypeAlias = datetime | None | _Unset
 
 
 class _ResourceParent(Protocol):
@@ -71,21 +80,21 @@ def _build_enable_body(*, default_model: str, fast_model: str) -> EnableAnalysis
 
 def _build_status_update_body(
     *,
-    status: AnalysisConfigStatus | str | None,
-    last_successful_run_at: datetime | None,
-    last_attempted_at: datetime | None,
-    last_completed_at: datetime | None,
-    last_submitted_job: str | None,
-    last_error: str | None,
+    status: AnalysisConfigStatus | str | None = None,
+    last_successful_run_at: _NullableDatetimeUpdate = _UNSET,
+    last_attempted_at: _NullableDatetimeUpdate = _UNSET,
+    last_completed_at: _NullableDatetimeUpdate = _UNSET,
+    last_submitted_job: str | None = None,
+    last_error: str | None = None,
 ) -> UpdateAnalysisRunStatusRequest:
     update: _AnalysisRunStatusPatch = {}
     if status is not None:
         update["status"] = AnalysisConfigStatus(status) if isinstance(status, str) else status
-    if last_successful_run_at is not None:
+    if not isinstance(last_successful_run_at, _Unset):
         update["last_successful_run_at"] = last_successful_run_at
-    if last_attempted_at is not None:
+    if not isinstance(last_attempted_at, _Unset):
         update["last_attempted_at"] = last_attempted_at
-    if last_completed_at is not None:
+    if not isinstance(last_completed_at, _Unset):
         update["last_completed_at"] = last_completed_at
     if last_submitted_job is not None:
         update["last_submitted_job"] = last_submitted_job
@@ -268,9 +277,9 @@ class _AnalysisRunStatusResource:
         workspace: str,
         agent: str,
         status: AnalysisConfigStatus | str | None = None,
-        last_successful_run_at: datetime | None = None,
-        last_attempted_at: datetime | None = None,
-        last_completed_at: datetime | None = None,
+        last_successful_run_at: _NullableDatetimeUpdate = _UNSET,
+        last_attempted_at: _NullableDatetimeUpdate = _UNSET,
+        last_completed_at: _NullableDatetimeUpdate = _UNSET,
         last_submitted_job: str | None = None,
         last_error: str | None = None,
     ) -> AnalysisRunStatus:
@@ -328,9 +337,9 @@ class _AsyncAnalysisRunStatusResource:
         workspace: str,
         agent: str,
         status: AnalysisConfigStatus | str | None = None,
-        last_successful_run_at: datetime | None = None,
-        last_attempted_at: datetime | None = None,
-        last_completed_at: datetime | None = None,
+        last_successful_run_at: _NullableDatetimeUpdate = _UNSET,
+        last_attempted_at: _NullableDatetimeUpdate = _UNSET,
+        last_completed_at: _NullableDatetimeUpdate = _UNSET,
         last_submitted_job: str | None = None,
         last_error: str | None = None,
     ) -> AnalysisRunStatus:
