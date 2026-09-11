@@ -11,6 +11,8 @@ command output and lifecycle status map onto the SDK's shapes.
 
 from __future__ import annotations
 
+import importlib
+import importlib.util
 from collections.abc import Mapping
 from typing import cast
 
@@ -25,6 +27,11 @@ from sandboxed_gym.backends._opensandbox_driver import (
 )
 from sandboxed_gym.backends.base import UnsupportedEpisodeOperationError
 from sandboxed_gym.sandbox_types import SandboxResources, SandboxSpec, SandboxStatus
+
+requires_opensandbox = pytest.mark.skipif(
+    importlib.util.find_spec("opensandbox") is None,
+    reason="needs the OpenSandbox SDK; install the `opensandbox` extra to run",
+)
 
 
 def spec_with(**resources: object) -> SandboxSpec:
@@ -89,12 +96,13 @@ def test_every_status_alias_maps_onto_a_real_contract_status() -> None:
     assert "running" not in _STATUS_ALIASES, "statuses that already match must not be aliased"
 
 
+@requires_opensandbox
 async def test_destroy_sandboxes_matching_lists_every_page_and_kills_each(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from types import SimpleNamespace
 
-    from opensandbox.manager import SandboxManager
+    SandboxManager = getattr(importlib.import_module("opensandbox.manager"), "SandboxManager")
 
     manager = SimpleNamespace(
         filters=[],
@@ -142,8 +150,9 @@ async def test_destroy_sandboxes_matching_refuses_an_empty_selector() -> None:
         await OpenSandboxDriver().destroy_sandboxes_matching({})
 
 
+@requires_opensandbox
 async def test_create_reclaims_only_its_creation_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    from opensandbox import Sandbox
+    Sandbox = getattr(importlib.import_module("opensandbox"), "Sandbox")
 
     driver = OpenSandboxDriver()
     captured_metadata: dict[str, str] = {}
@@ -169,11 +178,12 @@ async def test_create_reclaims_only_its_creation_id(monkeypatch: pytest.MonkeyPa
     assert cleanup_filters == [{_SANDBOX_CREATE_ATTEMPT_ID_METADATA_KEY: create_attempt_id}]
 
 
+@requires_opensandbox
 async def test_cleanup_failure_does_not_mask_create_failure(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    from opensandbox import Sandbox
+    Sandbox = getattr(importlib.import_module("opensandbox"), "Sandbox")
 
     driver = OpenSandboxDriver()
 
