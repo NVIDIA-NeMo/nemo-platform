@@ -7,6 +7,19 @@ import {
 } from '@nemo/sdk/generated/insights/insights-analysis-configs';
 import type { AnalysisConfig } from '@nemo/sdk/generated/insights/schema';
 
+/**
+ * Raised when the `enable` half of an enable-then-disable save landed but the `disable` half did
+ * not. The stored config has already changed, so callers must refresh rather than assume the save
+ * was a no-op.
+ */
+export class AnalysisConfigPartialSaveError extends Error {
+  constructor(cause: unknown) {
+    super('Models were saved, but analysis could not be turned off and may still be enabled.');
+    this.name = 'AnalysisConfigPartialSaveError';
+    this.cause = cause;
+  }
+}
+
 export interface AnalysisConfigDraft {
   enabled: boolean;
   defaultModel: string;
@@ -48,5 +61,11 @@ export const saveAnalysisConfig = async (
     fast_model: draft.fastModel,
   });
 
-  return draft.enabled ? enabled : insightsDisableAnalysisConfig(workspace, agent);
+  if (draft.enabled) return enabled;
+
+  try {
+    return await insightsDisableAnalysisConfig(workspace, agent);
+  } catch (disableError) {
+    throw new AnalysisConfigPartialSaveError(disableError);
+  }
 };

@@ -6,7 +6,10 @@ import {
   insightsEnableAnalysisConfig,
 } from '@nemo/sdk/generated/insights/insights-analysis-configs';
 import type { AnalysisConfig } from '@nemo/sdk/generated/insights/schema';
-import { saveAnalysisConfig } from '@studio/routes/agents/AgentDetailRoute/analysis/saveAnalysisConfig';
+import {
+  AnalysisConfigPartialSaveError,
+  saveAnalysisConfig,
+} from '@studio/routes/agents/AgentDetailRoute/analysis/saveAnalysisConfig';
 
 vi.mock('@nemo/sdk/generated/insights/insights-analysis-configs', async (importOriginal) => ({
   ...(await importOriginal<
@@ -140,5 +143,37 @@ describe('saveAnalysisConfig', () => {
 
     expect(enable).toHaveBeenCalled();
     expect(disable).toHaveBeenCalledWith('demo-epa', 'email-security-triage');
+  });
+
+  it('reports a partial commit when the disable step fails after enabling', async () => {
+    const disableError = new Error('boom');
+    disable.mockRejectedValue(disableError);
+
+    await expect(
+      saveAnalysisConfig(
+        'demo-epa',
+        'email-security-triage',
+        { enabled: false, defaultModel: 'default/new-slow', fastModel: 'default/fast' },
+        stored({ enabled: false })
+      )
+    ).rejects.toBeInstanceOf(AnalysisConfigPartialSaveError);
+
+    expect(enable).toHaveBeenCalled();
+  });
+
+  it('propagates a disable failure as-is when no enable preceded it', async () => {
+    const disableError = new Error('boom');
+    disable.mockRejectedValue(disableError);
+
+    await expect(
+      saveAnalysisConfig(
+        'demo-epa',
+        'email-security-triage',
+        { enabled: false, defaultModel: 'default/slow', fastModel: 'default/fast' },
+        stored()
+      )
+    ).rejects.toBe(disableError);
+
+    expect(enable).not.toHaveBeenCalled();
   });
 });

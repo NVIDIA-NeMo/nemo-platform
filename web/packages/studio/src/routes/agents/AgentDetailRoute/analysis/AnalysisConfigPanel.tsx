@@ -58,7 +58,11 @@ export const AnalysisConfigPanel: FC<AnalysisConfigPanelProps> = ({ workspace, a
     setEnabled(config?.enabled ?? false);
     setDefaultModel(config?.default_model ?? '');
     setFastModel(config?.fast_model ?? '');
-  }, [config?.id, config?.enabled, config?.default_model, config?.fast_model]);
+  }, [workspace, agent, config?.id, config?.enabled, config?.default_model, config?.fast_model]);
+
+  useEffect(() => {
+    setEditing(false);
+  }, [workspace, agent]);
 
   const invalidRef = [defaultModel, fastModel].some(
     (ref) => ref.length > 0 && !isQualifiedModelRef(ref)
@@ -77,9 +81,6 @@ export const AnalysisConfigPanel: FC<AnalysisConfigPanelProps> = ({ workspace, a
     setSaving(true);
     try {
       await saveAnalysisConfig(workspace, agent, { enabled, defaultModel, fastModel }, config);
-      await queryClient.invalidateQueries({
-        queryKey: getInsightsGetAnalysisConfigQueryKey(workspace, agent),
-      });
       toast.success('Analysis config saved.');
       setEditing(false);
     } catch (saveError) {
@@ -87,6 +88,9 @@ export const AnalysisConfigPanel: FC<AnalysisConfigPanelProps> = ({ workspace, a
         saveError instanceof Error ? saveError.message : 'Failed to save analysis config.'
       );
     } finally {
+      await queryClient.invalidateQueries({
+        queryKey: getInsightsGetAnalysisConfigQueryKey(workspace, agent),
+      });
       setSaving(false);
     }
   };
