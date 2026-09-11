@@ -245,12 +245,22 @@ def test_collect_offset_pages_all_pages_keeps_first_page_envelope():
     assert dumped["pagination"]["total_results"] == 2
 
 
-def test_collect_offset_pages_without_envelope_fields_emits_only_data_and_pagination():
+def test_collect_offset_pages_without_envelope_fields_keeps_a_null_sort():
+    """List output always carries ``sort``; a server that echoes nothing yields null, as it always has."""
     client = _offset_client({1: ["a"]})
 
     dumped = collect_offset_pages(client.send(list_items()), all_pages=False).model_dump()
 
-    assert list(dumped) == ["data", "pagination"]
+    assert list(dumped) == ["data", "sort", "pagination"]
+    assert dumped["sort"] is None
+
+
+def test_all_pages_response_without_envelope_keeps_legacy_shape():
+    """Callers that build the merged response directly (fetch_all_pages, jobs) keep data/sort/pagination."""
+    dumped = AllPagesResponse(data=[{"id": 1}], total_items=1, total_pages=1).model_dump()
+
+    assert list(dumped) == ["data", "sort", "pagination"]
+    assert dumped["sort"] is None
 
 
 def test_collect_offset_pages_all_pages_empty():

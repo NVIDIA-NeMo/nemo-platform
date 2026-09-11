@@ -51,6 +51,19 @@ class PaginationType(str, Enum):
     NOT_PAGINATED = "not_paginated"  # List operation without pagination support
 
 
+def _envelope_with_sort(envelope: dict[str, Any] | None) -> dict[str, Any]:
+    """Return the envelope fields with ``sort`` always present.
+
+    List output has always carried a ``sort`` key (``null`` when the server did
+    not echo one); callers without an envelope keep that shape, and a server
+    envelope keeps its own field order.
+    """
+    fields = dict(envelope or {})
+    if "sort" not in fields:
+        fields = {"sort": None, **fields}
+    return fields
+
+
 class AllPagesResponse:
     """
     A response object that mimics a single-page response but contains all items.
@@ -68,7 +81,7 @@ class AllPagesResponse:
         envelope: dict[str, Any] | None = None,
     ):
         self.data = data
-        self.envelope = dict(envelope or {})
+        self.envelope = _envelope_with_sort(envelope)
         self.sort = self.envelope.get("sort")
 
         # Create pagination info for all items
@@ -171,7 +184,7 @@ class OffsetPageResponse:
 
     def __init__(self, items: list[Any], metadata: dict[str, Any], envelope: dict[str, Any] | None = None) -> None:
         self.data = items
-        self.envelope = dict(envelope or {})
+        self.envelope = _envelope_with_sort(envelope)
         self.sort = self.envelope.get("sort")
         self.pagination = SimpleNamespace(**metadata)
 
