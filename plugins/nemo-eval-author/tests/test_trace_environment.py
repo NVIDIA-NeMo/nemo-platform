@@ -84,6 +84,296 @@ def _workspace(tmp_path: Path, *, image_only: bool = False) -> tuple[Path, Path]
     return task_dir, source
 
 
+def _fixture_atif() -> dict[str, Any]:
+    return {
+        "schema_version": "ATIF-v1.7",
+        "session_id": "session-fixture",
+        "trajectory_id": "trace-fixture",
+        "agent": {
+            "name": "coding-agent",
+            "version": "1.0",
+            "tool_definitions": [
+                {
+                    "name": "account.lookup",
+                    "description": "Look up a synthetic account.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {"account_id": {"type": "string"}},
+                        "required": ["account_id"],
+                    },
+                    "annotations": {"readOnlyHint": True},
+                },
+                {
+                    "name": "account.update",
+                    "inputSchema": {"type": "object"},
+                    "annotations": {"readOnlyHint": False},
+                },
+                {
+                    "name": "account.inspect",
+                    "inputSchema": {"type": "object"},
+                },
+            ],
+        },
+        "steps": [
+            {"step_id": 1, "source": "user", "message": "Inspect the synthetic account."},
+            {
+                "step_id": 2,
+                "source": "agent",
+                "message": "",
+                "tool_calls": [
+                    {
+                        "tool_call_id": "lookup-1",
+                        "function_name": "account.lookup",
+                        "arguments": {"account_id": "synthetic-001"},
+                    },
+                    {
+                        "tool_call_id": "update-1",
+                        "function_name": "account.update",
+                        "arguments": {"account_id": "synthetic-001", "status": "active"},
+                    },
+                    {
+                        "tool_call_id": "inspect-1",
+                        "function_name": "account.inspect",
+                        "arguments": {"account_id": "synthetic-001"},
+                    },
+                ],
+                "observation": {
+                    "results": [
+                        {"source_call_id": "lookup-1", "content": '{"status":"active"}'},
+                        {"source_call_id": "update-1", "content": "updated"},
+                        {"source_call_id": "inspect-1", "content": "active"},
+                    ]
+                },
+            },
+        ],
+    }
+
+
+def _fixture_workspace(tmp_path: Path) -> Path:
+    root = tmp_path / ".eval-author" / "trace-environments"
+    code, result = _run("init", "--root", str(root), "--task-id", "fixture-tools")
+    assert code == 0, result
+    task_dir = Path(result["task_dir"])
+    source = tmp_path / "fixture.atif.json"
+    _write_json(source, _fixture_atif())
+    code, result = _run(
+        "prepare",
+        "--task-dir",
+        str(task_dir),
+        "--atif",
+        str(source),
+        "--source-kind",
+        "atif",
+    )
+    assert code == 0, result
+    return task_dir
+
+
+def _compile_fixtures(task_dir: Path) -> None:
+    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    assert code == 0, result
+    code, result = _run("plan-fixtures", "--task-dir", str(task_dir))
+    assert code == 0, result
+    _review_privacy(task_dir)
+    code, result = _run("generate-fixtures", "--task-dir", str(task_dir))
+    assert code == 0, result
+
+
+def test_interaction_inventory_records_tool_evidence_and_is_immutable(tmp_path: Path) -> None:
+    task_dir = _fixture_workspace(tmp_path)
+
+    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+
+    assert code == 0, result
+    assert result["tool_count"] == 3
+    assert result["call_count"] == 3
+    inventory_path = task_dir / "private/interaction-inventory.json"
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    lookup = inventory["tools"][0]
+    assert lookup["name"] == "account.lookup"
+    assert lookup["definition_status"] == "complete"
+    assert lookup["read_only"] is True
+    assert lookup["read_only_evidence"] == "mcp_annotation"
+    assert lookup["calls"][0]["arguments"] == {"account_id": "synthetic-001"}
+    assert lookup["calls"][0]["matching_observations"] == [
+        {
+            "source_call_id": lookup["calls"][0]["tool_call_id"],
+            "content": '{"status":"active"}',
+        }
+    ]
+    if os.name == "posix":
+        assert stat.S_IMODE(inventory_path.stat().st_mode) == 0o600
+
+    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    assert code == 1
+    assert "refusing to replace" in result["error"]
+
+
+def test_interaction_inventory_includes_embedded_subagent_calls(tmp_path: Path) -> None:
+    payload = _fixture_atif()
+    definition = payload["agent"]["tool_definitions"][0]
+    payload["steps"] = [{"step_id": 1, "source": "user", "message": "Delegate the synthetic lookup."}]
+    payload["agent"]["tool_definitions"] = [definition]
+    payload["subagent_trajectories"] = [
+        {
+            "schema_version": "ATIF-v1.7",
+            "agent": {"name": "subagent", "tool_definitions": [definition]},
+            "steps": [
+                {
+                    "step_id": 1,
+                    "source": "agent",
+                    "message": "",
+                    "tool_calls": [
+                        {
+                            "tool_call_id": "child-call",
+                            "function_name": "account.lookup",
+                            "arguments": {"account_id": "synthetic-child"},
+                        }
+                    ],
+                    "observation": {"results": [{"source_call_id": "child-call", "content": "child-result"}]},
+                }
+            ],
+        }
+    ]
+    root = tmp_path / ".eval-author" / "trace-environments"
+    code, result = _run("init", "--root", str(root), "--task-id", "subagent-fixture")
+    assert code == 0, result
+    task_dir = Path(result["task_dir"])
+    source = tmp_path / "subagent.atif.json"
+    _write_json(source, payload)
+    code, result = _run("prepare", "--task-dir", str(task_dir), "--atif", str(source), "--source-kind", "atif")
+    assert code == 0, result
+
+    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+
+    assert code == 0, result
+    inventory = json.loads((task_dir / "private/interaction-inventory.json").read_text(encoding="utf-8"))
+    assert inventory["call_count"] == 1
+    assert inventory["tools"][0]["definition_status"] == "complete"
+    assert inventory["tools"][0]["calls"][0]["trajectory_path"] == "$.subagent_trajectories[0]"
+
+
+def test_fixture_plan_classifies_each_dependency_without_name_heuristics(tmp_path: Path) -> None:
+    task_dir = _fixture_workspace(tmp_path)
+    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    assert code == 0, result
+
+    code, result = _run("plan-fixtures", "--task-dir", str(task_dir))
+
+    assert code == 0, result
+    assert result["disposition_counts"] == {
+        "exact_replay": 1,
+        "review_required": 1,
+        "stateful_fixture_required": 1,
+    }
+    plan = json.loads((task_dir / "private/fixture-plan.json").read_text(encoding="utf-8"))
+    fixtures = {fixture["name"]: fixture for fixture in plan["fixtures"]}
+    assert fixtures["account.lookup"]["disposition"] == "exact_replay"
+    assert fixtures["account.update"]["reason_codes"] == ["tool_declared_mutating"]
+    assert fixtures["account.inspect"]["reason_codes"] == ["read_only_behavior_unproven"]
+
+
+def test_generate_fixtures_requires_privacy_review_and_serves_strict_mcp(tmp_path: Path) -> None:
+    task_dir = _fixture_workspace(tmp_path)
+    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    assert code == 0, result
+    code, result = _run("plan-fixtures", "--task-dir", str(task_dir))
+    assert code == 0, result
+
+    code, result = _run("generate-fixtures", "--task-dir", str(task_dir))
+    assert code == 1
+    assert "review-privacy" in result["error"]
+
+    _review_privacy(task_dir)
+    code, result = _run("generate-fixtures", "--task-dir", str(task_dir))
+    assert code == 0, result
+    assert result["generated_tool_count"] == 1
+    fixture_dir = task_dir / "task/environment/trace-fixtures"
+    scenario = json.loads((fixture_dir / "scenario.json").read_text(encoding="utf-8"))
+    assert [tool["definition"]["name"] for tool in scenario["tools"]] == ["account.lookup"]
+    assert "account.update" not in (fixture_dir / "scenario.json").read_text(encoding="utf-8")
+    assert "[[environment.mcp_servers]]" in (fixture_dir / "integration.toml").read_text(encoding="utf-8")
+    if os.name == "posix":
+        assert stat.S_IMODE((fixture_dir / "mcp_replay.py").stat().st_mode) == 0o755
+
+    audit = tmp_path / "fixture-audit.jsonl"
+    requests = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05"}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "account.lookup", "arguments": {"account_id": "synthetic-001"}},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {"name": "account.lookup", "arguments": {"account_id": "unexpected"}},
+        },
+    ]
+    server = subprocess.run(
+        [
+            sys.executable,
+            str(fixture_dir / "mcp_replay.py"),
+            "--scenario",
+            str(fixture_dir / "scenario.json"),
+            "--audit-log",
+            str(audit),
+        ],
+        input="".join(json.dumps(request) + "\n" for request in requests),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert server.returncode == 0, server.stderr
+    responses = [json.loads(line) for line in server.stdout.splitlines()]
+    assert responses[1]["result"]["tools"][0]["name"] == "account.lookup"
+    assert responses[2]["result"] == {
+        "content": [{"type": "text", "text": '{"status":"active"}'}],
+        "isError": False,
+    }
+    assert responses[3]["result"]["isError"] is True
+    assert "synthetic-001" not in responses[3]["result"]["content"][0]["text"]
+    audit_events = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+    call_events = [event for event in audit_events if event.get("method") == "tools/call" and "matched" in event]
+    assert [event["matched"] for event in call_events] == [True, False]
+
+    code, result = _run("check", "--task-dir", str(task_dir))
+    assert code == 0, result
+    (fixture_dir / "scenario.json").write_text("{}\n", encoding="utf-8")
+    code, result = _run("check", "--task-dir", str(task_dir))
+    assert code == 1
+    assert any("scenario" in error for error in result["errors"])
+
+
+def test_redacted_values_are_not_materialized_as_replay_cases(tmp_path: Path) -> None:
+    payload = _atif()
+    payload["agent"]["tool_definitions"] = [
+        {
+            "name": "fixture.read",
+            "inputSchema": {"type": "object"},
+            "annotations": {"readOnlyHint": True},
+        }
+    ]
+    root = tmp_path / ".eval-author" / "trace-environments"
+    code, result = _run("init", "--root", str(root), "--task-id", "redacted-fixture")
+    assert code == 0, result
+    task_dir = Path(result["task_dir"])
+    source = tmp_path / "redacted.atif.json"
+    _write_json(source, payload)
+    code, result = _run("prepare", "--task-dir", str(task_dir), "--atif", str(source), "--source-kind", "atif")
+    assert code == 0, result
+    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    assert code == 0, result
+    code, result = _run("plan-fixtures", "--task-dir", str(task_dir))
+    assert code == 0, result
+    plan = json.loads((task_dir / "private/fixture-plan.json").read_text(encoding="utf-8"))
+    assert plan["fixtures"][0]["disposition"] == "insufficient_evidence"
+    assert "redacted_value_required" in plan["fixtures"][0]["reason_codes"]
+
+
 def _candidate(
     task_dir: Path,
     *,

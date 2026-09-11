@@ -59,6 +59,7 @@ Use one workspace per task:
     private/source.atif.json
     private/canonical.atif.json
     private/privacy-audit.json
+    private/{interaction-inventory,fixture-plan,fixture-generation}.json
     private/publications/<digest>/
     private/publication-review.json
     private/ground-truth/
@@ -66,6 +67,7 @@ Use one workspace per task:
     safe/privacy.json
     candidate.json
     task/
+      environment/trace-fixtures/
     reproducibility.json
     validation.json
     summary.json
@@ -184,6 +186,20 @@ python <skill_dir>/scripts/trace_environment.py review-privacy \
 Never copy a redacted value into a verifier. An image-only user instruction is a
 blocking reason and must remain no_candidate. The scanner cannot establish that
 proprietary code is safe; the contextual reviewer owns that judgment.
+
+### Inventory and materialize supported tool fixtures
+
+When the trace contains tool calls, read `../../docs/trace-derived-fixtures.md` and run these commands in order:
+
+```bash
+python <skill_dir>/scripts/trace_environment.py inventory-interactions --task-dir <task-dir>
+python <skill_dir>/scripts/trace_environment.py plan-fixtures --task-dir <task-dir>
+python <skill_dir>/scripts/trace_environment.py generate-fixtures --task-dir <task-dir>
+```
+
+Run generation only after privacy review. It materializes only complete, explicitly read-only, unambiguous text
+interactions; never infer read-only behavior from a name. Treat stdio fixtures as agent-inspectable and leave every
+stateful, uncertain, or real-product dependency unresolved.
 
 ## Step 4: inventory ground truth and software requirements
 

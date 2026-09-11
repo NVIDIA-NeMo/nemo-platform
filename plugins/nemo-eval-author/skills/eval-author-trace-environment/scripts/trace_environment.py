@@ -23,12 +23,19 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+from fixture_compiler import build_mcp_scenario, derive_fixture_plan, derive_interaction_inventory  # noqa: E402
+
 SCHEMA = "nemo.eval_author.trace_environment_summary.v2"
 CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v2"
 VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v5"
 RUN_INPUT_SCHEMA = "nemo.eval_author.trace_environment_run_input.v1"
 PRIVACY_AUDIT_SCHEMA = "nemo.eval_author.trace_environment_privacy_audit.v1"
 PUBLICATION_REVIEW_SCHEMA = "nemo.eval_author.trace_environment_publication_review.v1"
+FIXTURE_GENERATION_SCHEMA = "nemo.eval_author.trace_environment_fixture_generation.v1"
 REPRODUCIBILITY_SCHEMA = "nemo.eval_author.trace_environment_reproducibility.v3"
 EXPORT_SCHEMA = "nemo.eval_author.trace_environment_product.v3"
 BATCH_SCHEMA = "nemo.eval_author.trace_environment_batch.v1"
@@ -910,6 +917,208 @@ def _review_privacy(args: argparse.Namespace) -> dict[str, Any]:
         "candidate_findings_reviewed": len(audit.get("candidate_findings", [])),
         "url_hosts_reviewed": len(audit.get("url_hosts", [])),
     }
+
+
+def _fixture_source(task_dir: Path) -> tuple[dict[str, Any], dict[str, Any], str]:
+    summary = _load_summary(task_dir)
+    source = summary.get("source")
+    if not isinstance(source, dict):
+        raise ContractError("prepare safe ATIF evidence before inventorying interactions")
+    safe_path = task_dir / source["safe_path"]
+    safe_bytes = safe_path.read_bytes()
+    safe_sha256 = _sha256(safe_bytes)
+    if safe_sha256 != source["safe_sha256"]:
+        raise ContractError("safe ATIF digest does not match the task summary")
+    safe = _load_object(safe_path, label="safe ATIF")
+    _validate_trajectory(safe)
+    return summary, safe, safe_sha256
+
+
+def _current_interaction_inventory(task_dir: Path) -> dict[str, Any]:
+    _, safe, safe_sha256 = _fixture_source(task_dir)
+    return derive_interaction_inventory(safe, safe_atif_sha256=safe_sha256)
+
+
+def _inventory_interactions(args: argparse.Namespace) -> dict[str, Any]:
+    task_dir = _ensure_task_dir(args.task_dir)
+    output = task_dir / "private/interaction-inventory.json"
+    if output.exists():
+        raise ContractError("refusing to replace existing interaction-inventory.json")
+    inventory = _current_interaction_inventory(task_dir)
+    _write_bytes_once(output, (json.dumps(inventory, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode())
+    return {
+        "task_dir": str(task_dir),
+        "tool_count": inventory["tool_count"],
+        "call_count": inventory["call_count"],
+        "inventory": str(output),
+    }
+
+
+def _current_inventory_file(task_dir: Path) -> dict[str, Any]:
+    inventory = _load_object(task_dir / "private/interaction-inventory.json", label="interaction inventory")
+    if inventory != _current_interaction_inventory(task_dir):
+        raise ContractError("interaction-inventory.json differs from the current safe ATIF")
+    return inventory
+
+
+def _plan_fixtures(args: argparse.Namespace) -> dict[str, Any]:
+    task_dir = _ensure_task_dir(args.task_dir)
+    output = task_dir / "private/fixture-plan.json"
+    if output.exists():
+        raise ContractError("refusing to replace existing fixture-plan.json")
+    inventory = _current_inventory_file(task_dir)
+    plan = derive_fixture_plan(inventory)
+    _write_bytes_once(output, (json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode())
+    return {
+        "task_dir": str(task_dir),
+        "fixture_count": len(plan["fixtures"]),
+        "disposition_counts": plan["disposition_counts"],
+        "plan": str(output),
+    }
+
+
+def _current_fixture_plan(task_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    inventory = _current_inventory_file(task_dir)
+    plan = _load_object(task_dir / "private/fixture-plan.json", label="fixture plan")
+    if plan != derive_fixture_plan(inventory):
+        raise ContractError("fixture-plan.json differs from the current interaction inventory")
+    return inventory, plan
+
+
+def _fixture_readme() -> str:
+    return (
+        "# Trace-derived MCP replay fixture\n\n"
+        "This fixture contains only interactions classified as `exact_replay` from the reviewed safe ATIF. "
+        "It matches tool names and canonical JSON arguments exactly, has no live-service fallback, and returns "
+        "an error for every unmatched call.\n\n"
+        "Copy this directory to `/opt/trace-fixtures` in the agent image, ensure Python 3 is present, and merge "
+        "`integration.toml` into the task's `[environment]` config. The optional audit log is written to "
+        "`/tmp/trace-fixture-audit.jsonl`.\n\n"
+        "The stdio process and its scenario are inspectable by a shell-capable agent. Do not use it to hold "
+        "hidden verifier truth. Prefer a filesystem-isolated sidecar when fixture contents must remain hidden.\n"
+    )
+
+
+def _fixture_integration() -> str:
+    return (
+        "# Merge this array entry into the real task.toml after copying this directory\n"
+        "# to /opt/trace-fixtures in the agent image.\n"
+        "[[environment.mcp_servers]]\n"
+        'name = "trace-replay"\n'
+        'transport = "stdio"\n'
+        'command = "/opt/trace-fixtures/mcp_replay.py"\n'
+        "args = [\n"
+        '  "--scenario", "/opt/trace-fixtures/scenario.json",\n'
+        '  "--audit-log", "/tmp/trace-fixture-audit.jsonl",\n'
+        "]\n"
+    )
+
+
+def _generated_fixture_files(fixture_dir: Path, task_dir: Path) -> list[dict[str, Any]]:
+    files: list[dict[str, Any]] = []
+    for path in sorted(fixture_dir.rglob("*")):
+        if path.is_symlink():
+            raise ContractError("generated trace fixtures must not contain symlinks")
+        if not path.is_file():
+            continue
+        files.append(
+            {
+                "path": str(path.relative_to(task_dir)),
+                "sha256": _sha256_file(path),
+                "mode": stat.S_IMODE(path.stat().st_mode),
+            }
+        )
+    return files
+
+
+def _generate_fixtures(args: argparse.Namespace) -> dict[str, Any]:
+    task_dir = _ensure_task_dir(args.task_dir)
+    summary, _, _ = _fixture_source(task_dir)
+    privacy = summary.get("privacy")
+    if not isinstance(privacy, dict) or not privacy.get("contextual_review_complete"):
+        raise ContractError("fixture generation requires the review-privacy command")
+    inventory, plan = _current_fixture_plan(task_dir)
+    scenario = build_mcp_scenario(inventory, plan)
+    if not scenario["tools"]:
+        raise ContractError("fixture plan contains no exact_replay tools to generate")
+
+    fixture_dir = task_dir / "task/environment/trace-fixtures"
+    receipt_path = task_dir / "private/fixture-generation.json"
+    if fixture_dir.exists() or receipt_path.exists():
+        raise ContractError("refusing to replace existing generated fixtures")
+    fixture_dir.parent.mkdir(parents=True, exist_ok=True)
+    runtime_source = Path(__file__).with_name("replay_mcp_server.py")
+    with tempfile.TemporaryDirectory(prefix="trace-fixtures-", dir=task_dir / "private") as temporary:
+        staged = Path(temporary) / "trace-fixtures"
+        _mkdir_private(staged)
+        _write_bytes_once(
+            staged / "scenario.json",
+            (json.dumps(scenario, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(),
+        )
+        _write_bytes_once(staged / "mcp_replay.py", runtime_source.read_bytes())
+        _write_bytes_once(staged / "integration.toml", _fixture_integration().encode())
+        _write_bytes_once(staged / "README.md", _fixture_readme().encode())
+        if os.name == "posix":
+            (staged / "mcp_replay.py").chmod(0o755)
+            for name in ("scenario.json", "integration.toml", "README.md"):
+                (staged / name).chmod(0o644)
+        staged.rename(fixture_dir)
+
+    files = _generated_fixture_files(fixture_dir, task_dir)
+    receipt = {
+        "schema": FIXTURE_GENERATION_SCHEMA,
+        "safe_atif_sha256": inventory["safe_atif_sha256"],
+        "inventory_sha256": _sha256_file(task_dir / "private/interaction-inventory.json"),
+        "plan_sha256": _sha256_file(task_dir / "private/fixture-plan.json"),
+        "files": files,
+    }
+    _write_bytes_once(
+        receipt_path,
+        (json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(),
+    )
+    return {
+        "task_dir": str(task_dir),
+        "generated_tool_count": len(scenario["tools"]),
+        "fixture_dir": str(fixture_dir),
+        "receipt": str(receipt_path),
+    }
+
+
+def _validate_fixture_pipeline(task_dir: Path) -> None:
+    inventory_path = task_dir / "private/interaction-inventory.json"
+    plan_path = task_dir / "private/fixture-plan.json"
+    receipt_path = task_dir / "private/fixture-generation.json"
+    fixture_dir = task_dir / "task/environment/trace-fixtures"
+    if not any(path.exists() for path in (inventory_path, plan_path, receipt_path, fixture_dir)):
+        return
+    if not inventory_path.is_file():
+        raise ContractError("fixture artifacts require private/interaction-inventory.json")
+    inventory = _current_inventory_file(task_dir)
+    if not plan_path.exists():
+        if receipt_path.exists() or fixture_dir.exists():
+            raise ContractError("generated fixtures require private/fixture-plan.json")
+        return
+    _, plan = _current_fixture_plan(task_dir)
+    if receipt_path.exists() != fixture_dir.exists():
+        raise ContractError("generated fixture directory and receipt must exist together")
+    if not receipt_path.exists():
+        return
+    receipt = _load_object(receipt_path, label="fixture generation receipt")
+    expected_keys = {"schema", "safe_atif_sha256", "inventory_sha256", "plan_sha256", "files"}
+    if set(receipt) != expected_keys or receipt.get("schema") != FIXTURE_GENERATION_SCHEMA:
+        raise ContractError("fixture generation receipt fields do not match the versioned contract")
+    scenario = _load_object(fixture_dir / "scenario.json", label="generated MCP scenario")
+    if scenario != build_mcp_scenario(inventory, plan):
+        raise ContractError("generated MCP scenario differs from the current fixture plan")
+    expected = {
+        "schema": FIXTURE_GENERATION_SCHEMA,
+        "safe_atif_sha256": inventory["safe_atif_sha256"],
+        "inventory_sha256": _sha256_file(inventory_path),
+        "plan_sha256": _sha256_file(plan_path),
+        "files": _generated_fixture_files(fixture_dir, task_dir),
+    }
+    if receipt != expected:
+        raise ContractError("fixture generation receipt differs from the generated task files")
 
 
 def _evidence_steps(value: Any, step_ids: set[int], *, label: str) -> list[int]:
@@ -1991,6 +2200,7 @@ def _finalize(args: argparse.Namespace) -> dict[str, Any]:
     safe_path = task_dir / summary["source"]["safe_path"]
     safe_payload = _load_object(safe_path, label="safe ATIF")
     _validate_trajectory(safe_payload)
+    _validate_fixture_pipeline(task_dir)
     step_ids = {step["step_id"] for step in safe_payload["steps"]}
     candidate = _validate_candidate(task_dir, args.status, step_ids)
 
@@ -2148,6 +2358,10 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
                 errors.append("summary.md is missing or does not match summary.json")
         except ContractError as error:
             errors.append(str(error))
+    try:
+        _validate_fixture_pipeline(task_dir)
+    except ContractError as error:
+        errors.append(str(error))
     return {"task_dir": str(task_dir), "valid": not errors, "errors": errors}
 
 
@@ -2499,6 +2713,24 @@ def _parser() -> argparse.ArgumentParser:
     review.add_argument("--reviewer-kind", choices=("agent", "human"), required=True)
     review.add_argument("--note", required=True)
     review.set_defaults(run=_review_privacy)
+
+    inventory = subparsers.add_parser(
+        "inventory-interactions", help="derive a private tool-call and observation inventory from safe ATIF"
+    )
+    inventory.add_argument("--task-dir", required=True, type=Path)
+    inventory.set_defaults(run=_inventory_interactions)
+
+    fixture_plan = subparsers.add_parser(
+        "plan-fixtures", help="classify every observed tool by evidence-backed fixture disposition"
+    )
+    fixture_plan.add_argument("--task-dir", required=True, type=Path)
+    fixture_plan.set_defaults(run=_plan_fixtures)
+
+    fixture_generation = subparsers.add_parser(
+        "generate-fixtures", help="materialize strict MCP replay for exact read-only interactions"
+    )
+    fixture_generation.add_argument("--task-dir", required=True, type=Path)
+    fixture_generation.set_defaults(run=_generate_fixtures)
 
     reproducibility = subparsers.add_parser(
         "record-reproducibility", help="hash the task tree and record portability and contamination evidence"
