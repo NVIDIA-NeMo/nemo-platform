@@ -43,7 +43,6 @@ from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.refs import (
     FILESET_REF_PATTERN,
 )
-from nemo_platform_plugin.run_dependencies import LocalRunError
 from pydantic import BaseModel
 
 from nemo_optimization.agents import _to_fabric_agent_package

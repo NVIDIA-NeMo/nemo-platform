@@ -149,6 +149,55 @@ class _StubFiles:
         return SimpleNamespace(name=fileset)
 
 
+class _StubFilesetManager:
+    """Stubs ``FilesetFileManager`` for the staged-bundle download path.
+
+    Bundle staging goes through a typed files client rather than the SDK's own
+    ``files`` resource, so it is served from the same ``_StubFiles`` the rest of
+    the run uses and keeps recording into the caller's ``downloaded`` dict.
+    """
+
+    def __init__(self, files: _StubFiles, *, workspace: str, fileset: str) -> None:
+        self._files = files
+        self._workspace = workspace
+        self._fileset = fileset
+
+    def validate_storage(self) -> None:
+        pass
+
+    def download_from_url(self, _url: str, local_dir: str | Path) -> None:
+        self._files.download(local_path=str(local_dir), fileset=self._fileset, workspace=self._workspace)
+
+    def upload(self, *, local_path: Path, remote_path: str, ignore_patterns: Any = None) -> str:
+        del ignore_patterns, remote_path
+        self._files.upload(
+            local_path=str(local_path), fileset=self._fileset, workspace=self._workspace, fileset_auto_create=True
+        )
+        return f"{self._workspace}/{self._fileset}"
+
+
+@pytest.fixture(autouse=True)
+def stage_through_typed_fileset_client() -> Iterator[None]:
+    """Route ``fileset_io``'s typed-client staging at the stub SDK.
+
+    ``resolve_staged_config`` adapts the SDK with ``client_from_platform`` and downloads
+    through a ``FilesetFileManager``; neither accepts a stub SDK, so both ends are replaced.
+    """
+
+    def _client(sdk: Any, _resource: object) -> Any:
+        return sdk.files
+
+    def _manager(files_client: Any, *, workspace: str, fileset: str, ensure_fileset_exists: bool) -> Any:
+        del ensure_fileset_exists
+        return _StubFilesetManager(files_client, workspace=workspace, fileset=fileset)
+
+    with (
+        patch("nemo_agents_plugin.jobs.fileset_io.client_from_platform", side_effect=_client),
+        patch("nemo_agents_plugin.jobs.fileset_io._fileset_manager", side_effect=_manager),
+    ):
+        yield
+
+
 def bundle_sdk(
     bundle: dict[str, str],
     *,
