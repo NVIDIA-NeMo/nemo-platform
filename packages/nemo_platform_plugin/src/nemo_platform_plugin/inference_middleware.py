@@ -74,11 +74,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol, TypeAlias, Union, runtime_checkable
 
-from nemo_platform_plugin.client.client import AsyncNemoClient
-
 if TYPE_CHECKING:
-    # Keep this public base import-light; importing the generated SDK loads pydantic.
+    # Keep this public base import-light; these imports pull in heavy SDK modules.
     from nemo_platform import AsyncNeMoPlatform
+    from nemo_platform_plugin.client.client import AsyncNemoClient
 
 
 class BackendFormat(str, Enum):
