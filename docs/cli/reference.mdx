@@ -1449,8 +1449,8 @@ Delete Fileset.
 Permanently deletes an unreferenced fileset from the platform.
 
 Referencing model
-or adapter entities must be relinked or deleted first. For local storage backends, this also deletes the
-underlying files.
+or adapter entities must be relinked or deleted first. For local storage
+backends, this also deletes the underlying files.
 
 **Usage:**
 
@@ -5281,6 +5281,10 @@ nemo secrets delete [OPTIONS] NAME
 
 * `--help, -h`: Show this message and exit.
 
+**Output Options:**
+
+* `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
 #### nemo secrets list
 
 List available secrets
@@ -7327,13 +7331,13 @@ nemo agents experimentalist [OPTIONS] COMMAND [ARGS]...
 
 **Commands:**
 
-* `run`: Run offline optimization for a baseline agent (local dir...
+* `run`: Run local optimization for a baseline agent (local dir or...
 * `components`: List the components this install can resolve by name.
 * `doctor`: Diagnose Experimentalist setup: profile, artifacts,...
 
 ##### nemo agents experimentalist run
 
-Run offline optimization for a baseline agent (local dir or git source).
+Run local optimization for a baseline agent (local dir or git source).
 
 **Usage:**
 

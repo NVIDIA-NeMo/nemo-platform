@@ -12,8 +12,8 @@
 
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { Flex } from '@nvidia/foundations-react-core';
-import { GPULoraFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/GPULoraFields';
-import type { WizardFormValues } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
+import { GPULoraFields } from '@studio/routes/NewDeploymentRoute/GPULoraFields';
+import type { WizardFormValues } from '@studio/routes/NewDeploymentRoute/schema';
 import type { FC } from 'react';
 import type { Control, FieldErrors } from 'react-hook-form';
 
