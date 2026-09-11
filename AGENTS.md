@@ -144,33 +144,11 @@ A plugin can ship a web UI that Studio loads at runtime and renders **inside its
 - Run Python tools like Pytest with `uv run pytest` or `uv run ruff`
 - Launch a Python repl with `uv run python`
 
-### SDK Generation
+### SDK Maintenance
 
-The Python SDK is automatically generated from the OpenAPI specification using Stainless. The SDK is maintained in a separate Git repository and integrated into this project.
-
-**Update the SDK:**
-- `make update-sdk` - Full SDK update (regenerate OpenAPI spec + sync with Stainless)
-
-**Individual steps:**
-- `make refresh-openapi` - Regenerate OpenAPI spec from API definitions
-- `make stainless` - Sync with Stainless (requires `STAINLESS_API_KEY` env var)
-
-**When to regenerate the SDK:**
-Regenerate the SDK whenever you modify:
-- API endpoints (routes, methods, parameters, responses)
-- Data models or schemas
-- Files in these paths:
-  - `packages/nmp_common/src/nmp_common/datamodel/`
-  - `packages/nmp_common/src/nmp_common/api/`
-  - Service API files: `services/*/src/*/api/`
-
-**How it works:**
-1. `refresh-openapi` generates `openapi/openapi.yaml` from your API code
-2. `stainless` pushes the spec to Stainless API, which generates SDK code
-3. Generated SDK is pulled from stainless remote and vendored packages are integrated
-4. Post-generation updates apply licenses, README, and other metadata
-
-**Note:** OpenAPI generation also runs as a pre-commit hook (manual stage) when API files change.
+For SDK/OpenAPI maintenance, including the Stainless-free Python SDK workflow,
+derived artifact commands, and `make audit-stainless`, read
+[sdk/README.md](sdk/README.md).
 
 #### Testing Python Code
 
@@ -199,8 +177,8 @@ Type checking runs automatically in CI via the `lint:uv` job.
 - Validate OpenAPI spec: `script/generate-openapi-spec.sh`
 - Or use: `make refresh-openapi`
 
-**SDK Validation:**
-- Update SDK: `make update-sdk`
+**SDK Maintenance:**
+- Run the maintained SDK update flow: `make update-sdk`
 
 **OPA Policy:**
 - Check policy WASM is up-to-date: `make check-policy`

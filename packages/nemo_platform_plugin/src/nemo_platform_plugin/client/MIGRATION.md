@@ -27,7 +27,7 @@ worked example of the general steps.
 | Call style | `sdk.secrets.create(workspace=..., name=..., value=...)` → entity | `client.create_secret(workspace=..., body=CreateSecretRequest(...))` → `NemoResponse`; `.data()` for the entity, `.items()` for a list |
 | Types | Generated params/response classes under `nemo_platform.types.secrets.*` | Plain Pydantic models you own |
 | Errors | `nemo_platform.NotFoundError`, `ConflictError`, … | `nemo_platform_plugin.client.errors.*` (same names, different module) |
-| Regeneration | `make update-sdk` (Stainless round-trip) | none — it's just code |
+| Regeneration | Stainless disabled; maintain compatibility without regeneration | none — it's just code |
 
 The end-goal of AIRCORE-827 is to delete the Stainless dependency once every service has a
 NemoClient. Each per-service ticket (873–878) builds one service's typed client; sibling

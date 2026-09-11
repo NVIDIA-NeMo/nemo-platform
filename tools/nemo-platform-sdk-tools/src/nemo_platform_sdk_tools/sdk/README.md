@@ -3,63 +3,16 @@
 
 # SDK Maintenance Tools
 
-This package contains repo-local commands for keeping the generated Python SDK, Stainless config, generated CLI, vendored packages, and license metadata in sync.
+## Prerequisites
 
-## OpenAPI -> Stainless config mapper
+Run these commands from the repository root in a Git worktree with the project
+toolchain available. The commands expect `uv`, `git`, and `make` to be on
+`PATH` and use the checked-in `uv.lock`.
 
-OpenAPI spec to Stainless config model mapper.
-
-This tool maps OpenAPI spec to the Stainless configuration by:
-- creating Stainless methods for each OpenAPI endpoint (if not already present). It will also remove stale methods.
-- creating Stainless models for each OpenAPI schema (if not already present). It will also remove stale models.
-
-See https://www.stainless.com/docs/guides/configure#methods and https://www.stainless.com/docs/guides/configure#models
-
-### Methods
-
-Can be run as:
-
-```sh
-uv run --frozen nemo-platform-sdk-tools openapi-stainless sync-methods \
-  --openapi-spec-path openapi/openapi.yaml \
-  --stainless-config-path sdk/stainless.yaml \
-  --output-path sdk/stainless.yaml
-```
-
-It will:
-- Find all OpenAPI endpoints
-- Compare with existing Stainless methods
-- Add missing methods with "reviewme_" prefix to method name
-- Remove stale methods (i.e. methods that exist in Stainless but not in OpenAPI)
-
-**Note: because the way methods are organized in Stainless, it wouldn't be reliable to automatically determine the
-method name and its location, that's why the method name is prefixed with "reviewme_" and the developer is expected to
-review and update both the name and potentially the location (in best case, if both are correct, just remove the prefix).**
-
-### Models
-
-Can be run as:
-```sh
-uv run --frozen nemo-platform-sdk-tools openapi-stainless sync-models \
-  --openapi-spec-path openapi/openapi.yaml \
-  --stainless-config-path sdk/stainless.yaml \
-  --output-path sdk/stainless.yaml
-```
-
-It will:
-- Check all Stainless methods are in sync with OpenAPI endpoints. If not, run `sync-methods` first.
-- Find all OpenAPI schemas
-- Compare with existing Stainless models
-- Add missing models with a name derived from the schema name
-- **If there is a conflict, it will add the "reviewme_" prefix to the model name and the developer is expected to review and update the name**
-
-## SDK Freshness Check
-
-Check whether the generated SDK matches the OpenAPI spec and Stainless config:
-
-```sh
-uv run --frozen nemo-platform-sdk-tools is-up-to-date --output-dir python-sdk-lint
-```
+This package contains repo-local commands for keeping generated CLI, vendored
+packages, and license metadata in sync without Stainless. No command in this
+package proves semantic compatibility between current OpenAPI and the legacy
+Stainless-generated Python SDK.
 
 ## Generated CLI
 
@@ -68,6 +21,9 @@ Regenerate the API-backed NeMo Platform CLI commands:
 ```sh
 uv run --frozen nemo-platform-sdk-tools generate-cli
 ```
+
+The generator still reads `sdk/stainless.yaml` as resource/method metadata for
+the legacy SDK shape.
 
 ## SDK Vendoring
 
@@ -83,7 +39,15 @@ Run post-generation updates:
 ```sh
 uv run --no-sync nemo-platform-sdk-tools post-generation update-license-headers
 uv run --frozen nemo-platform-sdk-tools post-generation update-pyproject
-uv run --frozen nemo-platform-sdk-tools post-generation update-all
 ```
 
-Prefer the Makefile targets (`make generate-cli-commands`, `make vendor`, and `make update-sdk`) for normal repo workflows.
+Prefer the Makefile targets (`make generate-cli-commands`, `make vendor`, and
+`make update-sdk`) for normal repo workflows. `make update-sdk` does not
+regenerate the Python SDK with Stainless.
+
+## Next Steps
+
+For the Stainless-free SDK maintenance policy, see
+[`sdk/README.md`](../../../../../sdk/README.md). For migrating client behavior
+to source-owned typed clients, see
+[`nemo_platform_plugin/client/MIGRATION.md`](../../../../../packages/nemo_platform_plugin/src/nemo_platform_plugin/client/MIGRATION.md).

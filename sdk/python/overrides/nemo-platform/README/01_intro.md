@@ -9,7 +9,7 @@ The NeMo Platform Python SDK provides convenient access to the NeMo Platform RES
 application. The SDK includes type definitions for all request parameters and response fields,
 and offers both synchronous and asynchronous clients powered by [httpx](https://github.com/encode/httpx).
 
-It is generated with [Stainless](https://www.stainless.com/) from the [NeMo Platform REST API](https://docs.nvidia.com/nemo/microservices/latest/api/index.html).
+The legacy low-level SDK surface was generated from the [NeMo Platform REST API](https://docs.nvidia.com/nemo/microservices/latest/api/index.html). New and changed service clients are maintained as source-owned typed clients where possible.
 
 ## Documentation
 

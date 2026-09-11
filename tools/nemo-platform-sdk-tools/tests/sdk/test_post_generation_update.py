@@ -18,8 +18,6 @@ def _sdk_info(tmp_path: Path) -> SdkInfo:
         sdk_dir=tmp_path / "sdk/python/nemo-platform",
         overrides_dir=tmp_path / "sdk/python/overrides/nemo-platform",
         readme_dir=tmp_path / "sdk/python/overrides/nemo-platform/README",
-        stainless_config_file=tmp_path / "sdk/stainless.yaml",
-        openapi_spec_file=tmp_path / "openapi/openapi.yaml",
     )
 
 
