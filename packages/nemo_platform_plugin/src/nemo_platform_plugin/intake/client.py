@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed HTTP clients for the Intake APIs used by evaluator and Insights."""
+"""Typed HTTP clients for the Intake APIs used by evaluator, Experimentalist, and Insights."""
 
 from __future__ import annotations
 
@@ -19,9 +19,11 @@ from nemo_platform_plugin.intake.types import (
     ListSpanGroupsQueryParams,
     ListSpansQueryParams,
     Span,
+    SpanGroup,
     SpanGroupsPage,
     SpanMode,
 )
+from nemo_platform_plugin.schema import PaginationData
 from pydantic import JsonValue
 
 FilterQueryParam = dict[str, JsonValue]
@@ -32,13 +34,19 @@ class _IntakeMethods:
     create_atif = method(endpoints.create_atif)
     create_otlp_traces = method(endpoints.create_otlp_traces)
     list_traces = method(endpoints.list_traces)
+    get_trace = method(endpoints.get_trace)
+    list_spans = method(endpoints.list_spans)
+    list_span_groups = method(endpoints.list_span_groups)
+    create_experiment = method(endpoints.create_experiment)
+    get_experiment = method(endpoints.get_experiment)
+    update_experiment = method(endpoints.update_experiment)
+    create_evaluation = method(endpoints.create_evaluation)
     create_evaluator_result = method(endpoints.create_evaluator_result)
     get_evaluation = method(endpoints.get_evaluation)
+    update_evaluation = method(endpoints.update_evaluation)
     patch_evaluation = method(endpoints.patch_evaluation)
     list_evaluator_results = method(endpoints.list_evaluator_results)
     list_evaluator_results_for_span = method(endpoints.list_evaluator_results_for_span)
-    list_spans = method(endpoints.list_spans)
-    list_span_groups = method(endpoints.list_span_groups)
     get_span = method(endpoints.get_span)
     list_annotations = method(endpoints.list_annotations)
     get_annotation = method(endpoints.get_annotation)
@@ -103,6 +111,27 @@ def _list_annotations_params(
     if filter is not None:
         params["filter"] = filter
     return params or None
+
+
+def _grouped_by_fields(by: str) -> list[str]:
+    return [field.strip() for field in by.split(",") if field.strip()]
+
+
+def _span_groups_page(
+    *,
+    items: list[SpanGroup],
+    metadata: object,
+    by: str,
+    sort: str | None,
+    filter: FilterQueryParam | None,
+) -> SpanGroupsPage:
+    return SpanGroupsPage(
+        data=items,
+        grouped_by=_grouped_by_fields(by),
+        pagination=PaginationData.model_validate(metadata),
+        sort=sort,
+        filter=filter,
+    )
 
 
 class _SpansCompat:
@@ -181,10 +210,14 @@ class _SpanGroupsCompat:
         sort: str | None = None,
         filter: FilterQueryParam | None = None,
     ) -> SpanGroupsPage:
-        return self._client.list_span_groups(
+        response = self._client.list_span_groups(
             workspace=workspace,
             query_params=_list_span_groups_params(by=by, page=page, page_size=page_size, sort=sort, filter=filter),
-        ).data()
+        )
+        page_result = response.page()
+        return _span_groups_page(
+            items=page_result.items, metadata=page_result.metadata, by=by, sort=sort, filter=filter
+        )
 
 
 class _AsyncSpanGroupsCompat:
@@ -201,12 +234,14 @@ class _AsyncSpanGroupsCompat:
         sort: str | None = None,
         filter: FilterQueryParam | None = None,
     ) -> SpanGroupsPage:
-        return (
-            await self._client.list_span_groups(
-                workspace=workspace,
-                query_params=_list_span_groups_params(by=by, page=page, page_size=page_size, sort=sort, filter=filter),
-            )
-        ).data()
+        response = await self._client.list_span_groups(
+            workspace=workspace,
+            query_params=_list_span_groups_params(by=by, page=page, page_size=page_size, sort=sort, filter=filter),
+        )
+        page_result = response.page()
+        return _span_groups_page(
+            items=page_result.items, metadata=page_result.metadata, by=by, sort=sort, filter=filter
+        )
 
 
 class _SpanEvaluatorResultsCompat:
@@ -270,7 +305,7 @@ class _AsyncAnnotationsCompat:
 
 
 class IntakeClient(_IntakeMethods, NemoClient):
-    """Sync client for the Intake API subset evaluator uses."""
+    """Sync client for the Intake API subset evaluator, Experimentalist, and Insights use."""
 
     @cached_property
     def spans(self) -> _SpansCompat:
@@ -282,7 +317,7 @@ class IntakeClient(_IntakeMethods, NemoClient):
 
 
 class AsyncIntakeClient(_IntakeMethods, AsyncNemoClient):
-    """Async client for the Intake API subset evaluator uses."""
+    """Async client for the Intake API subset evaluator, Experimentalist, and Insights use."""
 
     @cached_property
     def spans(self) -> _AsyncSpansCompat:
