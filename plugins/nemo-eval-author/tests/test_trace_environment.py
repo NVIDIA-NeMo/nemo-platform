@@ -150,6 +150,26 @@ def _record_reproducibility(task_dir: Path) -> None:
     assert code == 0, result
 
 
+def _review_publication(task_dir: Path, *, reviewer_kind: str = "agent") -> dict[str, Any]:
+    code, preview = _run("prepare-publication", "--task-dir", str(task_dir))
+    assert code == 0, preview
+    code, result = _run(
+        "review-publication",
+        "--task-dir",
+        str(task_dir),
+        "--preview-dir",
+        preview["preview_dir"],
+        "--sha256",
+        preview["sha256"],
+        "--reviewer-kind",
+        reviewer_kind,
+        "--note",
+        "Reviewed all files in this synthetic publication preview.",
+    )
+    assert code == 0, result
+    return preview
+
+
 def _ready_environment(
     task_dir: Path,
     *,
@@ -513,6 +533,71 @@ def test_candidate_rejects_required_unavailable_software(tmp_path: Path) -> None
 
     assert code == 1
     assert "candidate requires unavailable software: ExampleCAD" in result["error"]
+
+
+def _software(*, required: bool, availability: str) -> dict[str, Any]:
+    return {
+        "name": "ExampleRuntime",
+        "category": "cli",
+        "required": required,
+        "version": None,
+        "license": "open_source",
+        "availability": availability,
+        "redistributable": True,
+        "provenance": {"kind": "atif_step", "step_ids": [1], "uri": None, "revision": None, "source_id": None},
+        "notes": "Runtime availability recorded from the task evidence.",
+    }
+
+
+@pytest.mark.parametrize(
+    "required,availability,nop_reward,record_validation,expected",
+    [
+        (True, "unknown", 0.0, True, "unproven"),
+        (False, "unknown", 0.0, True, "ready"),
+        (True, "available", 0.0, True, "ready"),
+        (True, "installable", 0.0, True, "ready"),
+        (True, "unknown", 1.0, True, "failed"),
+        (True, "unknown", 0.0, False, "unproven"),
+    ],
+)
+def test_software_availability_gates_readiness(
+    tmp_path: Path, required: bool, availability: str, nop_reward: float, record_validation: bool, expected: str
+) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir, software_requirements=[_software(required=required, availability=availability)])
+    _ready_environment(task_dir, nop_reward=nop_reward, record_validation=record_validation)
+    _review_privacy(task_dir)
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate", "--human-reviewed")
+    assert code == 0, result
+    assert result["environment_status"] == expected
+    code, result = _run("check", "--task-dir", str(task_dir))
+    assert code == 0, result
+    _review_publication(task_dir)
+    output = tmp_path / "product"
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+    assert code == 0, result
+    assert json.loads((output / "result.json").read_text())["environment"]["status"] == expected
+
+
+def test_check_rejects_ready_claim_with_unknown_required_software(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir, software_requirements=[_software(required=True, availability="unknown")])
+    _ready_environment(task_dir)
+    _review_privacy(task_dir)
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate", "--human-reviewed")
+    assert code == 0, result
+    summary_path = task_dir / "summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary["environment"]["status"] = "ready"
+    _write_json(summary_path, summary)
+    markdown = task_dir / "summary.md"
+    markdown.write_text(markdown.read_text().replace("Environment: `unproven`", "Environment: `ready`"))
+    code, result = _run("check", "--task-dir", str(task_dir))
+    assert code == 1
+    assert any("software" in error for error in result["errors"])
+    code, result = _run("prepare-publication", "--task-dir", str(task_dir))
+    assert code == 1
+    assert "software" in result["error"]
 
 
 def test_ground_truth_digest_must_match_retained_artifact(tmp_path: Path) -> None:
@@ -926,6 +1011,44 @@ def test_prepare_bounds_string_encoded_images_and_audits_context(tmp_path: Path)
     }
 
 
+@pytest.mark.parametrize("encoded_size", [12, 100_001])
+@pytest.mark.parametrize("location", ["observation", "text_part", "extra", "message"])
+def test_prepare_omits_repeated_image_metadata_without_losing_prose(
+    tmp_path: Path, encoded_size: int, location: str
+) -> None:
+    code, initialized = _run("init", "--root", str(tmp_path / ".eval-author"), "--task-id", "image-metadata")
+    assert code == 0, initialized
+    task_dir = Path(initialized["task_dir"])
+    payload = _atif()
+    metadata = {"type": "image", "file": {"base64": "A" * encoded_size, "caption": "synthetic diagram"}}
+    embedded = "before [metadata] " + json.dumps(metadata) + " after"
+    step = payload["steps"][1]
+    result = step["observation"]["results"][0]
+    if location == "observation":
+        result["content"] = embedded
+    elif location == "text_part":
+        result["content"] = [{"type": "text", "text": embedded}]
+    elif location == "extra":
+        result["extra"] = {"image_metadata": metadata}
+    else:
+        step["message"] = embedded
+    source = tmp_path / "source.atif.json"
+    _write_json(source, payload)
+    code, report = _run("prepare", "--task-dir", str(task_dir), "--atif", str(source), "--source-kind", "atif")
+    assert code == 0, report
+    assert (task_dir / "private/source.atif.json").read_bytes() == source.read_bytes()
+    for artifact in ("private/canonical.atif.json", "safe/trace.atif.json"):
+        text = (task_dir / artifact).read_text()
+        assert "A" * encoded_size not in text
+        assert "synthetic diagram" in text
+        if location != "extra":
+            assert "before [metadata]" in text and " after" in text
+    summary = json.loads((task_dir / "summary.json").read_text())
+    operation = summary["source"]["normalizations"][0]
+    assert operation["metadata_field_count"] == 1
+    assert operation["metadata_omitted_characters"] == encoded_size
+
+
 def test_shared_verifier_is_rejected(tmp_path: Path) -> None:
     task_dir, _ = _workspace(tmp_path)
     _candidate(task_dir)
@@ -1095,6 +1218,7 @@ def test_export_uses_a_strict_publication_whitelist(tmp_path: Path) -> None:
     assert code == 0, result
     output = tmp_path / "product"
 
+    _review_publication(task_dir)
     code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
 
     assert code == 0, result
@@ -1115,6 +1239,188 @@ def test_export_uses_a_strict_publication_whitelist(tmp_path: Path) -> None:
     assert product["reproducibility"]["dependency_closure"] == "unverified"
 
 
+@pytest.mark.parametrize("status", ["candidate", "no_candidate"])
+def test_export_requires_publication_review_even_after_trace_review(tmp_path: Path, status: str) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir, status=status)
+    if status == "candidate":
+        _ready_environment(task_dir, record_validation=False)
+    _review_privacy(task_dir)
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", status)
+    assert code == 0, result
+    output = tmp_path / "product"
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+    assert code == 1
+    assert "review-publication" in result["error"]
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("reviewer_kind", ["agent", "human"])
+def test_no_candidate_publication_reviews_exact_product(tmp_path: Path, reviewer_kind: str) -> None:
+    task_dir, _ = _workspace(tmp_path, image_only=True)
+    _candidate(task_dir, status="no_candidate")
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "no_candidate")
+    assert code == 0, result
+    preview = _review_publication(task_dir, reviewer_kind=reviewer_kind)
+    preview_dir = Path(preview["preview_dir"])
+    assert preview["file_count"] == 2
+    assert stat.S_IMODE(preview_dir.stat().st_mode) == 0o700
+    receipt = task_dir / "private/publication-review.json"
+    assert stat.S_IMODE(receipt.stat().st_mode) == 0o600
+    assert json.loads(receipt.read_text())["reviewer_kind"] == reviewer_kind
+    code, second = _run("prepare-publication", "--task-dir", str(task_dir))
+    assert code == 0, second
+    assert second == preview
+    output = tmp_path / "product"
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+    assert code == 0, result
+    assert result["files"] == ["candidate.json", "result.json"]
+    for path in output.iterdir():
+        assert path.read_bytes() == (preview_dir / path.name).read_bytes()
+    product = json.loads((output / "result.json").read_text())
+    assert product["status"] == "no_candidate"
+    assert product["privacy"]["contextual_review_complete"] is False
+
+
+@pytest.mark.parametrize("change", ["candidate", "task", "manifest", "executable", "empty_directory"])
+def test_publication_review_is_invalidated_by_changed_export(tmp_path: Path, change: str) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir)
+    _ready_environment(task_dir, record_validation=False)
+    _review_privacy(task_dir)
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
+    assert code == 0, result
+    preview = _review_publication(task_dir)
+    if change in {"candidate", "manifest"}:
+        path = task_dir / ("candidate.json" if change == "candidate" else "reproducibility.json")
+        # Equivalent JSON still changes the exact bytes approved for publication.
+        path.write_text(path.read_text() + "\n")
+    elif change == "task":
+        path = task_dir / "task/instruction.md"
+        path.write_text(path.read_text() + "Keep the repair local.\n")
+        _record_reproducibility(task_dir)
+    elif change == "executable":
+        (task_dir / "task/tests/test.sh").chmod(0o744)
+        _record_reproducibility(task_dir)
+    else:
+        (task_dir / "task/empty").mkdir()
+        _record_reproducibility(task_dir)
+    code, result = _run("check", "--task-dir", str(task_dir))
+    assert code == 0, result
+    output = tmp_path / "product"
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+    assert code == 1
+    assert "publication review is stale" in result["error"]
+    assert not output.exists()
+    code, result = _run(
+        "review-publication",
+        "--task-dir",
+        str(task_dir),
+        "--preview-dir",
+        preview["preview_dir"],
+        "--sha256",
+        preview["sha256"],
+        "--reviewer-kind",
+        "agent",
+        "--note",
+        "Old preview",
+    )
+    assert code == 1
+    assert "preview is stale" in result["error"]
+    updated = _review_publication(task_dir)
+    assert updated["sha256"] != preview["sha256"]
+    assert Path(preview["preview_dir"]).is_dir()
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+    assert code == 0, result
+
+
+def test_publication_review_binds_derived_result_json(tmp_path: Path) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir, status="no_candidate")
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "no_candidate")
+    assert code == 0, result
+    _review_publication(task_dir)
+    # This changes only the public result, not candidate.json or the safe trace.
+    _review_privacy(task_dir)
+    code, result = _run("check", "--task-dir", str(task_dir))
+    assert code == 0, result
+    output = tmp_path / "product"
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+    assert code == 1
+    assert "publication review is stale" in result["error"]
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("change", ["bytes", "mode", "symlink", "extra_file", "missing_file"])
+def test_publication_review_rejects_tampered_preview(tmp_path: Path, change: str) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir, status="no_candidate")
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "no_candidate")
+    assert code == 0, result
+    code, preview = _run("prepare-publication", "--task-dir", str(task_dir))
+    assert code == 0, preview
+    path = Path(preview["preview_dir"]) / "candidate.json"
+    if change == "bytes":
+        path.write_text(path.read_text() + "\n")
+    elif change == "mode":
+        path.chmod(0o744)
+    elif change == "symlink":
+        path.unlink()
+        path.symlink_to(task_dir / "candidate.json")
+    elif change == "extra_file":
+        (path.parent / "extra.txt").write_text("Unreviewed internal project detail.")
+    else:
+        path.unlink()
+    code, result = _run(
+        "review-publication",
+        "--task-dir",
+        str(task_dir),
+        "--preview-dir",
+        preview["preview_dir"],
+        "--sha256",
+        preview["sha256"],
+        "--reviewer-kind",
+        "agent",
+        "--note",
+        "Changed preview",
+    )
+    assert code == 1
+    assert "digest" in result["error"] or "symlink" in result["error"]
+    assert not (task_dir / "private/publication-review.json").exists()
+
+
+@pytest.mark.skipif(not hasattr(os, "setxattr"), reason="extended attributes require OS support")
+@pytest.mark.parametrize("status", ["candidate", "no_candidate"])
+def test_publication_omits_source_extended_attributes(tmp_path: Path, status: str) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _candidate(task_dir, status=status)
+    if status == "candidate":
+        _ready_environment(task_dir, record_validation=False)
+    _review_privacy(task_dir)
+    code, result = _run("finalize", "--task-dir", str(task_dir), "--status", status)
+    assert code == 0, result
+    sources = [task_dir / "candidate.json"]
+    if status == "candidate":
+        sources.extend([task_dir / "reproducibility.json", task_dir / "task", task_dir / "task/tests/test.sh"])
+    attribute = "user.fixture_note"
+    for path in sources:
+        os.setxattr(path, attribute, b"fixture metadata before review")
+    preview = _review_publication(task_dir)
+    preview_dir = Path(preview["preview_dir"])
+    for path in sources:
+        assert attribute not in os.listxattr(preview_dir / path.relative_to(task_dir))
+        os.setxattr(path, attribute, b"fixture metadata changed after review")
+    output = tmp_path / "product"
+    code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
+    assert code == 0, result
+    for path in sources:
+        assert os.getxattr(path, attribute) == b"fixture metadata changed after review"
+        assert attribute not in os.listxattr(output / path.relative_to(task_dir))
+    for path in output.rglob("*"):
+        if path.is_file():
+            assert path.read_bytes() == (preview_dir / path.relative_to(output)).read_bytes()
+
+
 @pytest.mark.parametrize("executable_bits", [0, stat.S_IXUSR, stat.S_IXGRP, stat.S_IXOTH, 0o111])
 def test_export_preserves_executable_bits_and_task_digest(tmp_path: Path, executable_bits: int) -> None:
     task_dir, _ = _workspace(tmp_path)
@@ -1128,6 +1434,7 @@ def test_export_preserves_executable_bits_and_task_digest(tmp_path: Path, execut
     code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
     assert code == 0, result
     output = tmp_path / "product"
+    _review_publication(task_dir)
     code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
     assert code == 0, result
 
@@ -1185,6 +1492,7 @@ def test_image_pinning_does_not_claim_dependency_closure(tmp_path: Path) -> None
     code, result = _run("finalize", "--task-dir", str(task_dir), "--status", "candidate")
     assert code == 0, result
     output = tmp_path / "product"
+    _review_publication(task_dir)
     code, result = _run("export", "--task-dir", str(task_dir), "--output-dir", str(output))
     assert code == 0, result
     manifest = json.loads((output / "reproducibility.json").read_text())
@@ -1321,15 +1629,21 @@ def _record_existing_jobs(task_dir: Path) -> tuple[int, dict[str, Any]]:
     return _run("record-validation", "--task-dir", str(task_dir), *args, "--harbor-version", "0.21.0")
 
 
-@pytest.mark.parametrize("change", ["verifier", "executable"])
+@pytest.mark.parametrize("change", ["verifier", "executable", "instruction", "build_input", "new_file"])
 def test_stale_jobs_cannot_prove_a_changed_task(tmp_path: Path, change: str) -> None:
     task_dir, _ = _workspace(tmp_path)
     _ready_environment(task_dir, record_validation=False)
     verifier = task_dir / "task/tests/test.sh"
     if change == "verifier":
         verifier.write_text("#!/bin/sh\nexit 99\n")
-    else:
+    elif change == "executable":
         verifier.chmod(verifier.stat().st_mode ^ stat.S_IXUSR)
+    elif change == "instruction":
+        (task_dir / "task/instruction.md").write_text("Repair a different fixture.\n")
+    elif change == "build_input":
+        (task_dir / "task/environment/Dockerfile").write_text("FROM scratch\nENV FIXTURE_REVISION=2\n")
+    else:
+        (task_dir / "task/environment/input.txt").write_text("New initial state.\n")
     _record_reproducibility(task_dir)
     code, result = _record_existing_jobs(task_dir)
     assert code == 1
@@ -1373,8 +1687,11 @@ def test_missing_pre_run_inputs_rejects_historical_proof(tmp_path: Path) -> None
     "arm,agent",
     [
         ("nop-1", None),
+        ("oracle-1", None),
         ("oracle-1", {"name": "nop"}),
+        ("nop-1", {"name": "oracle"}),
         ("negative-1", {"name": "nop"}),
+        ("negative-1", {"name": "oracle"}),
         ("negative-1", {"import_path": "harbor.agents.nop:NopAgent"}),
         ("negative-1", {"import_path": "other_agent:WrongControl"}),
         ("nop-1", {"name": "nop", "import_path": "other_agent:WrongControl"}),
@@ -1465,6 +1782,63 @@ def test_portability_tracks_external_copy_sources(tmp_path: Path, copy_source: s
     assert len(copies) == 1
     assert copies[0]["reference"] == copy_source
     assert copies[0]["internal_stage"] == (copy_source in ("builder", "0"))
+
+
+@pytest.mark.parametrize(
+    "source,pinned,internal",
+    [
+        ("example.invalid/tool:latest", False, False),
+        ("example.invalid/tool@sha256:" + "a" * 64, True, False),
+        ("builder", True, True),
+        ("0", True, True),
+        ("${TOOLS_IMAGE}", False, False),
+    ],
+)
+def test_portability_tracks_multiple_run_mounts(tmp_path: Path, source: str, pinned: bool, internal: bool) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / "task/environment/Dockerfile").write_text(
+        "FROM scratch AS builder\nFROM scratch\n"
+        "RUN --mount=type=bind,from=builder,target=/local \\\n"
+        f"    --mount=type=bind,from={source},target=/tool true\n"
+    )
+    _record_reproducibility(task_dir)
+    report = json.loads((task_dir / "reproducibility.json").read_text())
+    assert report["portability"]["state"] == ("image_pinned_recipe" if pinned else "local_only")
+    mounts = [image for image in report["portability"]["container_images"] if image["instruction"] == "run_mount"]
+    assert [(item["reference"], item["internal_stage"]) for item in mounts] == [("builder", True), (source, internal)]
+
+
+@pytest.mark.parametrize(
+    "reference,pinned",
+    [("docker/dockerfile:1", False), ("docker/dockerfile@sha256:" + "a" * 64, True), ("${FRONTEND}", False)],
+)
+@pytest.mark.parametrize("location", ["environment", "tests"])
+def test_portability_inventories_dockerfile_frontend(
+    tmp_path: Path, reference: str, pinned: bool, location: str
+) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / f"task/{location}/Dockerfile").write_text(f"# syntax={reference}\nFROM scratch\n")
+    _record_reproducibility(task_dir)
+    report = json.loads((task_dir / "reproducibility.json").read_text())
+    assert report["portability"]["state"] == ("image_pinned_recipe" if pinned else "local_only")
+    frontends = [item for item in report["portability"]["container_images"] if item["instruction"] == "frontend"]
+    assert len(frontends) == 1
+    assert frontends[0]["reference"] == reference
+    assert frontends[0]["immutable"] is pinned
+    assert frontends[0]["internal_stage"] is False
+
+
+@pytest.mark.parametrize("prefix", ["\n", "# ordinary comment\n", "FROM scratch\n"])
+def test_portability_ignores_inactive_syntax_comments(tmp_path: Path, prefix: str) -> None:
+    task_dir, _ = _workspace(tmp_path)
+    _ready_environment(task_dir, record_validation=False)
+    (task_dir / "task/environment/Dockerfile").write_text(prefix + "# syntax=docker/dockerfile:1\nFROM scratch\n")
+    _record_reproducibility(task_dir)
+    report = json.loads((task_dir / "reproducibility.json").read_text())
+    assert report["portability"]["state"] == "image_pinned_recipe"
+    assert not any(item["instruction"] == "frontend" for item in report["portability"]["container_images"])
 
 
 @pytest.mark.parametrize(
