@@ -10,6 +10,7 @@ import shutil
 import stat
 import subprocess
 import sys
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,11 @@ _SCRIPT = _PLUGIN / "skills" / "eval-author-trace-environment" / "scripts" / "tr
 _SUMMARY_SCHEMA = "nemo.eval_author.trace_environment_summary.v2"
 _CANDIDATE_SCHEMA = "nemo.eval_author.trace_environment_candidate.v2"
 _VALIDATION_SCHEMA = "nemo.eval_author.trace_environment_validation.v5"
+_TOOL_ACCESS_DECISIONS_SCHEMA = "nemo.eval_author.trace_environment_tool_access_decisions.v1"
+_SPEC = spec_from_file_location("trace_environment_for_tests", _SCRIPT)
+assert _SPEC is not None and _SPEC.loader is not None
+_TRACE_ENVIRONMENT = module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_TRACE_ENVIRONMENT)
 
 
 def _run(*args: str) -> tuple[int, dict[str, Any]]:
@@ -169,25 +175,48 @@ def _fixture_workspace(tmp_path: Path) -> Path:
     return task_dir
 
 
-def _compile_fixtures(task_dir: Path) -> None:
-    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+def _plan_tool_calls(task_dir: Path) -> None:
+    code, result = _run("inventory-tool-calls", "--task-dir", str(task_dir))
     assert code == 0, result
-    code, result = _run("plan-fixtures", "--task-dir", str(task_dir))
-    assert code == 0, result
-    _review_privacy(task_dir)
-    code, result = _run("generate-fixtures", "--task-dir", str(task_dir))
+    code, result = _run("plan-tool-call-access", "--task-dir", str(task_dir))
     assert code == 0, result
 
 
-def test_interaction_inventory_records_tool_evidence_and_is_immutable(tmp_path: Path) -> None:
+def _resolve_tool_access(task_dir: Path, states: dict[str, str]) -> tuple[int, dict[str, Any]]:
+    decisions = {
+        "schema": _TOOL_ACCESS_DECISIONS_SCHEMA,
+        "decisions": [
+            {
+                "name": name,
+                "access": access,
+                "adapter": "mcp" if access == "mock" else None,
+                "note": f"Test selected {access} access.",
+            }
+            for name, access in states.items()
+        ],
+    }
+    path = task_dir / "private/requested-tool-access.json"
+    _write_json(path, decisions)
+    return _run(
+        "resolve-tool-call-access",
+        "--task-dir",
+        str(task_dir),
+        "--decisions",
+        str(path),
+        "--reviewer-kind",
+        "agent",
+    )
+
+
+def test_tool_call_inventory_records_inputs_outputs_and_is_immutable(tmp_path: Path) -> None:
     task_dir = _fixture_workspace(tmp_path)
 
-    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    code, result = _run("inventory-tool-calls", "--task-dir", str(task_dir))
 
     assert code == 0, result
     assert result["tool_count"] == 3
     assert result["call_count"] == 3
-    inventory_path = task_dir / "private/interaction-inventory.json"
+    inventory_path = task_dir / "private/tool-call-inventory.json"
     inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
     lookup = inventory["tools"][0]
     assert lookup["name"] == "account.lookup"
@@ -204,12 +233,12 @@ def test_interaction_inventory_records_tool_evidence_and_is_immutable(tmp_path: 
     if os.name == "posix":
         assert stat.S_IMODE(inventory_path.stat().st_mode) == 0o600
 
-    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    code, result = _run("inventory-tool-calls", "--task-dir", str(task_dir))
     assert code == 1
     assert "refusing to replace" in result["error"]
 
 
-def test_interaction_inventory_includes_embedded_subagent_calls(tmp_path: Path) -> None:
+def test_tool_call_inventory_includes_embedded_subagent_calls(tmp_path: Path) -> None:
     payload = _fixture_atif()
     definition = payload["agent"]["tool_definitions"][0]
     payload["steps"] = [{"step_id": 1, "source": "user", "message": "Delegate the synthetic lookup."}]
@@ -244,57 +273,124 @@ def test_interaction_inventory_includes_embedded_subagent_calls(tmp_path: Path) 
     code, result = _run("prepare", "--task-dir", str(task_dir), "--atif", str(source), "--source-kind", "atif")
     assert code == 0, result
 
-    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    code, result = _run("inventory-tool-calls", "--task-dir", str(task_dir))
 
     assert code == 0, result
-    inventory = json.loads((task_dir / "private/interaction-inventory.json").read_text(encoding="utf-8"))
+    inventory = json.loads((task_dir / "private/tool-call-inventory.json").read_text(encoding="utf-8"))
     assert inventory["call_count"] == 1
     assert inventory["tools"][0]["definition_status"] == "complete"
     assert inventory["tools"][0]["calls"][0]["trajectory_path"] == "$.subagent_trajectories[0]"
 
 
-def test_fixture_plan_classifies_each_dependency_without_name_heuristics(tmp_path: Path) -> None:
+def test_tool_call_plan_reports_replay_support_and_side_effect_warnings(tmp_path: Path) -> None:
     task_dir = _fixture_workspace(tmp_path)
-    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    code, result = _run("inventory-tool-calls", "--task-dir", str(task_dir))
     assert code == 0, result
 
-    code, result = _run("plan-fixtures", "--task-dir", str(task_dir))
+    code, result = _run("plan-tool-call-access", "--task-dir", str(task_dir))
 
     assert code == 0, result
-    assert result["disposition_counts"] == {
-        "exact_replay": 1,
-        "review_required": 1,
-        "stateful_fixture_required": 1,
-    }
-    plan = json.loads((task_dir / "private/fixture-plan.json").read_text(encoding="utf-8"))
-    fixtures = {fixture["name"]: fixture for fixture in plan["fixtures"]}
-    assert fixtures["account.lookup"]["disposition"] == "exact_replay"
-    assert fixtures["account.update"]["reason_codes"] == ["tool_declared_mutating"]
-    assert fixtures["account.inspect"]["reason_codes"] == ["read_only_behavior_unproven"]
+    assert result["mock_support_counts"] == {"exact_replay": 3}
+    plan = json.loads((task_dir / "private/tool-call-plan.json").read_text(encoding="utf-8"))
+    tools = {tool["name"]: tool for tool in plan["tools"]}
+    assert tools["account.lookup"]["mock_support"] == "exact_replay"
+    assert tools["account.lookup"]["warnings"] == []
+    assert tools["account.update"]["mock_support"] == "exact_replay"
+    assert tools["account.update"]["warnings"] == ["tool_declared_mutating"]
+    assert tools["account.inspect"]["mock_support"] == "exact_replay"
+    assert tools["account.inspect"]["warnings"] == ["side_effects_unproven"]
 
 
-def test_generate_fixtures_requires_privacy_review_and_serves_strict_mcp(tmp_path: Path) -> None:
+def test_tool_access_requires_complete_explicit_real_mock_or_none_decisions(tmp_path: Path) -> None:
     task_dir = _fixture_workspace(tmp_path)
-    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    _plan_tool_calls(task_dir)
+
+    code, result = _resolve_tool_access(task_dir, {"account.lookup": "mock"})
+    assert code == 1
+    assert "decisions are missing" in result["error"]
+
+    code, result = _resolve_tool_access(
+        task_dir,
+        {
+            "account.lookup": "real",
+            "account.update": "mock",
+            "account.inspect": "none",
+        },
+    )
+
     assert code == 0, result
-    code, result = _run("plan-fixtures", "--task-dir", str(task_dir))
+    assert result["access_counts"] == {"mock": 1, "none": 1, "real": 1}
+    access = json.loads((task_dir / "private/tool-access.json").read_text(encoding="utf-8"))
+    decisions = {decision["name"]: decision for decision in access["decisions"]}
+    assert decisions["account.lookup"]["adapter"] is None
+    assert decisions["account.update"]["adapter"] == "mcp"
+    assert decisions["account.update"]["warnings"] == ["tool_declared_mutating"]
+    assert decisions["account.inspect"]["access"] == "none"
+
+
+def test_generate_mock_tool_calls_requires_privacy_review_and_serves_strict_mcp(tmp_path: Path) -> None:
+    task_dir = _fixture_workspace(tmp_path)
+    _plan_tool_calls(task_dir)
+    code, result = _resolve_tool_access(
+        task_dir,
+        {
+            "account.lookup": "mock",
+            "account.update": "real",
+            "account.inspect": "none",
+        },
+    )
     assert code == 0, result
 
-    code, result = _run("generate-fixtures", "--task-dir", str(task_dir))
+    code, result = _run("check", "--task-dir", str(task_dir))
+    assert code == 1
+    assert any("requires generated mock tool-call artifacts" in error for error in result["errors"])
+
+    code, result = _run("generate-mock-tool-calls", "--task-dir", str(task_dir))
     assert code == 1
     assert "review-privacy" in result["error"]
 
     _review_privacy(task_dir)
-    code, result = _run("generate-fixtures", "--task-dir", str(task_dir))
+    code, result = _run("generate-mock-tool-calls", "--task-dir", str(task_dir))
     assert code == 0, result
-    assert result["generated_tool_count"] == 1
-    fixture_dir = task_dir / "task/environment/trace-fixtures"
-    scenario = json.loads((fixture_dir / "scenario.json").read_text(encoding="utf-8"))
+    assert result["generated_mock_tool_count"] == 1
+    fixture_dir = task_dir / "task/environment/tool-call-fixtures"
+    call_fixtures = json.loads((fixture_dir / "call-fixtures.json").read_text(encoding="utf-8"))
+    assert [tool["name"] for tool in call_fixtures["tools"]] == ["account.lookup"]
+    assert call_fixtures["tools"][0]["cases"][0]["input"] == {"account_id": "synthetic-001"}
+    assert call_fixtures["tools"][0]["cases"][0]["output"] == '{"status":"active"}'
+    scenario = json.loads((fixture_dir / "mcp-scenario.json").read_text(encoding="utf-8"))
     assert [tool["definition"]["name"] for tool in scenario["tools"]] == ["account.lookup"]
-    assert "account.update" not in (fixture_dir / "scenario.json").read_text(encoding="utf-8")
+    assert "account.update" not in (fixture_dir / "mcp-scenario.json").read_text(encoding="utf-8")
     assert "[[environment.mcp_servers]]" in (fixture_dir / "integration.toml").read_text(encoding="utf-8")
     if os.name == "posix":
         assert stat.S_IMODE((fixture_dir / "mcp_replay.py").stat().st_mode) == 0o755
+
+    with pytest.raises(_TRACE_ENVIRONMENT.ContractError, match=r"requires \[\[environment.mcp_servers\]\]"):
+        _TRACE_ENVIRONMENT._validate_mock_tool_call_integration(
+            task_dir,
+            {"environment": {"network_mode": "no-network"}},
+        )
+    _TRACE_ENVIRONMENT._validate_mock_tool_call_integration(
+        task_dir,
+        {
+            "environment": {
+                "network_mode": "no-network",
+                "mcp_servers": [
+                    {
+                        "name": "trace-tool-call-replay",
+                        "transport": "stdio",
+                        "command": "/opt/tool-call-fixtures/mcp_replay.py",
+                        "args": [
+                            "--scenario",
+                            "/opt/tool-call-fixtures/mcp-scenario.json",
+                            "--audit-log",
+                            "/tmp/tool-call-fixture-audit.jsonl",
+                        ],
+                    }
+                ],
+            }
+        },
+    )
 
     audit = tmp_path / "fixture-audit.jsonl"
     requests = [
@@ -318,7 +414,7 @@ def test_generate_fixtures_requires_privacy_review_and_serves_strict_mcp(tmp_pat
             sys.executable,
             str(fixture_dir / "mcp_replay.py"),
             "--scenario",
-            str(fixture_dir / "scenario.json"),
+            str(fixture_dir / "mcp-scenario.json"),
             "--audit-log",
             str(audit),
         ],
@@ -342,7 +438,7 @@ def test_generate_fixtures_requires_privacy_review_and_serves_strict_mcp(tmp_pat
 
     code, result = _run("check", "--task-dir", str(task_dir))
     assert code == 0, result
-    (fixture_dir / "scenario.json").write_text("{}\n", encoding="utf-8")
+    (fixture_dir / "mcp-scenario.json").write_text("{}\n", encoding="utf-8")
     code, result = _run("check", "--task-dir", str(task_dir))
     assert code == 1
     assert any("scenario" in error for error in result["errors"])
@@ -365,13 +461,17 @@ def test_redacted_values_are_not_materialized_as_replay_cases(tmp_path: Path) ->
     _write_json(source, payload)
     code, result = _run("prepare", "--task-dir", str(task_dir), "--atif", str(source), "--source-kind", "atif")
     assert code == 0, result
-    code, result = _run("inventory-interactions", "--task-dir", str(task_dir))
+    code, result = _run("inventory-tool-calls", "--task-dir", str(task_dir))
     assert code == 0, result
-    code, result = _run("plan-fixtures", "--task-dir", str(task_dir))
+    code, result = _run("plan-tool-call-access", "--task-dir", str(task_dir))
     assert code == 0, result
-    plan = json.loads((task_dir / "private/fixture-plan.json").read_text(encoding="utf-8"))
-    assert plan["fixtures"][0]["disposition"] == "insufficient_evidence"
-    assert "redacted_value_required" in plan["fixtures"][0]["reason_codes"]
+    plan = json.loads((task_dir / "private/tool-call-plan.json").read_text(encoding="utf-8"))
+    assert plan["tools"][0]["mock_support"] == "unsupported"
+    assert "redacted_value_required" in plan["tools"][0]["reason_codes"]
+
+    code, result = _resolve_tool_access(task_dir, {"fixture.read": "mock"})
+    assert code == 1
+    assert "mock access for fixture.read is unsupported" in result["error"]
 
 
 def _candidate(

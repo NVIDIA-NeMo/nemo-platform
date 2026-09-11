@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Pure derivation helpers for trace-backed interaction fixtures."""
+"""Pure derivation helpers for trace-backed tool-call fixtures."""
 
 from __future__ import annotations
 
@@ -9,10 +9,15 @@ import hashlib
 import json
 from typing import Any
 
-INVENTORY_SCHEMA = "nemo.eval_author.trace_environment_interactions.v1"
-PLAN_SCHEMA = "nemo.eval_author.trace_environment_fixture_plan.v1"
-SCENARIO_SCHEMA = "nemo.eval_author.trace_environment_mcp_scenario.v1"
+INVENTORY_SCHEMA = "nemo.eval_author.trace_environment_tool_calls.v1"
+PLAN_SCHEMA = "nemo.eval_author.trace_environment_tool_call_plan.v1"
+DECISIONS_SCHEMA = "nemo.eval_author.trace_environment_tool_access_decisions.v1"
+ACCESS_SCHEMA = "nemo.eval_author.trace_environment_tool_access.v1"
+CALL_FIXTURES_SCHEMA = "nemo.eval_author.trace_environment_call_fixtures.v1"
+MCP_SCENARIO_SCHEMA = "nemo.eval_author.trace_environment_mcp_scenario.v1"
 _UNUSABLE_MARKERS = ("<redacted:", "<omitted:image")
+_ACCESS_STATES = frozenset({"real", "mock", "none"})
+_MOCK_ADAPTERS = frozenset({"mcp"})
 
 
 def canonical_json(value: Any) -> str:
@@ -103,7 +108,7 @@ def _trajectories(trajectory: dict[str, Any], *, trajectory_path: str = "$") -> 
     return trajectories
 
 
-def derive_interaction_inventory(trajectory: dict[str, Any], *, safe_atif_sha256: str) -> dict[str, Any]:
+def derive_tool_call_inventory(trajectory: dict[str, Any], *, safe_atif_sha256: str) -> dict[str, Any]:
     definitions_by_name: dict[str, list[dict[str, Any]]] = {}
     trajectories = _trajectories(trajectory)
     for _, current in trajectories:
@@ -124,10 +129,9 @@ def derive_interaction_inventory(trajectory: dict[str, Any], *, safe_atif_sha256
             if not isinstance(step, dict):
                 continue
             step_id = step.get("step_id")
-            results = []
             observation = step.get("observation")
-            if isinstance(observation, dict) and isinstance(observation.get("results"), list):
-                results = [item for item in observation["results"] if isinstance(item, dict)]
+            raw_results = observation.get("results") if isinstance(observation, dict) else None
+            results = [item for item in raw_results or [] if isinstance(item, dict)]
             for call in step.get("tool_calls") or []:
                 if not isinstance(call, dict):
                     continue
@@ -177,7 +181,6 @@ def derive_interaction_inventory(trajectory: dict[str, Any], *, safe_atif_sha256
                         "uncertainties": [],
                     }
                 call_id = call.get("tool_call_id")
-                matching_results = [item for item in results if item.get("source_call_id") == call_id]
                 arguments = call.get("arguments")
                 tools[name]["calls"].append(
                     {
@@ -186,7 +189,7 @@ def derive_interaction_inventory(trajectory: dict[str, Any], *, safe_atif_sha256
                         "tool_call_id": call_id,
                         "arguments": arguments,
                         "arguments_status": "object" if isinstance(arguments, dict) else "missing_or_non_object",
-                        "matching_observations": matching_results,
+                        "matching_observations": [item for item in results if item.get("source_call_id") == call_id],
                     }
                 )
 
@@ -196,8 +199,6 @@ def derive_interaction_inventory(trajectory: dict[str, Any], *, safe_atif_sha256
         uncertainties = tool["uncertainties"]
         if tool["definition_status"] != "complete":
             uncertainties.append(f"tool_definition_{tool['definition_status']}")
-        if tool["read_only"] is None:
-            uncertainties.append("read_only_behavior_unproven")
         if any(call["arguments_status"] != "object" for call in tool["calls"]):
             uncertainties.append("arguments_missing_or_non_object")
         if any(len(call["matching_observations"]) != 1 for call in tool["calls"]):
@@ -217,6 +218,7 @@ def derive_interaction_inventory(trajectory: dict[str, Any], *, safe_atif_sha256
 
 def _plan_tool(tool: dict[str, Any]) -> dict[str, Any]:
     reason_codes: list[str] = []
+    warnings: list[str] = []
     calls = tool["calls"]
     if tool["definition_status"] != "complete":
         reason_codes.append(f"tool_definition_{tool['definition_status']}")
@@ -248,72 +250,157 @@ def _plan_tool(tool: dict[str, Any]) -> dict[str, Any]:
     if any(len(responses) > 1 for responses in responses_by_arguments.values()):
         reason_codes.append("conflicting_results_for_identical_arguments")
 
-    if reason_codes:
-        disposition = "insufficient_evidence"
-        if reason_codes == ["conflicting_results_for_identical_arguments"]:
-            disposition = "stateful_fixture_required"
-    elif tool["read_only"] is True:
-        disposition = "exact_replay"
-    elif tool["read_only"] is False:
-        disposition = "stateful_fixture_required"
-        reason_codes.append("tool_declared_mutating")
-    else:
-        disposition = "review_required"
-        reason_codes.append("read_only_behavior_unproven")
+    if tool["read_only"] is False:
+        warnings.append("tool_declared_mutating")
+    elif tool["read_only"] is None:
+        warnings.append("side_effects_unproven")
 
     return {
         "name": tool["name"],
-        "disposition": disposition,
+        "mock_support": "exact_replay" if not reason_codes else "unsupported",
         "reason_codes": reason_codes,
+        "warnings": warnings,
         "evidence_steps": sorted({call["step_id"] for call in calls}),
         "call_count": len(calls),
         "case_count": len(responses_by_arguments),
     }
 
 
-def derive_fixture_plan(inventory: dict[str, Any]) -> dict[str, Any]:
-    fixtures = [_plan_tool(tool) for tool in inventory["tools"]]
+def derive_tool_call_plan(inventory: dict[str, Any]) -> dict[str, Any]:
+    tools = [_plan_tool(tool) for tool in inventory["tools"]]
     counts: dict[str, int] = {}
-    for fixture in fixtures:
-        disposition = fixture["disposition"]
-        counts[disposition] = counts.get(disposition, 0) + 1
+    for tool in tools:
+        support = tool["mock_support"]
+        counts[support] = counts.get(support, 0) + 1
     return {
         "schema": PLAN_SCHEMA,
         "inventory_sha256": json_sha256(inventory),
-        "fixtures": fixtures,
-        "disposition_counts": dict(sorted(counts.items())),
+        "tools": tools,
+        "mock_support_counts": dict(sorted(counts.items())),
     }
 
 
-def build_mcp_scenario(inventory: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
-    dispositions = {fixture["name"]: fixture["disposition"] for fixture in plan["fixtures"]}
-    scenario_tools: list[dict[str, Any]] = []
+def resolve_tool_access(
+    inventory: dict[str, Any],
+    plan: dict[str, Any],
+    requested: dict[str, Any],
+    *,
+    reviewer_kind: str,
+) -> dict[str, Any]:
+    if set(requested) != {"schema", "decisions"} or requested.get("schema") != DECISIONS_SCHEMA:
+        raise ValueError("tool access decisions do not match the versioned contract")
+    decisions = requested.get("decisions")
+    if not isinstance(decisions, list):
+        raise ValueError("tool access decisions must contain a decisions list")
+    if reviewer_kind not in {"agent", "human"}:
+        raise ValueError("tool access reviewer_kind must be agent or human")
+
+    inventory_order = [tool["name"] for tool in inventory["tools"]]
+    plan_by_name = {tool["name"]: tool for tool in plan["tools"]}
+    requested_by_name: dict[str, dict[str, Any]] = {}
+    for index, decision in enumerate(decisions):
+        if not isinstance(decision, dict) or set(decision) != {"name", "access", "adapter", "note"}:
+            raise ValueError(f"tool access decision {index} fields do not match the versioned contract")
+        name = decision.get("name")
+        access = decision.get("access")
+        adapter = decision.get("adapter")
+        note = decision.get("note")
+        if not isinstance(name, str) or name not in plan_by_name or name in requested_by_name:
+            raise ValueError(f"tool access decision {index} has an unknown or duplicate name")
+        if access not in _ACCESS_STATES:
+            raise ValueError(f"tool access decision for {name} must select real, mock, or none")
+        if not isinstance(note, str) or not note.strip():
+            raise ValueError(f"tool access decision for {name} requires a non-empty note")
+        if access == "mock":
+            if adapter not in _MOCK_ADAPTERS:
+                raise ValueError(f"mock access for {name} requires a supported adapter")
+            if plan_by_name[name]["mock_support"] != "exact_replay":
+                reasons = ", ".join(plan_by_name[name]["reason_codes"])
+                raise ValueError(f"mock access for {name} is unsupported: {reasons}")
+        elif adapter is not None:
+            raise ValueError(f"{access} access for {name} must not select a mock adapter")
+        requested_by_name[name] = {
+            "name": name,
+            "access": access,
+            "adapter": adapter,
+            "note": note.strip(),
+            "warnings": plan_by_name[name]["warnings"],
+            "evidence_steps": plan_by_name[name]["evidence_steps"],
+        }
+    missing = [name for name in inventory_order if name not in requested_by_name]
+    if missing:
+        raise ValueError(f"tool access decisions are missing: {', '.join(missing)}")
+
+    counts: dict[str, int] = {}
+    resolved = [requested_by_name[name] for name in inventory_order]
+    for decision in resolved:
+        access = decision["access"]
+        counts[access] = counts.get(access, 0) + 1
+    return {
+        "schema": ACCESS_SCHEMA,
+        "inventory_sha256": json_sha256(inventory),
+        "plan_sha256": json_sha256(plan),
+        "reviewer_kind": reviewer_kind,
+        "decisions": resolved,
+        "access_counts": dict(sorted(counts.items())),
+    }
+
+
+def build_call_fixtures(inventory: dict[str, Any], access: dict[str, Any]) -> dict[str, Any]:
+    access_by_name = {decision["name"]: decision for decision in access["decisions"]}
+    fixture_tools: list[dict[str, Any]] = []
     for tool in inventory["tools"]:
-        if dispositions.get(tool["name"]) != "exact_replay":
+        decision = access_by_name[tool["name"]]
+        if decision["access"] != "mock":
             continue
-        cases_by_arguments: dict[str, dict[str, Any]] = {}
+        cases_by_input: dict[str, dict[str, Any]] = {}
         for call in tool["calls"]:
             key = canonical_json(call["arguments"])
             result = call["matching_observations"][0]
-            case = cases_by_arguments.setdefault(
+            case = cases_by_input.setdefault(
                 key,
-                {
-                    "arguments": call["arguments"],
-                    "result": {"content": [{"type": "text", "text": result["content"]}], "isError": False},
-                    "evidence_steps": [],
-                },
+                {"input": call["arguments"], "output": result["content"], "evidence_steps": []},
             )
             case["evidence_steps"].append(call["step_id"])
-        scenario_tools.append(
+        fixture_tools.append(
             {
+                "name": tool["name"],
                 "definition": tool["normalized_definition"],
-                "cases": list(cases_by_arguments.values()),
+                "adapter": decision["adapter"],
+                "cases": list(cases_by_input.values()),
             }
         )
     return {
-        "schema": SCENARIO_SCHEMA,
+        "schema": CALL_FIXTURES_SCHEMA,
         "inventory_sha256": json_sha256(inventory),
-        "plan_sha256": json_sha256(plan),
+        "access_sha256": json_sha256(access),
+        "matching": "tool_name_and_canonical_json_input",
         "unknown_call_policy": "error",
-        "tools": scenario_tools,
+        "tools": fixture_tools,
+    }
+
+
+def build_mcp_scenario(call_fixtures: dict[str, Any]) -> dict[str, Any]:
+    tools = []
+    for fixture in call_fixtures["tools"]:
+        if fixture["adapter"] != "mcp":
+            continue
+        tools.append(
+            {
+                "definition": fixture["definition"],
+                "cases": [
+                    {
+                        "arguments": case["input"],
+                        "result": {"content": [{"type": "text", "text": case["output"]}], "isError": False},
+                        "evidence_steps": case["evidence_steps"],
+                    }
+                    for case in fixture["cases"]
+                ],
+            }
+        )
+    return {
+        "schema": MCP_SCENARIO_SCHEMA,
+        "call_fixtures_sha256": json_sha256(call_fixtures),
+        "unknown_call_policy": call_fixtures["unknown_call_policy"],
+        "tools": tools,
     }
