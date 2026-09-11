@@ -177,6 +177,13 @@ nemo agent commands""",
         kind="group",
     ),
     TopLevelEntry(
+        import_path="nemo_platform_ext.cli.commands.secrets:app",
+        help="Manage secrets.",
+        name="secrets",
+        panel="Core plugins",
+        kind="group",
+    ),
+    TopLevelEntry(
         import_path="nemo_platform_ext.cli.commands.plugins:app",
         help="""\
 Commands for plugin discovery.

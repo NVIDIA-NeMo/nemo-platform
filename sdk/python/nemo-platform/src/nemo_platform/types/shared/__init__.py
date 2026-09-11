@@ -15,16 +15,6 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from nemo_platform_plugin.jobs.schemas import (
-    FileStorageType as FileStorageType,
-    PlatformJobStatus as PlatformJobStatus,
-    PlatformJobResultResponse as PlatformJobResultResponse,
-    PlatformJobStatusResponse as PlatformJobStatusResponse,
-    PlatformJobListResultResponse as PlatformJobListResultResponse,
-    PlatformJobStepStatusResponse as PlatformJobStepStatusResponse,
-    PlatformJobTaskStatusResponse as PlatformJobTaskStatusResponse,
-)
-
 from .model_spec import ModelSpec as ModelSpec
 from .mo_e_config import MoEConfig as MoEConfig
 from .prompt_data import PromptData as PromptData
@@ -51,3 +41,7 @@ from .model_metadata_content import ModelMetadataContent as ModelMetadataContent
 from .dataset_metadata_content import DatasetMetadataContent as DatasetMetadataContent
 from .environment_metadata_content import EnvironmentMetadataContent as EnvironmentMetadataContent
 from .tool_calling_metadata_content import ToolCallingMetadataContent as ToolCallingMetadataContent
+
+from .platform_job_status_response import PlatformJobStatusResponse as PlatformJobStatusResponse
+from .platform_job_step_status_response import PlatformJobStepStatusResponse as PlatformJobStepStatusResponse
+from .platform_job_task_status_response import PlatformJobTaskStatusResponse as PlatformJobTaskStatusResponse
