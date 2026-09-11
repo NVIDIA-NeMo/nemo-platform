@@ -41,6 +41,45 @@ claims.
 
 ## 1. Establish Ethos and check the environment
 
+### Ground the user before asking for intent
+
+Before the first intent question, explain the outcome in ordinary language:
+we will build a few repeatable checks of the agent's behavior, so the user can
+see what works and rerun the checks after changes. Briefly inspect the agent's
+README and entry point to make this explanation concrete. Lead with that value,
+not an installation inventory, missing-file report, or skill requirement.
+
+Explain **ETHOS.md** on first mention: it records what the agent is supposed
+to do, its boundaries, and what success looks like, giving the checks a target.
+If it exists, summarize the relevant intent instead of asking the user to
+recreate it. If missing, explain that we will capture that intent first. Before
+handing off to `nemo-explore`, give it this user-facing context and preserve its
+required interview and review steps. Keep questions concrete and rooted in the
+agent's actual workflows; avoid abstract choices such as “demo versus production
+accountability” unless the user's goal requires that distinction.
+
+For an airline demo with no Ethos, an opening could be:
+
+> We'll build a few repeatable checks for this airline agent, so you can see
+> whether it handles common requests correctly and rerun those checks after changes.
+>
+> First, we'll capture what the agent is supposed to do in **ETHOS.md**—a short
+> description of its purpose, boundaries, and what success looks like. That gives
+> us something to test against.
+>
+> For this demo, should we focus on answering baggage questions, changing seats,
+> and helping with disrupted flights?
+
+Adapt the examples to repository evidence. These are proposed areas of intent,
+not authored evaluation cases; case design still waits for Ethos. If the user
+already supplied the intended scope, acknowledge it and ask only the next
+question required by the Ethos flow. Avoid repeating this introduction on resume.
+
+Explain the practical reason for a question rather than using a quotation from
+a skill as the explanation. If the assistant must disclose a skill-imposed
+pause or permission requirement, keep that disclosure brief and separate from
+the user-facing grounding; it does not replace the explanation above.
+
 **ETHOS.md is required before designing evaluation cases.** Use a user-supplied
 path first; otherwise look for root `ETHOS.md`, then
 `agents/<name>-ethos/ETHOS.md`. Read the file and confirm that it describes the
@@ -74,6 +113,13 @@ Check Harbor early using the interpreter probe in
 `harbor --help`. Distinguish a missing installation from the wrong Python
 environment; a CLI on PATH alone does not prove that discovery can import Harbor.
 Do not run suite discovery just to report a missing config in an empty repository.
+
+Run this prerequisite check without making its version or importability the
+opening message. Introduce **Harbor** when explaining execution or a setup
+blocker: it runs the checks from a fresh starting environment and records each
+result. If available, say there is nothing to set up for Harbor at this step.
+Keep version and interpreter details in the saved report unless troubleshooting
+requires the user to act on them.
 
 If Harbor is unavailable, explain: “Harbor is the framework Eval Author uses to
 build and run repeatable evaluation tasks. We can establish Ethos and plan your
