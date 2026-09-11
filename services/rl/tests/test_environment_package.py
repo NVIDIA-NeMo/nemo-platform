@@ -245,8 +245,10 @@ def test_convert_rejects_empty_wheels_dir(tmp_path: Path) -> None:
 
 
 def test_convert_vendors_hub_dataset_and_configures_its_sandbox_path(tmp_path: Path, monkeypatch) -> None:
-    """Prompt JSONL is separate; an env loader can consume this local parquet via vf_env_args."""
+    """Conversion isolates both environment and pre-imported Hugging Face cache settings."""
     import os
+    import sys
+    from types import ModuleType
 
     from nmp.rl.tasks.environment import convert as convert_mod
     from nmp.rl.tasks.environment.convert import ConvertEnvironmentSpec, convert_prime_environment
@@ -259,6 +261,18 @@ def test_convert_vendors_hub_dataset_and_configures_its_sandbox_path(tmp_path: P
     developer_hf.mkdir()
     (developer_hf / "should-not-copy").write_text("developer-cache", encoding="utf-8")
     monkeypatch.setenv("HF_HOME", str(developer_hf))
+    monkeypatch.setenv("HF_HUB_CACHE", str(developer_hf / "hub"))
+    monkeypatch.setenv("HF_DATASETS_CACHE", str(developer_hf / "datasets"))
+
+    # Model libraries read cache variables at import time. Simulate both having
+    # already been imported before the converter establishes its isolated cache.
+    hub_constants = ModuleType("huggingface_hub.constants")
+    setattr(hub_constants, "HF_HOME", str(developer_hf))
+    setattr(hub_constants, "HF_HUB_CACHE", str(developer_hf / "hub"))
+    datasets_config = ModuleType("datasets.config")
+    setattr(datasets_config, "HF_DATASETS_CACHE", developer_hf / "datasets")
+    monkeypatch.setitem(sys.modules, "huggingface_hub.constants", hub_constants)
+    monkeypatch.setitem(sys.modules, "datasets.config", datasets_config)
 
     class FakeDataset:
         column_names = ["prompt", "answer"]
@@ -285,6 +299,11 @@ def test_convert_vendors_hub_dataset_and_configures_its_sandbox_path(tmp_path: P
     def _fake_load(*_a, **_k):
         isolated = Path(os.environ["HF_HOME"])
         captured["hf_home"] = str(isolated)
+        assert os.environ["HF_HUB_CACHE"] == str(isolated / "hub")
+        assert os.environ["HF_DATASETS_CACHE"] == str(isolated / "datasets")
+        assert getattr(hub_constants, "HF_HOME") == str(isolated)
+        assert getattr(hub_constants, "HF_HUB_CACHE") == str(isolated / "hub")
+        assert getattr(datasets_config, "HF_DATASETS_CACHE") == isolated / "datasets"
         (isolated / "hub").mkdir(parents=True)
         (isolated / "hub" / "datasets--primeintellect--ascii-tree").write_text("cached", encoding="utf-8")
         return FakeEnv()
@@ -312,6 +331,11 @@ def test_convert_vendors_hub_dataset_and_configures_its_sandbox_path(tmp_path: P
     assert not (result.dataset_dir / ".huggingface" / "should-not-copy").exists()
     assert captured["hf_home"] != str(developer_hf)
     assert os.environ["HF_HOME"] == str(developer_hf)
+    assert os.environ["HF_HUB_CACHE"] == str(developer_hf / "hub")
+    assert os.environ["HF_DATASETS_CACHE"] == str(developer_hf / "datasets")
+    assert getattr(hub_constants, "HF_HOME") == str(developer_hf)
+    assert getattr(hub_constants, "HF_HUB_CACHE") == str(developer_hf / "hub")
+    assert getattr(datasets_config, "HF_DATASETS_CACHE") == developer_hf / "datasets"
 
 
 def test_split_train_validation_never_overlaps() -> None:

@@ -132,18 +132,18 @@ That writes the package plus `training.jsonl` / `validation.jsonl` and, with `--
 
 Lives under `training`, a **sibling of `parallelism`** and not a field on it. The value picks the NeMo-RL policy worker, which picks the Ray actor's venv and kernels.
 
-**Leave `policy_backend` unset to get the default for each `finetuning_type`.** LoRA requires `automodel`. Full-weight defaults to `dtensor` and may be set to `automodel` when you want a consolidated HuggingFace export.
+**Leave `policy_backend` unset to get the default for each `finetuning_type`.** LoRA requires `automodel`. Full-weight defaults to `dtensor` and may be set to `automodel` when you want a consolidated HuggingFace export or expert parallelism for a MoE model.
 
 | `finetuning_type` | Default backend | Worker | Notes |
 |---|---|---|---|
 | `"lora"` | `"automodel"` | `DTensorPolicyWorkerV2` (`_v2: true`) | Required pairing. Also the only backend with `expert_parallel_size > 1` and `automodel_kwargs`. Needs Transformer Engine, so **Hopper or newer** |
-| `"all_weights"` | `"dtensor"` | `DTensorPolicyWorker` | Stock HuggingFace + PyTorch FSDP2, no Transformer Engine — also the **pre-Hopper** option. Set `policy_backend: "automodel"` to train full weights on V2 instead. `dtensor` still rejects LoRA, expert parallelism, and `automodel_kwargs` |
+| `"all_weights"` | `"dtensor"` | `DTensorPolicyWorker` | Stock HuggingFace + PyTorch FSDP2, no Transformer Engine — also the **pre-Hopper** option. Set `policy_backend: "automodel"` to train full weights on V2. MoE models using expert parallelism require `automodel`; `dtensor` rejects `expert_parallel_size > 1`. |
 
 `dtensor` plus LoRA / expert parallelism / `automodel_kwargs` is **rejected at submit**: the worker does not implement them; left to NeMo-RL, LoRA dies in a Ray worker and the other two are ignored silently. Every conflict is listed at once.
 
-Keep the default unless the cluster's GPUs are pre-Hopper or you need Automodel's consolidated export. `megatron` is not selectable: the image builds the extra, but the compiler still emits an inert `megatron_cfg`.
+Keep the default unless the cluster's GPUs are pre-Hopper or you need Automodel's consolidated export or expert parallelism. `megatron` is not selectable: the image builds the extra, but the compiler still emits an inert `megatron_cfg`.
 
-`v4_compatible` (`GRPOTraining.v4_compatible`, default `true`) is the compatibility control for that Automodel full-weight export. Automodel otherwise writes a transformers-v5 `config.json` that the platform's vLLM cannot load, so the compiler keeps the base checkpoint's v4 `config.json` on the published model and writes the in-memory v5 config beside it as `config.v5.json`. Set it `false` to export the v5 file as `config.json` instead. The field has no effect on `dtensor` full-weight jobs or LoRA adapters.
+`v4_compatible` (`GRPOTraining.v4_compatible`, default `true`) is the compatibility control for that Automodel full-weight export. Automodel otherwise writes a transformers-v5 `config.json` that the platform's vLLM cannot load, so the compiler keeps the base checkpoint's v4 `config.json` on the published model and writes the in-memory v5 config beside it as `config.v5.json`. Set it `false` to export the v5 file as `config.json` instead. If the base checkpoint already uses transformers v5, the job logs warn you to opt out. The field has no effect on `dtensor` full-weight jobs or LoRA adapters.
 
 ```json
 {

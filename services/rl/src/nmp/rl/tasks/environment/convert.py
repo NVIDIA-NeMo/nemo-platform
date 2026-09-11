@@ -15,6 +15,7 @@ import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Iterator
 
 from nmp.customization_common.service.constants import SANDBOX_DATASET_PATH
@@ -251,21 +252,48 @@ def _sandbox_hub_dataset_path(filename: str = HUB_ENV_DATASET_FILENAME) -> str:
 
 @contextmanager
 def _isolated_hf_home(hf_home: Path) -> Iterator[Path]:
-    """Point ``HF_HOME`` at ``hf_home`` for the duration of the block.
+    """Point Hugging Face cache settings at ``hf_home`` for the duration of the block.
 
     Conversion must not copy the developer's ``~/.cache/huggingface``; loaders
     populate this temp home, which is then snapshotted into the dataset FileSet.
+    Hub and datasets libraries cache these settings at import, so update any
+    already-imported constants as well as the process environment.
     """
     hf_home.mkdir(parents=True, exist_ok=True)
-    previous = os.environ.get("HF_HOME")
-    os.environ["HF_HOME"] = str(hf_home)
+    cache_paths = {
+        "HF_HOME": hf_home,
+        "HF_HUB_CACHE": hf_home / "hub",
+        "HF_DATASETS_CACHE": hf_home / "datasets",
+    }
+    previous_env = {name: os.environ.get(name) for name in cache_paths}
+    for name, path in cache_paths.items():
+        os.environ[name] = str(path)
+
+    cached_constants: list[tuple[ModuleType, str, object]] = []
+    for module_name, names in (
+        ("huggingface_hub.constants", ("HF_HOME", "HF_HUB_CACHE")),
+        ("datasets.config", ("HF_DATASETS_CACHE",)),
+    ):
+        module = sys.modules.get(module_name)
+        if not isinstance(module, ModuleType):
+            continue
+        for name in names:
+            if not hasattr(module, name):
+                continue
+            previous = getattr(module, name)
+            cached_constants.append((module, name, previous))
+            path = cache_paths[name]
+            setattr(module, name, Path(path) if isinstance(previous, Path) else str(path))
     try:
         yield hf_home
     finally:
-        if previous is None:
-            os.environ.pop("HF_HOME", None)
-        else:
-            os.environ["HF_HOME"] = previous
+        for module, name, previous in reversed(cached_constants):
+            setattr(module, name, previous)
+        for name, previous in previous_env.items():
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
 
 
 def snapshot_huggingface_home(hf_home: Path, dataset_dir: Path) -> Path | None:

@@ -2,8 +2,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Install the shared-kernel OpenSandbox control plane on a running minikube cluster
-# and copy the API-key Secret into the platform job namespace.
+# Install the cluster-level, shared-kernel OpenSandbox control plane on a running
+# minikube cluster and copy the API-key Secret into the platform job namespace.
+# This uses opensandbox-server.yaml with secure_runtime unset; it does not apply
+# the separate opensandbox-server-kata-qemu.yaml configuration.
 #
 # The platform Helm chart does not install OpenSandbox. Run this after
 # setup_local_minikube_gpu.sh (or setup_local_minikube_cpu.sh), then helm-upgrade
