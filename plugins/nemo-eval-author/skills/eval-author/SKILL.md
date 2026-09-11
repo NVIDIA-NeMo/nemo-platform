@@ -61,9 +61,10 @@ The authority depends on the sub-flow:
 
 - For suite discovery, Harbor's validators judge runnability. A file's presence
   doesn't prove that Harbor accepts it.
-- For first evals, Ethos establishes intended behavior. NOP, Oracle, and a
-  known incorrect result establish task proof; the user's agent run establishes
-  its baseline. A plan alone is not proof of runnability.
+- For first evals, Ethos establishes intended behavior. NOP and Oracle check
+  basic task wiring and verifier behavior; the user's agent run establishes
+  a baseline. Working setup does not establish evaluation quality or coverage,
+  and a plan alone is not proof of runnability.
 - For audit-spec validation, the bundled schema and validator judge the finite
   `audit.md` coverage denominator.
 - For task creation, Harbor's Oracle judges task solvability and verifier
@@ -98,7 +99,7 @@ and the boundaries; the sub-flow carries the steps.
 
 | Sub-flow | Use it to |
 |---|---|
-| `eval-author-first-eval` | Establish required Ethos, plan cases even without Harbor, and build and prove a first task when prerequisites are available |
+| `eval-author-first-eval` | Establish required Ethos, plan cases even without Harbor, and set up a small working suite while teaching the user how to run and extend it |
 | `eval-author-discover` | Establish whether a repository's evaluations run, name the rung that fails, and get the exact command to run them |
 | `eval-author-audit` | Generate and validate a finite `audit.md` coverage denominator, write per-method coverage/details files for one ATIF trace, then aggregate coverage reports |
 | `eval-author-task-create` | Create one Harbor-native task from one actionable uncovered tool, prove it with Oracle, and accept it only when repeated measured runs close the gap |

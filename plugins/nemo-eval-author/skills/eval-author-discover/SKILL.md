@@ -69,9 +69,24 @@ for py in .venv/bin/python ./venv/bin/python python3; do
 done
 ```
 
-Nothing prints a version when Harbor is not installed anywhere. Do not install it
-yourself; in the user's repository the missing environment is the finding. Tell
-them what you found and ask how they want to proceed.
+If none prints a version, check an existing uv tool installation before declaring
+Harbor unavailable. `uv tool install harbor` isolates Harbor from project Python:
+
+```bash
+if command -v uv >/dev/null 2>&1; then
+  harbor_tool_root="$(uv tool dir)" &&
+    "$harbor_tool_root/harbor/bin/python" -c \
+      "import harbor, sys; print(sys.executable, harbor.__version__)"
+fi
+```
+
+Use the printed interpreter for discovery; a successful CLI invocation alone is
+not enough. If the CLI works but these probes fail, inspect its launcher or ask
+for the environment that owns it rather than reporting that Harbor is not
+installed anywhere. Preserve the existing compatible version; do not install
+another copy. If no usable environment can be found, report the failed probes
+and ask how the user wants to proceed. For a user building their first suite,
+`eval-author-first-eval` can continue Ethos and case planning without Harbor.
 
 The report records which mode produced it either way, in `runtime.harbor_importable`
 and the top-level `proven` field.

@@ -5,8 +5,9 @@
 name: eval-author-first-eval
 description: >-
   Help a user with no evals establish a required Ethos, plan evaluation cases,
-  and build and prove a first Harbor task. No prior traces or coverage reports
-  are required. Missing Harbor blocks scaffolding and execution, not planning.
+  and set up a small working Harbor suite while explaining its parts. No prior
+  traces or coverage reports are required. Missing Harbor blocks scaffolding
+  and execution, not planning.
 triggers:
   - help me build my first evals
   - my agent has no evals yet
@@ -31,8 +32,12 @@ allowed-tools: [Bash, Read, Write, Grep, Glob]
 
 Read `eval-author` for the shared standard and boundaries. No evals is a normal
 starting state. Do not require a previous run or manufacture a coverage report
-to enter `eval-author-task-create`. Work toward one repeatable test of the user's
-actual agent, beginning with its intended behavior.
+to enter `eval-author-task-create`. The first milestone is a small working suite
+the user understands and can rerun. Modest coverage is acceptable: do not require
+comprehensive coverage, difficult tasks, repeated agent success, or trace-driven
+optimization before delivering it. Explain what the starter checks measure and
+where they are weak. A working suite and strong evaluation quality are separate
+claims.
 
 ## 1. Establish Ethos and check the environment
 
@@ -88,20 +93,22 @@ backend requires it; it is not a prerequisite for the design conversation.
 ## 2. Plan the first cases from Ethos
 
 Read the agent entry point, tool definitions, and usage docs to understand how
-the actual agent runs. Derive a small set of representative cases from Ethos:
+the actual agent runs. Aim for two or three simple representative cases from Ethos,
+adjusting to the user's scope and available resources rather than enforcing a quota:
 the user request, initial fixture, expected observable outcome, a meaningful
 failure example, and the Ethos requirement each case tests. Ask only for intent
 or invocation details not already established. Do not make the user supply
 Harbor YAML or choose a framework.
 
 Save `.eval-author/first-eval.md` with the Ethos path and requirement references,
-cases, selected first case, agent invocation, planned verifier, prerequisites,
+cases, agent invocation, planned verifiers, prerequisites,
 and unresolved questions. Preserve existing artifacts on resumption. This is an
 **evaluation plan**, not a coverage report or runnable evals.
 
-Choose one reproducible case with an objective outcome. Grade the result rather
-than a specific tool call or exact prose. Define a known incorrect result before
-writing the solution. Do not replace subjective quality with brittle string
+Start with a reproducible happy path, then a useful variation or expected failure
+when supported by Ethos. Grade an observable result rather than a specific tool
+call or exact prose. Simple assertions are acceptable if their limits are clear.
+Do not replace subjective quality with brittle string
 matching or mock away the behavior under test. If the requested case cannot be
 tested with available resources, explain the limitation and select a supported
 case with the user.
@@ -109,11 +116,12 @@ case with the user.
 If Harbor is missing, deliver the plan and installation next step here. Resume
 at step 3 after verifying Harbor; do not restart the Ethos interview.
 
-## 3. Build and prove one task
+## 3. Build the starter tasks and explain their parts
 
 Require a working Harbor CLI and Python environment. Read its
 `harbor task init --help` and `harbor run --help` before using options. Use an
-unused descriptive slug under `.eval-author/task-drafts/`:
+unused descriptive slug for each selected case under `.eval-author/task-drafts/`.
+Build one task end to end before adding the others. For each task:
 
 ```bash
 harbor task init <org>/<slug> --tasks-dir .eval-author/task-drafts \
@@ -127,6 +135,18 @@ fixtures out of the agent's initial environment. Set executable permissions,
 realistic timeouts, and deterministic rewards; leave no scaffold placeholders.
 Add a README with the Ethos requirement, fixtures, verifier, and run commands.
 
+Teach each concept when it becomes concrete, using the files being created:
+
+- The instruction is the request the agent receives.
+- Fixtures and the environment provide a repeatable starting state.
+- The verifier checks the output and writes the reward. Explain the actual
+  assertion and an example it cannot distinguish yet.
+- The Oracle is a reference solution used to check the task, not the user's agent.
+- The suite config selects tasks and an agent; job results show what happened.
+
+Keep explanations short and practical. Do not require a separate tutorial or
+turn initial task design into an exhaustive evaluation methodology exercise.
+
 For Docker-backed execution, check `docker info` first. Retain all jobs under
 `.eval-author/jobs/`, with new names on reruns:
 
@@ -137,28 +157,36 @@ harbor run -p .eval-author/task-drafts/<slug> -a oracle \
   --jobs-dir .eval-author/jobs --job-name <slug>-oracle-1
 ```
 
-Inspect Harbor trial results. Require NOP reward 0 and Oracle reward 1 without
-exceptions. Also exercise the planned incorrect result against the verifier in
-an isolated draft environment and retain its rejection evidence. An execution
-error is not a successful negative control. Fix task defects without weakening
-the intended assertion, then repeat proof after changes. Report missing backend
-or failed proof honestly; a draft is not a proven test.
+For each task, inspect Harbor trial results and recorded rewards. Require NOP
+reward 0 and Oracle reward 1 without exceptions: doing nothing should fail, and
+the reference solution should pass. These are basic wiring and verifier sanity
+checks, not evidence of broad coverage or a robust benchmark. Do not add repeated
+proof runs or a separate negative-control campaign as an onboarding gate.
+Investigate obvious unconditional rewards or leaked answers. Fix broken tasks
+and rerun affected checks; do not weaken the intended assertion to force a pass.
+Report blocked tasks separately and deliver the working subset without silently
+dropping planned cases or claiming the whole suite passed.
 
 ## 4. Evaluate the user's agent and deliver
 
 Establish a supported Harbor integration for the actual agent from its entry
 point, installed adapter code, registry, and CLI help. Do not substitute another
-agent or rewrite the application. If the adapter is missing, deliver task proof
+agent or rewrite the application. If the adapter is missing, deliver the starter
+tasks and their sanity-check results
 and the specific integration requirement; agent performance remains unmeasured.
 
 When supported, write `.eval-author/first-eval.yaml` using the installed Harbor
-JobConfig schema: one draft task, the actual agent and model settings, one
-attempt, and jobs under `.eval-author/jobs/`. Resolve paths from the repository
+JobConfig schema: explicitly select the working starter tasks, the actual agent
+and model settings, one attempt per task, and jobs under `.eval-author/jobs/`.
+Do not include unrelated drafts merely because they share a parent directory.
+Resolve paths from the repository
 root and reference credential environment variables rather than embedding secrets.
 Follow `eval-author-discover` to validate this config and report its per-config
 verdict if other configs exist. Do not claim it is runnable from YAML presence.
 
-Once validated, show the actual task, agent, model, and one-attempt command.
+Confirm that the resolved task set matches the selected starter tasks. Explain
+the selected task count and where rewards and errors will appear.
+Once validated, show the tasks, agent, model, and one-attempt-per-task command.
 Run it only when the user asked for execution or approved model spend; preserve
 existing authorization. From the repository root:
 
@@ -166,14 +194,25 @@ existing authorization. From the repository root:
 harbor job start -c .eval-author/first-eval.yaml
 ```
 
-Inspect results and update the plan with exact commands, artifact paths, proof
-evidence, actual agent reward and exceptions, and remaining blockers. Distinguish
-an evaluation plan, a proven task, a validated runnable config, and an evaluated
-agent. An agent failing a proven task is a useful baseline, not a reason to
-weaken the test or start repeated unrequested runs. One case does not prove
-suite coverage or reliability.
+Inspect results for every selected task and update the plan with exact commands,
+artifact paths, sanity-check results, per-task agent rewards and exceptions, and
+remaining blockers. Show the user how to rerun the suite, inspect one result, and
+add or modify a task. Distinguish a plan, tasks whose sanity checks passed, a
+validated runnable config, and a completed agent run. If execution is blocked or
+not authorized, say which milestone was reached instead of claiming the suite
+ran. An agent failing a functioning task is a useful baseline, not a reason to
+weaken the test or start repeated unrequested runs.
 
-To expand, add a representative behavior or failure case grounded in Ethos.
+Deliver when the selected starter tasks execute and record rewards through a
+validated config, even if the agent scores poorly or the checks are basic.
+Document limitations such as narrow fixtures or assertions that only check part
+of an outcome. Do not present successful setup as high-quality evaluation.
+
+Treat traces and improvement as the next stage, not a prerequisite for setup.
+Explain that traces reveal the agent's steps and tool calls, helping identify
+failure patterns, missing coverage, and weak checks. Point to actual trace
+artifacts when emitted; if absent, explain the adapter or instrumentation work
+needed without blocking the working starter suite.
 For coverage accounting, follow `eval-author-audit` with the established Ethos
 and actual ATIF from completed runs, then `eval-author-task-create` for measured
 actionable gaps. Do not fabricate traces or measurement reports when the agent
