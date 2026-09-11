@@ -11,9 +11,9 @@
  */
 
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
-import { EngineFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/EngineFields';
-import { GPULoraFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/GPULoraFields';
-import type { WizardFormValues } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
+import { EngineFields } from '@studio/routes/NewDeploymentRoute/EngineFields';
+import { GPULoraFields } from '@studio/routes/NewDeploymentRoute/GPULoraFields';
+import type { WizardFormValues } from '@studio/routes/NewDeploymentRoute/schema';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
 import { FC, useState } from 'react';

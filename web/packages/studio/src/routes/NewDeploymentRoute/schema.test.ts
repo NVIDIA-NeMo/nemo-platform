@@ -17,7 +17,7 @@ import {
   SOURCE_NGC,
   WIZARD_CONFIG_NAME_SUFFIX,
   WIZARD_DEPLOYMENT_NAME_SUFFIX,
-} from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
+} from '@studio/routes/NewDeploymentRoute/schema';
 
 describe('deploymentNameFromWizardBaseName', () => {
   it('appends deployment suffix', () => {

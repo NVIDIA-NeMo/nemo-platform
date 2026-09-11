@@ -10,8 +10,8 @@ import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import {
   defaultWizardValues,
   type WizardFormValues,
-} from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
-import { WorkspaceSourceFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/WorkspaceSourceFields';
+} from '@studio/routes/NewDeploymentRoute/schema';
+import { WorkspaceSourceFields } from '@studio/routes/NewDeploymentRoute/WorkspaceSourceFields';
 import { renderRoute } from '@studio/tests/util/render';
 import type { FC } from 'react';
 import { useForm } from 'react-hook-form';

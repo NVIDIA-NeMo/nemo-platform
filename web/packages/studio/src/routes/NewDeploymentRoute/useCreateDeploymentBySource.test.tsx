@@ -14,8 +14,8 @@ import {
   SOURCE_HF,
   SOURCE_WORKSPACE,
   type WizardFormValues,
-} from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
-import { useCreateDeploymentBySource } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/useCreateDeploymentBySource';
+} from '@studio/routes/NewDeploymentRoute/schema';
+import { useCreateDeploymentBySource } from '@studio/routes/NewDeploymentRoute/useCreateDeploymentBySource';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import { type ReactNode } from 'react';

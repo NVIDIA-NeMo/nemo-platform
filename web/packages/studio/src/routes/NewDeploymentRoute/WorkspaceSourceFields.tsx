@@ -9,13 +9,13 @@ import { type ModelSelection, ModelSelectV2 } from '@nemo/common/src/components/
 import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { Flex, FormField, RadioGroupRoot, Stack } from '@nvidia/foundations-react-core';
 import { canFineTuneModel } from '@studio/hooks/useModelCustomizationEligibility';
-import { EngineFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/EngineFields';
-import { GPULoraFields } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/GPULoraFields';
+import { EngineFields } from '@studio/routes/NewDeploymentRoute/EngineFields';
+import { GPULoraFields } from '@studio/routes/NewDeploymentRoute/GPULoraFields';
 import {
   WORKSPACE_PICKER_FILESET,
   WORKSPACE_PICKER_MODEL,
   type WizardFormValues,
-} from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
+} from '@studio/routes/NewDeploymentRoute/schema';
 import { useState, type FC } from 'react';
 import { useController, useWatch, type Control, type FieldErrors } from 'react-hook-form';
 
