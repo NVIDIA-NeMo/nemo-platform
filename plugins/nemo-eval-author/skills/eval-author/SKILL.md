@@ -173,8 +173,17 @@ answer is part of designing the evals, not a validation verdict.
 This introduction belongs in the message containing the first intent question,
 even if an earlier progress message already mentioned the workflow. Preserve it
 when using `nemo-explore` or another prerequisite skill: that skill owns the
-interview requirements, while first-eval owns the onboarding context. A required
-skill disclosure may follow separately; it must not replace that context.
+interview requirements, while first-eval owns the onboarding context.
+
+An ordinary intent question gathers information needed to do the requested work.
+It is not a request for permission to continue or, by itself, a blocked-work
+report. Explain why the answer helps define the checks, then end with the
+question. Do not append skill names, file paths, requirement quotes, or interview
+mechanics just to justify asking it. Missing Ethos being actively created through
+the available interview is part of onboarding; unavailable prerequisites or
+required approval are separate situations. If the host explicitly requires a
+skill disclosure, preserve it, but do not add one solely because a question awaits
+an answer or because the interview asks questions one at a time.
 
 Report Harbor version, importability, and readiness when those facts help the
 user resolve a setup problem or understand execution. They are not the opening

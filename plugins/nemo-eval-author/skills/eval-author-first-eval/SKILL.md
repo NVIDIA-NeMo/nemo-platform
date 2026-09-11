@@ -82,10 +82,19 @@ question. The handoff changes which interview steps to follow, not how to ground
 the user. Use the core skill's onboarding rules here; its verdict-first format
 is reserved for validation and result reports.
 
-Explain the practical reason for a question rather than using a quotation from
-a skill as the explanation. If the assistant must disclose a skill-imposed
-pause or permission requirement, keep that disclosure brief and separate from
-the user-facing grounding; it does not replace the explanation above.
+An intent question is ordinary progress toward the requested evals. It gathers
+the user's goals; it does not ask permission to follow the skill. End the message
+with that question rather than a paragraph quoting the Ethos prerequisite or
+explaining why questions come one at a time. For example: “What should a customer
+be able to accomplish reliably with this airline agent—for example, change a
+seat, understand baggage rules, or get help after a disrupted flight?” Adapt the
+examples to the actual agent, without treating them as approved requirements.
+
+Reserve blocker explanations for actual unavailable prerequisites or required
+approval. Follow any explicit host requirement to disclose a skill-imposed pause
+or permission request, but do not infer such a disclosure from ordinary intent
+elicitation alone. Where a disclosure is required, keep it brief and separate;
+it does not replace the practical explanation of what the user is answering.
 
 **ETHOS.md is required before designing evaluation cases.** Use a user-supplied
 path first; otherwise look for root `ETHOS.md`, then
