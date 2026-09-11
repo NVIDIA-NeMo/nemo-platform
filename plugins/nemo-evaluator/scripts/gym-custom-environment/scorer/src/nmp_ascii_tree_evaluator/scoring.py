@@ -31,7 +31,7 @@ def extract_ascii_formatted(text: str) -> str | None:
 
 
 def _format_multiplier(lines: list[str]) -> float:
-    """Apply indentation and tree-branch formatting penalties."""
+    """Discount output that lacks indentation or recognizable tree branches."""
     multiplier = 1.0
     if not all(line.startswith(" ") or line.rstrip() == lines[0] for line in lines[1:]):
         multiplier *= 0.5
@@ -41,7 +41,7 @@ def _format_multiplier(lines: list[str]) -> float:
 
 
 def similarity_reward(completion: str, answer: str) -> float:
-    """Score whole-sequence line similarity with ASCII formatting penalties."""
+    """Compare the complete predicted and expected trees line by line."""
     parsed_tree = extract_ascii_formatted(completion)
     if parsed_tree is None or not answer.strip():
         return 0.0
@@ -53,7 +53,7 @@ def similarity_reward(completion: str, answer: str) -> float:
 
 
 def continuous_reward(completion: str, answer: str) -> float:
-    """Score the longest contiguous line match with formatting penalties."""
+    """Reward the longest uninterrupted run of expected tree lines."""
     parsed_tree = extract_ascii_formatted(completion)
     if parsed_tree is None or not answer.strip():
         return 0.0
