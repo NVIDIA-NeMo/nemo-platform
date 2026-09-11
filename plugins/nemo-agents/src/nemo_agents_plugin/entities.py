@@ -442,6 +442,22 @@ class AgentDeployment(NemoEntity, entity_type="agent_deployment"):
             "vars (never plaintext) for docker/k8s modes; ignored for subprocess."
         ),
     )
+    # The spec fileset is staged when the deployment is created, so a later refresh of
+    # the fileset leaves this deployment on the revision recorded here.
+    spec_revision: str = Field(
+        default="",
+        description=(
+            "Revision of the agent spec fileset this deployment was staged from, for source-backed "
+            "filesets (e.g. a GitHub commit SHA). Empty when the fileset has no revision."
+        ),
+    )
+    spec_tracked_revision: str = Field(
+        default="",
+        description=(
+            "Mutable ref the spec fileset tracked when this deployment was created (e.g. 'main'). "
+            "Empty when the fileset was pinned to an immutable id."
+        ),
+    )
     status: DeploymentStatus = Field(
         default="pending",
         description="Lifecycle status: pending | starting | running | failed | deleting.",

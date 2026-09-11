@@ -23,7 +23,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from nemo_agents_plugin.agent_config_formats import AgentConfigFormatError, resolve_agent_config_for_deployment
 from nemo_agents_plugin.api.v2._perms import DeploymentPerms
-from nemo_agents_plugin.api.v2.dependencies import get_entity_client
+from nemo_agents_plugin.api.v2.dependencies import get_entity_client, get_files_client
 from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.config import AgentsConfig
 from nemo_agents_plugin.entities import (
@@ -31,6 +31,7 @@ from nemo_agents_plugin.entities import (
     AgentDeployment,
     AgentEnvironmentInline,
     EnvironmentSpecInline,
+    ethos_fileset_name,
     is_container_deployment_mode,
 )
 from nemo_agents_plugin.environment_resolution import (
@@ -52,7 +53,9 @@ from nemo_agents_plugin.schema import (
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.auth import current_auth_context
 from nemo_platform_plugin.authz import CallerKind, path_rule
+from nemo_platform_plugin.client.errors import NotFoundError as PluginClientNotFoundError
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.schema import PaginationData
 
 logger = logging.getLogger(__name__)
@@ -74,6 +77,7 @@ async def create_deployment(
     body: CreateDeploymentRequest,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    files_client: AsyncFilesClient = Depends(get_files_client),
 ) -> AgentDeployment:
     """Create a new deployment for an existing agent.
 
@@ -136,7 +140,14 @@ async def create_deployment(
     )
     merged = _merge_environment(resolved_config, resolved_environment.environment_spec)
 
-    # 5. Create the entity with status "pending"
+    # 5. Snapshot the Ethos fileset revision. The runner stages the fileset when it
+    # starts this deployment, so a later refresh of the fileset leaves this deployment
+    # on the revision recorded here.
+    spec_revision, spec_tracked_revision = await _resolve_spec_revision(
+        files_client, workspace=workspace, agent_name=body.agent
+    )
+
+    # 6. Create the entity with status "pending"
     deployment = AgentDeployment(
         name=deployment_name,
         workspace=workspace,
@@ -145,6 +156,8 @@ async def create_deployment(
         environment=body.environment,
         compute=resolved_environment.compute_spec,
         secrets=merged.secrets,
+        spec_revision=spec_revision,
+        spec_tracked_revision=spec_tracked_revision,
         status="pending",
         deployment_mode=body.deployment_mode,
         image=body.image,
@@ -163,6 +176,27 @@ async def create_deployment(
         raise HTTPException(status_code=500, detail="Failed to create deployment.") from exc
 
     return saved
+
+
+async def _resolve_spec_revision(files_client: AsyncFilesClient, *, workspace: str, agent_name: str) -> tuple[str, str]:
+    """Return the Ethos fileset's (revision, tracked revision) for provenance.
+
+    Both are empty when the fileset is absent or its backend pins nothing — an
+    agent that deploys from its inline config alone is the normal case, not an
+    error. Nothing here may fail the deployment: this is a record of what was
+    staged, and the runner reports a fileset it cannot read.
+    """
+    fileset_name = ethos_fileset_name(agent_name)
+    try:
+        response = await files_client.get_fileset(workspace=workspace, name=fileset_name)
+        storage = response.data().storage
+    except PluginClientNotFoundError:
+        return "", ""
+    except Exception:
+        logger.warning("Could not read fileset %s/%s for deployment provenance", workspace, fileset_name, exc_info=True)
+        return "", ""
+
+    return getattr(storage, "revision", "") or "", getattr(storage, "original_revision", "") or ""
 
 
 def _resolve_deployment_config(agent: Agent, *, workspace: str) -> dict[str, Any]:

@@ -582,6 +582,83 @@ async def update_fileset_metadata(
     return fileset_output_from_entity(fileset)
 
 
+@router.post(
+    "/v2/workspaces/{workspace}/filesets/{name}/refresh",
+    summary="Refresh Fileset Revision",
+    response_model=FilesetOutput,
+    status_code=HTTP_200_OK,
+    responses={
+        HTTP_409_CONFLICT: {
+            "description": "Fileset does not track a mutable revision",
+            **_HTTP_EXCEPTION_DETAIL,
+        },
+    },
+)
+async def refresh_fileset(
+    workspace: str,
+    name: str,
+    entity_store: EntityClient = Depends(get_entity_client),
+    sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
+    auth_client: AuthClient = Depends(get_auth_client),
+) -> FilesetOutput:
+    """
+    Re-resolve a fileset's tracked revision against its source.
+
+    A fileset created from a mutable ref is pinned to an immutable id so its
+    contents cannot shift under a deployment. This re-resolves that same ref and
+    repoints the fileset at whatever it names now. Everything else about the
+    storage config, including the repository and directory, is left alone.
+
+    Deployments stage the fileset when they are created, so existing deployments
+    keep serving the revision they were staged from.
+    """
+    logger.info(f"POST /filesets/{name}/refresh - workspace={workspace}")
+    try:
+        fileset = await get_fileset(workspace, name, entity_store)
+    except EntityNotFoundError as exc:
+        raise HTTPException(
+            HTTP_404_NOT_FOUND,
+            f"Fileset '{workspace}/{name}' not found",
+        ) from exc
+
+    try:
+        secrets = await resolve_storage_secrets_for_user(fileset.storage, workspace, sdk, auth_client)
+        storage_impl = storage_impl_factory(fileset.storage, secrets)
+
+        if not storage_impl.tracked_revision:
+            raise HTTPException(
+                HTTP_409_CONFLICT,
+                f"Fileset '{workspace}/{name}' does not track a revision that can be refreshed",
+            )
+
+        storage = await storage_impl_factory(storage_impl.config_at_tracked_revision(), secrets).resolve_config()
+    except ExternalHostNotAllowedError as exc:
+        raise HTTPException(
+            HTTP_400_BAD_REQUEST,
+            f"Storage host or endpoint not in allowed list: {exc}",
+        ) from exc
+    except (SecretNotFoundError, SecretAccessDeniedError) as exc:
+        logger.warning(f"Secret unavailable while refreshing {workspace}/{name}: {exc}")
+        raise HTTPException(HTTP_400_BAD_REQUEST, f"Secret unavailable: {exc}") from exc
+    except StorageAccessError as exc:
+        logger.warning(f"Storage access denied: {exc}")
+        raise HTTPException(HTTP_400_BAD_REQUEST, f"Access denied to storage backend: {exc}") from exc
+    except StorageConfigError as exc:
+        logger.warning(f"Storage config invalid: {exc}")
+        raise HTTPException(HTTP_400_BAD_REQUEST, f"Invalid storage configuration: {exc}") from exc
+    except StorageUnavailableError as exc:
+        logger.warning(f"Storage backend unavailable: {exc}")
+        raise HTTPException(HTTP_502_BAD_GATEWAY, f"Storage backend unavailable: {exc}") from exc
+    except StorageBackendError as exc:
+        logger.warning(f"Storage refresh failed: {exc}")
+        raise HTTPException(HTTP_400_BAD_REQUEST, f"Error refreshing fileset: {exc}") from exc
+
+    fileset = fileset.model_copy(update={"storage": storage})
+    await entity_store.update(fileset)
+
+    return fileset_output_from_entity(fileset)
+
+
 @router.get(
     "/v2/workspaces/{workspace}/filesets/{name}/files",
     summary="List Fileset Files",
