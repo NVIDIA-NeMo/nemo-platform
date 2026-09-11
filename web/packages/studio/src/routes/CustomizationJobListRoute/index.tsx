@@ -6,6 +6,7 @@ import type { Adapter, ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { CustomModelsDataView } from '@studio/components/dataViews/CustomModelsDataView';
 import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsDataView/CustomizeModelButton';
+import { DeployModelButton } from '@studio/components/DeployModelButton';
 import { ModelPanel, ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { INTAKE_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -62,6 +63,15 @@ export const CustomizationJobListRoute: FC = () => {
             <Flex gap="density-md" align="center">
               {selectedModel && (
                 <CustomizeModelButton model={selectedModel} workspace={workspace} />
+              )}
+              {/*
+                Skipped for adapters: an adapter is served by the deployment
+                that loaded its base model, so "Deploy" would point at the wrong
+                entity. Surfacing the base model's deployment gap is tracked
+                separately.
+              */}
+              {selectedModel && !selectedAdapter && (
+                <DeployModelButton model={selectedModel} workspace={workspace} />
               )}
               {INTAKE_ENABLED && (
                 <Button
