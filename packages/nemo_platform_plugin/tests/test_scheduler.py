@@ -26,7 +26,8 @@ from typing import Any, cast
 
 import httpx
 import pytest
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
@@ -786,6 +787,51 @@ class TestRunLocalDIContextAndSdk:
         sdk = object()
         NemoJobScheduler().run_local(_SdkJob, {}, sdk=sdk)
         assert seen["sdk"] is sdk
+
+    def test_generated_sdk_adapted_when_typed_client_declared(self) -> None:
+        seen: dict[str, object] = {}
+
+        class _SdkJob(NemoJob):
+            name = "typed-sdk-job"
+
+            def run(self, config: dict, *, sdk: NemoClient) -> dict:
+                seen["sdk"] = sdk
+                return {}
+
+        http_client = httpx.Client()
+        platform = NeMoPlatform(base_url="http://platform.test", workspace="dev", http_client=http_client)
+
+        NemoJobScheduler().run_local(_SdkJob, {}, sdk=platform)
+
+        sdk = seen["sdk"]
+        assert isinstance(sdk, NemoClient)
+        assert sdk.workspace == "dev"
+        assert sdk._client is http_client
+
+    def test_generated_async_sdk_adapted_when_typed_async_client_declared(self) -> None:
+        seen: dict[str, object] = {}
+
+        class _AsyncSdkJob(NemoJob):
+            name = "typed-async-sdk-job"
+
+            def run(self, config: dict, *, async_sdk: AsyncNemoClient) -> dict:
+                seen["async_sdk"] = async_sdk
+                return {}
+
+        http_client = httpx.AsyncClient()
+        platform = AsyncNeMoPlatform(base_url="http://platform.test", workspace="dev", http_client=http_client)
+
+        try:
+            NemoJobScheduler().run_local(_AsyncSdkJob, {}, async_sdk=platform)
+        finally:
+            import asyncio
+
+            asyncio.run(http_client.aclose())
+
+        async_sdk = seen["async_sdk"]
+        assert isinstance(async_sdk, AsyncNemoClient)
+        assert async_sdk.workspace == "dev"
+        assert async_sdk._client is http_client
 
     def test_sdk_required_without_default_raises(self) -> None:
         class _RequiredSdkJob(NemoJob):

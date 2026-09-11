@@ -23,6 +23,7 @@ from nemo_evaluator.jobs.agent_evaluate import (
     DEFAULT_RESULT_NAME,
     SUMMARY_RESULT_NAME,
     AgentEvalJob,
+    AsyncAgentEvalJob,
     _resolve_gym_environment,
     _to_runtime_task,
 )
@@ -247,7 +248,7 @@ def test_agent_eval_job_reconstructs_tasks_and_persists_bundle(tmp_path: Path, m
     ctx = _job_context(tmp_path)
 
     spec = AgentEvalSpec(tasks=[_task_spec()], target=_runner_target("openai/gpt-5.4"))
-    result = AgentEvalJob().run(spec.model_dump(), ctx=ctx)
+    result = AgentEvalJob().run(spec.model_dump(), ctx=ctx, sdk=_sync_sdk_with_identity())
 
     # The job reconstructed runtime tasks (bundled metric round-tripped) before handing off.
     assert [task.id for task in fake.received_tasks] == ["task-1"]
@@ -275,7 +276,7 @@ def test_agent_eval_job_survives_result_persistence_failure(tmp_path: Path, mock
     ctx = _job_context(tmp_path)
 
     spec = AgentEvalSpec(tasks=[_task_spec()], target=_runner_target("openai/gpt-5.4"))
-    result = AgentEvalJob().run(spec.model_dump(), ctx=ctx)
+    result = AgentEvalJob().run(spec.model_dump(), ctx=ctx, sdk=_sync_sdk_with_identity())
 
     # Persistence was attempted and raised, yet the job still completed with its artifacts intact.
     persist.assert_called_once()
@@ -573,9 +574,14 @@ def test_build_evaluator_runner_target_forwards_no_headers() -> None:
     assert AgentEvalJob._build_evaluator(sdk, _runner_target("openai/gpt-5.4")).default_headers is None
 
 
-def test_build_evaluator_without_platform_forwards_no_headers() -> None:
+def test_build_evaluator_without_identity_headers_forwards_no_headers() -> None:
+    sdk = NemoClient(
+        base_url="http://platform",
+        workspace="dev",
+        http_client=MagicMock(spec=httpx.Client),
+    )
     target = _model_target("http://platform/apis/inference-gateway/v2/workspaces/default/model/m/-/v1/chat/completions")
-    assert AgentEvalJob._build_evaluator(None, target).default_headers is None
+    assert AgentEvalJob._build_evaluator(sdk, target).default_headers is None
 
 
 def _sync_platform_with_identity() -> NeMoPlatform:
@@ -608,17 +614,24 @@ def _capture_evaluator_headers(mocker: MockerFixture) -> dict[str, dict[str, str
     return captured
 
 
-@pytest.mark.parametrize("inject_async", [False, True], ids=["sdk", "async_sdk"])
-def test_run_accepts_the_generated_sdk_the_local_cli_injects(
-    tmp_path: Path, mocker: MockerFixture, inject_async: bool
+@pytest.mark.parametrize(
+    ("job_cls", "sdk_kwargs"),
+    [
+        (AgentEvalJob, {"sdk": _sync_platform_with_identity()}),
+        (AsyncAgentEvalJob, {"async_sdk": _async_platform_with_identity()}),
+    ],
+    ids=["sync-job", "async-job"],
+)
+def test_scheduler_adapts_the_generated_sdk_for_the_declared_agent_eval_client(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    job_cls: type[AgentEvalJob],
+    sdk_kwargs: dict[str, object],
 ) -> None:
-    """A local ``nemo evaluator agent-evaluate run`` is handed a generated ``NeMoPlatform``, not a
-    typed client, and every platform call in ``run`` is typed-client-only. Without adaptation the job
-    dies with ``AttributeError: 'AsyncNeMoPlatform' object has no attribute 'is_platform_url'``
-    before it issues a single target request.
+    """Scheduler adaptation follows the concrete job class' single client contract.
 
-    Adapting must not widen what reaches the target: the allowlist still applies, so the bearer and
-    the trace header the generated SDK carried stay behind.
+    Generated SDKs are a CLI-boundary concern. Adapting must not widen what reaches the target: the
+    allowlist still applies, so the bearer and the trace header the generated SDK carried stay behind.
     """
     captured = _capture_evaluator_headers(mocker)
     config = AgentEvalSpec(
@@ -629,10 +642,7 @@ def test_run_accepts_the_generated_sdk_the_local_cli_injects(
     ).model_dump()
     ctx = _job_context(tmp_path)
 
-    if inject_async:
-        result = AgentEvalJob().run(config, ctx=ctx, async_sdk=_async_platform_with_identity())
-    else:
-        result = AgentEvalJob().run(config, ctx=ctx, sdk=_sync_platform_with_identity())
+    result = NemoJobScheduler().run_local(job_cls, config, workspace=ctx.workspace, ctx=ctx, **sdk_kwargs)
 
     assert result["status"] == "completed"
     assert captured["default_headers"] == _FORWARDED_IDENTITY_HEADERS
@@ -640,13 +650,18 @@ def test_run_accepts_the_generated_sdk_the_local_cli_injects(
 
 def test_run_sends_no_identity_to_a_third_party_target_via_generated_sdk(tmp_path: Path, mocker: MockerFixture) -> None:
     """The same-origin guard is what keeps the delegated user's email and groups inside the platform.
-    Adaptation reconstructs the client the guard compares against, so a regression here would leak
-    that PII to whatever endpoint the submitter named."""
+    Scheduler adaptation reconstructs the client the guard compares against, so a regression here
+    would leak that PII to whatever endpoint the submitter named."""
     captured = _capture_evaluator_headers(mocker)
     spec = AgentEvalSpec(tasks=[_task_spec()], target=_model_target("https://api.openai.com/v1/chat/completions"))
+    ctx = _job_context(tmp_path)
 
-    result = AgentEvalJob().run(
-        spec.model_dump(), ctx=_job_context(tmp_path), async_sdk=_async_platform_with_identity()
+    result = NemoJobScheduler().run_local(
+        AsyncAgentEvalJob,
+        spec.model_dump(),
+        workspace=ctx.workspace,
+        ctx=ctx,
+        async_sdk=_async_platform_with_identity(),
     )
 
     assert result["status"] == "completed"
@@ -1519,7 +1534,11 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
         target=target,
     )
 
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
+    result = NemoJobScheduler().run_local(
+        AgentEvalJob,
+        input_spec.model_dump(mode="json"),
+        sdk=_sync_sdk_with_identity(),
+    )
 
     assert result["status"] == "completed"
     assert result["artifact"]["name"] == DEFAULT_RESULT_NAME
@@ -1551,7 +1570,11 @@ def test_run_local_scores_precomputed_trials_offline(mocker: MockerFixture) -> N
         trials=precomputed,
     )
 
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
+    result = NemoJobScheduler().run_local(
+        AgentEvalJob,
+        input_spec.model_dump(mode="json"),
+        sdk=_sync_sdk_with_identity(),
+    )
 
     assert result["status"] == "completed"
     assert fake.received_target is None
@@ -1598,7 +1621,7 @@ class TestAgentEvalTask:
         build_ctx.assert_called_once_with(sdk)
         get_task_client.assert_called_once_with("evaluator")
         get_async_task_client.assert_called_once_with("evaluator")
-        run_task.assert_called_once_with(AgentEvalJob, sdk=client, async_sdk=async_client, ctx=ctx)
+        run_task.assert_called_once_with(AsyncAgentEvalJob, sdk=client, async_sdk=async_client, ctx=ctx)
 
     def test_main_returns_setup_exit_code_when_task_sdk_fails(self, mocker: MockerFixture) -> None:
         get_platform_sdk = mocker.patch("nemo_evaluator.tasks.runner.get_task_sdk", side_effect=RuntimeError("boom"))

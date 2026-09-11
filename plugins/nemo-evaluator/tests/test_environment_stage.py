@@ -6,10 +6,11 @@ from pathlib import Path
 import httpx
 import pytest
 from nemo_evaluator.jobs.environment_stage import EnvironmentStageJob
+from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
-from nemo_platform_plugin.sdk import NeMoPlatform
+from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pytest_mock import MockerFixture
 
 
@@ -132,9 +133,7 @@ def test_failed_download_removes_partial_staging_without_replacing_environment(
 
 
 def test_run_adapts_the_generated_sdk_the_local_cli_injects(tmp_path: Path, mocker: MockerFixture) -> None:
-    """``nemo evaluator stage-environment run`` injects a generated ``NeMoPlatform``, but staging
-    reaches the Files service through ``FilesClient.from_client``, which only accepts a typed
-    client."""
+    """The local scheduler adapts the generated SDK before staging reaches the Files service."""
     received: dict[str, object] = {}
 
     def download_contents(*, sdk: object, workspace: str, fileset: str, destination: Path) -> None:
@@ -146,8 +145,15 @@ def test_run_adapts_the_generated_sdk_the_local_cli_injects(tmp_path: Path, mock
         side_effect=download_contents,
     )
     platform = NeMoPlatform(base_url="http://platform.test", workspace="dev", http_client=httpx.Client())
+    ctx = _context(tmp_path)
 
-    result = EnvironmentStageJob().run({"environment": "shared/custom-gym"}, ctx=_context(tmp_path), sdk=platform)
+    result = NemoJobScheduler().run_local(
+        EnvironmentStageJob,
+        {"environment": "shared/custom-gym"},
+        workspace=ctx.workspace,
+        ctx=ctx,
+        sdk=platform,
+    )
 
     assert result["status"] == "completed"
     assert isinstance(received["sdk"], NemoClient)

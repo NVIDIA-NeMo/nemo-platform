@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+import httpx
 import pytest
 from nemo_evaluator.jobs.evaluate import EvaluateJob
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric, unbundle_metric
@@ -28,6 +29,7 @@ from nemo_evaluator_sdk.metrics.f1 import F1Metric
 from nemo_evaluator_sdk.metrics.number_check import NumberCheckMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
+from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 
@@ -60,6 +62,14 @@ def _aggregate_scores(run_result: dict[str, Any]) -> list[dict[str, Any]]:
     return cast(list[dict[str, Any]], _load_artifact_payload(run_result)["aggregate_scores"]["scores"])
 
 
+def _sync_client() -> NemoClient:
+    return NemoClient(
+        base_url="http://platform.test",
+        workspace="dev",
+        http_client=httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(500, request=request))),
+    )
+
+
 def test_evaluate_job_runs_inline_bundled_exact_match_metric() -> None:
     """Full job run with an inline-bundled metric produces real aggregate scores."""
     spec = {
@@ -73,7 +83,7 @@ def test_evaluate_job_runs_inline_bundled_exact_match_metric() -> None:
         "params": {"parallelism": 2},
     }
 
-    result = NemoJobScheduler().run_local(EvaluateJob, spec)
+    result = NemoJobScheduler().run_local(EvaluateJob, spec, sdk=_sync_client())
 
     scores = _aggregate_scores(result)
     assert scores[0]["name"] == "exact-match.exact-match"
@@ -100,7 +110,7 @@ def test_evaluate_job_runs_multiple_inline_metrics() -> None:
         "params": {"parallelism": 2},
     }
 
-    result = NemoJobScheduler().run_local(EvaluateJob, spec)
+    result = NemoJobScheduler().run_local(EvaluateJob, spec, sdk=_sync_client())
 
     by_name = {score["name"]: score for score in _aggregate_scores(result)}
     assert by_name["exact-match.exact-match"]["mean"] == 0.5
@@ -128,7 +138,7 @@ def test_evaluate_job_runs_hybrid_bundled_mixed_metrics() -> None:
         "params": {"parallelism": 2},
     }
 
-    result = NemoJobScheduler().run_local(EvaluateJob, spec)
+    result = NemoJobScheduler().run_local(EvaluateJob, spec, sdk=_sync_client())
 
     by_name = {score["name"]: score for score in _aggregate_scores(result)}
     assert by_name["exact-match.exact-match"]["mean"] == 0.5
