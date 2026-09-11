@@ -21,6 +21,7 @@ import {
 import { CustomizationFilesetSelect } from '@studio/components/customizer/CustomizationFilesetSelect';
 import { BackendSelectionSection } from '@studio/components/NewCustomizationForm/BackendSelectionSection';
 import { ComputeResourcesSection } from '@studio/components/NewCustomizationForm/ComputeResourcesSection';
+import { DeploymentSection } from '@studio/components/NewCustomizationForm/DeploymentSection';
 import { DpoParametersSection } from '@studio/components/NewCustomizationForm/DpoParametersSection';
 import { GeneralParametersSection } from '@studio/components/NewCustomizationForm/GeneralParametersSection';
 import { GrpoParametersSection } from '@studio/components/NewCustomizationForm/GrpoParametersSection';
@@ -93,7 +94,10 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
   // carrying the other arm's fields. `formToRlCreate` sets `type` from this on submit.
   const grpoTrainingType = useWatch({ control: form.control, name: 'grpo.trainingType' });
   const finetuningType = backend === 'automodel' ? automodelFinetuningType : unslothFinetuningType;
-  const isLora =
+  // Gates the LoRA *hyperparameter* controls, so it includes `lora_merged`,
+  // which trains with LoRA. It is NOT "the output is an adapter" — a merged run
+  // emits full weights. Use `producesAdapter` for anything about serving.
+  const usesLoraControls =
     backend !== 'rl' && (finetuningType === 'lora' || finetuningType === 'lora_merged');
   const isDpo = backend === 'rl' && grpoTrainingType !== 'grpo';
   const isGrpo = backend === 'rl' && grpoTrainingType === 'grpo';
@@ -217,7 +221,7 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
                     <CustomizationFilesetSelect disabled={isPending} />
                     <Divider />
                     {isGrpo ? <GrpoParametersSection /> : <GeneralParametersSection />}
-                    {isLora && (
+                    {usesLoraControls && (
                       <>
                         <Divider />
                         <LoraParametersSection />
@@ -233,6 +237,12 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
                     <IntegrationsSection backend={backend} />
                     <Divider />
                     <ComputeResourcesSection />
+                    {backend === 'unsloth' && (
+                      <>
+                        <Divider />
+                        <DeploymentSection />
+                      </>
+                    )}
                     {validationErrors.length > 0 && (
                       <Banner kind="inline" ref={errorBannerRef} status="error">
                         Please fix the following errors: {validationErrors.join(', ')}

@@ -12,7 +12,6 @@ import {
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
-import { ControlledJsonInput } from '@studio/components/NewCustomizationForm/ControlledJsonInput';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
 import {
@@ -217,12 +216,9 @@ const UnslothHardware = ({ disabled }: { disabled: boolean }) => {
         placeholder="0  or  0,1"
         disabled={disabled}
       />
-      <ControlledJsonInput
-        useControllerProps={{ name: 'unsloth.deployment_config', control }}
-        formFieldProps={{ slotLabel: 'Deployment Config (name or JSON)' }}
-        placeholder='"my-config"  or  { "gpu": 1 }'
-        disabled={disabled}
-      />
+      {/* `unsloth.deployment_config` used to live here. It is about serving the
+          output, not about the hardware the job trains on, and nobody was going
+          to find it under Compute Resources. It now has its own section. */}
     </Stack>
   );
 };
