@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -327,6 +327,39 @@ def test_doctor_resolves_base_url_after_profile_env_loading(
     assert result.exit_code == 0, result.output
     assert http_urls == [expected]
     assert workspace_urls == [expected]
+
+
+def test_doctor_falls_back_to_the_active_context_not_localhost(
+    app: typer.Typer,
+    profile_tree: Path,
+    use_nmp_config: Callable[..., Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no flag and no NMP_BASE_URL, follow the same context `nemo` does.
+
+    Defaulting to localhost here made every insights command fail against a
+    configured remote deployment while the rest of the CLI worked.
+    """
+    probed: list[str] = []
+
+    async def record_workspace_probe(base_url: str, workspace: str, agent: str) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        cli,
+        "_PREFLIGHT_PROBES",
+        AnalysisProbes(
+            http_ok=lambda base_url: probed.append(base_url) or True,
+            workspace_ok=record_workspace_probe,
+        ),
+    )
+    use_nmp_config(base_url="https://cluster.example")
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 0, result.output
+    assert probed == ["https://cluster.example"]
 
 
 @pytest.mark.parametrize(

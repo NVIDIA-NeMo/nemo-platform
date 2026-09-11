@@ -11,7 +11,6 @@ The module-level :func:`analyze` and :func:`doctor` callbacks are the verb bodie
 
 import asyncio
 import json
-import os
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -23,11 +22,16 @@ from typing import Any, ClassVar, TypeVar
 import httpx
 import typer
 from nemo_insights_plugin.analyst.run import ClientConstructionError, run_analyst
+from nemo_insights_plugin.cli_context import (
+    BaseUrlOption,
+    WorkspaceOption,
+    active_context_workspace,
+    resolve_workspace,
+)
 from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.contracts.checks import CheckResult, advisories, format_report, required_failures
 from nemo_insights_plugin.contracts.insights import InsightsFileError, validate_insights_file
 from nemo_insights_plugin.contracts.profile import (
-    DEFAULT_BASE_URL,
     EnvFileError,
     ProfileError,
     discover_profile,
@@ -54,7 +58,6 @@ from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.nooa_model_client import configured_model_refs
 from nooa import GenerationError
 
-DEFAULT_WORKSPACE = "default"
 _PREFLIGHT_PROBES: AnalysisProbes | None = None
 
 
@@ -153,8 +156,13 @@ def _resolve_analysis(
         )
     if workspace is not None:
         resolved_workspace = workspace
+    elif profile is not None:
+        # A profile always carries a workspace (its model defaults to
+        # "default"), so it cannot be told apart from an explicit one and
+        # keeps precedence over the ambient context.
+        resolved_workspace = profile.workspace
     else:
-        resolved_workspace = profile.workspace if profile is not None else DEFAULT_WORKSPACE
+        resolved_workspace = active_context_workspace()
 
     ethos_path = ethos
     ethos_error: str | None = None
@@ -395,17 +403,8 @@ class InsightsCLI(NemoCLI):
                 "--agent",
                 help="Name of the agent to opt in to periodic analysis.",
             ),
-            workspace: str = typer.Option(
-                DEFAULT_WORKSPACE,
-                "--workspace",
-                help="Workspace the agent belongs to.",
-            ),
-            base_url: str = typer.Option(
-                os.environ.get("NMP_BASE_URL", DEFAULT_BASE_URL),
-                "--base-url",
-                help="Base URL of the running NMP instance.",
-                envvar="NMP_BASE_URL",
-            ),
+            workspace: WorkspaceOption = None,
+            base_url: BaseUrlOption = None,
         ) -> None:
             """Enable periodic analysis for an agent."""
             typer.echo(
@@ -413,8 +412,8 @@ class InsightsCLI(NemoCLI):
                     _analysis_config_command(
                         action="enable",
                         agent=agent,
-                        workspace=workspace,
-                        base_url=base_url,
+                        workspace=resolve_workspace(workspace),
+                        base_url=resolve_base_url(base_url),
                     )
                 )
             )
@@ -426,17 +425,8 @@ class InsightsCLI(NemoCLI):
                 "--agent",
                 help="Name of the agent to opt out of periodic analysis.",
             ),
-            workspace: str = typer.Option(
-                DEFAULT_WORKSPACE,
-                "--workspace",
-                help="Workspace the agent belongs to.",
-            ),
-            base_url: str = typer.Option(
-                os.environ.get("NMP_BASE_URL", DEFAULT_BASE_URL),
-                "--base-url",
-                help="Base URL of the running NMP instance.",
-                envvar="NMP_BASE_URL",
-            ),
+            workspace: WorkspaceOption = None,
+            base_url: BaseUrlOption = None,
         ) -> None:
             """Disable periodic analysis for an agent."""
             typer.echo(
@@ -444,8 +434,8 @@ class InsightsCLI(NemoCLI):
                     _analysis_config_command(
                         action="disable",
                         agent=agent,
-                        workspace=workspace,
-                        base_url=base_url,
+                        workspace=resolve_workspace(workspace),
+                        base_url=resolve_base_url(base_url),
                     )
                 )
             )
@@ -457,17 +447,8 @@ class InsightsCLI(NemoCLI):
                 "--agent",
                 help="Optional agent name. Omit to list all analysis configs.",
             ),
-            workspace: str = typer.Option(
-                DEFAULT_WORKSPACE,
-                "--workspace",
-                help="Workspace to inspect.",
-            ),
-            base_url: str = typer.Option(
-                os.environ.get("NMP_BASE_URL", DEFAULT_BASE_URL),
-                "--base-url",
-                help="Base URL of the running NMP instance.",
-                envvar="NMP_BASE_URL",
-            ),
+            workspace: WorkspaceOption = None,
+            base_url: BaseUrlOption = None,
         ) -> None:
             """Show periodic analysis opt-in state."""
             typer.echo(
@@ -475,8 +456,8 @@ class InsightsCLI(NemoCLI):
                     _analysis_config_command(
                         action="status",
                         agent=agent,
-                        workspace=workspace,
-                        base_url=base_url,
+                        workspace=resolve_workspace(workspace),
+                        base_url=resolve_base_url(base_url),
                     )
                 )
             )
@@ -494,17 +475,8 @@ class InsightsCLI(NemoCLI):
                 "--agent",
                 help="Name of the agent whose telemetry should be analyzed.",
             ),
-            workspace: str = typer.Option(
-                DEFAULT_WORKSPACE,
-                "--workspace",
-                help="Workspace the agent belongs to.",
-            ),
-            base_url: str = typer.Option(
-                os.environ.get("NMP_BASE_URL", DEFAULT_BASE_URL),
-                "--base-url",
-                help="Base URL of the running NMP instance.",
-                envvar="NMP_BASE_URL",
-            ),
+            workspace: WorkspaceOption = None,
+            base_url: BaseUrlOption = None,
             default_model: str | None = typer.Option(
                 None,
                 "--default-model",
@@ -559,8 +531,8 @@ class InsightsCLI(NemoCLI):
             payload, completed = _run_command(
                 _create_analysis_run(
                     agent=agent,
-                    workspace=workspace,
-                    base_url=base_url,
+                    workspace=resolve_workspace(workspace),
+                    base_url=resolve_base_url(base_url),
                     default_model=default_model,
                     fast_model=fast_model,
                     ethos=ethos,
@@ -583,17 +555,8 @@ class InsightsCLI(NemoCLI):
                 "--agent",
                 help="Only list runs that analyzed this agent.",
             ),
-            workspace: str = typer.Option(
-                DEFAULT_WORKSPACE,
-                "--workspace",
-                help="Workspace to inspect.",
-            ),
-            base_url: str = typer.Option(
-                os.environ.get("NMP_BASE_URL", DEFAULT_BASE_URL),
-                "--base-url",
-                help="Base URL of the running NMP instance.",
-                envvar="NMP_BASE_URL",
-            ),
+            workspace: WorkspaceOption = None,
+            base_url: BaseUrlOption = None,
             page: int = typer.Option(1, "--page", help="Page number (1-indexed)."),
             page_size: int = typer.Option(20, "--page-size", help="Items per page."),
             sort: str = typer.Option(
@@ -607,8 +570,8 @@ class InsightsCLI(NemoCLI):
                 _run_command(
                     _list_analysis_runs(
                         agent=agent,
-                        workspace=workspace,
-                        base_url=base_url,
+                        workspace=resolve_workspace(workspace),
+                        base_url=resolve_base_url(base_url),
                         page=page,
                         page_size=page_size,
                         sort=sort,
@@ -619,17 +582,8 @@ class InsightsCLI(NemoCLI):
         @runs_app.command("get")
         def get_analysis_run(
             name: str = typer.Argument(..., help="Name of the analysis run."),
-            workspace: str = typer.Option(
-                DEFAULT_WORKSPACE,
-                "--workspace",
-                help="Workspace the run belongs to.",
-            ),
-            base_url: str = typer.Option(
-                os.environ.get("NMP_BASE_URL", DEFAULT_BASE_URL),
-                "--base-url",
-                help="Base URL of the running NMP instance.",
-                envvar="NMP_BASE_URL",
-            ),
+            workspace: WorkspaceOption = None,
+            base_url: BaseUrlOption = None,
             wait: bool = typer.Option(
                 False,
                 "--wait",
@@ -654,8 +608,8 @@ class InsightsCLI(NemoCLI):
             payload, completed = _run_command(
                 _get_analysis_run(
                     name=name,
-                    workspace=workspace,
-                    base_url=base_url,
+                    workspace=resolve_workspace(workspace),
+                    base_url=resolve_base_url(base_url),
                     wait=wait,
                     poll_timeout=poll_timeout,
                     poll_interval=poll_interval,
