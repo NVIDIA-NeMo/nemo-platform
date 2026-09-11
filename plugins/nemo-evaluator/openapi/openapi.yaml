@@ -2865,6 +2865,11 @@ components:
           - $ref: '#/components/schemas/TrialError'
           description: What went wrong producing this trial, when the producer reported
             a failure. Populated by a runner runtime. Drives AgentEvalSummary.error_trial_ids.
+        measurements:
+          allOf:
+          - $ref: '#/components/schemas/TrialMeasurements'
+          description: Validated token usage, agent runtime, and cost measurements
+            for the trial.
         metadata:
           additionalProperties: true
           type: object
@@ -2877,8 +2882,8 @@ components:
       - task_id
       - status
       title: AgentEvalTrial
-      description: 'Durable trial artifact for one task: output, evidence, status,
-        error, and metadata.'
+      description: 'Durable trial artifact: output, evidence, status, error, measurements,
+        and metadata.'
     AgentEvalTrialStatus:
       type: string
       enum:
@@ -2997,6 +3002,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/PlatformJobStatus'
           description: The current status.
+        spec:
+          description: Filter on a path within the job's spec, e.g. `spec.target.format`.
+          title: Spec
+          additionalProperties: true
+          type: object
         updated_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -3653,6 +3663,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/PlatformJobStatus'
           description: The current status.
+        spec:
+          description: Filter on a path within the job's spec, e.g. `spec.target.format`.
+          title: Spec
+          additionalProperties: true
+          type: object
         updated_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -5658,6 +5673,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/PlatformJobStatus'
           description: The current status.
+        spec:
+          description: Filter on a path within the job's spec, e.g. `spec.target.format`.
+          title: Spec
+          additionalProperties: true
+          type: object
         updated_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -6503,6 +6523,40 @@ components:
         the trial reports
 
         a new one.'
+    TrialMeasurements:
+      properties:
+        prompt_tokens:
+          title: Prompt Tokens
+          type: integer
+          minimum: 0.0
+        completion_tokens:
+          title: Completion Tokens
+          type: integer
+          minimum: 0.0
+        total_tokens:
+          title: Total Tokens
+          type: integer
+          minimum: 0.0
+        cache_creation_tokens:
+          title: Cache Creation Tokens
+          type: integer
+          minimum: 0.0
+        cache_read_tokens:
+          title: Cache Read Tokens
+          type: integer
+          minimum: 0.0
+        runtime_sec:
+          title: Runtime Sec
+          type: number
+          minimum: 0.0
+        cost_usd:
+          title: Cost Usd
+          type: number
+          minimum: 0.0
+      additionalProperties: false
+      type: object
+      title: TrialMeasurements
+      description: Validated usage, runtime, and cost measurements for one trial.
     ValidationError:
       properties:
         loc:

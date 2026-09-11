@@ -39,8 +39,13 @@ No base class — a metric is any object with these three members (a structural 
 | Field | Type | What it holds |
 |---|---|---|
 | `candidate.output_text` | `str \| None` | the agent's final answer |
+| `candidate.response` | `Any \| None` | the raw model or agent response payload |
+| `candidate.trajectory` | `Any \| None` | the candidate trajectory when supplied directly |
 | `candidate.evidence` | `CandidateEvidence \| None` | trajectory, final filesystem state, logs — see [Reading evidence](#reading-evidence) |
-| `candidate.metadata` | `dict` | trial metadata (e.g. a reward a runner stamped on) |
+| `candidate.metadata` | `dict` | free-form trial and output metadata, excluding the dedicated fields above; empty when the trial has no output |
+
+For a trial with an output, `candidate.metadata` starts with `AgentEvalTrial.metadata` and then adds
+`AgentOutput.metadata`. If both contain the same key, the value from the output wins.
 
 `input.row.data` is a dict describing the task and trial:
 
@@ -49,7 +54,8 @@ No base class — a metric is any object with these three members (a structural 
 | `input.row.data["reference"]` | grader-only ground truth (the task's `reference`), never shown to the agent |
 | `input.row.data["inputs"]` | the task `inputs` (`instruction`, …) |
 | `input.row.data["task"]` | `{id, intent, metadata}` |
-| `input.row.data["trial"]` | `{id, task_id, status, metadata}` |
+| `input.row.data["trial"]` | `{id, task_id, status, error, measurements, metadata}` |
+
 
 So an **outcome** metric reads `candidate.output_text` and `row.data["reference"]`; a **trajectory**
 metric reads `candidate.evidence`.
@@ -167,6 +173,32 @@ class KeywordMatchMetric:
         return MetricResult(outputs=[MetricOutput(name="score", value=1.0 if expected and expected in answer else 0.0)])
 ```
 
+## Reading measurements
+
+Metrics read measurements from `input.row.data["trial"]["measurements"]`. The complete
+[`TrialMeasurements`](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk/agent_eval/trials.py)
+schema is always present: unavailable values are `None`, while a measured zero remains `0` (or
+`0.0`). Persisted or imported measurement values belong exclusively in `measurements`; free-form
+metadata values are never converted into measurements, even when their keys resemble measurement
+names.
+
+```python
+class TotalTokensMetric:
+    @property
+    def type(self) -> str:
+        return "usage"
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.discrete_score("total_tokens", required=False)]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        total_tokens = input.row.data["trial"]["measurements"]["total_tokens"]
+        outputs = []
+        if total_tokens is not None:
+            outputs.append(MetricOutput(name="total_tokens", value=total_tokens))
+        return MetricResult(outputs=outputs)
+```
+
 ## Reading evidence
 
 `candidate.evidence` (a `CandidateEvidence`) holds named descriptors, each exposed through a typed
@@ -209,8 +241,9 @@ consumer's job.
 ### Asking for one trace format
 
 A runner may record the same trial in more than one encoding. Harbor registers both under
-`trace:atif` and `trace:otlp` when the agent under test emits both. Pass `format=` to choose one
-and get a narrowed handle back, with no runtime branch:
+`trace:atif` and `trace:otlp` when the agent under test emits both, and Fabric registers both
+whenever it captures an OTLP trace from Relay. Pass `format=` to choose one and get a narrowed
+handle back, with no runtime branch:
 
 ```python
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence
@@ -224,8 +257,8 @@ async def read_both_views(evidence: CandidateEvidence) -> None:
 ```
 
 `trace()` with no `format` still returns whichever encoding the runner made primary. For Harbor
-that is the OTLP trace when the agent emits one and the ATIF trace otherwise — there is no setting
-to choose between them. A `format=` request raises `KeyError` when the trial carries no trace in
+and Fabric alike that is the OTLP trace when one was recorded and the ATIF trace otherwise — there
+is no setting to choose between them. A `format=` request raises `KeyError` when the trial carries no trace in
 that encoding, so a metric that depends on one specific view fails loudly instead of silently
 scoring nothing.
 

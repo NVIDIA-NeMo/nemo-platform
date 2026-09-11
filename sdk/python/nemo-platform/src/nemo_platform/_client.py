@@ -19,9 +19,15 @@ from __future__ import annotations
 
 import os
 from typing import TYPE_CHECKING, Any, Mapping
+from pathlib import Path
 from typing_extensions import Self, override
 
 import httpx
+from nemo_platform_plugin.client.tls import client_verify_from_env
+from nemo_platform_plugin.jobs.client import JobsClient, AsyncJobsClient
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+
+from nemo_platform._base_client import DefaultHttpxClient, DefaultAsyncHttpxClient
 
 from . import _exceptions
 from ._qs import Querystring
@@ -35,8 +41,6 @@ from ._types import (
     not_given,
 )
 from ._utils import (
-    is_given,
-    is_mapping_t,
     get_async_library,
 )
 from ._compat import cached_property
@@ -48,16 +52,10 @@ from ._base_client import (
     SyncAPIClient,
     AsyncAPIClient,
 )
-from nemo_platform._base_client import DefaultAsyncHttpxClient, DefaultHttpxClient
-from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
-from nemo_platform_plugin.client.tls import client_verify_from_env
-from pathlib import Path
 
 if TYPE_CHECKING:
+    from .models import ModelsResource, AsyncModelsResource
     from .resources import (
-        iam,
-        auth,
-        jobs,
         files,
         intake,
         models,
@@ -68,16 +66,11 @@ if TYPE_CHECKING:
         guardrail,
         inference,
         workspaces,
-        access_keys,
         evaluations,
         experiments,
     )
-    from .resources.iam.iam import IamResource, AsyncIamResource
-    from .resources.auth.auth import AuthResource, AsyncAuthResource
-    from .resources.jobs.jobs import JobsResource, AsyncJobsResource
     from .filesets.resources import FilesResource, AsyncFilesResource
     from .resources.intake.intake import IntakeResource, AsyncIntakeResource
-    from .models import ModelsResource, AsyncModelsResource
     from .resources.secrets.secrets import SecretsResource, AsyncSecretsResource
     from .resources.adapters.adapters import AdaptersResource, AsyncAdaptersResource
     from .resources.entities.entities import EntitiesResource, AsyncEntitiesResource
@@ -85,7 +78,6 @@ if TYPE_CHECKING:
     from .resources.guardrail.guardrail import GuardrailResource, AsyncGuardrailResource
     from .resources.inference.inference import InferenceResource, AsyncInferenceResource
     from .resources.workspaces.workspaces import WorkspacesResource, AsyncWorkspacesResource
-    from .resources.access_keys.access_keys import AccessKeysResource, AsyncAccessKeysResource
     from .resources.evaluations.evaluations import EvaluationsResource, AsyncEvaluationsResource
     from .resources.experiments.experiments import ExperimentsResource, AsyncExperimentsResource
 
@@ -152,7 +144,7 @@ class NeMoPlatform(SyncAPIClient):
         access_token: str | None = None,
         timeout: float | Timeout | None | NotGiven = not_given,
         max_retries: int = DEFAULT_MAX_RETRIES,
-        default_headers: Mapping[str, str] | None = None,
+        default_headers: Mapping[str, str | Omit] | None = None,
         default_query: Mapping[str, object] | None = None,
         # Configure a custom httpx client.
         # We provide a `DefaultHttpxClient` class that you can pass to retain the default values we use for `limits`, `timeout` & `follow_redirects`.
@@ -308,12 +300,6 @@ class NeMoPlatform(SyncAPIClient):
         return InferenceResource(self)
 
     @cached_property
-    def jobs(self) -> JobsResource:
-        from .resources.jobs import JobsResource
-
-        return JobsResource(self)
-
-    @cached_property
     def models(self) -> ModelsResource:
         from .models import ModelsResource
 
@@ -332,10 +318,10 @@ class NeMoPlatform(SyncAPIClient):
         return SecretsResource(self)
 
     @cached_property
-    def iam(self) -> IamResource:
-        from .resources.iam import IamResource
+    def jobs(self) -> JobsClient:
+        from nemo_platform_plugin.client.adapter import client_from_platform
 
-        return IamResource(self)
+        return client_from_platform(self, JobsClient)
 
     @cached_property
     def projects(self) -> ProjectsResource:
@@ -366,18 +352,6 @@ class NeMoPlatform(SyncAPIClient):
         from .resources.experiments import ExperimentsResource
 
         return ExperimentsResource(self)
-
-    @cached_property
-    def auth(self) -> AuthResource:
-        from .resources.auth import AuthResource
-
-        return AuthResource(self)
-
-    @cached_property
-    def access_keys(self) -> AccessKeysResource:
-        from .resources.access_keys import AccessKeysResource
-
-        return AccessKeysResource(self)
 
     @cached_property
     def with_raw_response(self) -> NeMoPlatformWithRawResponse:
@@ -413,8 +387,8 @@ class NeMoPlatform(SyncAPIClient):
         timeout: float | Timeout | None | NotGiven = not_given,
         http_client: httpx.Client | None = None,
         max_retries: int | NotGiven = not_given,
-        default_headers: Mapping[str, str] | None = None,
-        set_default_headers: Mapping[str, str] | None = None,
+        default_headers: Mapping[str, str | Omit] | None = None,
+        set_default_headers: Mapping[str, str | Omit] | None = None,
         default_query: Mapping[str, object] | None = None,
         set_default_query: Mapping[str, object] | None = None,
         _extra_kwargs: Mapping[str, Any] = {},
@@ -538,7 +512,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         access_token: str | None = None,
         timeout: float | Timeout | None | NotGiven = not_given,
         max_retries: int = DEFAULT_MAX_RETRIES,
-        default_headers: Mapping[str, str] | None = None,
+        default_headers: Mapping[str, str | Omit] | None = None,
         default_query: Mapping[str, object] | None = None,
         # Configure a custom httpx client.
         # We provide a `DefaultAsyncHttpxClient` class that you can pass to retain the default values we use for `limits`, `timeout` & `follow_redirects`.
@@ -716,12 +690,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         return AsyncInferenceResource(self)
 
     @cached_property
-    def jobs(self) -> AsyncJobsResource:
-        from .resources.jobs import AsyncJobsResource
-
-        return AsyncJobsResource(self)
-
-    @cached_property
     def models(self) -> AsyncModelsResource:
         from .models import AsyncModelsResource
 
@@ -740,10 +708,10 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         return AsyncSecretsResource(self)
 
     @cached_property
-    def iam(self) -> AsyncIamResource:
-        from .resources.iam import AsyncIamResource
+    def jobs(self) -> AsyncJobsClient:
+        from nemo_platform_plugin.client.adapter import client_from_platform
 
-        return AsyncIamResource(self)
+        return client_from_platform(self, AsyncJobsClient)
 
     @cached_property
     def projects(self) -> AsyncProjectsResource:
@@ -774,18 +742,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         from .resources.experiments import AsyncExperimentsResource
 
         return AsyncExperimentsResource(self)
-
-    @cached_property
-    def auth(self) -> AsyncAuthResource:
-        from .resources.auth import AsyncAuthResource
-
-        return AsyncAuthResource(self)
-
-    @cached_property
-    def access_keys(self) -> AsyncAccessKeysResource:
-        from .resources.access_keys import AsyncAccessKeysResource
-
-        return AsyncAccessKeysResource(self)
 
     @cached_property
     def with_raw_response(self) -> AsyncNeMoPlatformWithRawResponse:
@@ -821,8 +777,8 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         timeout: float | Timeout | None | NotGiven = not_given,
         http_client: httpx.AsyncClient | None = None,
         max_retries: int | NotGiven = not_given,
-        default_headers: Mapping[str, str] | None = None,
-        set_default_headers: Mapping[str, str] | None = None,
+        default_headers: Mapping[str, str | Omit] | None = None,
+        set_default_headers: Mapping[str, str | Omit] | None = None,
         default_query: Mapping[str, object] | None = None,
         set_default_query: Mapping[str, object] | None = None,
         _extra_kwargs: Mapping[str, Any] = {},
@@ -962,12 +918,6 @@ class NeMoPlatformWithRawResponse:
         return InferenceResourceWithRawResponse(self._client.inference)
 
     @cached_property
-    def jobs(self) -> jobs.JobsResourceWithRawResponse:
-        from .resources.jobs import JobsResourceWithRawResponse
-
-        return JobsResourceWithRawResponse(self._client.jobs)
-
-    @cached_property
     def models(self) -> models.ModelsResourceWithRawResponse:
         from .resources.models import ModelsResourceWithRawResponse
 
@@ -984,12 +934,6 @@ class NeMoPlatformWithRawResponse:
         from .resources.secrets import SecretsResourceWithRawResponse
 
         return SecretsResourceWithRawResponse(self._client.secrets)
-
-    @cached_property
-    def iam(self) -> iam.IamResourceWithRawResponse:
-        from .resources.iam import IamResourceWithRawResponse
-
-        return IamResourceWithRawResponse(self._client.iam)
 
     @cached_property
     def projects(self) -> projects.ProjectsResourceWithRawResponse:
@@ -1020,18 +964,6 @@ class NeMoPlatformWithRawResponse:
         from .resources.experiments import ExperimentsResourceWithRawResponse
 
         return ExperimentsResourceWithRawResponse(self._client.experiments)
-
-    @cached_property
-    def auth(self) -> auth.AuthResourceWithRawResponse:
-        from .resources.auth import AuthResourceWithRawResponse
-
-        return AuthResourceWithRawResponse(self._client.auth)
-
-    @cached_property
-    def access_keys(self) -> access_keys.AccessKeysResourceWithRawResponse:
-        from .resources.access_keys import AccessKeysResourceWithRawResponse
-
-        return AccessKeysResourceWithRawResponse(self._client.access_keys)
 
 
 class AsyncNeMoPlatformWithRawResponse:
@@ -1065,12 +997,6 @@ class AsyncNeMoPlatformWithRawResponse:
         return AsyncInferenceResourceWithRawResponse(self._client.inference)
 
     @cached_property
-    def jobs(self) -> jobs.AsyncJobsResourceWithRawResponse:
-        from .resources.jobs import AsyncJobsResourceWithRawResponse
-
-        return AsyncJobsResourceWithRawResponse(self._client.jobs)
-
-    @cached_property
     def models(self) -> models.AsyncModelsResourceWithRawResponse:
         from .resources.models import AsyncModelsResourceWithRawResponse
 
@@ -1087,12 +1013,6 @@ class AsyncNeMoPlatformWithRawResponse:
         from .resources.secrets import AsyncSecretsResourceWithRawResponse
 
         return AsyncSecretsResourceWithRawResponse(self._client.secrets)
-
-    @cached_property
-    def iam(self) -> iam.AsyncIamResourceWithRawResponse:
-        from .resources.iam import AsyncIamResourceWithRawResponse
-
-        return AsyncIamResourceWithRawResponse(self._client.iam)
 
     @cached_property
     def projects(self) -> projects.AsyncProjectsResourceWithRawResponse:
@@ -1123,18 +1043,6 @@ class AsyncNeMoPlatformWithRawResponse:
         from .resources.experiments import AsyncExperimentsResourceWithRawResponse
 
         return AsyncExperimentsResourceWithRawResponse(self._client.experiments)
-
-    @cached_property
-    def auth(self) -> auth.AsyncAuthResourceWithRawResponse:
-        from .resources.auth import AsyncAuthResourceWithRawResponse
-
-        return AsyncAuthResourceWithRawResponse(self._client.auth)
-
-    @cached_property
-    def access_keys(self) -> access_keys.AsyncAccessKeysResourceWithRawResponse:
-        from .resources.access_keys import AsyncAccessKeysResourceWithRawResponse
-
-        return AsyncAccessKeysResourceWithRawResponse(self._client.access_keys)
 
 
 class NeMoPlatformWithStreamedResponse:
@@ -1168,12 +1076,6 @@ class NeMoPlatformWithStreamedResponse:
         return InferenceResourceWithStreamingResponse(self._client.inference)
 
     @cached_property
-    def jobs(self) -> jobs.JobsResourceWithStreamingResponse:
-        from .resources.jobs import JobsResourceWithStreamingResponse
-
-        return JobsResourceWithStreamingResponse(self._client.jobs)
-
-    @cached_property
     def models(self) -> models.ModelsResourceWithStreamingResponse:
         from .resources.models import ModelsResourceWithStreamingResponse
 
@@ -1190,12 +1092,6 @@ class NeMoPlatformWithStreamedResponse:
         from .resources.secrets import SecretsResourceWithStreamingResponse
 
         return SecretsResourceWithStreamingResponse(self._client.secrets)
-
-    @cached_property
-    def iam(self) -> iam.IamResourceWithStreamingResponse:
-        from .resources.iam import IamResourceWithStreamingResponse
-
-        return IamResourceWithStreamingResponse(self._client.iam)
 
     @cached_property
     def projects(self) -> projects.ProjectsResourceWithStreamingResponse:
@@ -1226,18 +1122,6 @@ class NeMoPlatformWithStreamedResponse:
         from .resources.experiments import ExperimentsResourceWithStreamingResponse
 
         return ExperimentsResourceWithStreamingResponse(self._client.experiments)
-
-    @cached_property
-    def auth(self) -> auth.AuthResourceWithStreamingResponse:
-        from .resources.auth import AuthResourceWithStreamingResponse
-
-        return AuthResourceWithStreamingResponse(self._client.auth)
-
-    @cached_property
-    def access_keys(self) -> access_keys.AccessKeysResourceWithStreamingResponse:
-        from .resources.access_keys import AccessKeysResourceWithStreamingResponse
-
-        return AccessKeysResourceWithStreamingResponse(self._client.access_keys)
 
 
 class AsyncNeMoPlatformWithStreamedResponse:
@@ -1271,12 +1155,6 @@ class AsyncNeMoPlatformWithStreamedResponse:
         return AsyncInferenceResourceWithStreamingResponse(self._client.inference)
 
     @cached_property
-    def jobs(self) -> jobs.AsyncJobsResourceWithStreamingResponse:
-        from .resources.jobs import AsyncJobsResourceWithStreamingResponse
-
-        return AsyncJobsResourceWithStreamingResponse(self._client.jobs)
-
-    @cached_property
     def models(self) -> models.AsyncModelsResourceWithStreamingResponse:
         from .resources.models import AsyncModelsResourceWithStreamingResponse
 
@@ -1293,12 +1171,6 @@ class AsyncNeMoPlatformWithStreamedResponse:
         from .resources.secrets import AsyncSecretsResourceWithStreamingResponse
 
         return AsyncSecretsResourceWithStreamingResponse(self._client.secrets)
-
-    @cached_property
-    def iam(self) -> iam.AsyncIamResourceWithStreamingResponse:
-        from .resources.iam import AsyncIamResourceWithStreamingResponse
-
-        return AsyncIamResourceWithStreamingResponse(self._client.iam)
 
     @cached_property
     def projects(self) -> projects.AsyncProjectsResourceWithStreamingResponse:
@@ -1329,18 +1201,6 @@ class AsyncNeMoPlatformWithStreamedResponse:
         from .resources.experiments import AsyncExperimentsResourceWithStreamingResponse
 
         return AsyncExperimentsResourceWithStreamingResponse(self._client.experiments)
-
-    @cached_property
-    def auth(self) -> auth.AsyncAuthResourceWithStreamingResponse:
-        from .resources.auth import AsyncAuthResourceWithStreamingResponse
-
-        return AsyncAuthResourceWithStreamingResponse(self._client.auth)
-
-    @cached_property
-    def access_keys(self) -> access_keys.AsyncAccessKeysResourceWithStreamingResponse:
-        from .resources.access_keys import AsyncAccessKeysResourceWithStreamingResponse
-
-        return AsyncAccessKeysResourceWithStreamingResponse(self._client.access_keys)
 
 
 Client = NeMoPlatform

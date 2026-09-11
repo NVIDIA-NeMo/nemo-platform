@@ -36,9 +36,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, TrialMeasurements
 from nemo_evaluator_sdk.values.evidence import EVIDENCE_FORMAT_ATIF, EVIDENCE_FORMAT_OTLP, EVIDENCE_TRACE
 from nemo_evaluator_sdk.values.otlp import (
     fill_missing_start_times,
@@ -48,13 +47,15 @@ from nemo_evaluator_sdk.values.otlp import (
     set_span_attributes,
 )
 from nemo_evaluator_sdk.values.protocol import OUTPUT_DETAIL
-from nemo_platform.types.intake.evaluation_context_param import EvaluationContextParam
-from nemo_platform.types.intake.evaluator_result_create_params import EvaluatorResultCreateParams
-from nemo_platform.types.intake.evaluator_result_data_type import EvaluatorResultDataType
-from nemo_platform.types.intake.ingest.atif_agent_param import AtifAgentParam
-from nemo_platform.types.intake.ingest.atif_create_params import AtifCreateParams
-from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
-from nemo_platform.types.intake.ingest.atif_step_param import AtifStepParam
+from nemo_platform_plugin.intake.types import (
+    AtifAgentParam,
+    AtifCreateParams,
+    AtifFinalMetricsParam,
+    AtifStepParam,
+    EvaluationContextParam,
+    EvaluatorResultCreateParams,
+    EvaluatorResultDataType,
+)
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from pydantic import RootModel
 

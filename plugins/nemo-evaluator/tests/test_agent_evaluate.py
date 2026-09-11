@@ -59,11 +59,11 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTrial,
     AgentEvalTrialStatus,
     AgentOutput,
+    TrialMeasurements,
 )
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
 from nemo_platform_plugin.commands import add_job_commands
@@ -85,6 +85,8 @@ from nemo_platform_plugin.jobs.execution_profiles import (
 from nemo_platform_plugin.jobs.providers import SubprocessExecutionProvider
 from nemo_platform_plugin.jobs.spec import BaseExecutionProfile, PlatformJobSpec
 from nemo_platform_plugin.scheduler import NemoJobScheduler
+from nemo_platform_plugin.sdk import AsyncNeMoPlatform, NeMoPlatform
+from pydantic import ValidationError
 from pytest_mock import MockerFixture
 from typer.testing import CliRunner
 
@@ -1584,6 +1586,80 @@ async def test_trial_error_survives_the_job_spec_wire_contract() -> None:
     round_tripped = AgentEvalSpec.model_validate(json.loads(json.dumps(spec.model_dump(mode="json"))))
     assert round_tripped.trials is not None
     assert round_tripped.trials[0].error == error
+
+
+@pytest.mark.parametrize("spec_type", [AgentEvalInputSpec, AgentEvalSpec])
+@pytest.mark.parametrize(
+    ("payload", "expected_measurements"),
+    [
+        pytest.param(
+            {
+                "measurements": {
+                    "prompt_tokens": 8,
+                    "completion_tokens": 2,
+                    "runtime_sec": 0,
+                    "cost_usd": 0,
+                },
+                "metadata": {"reward": 0.8},
+            },
+            TrialMeasurements(prompt_tokens=8, completion_tokens=2, runtime_sec=0, cost_usd=0),
+            id="typed",
+        ),
+        pytest.param(
+            {"metadata": {"prompt_tokens": 8, "completion_tokens": 2, "duration_ms": 1500}},
+            TrialMeasurements(),
+            id="metadata-only",
+        ),
+        pytest.param(
+            {
+                "measurements": {"prompt_tokens": 8, "completion_tokens": 2},
+                "metadata": {"prompt_tokens": 999, "completion_tokens": 999, "duration_ms": 1500},
+            },
+            TrialMeasurements(prompt_tokens=8, completion_tokens=2),
+            id="conflicting-metadata",
+        ),
+    ],
+)
+def test_precomputed_trial_measurements_validate_across_both_job_specs(
+    spec_type: type[AgentEvalInputSpec] | type[AgentEvalSpec],
+    payload: dict[str, object],
+    expected_measurements: TrialMeasurements,
+) -> None:
+    row = {"id": "stored-trial", "task_id": "task-1", "status": "partial", **payload}
+
+    spec = spec_type.model_validate(
+        {
+            "trials": [row],
+            "tasks": [_task_spec().model_dump(mode="json")],
+        }
+    )
+
+    assert spec.trials is not None
+    assert spec.trials[0].measurements == expected_measurements
+    assert spec.trials[0].metadata == payload.get("metadata", {})
+
+
+@pytest.mark.parametrize("spec_type", [AgentEvalInputSpec, AgentEvalSpec])
+@pytest.mark.parametrize("measurements", [None, {"prompt_tokens": -1}])
+def test_job_specs_reject_invalid_typed_measurements_without_metadata_fallback(
+    spec_type: type[AgentEvalInputSpec] | type[AgentEvalSpec],
+    measurements: object,
+) -> None:
+    with pytest.raises(ValidationError):
+        spec_type.model_validate(
+            {
+                "trials": [
+                    {
+                        "id": "stored-trial",
+                        "task_id": "task-1",
+                        "status": "partial",
+                        "measurements": measurements,
+                        "metadata": {"prompt_tokens": 8, "duration_ms": 1500},
+                    }
+                ],
+                "tasks": [_task_spec().model_dump(mode="json")],
+            }
+        )
 
 
 async def test_compile_resolves_gym_runner_env_secrets() -> None:

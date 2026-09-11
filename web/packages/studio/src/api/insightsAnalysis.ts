@@ -65,6 +65,17 @@ export const triggerInsightsRun = async (
   agent: string,
   overrides: InsightsModelOverrides = {}
 ): Promise<InsightsTriggerResult> => {
+  const invalidOverride = [overrides.default_model, overrides.fast_model]
+    .map((ref) => ref?.trim())
+    .find((ref): ref is string => !!ref && !isQualifiedModelRef(ref));
+  if (invalidOverride) {
+    return {
+      agent,
+      status: 'error',
+      message: `Model reference "${invalidOverride}" must use workspace/name format (for example "default/model-name").`,
+    };
+  }
+
   let config;
   try {
     config = await insightsGetAnalysisConfig(workspace, agent);
