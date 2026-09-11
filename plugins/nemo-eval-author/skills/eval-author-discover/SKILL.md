@@ -69,9 +69,24 @@ for py in .venv/bin/python ./venv/bin/python python3; do
 done
 ```
 
-Nothing prints a version when Harbor is not installed anywhere. Do not install it
-yourself; in the user's repository the missing environment is the finding. Tell
-them what you found and ask how they want to proceed.
+If none prints a version, check an existing uv tool installation before declaring
+Harbor unavailable. `uv tool install harbor` isolates Harbor from project Python:
+
+```bash
+if command -v uv >/dev/null 2>&1; then
+  harbor_tool_root="$(uv tool dir)" &&
+    "$harbor_tool_root/harbor/bin/python" -c \
+      "import harbor, sys; print(sys.executable, harbor.__version__)"
+fi
+```
+
+Use the printed interpreter for discovery; a successful CLI invocation alone is
+not enough. If the CLI works but these probes fail, inspect its launcher or ask
+for the environment that owns it rather than reporting that Harbor is not
+installed anywhere. Preserve the existing compatible version; do not install
+another copy. If no usable environment can be found, report the failed probes
+and ask how the user wants to proceed. For a user building their first suite,
+`eval-author-first-eval` can continue Ethos and case planning without Harbor.
 
 The report records which mode produced it either way, in `runtime.harbor_importable`
 and the top-level `proven` field.
@@ -120,7 +135,7 @@ rung's failure often disappears once you fix a higher one.
 | Check | What it means and what to do |
 |---|---|
 | `harbor` | Harbor is not importable by this interpreter. Re-run with the interpreter from **Before you start** |
-| `config` | No config file declares a nonempty `datasets` or `tasks` list. Confirm with the user where their suite lives |
+| `config` | No config file declares a nonempty `datasets` or `tasks` list. Confirm the location if an existing suite is expected. If the user has no evals and asked to build them, follow `eval-author-first-eval` |
 | `config-parse` | A config file did not parse. Either PyYAML is missing, which means the wrong interpreter, or the file's YAML is broken. The hint says which |
 | `schema` | Harbor rejected the config's shape. The message carries the offending field path |
 | `resolution` | Harbor could not turn the config into a job. Usually a `datasets[].path` that does not exist. This fails before any container starts |
@@ -156,9 +171,11 @@ report describes the repository they meant:
 
 1. `proven` is `true`. When it is `false`, report only that Harbor is missing.
 2. `repo_root` is the repository they named.
-3. `configs` lists the suite they care about. An empty list on a repository they
-   described as having evals means the configs sit deeper than four directories, or
-   declare no `datasets` or `tasks` list.
+3. `configs` lists the suite they care about. An empty list can mean no suite,
+   another framework, or configs beyond the supported search depth or shape.
+   Resolve that distinction from repository evidence and user intent. For users
+   with no evals who requested authoring, hand off to `eval-author-first-eval`;
+   for inventory-only requests, report absence and offer that next step.
 4. `task_count` is in the range they expect. A count of zero with a passing `tasks`
    check means the config resolves tasks from a registry, not from disk.
 Keep `proven`, `runnable`, and check names in the evidence. When some configs pass
