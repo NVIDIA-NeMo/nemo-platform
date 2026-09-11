@@ -205,8 +205,9 @@ def test_run_numeric_study_all_trials_failed(tmp_path: Path) -> None:
 
     payload = _payload()
     payload["optimizer"]["numeric"]["n_trials"] = 2
-    with pytest.raises(StudyDriverError, match="no completed trials"):
+    with pytest.raises(StudyDriverError, match="no completed trials") as exc_info:
         run_numeric_study(payload, tmp_path, AlwaysFailEvaluator(), seed=0)
+    assert exc_info.value.trial_count == 2
 
 
 def test_sanitize_config_for_artifact_redacts_secrets() -> None:
