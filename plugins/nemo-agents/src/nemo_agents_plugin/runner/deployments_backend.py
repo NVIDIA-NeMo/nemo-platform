@@ -38,6 +38,7 @@ from nemo_agents_plugin.runner.fabric_artifact_staging import (
     FabricArtifactStagingError,
     stage_fabric_ethos_config_files,
 )
+from nemo_agents_plugin.spec_revision import SpecRevision, stage_with_spec_revision
 from nemo_agents_plugin.telemetry.intake_export import (
     configure_intake_atif_export,
     supports_intake_atif_export,
@@ -693,16 +694,22 @@ class DeploymentsRunnerBackend(RunnerBackend):
             deployment_labels["nemo.agents/runtime"] = "fabric"
 
         staged_config_files: list[ConfigFile] | None = None
+        staged_spec: SpecRevision | None = None
         if is_fabric and agent:
             agent_yaml_path = _fabric_config_mount_path(self._config.config_mount_path)
+            sdk = get_async_platform_sdk(as_service="agents", internal=True)
             try:
-                sdk = get_async_platform_sdk(as_service="agents", internal=True)
-                staged_config_files = await stage_fabric_ethos_config_files(
+                staged_config_files, staged_spec = await stage_with_spec_revision(
+                    sdk,
                     workspace=workspace,
                     agent_name=agent,
-                    rewritten_agent_config=config,
-                    agent_yaml_path=agent_yaml_path,
-                    sdk=sdk.files,
+                    stage=lambda: stage_fabric_ethos_config_files(
+                        workspace=workspace,
+                        agent_name=agent,
+                        rewritten_agent_config=config,
+                        agent_yaml_path=agent_yaml_path,
+                        sdk=sdk.files,
+                    ),
                 )
             except FabricArtifactStagingError as exc:
                 logger.error("Refusing to deploy Fabric agent %r: %s", name, exc)
@@ -766,7 +773,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
             resolved_image,
             deployment_mode,
         )
-        return DeploymentInfo(name=name, status="starting", endpoint="", endpoints=[])
+        return DeploymentInfo(name=name, status="starting", endpoint="", endpoints=[], staged_spec=staged_spec)
 
     async def get_deployment_status(self, workspace: str, name: str) -> DeploymentInfo | None:
         entities = self._entity_client()

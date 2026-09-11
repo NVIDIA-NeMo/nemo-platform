@@ -23,7 +23,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from nemo_agents_plugin.agent_config_formats import AgentConfigFormatError, resolve_agent_config_for_deployment
 from nemo_agents_plugin.api.v2._perms import DeploymentPerms
-from nemo_agents_plugin.api.v2.dependencies import get_entity_client
+from nemo_agents_plugin.api.v2.dependencies import get_entity_client, get_files_client
 from nemo_agents_plugin.authz import scope
 from nemo_agents_plugin.config import AgentsConfig
 from nemo_agents_plugin.entities import (
@@ -49,10 +49,12 @@ from nemo_agents_plugin.schema import (
     DeploymentFilter,
     DeploymentPage,
 )
+from nemo_agents_plugin.spec_revision import read_spec_revision
 from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.auth import current_auth_context
 from nemo_platform_plugin.authz import CallerKind, path_rule
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
+from nemo_platform_plugin.files.client import AsyncFilesClient
 from nemo_platform_plugin.schema import PaginationData
 
 logger = logging.getLogger(__name__)
@@ -74,6 +76,7 @@ async def create_deployment(
     body: CreateDeploymentRequest,
     request: Request,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
+    files_client: AsyncFilesClient = Depends(get_files_client),
 ) -> AgentDeployment:
     """Create a new deployment for an existing agent.
 
@@ -136,7 +139,11 @@ async def create_deployment(
     )
     merged = _merge_environment(resolved_config, resolved_environment.environment_spec)
 
-    # 5. Create the entity with status "pending"
+    # 5. Record the spec fileset revision this deployment starts from. The runner
+    # rewrites it with whatever it actually stages.
+    spec = await read_spec_revision(files_client, workspace=workspace, agent_name=body.agent)
+
+    # 6. Create the entity with status "pending"
     deployment = AgentDeployment(
         name=deployment_name,
         workspace=workspace,
@@ -145,6 +152,8 @@ async def create_deployment(
         environment=body.environment,
         compute=resolved_environment.compute_spec,
         secrets=merged.secrets,
+        spec_revision=spec.revision,
+        spec_tracked_revision=spec.tracked_revision,
         status="pending",
         deployment_mode=body.deployment_mode,
         image=body.image,
