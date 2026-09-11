@@ -43,6 +43,58 @@ complete build and runtime dependency closure before grading.
 This is an authoring requirement, not a claim that the static helper verifies
 the complete dependency closure.
 
+### Configuration examples
+
+Minimal isolated task configuration:
+
+```toml
+[verifier]
+environment_mode = "separate"
+network_mode = "no-network"
+
+[verifier.environment]
+network_mode = "no-network"
+
+[environment]
+network_mode = "no-network"
+```
+
+Add a step-local environment only when that step needs a different verifier
+image or resource configuration:
+
+```toml
+[[steps]]
+name = "grade"
+
+[steps.verifier]
+environment_mode = "separate"
+
+[steps.verifier.environment]
+network_mode = "no-network"
+```
+
+## Reviewer documentation
+
+The task README is not passed to the agent. Give it a level-one task title and
+these substantive level-two sections:
+
+- `Difficulty explanation`: why the task is difficult for agents and humans;
+- `Environment and software requirements`: runtimes, services, hardware,
+  versions, licensing, and availability constraints;
+- `Ground-truth provenance`: what establishes correctness and where that
+  evidence came from, without exposing private values;
+- `Solution explanation`: the high-level reference approach without duplicating
+  `solution/solve.sh`;
+- `Verification explanation`: the observable outcomes and how the verifier
+  distinguishes success from failure; and
+- `Relevant experience`: human-supplied experience relevant to authoring or
+  reviewing the task.
+
+Keep each section concise and evidence-backed. Do not repeat `instruction.md`,
+reveal verifier internals to the agent, or invent author experience. If a human
+cannot supply and review `Relevant experience`, keep the environment `unproven`
+rather than claiming it is ready.
+
 ## Reproducibility manifest
 
 Record the exact task tree before running Harbor:

@@ -336,13 +336,13 @@ def _init(args: argparse.Namespace) -> dict[str, Any]:
     if ".eval-author" not in root.parts:
         raise ContractError("task workspace root must stay under a .eval-author directory")
     _mkdir_private(root)
-    ignore = root / ".gitignore"
-    ignore_text = "*\n!.gitignore\n"
-    if ignore.exists():
-        if ignore.is_symlink() or ignore.read_text(encoding="utf-8") != ignore_text:
-            raise ContractError(f"refusing to replace unexpected ignore rules at {ignore}")
+    gitignore_path = root / ".gitignore"
+    expected_gitignore = "*\n!.gitignore\n"
+    if gitignore_path.exists():
+        if gitignore_path.is_symlink() or gitignore_path.read_text(encoding="utf-8") != expected_gitignore:
+            raise ContractError(f"workspace .gitignore must contain only the required exclusions: {gitignore_path}")
     else:
-        _write_text(ignore, ignore_text)
+        _write_text(gitignore_path, expected_gitignore)
 
     task_dir = root / args.task_id
     if task_dir.exists():
@@ -2107,7 +2107,9 @@ def _check(args: argparse.Namespace) -> dict[str, Any]:
                     or not privacy["contextual_review_complete"]
                     or privacy["blocking_reasons"]
                 ):
-                    errors.append("finalized candidate lacks a clear contextual privacy review")
+                    errors.append(
+                        "finalized candidate lacks a completed contextual privacy review with no blocking findings"
+                    )
                 task_contract = _validate_task(task_dir)
                 _validate_reproducibility(task_dir)
                 if environment.get("verifier_environment_mode") != task_contract["verifier_environment_mode"]:

@@ -319,6 +319,26 @@ def test_init_creates_private_gitignored_workspace(tmp_path: Path) -> None:
         assert (task_dir / "summary.json").stat().st_mode & 0o777 == 0o600
 
 
+@pytest.mark.parametrize("symlink", [False, True])
+def test_init_preserves_unexpected_gitignore(tmp_path: Path, symlink: bool) -> None:
+    root = tmp_path / ".eval-author" / "trace-environments"
+    root.mkdir(parents=True)
+    ignore = root / ".gitignore"
+    original = "*\n!.gitignore\n" if symlink else "existing-user-rule\n"
+    target = tmp_path / "existing-ignore" if symlink else ignore
+    target.write_text(original, encoding="utf-8")
+    if symlink:
+        ignore.symlink_to(target)
+
+    code, result = _run("init", "--root", str(root), "--task-id", "repair-fixture")
+
+    assert code == 1
+    assert "workspace .gitignore" in result["error"]
+    assert target.read_text(encoding="utf-8") == original
+    assert ignore.is_symlink() is symlink
+    assert not (root / "repair-fixture").exists()
+
+
 def test_init_refuses_to_write_outside_eval_author(tmp_path: Path) -> None:
     code, result = _run("init", "--root", str(tmp_path / "elsewhere"), "--task-id", "repair-fixture")
 
