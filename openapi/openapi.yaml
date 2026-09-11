@@ -2307,9 +2307,10 @@ paths:
         storage config, including the repository and directory, is left alone.
 
 
-        Deployments stage the fileset when they are created, so existing deployments
+        A running deployment keeps serving the revision it staged. It moves to this
+        one
 
-        keep serving the revision they were staged from.'
+        when the runner next stages the fileset, and records the revision it staged.'
       operationId: refresh_fileset_apis_files_v2_workspaces__workspace__filesets__name__refresh_post
       parameters:
       - name: workspace
@@ -2331,8 +2332,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FilesetOutput'
+        '400':
+          description: Storage configuration, secret, or source rejected the refresh
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+        '404':
+          description: Fileset not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
         '409':
           description: Fileset does not track a mutable revision
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+        '502':
+          description: Storage backend unavailable
           content:
             application/json:
               schema:

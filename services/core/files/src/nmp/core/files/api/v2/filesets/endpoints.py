@@ -588,8 +588,20 @@ async def update_fileset_metadata(
     response_model=FilesetOutput,
     status_code=HTTP_200_OK,
     responses={
+        HTTP_400_BAD_REQUEST: {
+            "description": "Storage configuration, secret, or source rejected the refresh",
+            **_HTTP_EXCEPTION_DETAIL,
+        },
+        HTTP_404_NOT_FOUND: {
+            "description": "Fileset not found",
+            **_HTTP_EXCEPTION_DETAIL,
+        },
         HTTP_409_CONFLICT: {
             "description": "Fileset does not track a mutable revision",
+            **_HTTP_EXCEPTION_DETAIL,
+        },
+        HTTP_502_BAD_GATEWAY: {
+            "description": "Storage backend unavailable",
             **_HTTP_EXCEPTION_DETAIL,
         },
     },
@@ -609,8 +621,8 @@ async def refresh_fileset(
     repoints the fileset at whatever it names now. Everything else about the
     storage config, including the repository and directory, is left alone.
 
-    Deployments stage the fileset when they are created, so existing deployments
-    keep serving the revision they were staged from.
+    A running deployment keeps serving the revision it staged. It moves to this one
+    when the runner next stages the fileset, and records the revision it staged.
     """
     logger.info("POST /filesets/%s/refresh - workspace=%s", _sanitize_for_log(name), _sanitize_for_log(workspace))
     try:

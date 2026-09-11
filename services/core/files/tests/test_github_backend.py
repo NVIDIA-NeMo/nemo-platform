@@ -98,9 +98,11 @@ class TestRaiseForGithubStatus:
         with pytest.raises(GithubAccessError):
             raise_for_github_status(403, "repository acme/agents")
 
-    def test_exhausted_rate_limit_is_unavailable_not_access_denied(self):
+    @pytest.mark.parametrize("header", ["x-ratelimit-remaining", "X-RateLimit-Remaining"])
+    def test_exhausted_rate_limit_is_unavailable_not_access_denied(self, header: str):
+        # GitHub capitalizes this header over HTTP/1.1, which is what aiohttp speaks.
         with pytest.raises(GithubUnavailableError, match="rate limit"):
-            raise_for_github_status(403, "repository acme/agents", {"x-ratelimit-remaining": "0"})
+            raise_for_github_status(403, "repository acme/agents", {header: "0"})
 
     @pytest.mark.parametrize("status", [429, 500, 502, 503])
     def test_server_side_failures_are_unavailable(self, status: int):
@@ -375,6 +377,11 @@ class TestUrlEncoding:
         # address a repository other than the one the rest of the config names.
         with pytest.raises(ValidationError, match="path segment"):
             GithubStorageConfig(**{"owner": "acme", "repo": "agents", field: "../../../user"})
+
+    def test_an_http_api_base_url_is_refused(self):
+        # Every request carries the token, so the endpoint has to be encrypted.
+        with pytest.raises(ValidationError, match="must use https"):
+            _config(api_base_url="http://github.internal.example.com/api/v3")
 
     def test_a_multi_segment_owner_is_refused(self):
         with pytest.raises(ValidationError, match="single path segment"):

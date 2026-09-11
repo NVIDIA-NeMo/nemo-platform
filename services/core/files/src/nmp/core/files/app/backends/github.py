@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -50,7 +50,18 @@ class GithubUnavailableError(StorageUnavailableError):
     """Raised when GitHub is unavailable (5xx, 429)."""
 
 
-def raise_for_github_status(status: int, subject: str, headers: dict[str, str] | None = None) -> None:
+def _header(headers: Mapping[str, str] | None, name: str) -> str | None:
+    """Read a header by name regardless of case.
+
+    GitHub capitalizes rate-limit headers over HTTP/1.1, and a plain dict built
+    from the response loses aiohttp's case-insensitive lookup.
+    """
+    if not headers:
+        return None
+    return next((value for key, value in headers.items() if key.lower() == name), None)
+
+
+def raise_for_github_status(status: int, subject: str, headers: Mapping[str, str] | None = None) -> None:
     """Map a GitHub response status onto the storage exception hierarchy."""
     if status < 400:
         return
@@ -60,7 +71,7 @@ def raise_for_github_status(status: int, subject: str, headers: dict[str, str] |
     if status == 404:
         raise GithubConfigError(f"GitHub has no {subject}, or the token cannot see it")
     if status in (401, 403):
-        if headers and headers.get("x-ratelimit-remaining") == "0":
+        if _header(headers, "x-ratelimit-remaining") == "0":
             raise GithubUnavailableError(f"GitHub rate limit exhausted while reading {subject}")
         raise GithubAccessError(f"GitHub denied access to {subject}")
     if status == 429 or status >= 500:
@@ -111,7 +122,7 @@ class GithubStorageImpl(StorageImpl):
         session = get_http_session()
         try:
             async with session.get(url, headers=self._headers(JSON_MEDIA_TYPE)) as response:
-                raise_for_github_status(subject=subject, status=response.status, headers=dict(response.headers))
+                raise_for_github_status(subject=subject, status=response.status, headers=response.headers)
                 return await response.json()
         except aiohttp.ClientError as exc:
             raise GithubUnavailableError(f"Could not reach GitHub to read {subject}: {exc}") from exc
@@ -182,7 +193,7 @@ class GithubStorageImpl(StorageImpl):
                     raise_for_github_status(
                         status=response.status,
                         subject=f"{path} in {self._repo_slug}",
-                        headers=dict(response.headers),
+                        headers=response.headers,
                     )
                     async for chunk in response.content.iter_chunked(self.config.read_chunk_size):
                         yield chunk

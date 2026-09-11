@@ -394,8 +394,8 @@ class FilesetsResource(SyncAPIResource):
         repoints the fileset at whatever it names now. Everything else about the storage
         config, including the repository and directory, is left alone.
 
-        Deployments stage the fileset when they are created, so existing deployments
-        keep serving the revision they were staged from.
+        A running deployment keeps serving the revision it staged. It moves to this one
+        when the runner next stages the fileset, and records the revision it staged.
 
         Args:
           extra_headers: Send extra headers
@@ -768,8 +768,8 @@ class AsyncFilesetsResource(AsyncAPIResource):
         repoints the fileset at whatever it names now. Everything else about the storage
         config, including the repository and directory, is left alone.
 
-        Deployments stage the fileset when they are created, so existing deployments
-        keep serving the revision they were staged from.
+        A running deployment keeps serving the revision it staged. It moves to this one
+        when the runner next stages the fileset, and records the revision it staged.
 
         Args:
           extra_headers: Send extra headers

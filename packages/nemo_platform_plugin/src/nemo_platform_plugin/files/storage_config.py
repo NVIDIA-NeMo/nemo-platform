@@ -235,6 +235,16 @@ class GithubStorageConfig(BaseStorageConfig):
     def reject_relative_revision(cls, v: str) -> str:
         return _reject_relative_segments("revision", v)
 
+    @field_validator("api_base_url")
+    @classmethod
+    def require_https(cls, v: str) -> str:
+        # Every request to this host carries the token, and the external-host
+        # allowlist matches on scheme, so an allowlisted http:// host would send it
+        # in cleartext.
+        if not v.lower().startswith("https://"):
+            raise ValueError(f"api_base_url must use https, got {v!r}")
+        return v
+
     @property
     def pinned_revision(self) -> str:
         return self.revision
