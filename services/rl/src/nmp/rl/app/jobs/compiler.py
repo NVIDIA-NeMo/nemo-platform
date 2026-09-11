@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 
-from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.integrations import IntegrationsSpec
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
@@ -49,7 +48,7 @@ from nmp.customization_common.schemas.file_io import (
     UploadItem,
 )
 from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
-from nmp.customization_common.service.platform_client import fetch_model_entity
+from nmp.customization_common.service.platform_client import AsyncCustomizationPlatformClients, fetch_model_entity
 from nmp.customization_common.tasks.file_io_metadata import build_output_fileset_metadata_from_model_entity
 from nmp.rl.app.constants import (
     BASE_LOG_DIR_ENVVAR,
@@ -511,7 +510,7 @@ def _build_training_step(
 async def platform_job_config_compiler(
     workspace: str,
     job_spec: RlJobOutput,
-    sdk: AsyncNeMoPlatform,
+    platform: AsyncCustomizationPlatformClients,
     *,
     job_name: str | None = None,
     profile: str | None = None,
@@ -537,7 +536,7 @@ async def platform_job_config_compiler(
 
     job_spec.validate_for_training()
 
-    me = await fetch_model_entity(job_spec.model, workspace, sdk)
+    me = await fetch_model_entity(job_spec.model, workspace, platform)
     trust_remote_code = me.trust_remote_code or False
 
     cpu_resources = _get_cpu_resources()

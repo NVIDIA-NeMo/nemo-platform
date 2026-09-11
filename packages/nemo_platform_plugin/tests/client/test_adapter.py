@@ -36,6 +36,21 @@ def test_client_from_platform_preserves_stainless_retry_policy() -> None:
     )
 
 
+def test_client_from_platform_close_does_not_close_platform_transport() -> None:
+    http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
+    platform = NeMoPlatform(
+        base_url="http://test",
+        workspace="default",
+        http_client=http_client,
+    )
+
+    client = client_from_platform(platform, JobsClient)
+    client.close()
+
+    assert not http_client.is_closed
+    http_client.close()
+
+
 def test_client_from_platform_uses_platform_prepare_url() -> None:
     http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
 
@@ -98,6 +113,24 @@ async def test_async_client_from_platform_uses_async_transport() -> None:
         assert_type(client, AsyncJobsClient)
         assert isinstance(client, AsyncJobsClient)
         assert client._client is http_client
+    finally:
+        await platform.close()
+
+
+@pytest.mark.asyncio
+async def test_async_client_from_platform_aclose_does_not_close_platform_transport() -> None:
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)))
+    platform = AsyncNeMoPlatform(
+        base_url="http://gateway",
+        workspace="default",
+        http_client=http_client,
+    )
+
+    try:
+        client = client_from_platform(platform, AsyncJobsClient)
+        await client.aclose()
+
+        assert not http_client.is_closed
     finally:
         await platform.close()
 
