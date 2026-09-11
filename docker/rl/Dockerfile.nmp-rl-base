@@ -335,7 +335,8 @@ COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} --exclude=**/.git . /opt/n
 # checkpoint finalization, Gym setuptools<81 for pkg_resources, and quoting those PEP 508
 # specs in Gym's bash uv-pip command.
 # nemo-rl-gym-host-hf-cache.patch copies a vendored .huggingface snapshot into writable
-# work and sets HF_HOME / offline flags before RunHelper.start().
+# work and points HF_HOME at it before RunHelper.start(); Hub/datasets offline flags
+# follow NMP_ENVIRONMENT_OFFLINE from the compiled job.
 # Drop hunks (or the file) once the corresponding pin contains the fix.
 RUN --mount=type=bind,source=docker/rl/patches,target=/patches \
     cd /opt/nemo-rl && \

@@ -137,11 +137,18 @@ def _run_pip_download(
 
 
 def _build_downloaded_sdists(wheels_dir: Path) -> None:
-    """Build every source artifact into a wheel while the conversion host has egress."""
+    """Build source artifacts with the training image's Python while the host has egress."""
     sdists = sorted(path for path in wheels_dir.iterdir() if path.is_file() and path.suffix != ".whl")
     for sdist in sdists:
         cmd = [
-            sys.executable,
+            "uv",
+            "run",
+            "--no-project",
+            "--python",
+            TARGET_PYTHON_VERSION,
+            "--with",
+            "pip",
+            "python",
             "-m",
             "pip",
             "wheel",
@@ -171,23 +178,36 @@ def _assert_complete_wheel_closure(wheels_dir: Path, requirements_file: Path) ->
         )
 
 
-def _wheel_platform_tags(wheel: Path) -> list[str]:
-    """Platform tags a wheel declares, e.g. ``manylinux2014_x86_64.manylinux_2_17_x86_64``."""
-    return wheel.stem.rsplit("-", 1)[-1].split(".")
+def _tag_targets_training_image(interpreter: str, abi: str, platform: str) -> bool:
+    """Whether one wheel tag is compatible with the CPython 3.13 linux/amd64 runtime."""
+    if not _TARGET_PLATFORM_TAG_RE.fullmatch(platform):
+        return False
+
+    target_major, target_minor = (int(part) for part in TARGET_PYTHON_VERSION.split(".", 1))
+    target = f"{target_major}{target_minor}"
+    if abi == "none":
+        return interpreter in {f"cp{target}", f"py{target}", f"py{target_major}"}
+    if interpreter == f"cp{target}" and abi in {f"cp{target}", "abi3"}:
+        return True
+    if abi != "abi3":
+        return False
+
+    match = re.fullmatch(r"cp(\d)(\d+)", interpreter)
+    return bool(match and int(match.group(1)) == target_major and int(match.group(2)) <= target_minor)
 
 
 def assert_wheels_target_platform(wheels_dir: Path) -> None:
-    """Reject wheels that are not pure-Python or linux x86_64."""
-    foreign: dict[str, list[str]] = {}
+    """Reject wheels whose Python, ABI, or platform tags miss the training image."""
+    incompatible: dict[str, list[str]] = {}
     for wheel in sorted(wheels_dir.glob("*.whl")):
-        tags = _wheel_platform_tags(wheel)
-        if not any(_TARGET_PLATFORM_TAG_RE.match(tag) for tag in tags):
-            foreign[wheel.name] = tags
-    if foreign:
-        listed = "\n  ".join(f"{name} -> {', '.join(tags)}" for name, tags in foreign.items())
+        tags = parse_wheel_filename(wheel.name)[3]
+        if not any(_tag_targets_training_image(tag.interpreter, tag.abi, tag.platform) for tag in tags):
+            incompatible[wheel.name] = sorted(str(tag) for tag in tags)
+    if incompatible:
+        listed = "\n  ".join(f"{name} -> {', '.join(tags)}" for name, tags in incompatible.items())
         raise RuntimeError(
-            f"{len(foreign)} vendored wheel(s) are not installable on the training image "
-            f"(expected pure-Python or linux x86_64):\n  {listed}"
+            f"{len(incompatible)} vendored wheel(s) are not installable on the training image "
+            f"(expected Python {TARGET_PYTHON_VERSION} linux/amd64):\n  {listed}"
         )
 
 

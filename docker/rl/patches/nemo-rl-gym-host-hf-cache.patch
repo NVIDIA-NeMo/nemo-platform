@@ -20,7 +20,7 @@ diff --git a/nemo_rl/environments/sandbox/gym_host_runtime.py b/nemo_rl/environm
  UV_CACHE_DIR_KEY = "uv_cache_dir"
  # Mirrors DEFAULT_GYM_PORT_RANGE_{LOW,HIGH} in nemo_rl.distributed.virtual_cluster.
  DEFAULT_GYM_PORT_RANGE_LOW = 5000
-@@ -183,8 +188,40 @@
+@@ -183,8 +188,43 @@
      return os.environ.get(ENVIRONMENT_PATH_ENV_KEY, "").strip() or None
  
  
@@ -30,9 +30,11 @@ diff --git a/nemo_rl/environments/sandbox/gym_host_runtime.py b/nemo_rl/environm
 +
 +    Hub loaders that ignore ``vf_env_args.dataset_path`` still call
 +    ``load_dataset("org/name")``; pointing the HF caches at a writable copy lets
-+    that resolve from disk under ``HF_HUB_OFFLINE=1``. Do not point them at the
-+    dataset mount: ``datasets`` writes lock files there and fails on a read-only
-+    filesystem. No-op when the FileSet has no ``.huggingface/`` snapshot.
++    that resolve from disk. Do not point them at the dataset mount: ``datasets``
++    writes lock files there and fails on a read-only filesystem. Offline flags
++    follow ``NMP_ENVIRONMENT_OFFLINE`` so a job that allows internet can still
++    fetch Hub content missing from the snapshot. No-op when the FileSet has no
++    ``.huggingface/`` snapshot.
 +    """
 +    dataset_path = os.environ.get(DATASET_PATH_ENV_KEY, "").strip()
 +    work_path = os.environ.get(WORK_PATH_ENV_KEY, "").strip()
@@ -50,8 +52,9 @@ diff --git a/nemo_rl/environments/sandbox/gym_host_runtime.py b/nemo_rl/environm
 +    # unset, and an explicit cache variable wins over HF_HOME, so name both leaves.
 +    os.environ["HF_DATASETS_CACHE"] = os.path.join(dest, "datasets")
 +    os.environ["HF_HUB_CACHE"] = os.path.join(dest, "hub")
-+    os.environ["HF_HUB_OFFLINE"] = "1"
-+    os.environ["HF_DATASETS_OFFLINE"] = "1"
++    if os.environ.get(ENVIRONMENT_OFFLINE_ENV_KEY, "").strip().lower() in {"1", "true"}:
++        os.environ["HF_HUB_OFFLINE"] = "1"
++        os.environ["HF_DATASETS_OFFLINE"] = "1"
 +
 +
  def bootstrap_gym_host() -> tuple[Any, Any, Any]:

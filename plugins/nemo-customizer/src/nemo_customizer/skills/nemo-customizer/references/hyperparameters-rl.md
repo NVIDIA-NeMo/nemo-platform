@@ -141,7 +141,7 @@ Lives under `training`, a **sibling of `parallelism`** and not a field on it. Th
 
 `dtensor` plus LoRA / expert parallelism / `automodel_kwargs` is **rejected at submit**: the worker does not implement them; left to NeMo-RL, LoRA dies in a Ray worker and the other two are ignored silently. Every conflict is listed at once.
 
-Keep the default unless the cluster's GPUs are pre-Hopper or you need Automodel's consolidated export or expert parallelism. `megatron` is not selectable: the image builds the extra, but the compiler still emits an inert `megatron_cfg`.
+Pre-Hopper GPUs must keep the default `dtensor` backend. On Hopper or newer, switch to `automodel` only when you need its consolidated export or expert parallelism. `megatron` is not selectable: the image builds the extra, but the compiler still emits an inert `megatron_cfg`.
 
 `v4_compatible` (`GRPOTraining.v4_compatible`, default `true`) is the compatibility control for that Automodel full-weight export. Automodel otherwise writes a transformers-v5 `config.json` that the platform's vLLM cannot load, so the compiler keeps the base checkpoint's v4 `config.json` on the published model and writes the in-memory v5 config beside it as `config.v5.json`. Set it `false` to export the v5 file as `config.json` instead. If the base checkpoint already uses transformers v5, the job logs warn you to opt out. The field has no effect on `dtensor` full-weight jobs or LoRA adapters.
 

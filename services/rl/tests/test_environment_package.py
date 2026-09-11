@@ -458,10 +458,11 @@ def test_download_hub_wheels_resolves_before_downloading(tmp_path: Path, monkeyp
 
 
 def test_download_hub_wheels_builds_sdists_and_requires_complete_closure(tmp_path: Path, monkeypatch) -> None:
-    """Source-only releases must become wheels; silently dropping them breaks offline Gym."""
+    """Source-only releases must become target-Python wheels; dropping them breaks offline Gym."""
     from nmp.rl.tasks.environment import convert as convert_mod
 
     commands: list[list[str]] = []
+    monkeypatch.setattr(convert_mod.sys, "executable", "/host/python3.12")
 
     def _fake_run(cmd, **kwargs):
         commands.append(cmd)
@@ -491,6 +492,18 @@ def test_download_hub_wheels_builds_sdists_and_requires_complete_closure(tmp_pat
     )
 
     wheel_cmd = next(cmd for cmd in commands if "wheel" in cmd)
+    assert wheel_cmd[:9] == [
+        "uv",
+        "run",
+        "--no-project",
+        "--python",
+        convert_mod.TARGET_PYTHON_VERSION,
+        "--with",
+        "pip",
+        "python",
+        "-m",
+    ]
+    assert "/host/python3.12" not in wheel_cmd
     assert "--no-deps" in wheel_cmd
     assert not (wheels / "verifiers-0.1.14.zip").exists()
     assert (wheels / "verifiers-0.1.14-py3-none-any.whl").is_file()
@@ -755,10 +768,12 @@ def test_download_targets_the_training_image_not_the_host(tmp_path: Path, monkey
         "cffi-2.1.1-cp313-cp313-macosx_11_0_arm64.whl",
         "charset_normalizer-3.5.0-cp313-cp313-macosx_10_13_universal2.whl",
         "foo-1.0-cp313-cp313-win_amd64.whl",
+        "host_built-1.0-cp312-cp312-manylinux_2_17_x86_64.whl",
+        "future-1.0-cp314-cp314-manylinux_2_17_x86_64.whl",
     ],
 )
 def test_assert_wheels_target_platform_rejects_foreign_wheels(tmp_path: Path, filename: str) -> None:
-    """Catch it here, not as an opaque resolver failure minutes into a cluster job."""
+    """Catch foreign platforms and Python ABIs before the cluster install."""
     from nmp.rl.tasks.environment.convert import assert_wheels_target_platform
 
     wheels = tmp_path / "wheels"
