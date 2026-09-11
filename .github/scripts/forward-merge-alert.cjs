@@ -176,6 +176,7 @@ function buildSlackMessage({
   conflicts,
   runUrl,
   userGroupId,
+  recoveryDocsUrl,
 }) {
   const mention = slackUserGroupMention(userGroupId);
   const lines = [
@@ -203,11 +204,13 @@ function buildSlackMessage({
     lines.push("", "Conflict metadata unavailable; see the failure details.");
   }
 
-  lines.push(
-    "",
-    "The bot will not retry. Manual recovery is required.",
-    `<${commentUrl}|View failure details>`,
-  );
+  lines.push("", "The bot will not retry. Manual recovery is required.");
+  if (recoveryDocsUrl?.trim()) {
+    lines.push(
+      `:point_right: *<${escapeSlackText(recoveryDocsUrl.trim())}|Follow these steps to fix the forward merge>*`,
+    );
+  }
+  lines.push(`<${commentUrl}|View failure details>`);
   return lines.join("\n");
 }
 
@@ -312,6 +315,7 @@ async function sendForwardMergeAlert({
     conflicts,
     runUrl: env.RUN_URL,
     userGroupId: env.SLACK_ALERT_USERGROUP_ID,
+    recoveryDocsUrl: env.FORWARD_MERGE_RECOVERY_DOCS_URL,
   });
   await postSlack({
     fetchImpl,
