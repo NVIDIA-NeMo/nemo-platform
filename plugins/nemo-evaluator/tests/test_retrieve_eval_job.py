@@ -27,6 +27,7 @@ from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.jobs.api_factory import CPUExecutionProviderSpec
+from nemo_platform_plugin.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from pydantic import ValidationError
 from pytest_mock import MockerFixture
 
@@ -139,6 +140,7 @@ async def test_compile_builds_cpu_retrieve_eval_task() -> None:
     assert step.name == "retrieve-eval"
     assert isinstance(step.executor, CPUExecutionProviderSpec)
     assert step.executor.container.command == ["nemo_evaluator.tasks.retrieve_eval"]
+    assert [variable.name for variable in step.environment] == [PERSISTENT_JOB_STORAGE_PATH_ENVVAR]
 
 
 def test_run_validates_fileset_and_persists_nemotron_keys(tmp_path: Path, mocker: MockerFixture) -> None:

@@ -167,7 +167,6 @@ class RetrieveEvalJob(NemoJob):
         """Compile a CPU task that calls the embedding target through IGW."""
         del workspace, entity_client, job_name, async_sdk, options
         canonical = RetrieveEvalSpec.model_validate(spec.model_dump())
-        environment = []
         secret_refs = [
             (model.api_key_env, model.api_key_secret.root)
             for retrieval in (canonical.target, canonical.baseline)
@@ -175,8 +174,7 @@ class RetrieveEvalJob(NemoJob):
             for model in (retrieval.embeddings, retrieval.reranker)
             if model is not None and model.api_key_secret is not None and model.api_key_env
         ]
-        if secret_refs:
-            environment = build_task_environment(secret_refs)
+        environment = build_task_environment(secret_refs)
         return PlatformJobSpec(
             steps=[
                 PlatformJobStep(
