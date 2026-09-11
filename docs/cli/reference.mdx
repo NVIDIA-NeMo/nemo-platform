@@ -1449,8 +1449,8 @@ Delete Fileset.
 Permanently deletes an unreferenced fileset from the platform.
 
 Referencing model
-or adapter entities must be relinked or deleted first. For local storage backends, this also deletes the
-underlying files.
+or adapter entities must be relinked or deleted first. For local storage
+backends, this also deletes the underlying files.
 
 **Usage:**
 
@@ -5280,6 +5280,10 @@ nemo secrets delete [OPTIONS] NAME
 **Help:**
 
 * `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
 
 #### nemo secrets list
 

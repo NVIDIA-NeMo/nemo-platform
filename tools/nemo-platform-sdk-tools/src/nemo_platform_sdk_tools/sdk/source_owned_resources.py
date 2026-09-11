@@ -32,6 +32,10 @@ SOURCE_OWNED_RESOURCE_EXCLUSIONS = (
         resource_name="jobs",
         path_prefixes=("/apis/jobs/v2",),
     ),
+    SourceOwnedResource(
+        resource_name="secrets",
+        path_prefixes=("/apis/secrets/v2",),
+    ),
 )
 
 
