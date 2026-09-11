@@ -12,12 +12,16 @@ entrypoints import scheduler submission machinery.
 from __future__ import annotations
 
 import inspect
-from typing import Any
+from types import UnionType
+from typing import Annotated, Callable, Union, get_args, get_origin, get_type_hints
 
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 
-_UNBOUND: Any = object()
+_UNBOUND = object()
 """Sentinel meaning "leave the parameter unbound" — the kwarg is omitted so
 Python applies the run signature's own default."""
 
@@ -29,7 +33,7 @@ class LocalRunError(RuntimeError):
 
 def resolve_run_kwargs(
     job_cls: type[NemoJob],
-    run: Any,
+    run: Callable[..., object],
     *,
     sdk: object | None,
     async_sdk: object | None,
@@ -64,6 +68,7 @@ def resolve_run_kwargs(
     ):
         params = params[1:]
 
+    type_hints = _get_run_type_hints(run)
     resolved: dict[str, object] = {}
     for param in params:
         if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
@@ -71,6 +76,7 @@ def resolve_run_kwargs(
         binding = _resolve_run_param(
             job_cls=job_cls,
             param=param,
+            annotation=type_hints.get(param.name, param.annotation),
             sdk=sdk,
             async_sdk=async_sdk,
             ctx=ctx,
@@ -86,6 +92,7 @@ def _resolve_run_param(
     *,
     job_cls: type[NemoJob],
     param: inspect.Parameter,
+    annotation: object,
     sdk: object | None,
     async_sdk: object | None,
     ctx: JobContext,
@@ -102,7 +109,7 @@ def _resolve_run_param(
 
     if param.name == "sdk":
         if sdk is not None:
-            return sdk
+            return _adapt_sync_sdk_for_annotation(sdk, annotation)
         if required:
             raise LocalRunError(
                 f"{job_cls.__name__}.run requires a `sdk` argument; "
@@ -113,7 +120,7 @@ def _resolve_run_param(
 
     if param.name == "async_sdk":
         if async_sdk is not None:
-            return async_sdk
+            return _adapt_async_sdk_for_annotation(async_sdk, annotation)
         if required:
             raise LocalRunError(
                 f"{job_cls.__name__}.run requires an `async_sdk` "
@@ -132,6 +139,63 @@ def _resolve_run_param(
         )
 
     return _UNBOUND
+
+
+def _get_run_type_hints(run: Callable[..., object]) -> dict[str, object]:
+    """Resolve postponed annotations for dependency adaptation.
+
+    Dependency injection is a runtime boundary, but the adaptation decision is
+    driven by the static ``run`` signature rather than each job branching on
+    unrelated SDK types.
+    """
+    try:
+        return get_type_hints(run)
+    except (AttributeError, NameError, TypeError, ValueError):
+        return {}
+
+
+def _adapt_sync_sdk_for_annotation(sdk: object, annotation: object) -> object:
+    client_cls = _sync_client_class_from_annotation(annotation)
+    if client_cls is not None and isinstance(sdk, NeMoPlatform):
+        return client_from_platform(sdk, client_cls)
+    return sdk
+
+
+def _adapt_async_sdk_for_annotation(async_sdk: object, annotation: object) -> object:
+    client_cls = _async_client_class_from_annotation(annotation)
+    if client_cls is not None and isinstance(async_sdk, AsyncNeMoPlatform):
+        return client_from_platform(async_sdk, client_cls)
+    return async_sdk
+
+
+def _sync_client_class_from_annotation(annotation: object) -> type[NemoClient] | None:
+    if isinstance(annotation, type) and issubclass(annotation, NemoClient):
+        return annotation
+
+    origin = get_origin(annotation)
+    if origin is Annotated:
+        return _sync_client_class_from_annotation(get_args(annotation)[0])
+    if origin in (Union, UnionType):
+        for arg in get_args(annotation):
+            client_cls = _sync_client_class_from_annotation(arg)
+            if client_cls is not None:
+                return client_cls
+    return None
+
+
+def _async_client_class_from_annotation(annotation: object) -> type[AsyncNemoClient] | None:
+    if isinstance(annotation, type) and issubclass(annotation, AsyncNemoClient):
+        return annotation
+
+    origin = get_origin(annotation)
+    if origin is Annotated:
+        return _async_client_class_from_annotation(get_args(annotation)[0])
+    if origin in (Union, UnionType):
+        for arg in get_args(annotation):
+            client_cls = _async_client_class_from_annotation(arg)
+            if client_cls is not None:
+                return client_cls
+    return None
 
 
 __all__ = ["LocalRunError", "resolve_run_kwargs"]

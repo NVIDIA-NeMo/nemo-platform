@@ -27,7 +27,7 @@ from nemo_evaluator.jobs.evaluate import (
 )
 from nemo_evaluator.jobs.metric_resolution import PlatformMetricModelResolver
 from nemo_evaluator.jobs.secret_env import build_task_environment
-from nemo_evaluator.jobs.utils import as_async_nemo_client, as_nemo_client, run_with_isolated_async_client
+from nemo_evaluator.jobs.utils import run_with_isolated_async_client
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.metrics.retrieval import (
     RetrievalMAPMetric,
@@ -50,7 +50,7 @@ from nemo_platform_plugin.jobs.api_factory import (
 )
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.models.client import AsyncModelsClient
-from nemo_platform_plugin.sdk import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.sdk import AsyncNeMoPlatform
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 EVAL_RESULTS_FILE_NAME = "eval_results.json"
@@ -126,7 +126,7 @@ class RetrieveEvalSpec(BaseModel):
         return self
 
 
-class RetrieveEvalJob(NemoJob):
+class _RetrieveEvalJobBase(NemoJob):
     """Score a BEIR fileset with a deployed embedding NIM and optional reranker."""
 
     name: ClassVar[str] = "retrieve-eval"
@@ -198,35 +198,7 @@ class RetrieveEvalJob(NemoJob):
             ]
         )
 
-    def run(
-        self,
-        config: dict,
-        ctx: JobContext,
-        sdk: NemoClient | NeMoPlatform | None = None,
-        async_sdk: AsyncNemoClient | AsyncNeMoPlatform | None = None,
-    ) -> dict:
-        """Download, validate, score, and persist a BEIR retrieval result."""
-        client = as_nemo_client(sdk)
-        async_client = as_async_nemo_client(async_sdk)
-        spec = RetrieveEvalSpec.model_validate(config)
-        if client is not None:
-            dataset_path = download_dataset_sync(
-                client=client,
-                dataset=spec.dataset,
-                destination=str(ctx.storage.persistent / "dataset"),
-            )
-        elif async_client is not None:
-            dataset_path = run_with_isolated_async_client(
-                async_client,
-                lambda isolated_client: download_dataset(
-                    client=isolated_client,
-                    dataset=spec.dataset,
-                    destination=str(ctx.storage.persistent / "dataset"),
-                ),
-            )
-        else:
-            raise ValueError("retrieve-eval requires an SDK client to download its FilesetRef")
-
+    def _score_dataset(self, spec: RetrieveEvalSpec, ctx: JobContext, dataset_path: Path) -> dict:
         dataset = load_beir_dataset(dataset_path)
         cutoffs = _metric_cutoffs(spec)
         metrics = [
@@ -280,6 +252,47 @@ class RetrieveEvalJob(NemoJob):
         return output
 
 
+class RetrieveEvalJob(_RetrieveEvalJobBase):
+    """Public/local retrieval-evaluation job that downloads through sync typed clients."""
+
+    def run(
+        self,
+        config: dict,
+        ctx: JobContext,
+        sdk: NemoClient,
+    ) -> dict:
+        """Download, validate, score, and persist a BEIR retrieval result."""
+        spec = RetrieveEvalSpec.model_validate(config)
+        dataset_path = download_dataset_sync(
+            client=sdk,
+            dataset=spec.dataset,
+            destination=str(ctx.storage.persistent / "dataset"),
+        )
+        return self._score_dataset(spec, ctx, dataset_path)
+
+
+class AsyncRetrieveEvalJob(_RetrieveEvalJobBase):
+    """Task-container variant that downloads retrieval datasets through async typed clients."""
+
+    def run(
+        self,
+        config: dict,
+        ctx: JobContext,
+        async_sdk: AsyncNemoClient,
+    ) -> dict:
+        """Download, validate, score, and persist a BEIR retrieval result."""
+        spec = RetrieveEvalSpec.model_validate(config)
+        dataset_path = run_with_isolated_async_client(
+            async_sdk,
+            lambda isolated_client: download_dataset(
+                client=isolated_client,
+                dataset=spec.dataset,
+                destination=str(ctx.storage.persistent / "dataset"),
+            ),
+        )
+        return self._score_dataset(spec, ctx, dataset_path)
+
+
 async def _resolve_retrieval(
     value: RetrievalInputSpec | Model | ModelRef,
     async_sdk: AsyncNeMoPlatform | None,
@@ -323,11 +336,10 @@ def _metric_cutoffs(spec: RetrieveEvalSpec) -> list[int]:
 
 
 def _project_eval_results(result: BenchmarkEvaluationResult) -> dict[str, float]:
-    scores = getattr(result, "aggregate_scores").scores
     projected: dict[str, float] = {}
-    for score in scores:
+    for score in result.aggregate_scores.scores:
         short = score.name.rsplit(".", 1)[-1]
-        if short.startswith(_PROJECTED_SUFFIXES):
+        if short.startswith(_PROJECTED_SUFFIXES) and score.mean is not None:
             projected[short] = score.mean
     return projected
 
