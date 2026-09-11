@@ -20,6 +20,7 @@ Naming conventions:
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from nemo_agents_plugin.entities import (
@@ -36,6 +37,7 @@ from nemo_agents_plugin.entities import (
     DeploymentStatus,
     EnvironmentSpecInline,
 )
+from nemo_agents_plugin.mcp_status import McpServerStatus
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
 from pydantic import BaseModel, Field
 
@@ -98,6 +100,46 @@ class CreateSessionRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Filters — extend NemoFilter so extra fields are rejected (extra="forbid")
 # ---------------------------------------------------------------------------
+
+
+class AgentDeploymentStatus(BaseModel):
+    """Runtime status of one deployment of an agent, with its MCP servers."""
+
+    deployment: str = Field(description="Name of the AgentDeployment.")
+    deployment_mode: DeploymentMode = Field(description="subprocess | docker | k8s.")
+    status: DeploymentStatus = Field(description="Deployment lifecycle status.")
+    endpoint: str = Field(default="", description="Routable endpoint of the runtime, when it has one.")
+    error: str = Field(default="", description="Deployment-level error, when the deployment itself failed.")
+    probe_error: str = Field(
+        default="",
+        description="Why the MCP status could not be read from the runtime; empty when the check ran.",
+    )
+    mcp_servers: list[McpServerStatus] = Field(
+        default_factory=list,
+        description="Every MCP server this deployment's config declares, with its runtime state.",
+    )
+
+
+class AgentStatus(BaseModel):
+    """Response body for ``GET /v2/workspaces/{workspace}/agents/{name}/status``.
+
+    ``declared_mcp_servers`` is the static view from the stored agent config,
+    what the agent expects to exist, and is populated whether or not anything
+    is deployed. ``deployments`` adds the runtime view, one entry per deployment,
+    each reporting the same servers as the runtime actually finds them.
+    """
+
+    agent: str = Field(description="Name of the agent.")
+    workspace: str = Field(description="Workspace the agent belongs to.")
+    checked_at: datetime = Field(description="When the status was assembled.")
+    declared_mcp_servers: list[McpServerStatus] = Field(
+        default_factory=list,
+        description="MCP servers declared in the stored agent config, each reported as 'not_started'.",
+    )
+    deployments: list[AgentDeploymentStatus] = Field(
+        default_factory=list,
+        description="Runtime status per deployment of this agent.",
+    )
 
 
 class AgentFilter(NemoFilter):

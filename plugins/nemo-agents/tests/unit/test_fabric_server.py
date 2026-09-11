@@ -148,6 +148,42 @@ def _sse_line_payload(line: str) -> dict[str, object]:
     return json.loads(line.removeprefix("data: "))
 
 
+def test_mcp_status_reports_a_declared_stdio_server_that_is_not_on_path(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+) -> None:
+    """The runtime answers for a server it cannot resolve, rather than staying silent."""
+    config = _example_config()
+    config["mcp"] = {"servers": {"iocs": {"transport": "stdio", "url": "nemo-mcp-server-that-is-not-installed"}}}
+    config_path = _write_agent_config(tmp_path, config)
+    app = create_fabric_serving_app(config_path)
+
+    with TestClient(app) as client:
+        response = client.get("/mcp/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert uuid.UUID(body["runtime_instance_id"])
+    [server_status] = body["servers"]
+    assert server_status["name"] == "iocs"
+    assert server_status["state"] == "unresolved"
+    assert server_status["detail"] == "Command not found."
+
+
+def test_mcp_status_is_empty_when_no_servers_are_declared(
+    tmp_path: Path,
+    mock_validate_agent_config: list[tuple[AgentConfig, Path]],
+) -> None:
+    config_path = _write_agent_config(tmp_path)
+    app = create_fabric_serving_app(config_path)
+
+    with TestClient(app) as client:
+        response = client.get("/mcp/status")
+
+    assert response.status_code == 200
+    assert response.json()["servers"] == []
+
+
 def test_shutdown_removes_a_staged_agent_root(
     tmp_path: Path,
     mock_validate_agent_config: list[tuple[AgentConfig, Path]],

@@ -50,6 +50,11 @@ from nemo_agents_plugin.fabric.streaming import (
     iter_openai_chat_completion_sse,
     openai_chat_completion_error_sse,
 )
+from nemo_agents_plugin.mcp_status import (
+    DEFAULT_PROBE_TIMEOUT_SECONDS,
+    McpStatusResponse,
+    probe_mcp_servers,
+)
 from nemo_agents_plugin.session_protocol import SESSION_ID_HEADER
 from starlette.types import Receive, Scope, Send
 
@@ -372,6 +377,17 @@ def create_fabric_serving_app(
             "runtime_instance_id": runtime_instance_id,
             "runtime_started_at": runtime_started_at.isoformat(),
         }
+
+    @app.get("/mcp/status", response_model=McpStatusResponse)
+    async def mcp_status() -> McpStatusResponse:
+        """Report every declared MCP server as this runtime process sees it."""
+        agent_config: AgentConfig = app.state.agent_config
+        servers = await probe_mcp_servers(agent_config, timeout=DEFAULT_PROBE_TIMEOUT_SECONDS)
+        return McpStatusResponse(
+            runtime_instance_id=runtime_instance_id,
+            checked_at=datetime.now(UTC),
+            servers=servers,
+        )
 
     @app.post("/v1/chat/completions", response_model=None, response_model_exclude_none=True)
     async def chat_completions(
