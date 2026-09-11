@@ -172,4 +172,38 @@ describe('templateToFormFields', () => {
     expect(restored?.unsloth).toEqual(FORM_DEFAULTS.unsloth);
     expect(restored?.automodel).toEqual(FORM_DEFAULTS.automodel);
   });
+
+  /**
+   * The backfill has to reach nested sections too. A one-level merge replaces a whole
+   * sub-object, so a template naming one key under `rl.training` would drop every other
+   * training default and leave those inputs uncontrolled.
+   */
+  it('backfills defaults inside a partially stored nested section', () => {
+    const restored = templateToFormFields(
+      template({ backend: 'rl', rl: { training: { epochs: 7 } } })
+    );
+
+    expect(restored?.rl.training.epochs).toBe(7);
+    // Everything the template did not name still comes back as its default.
+    expect(restored?.rl.training).toMatchObject({
+      ...FORM_DEFAULTS.rl.training,
+      epochs: 7,
+    });
+    expect(restored?.rl.model).toBe(FORM_DEFAULTS.rl.model);
+  });
+
+  it('replaces a stored array rather than merging it with the default', () => {
+    const restored = templateToFormFields(
+      template({
+        backend: 'automodel',
+        automodel: { training: { lora: { target_modules: ['q'] } } },
+      })
+    );
+
+    expect(restored?.automodel.training.lora?.target_modules).toEqual(['q']);
+    // Sibling lora defaults survive the partial section.
+    expect(restored?.automodel.training.lora?.alpha).toBe(
+      FORM_DEFAULTS.automodel.training.lora?.alpha
+    );
+  });
 });

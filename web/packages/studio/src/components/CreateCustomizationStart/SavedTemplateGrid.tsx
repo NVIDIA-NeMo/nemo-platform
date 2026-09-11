@@ -9,6 +9,7 @@ import {
   getCustomizationJobTemplatesQueryKey,
   listCustomizationJobTemplates,
 } from '@studio/api/customization-job-templates/customizationJobTemplates';
+import type { CustomizationJobTemplatesPage } from '@studio/api/customization-job-templates/types';
 import { SavedTemplateCard } from '@studio/components/CreateCustomizationStart/SavedTemplateCard';
 import type { SavedTemplateGridProps } from '@studio/components/CreateCustomizationStart/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -37,8 +38,15 @@ export const SavedTemplateGrid: FC<SavedTemplateGridProps> = ({
     mutationFn: (name: string) => deleteCustomizationJobTemplate(workspace, name),
     onMutate: (name: string) => setDeletingName(name),
     onSuccess: (_result, name) => {
-      // No need to clear a selection that matched: the start page derives the picked
-      // template from this query, so a deleted one stops being selectable on refetch.
+      // Drop it from the cache rather than relying on the refetch: the start page reads
+      // this same query to decide whether Continue is armed, and a refetch that fails
+      // leaves the stale page in place — the grid would show an error while Continue
+      // stayed enabled for a template that is gone.
+      queryClient.setQueryData(queryKey, (previous?: CustomizationJobTemplatesPage) =>
+        previous
+          ? { ...previous, data: previous.data.filter((template) => template.name !== name) }
+          : previous
+      );
       void queryClient.invalidateQueries({ queryKey });
       toast.success(`Deleted template '${name}'`);
     },

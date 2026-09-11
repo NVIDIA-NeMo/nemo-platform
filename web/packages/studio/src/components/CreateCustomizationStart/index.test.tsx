@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { DEFAULT_WORKSPACE } from '@nemo/common/src/models/constants';
+import { CUSTOMIZATION_JOB_TEMPLATE_ENTITY_TYPE } from '@studio/api/customization-job-templates/types';
 import { CreateCustomizationStart } from '@studio/components/CreateCustomizationStart';
 import { CUSTOMIZATION_TEMPLATES } from '@studio/constants/customizationTemplates';
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import {
   getMockCustomizationJobTemplate,
@@ -18,6 +20,7 @@ import { http, HttpResponse } from 'msw';
 import type { Mock } from 'vitest';
 
 const HF_ROWS_URL = 'https://datasets-server.huggingface.co/rows';
+const TEMPLATES_URL = `${PLATFORM_BASE_URL}/apis/entities/v2/workspaces/:workspace/entities/${CUSTOMIZATION_JOB_TEMPLATE_ENTITY_TYPE}`;
 
 /** A BIRD-SQL row — the shape every shipped recipe's converter reads. */
 const HF_ROW = {
@@ -254,6 +257,31 @@ describe('CreateCustomizationStart', () => {
 
       await waitFor(() => expect(screen.queryByText(SAVED)).not.toBeInTheDocument());
       expect(getMockCustomizationJobTemplate(SAVED)).toBeUndefined();
+    });
+
+    /**
+     * A refetch that fails leaves React Query holding the stale page, which still contains
+     * the deleted template — the grid reports the error while the start page, reading the
+     * same cache, would keep Continue armed for something that is gone.
+     */
+    it('disarms Continue when the refetch after a delete fails', async () => {
+      const user = userEvent.setup();
+      const onContinue = vi.fn();
+      renderStart(onContinue);
+
+      await user.click(screen.getByText('Use a saved template'));
+      await user.click(await screen.findByText(SAVED));
+      expect(continueButton()).toBeEnabled();
+
+      // Every list call from here on fails, so only the cache update can clear it.
+      server.use(
+        http.get(TEMPLATES_URL, () => HttpResponse.json({ detail: 'boom' }, { status: 500 }))
+      );
+
+      await user.click(screen.getByRole('button', { name: `Delete template ${SAVED}` }));
+
+      await waitFor(() => expect(continueButton()).toBeDisabled());
+      expect(onContinue).not.toHaveBeenCalled();
     });
 
     /** Deleting the picked template would otherwise leave Continue armed with a ghost. */

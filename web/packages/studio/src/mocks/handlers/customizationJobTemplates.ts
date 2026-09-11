@@ -80,21 +80,33 @@ export const getMockCustomizationJobTemplate = (
 ): CustomizationJobTemplateEntity | undefined =>
   customizationJobTemplates.find((template) => template.name === name);
 
-const page = (items: CustomizationJobTemplateEntity[]) => ({
-  object: 'list',
-  data: items,
-  pagination: {
-    page: 1,
-    page_size: 10,
-    current_page_size: items.length,
-    total_pages: 1,
-    total_results: items.length,
-  },
-});
+const DEFAULT_PAGE_SIZE = 10;
+
+/** Slices `items` the way the entity-store does, so paging is not silently ignored. */
+const page = (items: CustomizationJobTemplateEntity[], url: URL) => {
+  const params = url.searchParams;
+  const pageNumber = Number(params.get('page')) || 1;
+  const pageSize = Number(params.get('page_size')) || DEFAULT_PAGE_SIZE;
+  const start = (pageNumber - 1) * pageSize;
+  const rows = items.slice(start, start + pageSize);
+
+  return {
+    object: 'list',
+    data: rows,
+    pagination: {
+      page: pageNumber,
+      page_size: pageSize,
+      current_page_size: rows.length,
+      total_pages: Math.max(1, Math.ceil(items.length / pageSize)),
+      total_results: items.length,
+    },
+  };
+};
 
 export const customizationJobTemplatesHandlers = [
   http.get(TEMPLATES_URL, ({ request }) => {
-    const filter = new URL(request.url).searchParams.get('filter');
+    const url = new URL(request.url);
+    const filter = url.searchParams.get('filter');
     const backend = filter
       ? (JSON.parse(filter) as Record<string, string>)['data.backend']
       : undefined;
@@ -102,7 +114,8 @@ export const customizationJobTemplatesHandlers = [
       page(
         backend
           ? customizationJobTemplates.filter((t) => t.data.backend === backend)
-          : customizationJobTemplates
+          : customizationJobTemplates,
+        url
       )
     );
   }),

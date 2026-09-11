@@ -579,6 +579,23 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
  * Driven off `FORM_DEFAULTS`' own keys and the backend enum, so adding a backend section
  * needs no change here.
  */
+/**
+ * Merge a stored value over its default, recursing into nested objects so a partial
+ * section keeps the defaults it omits. A one-level merge would replace whole sub-objects —
+ * `rl.training` or `grpo.lora` arriving partial would drop every key it did not name.
+ *
+ * Arrays are replaced rather than merged: a stored list is the whole list.
+ */
+const mergeOverDefaults = (fallback: unknown, provided: unknown): unknown => {
+  if (!isPlainObject(fallback) || !isPlainObject(provided)) return provided;
+  const out: Record<string, unknown> = { ...fallback };
+  for (const [key, value] of Object.entries(provided)) {
+    if (value === undefined) continue;
+    out[key] = mergeOverDefaults(fallback[key], value);
+  }
+  return out;
+};
+
 export const coerceToFormFields = (value: unknown): CustomizationFormFields | undefined => {
   if (!isPlainObject(value)) return undefined;
   if (!isCustomizationBackend(value.backend)) return undefined;
@@ -587,8 +604,7 @@ export const coerceToFormFields = (value: unknown): CustomizationFormFields | un
   for (const [key, fallback] of Object.entries(FORM_DEFAULTS)) {
     const provided = value[key];
     if (provided === undefined) continue;
-    merged[key] =
-      isPlainObject(fallback) && isPlainObject(provided) ? { ...fallback, ...provided } : provided;
+    merged[key] = mergeOverDefaults(fallback, provided);
   }
 
   const fields = merged as unknown as CustomizationFormFields;
