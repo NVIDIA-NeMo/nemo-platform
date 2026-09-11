@@ -171,25 +171,7 @@ class OpenSandboxGymHostProvider:
     async def create_host(self, spec: GymHostSpec) -> "GymHostHandle[OpenSandboxDriver]":
         """Create the job host with mounts and egress, then resolve proxy URLs."""
         provider = self._provider_for_spec(spec)
-        try:
-            resource_handle = await provider.create(self._to_sandbox_spec(spec))
-        except Exception:
-            # The OpenSandbox server creates its Kubernetes resource before waiting for readiness.
-            # A client-side error therefore returns no handle while the resource keeps running.
-            # Reconcile by the job metadata stamped onto every host request.
-            try:
-                removed = await provider.destroy_sandboxes_for_job(spec.job_id)
-                if removed:
-                    LOGGER.warning(
-                        "destroyed Gym host sandboxes after create failed for job %s: %s",
-                        spec.job_id,
-                        ", ".join(removed),
-                    )
-            except Exception:
-                # Preserve the create failure: it is the actionable cause of the failed job.
-                LOGGER.exception("failed to reconcile Gym host sandboxes for job %s", spec.job_id)
-            raise
-
+        resource_handle = await provider.create(self._to_sandbox_spec(spec))
         try:
             routes = await self._resolve_routes(resource_handle.raw, spec.runtime_http_port)
         except Exception:

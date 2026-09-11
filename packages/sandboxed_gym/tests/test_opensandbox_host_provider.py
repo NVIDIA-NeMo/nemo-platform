@@ -74,36 +74,6 @@ def test_a_created_host_logs_the_urls_it_resolved(
     assert "gym-1" in caplog.text
 
 
-def test_create_failure_reclaims_sandboxes_by_job_metadata(
-    provider: OpenSandboxGymHostProvider,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    driver = _FailingCreateDriver()
-    monkeypatch.setattr(provider, "_provider_for_spec", lambda spec: driver)
-    monkeypatch.setattr(provider, "_to_sandbox_spec", lambda spec: spec)
-
-    with pytest.raises(RuntimeError, match="create timed out"):
-        asyncio.run(provider.create_host(_spec()))
-
-    assert driver.cleaned_job_ids == ["job-1"]
-
-
-def test_cleanup_failure_does_not_mask_create_failure(
-    provider: OpenSandboxGymHostProvider,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    driver = _FailingCreateDriver(cleanup_fails=True)
-    monkeypatch.setattr(provider, "_provider_for_spec", lambda spec: driver)
-    monkeypatch.setattr(provider, "_to_sandbox_spec", lambda spec: spec)
-
-    with caplog.at_level(logging.ERROR, logger="sandboxed_gym.host.opensandbox"):
-        with pytest.raises(RuntimeError, match="create timed out"):
-            asyncio.run(provider.create_host(_spec()))
-
-    assert "failed to reconcile Gym host sandboxes for job job-1" in caplog.text
-
-
 class _Routes:
     def __init__(self, *, health_url: str, rollout_url: str, headers: dict[str, str]) -> None:
         self.health_url = health_url
@@ -121,21 +91,6 @@ class _StubDriver:
 
     async def create(self, spec: GymHostSpec) -> _ResourceHandle:
         return _ResourceHandle()
-
-
-class _FailingCreateDriver:
-    def __init__(self, *, cleanup_fails: bool = False) -> None:
-        self.cleanup_fails = cleanup_fails
-        self.cleaned_job_ids: list[str] = []
-
-    async def create(self, spec: GymHostSpec) -> _ResourceHandle:
-        raise RuntimeError("create timed out")
-
-    async def destroy_sandboxes_for_job(self, job_id: str) -> tuple[str, ...]:
-        self.cleaned_job_ids.append(job_id)
-        if self.cleanup_fails:
-            raise RuntimeError("cleanup failed")
-        return ("orphan-1",)
 
 
 def _returning(routes: _Routes):

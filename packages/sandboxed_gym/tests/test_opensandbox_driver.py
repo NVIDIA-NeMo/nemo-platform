@@ -11,8 +11,12 @@ command output and lifecycle status map onto the SDK's shapes.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import cast
+
 import pytest
 from sandboxed_gym.backends._opensandbox_driver import (
+    _SANDBOX_CREATE_ATTEMPT_ID_METADATA_KEY,
     _STATUS_ALIASES,
     OpenSandboxDriver,
     _exec_identity,
@@ -85,7 +89,7 @@ def test_every_status_alias_maps_onto_a_real_contract_status() -> None:
     assert "running" not in _STATUS_ALIASES, "statuses that already match must not be aliased"
 
 
-async def test_destroy_sandboxes_for_job_lists_every_page_and_kills_each(
+async def test_destroy_sandboxes_matching_lists_every_page_and_kills_each(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from types import SimpleNamespace
@@ -121,12 +125,69 @@ async def test_destroy_sandboxes_for_job_lists_every_page_and_kills_each(
 
     monkeypatch.setattr(SandboxManager, "create", create_manager)
 
-    removed = await OpenSandboxDriver().destroy_sandboxes_for_job("job-1")
+    metadata = {_SANDBOX_CREATE_ATTEMPT_ID_METADATA_KEY: "create-1"}
+    removed = await OpenSandboxDriver().destroy_sandboxes_matching(metadata)
 
     assert removed == ("orphan-1", "orphan-2")
     assert manager.killed == ["orphan-1", "orphan-2"]
     assert [sandbox_filter.metadata for sandbox_filter in manager.filters] == [
-        {"nemo-rl-job-id": "job-1"},
-        {"nemo-rl-job-id": "job-1"},
+        metadata,
+        metadata,
     ]
     assert manager.closed is True
+
+
+async def test_destroy_sandboxes_matching_refuses_an_empty_selector() -> None:
+    with pytest.raises(ValueError, match="at least one metadata selector"):
+        await OpenSandboxDriver().destroy_sandboxes_matching({})
+
+
+async def test_create_reclaims_only_its_creation_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    from opensandbox import Sandbox
+
+    driver = OpenSandboxDriver()
+    captured_metadata: dict[str, str] = {}
+    cleanup_filters: list[dict[str, str]] = []
+
+    async def fail_create(image: str, **kwargs: object) -> object:
+        captured_metadata.update(cast(Mapping[str, str], kwargs["metadata"]))
+        raise RuntimeError("create failed")
+
+    async def cleanup(metadata: Mapping[str, str]) -> tuple[str, ...]:
+        cleanup_filters.append(dict(metadata))
+        return ("orphan-1",)
+
+    monkeypatch.setattr(Sandbox, "create", staticmethod(fail_create))
+    monkeypatch.setattr(driver, "destroy_sandboxes_matching", cleanup)
+
+    with pytest.raises(RuntimeError, match="create failed"):
+        await driver.create(SandboxSpec(image="img:1", metadata={"existing": "value"}))
+
+    create_attempt_id = captured_metadata[_SANDBOX_CREATE_ATTEMPT_ID_METADATA_KEY]
+    assert len(create_attempt_id) == 32
+    assert captured_metadata["existing"] == "value"
+    assert cleanup_filters == [{_SANDBOX_CREATE_ATTEMPT_ID_METADATA_KEY: create_attempt_id}]
+
+
+async def test_cleanup_failure_does_not_mask_create_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from opensandbox import Sandbox
+
+    driver = OpenSandboxDriver()
+
+    async def fail_create(image: str, **kwargs: object) -> object:
+        raise RuntimeError("create failed")
+
+    async def fail_cleanup(metadata: Mapping[str, str]) -> tuple[str, ...]:
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(Sandbox, "create", staticmethod(fail_create))
+    monkeypatch.setattr(driver, "destroy_sandboxes_matching", fail_cleanup)
+
+    with caplog.at_level("ERROR", logger="sandboxed_gym.backends._opensandbox_driver"):
+        with pytest.raises(RuntimeError, match="create failed"):
+            await driver.create(SandboxSpec(image="img:1"))
+
+    assert "failed to reconcile sandbox create attempt" in caplog.text
