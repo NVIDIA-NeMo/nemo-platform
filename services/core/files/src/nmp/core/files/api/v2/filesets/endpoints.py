@@ -633,16 +633,18 @@ async def refresh_fileset(
             f"Fileset '{workspace}/{name}' not found",
         ) from exc
 
+    # Decided before secrets are resolved: whether a fileset tracks anything is a
+    # property of its stored config, and resolving first would report a missing or
+    # forbidden secret as 400 for a fileset whose real answer is 409.
+    if not fileset.storage.tracked_revision:
+        raise HTTPException(
+            HTTP_409_CONFLICT,
+            f"Fileset '{workspace}/{name}' does not track a revision that can be refreshed",
+        )
+
     try:
         secrets = await resolve_storage_secrets_for_user(fileset.storage, workspace, sdk, auth_client)
         storage_impl = storage_impl_factory(fileset.storage, secrets)
-
-        if not storage_impl.tracked_revision:
-            raise HTTPException(
-                HTTP_409_CONFLICT,
-                f"Fileset '{workspace}/{name}' does not track a revision that can be refreshed",
-            )
-
         tracked_impl = storage_impl_factory(storage_impl.config_at_tracked_revision(), secrets)
         # The host allowlist is enforced at create time; re-check it here so a host
         # removed from it since then stops being reachable through a refresh.

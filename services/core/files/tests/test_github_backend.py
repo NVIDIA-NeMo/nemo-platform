@@ -460,6 +460,13 @@ class TestUrlEncoding:
         with pytest.raises(ValidationError, match="must use https"):
             _config(api_base_url="http://github.internal.example.com/api/v3")
 
+    @pytest.mark.parametrize("field", ["owner", "repo", "revision"])
+    def test_a_blank_identifier_is_refused(self, field: str):
+        # An empty segment is dropped when the URL path is joined, so a blank
+        # revision would turn /commits/{revision} into the list-commits endpoint.
+        with pytest.raises(ValidationError, match="must not be blank"):
+            GithubStorageConfig(**{"owner": "acme", "repo": "agents", field: "   "})
+
     def test_a_multi_segment_owner_is_refused(self):
         with pytest.raises(ValidationError, match="single path segment"):
             GithubStorageConfig(owner="acme/evil", repo="agents")

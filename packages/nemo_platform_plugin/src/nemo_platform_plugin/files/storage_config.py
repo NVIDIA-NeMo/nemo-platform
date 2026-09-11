@@ -47,6 +47,17 @@ def _tracked_revision(revision: str, original_revision: str | None) -> str | Non
     return original_revision if original_revision and original_revision != revision else None
 
 
+def _reject_blank(field: str, value: str) -> str:
+    """Refuse a value that would drop out of a URL built from it.
+
+    An empty segment is skipped when the path is joined, so a blank revision turns
+    ``/commits/{revision}`` into the list-commits endpoint rather than failing.
+    """
+    if not value.strip():
+        raise ValueError(f"{field} must not be blank")
+    return value
+
+
 def _reject_relative_segments(field: str, value: str) -> str:
     """Refuse values that would re-point a URL built from them at another resource.
 
@@ -226,14 +237,15 @@ class GithubStorageConfig(BaseStorageConfig):
     @field_validator("owner", "repo")
     @classmethod
     def reject_multi_segment_names(cls, v: str, info: ValidationInfo) -> str:
+        field = info.field_name or "value"
         if "/" in v:
-            raise ValueError(f"{info.field_name} must name a single path segment, got {v!r}")
-        return _reject_relative_segments(info.field_name or "value", v)
+            raise ValueError(f"{field} must name a single path segment, got {v!r}")
+        return _reject_relative_segments(field, _reject_blank(field, v))
 
     @field_validator("revision")
     @classmethod
     def reject_relative_revision(cls, v: str) -> str:
-        return _reject_relative_segments("revision", v)
+        return _reject_relative_segments("revision", _reject_blank("revision", v))
 
     @field_validator("api_base_url")
     @classmethod
