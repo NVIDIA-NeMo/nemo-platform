@@ -204,16 +204,13 @@ function buildSlackMessage({
     lines.push("", "Conflict metadata unavailable; see the failure details.");
   }
 
-  lines.push(
-    "",
-    "The bot will not retry. Manual recovery is required.",
-    `<${commentUrl}|View failure details>`,
-  );
+  lines.push("", "The bot will not retry. Manual recovery is required.");
   if (recoveryDocsUrl?.trim()) {
     lines.push(
-      `<${escapeSlackText(recoveryDocsUrl.trim())}|Forward-merge recovery guide>`,
+      `:point_right: *<${escapeSlackText(recoveryDocsUrl.trim())}|Follow these steps to fix the forward merge>*`,
     );
   }
+  lines.push(`<${commentUrl}|View failure details>`);
   return lines.join("\n");
 }
 

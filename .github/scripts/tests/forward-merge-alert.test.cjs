@@ -200,7 +200,7 @@ test("includes the configured recovery guide for every failure kind", () => {
     );
     assert.match(
       message,
-      /<https:\/\/docs\.example\.com\/forward-merge\/\|Forward-merge recovery guide>/,
+      /<https:\/\/docs\.example\.com\/forward-merge\/\|Follow these steps to fix the forward merge>/,
     );
     assert.match(message, /View failure details/);
   }
@@ -209,7 +209,7 @@ test("includes the configured recovery guide for every failure kind", () => {
 test("omits the recovery guide when its secret is missing or blank", () => {
   for (const recoveryDocsUrl of [undefined, "", "   "]) {
     const message = buildSlackMessage(messageFixture({ recoveryDocsUrl }));
-    assert.doesNotMatch(message, /Forward-merge recovery guide/);
+    assert.doesNotMatch(message, /Follow these steps to fix the forward merge/);
     assert.match(message, /Manual recovery is required/);
   }
 });
@@ -294,7 +294,7 @@ test("falls back to the basic alert when PR metadata fails", async () => {
   assert.match(result.text, /Source: unavailable/);
   assert.ok(
     JSON.parse(requests[0].options.body).text.includes(
-      "<https://docs.example.com/forward-merge/|Forward-merge recovery guide>",
+      "<https://docs.example.com/forward-merge/|Follow these steps to fix the forward merge>",
     ),
   );
   assert.match(result.text, /Conflict metadata unavailable/);
