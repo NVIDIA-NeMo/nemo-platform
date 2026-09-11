@@ -30,7 +30,7 @@ class SpecRevision:
     tracked_revision: str = ""
 
 
-async def read_spec_revision(files_client: AsyncFilesClient, *, workspace: str, agent_name: str) -> SpecRevision:
+async def read_spec_revision(files_client: AsyncFilesClient | None, *, workspace: str, agent_name: str) -> SpecRevision:
     """Return what the agent's spec fileset is pinned to right now.
 
     Both fields are empty when the fileset is absent or its backend pins nothing —
@@ -38,6 +38,9 @@ async def read_spec_revision(files_client: AsyncFilesClient, *, workspace: str, 
     error. Nothing here may fail a deployment: this is a record of what was staged,
     and the runner reports a fileset it cannot read.
     """
+    if files_client is None:
+        return SpecRevision()
+
     fileset_name = ethos_fileset_name(agent_name)
     try:
         response = await files_client.get_fileset(workspace=workspace, name=fileset_name)
@@ -56,7 +59,7 @@ async def read_spec_revision(files_client: AsyncFilesClient, *, workspace: str, 
     return SpecRevision(revision=storage.pinned_revision, tracked_revision=storage.tracked_revision or "")
 
 
-def _files_client(sdk: AsyncNeMoPlatform) -> AsyncFilesClient | None:
+def files_client_for(sdk: AsyncNeMoPlatform) -> AsyncFilesClient | None:
     """Adapt the platform SDK, or report that provenance cannot be read through it.
 
     Failing to build the client is the same kind of event as an unreadable
@@ -83,7 +86,7 @@ async def stage_with_spec_revision(
     left behind rather than what was staged. Restage once when the revision moves,
     which is the closest thing to an atomic read the download path allows.
     """
-    files_client = _files_client(sdk)
+    files_client = files_client_for(sdk)
     if files_client is None:
         return await stage(), SpecRevision()
 
@@ -103,10 +106,13 @@ async def stage_with_spec_revision(
     staged = await stage()
     settled = await read_spec_revision(files_client, workspace=workspace, agent_name=agent_name)
     if settled != after:
+        # `settled` is a third revision that no staging pass produced. Recording it
+        # would be the failure this function exists to prevent, and a wrong revision
+        # is worse than none for a client asking whether a deployment is stale.
         logger.warning(
-            "Spec fileset %s/%s moved again while staging; recording %r, which may not be what was staged",
+            "Spec fileset %s/%s moved again while staging; recording no revision for it",
             sanitize_for_log(workspace),
             sanitize_for_log(ethos_fileset_name(agent_name)),
-            settled.revision,
         )
+        return staged, SpecRevision()
     return staged, settled

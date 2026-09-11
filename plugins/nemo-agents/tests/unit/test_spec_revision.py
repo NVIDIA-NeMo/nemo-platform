@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from nemo_agents_plugin.spec_revision import SpecRevision, stage_with_spec_revision
+from nemo_agents_plugin.spec_revision import SpecRevision, read_spec_revision, stage_with_spec_revision
 from nemo_platform_plugin.files.storage_config import GithubStorageConfig
 
 FIRST_SHA = "1" * 40
@@ -59,14 +59,23 @@ class TestStageWithSpecRevision:
         assert spec.revision == SECOND_SHA
         assert stage.await_count == 2
 
-    async def test_records_the_last_revision_when_it_keeps_moving(self) -> None:
+    async def test_records_nothing_when_it_keeps_moving(self) -> None:
+        """A third revision was staged by neither pass, so none of them is the answer.
+
+        A wrong revision is worse than no revision for a client asking whether a
+        deployment is stale.
+        """
         stage = AsyncMock(return_value="staged")
 
         with _fileset_reporting(FIRST_SHA, SECOND_SHA, THIRD_SHA):
             _, spec = await stage_with_spec_revision(MagicMock(), workspace="default", agent_name="calc", stage=stage)
 
-        assert spec.revision == THIRD_SHA
+        assert spec == SpecRevision()
         assert stage.await_count == 2
+
+    async def test_reads_nothing_without_a_files_client(self) -> None:
+        """The API path hands in whatever the request could adapt, including nothing."""
+        assert await read_spec_revision(None, workspace="default", agent_name="calc") == SpecRevision()
 
     async def test_stages_anyway_when_provenance_cannot_be_read(self) -> None:
         """An SDK the adapter rejects costs the deployment its revision, not its deployment."""
