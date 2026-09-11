@@ -17,11 +17,10 @@ import re
 import shutil
 from collections.abc import Iterator, Mapping
 from pathlib import Path, PurePosixPath
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
 import yaml
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.adapter import PlatformClient, client_from_platform
 from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
@@ -84,7 +83,7 @@ class OptimizeJob(NemoJob):
         *,
         workspace: str,
         entity_client: object,
-        async_sdk: AsyncNeMoPlatform,
+        async_sdk: PlatformClient,
         is_local: bool,
     ) -> OptimizeSpec:
         del entity_client, async_sdk
@@ -137,7 +136,7 @@ class OptimizeJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
+    def run(self, config: dict, *, ctx: JobContext, sdk: PlatformClient | None = None) -> dict:
         spec = OptimizeSpec.model_validate(config)
         with _staged_bundle(spec, ctx=ctx, sdk=sdk) as (config_path, bundle_root):
             optimize_config = _load_yaml(config_path)
@@ -189,9 +188,7 @@ async def _resolve_executor(*, profile: str, async_sdk: object) -> ExecutorSpec:
         raise _profiles_unavailable(profile)
 
     try:
-        profiles = (
-            await client_from_platform(cast(AsyncNeMoPlatform, async_sdk), AsyncJobsClient).get_execution_profiles()
-        ).data()
+        profiles = (await client_from_platform(async_sdk, AsyncJobsClient).get_execution_profiles()).data()
     except (NemoTransportError, NemoResponseValidationError, InternalServerError) as exc:
         raise _profiles_unavailable(profile) from exc
 
@@ -229,7 +226,7 @@ def _staged_bundle(
     spec: OptimizeSpec,
     *,
     ctx: JobContext,
-    sdk: NeMoPlatform | None,
+    sdk: PlatformClient | None,
 ) -> Iterator[tuple[Path, Path | None]]:
     """Yield ``(optimize config path, bundle root)`` for the run.
 
@@ -304,7 +301,7 @@ def _staged_dataset(
     *,
     workspace: str,
     ctx: JobContext,
-    sdk: NeMoPlatform | None,
+    sdk: PlatformClient | None,
 ) -> Iterator[dict[str, Any]]:
     """Yield *optimize_config* with a fileset dataset reference replaced by a local path.
 
@@ -366,7 +363,7 @@ def _publish_results(
     *,
     workspace: str,
     ctx: JobContext,
-    sdk: NeMoPlatform | None,
+    sdk: PlatformClient | None,
 ) -> dict[str, str] | None:
     """Copy the study's artifacts to *output*, returning a pointer for the job result.
 
