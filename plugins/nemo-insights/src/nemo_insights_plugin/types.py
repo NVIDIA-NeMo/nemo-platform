@@ -8,9 +8,43 @@ from __future__ import annotations
 from datetime import datetime
 from typing import NotRequired, TypedDict
 
-from nemo_insights_plugin.jobs.analyze import AnalyzeSpec
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
+
+ANALYSIS_JOB_NAME = "analyze-job"
+
+
+class AnalyzeSpec(BaseModel):
+    """Canonical input for one insights analyst run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent: str = Field(description="Agent under test.")
+    ethos: str | None = Field(
+        default=None,
+        description="Optional Ethos Markdown for the agent under test.",
+    )
+    base_url: str | None = Field(
+        default=None,
+        description="Optional platform base URL. Unset uses the active platform context.",
+    )
+    insights_output: str | None = Field(
+        default=None,
+        description=(
+            "Optional local YAML path mirroring the Insights the platform stored. "
+            "Container-local unless it points at mounted storage."
+        ),
+    )
+    since: datetime | None = Field(
+        default=None,
+        description="Optional lower bound for incremental trace/span analysis.",
+    )
+    update_analysis_config: bool = Field(
+        default=True,
+        description="Update the matching AnalysisRunStatus with run metadata.",
+    )
+    default_model: str = Field(description="Workspace-qualified default Model Entity ID selected during setup.")
+    fast_model: str = Field(description="Workspace-qualified fast Model Entity ID selected during setup.")
 
 
 class ListInsightsQueryParams(TypedDict, total=False):

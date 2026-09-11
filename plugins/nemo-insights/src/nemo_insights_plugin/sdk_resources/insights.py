@@ -18,6 +18,7 @@ from nemo_insights_plugin.schema import (
     UpdateInsightRequest,
 )
 from nemo_insights_plugin.sdk_resources._entity import entity_from_response, hydrate_page
+from nemo_insights_plugin.sdk_resources._errors import httpx_status_errors
 from nemo_insights_plugin.types import ListInsightsQueryParams
 
 
@@ -136,8 +137,9 @@ class _InsightResource:
             status=status,
             trace_refs=trace_refs,
         )
-        response = self._client.create_insight(workspace=workspace, body=body)
-        return _insight_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.create_insight(workspace=workspace, body=body)
+            return _insight_from_response(response.http_response.json())
 
     def list_insights(
         self,
@@ -149,22 +151,24 @@ class _InsightResource:
         agent: str | None = None,
         status: InsightStatus | str | None = None,
     ) -> InsightPage:
-        response = self._client.list_insights(
-            workspace=workspace,
-            query_params=_list_params(
-                page=page,
-                page_size=page_size,
-                sort=sort,
-                agent=agent,
-                status=status,
-            ),
-        )
-        response.page()
-        return _page_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.list_insights(
+                workspace=workspace,
+                query_params=_list_params(
+                    page=page,
+                    page_size=page_size,
+                    sort=sort,
+                    agent=agent,
+                    status=status,
+                ),
+            )
+            response.page()
+            return _page_from_response(response.http_response.json())
 
     def get(self, *, workspace: str, insight_id: str) -> Insight:
-        response = self._client.get_insight(workspace=workspace, insight_id=insight_id)
-        return _insight_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.get_insight(workspace=workspace, insight_id=insight_id)
+            return _insight_from_response(response.http_response.json())
 
     def update(
         self,
@@ -182,11 +186,13 @@ class _InsightResource:
             status=status,
             trace_refs=trace_refs,
         )
-        response = self._client.update_insight(workspace=workspace, insight_id=insight_id, body=body)
-        return _insight_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.update_insight(workspace=workspace, insight_id=insight_id, body=body)
+            return _insight_from_response(response.http_response.json())
 
     def delete(self, *, workspace: str, insight_id: str) -> None:
-        self._client.delete_insight(workspace=workspace, insight_id=insight_id).data()
+        with httpx_status_errors():
+            self._client.delete_insight(workspace=workspace, insight_id=insight_id).data()
 
     @property
     def _client(self) -> InsightsClient:
@@ -216,8 +222,9 @@ class _AsyncInsightResource:
             status=status,
             trace_refs=trace_refs,
         )
-        response = await self._client.create_insight(workspace=workspace, body=body)
-        return _insight_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.create_insight(workspace=workspace, body=body)
+            return _insight_from_response(response.http_response.json())
 
     async def list_insights(
         self,
@@ -229,22 +236,24 @@ class _AsyncInsightResource:
         agent: str | None = None,
         status: InsightStatus | str | None = None,
     ) -> InsightPage:
-        response = await self._client.list_insights(
-            workspace=workspace,
-            query_params=_list_params(
-                page=page,
-                page_size=page_size,
-                sort=sort,
-                agent=agent,
-                status=status,
-            ),
-        )
-        response.page()
-        return _page_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.list_insights(
+                workspace=workspace,
+                query_params=_list_params(
+                    page=page,
+                    page_size=page_size,
+                    sort=sort,
+                    agent=agent,
+                    status=status,
+                ),
+            )
+            response.page()
+            return _page_from_response(response.http_response.json())
 
     async def get(self, *, workspace: str, insight_id: str) -> Insight:
-        response = await self._client.get_insight(workspace=workspace, insight_id=insight_id)
-        return _insight_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.get_insight(workspace=workspace, insight_id=insight_id)
+            return _insight_from_response(response.http_response.json())
 
     async def update(
         self,
@@ -262,11 +271,13 @@ class _AsyncInsightResource:
             status=status,
             trace_refs=trace_refs,
         )
-        response = await self._client.update_insight(workspace=workspace, insight_id=insight_id, body=body)
-        return _insight_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.update_insight(workspace=workspace, insight_id=insight_id, body=body)
+            return _insight_from_response(response.http_response.json())
 
     async def delete(self, *, workspace: str, insight_id: str) -> None:
-        (await self._client.delete_insight(workspace=workspace, insight_id=insight_id)).data()
+        with httpx_status_errors():
+            (await self._client.delete_insight(workspace=workspace, insight_id=insight_id)).data()
 
     @property
     def _client(self) -> AsyncInsightsClient:

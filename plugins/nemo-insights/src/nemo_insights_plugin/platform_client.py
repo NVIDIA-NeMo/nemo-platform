@@ -19,6 +19,7 @@ the one place that branch lives.
 
 from urllib.parse import urlparse
 
+import httpx
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_ext.auth.helpers import discover_nmp_config
 from nemo_platform_ext.config.config import Config
@@ -44,12 +45,21 @@ def make_client(base_url: str | None) -> AsyncNeMoPlatform:
     if not base_url:
         return AsyncNeMoPlatform()
 
-    host = (urlparse(base_url).hostname or "").lower()
+    parsed = urlparse(base_url)
+    host = (parsed.hostname or "").lower()
     config_path = Config.get_default_config_path()
     if host in LOOPBACK_HOSTS or not config_path.exists():
         return AsyncNeMoPlatform(base_url=base_url)
 
-    if not discover_nmp_config(base_url).auth_enabled:
+    try:
+        nmp_config = discover_nmp_config(base_url)
+    except (httpx.HTTPError, ValueError) as exc:
+        raise RuntimeError(f"could not discover NeMo Platform auth configuration at {base_url}: {exc}") from exc
+
+    if not nmp_config.auth_enabled:
         return AsyncNeMoPlatform(base_url=base_url)
+
+    if parsed.scheme.lower() != "https":
+        raise ValueError(f"refusing to send credentials to a non-HTTPS remote URL: {base_url}")
 
     return AsyncNeMoPlatform(base_url=base_url, config_path=config_path)

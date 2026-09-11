@@ -347,7 +347,7 @@ class ListSpansQueryParams(TypedDict, total=False):
 
 
 class ListSpanGroupsQueryParams(TypedDict, total=False):
-    by: str
+    by: Required[str]
     page: int
     page_size: int
     sort: str

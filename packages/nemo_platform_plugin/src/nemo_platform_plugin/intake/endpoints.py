@@ -112,7 +112,7 @@ def list_spans(
 def list_span_groups(
     *,
     workspace: str | None = None,
-    query_params: ListSpanGroupsQueryParams | None = None,
+    query_params: ListSpanGroupsQueryParams,
 ) -> SpanGroupsPage: ...
 
 

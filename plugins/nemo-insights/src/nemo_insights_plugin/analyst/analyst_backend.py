@@ -85,7 +85,7 @@ async def _drain(paginator: AsyncIterable[BaseModel], *, limit: int) -> tuple[li
     so the model knows it is looking at a capped view and can narrow its
     filter or raise the limit.
     """
-    items: list = []
+    items: list[BaseModel] = []
     truncated = False
     async for item in paginator:
         if len(items) >= limit:

@@ -20,6 +20,7 @@ from nemo_insights_plugin.schema import (
     UpdateAnalysisRunStatusRequest,
 )
 from nemo_insights_plugin.sdk_resources._entity import entity_from_response, hydrate_page
+from nemo_insights_plugin.sdk_resources._errors import httpx_status_errors
 from nemo_insights_plugin.types import ListAnalysisConfigsQueryParams, ListAnalysisRunStatusesQueryParams
 
 
@@ -116,16 +117,18 @@ class _AnalysisConfigResource:
         return self._parent._client
 
     def enable(self, *, workspace: str, agent: str, default_model: str, fast_model: str) -> AnalysisConfig:
-        response = self._client.enable_analysis_config(
-            workspace=workspace,
-            agent=agent,
-            body=_build_enable_body(default_model=default_model, fast_model=fast_model),
-        )
-        return entity_from_response(AnalysisConfig, response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.enable_analysis_config(
+                workspace=workspace,
+                agent=agent,
+                body=_build_enable_body(default_model=default_model, fast_model=fast_model),
+            )
+            return entity_from_response(AnalysisConfig, response.http_response.json())
 
     def disable(self, *, workspace: str, agent: str) -> AnalysisConfig:
-        response = self._client.disable_analysis_config(workspace=workspace, agent=agent)
-        return entity_from_response(AnalysisConfig, response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.disable_analysis_config(workspace=workspace, agent=agent)
+            return entity_from_response(AnalysisConfig, response.http_response.json())
 
     def list_configs(
         self,
@@ -136,16 +139,18 @@ class _AnalysisConfigResource:
         sort: str = "-created_at",
         enabled: bool | None = None,
     ) -> AnalysisConfigPage:
-        response = self._client.list_analysis_configs(
-            workspace=workspace,
-            query_params=_list_params(page=page, page_size=page_size, sort=sort, enabled=enabled),
-        )
-        response.page()
-        return _analysis_config_page_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.list_analysis_configs(
+                workspace=workspace,
+                query_params=_list_params(page=page, page_size=page_size, sort=sort, enabled=enabled),
+            )
+            response.page()
+            return _analysis_config_page_from_response(response.http_response.json())
 
     def get(self, *, workspace: str, agent: str) -> AnalysisConfig:
-        response = self._client.get_analysis_config(workspace=workspace, agent=agent)
-        return entity_from_response(AnalysisConfig, response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.get_analysis_config(workspace=workspace, agent=agent)
+            return entity_from_response(AnalysisConfig, response.http_response.json())
 
     def update(
         self,
@@ -154,12 +159,13 @@ class _AnalysisConfigResource:
         agent: str,
         enabled: bool | None = None,
     ) -> AnalysisConfig:
-        response = self._client.update_analysis_config(
-            workspace=workspace,
-            agent=agent,
-            body=_build_update_body(enabled=enabled),
-        )
-        return entity_from_response(AnalysisConfig, response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.update_analysis_config(
+                workspace=workspace,
+                agent=agent,
+                body=_build_update_body(enabled=enabled),
+            )
+            return entity_from_response(AnalysisConfig, response.http_response.json())
 
 
 class _AsyncAnalysisConfigResource:
@@ -173,16 +179,18 @@ class _AsyncAnalysisConfigResource:
         return self._parent._client
 
     async def enable(self, *, workspace: str, agent: str, default_model: str, fast_model: str) -> AnalysisConfig:
-        response = await self._client.enable_analysis_config(
-            workspace=workspace,
-            agent=agent,
-            body=_build_enable_body(default_model=default_model, fast_model=fast_model),
-        )
-        return entity_from_response(AnalysisConfig, response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.enable_analysis_config(
+                workspace=workspace,
+                agent=agent,
+                body=_build_enable_body(default_model=default_model, fast_model=fast_model),
+            )
+            return entity_from_response(AnalysisConfig, response.http_response.json())
 
     async def disable(self, *, workspace: str, agent: str) -> AnalysisConfig:
-        response = await self._client.disable_analysis_config(workspace=workspace, agent=agent)
-        return entity_from_response(AnalysisConfig, response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.disable_analysis_config(workspace=workspace, agent=agent)
+            return entity_from_response(AnalysisConfig, response.http_response.json())
 
     async def list_configs(
         self,
@@ -193,16 +201,18 @@ class _AsyncAnalysisConfigResource:
         sort: str = "-created_at",
         enabled: bool | None = None,
     ) -> AnalysisConfigPage:
-        response = await self._client.list_analysis_configs(
-            workspace=workspace,
-            query_params=_list_params(page=page, page_size=page_size, sort=sort, enabled=enabled),
-        )
-        response.page()
-        return _analysis_config_page_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.list_analysis_configs(
+                workspace=workspace,
+                query_params=_list_params(page=page, page_size=page_size, sort=sort, enabled=enabled),
+            )
+            response.page()
+            return _analysis_config_page_from_response(response.http_response.json())
 
     async def get(self, *, workspace: str, agent: str) -> AnalysisConfig:
-        response = await self._client.get_analysis_config(workspace=workspace, agent=agent)
-        return entity_from_response(AnalysisConfig, response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.get_analysis_config(workspace=workspace, agent=agent)
+            return entity_from_response(AnalysisConfig, response.http_response.json())
 
     async def update(
         self,
@@ -211,12 +221,13 @@ class _AsyncAnalysisConfigResource:
         agent: str,
         enabled: bool | None = None,
     ) -> AnalysisConfig:
-        response = await self._client.update_analysis_config(
-            workspace=workspace,
-            agent=agent,
-            body=_build_update_body(enabled=enabled),
-        )
-        return entity_from_response(AnalysisConfig, response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.update_analysis_config(
+                workspace=workspace,
+                agent=agent,
+                body=_build_update_body(enabled=enabled),
+            )
+            return entity_from_response(AnalysisConfig, response.http_response.json())
 
 
 class _AnalysisRunStatusResource:
@@ -238,16 +249,18 @@ class _AnalysisRunStatusResource:
         sort: str = "-updated_at",
     ) -> AnalysisRunStatusPage:
         query_params: ListAnalysisRunStatusesQueryParams = {"page": page, "page_size": page_size, "sort": sort}
-        response = self._client.list_analysis_run_statuses(
-            workspace=workspace,
-            query_params=query_params,
-        )
-        response.page()
-        return _analysis_run_status_page_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.list_analysis_run_statuses(
+                workspace=workspace,
+                query_params=query_params,
+            )
+            response.page()
+            return _analysis_run_status_page_from_response(response.http_response.json())
 
     def get(self, *, workspace: str, agent: str) -> AnalysisRunStatus:
-        response = self._client.get_analysis_run_status(workspace=workspace, agent=agent)
-        return entity_from_response(AnalysisRunStatus, response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.get_analysis_run_status(workspace=workspace, agent=agent)
+            return entity_from_response(AnalysisRunStatus, response.http_response.json())
 
     def update(
         self,
@@ -261,19 +274,20 @@ class _AnalysisRunStatusResource:
         last_submitted_job: str | None = None,
         last_error: str | None = None,
     ) -> AnalysisRunStatus:
-        response = self._client.update_analysis_run_status(
-            workspace=workspace,
-            agent=agent,
-            body=_build_status_update_body(
-                status=status,
-                last_successful_run_at=last_successful_run_at,
-                last_attempted_at=last_attempted_at,
-                last_completed_at=last_completed_at,
-                last_submitted_job=last_submitted_job,
-                last_error=last_error,
-            ),
-        )
-        return entity_from_response(AnalysisRunStatus, response.http_response.json())
+        with httpx_status_errors():
+            response = self._client.update_analysis_run_status(
+                workspace=workspace,
+                agent=agent,
+                body=_build_status_update_body(
+                    status=status,
+                    last_successful_run_at=last_successful_run_at,
+                    last_attempted_at=last_attempted_at,
+                    last_completed_at=last_completed_at,
+                    last_submitted_job=last_submitted_job,
+                    last_error=last_error,
+                ),
+            )
+            return entity_from_response(AnalysisRunStatus, response.http_response.json())
 
 
 class _AsyncAnalysisRunStatusResource:
@@ -295,16 +309,18 @@ class _AsyncAnalysisRunStatusResource:
         sort: str = "-updated_at",
     ) -> AnalysisRunStatusPage:
         query_params: ListAnalysisRunStatusesQueryParams = {"page": page, "page_size": page_size, "sort": sort}
-        response = await self._client.list_analysis_run_statuses(
-            workspace=workspace,
-            query_params=query_params,
-        )
-        response.page()
-        return _analysis_run_status_page_from_response(response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.list_analysis_run_statuses(
+                workspace=workspace,
+                query_params=query_params,
+            )
+            response.page()
+            return _analysis_run_status_page_from_response(response.http_response.json())
 
     async def get(self, *, workspace: str, agent: str) -> AnalysisRunStatus:
-        response = await self._client.get_analysis_run_status(workspace=workspace, agent=agent)
-        return entity_from_response(AnalysisRunStatus, response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.get_analysis_run_status(workspace=workspace, agent=agent)
+            return entity_from_response(AnalysisRunStatus, response.http_response.json())
 
     async def update(
         self,
@@ -318,19 +334,20 @@ class _AsyncAnalysisRunStatusResource:
         last_submitted_job: str | None = None,
         last_error: str | None = None,
     ) -> AnalysisRunStatus:
-        response = await self._client.update_analysis_run_status(
-            workspace=workspace,
-            agent=agent,
-            body=_build_status_update_body(
-                status=status,
-                last_successful_run_at=last_successful_run_at,
-                last_attempted_at=last_attempted_at,
-                last_completed_at=last_completed_at,
-                last_submitted_job=last_submitted_job,
-                last_error=last_error,
-            ),
-        )
-        return entity_from_response(AnalysisRunStatus, response.http_response.json())
+        with httpx_status_errors():
+            response = await self._client.update_analysis_run_status(
+                workspace=workspace,
+                agent=agent,
+                body=_build_status_update_body(
+                    status=status,
+                    last_successful_run_at=last_successful_run_at,
+                    last_attempted_at=last_attempted_at,
+                    last_completed_at=last_completed_at,
+                    last_submitted_job=last_submitted_job,
+                    last_error=last_error,
+                ),
+            )
+            return entity_from_response(AnalysisRunStatus, response.http_response.json())
 
 
 __all__ = [

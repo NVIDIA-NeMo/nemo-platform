@@ -8,7 +8,6 @@ from __future__ import annotations
 from abc import abstractmethod
 
 from nemo_insights_plugin.entities import AnalysisConfig, AnalysisRun, AnalysisRunStatus, Insight
-from nemo_insights_plugin.jobs.analyze import AnalyzeJob
 from nemo_insights_plugin.schema import (
     AnalysisRunResponse,
     CreateAnalysisRunRequest,
@@ -20,6 +19,7 @@ from nemo_insights_plugin.schema import (
     UpdateInsightRequest,
 )
 from nemo_insights_plugin.types import (
+    ANALYSIS_JOB_NAME,
     AnalysisJob,
     CreateAnalysisJobRequest,
     ListAnalysisConfigsQueryParams,
@@ -32,7 +32,7 @@ from nemo_platform_plugin.client.endpoint import delete, get, patch, post
 from nemo_platform_plugin.client.types import Paginated
 
 _INSIGHTS_BASE = "/apis/insights/v2/workspaces/{workspace}"
-_ANALYSIS_JOBS = f"{_INSIGHTS_BASE}/jobs/{AnalyzeJob.name}"
+_ANALYSIS_JOBS = f"{_INSIGHTS_BASE}/jobs/{ANALYSIS_JOB_NAME}"
 
 
 @post(f"{_INSIGHTS_BASE}/insights")
