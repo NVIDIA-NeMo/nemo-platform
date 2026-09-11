@@ -29,15 +29,18 @@ class Item(BaseModel):
 
 
 @get("/apis/test/v2/items")
-def list_items(*, query_params: dict[str, Any] | None = None) -> Paginated[Item]: ...
+def list_items(*, query_params: dict[str, Any] | None = None) -> Paginated[Item]:
+    raise NotImplementedError
 
 
 @get("/apis/test/v2/items/{name}")
-def get_item(*, name: str) -> Item: ...
+def get_item(*, name: str) -> Item:
+    raise NotImplementedError
 
 
 @get("/apis/test/v2/download")
-def download() -> BinaryContent: ...
+def download() -> BinaryContent:
+    raise NotImplementedError
 
 
 class RotatingProvider:

@@ -39,11 +39,13 @@ class Item(BaseModel):
 
 
 @get("/apis/test/v2/items")
-def list_items(*, query_params: dict[str, Any] | None = None) -> Paginated[Item]: ...
+def list_items(*, query_params: dict[str, Any] | None = None) -> Paginated[Item]:
+    raise NotImplementedError
 
 
 @get("/apis/test/v2/logs")
-def list_logs(*, query_params: dict[str, Any] | None = None) -> Paginated[Item, CursorPagination]: ...
+def list_logs(*, query_params: dict[str, Any] | None = None) -> Paginated[Item, CursorPagination]:
+    raise NotImplementedError
 
 
 def _offset_client(

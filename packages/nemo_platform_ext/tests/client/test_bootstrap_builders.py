@@ -37,7 +37,8 @@ class Probe(BaseModel):
 
 
 @get("/apis/test/v2/probe")
-def probe() -> Probe: ...
+def probe() -> Probe:
+    raise NotImplementedError
 
 
 def _wire(client: NemoClient) -> list[httpx.Request]:
