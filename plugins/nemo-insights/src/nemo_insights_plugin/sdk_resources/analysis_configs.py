@@ -4,8 +4,9 @@
 """SDK sub-resources for periodic analysis opt-in configs and run status."""
 
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Protocol, TypedDict
 
+from nemo_insights_plugin.client import AsyncInsightsClient, InsightsClient
 from nemo_insights_plugin.entities import (
     AnalysisConfig,
     AnalysisConfigStatus,
@@ -19,14 +20,26 @@ from nemo_insights_plugin.schema import (
     UpdateAnalysisRunStatusRequest,
 )
 from nemo_insights_plugin.sdk_resources._entity import entity_from_response, hydrate_page
+from nemo_insights_plugin.types import ListAnalysisConfigsQueryParams, ListAnalysisRunStatusesQueryParams
+
+
+class _AnalysisRunStatusPatch(TypedDict, total=False):
+    status: AnalysisConfigStatus
+    last_successful_run_at: datetime
+    last_attempted_at: datetime
+    last_completed_at: datetime
+    last_submitted_job: str
+    last_error: str
 
 
 class _ResourceParent(Protocol):
     """The slice of the insights SDK namespace this sub-resource needs."""
 
-    _http_client: Any
+    _client: InsightsClient
 
-    def _url(self, path: str) -> str: ...
+
+class _AsyncResourceParent(Protocol):
+    _client: AsyncInsightsClient
 
 
 def _list_params(
@@ -35,8 +48,8 @@ def _list_params(
     page_size: int,
     sort: str,
     enabled: bool | None,
-) -> dict[str, Any]:
-    params: dict[str, Any] = {"page": page, "page_size": page_size, "sort": sort}
+) -> ListAnalysisConfigsQueryParams:
+    params: ListAnalysisConfigsQueryParams = {"page": page, "page_size": page_size, "sort": sort}
     if enabled is not None:
         params["enabled"] = enabled
     return params
@@ -45,14 +58,14 @@ def _list_params(
 def _build_update_body(
     *,
     enabled: bool | None,
-) -> dict[str, Any]:
-    body = UpdateAnalysisConfigRequest(enabled=enabled)
-    return body.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+) -> UpdateAnalysisConfigRequest:
+    if enabled is None:
+        return UpdateAnalysisConfigRequest()
+    return UpdateAnalysisConfigRequest(enabled=enabled)
 
 
-def _build_enable_body(*, default_model: str, fast_model: str) -> dict[str, Any]:
-    body = EnableAnalysisConfigRequest(default_model=default_model, fast_model=fast_model)
-    return body.model_dump(mode="json")
+def _build_enable_body(*, default_model: str, fast_model: str) -> EnableAnalysisConfigRequest:
+    return EnableAnalysisConfigRequest(default_model=default_model, fast_model=fast_model)
 
 
 def _build_status_update_body(
@@ -63,25 +76,30 @@ def _build_status_update_body(
     last_completed_at: datetime | None,
     last_submitted_job: str | None,
     last_error: str | None,
-) -> dict[str, Any]:
-    body = UpdateAnalysisRunStatusRequest(
-        status=AnalysisConfigStatus(status) if isinstance(status, str) else status,
-        last_successful_run_at=last_successful_run_at,
-        last_attempted_at=last_attempted_at,
-        last_completed_at=last_completed_at,
-        last_submitted_job=last_submitted_job,
-        last_error=last_error,
-    )
-    return body.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+) -> UpdateAnalysisRunStatusRequest:
+    update: _AnalysisRunStatusPatch = {}
+    if status is not None:
+        update["status"] = AnalysisConfigStatus(status) if isinstance(status, str) else status
+    if last_successful_run_at is not None:
+        update["last_successful_run_at"] = last_successful_run_at
+    if last_attempted_at is not None:
+        update["last_attempted_at"] = last_attempted_at
+    if last_completed_at is not None:
+        update["last_completed_at"] = last_completed_at
+    if last_submitted_job is not None:
+        update["last_submitted_job"] = last_submitted_job
+    if last_error is not None:
+        update["last_error"] = last_error
+    return UpdateAnalysisRunStatusRequest(**update)
 
 
-def _analysis_config_page_from_response(data: dict[str, Any]) -> AnalysisConfigPage:
+def _analysis_config_page_from_response(data: dict[str, object]) -> AnalysisConfigPage:
     page = AnalysisConfigPage.model_validate(data)
     hydrate_page(page.data, data.get("data"))
     return page
 
 
-def _analysis_run_status_page_from_response(data: dict[str, Any]) -> AnalysisRunStatusPage:
+def _analysis_run_status_page_from_response(data: dict[str, object]) -> AnalysisRunStatusPage:
     page = AnalysisRunStatusPage.model_validate(data)
     hydrate_page(page.data, data.get("data"))
     return page
@@ -93,20 +111,21 @@ class _AnalysisConfigResource:
     def __init__(self, parent: _ResourceParent) -> None:
         self._parent = parent
 
+    @property
+    def _client(self) -> InsightsClient:
+        return self._parent._client
+
     def enable(self, *, workspace: str, agent: str, default_model: str, fast_model: str) -> AnalysisConfig:
-        response = self._parent._http_client.post(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}/enable"),
-            json=_build_enable_body(default_model=default_model, fast_model=fast_model),
+        response = self._client.enable_analysis_config(
+            workspace=workspace,
+            agent=agent,
+            body=_build_enable_body(default_model=default_model, fast_model=fast_model),
         )
-        response.raise_for_status()
-        return entity_from_response(AnalysisConfig, response.json())
+        return entity_from_response(AnalysisConfig, response.http_response.json())
 
     def disable(self, *, workspace: str, agent: str) -> AnalysisConfig:
-        response = self._parent._http_client.post(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}/disable")
-        )
-        response.raise_for_status()
-        return entity_from_response(AnalysisConfig, response.json())
+        response = self._client.disable_analysis_config(workspace=workspace, agent=agent)
+        return entity_from_response(AnalysisConfig, response.http_response.json())
 
     def list_configs(
         self,
@@ -117,19 +136,16 @@ class _AnalysisConfigResource:
         sort: str = "-created_at",
         enabled: bool | None = None,
     ) -> AnalysisConfigPage:
-        response = self._parent._http_client.get(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs"),
-            params=_list_params(page=page, page_size=page_size, sort=sort, enabled=enabled),
+        response = self._client.list_analysis_configs(
+            workspace=workspace,
+            query_params=_list_params(page=page, page_size=page_size, sort=sort, enabled=enabled),
         )
-        response.raise_for_status()
-        return _analysis_config_page_from_response(response.json())
+        response.page()
+        return _analysis_config_page_from_response(response.http_response.json())
 
     def get(self, *, workspace: str, agent: str) -> AnalysisConfig:
-        response = self._parent._http_client.get(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}")
-        )
-        response.raise_for_status()
-        return entity_from_response(AnalysisConfig, response.json())
+        response = self._client.get_analysis_config(workspace=workspace, agent=agent)
+        return entity_from_response(AnalysisConfig, response.http_response.json())
 
     def update(
         self,
@@ -138,34 +154,35 @@ class _AnalysisConfigResource:
         agent: str,
         enabled: bool | None = None,
     ) -> AnalysisConfig:
-        response = self._parent._http_client.patch(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}"),
-            json=_build_update_body(enabled=enabled),
+        response = self._client.update_analysis_config(
+            workspace=workspace,
+            agent=agent,
+            body=_build_update_body(enabled=enabled),
         )
-        response.raise_for_status()
-        return entity_from_response(AnalysisConfig, response.json())
+        return entity_from_response(AnalysisConfig, response.http_response.json())
 
 
 class _AsyncAnalysisConfigResource:
     """Async ``analysis_configs`` sub-resource."""
 
-    def __init__(self, parent: _ResourceParent) -> None:
+    def __init__(self, parent: _AsyncResourceParent) -> None:
         self._parent = parent
 
+    @property
+    def _client(self) -> AsyncInsightsClient:
+        return self._parent._client
+
     async def enable(self, *, workspace: str, agent: str, default_model: str, fast_model: str) -> AnalysisConfig:
-        response = await self._parent._http_client.post(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}/enable"),
-            json=_build_enable_body(default_model=default_model, fast_model=fast_model),
+        response = await self._client.enable_analysis_config(
+            workspace=workspace,
+            agent=agent,
+            body=_build_enable_body(default_model=default_model, fast_model=fast_model),
         )
-        response.raise_for_status()
-        return entity_from_response(AnalysisConfig, response.json())
+        return entity_from_response(AnalysisConfig, response.http_response.json())
 
     async def disable(self, *, workspace: str, agent: str) -> AnalysisConfig:
-        response = await self._parent._http_client.post(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}/disable")
-        )
-        response.raise_for_status()
-        return entity_from_response(AnalysisConfig, response.json())
+        response = await self._client.disable_analysis_config(workspace=workspace, agent=agent)
+        return entity_from_response(AnalysisConfig, response.http_response.json())
 
     async def list_configs(
         self,
@@ -176,19 +193,16 @@ class _AsyncAnalysisConfigResource:
         sort: str = "-created_at",
         enabled: bool | None = None,
     ) -> AnalysisConfigPage:
-        response = await self._parent._http_client.get(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs"),
-            params=_list_params(page=page, page_size=page_size, sort=sort, enabled=enabled),
+        response = await self._client.list_analysis_configs(
+            workspace=workspace,
+            query_params=_list_params(page=page, page_size=page_size, sort=sort, enabled=enabled),
         )
-        response.raise_for_status()
-        return _analysis_config_page_from_response(response.json())
+        response.page()
+        return _analysis_config_page_from_response(response.http_response.json())
 
     async def get(self, *, workspace: str, agent: str) -> AnalysisConfig:
-        response = await self._parent._http_client.get(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}")
-        )
-        response.raise_for_status()
-        return entity_from_response(AnalysisConfig, response.json())
+        response = await self._client.get_analysis_config(workspace=workspace, agent=agent)
+        return entity_from_response(AnalysisConfig, response.http_response.json())
 
     async def update(
         self,
@@ -197,12 +211,12 @@ class _AsyncAnalysisConfigResource:
         agent: str,
         enabled: bool | None = None,
     ) -> AnalysisConfig:
-        response = await self._parent._http_client.patch(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}"),
-            json=_build_update_body(enabled=enabled),
+        response = await self._client.update_analysis_config(
+            workspace=workspace,
+            agent=agent,
+            body=_build_update_body(enabled=enabled),
         )
-        response.raise_for_status()
-        return entity_from_response(AnalysisConfig, response.json())
+        return entity_from_response(AnalysisConfig, response.http_response.json())
 
 
 class _AnalysisRunStatusResource:
@@ -210,6 +224,10 @@ class _AnalysisRunStatusResource:
 
     def __init__(self, parent: _ResourceParent) -> None:
         self._parent = parent
+
+    @property
+    def _client(self) -> InsightsClient:
+        return self._parent._client
 
     def list_statuses(
         self,
@@ -219,19 +237,17 @@ class _AnalysisRunStatusResource:
         page_size: int = 20,
         sort: str = "-updated_at",
     ) -> AnalysisRunStatusPage:
-        response = self._parent._http_client.get(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-run-statuses"),
-            params={"page": page, "page_size": page_size, "sort": sort},
+        query_params: ListAnalysisRunStatusesQueryParams = {"page": page, "page_size": page_size, "sort": sort}
+        response = self._client.list_analysis_run_statuses(
+            workspace=workspace,
+            query_params=query_params,
         )
-        response.raise_for_status()
-        return _analysis_run_status_page_from_response(response.json())
+        response.page()
+        return _analysis_run_status_page_from_response(response.http_response.json())
 
     def get(self, *, workspace: str, agent: str) -> AnalysisRunStatus:
-        response = self._parent._http_client.get(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-run-statuses/{agent}")
-        )
-        response.raise_for_status()
-        return entity_from_response(AnalysisRunStatus, response.json())
+        response = self._client.get_analysis_run_status(workspace=workspace, agent=agent)
+        return entity_from_response(AnalysisRunStatus, response.http_response.json())
 
     def update(
         self,
@@ -245,9 +261,10 @@ class _AnalysisRunStatusResource:
         last_submitted_job: str | None = None,
         last_error: str | None = None,
     ) -> AnalysisRunStatus:
-        response = self._parent._http_client.patch(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-run-statuses/{agent}"),
-            json=_build_status_update_body(
+        response = self._client.update_analysis_run_status(
+            workspace=workspace,
+            agent=agent,
+            body=_build_status_update_body(
                 status=status,
                 last_successful_run_at=last_successful_run_at,
                 last_attempted_at=last_attempted_at,
@@ -256,15 +273,18 @@ class _AnalysisRunStatusResource:
                 last_error=last_error,
             ),
         )
-        response.raise_for_status()
-        return entity_from_response(AnalysisRunStatus, response.json())
+        return entity_from_response(AnalysisRunStatus, response.http_response.json())
 
 
 class _AsyncAnalysisRunStatusResource:
     """Async ``analysis_run_statuses`` sub-resource."""
 
-    def __init__(self, parent: _ResourceParent) -> None:
+    def __init__(self, parent: _AsyncResourceParent) -> None:
         self._parent = parent
+
+    @property
+    def _client(self) -> AsyncInsightsClient:
+        return self._parent._client
 
     async def list_statuses(
         self,
@@ -274,19 +294,17 @@ class _AsyncAnalysisRunStatusResource:
         page_size: int = 20,
         sort: str = "-updated_at",
     ) -> AnalysisRunStatusPage:
-        response = await self._parent._http_client.get(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-run-statuses"),
-            params={"page": page, "page_size": page_size, "sort": sort},
+        query_params: ListAnalysisRunStatusesQueryParams = {"page": page, "page_size": page_size, "sort": sort}
+        response = await self._client.list_analysis_run_statuses(
+            workspace=workspace,
+            query_params=query_params,
         )
-        response.raise_for_status()
-        return _analysis_run_status_page_from_response(response.json())
+        response.page()
+        return _analysis_run_status_page_from_response(response.http_response.json())
 
     async def get(self, *, workspace: str, agent: str) -> AnalysisRunStatus:
-        response = await self._parent._http_client.get(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-run-statuses/{agent}")
-        )
-        response.raise_for_status()
-        return entity_from_response(AnalysisRunStatus, response.json())
+        response = await self._client.get_analysis_run_status(workspace=workspace, agent=agent)
+        return entity_from_response(AnalysisRunStatus, response.http_response.json())
 
     async def update(
         self,
@@ -300,9 +318,10 @@ class _AsyncAnalysisRunStatusResource:
         last_submitted_job: str | None = None,
         last_error: str | None = None,
     ) -> AnalysisRunStatus:
-        response = await self._parent._http_client.patch(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-run-statuses/{agent}"),
-            json=_build_status_update_body(
+        response = await self._client.update_analysis_run_status(
+            workspace=workspace,
+            agent=agent,
+            body=_build_status_update_body(
                 status=status,
                 last_successful_run_at=last_successful_run_at,
                 last_attempted_at=last_attempted_at,
@@ -311,8 +330,7 @@ class _AsyncAnalysisRunStatusResource:
                 last_error=last_error,
             ),
         )
-        response.raise_for_status()
-        return entity_from_response(AnalysisRunStatus, response.json())
+        return entity_from_response(AnalysisRunStatus, response.http_response.json())
 
 
 __all__ = [

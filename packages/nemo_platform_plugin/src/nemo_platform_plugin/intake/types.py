@@ -9,11 +9,12 @@ from datetime import datetime
 from typing import Any, Literal, NotRequired, Required, TypedDict
 
 from nemo_platform_plugin.schema import Page
-from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
 
 EvaluatorResultDataType = Literal["NUMERIC", "BOOLEAN", "CATEGORICAL", "TEXT"]
 TraceMode = Literal["summary", "preview", "detailed"]
 TraceStatus = Literal["OK", "ERROR", "UNSET"] | str
+SpanMode = Literal["summary", "preview", "detailed"]
 
 
 class EvaluationContextParam(TypedDict, total=False):
@@ -221,6 +222,82 @@ class Trace(BaseModel):
     error_count: int | None = Field(default=None, ge=0)
 
 
+class SpanEvaluationContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evaluation_name: str | None = None
+    test_case_name: str | None = None
+
+
+class Span(BaseModel):
+    """Span row returned by the Intake spans API."""
+
+    span_id: str
+    session_id: str
+    workspace: str
+    project: str | None = None
+    evaluation_context: SpanEvaluationContext | None = None
+    parent_span_id: str | None = None
+    kind: str
+    name: str | None = None
+    source: str
+    trace_id: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    status: str
+    error_type: str | None = None
+    error_message: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_id: str | None = None
+    agent_id: str | None = None
+    agent_name: str | None = None
+    tool_name: str | None = None
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    cached_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    usage_details: dict[str, int] = Field(default_factory=dict)
+    cost_total_usd: float | None = None
+    cost_input_usd: float | None = None
+    cost_output_usd: float | None = None
+    cost_details: dict[str, float] = Field(default_factory=dict)
+    input: str | None = None
+    output: str | None = None
+    raw_attributes: str | None = None
+    ingested_at: datetime
+
+
+class SpanGroup(BaseModel):
+    group: dict[str, str]
+    span_count: int = Field(ge=0)
+    started_at: datetime
+
+
+class SpanGroupsPage(Page[SpanGroup]):
+    grouped_by: list[str] = Field(default_factory=list)
+
+
+class Annotation(BaseModel):
+    """Flattened read shape for Intake post-hoc annotations."""
+
+    model_config = ConfigDict(extra="allow")
+
+    annotation_id: str
+    workspace: str
+    span_id: str | None = None
+    session_id: str
+    kind: str
+    name: str | None = None
+    value: str | float | None = None
+    value_type: str | None = None
+    text: str | None = None
+    metadata: dict[str, JsonValue] | None = None
+    created_by: str | None = None
+    created_at: datetime
+    ingested_at: datetime
+
+
 class TraceFilterParam(TypedDict, total=False):
     id: str
     session_id: str
@@ -241,6 +318,60 @@ class ListTracesQueryParams(TypedDict, total=False):
     filter: TraceFilterParam
 
 
+class SpanFilterParam(TypedDict, total=False):
+    session_id: str
+    trace_id: str
+    parent_span_id: str
+    project: str
+    evaluation_name: str
+    test_case_name: str
+    evaluation_id: str
+    test_case_id: str
+    source: str
+    kind: str
+    status: str
+    model: str
+    tool_name: str
+    provider: str
+    agent_id: str
+    agent_name: str
+    started_at: dict[str, str]
+
+
+class ListSpansQueryParams(TypedDict, total=False):
+    page: int
+    page_size: int
+    sort: str
+    mode: SpanMode
+    filter: SpanFilterParam | dict[str, JsonValue]
+
+
+class ListSpanGroupsQueryParams(TypedDict, total=False):
+    by: str
+    page: int
+    page_size: int
+    sort: str
+    filter: SpanFilterParam | dict[str, JsonValue]
+
+
+class AnnotationFilterParam(TypedDict, total=False):
+    span_id: str
+    session_id: str
+    kind: str
+    name: str
+    value_text: str
+    value_numeric: dict[str, float]
+    created_by: str
+    created_at: dict[str, str]
+
+
+class ListAnnotationsQueryParams(TypedDict, total=False):
+    page: int
+    page_size: int
+    sort: str
+    filter: AnnotationFilterParam | dict[str, JsonValue]
+
+
 class ListEvaluatorResultsQueryParams(TypedDict, total=False):
     page: int
     page_size: int
@@ -250,3 +381,5 @@ class ListEvaluatorResultsQueryParams(TypedDict, total=False):
 
 TracePage = Page[Trace]
 EvaluatorResultPage = Page[EvaluatorResult]
+SpanPage = Page[Span]
+AnnotationPage = Page[Annotation]

@@ -11,14 +11,20 @@ from collections.abc import AsyncIterable, Iterable
 from nemo_platform_plugin.client.endpoint import get, patch, post
 from nemo_platform_plugin.client.types import Paginated, PreparedRequest
 from nemo_platform_plugin.intake.types import (
+    Annotation,
     AtifCreateRequest,
     EvaluationPatchRequest,
     EvaluationResponse,
     EvaluatorResult,
     EvaluatorResultCreateRequest,
     IngestResponse,
+    ListAnnotationsQueryParams,
     ListEvaluatorResultsQueryParams,
+    ListSpanGroupsQueryParams,
+    ListSpansQueryParams,
     ListTracesQueryParams,
+    Span,
+    SpanGroupsPage,
     Trace,
 )
 
@@ -90,3 +96,40 @@ def list_evaluator_results(
 @get(f"{_INTAKE_BASE}/spans/{{span_id}}/evaluator-results")
 @abstractmethod
 def list_evaluator_results_for_span(*, workspace: str | None = None, span_id: str) -> list[EvaluatorResult]: ...
+
+
+@get(f"{_INTAKE_BASE}/spans")
+@abstractmethod
+def list_spans(
+    *,
+    workspace: str | None = None,
+    query_params: ListSpansQueryParams | None = None,
+) -> Paginated[Span]: ...
+
+
+@get(f"{_INTAKE_BASE}/spans/groups")
+@abstractmethod
+def list_span_groups(
+    *,
+    workspace: str | None = None,
+    query_params: ListSpanGroupsQueryParams | None = None,
+) -> SpanGroupsPage: ...
+
+
+@get(f"{_INTAKE_BASE}/spans/{{span_id}}")
+@abstractmethod
+def get_span(*, workspace: str | None = None, span_id: str) -> Span: ...
+
+
+@get(f"{_INTAKE_BASE}/annotations")
+@abstractmethod
+def list_annotations(
+    *,
+    workspace: str | None = None,
+    query_params: ListAnnotationsQueryParams | None = None,
+) -> Paginated[Annotation]: ...
+
+
+@get(f"{_INTAKE_BASE}/annotations/{{annotation_id}}")
+@abstractmethod
+def get_annotation(*, workspace: str | None = None, annotation_id: str) -> Annotation: ...
