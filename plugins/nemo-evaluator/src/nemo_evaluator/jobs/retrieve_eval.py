@@ -27,7 +27,7 @@ from nemo_evaluator.jobs.evaluate import (
 )
 from nemo_evaluator.jobs.metric_resolution import PlatformMetricModelResolver
 from nemo_evaluator.jobs.secret_env import build_task_environment
-from nemo_evaluator.jobs.utils import run_with_isolated_async_client
+from nemo_evaluator.jobs.utils import as_async_nemo_client, as_nemo_client, run_with_isolated_async_client
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.metrics.retrieval import (
     RetrievalMAPMetric,
@@ -38,7 +38,7 @@ from nemo_evaluator_sdk.metrics.retrieval import (
 from nemo_evaluator_sdk.values.models import Model, ModelRef
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.retrieval import Retrieval, Truncation
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
@@ -200,20 +200,22 @@ class RetrieveEvalJob(NemoJob):
         self,
         config: dict,
         ctx: JobContext,
-        sdk: NemoClient | None = None,
-        async_sdk: AsyncNemoClient | None = None,
+        sdk: NemoClient | NeMoPlatform | None = None,
+        async_sdk: AsyncNemoClient | AsyncNeMoPlatform | None = None,
     ) -> dict:
         """Download, validate, score, and persist a BEIR retrieval result."""
+        client = as_nemo_client(sdk)
+        async_client = as_async_nemo_client(async_sdk)
         spec = RetrieveEvalSpec.model_validate(config)
-        if sdk is not None:
+        if client is not None:
             dataset_path = download_dataset_sync(
-                client=sdk,
+                client=client,
                 dataset=spec.dataset,
                 destination=str(ctx.storage.persistent / "dataset"),
             )
-        elif async_sdk is not None:
+        elif async_client is not None:
             dataset_path = run_with_isolated_async_client(
-                async_sdk,
+                async_client,
                 lambda isolated_client: download_dataset(
                     client=isolated_client,
                     dataset=spec.dataset,
