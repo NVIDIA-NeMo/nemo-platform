@@ -612,7 +612,7 @@ async def refresh_fileset(
     Deployments stage the fileset when they are created, so existing deployments
     keep serving the revision they were staged from.
     """
-    logger.info(f"POST /filesets/{name}/refresh - workspace={workspace}")
+    logger.info("POST /filesets/%s/refresh - workspace=%s", _sanitize_for_log(name), _sanitize_for_log(workspace))
     try:
         fileset = await get_fileset(workspace, name, entity_store)
     except EntityNotFoundError as exc:
@@ -644,7 +644,12 @@ async def refresh_fileset(
     except ExternalHostInvalidError as exc:
         raise HTTPException(HTTP_400_BAD_REQUEST, f"Invalid URL for external host: {exc}") from exc
     except (SecretNotFoundError, SecretAccessDeniedError) as exc:
-        logger.warning(f"Secret unavailable while refreshing {workspace}/{name}: {exc}")
+        logger.warning(
+            "Secret unavailable while refreshing %s/%s: %s",
+            _sanitize_for_log(workspace),
+            _sanitize_for_log(name),
+            exc,
+        )
         raise HTTPException(HTTP_400_BAD_REQUEST, f"Secret unavailable: {exc}") from exc
     except StorageAccessError as exc:
         logger.warning(f"Storage access denied: {exc}")
