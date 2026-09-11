@@ -32,9 +32,7 @@ interface AnalysisConfigPanelProps {
 
 /**
  * The stored per-agent insights analysis config: whether the periodic controller runs, and the
- * model pair it uses. The pair is a snapshot taken when analysis was enabled — the controller runs
- * in the Platform process and cannot read the operator's CLI config — so it goes stale silently.
- * Showing it here is the only way to notice that before a run fails on it.
+ * model pair it uses.
  */
 export const AnalysisConfigPanel: FC<AnalysisConfigPanelProps> = ({ workspace, agent }) => {
   const toast = useToast();
@@ -53,7 +51,6 @@ export const AnalysisConfigPanel: FC<AnalysisConfigPanelProps> = ({ workspace, a
     query: { enabled: !!agent, retry: false },
   });
 
-  // A 404 is the ordinary "never enabled" state, not a failure worth an error panel.
   const notFound =
     isError && (error as { response?: { status?: number } })?.response?.status === 404;
 
@@ -102,7 +99,13 @@ export const AnalysisConfigPanel: FC<AnalysisConfigPanelProps> = ({ workspace, a
       slotAction={
         editing ? (
           <Flex gap="density-sm">
-            <Button kind="tertiary" size="small" onClick={handleCancel} disabled={saving}>
+            <Button
+              kind="tertiary"
+              size="small"
+              className="h-auto"
+              onClick={handleCancel}
+              disabled={saving}
+            >
               Cancel
             </Button>
             <LoadingButton
@@ -187,12 +190,6 @@ export const AnalysisConfigPanel: FC<AnalysisConfigPanelProps> = ({ workspace, a
               aria-label="Fast model"
             />
           </FormField>
-          {!enabled && (
-            <Text kind="body/regular/xs" color="secondary">
-              Saving a model change writes the pair before disabling, so the config is briefly
-              enabled mid-save.
-            </Text>
-          )}
         </Stack>
       ) : notFound ? (
         <Text kind="body/regular/sm" color="secondary">
@@ -209,8 +206,8 @@ export const AnalysisConfigPanel: FC<AnalysisConfigPanelProps> = ({ workspace, a
               </Badge>
             }
           />
-          <KVPair label="Default model" value={config?.default_model || 'Not set'} />
-          <KVPair label="Fast model" value={config?.fast_model || 'Not set'} />
+          <KVPair label="Default model" value={config?.default_model} />
+          <KVPair label="Fast model" value={config?.fast_model} />
           {config?.updated_at && (
             <KVPair label="Updated" value={<RelativeTime datetime={config.updated_at} />} />
           )}
