@@ -19,6 +19,8 @@ from fastapi import HTTPException
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.types.inference.middleware_call import MiddlewareCall as SDKMiddlewareCall
 from nemo_platform.types.inference.virtual_model import VirtualModel as SDKVirtualModel
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.discovery import discover_inference_middleware
 from nemo_platform_plugin.inference_middleware import (
     BackendFormat,
@@ -769,7 +771,9 @@ async def load_middleware_plugins(
             instance = cls()
             instance._inject_cache(accessor)
             if plugin_sdk_factory is not None:
-                instance._inject_platform_sdk(plugin_sdk_factory(name))
+                sdk = plugin_sdk_factory(name)
+                instance._inject_platform_sdk(sdk)
+                instance._inject_platform_client(client_from_platform(sdk, AsyncNemoClient))
             await instance.on_startup()
             plugins[name] = instance
             logger.info("Loaded inference middleware plugin %r (%s)", name, cls.__qualname__)
