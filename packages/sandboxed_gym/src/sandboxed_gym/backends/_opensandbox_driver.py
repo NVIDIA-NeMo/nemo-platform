@@ -268,6 +268,36 @@ class OpenSandboxDriver:
         self._workdirs.pop(handle.sandbox_id, None)
         await self._sandbox(handle).destroy()
 
+    async def destroy_sandboxes_for_job(self, job_id: str) -> tuple[str, ...]:
+        """Destroy every sandbox carrying ``job_id``, including one whose create response timed out.
+
+        OpenSandbox creates the Kubernetes resource before waiting for it to become ready. If the
+        client loses that request, no ``SandboxHandle`` comes back, so normal handle-based cleanup
+        cannot reach the resource. Metadata lookup closes that gap.
+        """
+        from opensandbox.manager import SandboxManager
+        from opensandbox.models.sandboxes import SandboxFilter
+
+        from sandboxed_gym.config import JOB_ID_METADATA_KEY
+
+        manager = await SandboxManager.create(connection_config=self._connection_config)
+        try:
+            sandbox_ids: list[str] = []
+            page = 1
+            while True:
+                result = await manager.list_sandbox_infos(
+                    SandboxFilter(metadata={JOB_ID_METADATA_KEY: job_id}, page=page)
+                )
+                sandbox_ids.extend(info.id for info in result.sandbox_infos)
+                if not result.pagination.has_next_page:
+                    break
+                page += 1
+            for sandbox_id in sandbox_ids:
+                await manager.kill_sandbox(sandbox_id)
+            return tuple(sandbox_ids)
+        finally:
+            await manager.close()
+
     async def aclose(self) -> None:
         """No provider-scoped client to close: each sandbox owns its own SDK connection."""
         return

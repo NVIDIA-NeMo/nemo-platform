@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 from sandboxed_gym.backends._opensandbox_driver import (
     _STATUS_ALIASES,
+    OpenSandboxDriver,
     _exec_identity,
     _joined_output,
     _resource_requests,
@@ -82,3 +83,50 @@ def test_every_status_alias_maps_onto_a_real_contract_status() -> None:
     # here would resolve to UNKNOWN at runtime and look like a dead sandbox.
     assert all(isinstance(value, SandboxStatus) for value in _STATUS_ALIASES.values())
     assert "running" not in _STATUS_ALIASES, "statuses that already match must not be aliased"
+
+
+async def test_destroy_sandboxes_for_job_lists_every_page_and_kills_each(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from opensandbox.manager import SandboxManager
+
+    manager = SimpleNamespace(
+        filters=[],
+        killed=[],
+        closed=False,
+    )
+
+    async def list_sandbox_infos(sandbox_filter: object) -> object:
+        manager.filters.append(sandbox_filter)
+        page = getattr(sandbox_filter, "page")
+        return SimpleNamespace(
+            sandbox_infos=[SimpleNamespace(id=f"orphan-{page}")],
+            pagination=SimpleNamespace(has_next_page=page == 1),
+        )
+
+    async def kill_sandbox(sandbox_id: str) -> None:
+        manager.killed.append(sandbox_id)
+
+    async def close() -> None:
+        manager.closed = True
+
+    manager.list_sandbox_infos = list_sandbox_infos
+    manager.kill_sandbox = kill_sandbox
+    manager.close = close
+
+    async def create_manager(*, connection_config: object) -> object:
+        return manager
+
+    monkeypatch.setattr(SandboxManager, "create", create_manager)
+
+    removed = await OpenSandboxDriver().destroy_sandboxes_for_job("job-1")
+
+    assert removed == ("orphan-1", "orphan-2")
+    assert manager.killed == ["orphan-1", "orphan-2"]
+    assert [sandbox_filter.metadata for sandbox_filter in manager.filters] == [
+        {"nemo-rl-job-id": "job-1"},
+        {"nemo-rl-job-id": "job-1"},
+    ]
+    assert manager.closed is True
