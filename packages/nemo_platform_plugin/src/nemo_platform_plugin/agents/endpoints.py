@@ -17,7 +17,9 @@ from nemo_platform_plugin.agents.types import (
     AgentDeployment,
     CreateAgentDeploymentRequest,
     CreateAgentRequest,
+    CreateExecuteJobRequest,
     InvokeAgentRequest,
+    JsonObject,
     ListAgentsQueryParams,
     ListDeploymentsQueryParams,
 )
@@ -26,6 +28,7 @@ from nemo_platform_plugin.client.types import Paginated, PreparedRequest
 
 _AGENTS = "/apis/agents/v2/workspaces/{workspace}/agents"
 _DEPLOYMENTS = "/apis/agents/v2/workspaces/{workspace}/deployments"
+_EXECUTE_JOBS = "/apis/agents/v2/workspaces/{workspace}/jobs/execute"
 
 
 # ---------------------------------------------------------------------------
@@ -100,3 +103,23 @@ def invoke_agent(*, workspace: str | None = None, name: str, body: InvokeAgentRe
 @post(f"{_DEPLOYMENTS}/{{name}}/-/v1/chat/completions")
 @abstractmethod
 def invoke_deployment(*, workspace: str | None = None, name: str, body: InvokeAgentRequest) -> dict[str, Any]: ...
+
+
+# ---------------------------------------------------------------------------
+# agents.execute jobs
+# ---------------------------------------------------------------------------
+
+
+@post(_EXECUTE_JOBS)
+@abstractmethod
+def create_execute_job(*, workspace: str | None = None, body: CreateExecuteJobRequest) -> JsonObject: ...
+
+
+@get(f"{_EXECUTE_JOBS}/{{name}}")
+@abstractmethod
+def get_execute_job(*, workspace: str | None = None, name: str) -> JsonObject: ...
+
+
+@get(f"{_EXECUTE_JOBS}/{{name}}/results")
+@abstractmethod
+def list_execute_job_results(*, workspace: str | None = None, name: str) -> JsonObject: ...

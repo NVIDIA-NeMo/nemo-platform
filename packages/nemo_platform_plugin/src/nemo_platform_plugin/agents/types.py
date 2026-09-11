@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, NotRequired, TypedDict
 
 from nemo_platform_plugin.schema import Page
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 # ---------------------------------------------------------------------------
 # Response types
@@ -86,6 +86,17 @@ class InvokeAgentRequest(BaseModel):
 
     messages: list[dict[str, Any]] = Field(default_factory=list)
     stream: bool = False
+
+
+JsonObject = dict[str, JsonValue]
+
+
+class CreateExecuteJobRequest(BaseModel):
+    """Request body for the agents.execute job collection."""
+
+    spec: JsonObject = Field(description="ExecuteAgentJobConfig payload owned by the Agents plugin.")
+    name: str | None = None
+    description: str | None = None
 
 
 # ---------------------------------------------------------------------------
