@@ -6,8 +6,8 @@ import {
   SOURCE_HF,
   SOURCE_NGC,
   type WizardFormValues,
-} from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
-import { useHuggingFaceNameDefault } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/useHuggingFaceNameDefault';
+} from '@studio/routes/NewDeploymentRoute/schema';
+import { useHuggingFaceNameDefault } from '@studio/routes/NewDeploymentRoute/useHuggingFaceNameDefault';
 import { act, renderHook } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 

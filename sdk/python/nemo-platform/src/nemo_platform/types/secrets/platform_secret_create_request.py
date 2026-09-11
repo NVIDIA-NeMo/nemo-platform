@@ -4,5 +4,5 @@
 from __future__ import annotations
 
 from nemo_platform_plugin.secrets.types import (
-    SecretCreateParams as SecretCreateParams,
+    PlatformSecretCreateRequest as PlatformSecretCreateRequest,
 )
