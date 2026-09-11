@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
@@ -122,7 +123,13 @@ def _packaged_dataset(resources_server: str) -> Path:
 
 
 async def _main(args: argparse.Namespace) -> int:
-    output_dir = args.output_dir or Path(tempfile.mkdtemp(prefix="gym-eval-"))
+    if args.output_dir is not None:
+        # Suffix each run with a human-readable timestamp so re-runs never collide with the runner's
+        # fresh-output guard (it refuses a dir already holding Gym rollouts).
+        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_dir = args.output_dir.with_name(f"{args.output_dir.name}-{stamp}")
+    else:
+        output_dir = Path(tempfile.mkdtemp(prefix="gym-eval-"))
     dataset = args.dataset or _packaged_dataset(args.resources_server)
     tasks = discover_gym_tasks(dataset)
     print(f"discovered {len(tasks)} tasks from {dataset}")
