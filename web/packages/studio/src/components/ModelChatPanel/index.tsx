@@ -114,7 +114,6 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
             include={hasModelProvider}
             value={selectedModel}
             onValueChange={handleModelChange}
-            hideAdapters
             fullWidth
             disabled={panel.locked}
           />
