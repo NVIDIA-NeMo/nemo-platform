@@ -239,6 +239,18 @@ def test_single_node_uses_gpu_executor() -> None:
     assert step["name"] == "dpo-training"
     assert _provider(step) == "gpu"
     assert _container(step)["command"] == ["-m", "nmp.rl.tasks.training"]
+    resources = step["executor"]["resources"]
+    actual = resources.shm_size if hasattr(resources, "shm_size") else resources["shm_size"]
+    assert actual == "8Gi"
+
+
+def test_multi_node_gpu_shm_scales_with_gpus_per_node(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.multinode_shared_storage_path", "/shared", raising=False)
+    job = _make_job_output(DPOTraining(type="dpo", parallelism=ParallelismParams(num_nodes=2, num_gpus_per_node=2)))
+    step = _build_training_step(job, [], trust_remote_code=False, profile=None)
+    resources = step["executor"]["resources"]
+    actual = resources.shm_size if hasattr(resources, "shm_size") else resources["shm_size"]
+    assert actual == "16Gi"
 
 
 def test_multi_node_requires_shared_storage(monkeypatch: pytest.MonkeyPatch) -> None:

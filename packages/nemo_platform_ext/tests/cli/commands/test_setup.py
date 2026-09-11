@@ -71,6 +71,7 @@ from nemo_platform_ext.cli.commands.setup import (
     _prompt_custom_provider,
     _register_provider_interactive,
     _render_onboarding_card,
+    _require_supported_python,
     _resolve_provider_for_url,
     _resolve_setup_workspace,
     _run_auto_mode,
@@ -4033,6 +4034,42 @@ def _patch_setup_command(
         if auto_mode:
             mocks.run_auto = stack.enter_context(patch(f"{SETUP_MOD}._run_auto_mode"))
         yield mocks
+
+
+# ---------------------------------------------------------------------------
+# Python version guard
+# ---------------------------------------------------------------------------
+
+
+class TestRequireSupportedPython:
+    def test_accepts_3_12_and_3_13(self):
+        for version in ((3, 12, 11, "final", 0), (3, 13, 5, "final", 0)):
+            with patch.object(setup_commands.sys, "version_info", version):
+                _require_supported_python()
+
+    def test_rejects_3_14_and_3_11(self, capsys):
+        for version in ((3, 14, 0, "final", 0), (3, 11, 13, "final", 0)):
+            with (
+                patch.object(setup_commands.sys, "version_info", version),
+                pytest.raises(typer.Exit) as exc_info,
+            ):
+                _require_supported_python()
+            assert exc_info.value.exit_code == 1
+            err = capsys.readouterr().err
+            assert "Unsupported Python" in err
+            assert "Python 3.12-3.13" in err
+            assert "--python 3.13" in err
+
+    def test_setup_command_exits_before_starting_services(self):
+        ctx, _cli_context = _make_setup_command_ctx()
+        with (
+            _patch_setup_command() as mocks,
+            patch.object(setup_commands.sys, "version_info", (3, 14, 0, "final", 0)),
+            pytest.raises(typer.Exit) as exc_info,
+        ):
+            setup_command(ctx, auto=False)
+        assert exc_info.value.exit_code == 1
+        mocks.maybe_start_services.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
