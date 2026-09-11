@@ -18,6 +18,7 @@ import httpx
 from fastapi.testclient import TestClient
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform, NotGiven, not_given
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.client import AsyncNemoClient
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.workspaces.client import WorkspacesClient
 from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
@@ -51,6 +52,9 @@ class ClientContext:
     async_sdk: AsyncNeMoPlatform
     """Asynchronous NeMoPlatform SDK client."""
 
+    async_client: AsyncNemoClient
+    """Asynchronous typed platform client."""
+
     entity_client: EntityClient
     """EntityClient for direct entity operations."""
 
@@ -61,7 +65,7 @@ class ClientContext:
     """Captured requests when access_log=True was passed to create_test_client."""
 
 
-ClientT = TypeVar("ClientT", TestClient, AsyncNeMoPlatform, NeMoPlatform, EntityClient, ClientContext)
+ClientT = TypeVar("ClientT", TestClient, AsyncNemoClient, AsyncNeMoPlatform, NeMoPlatform, EntityClient, ClientContext)
 
 
 class SDKTestClientAdapter(httpx.Client):
@@ -249,8 +253,8 @@ def create_test_client(
 
     Args:
         *service_types: One or more Service classes to test
-        client_type: The client type to yield. One of TestClient, AsyncNeMoPlatform,
-                     NeMoPlatform, or EntityClient. Defaults to NeMoPlatform.
+        client_type: The client type to yield. One of TestClient, AsyncNemoClient,
+                     AsyncNeMoPlatform, NeMoPlatform, or EntityClient. Defaults to NeMoPlatform.
         dependency_overrides: Custom dependency overrides dict. If get_entity_client
                       is not in dependency_overrides, an EntityClient will be created.
         service_configs: Optional map of service class → config. Overrides defaults
@@ -477,6 +481,7 @@ def create_test_client(
             base_url="http://testserver",
             http_client=async_http_client,
         ).copy(workspace=workspace)
+        async_client = AsyncNemoClient(base_url="http://testserver", http_client=async_http_client, workspace=workspace)
 
         # Create the EntityClient (used for DI and optionally yielded)
         entity_client = EntityClient(client_from_platform(async_sdk, AsyncEntitiesClient))
@@ -658,6 +663,8 @@ def create_test_client(
 
             if selected_client_type is TestClient:
                 yield client  # ty: ignore[invalid-yield]
+            elif selected_client_type is AsyncNemoClient:
+                yield async_client  # ty: ignore[invalid-yield]
             elif selected_client_type is AsyncNeMoPlatform:
                 yield async_sdk  # ty: ignore[invalid-yield]
             elif selected_client_type is EntityClient:
@@ -666,6 +673,7 @@ def create_test_client(
                 yield ClientContext(
                     sdk=sdk,
                     async_sdk=async_sdk,
+                    async_client=async_client,
                     entity_client=entity_client,
                     test_client=client,
                     access_log=access_log_instance,
