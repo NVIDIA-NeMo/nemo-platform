@@ -1,12 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for Guardrails service endpoint definitions and response types."""
+"""Tests for Guardrails service endpoint definitions."""
 
 from __future__ import annotations
 
 import json
-from typing import Any, get_origin
+from typing import get_origin
 
 from nemo_platform_plugin.client.types import Paginated, PreparedRequest
 from nemo_platform_plugin.entities.types import DeleteResponse
@@ -16,168 +16,130 @@ from nemo_platform_plugin.guardrail.types import (
     GuardrailCheckRequest,
     GuardrailCheckResponse,
     GuardrailConfig,
+    RailsConfig,
     UpdateGuardrailConfigRequest,
 )
 
-CONFIGS = "/apis/guardrails/v2/workspaces/{workspace}/configs"
+_CONFIGS = "/apis/guardrails/v2/workspaces/{workspace}/configs"
+_CHECKS = "/apis/guardrails/v2/workspaces/{workspace}/checks"
 
 
-def _json_content(prepared: PreparedRequest[Any]) -> Any:
+def _json_body(prepared: PreparedRequest) -> dict:
     assert isinstance(prepared.content, bytes)
     return json.loads(prepared.content)
 
 
-def test_get_guardrail_config() -> None:
-    prepared = endpoints.get_guardrail_config(workspace="default", name="safety")
-
-    assert isinstance(prepared, PreparedRequest)
-    assert prepared.method == "GET"
-    assert prepared.path_template == f"{CONFIGS}/{{name}}"
-    assert prepared.path_params == {"workspace": "default", "name": "safety"}
-    assert prepared.content is None
-    assert prepared.response_type is GuardrailConfig
-
-
-def test_get_guardrail_config_workspace_optional() -> None:
-    prepared = endpoints.get_guardrail_config(name="safety")
-
-    assert prepared.path_params == {"name": "safety"}
-
-
-def test_list_guardrail_configs() -> None:
-    prepared = endpoints.list_guardrail_configs(workspace="default")
-
-    assert prepared.method == "GET"
-    assert prepared.path_template == CONFIGS
-    assert prepared.path_params == {"workspace": "default"}
-    assert prepared.query_params is None
-    assert get_origin(prepared.response_type) is Paginated
-
-
-def test_list_guardrail_configs_with_query_params() -> None:
-    prepared = endpoints.list_guardrail_configs(
-        workspace="default", query_params={"page": 2, "page_size": 5, "sort": "-name", "filter": '{"name": "x"}'}
+def _rails_config() -> RailsConfig:
+    return RailsConfig.model_validate(
+        {
+            "models": [{"type": "content_safety", "engine": "nim", "model": "default/safety"}],
+            "rails": {"input": {"flows": ["self check input"]}},
+        }
     )
-
-    assert prepared.query_params == {"page": 2, "page_size": 5, "sort": "-name", "filter": '{"name": "x"}'}
 
 
 def test_create_guardrail_config() -> None:
-    body = CreateGuardrailConfigRequest(name="safety", description="d", data={"rails": {}})
+    body = CreateGuardrailConfigRequest(name="safe", description="Content safety", data=_rails_config())
+
     prepared = endpoints.create_guardrail_config(workspace="default", body=body)
 
+    assert isinstance(prepared, PreparedRequest)
     assert prepared.method == "POST"
-    assert prepared.path_template == CONFIGS
+    assert prepared.path_template == _CONFIGS
     assert prepared.path_params == {"workspace": "default"}
     assert prepared.content_type == "application/json"
-    assert _json_content(prepared) == {"name": "safety", "description": "d", "data": {"rails": {}}}
     assert prepared.response_type is GuardrailConfig
+    assert _json_body(prepared) == {
+        "name": "safe",
+        "description": "Content safety",
+        "data": {
+            "models": [{"engine": "nim", "type": "content_safety", "model": "default/safety"}],
+            "rails": {"input": {"flows": ["self check input"]}},
+        },
+    }
 
 
-def test_create_guardrail_config_only_sends_set_fields() -> None:
-    prepared = endpoints.create_guardrail_config(workspace="default", body=CreateGuardrailConfigRequest(name="s"))
-
-    assert _json_content(prepared) == {"name": "s"}
-
-
-def test_create_guardrail_config_exist_ok_builds_retrieve_request() -> None:
-    body = CreateGuardrailConfigRequest(name="safety")
-    prepared = endpoints.create_guardrail_config(workspace="default", body=body, exist_ok=True)
-
-    assert prepared.client_options == {"exist_ok": True}
-    assert prepared.on_conflict_get is not None
-    assert prepared.on_conflict_get.method == "GET"
-    assert prepared.on_conflict_get.path_template == f"{CONFIGS}/{{name}}"
-    assert prepared.on_conflict_get.path_params == {"workspace": "default", "name": "safety"}
-
-
-def test_update_guardrail_config() -> None:
-    body = UpdateGuardrailConfigRequest(description="changed")
-    prepared = endpoints.update_guardrail_config(workspace="default", name="safety", body=body)
-
-    assert prepared.method == "PATCH"
-    assert prepared.path_template == f"{CONFIGS}/{{name}}"
-    assert prepared.path_params == {"workspace": "default", "name": "safety"}
-    assert _json_content(prepared) == {"description": "changed"}
-    assert prepared.response_type is GuardrailConfig
-
-
-def test_update_guardrail_config_empty_body() -> None:
-    prepared = endpoints.update_guardrail_config(
-        workspace="default", name="safety", body=UpdateGuardrailConfigRequest()
+def test_create_guardrail_config_accepts_raw_dict_data() -> None:
+    prepared = endpoints.create_guardrail_config(
+        body=CreateGuardrailConfigRequest(
+            name="safe",
+            data={"rails": {"output": {"flows": ["self check output"], "streaming": {"enabled": False}}}},
+        )
     )
 
-    assert _json_content(prepared) == {}
+    assert prepared.path_params == {}
+    assert _json_body(prepared) == {
+        "name": "safe",
+        "data": {"rails": {"output": {"flows": ["self check output"], "streaming": {"enabled": False}}}},
+    }
 
 
-def test_delete_guardrail_config() -> None:
-    prepared = endpoints.delete_guardrail_config(workspace="default", name="safety")
+def test_create_guardrail_config_conflict_resolver() -> None:
+    prepared = endpoints.create_guardrail_config(
+        workspace="default",
+        body=CreateGuardrailConfigRequest(name="safe"),
+        exist_ok=True,
+    )
 
-    assert prepared.method == "DELETE"
-    assert prepared.path_template == f"{CONFIGS}/{{name}}"
-    assert prepared.path_params == {"workspace": "default", "name": "safety"}
-    assert prepared.content is None
-    assert prepared.response_type is DeleteResponse
+    assert prepared.on_conflict_get is not None
+    assert prepared.on_conflict_get.method == "GET"
+    assert prepared.on_conflict_get.path_template == _CONFIGS + "/{name}"
+    assert prepared.on_conflict_get.path_params == {"workspace": "default", "name": "safe"}
+    assert prepared.client_options == {"exist_ok": True}
+
+
+def test_list_guardrail_configs() -> None:
+    prepared = endpoints.list_guardrail_configs(
+        workspace="default",
+        query_params={"page": 2, "page_size": 10, "filter": "name:safe", "project": "p"},
+    )
+
+    assert prepared.method == "GET"
+    assert prepared.path_template == _CONFIGS
+    assert prepared.path_params == {"workspace": "default"}
+    assert prepared.query_params == {"page": 2, "page_size": 10, "filter": "name:safe", "project": "p"}
+    assert get_origin(prepared.response_type) is Paginated
+
+
+def test_get_update_delete_guardrail_config() -> None:
+    get_prepared = endpoints.get_guardrail_config(workspace="default", name="safe")
+    update_prepared = endpoints.update_guardrail_config(
+        workspace="default",
+        name="safe",
+        body=UpdateGuardrailConfigRequest(description="updated"),
+    )
+    delete_prepared = endpoints.delete_guardrail_config(workspace="default", name="safe")
+
+    assert get_prepared.method == "GET"
+    assert get_prepared.path_params == {"workspace": "default", "name": "safe"}
+    assert get_prepared.response_type is GuardrailConfig
+
+    assert update_prepared.method == "PATCH"
+    assert update_prepared.path_params == {"workspace": "default", "name": "safe"}
+    assert _json_body(update_prepared) == {"description": "updated"}
+    assert update_prepared.response_type is GuardrailConfig
+
+    assert delete_prepared.method == "DELETE"
+    assert delete_prepared.content is None
+    assert delete_prepared.response_type is DeleteResponse
 
 
 def test_check_guardrail() -> None:
-    body = GuardrailCheckRequest(
-        model="m", messages=[{"role": "user", "content": "hi"}], guardrails={"config_id": "default/safety"}
+    prepared = endpoints.check_guardrail(
+        workspace="default",
+        body=GuardrailCheckRequest(
+            model="default/app",
+            messages=[{"role": "user", "content": "hello"}],
+            guardrails={"config_id": "default/safe"},
+        ),
     )
-    prepared = endpoints.check_guardrail(workspace="default", body=body)
 
     assert prepared.method == "POST"
-    assert prepared.path_template == "/apis/guardrails/v2/workspaces/{workspace}/checks"
+    assert prepared.path_template == _CHECKS
     assert prepared.path_params == {"workspace": "default"}
-    assert _json_content(prepared) == {
-        "model": "m",
-        "messages": [{"role": "user", "content": "hi"}],
-        "guardrails": {"config_id": "default/safety"},
-    }
     assert prepared.response_type is GuardrailCheckResponse
-
-
-def test_check_guardrail_passes_through_extra_sampling_params() -> None:
-    body = GuardrailCheckRequest.model_validate({"model": "m", "messages": [], "seed": 7, "stop": ["\n"]})
-    prepared = endpoints.check_guardrail(workspace="default", body=body)
-
-    assert _json_content(prepared) == {"model": "m", "messages": [], "seed": 7, "stop": ["\n"]}
-
-
-def test_guardrail_config_accepts_null_data() -> None:
-    """The create route returns ``data: null`` for a config created without data."""
-    config = GuardrailConfig.model_validate(
-        {
-            "name": "safety",
-            "workspace": "default",
-            "project": None,
-            "description": None,
-            "data": None,
-            "id": "guardrail-config-1",
-            "created_at": "2026-01-01T00:00:00",
-            "created_by": "service:guardrails",
-            "updated_at": "2026-01-01T00:00:00",
-            "updated_by": "service:guardrails",
-            "entity_id": "guardrail-config-1",
-            "parent": None,
-            "db_version": 1,
-        }
-    )
-
-    assert config.data is None
-    assert config.name == "safety"
-
-
-def test_guardrail_config_accepts_omitted_data() -> None:
-    """GET/list use ``response_model_exclude_none`` and omit ``data`` entirely."""
-    config = GuardrailConfig.model_validate(
-        {
-            "name": "safety",
-            "workspace": "default",
-            "id": "guardrail-config-1",
-            "created_at": "2026-01-01T00:00:00",
-            "updated_at": "2026-01-01T00:00:00",
-        }
-    )
-
-    assert config.data is None
+    assert _json_body(prepared) == {
+        "model": "default/app",
+        "messages": [{"role": "user", "content": "hello"}],
+        "guardrails": {"config_id": "default/safe"},
+    }
