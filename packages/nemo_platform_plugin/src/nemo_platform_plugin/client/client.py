@@ -386,6 +386,7 @@ class BaseNemoClient(Generic[HttpClientT]):
     """
 
     _http: HttpClientT
+    _owns_http: bool
 
     def __init__(
         self,
@@ -512,6 +513,7 @@ class BaseNemoClient(Generic[HttpClientT]):
             client.with_options(timeout=300).update_fileset(...)
         """
         clone = copy.copy(self)
+        clone._owns_http = False
         if headers:
             clone._default_headers = {**self._default_headers, **headers}
         if retry is not None:
@@ -675,6 +677,7 @@ class NemoClient(BaseNemoClient[httpx.Client]):
         timeout: float | httpx.Timeout | None = None,
         retry: RetryPolicy | None = None,
         http_client: httpx.Client | None = None,
+        owns_http_client: bool | None = None,
         url_resolver: Callable[[str], str | httpx.URL] | None = None,
     ) -> None:
         """Create a client.
@@ -700,6 +703,7 @@ class NemoClient(BaseNemoClient[httpx.Client]):
             timeout=timeout,
             url_resolver=url_resolver,
         )
+        self._owns_http = http_client is None if owns_http_client is None else owns_http_client
         self._http = http_client or httpx.Client(
             headers=dict(default_headers) if default_headers else None,
             timeout=timeout if timeout is not None else DEFAULT_TIMEOUT,
@@ -717,8 +721,14 @@ class NemoClient(BaseNemoClient[httpx.Client]):
             timeout=client._timeout,
             retry=client._retry,
             http_client=client._http,
+            owns_http_client=False,
             url_resolver=client._url_resolver,
         )
+
+    def close(self) -> None:
+        """Close the underlying sync HTTP transport."""
+        if self._owns_http:
+            self._http.close()
 
     @overload
     def send(
@@ -940,6 +950,7 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
         timeout: float | httpx.Timeout | None = None,
         retry: RetryPolicy | None = None,
         http_client: httpx.AsyncClient | None = None,
+        owns_http_client: bool | None = None,
         url_resolver: Callable[[str], str | httpx.URL] | None = None,
     ) -> None:
         """Create a client. See :meth:`NemoClient.__init__` for *timeout*."""
@@ -958,6 +969,7 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
             timeout=timeout,
             url_resolver=url_resolver,
         )
+        self._owns_http = http_client is None if owns_http_client is None else owns_http_client
         self._http = http_client or httpx.AsyncClient(
             headers=dict(default_headers) if default_headers else None,
             timeout=timeout if timeout is not None else DEFAULT_TIMEOUT,
@@ -975,6 +987,7 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
             timeout=client._timeout,
             retry=client._retry,
             http_client=client._http,
+            owns_http_client=False,
             url_resolver=client._url_resolver,
         )
 
@@ -988,9 +1001,15 @@ class AsyncNemoClient(BaseNemoClient[httpx.AsyncClient]):
             timeout=self._timeout,
             retry=self._retry,
             http_client=http_client,
+            owns_http_client=False,
             url_resolver=self._url_resolver,
         )
         return type(self).from_client(transport_owner)
+
+    async def aclose(self) -> None:
+        """Close the underlying async HTTP transport."""
+        if self._owns_http:
+            await self._http.aclose()
 
     @overload
     async def send(
