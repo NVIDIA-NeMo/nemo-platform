@@ -12,6 +12,7 @@ import {
 } from '@nemo/sdk/generated/agents/agents';
 import {
   Button,
+  Flex,
   Select,
   Stack,
   TabsContent,
@@ -82,7 +83,7 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
   const [directoryName, setDirectoryName] = useState('');
   const [selectionError, setSelectionError] = useState<string | undefined>(undefined);
   const [replaceArmedFor, setReplaceArmedFor] = useState<string | null>(null);
-  const [tab, setTab] = useState<NewAgentTab>('imported-traces');
+  const [tab, setTab] = useState<NewAgentTab>('coding-agent-prompt');
   const [tracedAgent, setTracedAgent] = useState('');
 
   const {
@@ -152,7 +153,7 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
     setDirectoryName('');
     setSelectionError(undefined);
     setReplaceArmedFor(null);
-    setTab('imported-traces');
+    setTab('coding-agent-prompt');
     setTracedAgent('');
     onClose();
   };
@@ -316,35 +317,10 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
     >
       <TabsRoot value={tab} onValueChange={(value) => setTab(value as NewAgentTab)}>
         <TabsList aria-label="Ways to instrument an agent">
-          <TabsTrigger value="imported-traces">Create from Imported traces</TabsTrigger>
           <TabsTrigger value="coding-agent-prompt">Coding agent prompt</TabsTrigger>
           <TabsTrigger value="upload">Upload agent</TabsTrigger>
+          <TabsTrigger value="imported-traces">Create from traces</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="imported-traces" className="items-stretch p-0 pt-density-lg">
-          <Stack gap="density-md">
-            <Text kind="body/regular/sm" color="secondary">
-              Agents that appear in ingested traces but are not registered yet. Registering one
-              gives its traces, evaluations, and insights an agent to hang from.
-            </Text>
-            {!tracedAgents.isLoading && tracedAgents.names.length === 0 ? (
-              <Text kind="body/regular/sm" color="secondary" data-testid="no-traced-agents">
-                {tracedAgents.registeredCount > 0
-                  ? 'Every agent named in recent traces is already registered.'
-                  : 'No agent names found in recent traces. Import traces first, then come back.'}
-              </Text>
-            ) : (
-              <Select
-                aria-label="Agent from imported traces"
-                value={tracedAgent}
-                onValueChange={setTracedAgent}
-                disabled={isCreatingTraced || tracedAgents.isLoading}
-                placeholder={tracedAgents.isLoading ? 'Loading...' : 'Select an agent'}
-                items={tracedAgents.names.map((name) => ({ value: name, children: name }))}
-              />
-            )}
-          </Stack>
-        </TabsContent>
 
         <TabsContent value="coding-agent-prompt" className="items-stretch p-0 pt-density-lg">
           <CodingAgentPromptEditor
@@ -377,6 +353,39 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
               label="Name"
               formFieldProps={{ slotError: errors.name?.message }}
             />
+          </Stack>
+        </TabsContent>
+
+        <TabsContent value="imported-traces" className="items-stretch p-0 pt-density-lg">
+          <Stack gap="density-md">
+            <Text kind="body/regular/sm" color="secondary">
+              Unregistered agents that appear in ingested traces.
+            </Text>
+            {!tracedAgents.isLoading && tracedAgents.names.length === 0 ? (
+              // The min-height gives the panel something to center within; the tab's content
+              // is otherwise only as tall as this sentence.
+              <Flex
+                direction="col"
+                align="center"
+                justify="center"
+                className="min-h-[220px] w-full text-center"
+                data-testid="no-traced-agents"
+              >
+                <Text kind="body/regular/sm" color="subtle" className="max-w-[46ch]">
+                  No traces with agent.name parameter found. You can import traces with the intake
+                  trace import skill to get started.
+                </Text>
+              </Flex>
+            ) : (
+              <Select
+                aria-label="Agent from imported traces"
+                value={tracedAgent}
+                onValueChange={setTracedAgent}
+                disabled={isCreatingTraced || tracedAgents.isLoading}
+                placeholder={tracedAgents.isLoading ? 'Loading...' : 'Select an agent'}
+                items={tracedAgents.names.map((name) => ({ value: name, children: name }))}
+              />
+            )}
           </Stack>
         </TabsContent>
       </TabsRoot>

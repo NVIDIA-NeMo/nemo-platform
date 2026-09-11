@@ -128,13 +128,11 @@ const submit = async (dialog: HTMLElement, user: ReturnType<typeof userEvent.set
 };
 
 describe('NewAgentModal coding agent prompt tab', () => {
-  it('reaches the prompt in one click, so an agent already in a repository needs no upload', async () => {
-    const user = userEvent.setup();
+  it('opens on the prompt, so an agent already in a repository needs no upload', async () => {
     mockPlatform();
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('tab', { name: 'Coding agent prompt' }));
 
     expect(within(dialog).getByRole('tab', { name: 'Coding agent prompt' })).toHaveAttribute(
       'aria-selected',
@@ -150,7 +148,6 @@ describe('NewAgentModal coding agent prompt tab', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('tab', { name: 'Coding agent prompt' }));
     // The prompt editor is a lazily imported chunk, so it can miss the default find timeout.
     await user.click(
       await within(dialog).findByRole('button', { name: 'Copy to clipboard' }, { timeout: 10_000 })
@@ -164,12 +161,10 @@ describe('NewAgentModal coding agent prompt tab', () => {
   });
 
   it('offers Close rather than Create, since the prompt has nothing to submit', async () => {
-    const user = userEvent.setup();
     mockPlatform();
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('tab', { name: 'Coding agent prompt' }));
 
     expect(within(dialog).getByRole('button', { name: 'Close' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Create' })).not.toBeInTheDocument();
@@ -431,17 +426,18 @@ describe('NewAgentModal imported traces tab', () => {
     );
   };
 
-  it('lands on the traces tab and offers each distinct agent seen in them', async () => {
+  const openTracesTab = async (dialog: HTMLElement, user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(within(dialog).getByRole('tab', { name: 'Create from traces' }));
+  };
+
+  it('offers each distinct agent seen in the traces', async () => {
     const user = userEvent.setup();
     mockPlatform();
     mockTraces(['billing-agent', 'billing-agent', 'research-agent', undefined]);
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
-
-    expect(
-      within(dialog).getByRole('tab', { name: 'Create from Imported traces' })
-    ).toHaveAttribute('aria-selected', 'true');
+    await openTracesTab(dialog, user);
 
     await user.click(await within(dialog).findByRole('combobox', { name: /imported traces/i }));
     // Deduped, and a trace with no agent contributes nothing.
@@ -457,21 +453,24 @@ describe('NewAgentModal imported traces tab', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openTracesTab(dialog, user);
 
     await user.click(await within(dialog).findByRole('combobox', { name: /imported traces/i }));
     expect(await screen.findByRole('option', { name: 'billing-agent' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'research-agent' })).not.toBeInTheDocument();
   });
 
-  it('says so when every traced agent is already registered', async () => {
+  it('shows the import prompt when no unregistered agent is left to offer', async () => {
+    const user = userEvent.setup();
     mockPlatform();
     mockTraces(['research-agent'], ['research-agent']);
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openTracesTab(dialog, user);
 
     expect(await within(dialog).findByTestId('no-traced-agents')).toHaveTextContent(
-      'already registered'
+      'intake trace import skill'
     );
   });
 
@@ -482,6 +481,7 @@ describe('NewAgentModal imported traces tab', () => {
 
     renderModal();
     const dialog = await screen.findByRole('dialog');
+    await openTracesTab(dialog, user);
 
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled();
 

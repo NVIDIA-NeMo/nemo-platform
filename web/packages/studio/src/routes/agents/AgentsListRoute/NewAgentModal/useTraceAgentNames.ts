@@ -12,8 +12,6 @@ const TRACE_SCAN_PAGE_SIZE = 1000;
 export interface TraceAgentNames {
   /** Agent names seen on traces that have no agent entity yet, oldest naming preserved. */
   names: string[];
-  /** Names already registered, so the caller can say why the list is short. */
-  registeredCount: number;
   isLoading: boolean;
 }
 
@@ -47,7 +45,6 @@ export const useTraceAgentNames = (workspace: string, enabled: boolean): TraceAg
     }
     return {
       names: [...seen].sort((a, b) => a.localeCompare(b)),
-      registeredCount: registered.size,
       isLoading: isTracesLoading || isAgentsLoading,
     };
   }, [tracesResponse, agentsResponse, isTracesLoading, isAgentsLoading]);
