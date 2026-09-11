@@ -74,7 +74,12 @@ def _tree(*entries: dict, truncated: bool = False) -> dict:
 
 
 def _blob(path: str, size: int = 1) -> dict:
-    return {"path": path, "type": "blob", "size": size}
+    return {"path": path, "type": "blob", "size": size, "mode": "100644"}
+
+
+def _symlink(path: str, target: str) -> dict:
+    """Git stores a symlink as a blob whose content — and size — is its target path."""
+    return {"path": path, "type": "blob", "size": len(target), "mode": "120000"}
 
 
 def _config(**overrides) -> GithubStorageConfig:
@@ -126,13 +131,19 @@ class TestResolveConfig:
         assert session.requests[0][0].endswith("/repos/acme/agents/commits/main")
 
     @pytest.mark.asyncio
-    async def test_keeps_the_first_original_revision_across_resolutions(self):
+    async def test_records_the_requested_revision_over_a_client_supplied_one(self):
+        """`original_revision` is settable on create, so it must not survive resolution.
+
+        Carrying it forward would let a fileset pin one commit and then refresh
+        against an unrelated ref.
+        """
         session = _session_for(lambda _url: _FakeResponse(json_body={"sha": "def456"}))
-        config = _config(revision="abc123", original_revision="main")
+        config = _config(revision="abc123", original_revision="attacker-branch")
         with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
             resolved = await GithubStorageImpl(config, {}).resolve_config()
 
-        assert resolved.original_revision == "main"
+        assert (resolved.revision, resolved.original_revision) == ("def456", "abc123")
+        assert resolved.tracked_revision == "abc123"
 
     @pytest.mark.asyncio
     async def test_rejects_a_response_carrying_no_sha(self):
@@ -207,6 +218,27 @@ class TestListFiles:
         assert "/git/trees/abc123:agents/calc?" in session.requests[0][0]
 
     @pytest.mark.asyncio
+    async def test_skips_symlinks(self):
+        """A symlink's size is its target path's length, but the contents API serves the target.
+
+        Listing one would advertise the wrong Content-Length, and a link like
+        `../../../openapi/openapi.yaml` would serve a file outside the configured
+        directory.
+        """
+        session = _session_for(
+            lambda _url: _FakeResponse(
+                json_body=_tree(
+                    _blob("agent.yaml", 80),
+                    _symlink("docs/openapi.yaml", "../../../openapi/openapi.yaml"),
+                )
+            )
+        )
+        with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
+            files = await _impl().list_files()
+
+        assert [f.path for f in files] == ["agent.yaml"]
+
+    @pytest.mark.asyncio
     async def test_filters_to_a_requested_subpath(self):
         session = _session_for(
             lambda _url: _FakeResponse(json_body=_tree(_blob("agent.yaml"), _blob("mcps/calculator.py")))
@@ -236,6 +268,25 @@ class TestListFiles:
         with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
             with pytest.raises(GithubConfigError):
                 await _impl().list_files()
+
+
+class TestGetFile:
+    @pytest.mark.asyncio
+    async def test_returns_the_blob_at_an_exact_path(self):
+        session = _session_for(lambda _url: _FakeResponse(json_body=_tree(_blob("mcps/calculator.py", 20))))
+        with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
+            info = await _impl().get_file("mcps/calculator.py")
+
+        assert (info.path, info.size) == ("mcps/calculator.py", 20)
+
+    @pytest.mark.asyncio
+    async def test_refuses_a_directory(self):
+        """The contents API answers a directory with a JSON listing, so describing it
+        with its first child's size would pair that length with unrelated bytes."""
+        session = _session_for(lambda _url: _FakeResponse(json_body=_tree(_blob("mcps/calculator.py", 20))))
+        with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
+            with pytest.raises(NotFoundError):
+                await _impl().get_file("mcps")
 
 
 class TestDownload:

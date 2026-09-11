@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 JSON_MEDIA_TYPE = "application/vnd.github+json"
 RAW_MEDIA_TYPE = "application/vnd.github.raw"
+_SYMLINK_MODE = "120000"
 
 
 class GithubBackendError(StorageBackendError):
@@ -137,9 +138,11 @@ class GithubStorageImpl(StorageImpl):
         if not isinstance(sha, str) or not sha:
             raise GithubConfigError(f"GitHub returned no commit SHA for {self.config.revision} of {self._repo_slug}")
 
-        return self.config.model_copy(
-            update={"revision": sha, "original_revision": self.config.original_revision or self.config.revision}
-        )
+        # Recorded unconditionally: `original_revision` is settable on create, so
+        # carrying a client-supplied value forward would let a fileset pin one commit
+        # and then refresh against an unrelated ref. Refresh re-points `revision` at
+        # the tracked ref before calling this, so nothing is lost.
+        return self.config.model_copy(update={"revision": sha, "original_revision": self.config.revision})
 
     async def list_files(self, path: str | None = None) -> list[FileInfo]:
         tree = await self._get_json(
@@ -163,6 +166,12 @@ class GithubStorageImpl(StorageImpl):
         for entry in tree["tree"]:
             if not isinstance(entry, dict) or entry.get("type") != "blob":
                 continue
+            # A symlink is a blob whose content is its target path, but the contents
+            # API serves the target instead — a different size, and possibly a file
+            # outside the directory this fileset is scoped to.
+            if entry.get("mode") == _SYMLINK_MODE:
+                logger.debug("Skipping symlink %r in %s", entry.get("path"), self._repo_slug)
+                continue
             relative = entry.get("path")
             if not isinstance(relative, str):
                 continue
@@ -175,6 +184,19 @@ class GithubStorageImpl(StorageImpl):
         if wanted and not files:
             raise NotFoundError(f"File not found for path: {path}")
         return files
+
+    async def get_file(self, path: str) -> FileInfo:
+        """Require an exact blob.
+
+        ``list_files`` matches descendants of *path* too, so the inherited
+        implementation would describe a directory with its first child's size while
+        the contents API answers the directory with a JSON listing.
+        """
+        wanted = path.strip("/")
+        for file in await self.list_files(path):
+            if file.path == wanted:
+                return file
+        raise NotFoundError(f"File not found for path: {path}")
 
     async def download(self, path: str, byte_range: ByteRange | None) -> AsyncIterator[bytes]:
         """Stream a file's bytes from the contents API, which serves private repos too."""
