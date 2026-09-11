@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed wire shapes for the Intake APIs used by evaluator."""
+"""Typed wire shapes for the Intake APIs used by evaluator and Experimentalist."""
 
 from __future__ import annotations
 
@@ -15,11 +15,15 @@ EvaluatorResultDataType = Literal["NUMERIC", "BOOLEAN", "CATEGORICAL", "TEXT"]
 TraceMode = Literal["summary", "preview", "detailed"]
 TraceStatus = Literal["OK", "ERROR", "UNSET"] | str
 SpanMode = Literal["summary", "preview", "detailed"]
+SpanKind = Literal["AGENT", "CHAIN", "EVALUATOR", "LLM", "TOOL"] | str
+SpanStatus = Literal["success", "error", "cancelled", "unknown", "OK", "ERROR", "UNSET"] | str
 
 
 class EvaluationContextParam(TypedDict, total=False):
     evaluation_name: str
     test_case_name: str
+    evaluation_id: str
+    test_case_id: str
 
 
 class AtifAgentParam(TypedDict, total=False):
@@ -138,6 +142,7 @@ class EvaluatorResult(BaseModel):
 class EvaluatorAggregate(BaseModel):
     """Aggregate stats hydrated onto evaluation responses."""
 
+    sum: float | None = None
     mean: float | None = None
     min: float | None = None
     max: float | None = None
@@ -146,6 +151,33 @@ class EvaluatorAggregate(BaseModel):
     p95: float | None = None
     p99: float | None = None
     count: int = 0
+
+
+class EvaluationCreateRequest(BaseModel):
+    """Create/full-update body for an Evaluation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    experiment_ids: list[str] = Field(default_factory=list)
+    experiment_group_id: str | None = None
+    dataset_name: str
+    dataset_version: str | None = None
+    source_link: str | None = None
+    metadata: dict[str, str] = Field(default_factory=dict)
+    description: str | None = None
+    parent_evaluation_id: str | None = None
+    status: str | None = None
+    root_cause: str | None = None
+
+    @model_validator(mode="after")
+    def _resolve_group_membership(self) -> EvaluationCreateRequest:
+        if not self.experiment_ids and self.experiment_group_id:
+            self.experiment_ids = [self.experiment_group_id]
+        if not self.experiment_ids:
+            raise ValueError("Evaluation requires at least one experiment id.")
+        self.experiment_ids = list(dict.fromkeys(self.experiment_ids))
+        return self
 
 
 class EvaluationPatchRequest(BaseModel):
@@ -192,6 +224,50 @@ class EvaluationResponse(BaseModel):
     tokens: EvaluatorAggregate | None = None
 
 
+class ExperimentCreateRequest(BaseModel):
+    """Create body for an Experiment."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str | None = None
+    insight_id: str | None = None
+    summary: str | None = None
+    metadata: dict[str, str] | None = None
+    default_sort: str = "-created_at"
+    pareto: dict[str, Any] | None = None
+    column_layout: dict[str, Any] | None = None
+    is_favorite: bool = False
+    show_evaluations_over_time: bool = False
+
+
+class ExperimentUpdateRequest(ExperimentCreateRequest):
+    """Full-update body for an Experiment."""
+
+    baseline_evaluation_name: str | None = None
+
+
+class ExperimentResponse(BaseModel):
+    """Experiment as served by the Intake API."""
+
+    id: str
+    name: str
+    workspace: str
+    description: str | None = None
+    insight_id: str | None = None
+    summary: str | None = None
+    metadata: dict[str, str] | None = None
+    default_sort: str
+    pareto: dict[str, Any] | None = None
+    column_layout: dict[str, Any] | None = None
+    is_favorite: bool = False
+    show_evaluations_over_time: bool = False
+    baseline_evaluation_name: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    evaluation_count: int = 0
+
+
 class Trace(BaseModel):
     """Trace summary returned by Intake trace listing."""
 
@@ -227,10 +303,14 @@ class SpanEvaluationContext(BaseModel):
 
     evaluation_name: str | None = None
     test_case_name: str | None = None
+    evaluation_id: str | None = None
+    test_case_id: str | None = None
 
 
 class Span(BaseModel):
     """Span row returned by the Intake spans API."""
+
+    model_config = ConfigDict(extra="allow")
 
     span_id: str
     session_id: str
@@ -238,13 +318,13 @@ class Span(BaseModel):
     project: str | None = None
     evaluation_context: SpanEvaluationContext | None = None
     parent_span_id: str | None = None
-    kind: str
+    kind: SpanKind
     name: str | None = None
     source: str
     trace_id: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
-    status: str
+    status: SpanStatus
     error_type: str | None = None
     error_message: str | None = None
     provider: str | None = None
@@ -269,6 +349,8 @@ class Span(BaseModel):
 
 
 class SpanGroup(BaseModel):
+    """Grouped span row returned by Intake."""
+
     group: dict[str, str]
     span_count: int = Field(ge=0)
     started_at: datetime
@@ -299,7 +381,7 @@ class Annotation(BaseModel):
 
 
 class TraceFilterParam(TypedDict, total=False):
-    id: str
+    id: str | dict[str, list[str]]
     session_id: str
     status: str
     started_at: dict[str, str]
@@ -316,6 +398,10 @@ class ListTracesQueryParams(TypedDict, total=False):
     sort: str
     mode: TraceMode
     filter: TraceFilterParam
+
+
+class RetrieveTraceQueryParams(TypedDict, total=False):
+    mode: TraceMode
 
 
 class SpanFilterParam(TypedDict, total=False):
@@ -380,6 +466,7 @@ class ListEvaluatorResultsQueryParams(TypedDict, total=False):
 
 
 TracePage = Page[Trace]
-EvaluatorResultPage = Page[EvaluatorResult]
 SpanPage = Page[Span]
+SpanGroupPage = Page[SpanGroup]
+EvaluatorResultPage = Page[EvaluatorResult]
 AnnotationPage = Page[Annotation]
