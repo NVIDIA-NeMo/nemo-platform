@@ -9,7 +9,7 @@ import { Engine } from '@nemo/sdk/generated/platform/schema';
 import {
   engineRequiresImage,
   type WizardFormValues,
-} from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
+} from '@studio/routes/NewDeploymentRoute/schema';
 import type { FC } from 'react';
 import { useWatch, type Control, type FieldErrors } from 'react-hook-form';
 

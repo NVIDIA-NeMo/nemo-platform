@@ -13,7 +13,7 @@
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { MappingFields } from '@nemo/common/src/components/form/MappingFields';
 import { Accordion, Stack, Text } from '@nvidia/foundations-react-core';
-import { type WizardFormValues } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
+import { type WizardFormValues } from '@studio/routes/NewDeploymentRoute/schema';
 import { FC } from 'react';
 import { Control, FieldErrors } from 'react-hook-form';
 
