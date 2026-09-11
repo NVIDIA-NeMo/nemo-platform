@@ -104,10 +104,11 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
       )[0]
     : undefined;
 
-  const isLoadingChat = isChatStatusLoading || isAdapterTargetLoading;
-  const adapterUnresolved = Boolean(adapter) && !(adapterServedModelName && adapterBaseURL);
+  const isAdapterEntityPending = Boolean(panel.adapter) && !modelEntity;
+  const isLoadingChat = isChatStatusLoading || isAdapterTargetLoading || isAdapterEntityPending;
+  const adapterUnresolved = Boolean(panel.adapter) && !(adapterServedModelName && adapterBaseURL);
 
-  const chatModelName = adapter ? adapterServedModelName : modelName;
+  const chatModelName = panel.adapter ? adapterServedModelName : modelName;
 
   if (panel.collapsed) {
     return (
@@ -174,7 +175,7 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
           key={`${panel.modelURN ?? 'none'}:${panel.adapter ?? ''}`}
           model={chatModelName ?? ''}
           workspace={modelWorkspace}
-          baseURL={adapter ? adapterBaseURL : undefined}
+          baseURL={panel.adapter ? adapterBaseURL : undefined}
           disabled={!modelName || isLoadingChat || adapterUnresolved}
           modelChatStatus={modelChatStatus}
           emptyState={
