@@ -45,7 +45,7 @@ from nemo_platform_ext.cli.core.types import (
     StreamOutputOption,
 )
 
-app = create_typer_app(name="secrets", help="Manage secrets")
+app = create_typer_app(name="secrets", help="Manage secrets.")
 admin_app = create_typer_app(name="admin", help="Manage admin")
 app.add_typer(admin_app, name="admin")
 
