@@ -79,7 +79,6 @@ from nemo_platform_plugin.inference_middleware import (
     VirtualModel,
 )
 from nemo_platform_plugin.refs import parse_entity_ref
-from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nemoguardrails.rails.llm.llmrails import LLMRails
 from nemoguardrails.rails.llm.options import GenerationResponse
 from nemoguardrails.types import LLMModel
@@ -190,23 +189,18 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         # Use our custom header-aware NIM provider adapter for library-initiated model calls.
         register_header_aware_nim_provider()
 
-        self._sdk = get_async_platform_sdk(as_service=PLUGIN_NAME, internal=True)
+        self._sdk = self._get_platform_sdk("on_startup")
         self._rails_cache = LLMRailsCache(builder=DefaultLLMRailsBuilder())
         self._stable_cache = StabilizedRailsConfigCache()
 
     async def on_shutdown(self) -> None:
         # Detach attributes before awaiting close so a partial close can't
-        # leave a half-torn-down cache visible to a later request. The
-        # try/finally ensures SDK close runs even if cache close raises.
+        # leave a half-torn-down cache visible to a later request.
         cache, self._rails_cache = self._rails_cache, None
-        sdk, self._sdk = self._sdk, None
+        self._sdk = None
         self._stable_cache = None
-        try:
-            if cache is not None:
-                await cache.close()
-        finally:
-            if sdk is not None:
-                await sdk.close()
+        if cache is not None:
+            await cache.close()
 
     async def on_virtual_model_upserted(self, virtual_model: VirtualModel) -> None:
         """Warm the cache for each guardrails config the VM references.

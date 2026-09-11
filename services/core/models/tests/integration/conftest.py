@@ -444,10 +444,16 @@ def controller_with_deployments_plugin(
             "nmp.core.models.controllers.backends.deployments_plugin.resolve.get_platform_config",
             return_value=mock_platform_config,
         ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.backend.get_async_platform_sdk"
+        ) as mock_deployments_backend_sdk,
         patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk") as mock_models_sdk,
+        patch("nemo_deployments_plugin.controller.get_async_platform_sdk") as mock_deployments_controller_sdk,
         patch("nemo_platform_plugin.sdk_provider.get_async_platform_sdk") as mock_sdk,
         patch("nemo_deployments_plugin.config.DeploymentsConfig.get", return_value=deployments_config),
     ):
+        mock_deployments_backend_sdk.return_value = test_clients.async_sdk
+        mock_deployments_controller_sdk.return_value = test_clients.async_sdk
         mock_models_sdk.return_value = test_clients.async_sdk
         mock_sdk.return_value = test_clients.async_sdk
 
