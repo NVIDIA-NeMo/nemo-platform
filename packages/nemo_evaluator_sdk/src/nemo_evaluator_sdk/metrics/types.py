@@ -9,6 +9,7 @@ from nemo_evaluator_sdk.agent_eval.metrics import (
     AgentPhaseSuccessMetric,
     EvidencePresenceMetric,
     SkillUsedMetric,
+    ToolCallCountMetric,
 )
 from nemo_evaluator_sdk.metrics.bleu import BLEUMetric
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
@@ -76,6 +77,7 @@ MetricVariants: TypeAlias = (
     | AgentPhaseSuccessMetric
     | EvidencePresenceMetric
     | SkillUsedMetric
+    | ToolCallCountMetric
 )
 """Raw union of SDK metric configuration models, excluding service-only system metrics."""
 

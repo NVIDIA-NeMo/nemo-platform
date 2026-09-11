@@ -184,6 +184,60 @@ class SkillUsedMetric(MetricBase):
         return False
 
 
+class ToolCallCountMetric(MetricBase):
+    """Count how often the agent called one tool, and whether that matches an expected count.
+
+    * ``tool_call_count`` — the number of trajectory tool calls whose ``function_name`` is
+      ``tool_name`` or ends with ``-<tool_name>`` / ``_<tool_name>``, since harnesses prefix MCP tool
+      names with their server (Hermes registers ``mcp-<server>-<tool>``).
+    * ``tool_call_count_matches`` — ``True`` when that count equals ``expected_calls``.
+
+    Reads the ATIF view of the trace. Without a readable trajectory the count is ``0`` and the match
+    is ``False``, so an agent that never produced a trace scores like one that never called the tool.
+    """
+
+    type: Literal[MetricType.TOOL_CALL_COUNT] = MetricType.TOOL_CALL_COUNT
+    tool_name: str = Field(description="Tool to count, without any harness or MCP server prefix.")
+    expected_calls: int = Field(default=1, ge=0, description="Call count that scores ``tool_call_count_matches`` True.")
+    trace_evidence: str = Field(default=EVIDENCE_TRACE, description="Trace evidence to scan for tool calls.")
+
+    OUTPUT_COUNT: ClassVar[str] = "tool_call_count"
+    OUTPUT_MATCHES: ClassVar[str] = "tool_call_count_matches"
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [
+            MetricOutputSpec.discrete_score(self.OUTPUT_COUNT),
+            MetricOutputSpec.boolean(self.OUTPUT_MATCHES),
+        ]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        count = await self._count_calls(input.candidate)
+        return MetricResult(
+            outputs=[
+                MetricOutput(name=self.OUTPUT_COUNT, value=count),
+                MetricOutput(name=self.OUTPUT_MATCHES, value=count == self.expected_calls),
+            ]
+        )
+
+    async def _count_calls(self, candidate: CandidateOutput) -> int:
+        evidence = candidate.evidence
+        if evidence is None or evidence.get(self.trace_evidence) is None:
+            return 0
+        try:
+            trajectory = await (await evidence.trace(self.trace_evidence, format=EVIDENCE_FORMAT_ATIF)).trace()
+        except KeyError:
+            return 0
+        except (ValueError, ValidationError, OSError) as exc:
+            logger.warning("ToolCallCountMetric scored 0: could not read ATIF trace %r (%s)", self.trace_evidence, exc)
+            return 0
+        return sum(
+            1 for step in trajectory.steps for call in step.tool_calls or [] if self._is_tool(call.function_name)
+        )
+
+    def _is_tool(self, function_name: str) -> bool:
+        return function_name == self.tool_name or function_name.endswith(("-" + self.tool_name, "_" + self.tool_name))
+
+
 async def _otlp_used(evidence: CandidateEvidence, name: str, locations: list[str]) -> bool:
     """Whether the OTLP view of a trace references any staged skill location."""
     resource_spans = await (await evidence.trace(name, format=EVIDENCE_FORMAT_OTLP)).resource_spans()

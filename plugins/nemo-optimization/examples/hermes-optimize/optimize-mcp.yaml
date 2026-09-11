@@ -1,9 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# --optimize-config: Hermes + phishing analyzer MCP (separate agent checkout).
+# --optimize-config: Hermes + a deterministic phishing-analyzer MCP server.
 # Broader search space than chat-only — temperature + top_p, several trials.
-# Dataset: full phishing-agent eval set (email-phishing-analyzer-harnesses data/smaller_test.csv).
+# The analyzer is the `phishing-analyzer-mcp` console script from this bundle's
+# pyproject (installed with the platform workspace); the study tunes the Hermes
+# coordinator that calls it, and scores both the classification and that the
+# tool was called exactly once.
 schema_version: fabric.agent/v1alpha1
 metadata:
   name: hermes-optimize-mcp
@@ -45,10 +48,8 @@ mcp:
   servers:
     email-phishing-analyzer:
       transport: stdio
-      url: email-phishing-analyzer-mcp
+      url: phishing-analyzer-mcp
       exposure: harness_native
-      env:
-        NVIDIA_API_KEY: ${NVIDIA_API_KEY}
 tools:
   enabled:
     - mcp-email-phishing-analyzer
@@ -75,6 +76,10 @@ optimizer:
       evaluator_name: average_score
       direction: maximize
       weight: 1.0
+    tool_call_count_matches:
+      evaluator_name: tool_call_count_matches
+      direction: maximize
+      weight: 1.0
   search_space:
     temperature:
       type: fabric
@@ -92,9 +97,14 @@ eval:
     max_concurrency: 1
   fabric:
     base_dir: .
-    capture_trajectory: false
+    # The exactly-once evaluator reads the ATIF trajectory, so capture stays on.
+    capture_trajectory: true
     timeout_s: 300
   evaluators:
+    exactly_once:
+      _type: tool_call_count
+      tool_name: email_phishing_analyzer
+      expected_calls: 1
     accuracy:
       _type: tunable_rag_evaluator
       llm_name: judge

@@ -348,3 +348,10 @@ def test_fabric_trial_evaluator_rejects_a_removed_run_hook(tmp_path: Path) -> No
         FabricTrialEvaluator(
             payload=payload, metric_names=["average_score"], output_dir=tmp_path / "out", experiment_id="exp"
         )
+
+
+def test_build_metrics_rejects_a_tool_call_count_evaluator_without_a_tool_name() -> None:
+    from nemo_optimization.backends.optuna.fabric_trial import _build_metrics
+
+    with pytest.raises(StudyDriverError, match="requires a non-empty tool_name"):
+        _build_metrics({}, {"evaluators": {"once": {"_type": "tool_call_count", "expected_calls": 1}}})

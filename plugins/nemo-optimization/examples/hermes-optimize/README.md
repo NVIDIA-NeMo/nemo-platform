@@ -9,7 +9,7 @@ Runnable demos for `nemo agents optimize` using the Hermes Fabric harness.
 Agent entity YAML lives under `agents/` and is passed to `--agent-config`.
 
 **Layout:** this directory is a self-contained **optimize bundle**. Every path
-inside the `optimize-*.yaml` files (`dataset`, `base_dir`, MCP `config_paths`)
+inside the `optimize-*.yaml` files (`dataset`, `base_dir`)
 is relative to *this folder*, not to the repo root. That is what makes the
 bundle portable when the platform sees only the files you staged into a fileset.
 
@@ -17,7 +17,7 @@ bundle portable when the platform sees only the files you staged into a fileset.
 |---------|--------------|---------------------|-------|
 | **Chat-only** | Tunes temperature on a short Q&A agent (no tools) | [`optimize-chatonly.yaml`](optimize-chatonly.yaml) | [`dataset-chatonly.json`](dataset-chatonly.json) |
 | **Chat-only + `--agent`** | Same study; agent body from a platform entity | [`optimize-chatonly-via-agent.yaml`](optimize-chatonly-via-agent.yaml) | [`agents/chatonly/agent.yaml`](agents/chatonly/agent.yaml) |
-| **MCP** | Tunes temperature / top_p on a phishing agent that calls an MCP analyzer | [`optimize-mcp.yaml`](optimize-mcp.yaml) | [`dataset-mcp.json`](dataset-mcp.json) |
+| **MCP** | Tunes temperature / top_p on a phishing agent that calls a bundled MCP analyzer, scoring accuracy and exactly-one tool call | [`optimize-mcp.yaml`](optimize-mcp.yaml) | [`dataset-mcp.json`](dataset-mcp.json), [`phishing_analyzer_mcp/`](phishing_analyzer_mcp/) |
 
 Official docs: [Optimize Agents](../../../../docs/agents/optimization.mdx).
 
@@ -277,49 +277,34 @@ needs installed.
 ## Example 2 — MCP (phishing analyzer)
 
 Same optimize flow, but the agent calls an **MCP email-phishing analyzer** on
-each dataset row. That analyzer lives in a **separate** repo with its own
-virtualenv — do not `pip install` it into the platform `.venv`.
+each dataset row. The analyzer is a deterministic, rule-based server that ships
+in this bundle ([`phishing_analyzer_mcp/server.py`](phishing_analyzer_mcp/server.py))
+and is installed into the platform `.venv` as the `phishing-analyzer-mcp`
+console script, so the example needs no other checkout and no analyzer
+credential. The study tunes the Hermes coordinator that calls the tool, which is
+what a fixed LLM analyzer would have measured too.
+
+Two evaluators score each trial: the judge compares the final classification with
+the dataset label (`average_score`), and `tool_call_count` reads the ATIF
+trajectory to check the analyzer was called exactly once
+(`tool_call_count_matches`). Both are study objectives in `optimizer.eval_metrics`.
 
 ### Extra setup (once)
 
-1. Clone and sync the agent checkout (adjust the path if yours differs):
+```bash
+command -v phishing-analyzer-mcp   # installed by `make bootstrap-python` / `uv sync --all-packages`
+```
 
-   ```bash
-   export PHISHING_AGENT_ROOT="${PHISHING_AGENT_ROOT:-$HOME/work/email-phishing-analyzer-harnesses}"
-   cd "$PHISHING_AGENT_ROOT"
-   uv sync
-   ```
+If it is missing, sync the workspace again from the repo root: the bundle's
+`pyproject.toml` is a workspace member.
 
-2. Point the platform job at that checkout’s source tree and MCP binary:
-
-   ```bash
-   export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
-   export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
-
-   test -d "$PHISHING_AGENT_SRC"
-   test -x "$PHISHING_MCP_BIN"
-   ```
-
-`optimize-mcp.yaml` reads those two variables. It also loads
-[`analyzer-inference-api.yaml`](analyzer-inference-api.yaml) so the analyzer
-uses inference-api (many keys 401 against `integrate.api.nvidia.com`).
-The dataset is the agent’s full eval set (5 emails: 3 phishing, 2 benign).
-
-Because `agent_src` and the MCP binary come from a checkout **outside** the
-bundle, the platform job environment must provide those paths for this example
-as written. For a self-contained platform bundle, vendor the analyzer into the
-bundle and make those two values bundle-relative.
+The dataset is 5 emails (3 phishing, 2 benign).
 
 ### Run
 
 ```bash
 source "$REPO_ROOT/.venv/bin/activate"
 cd "$BUNDLE"
-
-# Re-export if this is a new shell:
-export PHISHING_AGENT_ROOT="${PHISHING_AGENT_ROOT:-$HOME/work/email-phishing-analyzer-harnesses}"
-export PHISHING_AGENT_SRC="$PHISHING_AGENT_ROOT/src"
-export PHISHING_MCP_BIN="$PHISHING_AGENT_ROOT/.venv/bin/email-phishing-analyzer-mcp"
 
 nemo agents optimize prepare-fileset \
   --source "$BUNDLE" \
@@ -333,13 +318,13 @@ nemo agents optimize \
   --workspace default
 ```
 
-**Success:** job finishes with `status: completed`, `n_trials: 4`, and a best
-score near `1.0` when the model follows the “call the analyzer once” prompt.
+**Success:** job finishes with `status: completed`, `n_trials: 4`, and both
+objectives near `1.0` when the model follows the “call the analyzer once” prompt.
 
-**Flakiness:** Hermes + 70B models often return an empty final message after a
-successful analyzer tool call, or re-call the tool (breaking the phishing
-agent’s exactly-once audit). The optimize path recovers the audited analyzer
-JSON in those cases so samples still score. If every sample still fails, check
+**Flakiness:** some models return an empty final message after a successful
+analyzer tool call, or re-call the tool. Those trials score low on
+`average_score` and `tool_call_count_matches` respectively; that is the signal
+the study optimizes over. If every sample fails outright, check
 `$BUNDLE/artifacts/.fabric/hermes/runtimes/*/logs/`.
 
 Local-only Python run of the same config:
@@ -354,11 +339,6 @@ from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 WORKSPACE = "default"
 bundle = Path(os.environ["BUNDLE"]).resolve()
-agent_root = Path(
-    os.environ.get("PHISHING_AGENT_ROOT", Path.home() / "work/email-phishing-analyzer-harnesses")
-)
-os.environ.setdefault("PHISHING_AGENT_SRC", str(agent_root / "src"))
-os.environ.setdefault("PHISHING_MCP_BIN", str(agent_root / ".venv/bin/email-phishing-analyzer-mcp"))
 os.chdir(bundle)
 
 client = NeMoPlatform(
@@ -384,8 +364,8 @@ print(
 | `nemo: command not found` | `source .venv/bin/activate` after `uv sync --package nemo-agents-plugin` |
 | `No module named hermes_cli` | Re-run the `hermes-agent==0.18.2 --no-deps` install (needed after every fresh `uv sync`) |
 | `No module named 'nemo_fabric_adapters'` | `export ADAPTER_PYTHON="$REPO_ROOT/.venv/bin/python"` |
-| Missing `PHISHING_AGENT_SRC` / MCP binary | Sync the phishing agent checkout; export both env vars before staging the optimize bundle |
-| Analyzer / LLM 401 | Confirm `NVIDIA_API_KEY` works on inference-api; keep using `analyzer-inference-api.yaml` |
+| `phishing-analyzer-mcp` not found | `uv sync --all-packages` from the repo root; the example bundle is a workspace member |
+| LLM 401 | Confirm `NVIDIA_API_KEY` works on inference-api |
 | Dataset / config file not found | `cd "$BUNDLE"` — paths in the YAML are relative to the bundle, not the repo root |
 | `optimize` rejected with `optimize_config_fileset is required` | Stage the bundle with `prepare-fileset`, then pass the ref it prints |
 | `prepare-fileset` reports an absolute path | Move the file into `--source` and make the YAML entry relative to the bundle root |

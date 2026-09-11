@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
+from nemo_evaluator_sdk.agent_eval.metrics import ToolCallCountMetric
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
@@ -233,12 +234,26 @@ def _build_metrics(payload: Mapping[str, Any], eval_config: Mapping[str, Any]) -
         if not isinstance(evaluator, Mapping):
             continue
         evaluator_type = evaluator.get("_type") or evaluator.get("type")
-        if evaluator_type not in {"tunable_rag_evaluator", "tunable-rag-evaluator"}:
+        if evaluator_type in {"tunable_rag_evaluator", "tunable-rag-evaluator"}:
+            metrics.append(_build_tunable_rag_metric(payload, evaluator))
+        elif evaluator_type in {"tool_call_count", "tool-call-count"}:
+            metrics.append(_build_tool_call_count_metric(evaluator))
+        else:
             raise StudyDriverError(f"Unsupported evaluator type for optimize trial path: {evaluator_type!r}")
-        metrics.append(_build_tunable_rag_metric(payload, evaluator))
     if not metrics:
         raise StudyDriverError("No supported eval.evaluators were found.")
     return metrics
+
+
+def _build_tool_call_count_metric(evaluator: Mapping[str, Any]) -> ToolCallCountMetric:
+    tool_name = evaluator.get("tool_name")
+    if not isinstance(tool_name, str) or not tool_name.strip():
+        raise StudyDriverError("tool_call_count evaluator requires a non-empty tool_name.")
+    try:
+        expected_calls = int(evaluator.get("expected_calls", 1))
+    except (TypeError, ValueError) as exc:
+        raise StudyDriverError("tool_call_count evaluator expected_calls must be an integer.") from exc
+    return ToolCallCountMetric(tool_name=tool_name.strip(), expected_calls=expected_calls)
 
 
 def _build_tunable_rag_metric(payload: Mapping[str, Any], evaluator: Mapping[str, Any]) -> TunableRagEvaluatorMetric:
