@@ -180,6 +180,13 @@ async def test_delete_unreferenced_fileset_deletes_storage_and_entity() -> None:
             "nmp.core.files.api.v2.filesets.endpoints.fileset_output_from_entity",
             return_value=deleted_output,
         ),
+        # The entity store does not cascade, so deleting a fileset has to drop its profile child
+        # too. `delete_profile` is covered on its own in test_profile_job.py; what this pins is
+        # that the delete path actually calls it.
+        patch(
+            "nmp.core.files.api.v2.filesets.endpoints.delete_profile",
+            new=AsyncMock(),
+        ) as delete_profile_mock,
     ):
         result = await delete_fileset(
             workspace="default",
@@ -192,3 +199,4 @@ async def test_delete_unreferenced_fileset_deletes_storage_and_entity() -> None:
     assert result is deleted_output
     storage.delete_all.assert_awaited_once_with()
     entity_store.delete.assert_awaited_once_with(Fileset, "weights", workspace="default")
+    delete_profile_mock.assert_awaited_once_with(entity_store, fileset)
