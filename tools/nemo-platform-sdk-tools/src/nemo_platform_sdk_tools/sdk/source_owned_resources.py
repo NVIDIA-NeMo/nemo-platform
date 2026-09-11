@@ -17,6 +17,18 @@ class SourceOwnedResource:
 
 SOURCE_OWNED_RESOURCE_EXCLUSIONS = (
     SourceOwnedResource(
+        resource_name="auth",
+        path_prefixes=("/apis/auth/authenticate",),
+    ),
+    SourceOwnedResource(
+        resource_name="access_keys",
+        path_prefixes=("/apis/auth/v2/access-keys",),
+    ),
+    SourceOwnedResource(
+        resource_name="iam",
+        path_prefixes=("/apis/auth/v2/iam", "/apis/auth/v2/authz"),
+    ),
+    SourceOwnedResource(
         resource_name="jobs",
         path_prefixes=("/apis/jobs/v2",),
     ),

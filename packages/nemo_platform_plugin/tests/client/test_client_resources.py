@@ -64,10 +64,13 @@ def test_convenience_properties_return_sync_clients_for_sync_client() -> None:
     from nemo_platform_plugin.agent_hardener.client import AgentHardenerClient
     from nemo_platform_plugin.agents.client import AgentsClient
     from nemo_platform_plugin.auditor.client import AuditorClient
+    from nemo_platform_plugin.auth.access_keys.client import AccessKeysClient
+    from nemo_platform_plugin.auth.client import AuthenticationClient
     from nemo_platform_plugin.data_designer.client import DataDesignerClient
     from nemo_platform_plugin.evaluator.client import EvaluatorClient
     from nemo_platform_plugin.files.client import FilesClient
     from nemo_platform_plugin.guardrail.client import GuardrailClient
+    from nemo_platform_plugin.iam.client import IAMClient
     from nemo_platform_plugin.jobs.client import JobsClient
     from nemo_platform_plugin.models.client import ModelsClient
     from nemo_platform_plugin.projects.client import ProjectsClient
@@ -81,6 +84,9 @@ def test_convenience_properties_return_sync_clients_for_sync_client() -> None:
         ("workspaces", WorkspacesClient),
         ("secrets", SecretsClient),
         ("jobs", JobsClient),
+        ("auth", AuthenticationClient),
+        ("access_keys", AccessKeysClient),
+        ("iam", IAMClient),
         ("agents", AgentsClient),
         ("auditor", AuditorClient),
         ("guardrail", GuardrailClient),
@@ -100,10 +106,13 @@ def test_convenience_properties_return_async_clients_for_async_client() -> None:
     from nemo_platform_plugin.agent_hardener.client import AsyncAgentHardenerClient
     from nemo_platform_plugin.agents.client import AsyncAgentsClient
     from nemo_platform_plugin.auditor.client import AsyncAuditorClient
+    from nemo_platform_plugin.auth.access_keys.client import AsyncAccessKeysClient
+    from nemo_platform_plugin.auth.client import AsyncAuthenticationClient
     from nemo_platform_plugin.data_designer.client import AsyncDataDesignerClient
     from nemo_platform_plugin.evaluator.client import AsyncEvaluatorClient
     from nemo_platform_plugin.files.client import AsyncFilesClient
     from nemo_platform_plugin.guardrail.client import AsyncGuardrailClient
+    from nemo_platform_plugin.iam.client import AsyncIAMClient
     from nemo_platform_plugin.jobs.client import AsyncJobsClient
     from nemo_platform_plugin.models.client import AsyncModelsClient
     from nemo_platform_plugin.projects.client import AsyncProjectsClient
@@ -117,6 +126,9 @@ def test_convenience_properties_return_async_clients_for_async_client() -> None:
         ("workspaces", AsyncWorkspacesClient),
         ("secrets", AsyncSecretsClient),
         ("jobs", AsyncJobsClient),
+        ("auth", AsyncAuthenticationClient),
+        ("access_keys", AsyncAccessKeysClient),
+        ("iam", AsyncIAMClient),
         ("agents", AsyncAgentsClient),
         ("auditor", AsyncAuditorClient),
         ("guardrail", AsyncGuardrailClient),
