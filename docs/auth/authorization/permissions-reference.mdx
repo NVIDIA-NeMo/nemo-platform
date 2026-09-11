@@ -28,6 +28,9 @@ PlatformAdmin is omitted — it bypasses permission checks entirely at the polic
 | ------------ | ------------- | :------: | :------: | :------: | :------: |
 | <code>filesets.(read &#124; list)</code> | Read, list files | ✓ | ✓ | ✓ |  |
 | <code>filesets.(create &#124; update &#124; delete)</code> | Create, update, delete files |  | ✓ | ✓ |  |
+| `filesets.profile.read` | Read a fileset's stored profile | ✓ | ✓ | ✓ |  |
+| `filesets.profile.exec` | Run the profiler on a fileset (re-runnable as its data changes) |  | ✓ | ✓ |  |
+| `filesets.profile.write` | Store a computed profile on a fileset (service principals only) |  |  |  |  |
 
 ## Guardrails API
 
