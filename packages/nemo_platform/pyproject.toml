@@ -85,7 +85,6 @@ automodel-service = [
   "nmp-common",
   "nmp-customization-common",
   "nemo-platform-plugin",
-  "nemo-platform-sdk",
   "pydantic>=2.10.6",
   "pydantic-settings>=2.6.1",
   "httpx>=0.27.0",
@@ -531,8 +530,8 @@ nmp-common = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nmp-customization-common = [
   "nmp-common",
-  "nemo-platform-sdk",
   "nemo-platform-plugin",
+  "filesets",
   "pydantic>=2.10.6",
   "pydantic-settings>=2.6.1",
   "httpx>=0.27.0",
@@ -573,7 +572,6 @@ rl-service = [
   "nmp-common",
   "nmp-customization-common",
   "nemo-platform-plugin",
-  "nemo-platform-sdk",
   "pydantic>=2.10.6",
   "pydantic-settings>=2.6.1",
   "httpx>=0.27.0",
