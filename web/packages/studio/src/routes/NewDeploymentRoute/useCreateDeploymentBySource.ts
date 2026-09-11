@@ -36,6 +36,11 @@ import {
   type CreateFilesetRequest,
 } from '@nemo/sdk/generated/platform/schema';
 import {
+  HUGGING_FACE_DEPLOYMENT_SOURCE_FIELD,
+  HUGGING_FACE_DEPLOYMENT_SOURCE_VALUE,
+  huggingFaceSourceFilesetName,
+} from '@studio/routes/DeploymentsListRoute/huggingFaceDeploymentArtifacts';
+import {
   additionalEnvsFormToApi,
   configNameFromWizardBaseName,
   deploymentNameFromWizardBaseName,
@@ -44,12 +49,7 @@ import {
   SOURCE_WORKSPACE,
   SOURCE_NGC,
   type WizardFormValues,
-} from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
-import {
-  HUGGING_FACE_DEPLOYMENT_SOURCE_FIELD,
-  HUGGING_FACE_DEPLOYMENT_SOURCE_VALUE,
-  huggingFaceSourceFilesetName,
-} from '@studio/routes/DeploymentsListRoute/huggingFaceDeploymentArtifacts';
+} from '@studio/routes/NewDeploymentRoute/schema';
 import { NO_SECRET_SELECT_VALUE } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';

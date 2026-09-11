@@ -50,8 +50,6 @@ from nemo_platform.types import (
 
 # [SafeSynthesizer](src/nemo_platform/resources/safe_synthesizer/api.md)
 
-# [Secrets](src/nemo_platform/resources/secrets/api.md)
-
 # [Projects](src/nemo_platform/resources/projects/api.md)
 
 # [Adapters](src/nemo_platform/resources/adapters/api.md)

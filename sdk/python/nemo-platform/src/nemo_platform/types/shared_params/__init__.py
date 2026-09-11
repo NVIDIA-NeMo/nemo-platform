@@ -15,8 +15,6 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from nemo_platform_plugin.jobs.schemas import FileStorageType as FileStorageType, PlatformJobStatus as PlatformJobStatus
-
 from .model_spec import ModelSpec as ModelSpec
 from .mo_e_config import MoEConfig as MoEConfig
 from .prompt_data import PromptData as PromptData

@@ -582,27 +582,6 @@ resources:
           results:
             models: {}
             methods: {}
-  secrets:
-    standalone_api: true
-    models:
-      platform_secret_access_response: PlatformSecretAccessResponse
-      platform_secret_create_request: PlatformSecretCreateRequest
-      platform_secret_response: PlatformSecretResponse
-      platform_secret_responses_page: PlatformSecretResponsesPage
-      platform_secret_update_request: PlatformSecretUpdateRequest
-    methods:
-      create: post /apis/secrets/v2/workspaces/{workspace}/secrets
-      list: get /apis/secrets/v2/workspaces/{workspace}/secrets
-      retrieve: get /apis/secrets/v2/workspaces/{workspace}/secrets/{name}
-      update: patch /apis/secrets/v2/workspaces/{workspace}/secrets/{name}
-      delete: delete /apis/secrets/v2/workspaces/{workspace}/secrets/{name}
-      access: get /apis/secrets/v2/workspaces/{workspace}/secrets/{name}/access
-    subresources:
-      admin:
-        models:
-          platform_secret_admin_rotation_response: PlatformSecretAdminRotationResponse
-        methods:
-          rotate_encryption_keys: post /apis/secrets/v2/rotate-encryption-keys
   $shared:
     models:
       validation_error: ValidationError

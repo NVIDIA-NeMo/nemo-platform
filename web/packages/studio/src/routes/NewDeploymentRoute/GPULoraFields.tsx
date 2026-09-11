@@ -4,7 +4,7 @@
 import { ControlledSwitch } from '@nemo/common/src/components/form/ControlledSwitch';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { Flex } from '@nvidia/foundations-react-core';
-import { WizardFormValues } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
+import { WizardFormValues } from '@studio/routes/NewDeploymentRoute/schema';
 import { Control, FieldErrors } from 'react-hook-form';
 
 export const GPULoraFields = ({
