@@ -176,6 +176,7 @@ function buildSlackMessage({
   conflicts,
   runUrl,
   userGroupId,
+  recoveryDocsUrl,
 }) {
   const mention = slackUserGroupMention(userGroupId);
   const lines = [
@@ -208,6 +209,11 @@ function buildSlackMessage({
     "The bot will not retry. Manual recovery is required.",
     `<${commentUrl}|View failure details>`,
   );
+  if (recoveryDocsUrl?.trim()) {
+    lines.push(
+      `<${escapeSlackText(recoveryDocsUrl.trim())}|Forward-merge recovery guide>`,
+    );
+  }
   return lines.join("\n");
 }
 
@@ -312,6 +318,7 @@ async function sendForwardMergeAlert({
     conflicts,
     runUrl: env.RUN_URL,
     userGroupId: env.SLACK_ALERT_USERGROUP_ID,
+    recoveryDocsUrl: env.FORWARD_MERGE_RECOVERY_DOCS_URL,
   });
   await postSlack({
     fetchImpl,

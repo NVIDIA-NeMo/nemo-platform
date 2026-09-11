@@ -190,6 +190,30 @@ test("omits a missing or invalid Slack user group", () => {
   );
 });
 
+test("includes the configured recovery guide for every failure kind", () => {
+  for (const kind of ["conflicts", "clean", "unavailable"]) {
+    const message = buildSlackMessage(
+      messageFixture({
+        conflicts: { kind, files: ["uv.lock"] },
+        recoveryDocsUrl: " https://docs.example.com/forward-merge/ ",
+      }),
+    );
+    assert.match(
+      message,
+      /<https:\/\/docs\.example\.com\/forward-merge\/\|Forward-merge recovery guide>/,
+    );
+    assert.match(message, /View failure details/);
+  }
+});
+
+test("omits the recovery guide when its secret is missing or blank", () => {
+  for (const recoveryDocsUrl of [undefined, "", "   "]) {
+    const message = buildSlackMessage(messageFixture({ recoveryDocsUrl }));
+    assert.doesNotMatch(message, /Forward-merge recovery guide/);
+    assert.match(message, /Manual recovery is required/);
+  }
+});
+
 test("escapes untrusted Slack labels", () => {
   const message = buildSlackMessage(
     messageFixture({
@@ -251,6 +275,8 @@ test("falls back to the basic alert when PR metadata fails", async () => {
       RUN_URL: "https://github.com/NVIDIA-NeMo/nemo-platform/actions/runs/1234",
       SLACK_ALERTS_WEBHOOK: "https://hooks.slack.test/example",
       SLACK_ALERT_USERGROUP_ID: "S0123456789",
+      FORWARD_MERGE_RECOVERY_DOCS_URL:
+        "https://docs.example.com/forward-merge/",
     },
     fetchImpl: async (url, options) => {
       requests.push({ url, options });
@@ -266,6 +292,11 @@ test("falls back to the basic alert when PR metadata fails", async () => {
     /^<!subteam\^S0123456789>/,
   );
   assert.match(result.text, /Source: unavailable/);
+  assert.ok(
+    JSON.parse(requests[0].options.body).text.includes(
+      "<https://docs.example.com/forward-merge/|Forward-merge recovery guide>",
+    ),
+  );
   assert.match(result.text, /Conflict metadata unavailable/);
   assert.match(warnings[0], /Unable to read forward-merge PR/);
 
