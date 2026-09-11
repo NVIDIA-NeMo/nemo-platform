@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Example values for enabling sandboxed Gym through an existing OpenSandbox
+# deployment. Apply this file with `helm upgrade --reuse-values` so unrelated
+# settings and deployed image coordinates remain unchanged.
+#
+# If the Platform namespace is not nmp-temp1, update sandbox_policy_base_urls
+# before applying this file.
+
+sandboxClusterCapable: true
+
+opensandbox:
+  domain: opensandbox-server-crun.opensandbox-system.svc.cluster.local
+  protocol: http
+  apiKeySecret: opensandbox-server-crun-api-key
+  apiKeySecretKey: api-key
+
+platformConfig:
+  evaluator:
+    sandboxed_gym_default: true
+    sandbox_cluster_capable: true
+    sandbox_host_provider: opensandbox
+    # Allow enough time for OpenSandbox to pull and start the 6+ GiB Gym host
+    # image. The SDK's 30-second default might be too short on an uncached node.
+    sandbox_host_provider_options:
+      connection:
+        request_timeout_s: 120
+
+    # Keep this unset so Evaluator derives nmp-gym-host from the Platform
+    # registry and immutable release tag.
+    sandbox_runtime_image: null
+
+    sandbox_job_storage_pvc_claim: nemo-platform-core-storage
+    sandbox_resources:
+      cpu: "1"
+      memory: 2Gi
+    sandbox_policy_base_urls:
+      - http://nemo-platform-api.nmp-temp1.svc.cluster.local:8080
+    sandbox_egress_allow:
+      - pypi.org:443
+      - files.pythonhosted.org:443
