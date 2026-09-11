@@ -267,6 +267,46 @@ validated config, even if the agent scores poorly or the checks are basic.
 Document limitations such as narrow fixtures or assertions that only check part
 of an outcome. Do not present successful setup as high-quality evaluation.
 
+### Explain the completed milestone
+
+Lead the completion message with what the user now has: name the created checks
+and the behavior they cover. Explain that each task pairs a customer request with
+a rule for judging the response. Translate observed sanity results into their
+meaning: doing nothing failed and the prepared reference solution passed, so
+these examples exercise the checks successfully. Do not describe NOP as an empty
+answer unless that is what the task actually tested. These results do not prove
+the rules judge every answer correctly or measure the user's agent.
+
+Then state whether the actual agent ran. If it did, summarize its observed
+results. If integration is missing, explain the concrete next step in everyday
+terms: connect the suite to the agent's actual entry point so the checks can send
+it requests and score its responses. Name the entry point only when verified;
+introduce “Harbor adapter” only if that technical detail helps the user act.
+Explain practical limits, such as a wording assertion rejecting a correct
+paraphrase. Link the saved checks and results, with rerun instructions clearly
+labeled as either task sanity checks or an actual agent evaluation.
+
+For example, when supported by the recorded results:
+
+> You now have three runnable baggage checks: allowance limits, missing-bag
+> guidance, and unknown fees. Each includes a customer question and a rule for
+> judging the answer.
+>
+> Doing nothing failed each check, and the prepared reference solutions passed.
+> That confirms the checks run and distinguish those examples.
+>
+> We haven't tested your airline agent yet. The next step is to connect the suite
+> to its Triage entry point so it can ask your agent these questions and score
+> its actual responses. The current rules look for specific wording, so they
+> may reject a correct answer phrased differently.
+
+Adapt this to the actual milestone and include the real artifact link. Keep raw
+scores, interpreter details, and full commands in the saved report unless useful
+in the message. Do not append a quotation of the skill to justify delivering
+starter tasks; the observed results and concrete next step explain the handoff.
+Preserve any explicit host disclosure requirement for a genuine approval or
+blocker.
+
 Treat traces and improvement as the next stage, not a prerequisite for setup.
 Explain that traces reveal the agent's steps and tool calls, helping identify
 failure patterns, missing coverage, and weak checks. Point to actual trace
