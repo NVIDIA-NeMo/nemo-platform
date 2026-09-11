@@ -175,6 +175,11 @@ text field in `safe/trace.atif.json`, every audit finding and host, then record
 who performed this trace review. Generated task files do not exist yet; review
 the complete publication separately after finalization.
 
+Use the audit's field and character denominator to plan bounded reads. If a tool
+truncates output, continue through the omitted fields or character ranges; a
+truncated display does not establish missing trace evidence. If review cannot
+finish, retain that limitation without issuing a complete review attestation.
+
 ```bash
 python <skill_dir>/scripts/trace_environment.py review-privacy \
   --task-dir <task-dir> \
@@ -235,6 +240,8 @@ Read only `safe/trace.atif.json`. Later user corrections outrank earlier turns.
 Every decision must cite real ATIF `step_id` values. Read
 [references/candidate-record.md](references/candidate-record.md) for the
 `candidate.json` shape before writing the decision.
+Run its read-only `check-candidate` command before construction; it checks
+metadata, not execution, privacy review or readiness.
 
 Use `candidate` only when the request and expected outcome are complete,
 reproducible without private or live external state, and objectively testable.
@@ -259,7 +266,8 @@ folding them into `insufficient_trace_evidence`: use `malformed_atif`,
 `source_too_large`, `build_dependency_unavailable`,
 `verifier_dependency_unavailable`, `network_dependency_required`, and
 `verifier_not_isolated` where applicable. Record the concrete failed command or
-contract check in `did_not_work`; keep `reason_codes` stable and aggregateable.
+contract check in the summary using Step 7's `finalize --did-not-work`, not as an
+extra field in `candidate.json`; keep `reason_codes` stable and aggregateable.
 
 ## Step 6: author and prove a candidate environment
 
