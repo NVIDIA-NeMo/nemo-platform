@@ -95,10 +95,12 @@ The flow does not require model or provider configuration.
 
 - If your agent has no evals, start with
   [`eval-author-first-eval`](skills/eval-author-first-eval/SKILL.md). It requires
-  Ethos, uses the Ethos creation skills when available, and otherwise explains
-  how to provide one. Missing Harbor leaves you with an evaluation plan and
+  Ethos, saves and checks it locally in the repo using the bundled
+  [Local Ethos procedure](skills/eval-author/references/local-ethos.md), and
+  reuses saved interview answers. No NeMo service or upload is involved.
+  Missing Harbor leaves you with an evaluation plan and
   installation guidance; it is never installed automatically. Generated eval
-  artifacts stay under `.eval-author/`.
+  artifacts stay under `.eval-author/`; the Ethos itself defaults to root `ETHOS.md`.
   The first milestone is a few functioning tasks and a repeatable run command,
   with basic verifier checks and clear limitations. Coverage analysis and
   trace-driven improvement follow once the suite is working.

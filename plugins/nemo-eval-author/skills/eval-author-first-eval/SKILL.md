@@ -17,9 +17,9 @@ not-for:
   - eval-author-task-create (use for measured audit coverage gaps)
   - eval-author-discover (use to check an existing suite)
 compatibility: >-
-  Ethos is required before evaluation design. Ethos generation needs usable
-  nemo-explore and nemo-ethos skills and their prerequisites. Planning needs
-  no Harbor installation. Scaffolding requires an existing Harbor CLI;
+  Ethos is required before evaluation design and is saved and checked locally
+  in the user's repository. No NeMo service, account, CLI, or upload is needed.
+  Planning needs no Harbor installation. Scaffolding requires an existing Harbor CLI;
   validation requires its Python environment. Execution may require Docker,
   an agent adapter, and provider credentials.
 maturity: alpha
@@ -52,9 +52,9 @@ not an installation inventory, missing-file report, or skill requirement.
 Explain **ETHOS.md** on first mention: it records what the agent is supposed
 to do, its boundaries, and what success looks like, giving the checks a target.
 If it exists, summarize the relevant intent instead of asking the user to
-recreate it. If missing, explain that we will capture that intent first. Before
-handing off to `nemo-explore`, give it this user-facing context and preserve its
-required interview and review steps. Keep questions concrete and rooted in the
+recreate it. If missing, explain that we will capture that intent locally first.
+Use the shared local Ethos procedure below, carrying this user-facing context
+into its questions and review. Keep questions concrete and rooted in the
 agent's actual workflows; avoid abstract choices such as “demo versus production
 accountability” unless the user's goal requires that distinction.
 
@@ -73,13 +73,13 @@ For an airline demo with no Ethos, an opening could be:
 Adapt the examples to repository evidence. These are proposed areas of intent,
 not authored evaluation cases; case design still waits for Ethos. If the user
 already supplied the intended scope, acknowledge it and ask only the next
-question required by the Ethos flow. Avoid repeating this introduction on resume.
+missing intent question. Avoid repeating this introduction on resume.
 
 The first message asking for intent must itself explain both the value of the
 starter suite and Ethos, even if a preceding progress update mentioned them.
-After reading `nemo-explore`, return to this opening before composing its first
-question. The handoff changes which interview steps to follow, not how to ground
-the user. Use the core skill's onboarding rules here; its verdict-first format
+After reading the local Ethos procedure, return to this opening before composing
+the first question. Keep the user's outcome in view while collecting intent.
+Use the core skill's onboarding rules here; its verdict-first format
 is reserved for validation and result reports.
 
 An intent question is ordinary progress toward the requested evals. It gathers
@@ -107,22 +107,19 @@ constraints, success and failure criteria, and what may change. It is the source
 of truth for what the evals should test; code only shows current implementation.
 Share the [Ethos documentation](https://docs.nvidia.com/nemo-platform/documentation/agents/optimize-agents/ethos).
 
-- When both `nemo-explore` and `nemo-ethos` are available and usable in this
-  assistant environment, read their skills and use them in that order to create
-  Ethos. Explain the handoff and follow their required intent interview, review,
-  validation, and permission steps. Do not add a separate choice about whether
-  to use the skills when the user already asked to build evals.
-- When either skill is absent or its prerequisites cannot be met, explain the
-  specific limitation. Tell the user to create an Ethos using the documentation
-  and provide its path. Do not claim generation is available merely because a
-  skill name appears in documentation.
+Read and follow [Local Ethos](../eval-author/references/local-ethos.md) to create,
+check, and review the file in the user's repo, defaulting to root `ETHOS.md`.
+Reuse saved interview answers, including `.eval-author/intent-notes.md`. This
+procedure is bundled with Eval Author and does not depend on installed NeMo
+skills. Do not invoke the platform Ethos workflow, probe NeMo services, require
+a workspace, create a Fileset, or upload anything. A failed earlier upload does
+not invalidate a local Ethos or require repeating the interview.
 
-Return here after the Ethos exists and has passed the generating skill's checks.
-For a supplied file, check it against the documented Ethos structure and resolve
-missing intent before continuing. Do not substitute README files, code, traces,
-or a draft evaluation plan for Ethos. Eval Author does not write a placeholder.
-The Ethos skills own their output paths and any required platform operations;
-this handoff does not authorize unrelated deployment or source edits.
+Return here once the local file checks and content review are complete. Do not
+substitute README files, code, traces, or an intent-notes file for the real Ethos.
+If a local write or validation issue prevents completion, preserve the answers,
+explain the actual local problem, and include the Ethos documentation link above
+so the user can save or correct the file. Do not ask them to restore a service.
 
 Check Harbor early using the interpreter probe in
 [`eval-author-discover`](../eval-author-discover/SKILL.md#before-you-start) and

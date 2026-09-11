@@ -117,8 +117,10 @@ task layout.
 For a user asking to build their first evals, read
 [`eval-author-first-eval`](../eval-author-first-eval/SKILL.md). Do not route an
 explicit “no evals yet” request through discovery just to produce a missing-config
-failure. The first-eval flow requires Ethos and uses available Ethos creation
-skills when needed. Harbor is required for scaffolding and execution, not for
+failure. The first-eval flow requires Ethos and follows
+[Local Ethos](references/local-ethos.md) to save it in the repo when needed.
+No platform service or upload is involved. Harbor is required for scaffolding
+and execution, not for
 establishing Ethos or planning cases.
 
 If suite existence is unclear, inspect briefly: absent Harbor configuration
@@ -133,16 +135,19 @@ user, not to you.
 
 - **Propose, never mutate customer source.** Read the user's source and report on
   it. Do not edit, move, or reformat any of it, including its `.gitignore`. The
-  only files you add belong under `.eval-author/`, which is theirs to commit or
-  ignore.
+  evaluation artifacts you add belong under `.eval-author/`, which is theirs to
+  commit or ignore. The sole additional write scope is the requested local
+  `ETHOS.md`: follow [Local Ethos](references/local-ethos.md) to create or make
+  user-requested edits to it in the repo. Preserve existing Ethos content and
+  custom sections; downstream audit measurement does not rewrite it.
   `eval-author-discover` scripts write nothing; `eval-author-audit` writes only
   requested audit artifacts; `eval-author-task-create` writes only drafts,
   proposals, job outputs, and measurements there; `eval-author-trace-environment`
   writes only private, gitignored task workspaces there.
   `eval-author-first-eval` writes plans, drafts, configs, and jobs there. Its
-  required Ethos handoff uses `nemo-explore` and `nemo-ethos` under their own
-  output, validation, and permission rules; Eval Author itself does not write
-  or modify source-of-truth Ethos files.
+  Ethos is a repository-owned document, saved and checked locally. Never upload
+  it, create a Fileset, or require NeMo services or account configuration for
+  local first-eval or audit authoring.
 - **A missing tool is a finding, not a task.** When the provider is not installed,
   say so and stop short of proving anything. Report what you found regardless, and
   do not install the provider into the user's environment.
@@ -172,8 +177,8 @@ answer is part of designing the evals, not a validation verdict.
 
 This introduction belongs in the message containing the first intent question,
 even if an earlier progress message already mentioned the workflow. Preserve it
-when using `nemo-explore` or another prerequisite skill: that skill owns the
-interview requirements, while first-eval owns the onboarding context.
+when following the local Ethos procedure: its intent questions and content
+review remain part of the first-eval onboarding conversation.
 
 An ordinary intent question gathers information needed to do the requested work.
 It is not a request for permission to continue or, by itself, a blocked-work
