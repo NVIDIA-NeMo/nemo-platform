@@ -365,7 +365,7 @@ def _install_hub_package_from_wheels(wheels_dir: Path, package_name: str) -> Non
 
 def _load_verifiers_environment(vf_env_id: str, vf_env_args: dict[str, Any]) -> Any:
     try:
-        import verifiers as vf  # conversion extra
+        import verifiers as vf  # ty: ignore[unresolved-import]  # conversion extra, absent from uv.lock
     except ImportError as exc:
         raise RuntimeError(
             "verifiers is required for pi-to-gym-conversion dataset generation; it lives in "
