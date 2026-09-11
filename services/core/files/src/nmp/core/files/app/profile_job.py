@@ -22,15 +22,11 @@ import uuid
 from typing import NamedTuple
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.types.jobs import (
-    ContainerSpecParam,
-    CPUExecutionProviderParam,
-    PlatformJobResponse,
-    PlatformJobSpecParam,
-    PlatformJobStepSpecParam,
-)
+from nemo_platform.types.jobs import PlatformJobResponse
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nemo_platform_plugin.jobs.providers import ContainerSpec, CPUExecutionProvider
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
+from nemo_platform_plugin.jobs.spec import PlatformJobSpec, PlatformJobStepSpec
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +166,7 @@ async def find_running_profile_job(
     return (await scan_profile_jobs(sdk, workspace=workspace, fileset_name=fileset_name)).running
 
 
-def _build_platform_spec(workspace: str, fileset_name: str, row_budget: int | None) -> PlatformJobSpecParam:
+def _build_platform_spec(workspace: str, fileset_name: str, row_budget: int | None) -> PlatformJobSpec:
     """Build the platform job spec for profiling ``workspace/fileset_name``.
 
     The config keys here are the task's input contract: it reads ``workspace``, ``fileset`` and
@@ -184,14 +180,14 @@ def _build_platform_spec(workspace: str, fileset_name: str, row_budget: int | No
     # having this layer restate it.
     if row_budget is not None:
         config["row_budget"] = row_budget
-    return PlatformJobSpecParam(
+    return PlatformJobSpec(
         steps=[
-            PlatformJobStepSpecParam(
+            PlatformJobStepSpec(
                 name=_PROFILE_STEP_NAME,
-                executor=CPUExecutionProviderParam(
+                executor=CPUExecutionProvider(
                     provider="cpu",
                     profile="default",
-                    container=ContainerSpecParam(
+                    container=ContainerSpec(
                         image=get_qualified_image(_PROFILE_TASK_IMAGE),
                         entrypoint=["python", "-m"],
                         command=list(_PROFILE_TASK_COMMAND),
