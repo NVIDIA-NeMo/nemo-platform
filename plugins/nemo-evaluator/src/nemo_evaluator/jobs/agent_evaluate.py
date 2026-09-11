@@ -66,7 +66,6 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTas
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import RunConfigOnline, RunConfigOnlineModel
-from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.errors import (
@@ -91,6 +90,7 @@ from nemo_platform_plugin.jobs.execution_profiles import (
     VolcanoJobExecutionProfile,
 )
 from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
+from nemo_platform_plugin.sdk import AsyncNeMoPlatform
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)

@@ -5,6 +5,34 @@
 
 Apply this protocol to every candidate before finalization.
 
+## Existing Harbor runtime preflight
+
+Before building images or starting proof jobs, run this read-only check in the
+existing Harbor Python environment. Run it again when that environment changes;
+do not infer compatibility from a minimum version or a previous result:
+
+```bash
+python <skill_dir>/scripts/trace_environment.py check-runtime
+python <skill_dir>/scripts/trace_environment.py check-runtime --task-dir <task-dir>
+```
+
+The first command probes provider-declared configuration and result fields; the
+second also makes Harbor validate the authored task and compute its checksum.
+Exit code 1 / `valid: false` means do not launch proof jobs with that runtime.
+Keep the report private with construction evidence. Use the same interpreter's
+Harbor installation for receipts and jobs, not an unrelated `harbor` on PATH.
+The reported version is provenance, not an allowlist: development builds and
+future versions must retain the required capabilities too. If unavailable, use
+another already-installed compatible runtime when present; do not automatically
+install, upgrade or patch the provider, or synthesize missing result fields.
+
+This preflight does not start Docker, download anything, or prove execution.
+It checks only the single-step proof shape understood by this helper. Multi-step
+trial results may omit trial-level verifier mode even when their task config
+accepts separate verification; the task-specific preflight fails closed there.
+Do not flatten a multi-step task just to pass. Every actual job must still pass
+the existing checksum, identity, reward and separate-mode result checks.
+
 ## Network isolation
 
 In addition to the separate no-network verifier contract, require the agent
@@ -25,7 +53,7 @@ python <skill_dir>/scripts/trace_environment.py record-reproducibility \
 ```
 
 The manifest hashes every task path, file byte, directory, and executable bit.
-It records a declared source revision, Dockerfile base images, external
+It records a declared source revision, Dockerfile base and `# syntax=` frontend images, external
 `COPY --from` and `RUN --mount=from=...` image dependencies, configured agent,
 verifier and step `docker_image` references, network modes,
 and one image-reference state: `local_only`, `image_pinned_recipe`, or
@@ -34,7 +62,10 @@ and every inventoried external image is pinned by digest. Local named or numeric
 build stages are distinguished from external images. Unresolved variable-based
 references keep the task `local_only`. A configured agent image is immutable
 only when its reference contains a SHA-256 digest and all inventoried image
-dependencies are immutable. Use Harbor's `docker_image` field, not `image`.
+dependencies are immutable. Mutable or unresolved frontend references keep the
+recipe `local_only`; pin an external frontend by digest too. Only active parser
+directives before a blank line, ordinary comment, or build instruction count.
+Use Harbor's `docker_image` field, not `image`.
 These states describe image pinning only. The manifest and public result
 explicitly report `dependency_closure: "unverified"`: arbitrary package
 downloads, tool installations, and external build inputs are not proven
