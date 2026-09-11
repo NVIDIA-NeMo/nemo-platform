@@ -38,7 +38,7 @@ from nemo_evaluator_sdk.metrics.retrieval import (
 from nemo_evaluator_sdk.values.models import Model, ModelRef
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.retrieval import Retrieval, Truncation
-from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
@@ -49,6 +49,8 @@ from nemo_platform_plugin.jobs.api_factory import (
     PlatformJobStep,
 )
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nemo_platform_plugin.models.client import AsyncModelsClient
+from nemo_platform_plugin.sdk import AsyncNeMoPlatform
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 EVAL_RESULTS_FILE_NAME = "eval_results.json"
@@ -283,7 +285,8 @@ async def _resolve_retrieval(
     if isinstance(value, ModelRef):
         if async_sdk is None:
             raise ValueError("a platform SDK client is required to resolve the retrieval target")
-        return Retrieval(embeddings=await PlatformMetricModelResolver(async_sdk.models).resolve_model(value))
+        models_client = client_from_platform(async_sdk, AsyncModelsClient)
+        return Retrieval(embeddings=await PlatformMetricModelResolver(models_client).resolve_model(value))
     if isinstance(value, Model):
         return Retrieval(embeddings=value)
     embeddings = value.embeddings
@@ -291,11 +294,13 @@ async def _resolve_retrieval(
     if isinstance(embeddings, ModelRef):
         if async_sdk is None:
             raise ValueError("a platform SDK client is required to resolve the retrieval target")
-        embeddings = await PlatformMetricModelResolver(async_sdk.models).resolve_model(embeddings)
+        models_client = client_from_platform(async_sdk, AsyncModelsClient)
+        embeddings = await PlatformMetricModelResolver(models_client).resolve_model(embeddings)
     if isinstance(reranker, ModelRef):
         if async_sdk is None:
             raise ValueError("a platform SDK client is required to resolve the retrieval reranker")
-        reranker = await PlatformMetricModelResolver(async_sdk.models).resolve_model(reranker)
+        models_client = client_from_platform(async_sdk, AsyncModelsClient)
+        reranker = await PlatformMetricModelResolver(models_client).resolve_model(reranker)
     return Retrieval(
         embeddings=embeddings,
         reranker=reranker,

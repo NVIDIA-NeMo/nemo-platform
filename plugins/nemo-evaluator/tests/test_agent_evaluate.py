@@ -64,7 +64,6 @@ from nemo_evaluator_sdk.agent_eval.trials import (
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.values import Agent, GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.errors import InternalServerError, NemoResponseValidationError, NemoTransportError
 from nemo_platform_plugin.commands import add_job_commands
@@ -86,6 +85,7 @@ from nemo_platform_plugin.jobs.execution_profiles import (
 from nemo_platform_plugin.jobs.providers import SubprocessExecutionProvider
 from nemo_platform_plugin.jobs.spec import BaseExecutionProfile, PlatformJobSpec
 from nemo_platform_plugin.scheduler import NemoJobScheduler
+from nemo_platform_plugin.sdk import AsyncNeMoPlatform, NeMoPlatform
 from pydantic import ValidationError
 from pytest_mock import MockerFixture
 from typer.testing import CliRunner

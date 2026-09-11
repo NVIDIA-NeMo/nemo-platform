@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import nemo_evaluator.cli as evaluator_cli
 import pytest
-from models import AsyncModelsResource, ResolvedModelReference
+from models import ResolvedModelReference
 from nemo_evaluator.cli import EvaluatorPluginCLI
 from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.evaluate import (
@@ -56,14 +56,15 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nemo_platform_plugin.jobs.spec import PlatformJobSpec
+from nemo_platform_plugin.models.client import AsyncModelsClient
 from nemo_platform_plugin.scheduler import NemoJobScheduler
+from nemo_platform_plugin.sdk import AsyncNeMoPlatform, NeMoPlatform
 from pydantic import BaseModel, ConfigDict
 from pytest_mock import MockerFixture
 from typer.testing import CliRunner
@@ -232,7 +233,7 @@ def _generated_async_sdk() -> AsyncNeMoPlatform:
 
 
 def _patch_async_model_reference_resolution(mocker: MockerFixture) -> None:
-    async def resolve_model_reference(self: AsyncModelsResource, ref: str) -> ResolvedModelReference:
+    async def resolve_model_reference(self: AsyncModelsClient, ref: str) -> ResolvedModelReference:
         del self
         assert ref == "default/judge"
         return ResolvedModelReference(
@@ -242,7 +243,7 @@ def _patch_async_model_reference_resolution(mocker: MockerFixture) -> None:
         )
 
     mocker.patch(
-        "nemo_evaluator.jobs.metric_resolution.AsyncModelsResource.resolve_model_reference",
+        "nemo_evaluator.jobs.metric_resolution.AsyncModelsClient.resolve_model_reference",
         resolve_model_reference,
     )
 
