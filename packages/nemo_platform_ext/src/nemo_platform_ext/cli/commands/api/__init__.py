@@ -40,14 +40,6 @@ API_TOP_LEVEL_ENTRIES = (
         hidden=False,
     ),
     TopLevelEntry(
-        import_path=f"{__package__}.iam:app",
-        name="iam",
-        help="IAM operations.",
-        panel="Core plugins",
-        kind="group",
-        hidden=True,
-    ),
-    TopLevelEntry(
         import_path=f"{__package__}.inference:app",
         name="inference",
         help="Inference operations.",

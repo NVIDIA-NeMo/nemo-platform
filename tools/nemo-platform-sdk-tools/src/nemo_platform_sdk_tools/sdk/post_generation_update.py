@@ -18,6 +18,7 @@ import tomlkit
 import typer
 from nemo_platform_sdk_tools.sdk.core.common import WRAPPER_DISTRIBUTION_NAME, SdkInfo, get_sdk_info
 from nemo_platform_sdk_tools.sdk.post_generation_exist_ok import inject_exist_ok
+from nemo_platform_sdk_tools.sdk.source_owned_resources import SOURCE_OWNED_RESOURCE_EXCLUSIONS
 from tomlkit.items import AoT, Table
 
 app = typer.Typer(
@@ -47,6 +48,7 @@ SDK_BUILD_SOURCE_PACKAGES: tuple[dict[str, str | list[str]], ...] = (
         ],
     },
 )
+SOURCE_OWNED_RESOURCE_NAMES = frozenset(resource.resource_name for resource in SOURCE_OWNED_RESOURCE_EXCLUSIONS)
 
 
 def _build_hook_source(sdk_info: SdkInfo) -> Path:
@@ -241,6 +243,78 @@ def apply_string_replacements(sdk_dir: Path, replacements: List[Tuple[str, str]]
                 continue
 
     typer.echo(f"  - Processed {processed_files} files with {total_replacements} total replacements")
+
+
+def _sdk_type_exports(sdk_info: SdkInfo) -> set[str]:
+    types_init = sdk_info.sdk_dir / "src" / sdk_info.module_name / "types" / "__init__.py"
+    if not types_init.exists():
+        return set()
+
+    exports: set[str] = set()
+    for line in types_init.read_text(encoding="utf-8").splitlines():
+        match = re.fullmatch(r"\s*([A-Za-z_]\w*)\s+as\s+\1,\s*", line)
+        if match:
+            exports.add(match.group(1))
+    return exports
+
+
+def _api_index_resource_name(sdk_info: SdkInfo, link_target: str) -> str | None:
+    match = re.fullmatch(rf"src/{sdk_info.module_name}/resources/([^/]+)/api\.md", link_target)
+    if match:
+        return match.group(1)
+    return None
+
+
+def clean_api_index(sdk_info: SdkInfo) -> bool:
+    """Remove generated API index entries for artifacts absent after post-processing."""
+    api_index = sdk_info.sdk_dir / "api.md"
+    if not api_index.exists():
+        typer.echo(f"api.md not found at {api_index}. Skipping cleanup.")
+        return False
+
+    type_exports = _sdk_type_exports(sdk_info)
+    content = api_index.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    cleaned_lines: list[str] = []
+    in_type_import_block = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(f"from {sdk_info.module_name}.types import ("):
+            in_type_import_block = True
+            cleaned_lines.append(line)
+            continue
+        if in_type_import_block and stripped == ")":
+            in_type_import_block = False
+            cleaned_lines.append(line)
+            continue
+        if in_type_import_block:
+            type_name = stripped.removesuffix(",")
+            if type_name and type_name not in type_exports:
+                continue
+
+        link_match = re.fullmatch(r"# \[[^\]]+\]\(([^)]+)\)", stripped)
+        resource_name = _api_index_resource_name(sdk_info, link_match.group(1)) if link_match else None
+        if (
+            resource_name in SOURCE_OWNED_RESOURCE_NAMES
+            and link_match
+            and not (sdk_info.sdk_dir / link_match.group(1)).exists()
+        ):
+            continue
+
+        cleaned_lines.append(line)
+
+    cleaned_content = "\n".join(cleaned_lines)
+    if content.endswith("\n"):
+        cleaned_content += "\n"
+
+    if cleaned_content == content:
+        typer.echo(f"  - No changes needed for {api_index}")
+        return False
+
+    api_index.write_text(cleaned_content, encoding="utf-8")
+    typer.echo(f"  - Updated {api_index}")
+    return True
 
 
 def update_pyproject_toml(sdk_info: SdkInfo) -> bool:
@@ -569,6 +643,16 @@ def replace_strings() -> None:
 
 
 @app.command()
+def cleanup_api_index() -> None:
+    """Remove API index entries for generated SDK artifacts removed by post-processing."""
+    sdk_info = get_sdk_info()
+
+    typer.echo("Cleaning API index...")
+    clean_api_index(sdk_info)
+    typer.echo("API index cleanup completed!")
+
+
+@app.command()
 def copy_license() -> None:
     """Copy LICENSE file from overrides to SDK directory."""
     sdk_info = get_sdk_info()
@@ -748,6 +832,8 @@ def update_all() -> None:
     copy_source_overrides()
     typer.echo()
     replace_strings()
+    typer.echo()
+    cleanup_api_index()
     typer.echo()
     update_license_headers()
     typer.echo()

@@ -179,6 +179,7 @@ class SchemaMapper:
             schema_usage,
             self._active_source_owned_resources,
         )
+        excluded_schema_names.update(self._openapi_spec.calculate_sdk_excluded_schema_names())
         self._schemas = set(openapi_spec.schemas()) - excluded_schema_names
 
         # Extract existing models from Stainless config

@@ -7,13 +7,6 @@ Accepts either a legacy ``NeMoPlatform`` SDK instance or a :class:`NemoClient`
 / :class:`AsyncNemoClient`, so plugins registered via ``NemoPluginSDKResources``
 can use the typed endpoint/client infrastructure regardless of which platform
 client the caller holds.
-
-Usage::
-
-    from nemo_platform_plugin.client.adapter import client_from_platform
-
-    def make_sync_resource(platform: PlatformClient) -> NemoClient:
-        return client_from_platform(platform, NemoClient)
 """
 
 from __future__ import annotations
@@ -71,6 +64,17 @@ def platform_default_headers(platform: PlatformClient) -> dict[str, str]:
     return dict(cast(_PlatformClient, platform)._custom_headers)
 
 
+def _platform_default_headers(platform: _PlatformClient) -> dict[str, str] | None:
+    # Prefer _custom_headers (set via with_options/set_default_headers),
+    # fall back to the httpx client's actual headers (set at construction,
+    # e.g. TestClient(headers={...})), filtering out httpx defaults.
+    headers = {key: value for key, value in platform._custom_headers.items() if isinstance(value, str)}
+    if not headers:
+        skip = {"accept", "accept-encoding", "connection", "user-agent", "host"}
+        headers = {key: value for key, value in platform._client.headers.items() if key.lower() not in skip}
+    return headers or None
+
+
 @overload
 def client_from_platform(platform: PlatformClient, client_cls: type[SyncT]) -> SyncT: ...
 @overload
@@ -104,15 +108,7 @@ def client_from_platform(
         return client_cls.from_client(platform)
 
     platform_client = cast(_PlatformClient, platform)
-
-    # Prefer _custom_headers (set via with_options/set_default_headers),
-    # fall back to the httpx client's actual headers (set at construction,
-    # e.g. TestClient(headers={...})), filtering out httpx defaults.
-    headers = platform_client._custom_headers
-    if not headers:
-        _skip = {"accept", "accept-encoding", "connection", "user-agent", "host"}
-        headers = {k: v for k, v in platform_client._client.headers.items() if k.lower() not in _skip}
-
+    headers = _platform_default_headers(platform_client)
     retry = RetryPolicy(
         max_retries=platform_client.max_retries,
         retryable_status_codes=(408, 409, 429),
@@ -140,10 +136,11 @@ def client_from_platform(
         return client_cls(
             base_url=str(platform_client.base_url).rstrip("/"),
             workspace=platform_client.workspace,
-            default_headers=headers or None,
+            default_headers=headers,
             timeout=timeout,
             retry=retry,
             http_client=platform_client._client,
+            owns_http_client=False,
             url_resolver=url_resolver,
         )
 
@@ -152,9 +149,10 @@ def client_from_platform(
     return client_cls(
         base_url=str(platform_client.base_url).rstrip("/"),
         workspace=platform_client.workspace,
-        default_headers=headers or None,
+        default_headers=headers,
         timeout=timeout,
         retry=retry,
         http_client=platform_client._client,
+        owns_http_client=False,
         url_resolver=url_resolver,
     )

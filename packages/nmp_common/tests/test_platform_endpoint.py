@@ -16,6 +16,7 @@ from nmp.common.platform_endpoint import (
     _AsyncPlatformEndpointRoutingTransport,
     _SyncPlatformEndpointRoutingTransport,
     parse_platform_endpoint,
+    require_authorization_header_endpoint,
     resolve_platform_endpoint,
     resolve_service_endpoint,
 )
@@ -77,6 +78,27 @@ def test_parse_rejects_raw_socket_path() -> None:
 def test_parse_rejects_relative_uds_socket_path() -> None:
     with pytest.raises(ValueError, match="absolute socket path"):
         parse_platform_endpoint("unix://relative.sock")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://platform.example.com",
+        "unix:///tmp/nemo-platform.sock",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://[::1]:8080",
+    ],
+)
+def test_authorization_header_endpoint_allows_secure_and_local_transports(url: str) -> None:
+    require_authorization_header_endpoint(parse_platform_endpoint(url), purpose="test call")
+
+
+def test_authorization_header_endpoint_rejects_remote_cleartext_http() -> None:
+    with pytest.raises(ValueError, match="cleartext remote endpoint"):
+        require_authorization_header_endpoint(
+            parse_platform_endpoint("http://platform.example.com"), purpose="test call"
+        )
 
 
 def test_resolve_service_endpoint_uses_service_specific_url(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -437,6 +459,15 @@ def test_sync_sdk_http_client_passes_explicit_timeout() -> None:
     client.assert_called_once_with(timeout=2.0)
 
 
+def test_sync_sdk_http_client_can_disable_redirects() -> None:
+    endpoint = parse_platform_endpoint("http://127.0.0.1:8080")
+
+    with patch("nmp.common.platform_endpoint.ImmutableDefaultHttpxClient") as client:
+        endpoint.sync_sdk_http_client(follow_redirects=False)
+
+    client.assert_called_once_with(follow_redirects=False)
+
+
 def test_uds_sync_http_client_keeps_transport_and_omits_unset_timeout() -> None:
     endpoint = parse_platform_endpoint("unix:///tmp/nemo-platform.sock")
 
@@ -463,6 +494,16 @@ def test_uds_sync_sdk_http_client_keeps_transport_and_omits_unset_timeout() -> N
     assert kwargs["follow_redirects"] is True
     assert "transport" in kwargs
     assert "timeout" not in kwargs
+
+
+def test_uds_sync_sdk_http_client_can_disable_redirects() -> None:
+    endpoint = parse_platform_endpoint("unix:///tmp/nemo-platform.sock")
+
+    with patch("nmp.common.platform_endpoint.ImmutableHttpxClient") as client:
+        endpoint.sync_sdk_http_client(follow_redirects=False)
+
+    kwargs = client.call_args.kwargs
+    assert kwargs["follow_redirects"] is False
 
 
 def test_sync_routing_transport_prebuilds_uds_service_transports() -> None:
@@ -714,6 +755,15 @@ def test_async_sdk_http_client_passes_explicit_timeout() -> None:
     client.assert_called_once_with(timeout=2.0)
 
 
+def test_async_sdk_http_client_can_disable_redirects() -> None:
+    endpoint = parse_platform_endpoint("http://127.0.0.1:8080")
+
+    with patch("nmp.common.platform_endpoint.ImmutableDefaultAsyncHttpxClient") as client:
+        endpoint.async_sdk_http_client(follow_redirects=False)
+
+    client.assert_called_once_with(follow_redirects=False)
+
+
 def test_uds_async_http_client_keeps_transport_and_omits_unset_timeout() -> None:
     endpoint = parse_platform_endpoint("unix:///tmp/nemo-platform.sock")
 
@@ -740,3 +790,13 @@ def test_uds_async_sdk_http_client_keeps_transport_and_omits_unset_timeout() -> 
     assert kwargs["follow_redirects"] is True
     assert "transport" in kwargs
     assert "timeout" not in kwargs
+
+
+def test_uds_async_sdk_http_client_can_disable_redirects() -> None:
+    endpoint = parse_platform_endpoint("unix:///tmp/nemo-platform.sock")
+
+    with patch("nmp.common.platform_endpoint.ImmutableAsyncHttpxClient") as client:
+        endpoint.async_sdk_http_client(follow_redirects=False)
+
+    kwargs = client.call_args.kwargs
+    assert kwargs["follow_redirects"] is False
