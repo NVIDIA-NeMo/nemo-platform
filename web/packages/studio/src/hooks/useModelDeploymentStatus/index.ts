@@ -40,6 +40,24 @@ export function useModelDeploymentStatus(model: ModelEntity | undefined) {
   return {
     /** The resolved deployment status, or null if no deployment found */
     status,
+    /**
+     * The resolved deployment itself, or null if none was found.
+     *
+     * Callers that need to link to the deployment (rather than merely report
+     * that one exists) need its name, which only this object carries.
+     */
+    deployment: deployment ?? null,
+    /**
+     * `{ workspace, name }` for the resolved deployment, or null.
+     *
+     * Mirrors the arguments the deployment query above was issued with, so a
+     * caller building a link cannot drift from what was actually fetched.
+     * Non-null whenever the provider named a deployment, even if that
+     * deployment has not loaded yet.
+     */
+    deploymentRef: deploymentParts?.name
+      ? { workspace: deploymentParts.workspace ?? workspace, name: deploymentParts.name }
+      : null,
     /** Whether the provider/deployment chain is still loading */
     isLoading,
   };
