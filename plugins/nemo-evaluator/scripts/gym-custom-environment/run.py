@@ -20,13 +20,18 @@ from config import Settings
 
 
 def _parser() -> argparse.ArgumentParser:
-    """Build the command-line parser for the single developer entry point."""
+    """Describe artifact controls and optional bring-your-own inputs."""
     parser = argparse.ArgumentParser(description=__doc__)
+
+    # This option changes only where local evidence is retained.
     parser.add_argument(
         "--run-dir",
         type=Path,
         help="Artifact directory; defaults to a unique /tmp/nmp-gym-custom-environment-* path",
     )
+
+    # Supplying neither path selects the bundled example. Supplying both runs
+    # the same workflow against a developer-owned package and dataset.
     parser.add_argument(
         "--environment-dir",
         type=Path,
@@ -45,7 +50,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _inference_api_key() -> str:
-    """Read the inference API key from the environment or a hidden prompt."""
+    """Use the configured inference key, prompting securely when it is absent."""
     configured_key = os.environ.get("INFERENCE_NVIDIA_API_KEY", "")
     if configured_key:
         return configured_key
@@ -53,9 +58,10 @@ def _inference_api_key() -> str:
 
 
 def main() -> int:
-    """Parse configuration and execute the complete workflow once."""
+    """Translate CLI arguments into settings and execute all workflow stages."""
     parser = _parser()
     arguments = parser.parse_args()
+
     if (arguments.environment_dir is None) != (arguments.dataset is None):
         parser.error("--environment-dir and --dataset must be supplied together")
 
@@ -68,6 +74,7 @@ def main() -> int:
         dataset=arguments.dataset,
         resources_server=arguments.resources_server,
     )
+
     workflow = CustomGymEnvironmentWorkflow(settings)
     workflow.run(inference_api_key=_inference_api_key())
     return 0

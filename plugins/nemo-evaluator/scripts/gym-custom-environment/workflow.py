@@ -68,7 +68,11 @@ class CreatedResources:
 
 
 class CustomGymEnvironmentWorkflow:
-    """Run the documented developer workflow and clean up temporary resources."""
+    """Coordinate the seven documented stages and own resource cleanup.
+
+    Each public method represents one visible workflow stage or a focused piece
+    of its lifecycle. Mutable fields record only outputs needed by later stages.
+    """
 
     def __init__(
         self,
@@ -82,6 +86,8 @@ class CustomGymEnvironmentWorkflow:
         self.runner = runner or CommandRunner(working_directory=settings.repo_root)
         self.console = console or Console()
         self.sdk = NeMoPlatform(base_url=settings.base_url, max_retries=2)
+
+        # These values become available as their corresponding stages complete.
         self.images: DeploymentImages | None = None
         self.prepared_environment: prepare.PreparedEnvironment | None = None
         self.job_name: str | None = None
@@ -106,10 +112,13 @@ class CustomGymEnvironmentWorkflow:
         self.images = checker.check()
 
     def prepare_custom_environment(self) -> None:
-        """Prepare and validate default or caller-provided environment inputs."""
+        """Stage either input mode and record its dynamically discovered metadata."""
         self.console.step(2, TOTAL_STEPS, "Preparing the custom Gym environment")
         adapter_evidence: dict[str, Any] = {}
+
         if self.settings.environment_source is None:
+            # The bundled adapter produces the same package and dataset shape
+            # expected from callers, so all later stages remain generic.
             adapter_evidence = ascii_tree_example.prepare_example(
                 self.runner,
                 converter_environment=self.settings.paths.converter_environment,
@@ -125,6 +134,8 @@ class CustomGymEnvironmentWorkflow:
             )
             self.console.detail("Input", adapter_evidence["input_label"])
         else:
+            # Settings validates this pair at the CLI boundary; retain the check
+            # here because this class can also be instantiated directly.
             environment_source = self.settings.environment_source
             dataset_source = self.settings.dataset_source
             if environment_source is None or dataset_source is None:
@@ -138,6 +149,8 @@ class CustomGymEnvironmentWorkflow:
                 requested_resources_server=self.settings.requested_resources_server,
             )
 
+        # Persist one normalized summary regardless of which input mode produced
+        # the staged package.
         self.prepared_environment = prepared_environment
         preparation_summary = {
             **prepared_environment.evidence(),
@@ -169,12 +182,14 @@ class CustomGymEnvironmentWorkflow:
 
     @contextmanager
     def platform_connection(self) -> Iterator[None]:
-        """Reuse a healthy API endpoint or own a temporary kubectl port-forward."""
+        """Yield with a ready API, cleaning up only a port-forward created here."""
         if self._api_is_ready(self.settings.local_port):
             self.console.detail("Platform API", f"{self.settings.base_url} (existing)")
             yield
             return
 
+        # Keep port-forward output with the run evidence so early startup
+        # failures do not disappear into a background process.
         port_forward_log = self.settings.paths.evidence / "port-forward.log"
         with port_forward_log.open("a", encoding="utf-8") as log:
             process = self.runner.start(
@@ -189,6 +204,8 @@ class CustomGymEnvironmentWorkflow:
                 stdout=log,
             )
             try:
+                # Readiness is a stronger signal than merely observing that the
+                # kubectl process is still running.
                 for _ in range(30):
                     if self._api_is_ready(self.settings.local_port):
                         break
@@ -203,6 +220,8 @@ class CustomGymEnvironmentWorkflow:
                 )
                 yield
             finally:
+                # This context owns only the process it started. An existing
+                # developer-managed port-forward is never terminated.
                 process.terminate()
                 try:
                     process.wait(timeout=5)
@@ -220,7 +239,7 @@ class CustomGymEnvironmentWorkflow:
         return self.settings.model_entity_id.removeprefix(workspace_prefix)
 
     def upload_custom_environment(self) -> None:
-        """Create a temporary FileSet and upload the custom environment package."""
+        """Upload the staged package and prove every local file reached the FileSet."""
         self.sdk.files.filesets.create(
             name=self.settings.fileset,
             workspace=self.settings.workspace,
@@ -228,11 +247,15 @@ class CustomGymEnvironmentWorkflow:
             description="Custom wheels-v1 Gym environment workflow",
         )
         self.created_resources.fileset = True
+
         self.sdk.files.upload(
             local_path=f"{self.settings.paths.environment}/",
             fileset=self.settings.fileset,
             workspace=self.settings.workspace,
         )
+
+        # Compare exact relative paths before submitting a job; a partial upload
+        # otherwise fails much later inside environment staging.
         fileset_listing = self.sdk.files.list(
             fileset=self.settings.fileset,
             workspace=self.settings.workspace,
@@ -258,11 +281,14 @@ class CustomGymEnvironmentWorkflow:
         self.console.detail("Environment FileSet", self.settings.fileset)
 
     def create_inference_provider(self, inference_api_key: str) -> None:
-        """Create a temporary NVIDIA Inference Hub Secret and provider."""
+        """Create temporary inference resources and wait for model discovery."""
         require_result(
             bool(inference_api_key),
             "INFERENCE_NVIDIA_API_KEY is required",
         )
+
+        # Resource flags are set immediately after successful creation so the
+        # failure path can clean up a partially configured provider.
         self.sdk.secrets.create(
             name=self.settings.inference_secret,
             value=inference_api_key,
@@ -270,6 +296,7 @@ class CustomGymEnvironmentWorkflow:
             description="Temporary key for the custom Gym environment workflow",
         )
         self.created_resources.inference_secret = True
+
         self.sdk.inference.providers.create(
             name=self.settings.inference_provider,
             workspace=self.settings.workspace,
@@ -278,6 +305,8 @@ class CustomGymEnvironmentWorkflow:
         )
         self.created_resources.inference_provider = True
 
+        # Provider creation is asynchronous. Do not smoke-test the model until
+        # its requested entity appears in the provider's served-model list.
         deadline = time.monotonic() + 120
         while True:
             provider = self.sdk.inference.providers.retrieve(
@@ -287,10 +316,12 @@ class CustomGymEnvironmentWorkflow:
             served_model_ids = {model.model_entity_id for model in (provider.served_models or [])}
             if self.settings.model_entity_id in served_model_ids:
                 break
+
             if provider.status in {"ERROR", "DELETED", "LOST"}:
                 raise ResultVerificationError(
                     f"provider entered {provider.status}: {provider.status_message or 'no status message'}"
                 )
+
             if time.monotonic() >= deadline:
                 raise ResultVerificationError(
                     f"provider did not discover {self.settings.model_entity_id} within 120 seconds"
@@ -335,7 +366,7 @@ class CustomGymEnvironmentWorkflow:
         self.console.detail("Model route", "ready")
 
     def submit_evaluation(self) -> dict[str, Any]:
-        """Submit one trial and download its validated result artifacts."""
+        """Run one trial, then preserve its status and logs for lifecycle checks."""
         self.console.step(5, TOTAL_STEPS, "Running the custom Gym evaluation")
         prepared_environment = self._require_prepared_environment()
         submission = EvaluationSubmission(
@@ -357,6 +388,8 @@ class CustomGymEnvironmentWorkflow:
         self.console.detail("Job", evaluation_result.job_name)
         self.console.detail("Custom reward", evaluation_result.verification["reward"])
 
+        # Submission validation owns trial and score evidence. The orchestration
+        # layer also saves Platform status/logs for image and sandbox assertions.
         job_status = self.sdk.jobs.get_status(
             evaluation_result.job_name,
             workspace=self.settings.workspace,
@@ -376,7 +409,7 @@ class CustomGymEnvironmentWorkflow:
         return evaluation_result.verification
 
     def verify_results(self, verification: dict[str, Any]) -> dict[str, Any]:
-        """Verify runtime images, sandbox lifecycle, and complete custom scoring."""
+        """Verify generic runtime evidence without inspecting environment output."""
         self.console.step(6, TOTAL_STEPS, "Verifying evaluation evidence")
         images = self._require_images()
         require_result(bool(self.job_name), "evaluation job name is missing")
@@ -386,6 +419,7 @@ class CustomGymEnvironmentWorkflow:
         status_messages = nested_messages(job_status)
         log_messages = nested_messages(job_logs)
 
+        # Match immutable release images rather than example-specific task data.
         require_result(
             sum(images.cpu_tasks in message for message in status_messages) >= 2,
             "both job steps did not use the configured CPU Tasks image",
@@ -423,8 +457,11 @@ class CustomGymEnvironmentWorkflow:
         return run_summary
 
     def cleanup(self) -> None:
-        """Delete every run-scoped Platform resource that was created."""
+        """Delete every created resource in reverse dependency order."""
         cleanup_errors: list[str] = []
+
+        # The provider references the secret, while the evaluation references
+        # the FileSet, so deleting in this order avoids dangling dependencies.
         resources: tuple[tuple[str, bool, Callable[..., object], str], ...] = (
             (
                 "inference provider",
@@ -445,6 +482,7 @@ class CustomGymEnvironmentWorkflow:
                 self.settings.fileset,
             ),
         )
+
         created_count = sum(was_created for _, was_created, _, _ in resources)
         if created_count == 0:
             self.console.detail("Temporary resources", "none created")
@@ -465,11 +503,16 @@ class CustomGymEnvironmentWorkflow:
         self.console.detail("Temporary resources", f"{deleted_count} deleted")
 
     def run(self, *, inference_api_key: str) -> dict[str, Any]:
-        """Execute the complete workflow through one developer-facing invocation."""
+        """Execute all seven stages and clean up after success or failure."""
         self.settings.paths.evidence.mkdir(parents=True, exist_ok=True)
+
+        # Read-only and local preparation happen before opening an API connection
+        # or creating Platform resources.
         self.verify_prerequisites()
         self.prepare_custom_environment()
 
+        # Every mutation lives inside the cleanup boundary. If evaluation raises,
+        # the original error remains primary and cleanup failures become warnings.
         workflow_failed = False
         with self.platform_connection():
             try:
