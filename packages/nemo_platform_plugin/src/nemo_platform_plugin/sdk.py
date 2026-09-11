@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from nemo_platform_plugin.client.adapter import PlatformClient
 
@@ -35,5 +35,18 @@ class NemoPluginSDKResources(Generic[SyncResourceT, AsyncResourceT]):
 
 
 __all__ = [
+    "AsyncNeMoPlatform",  # noqa: F822  (resolved lazily by module __getattr__)
+    "NeMoPlatform",  # noqa: F822  (resolved lazily by module __getattr__)
     "NemoPluginSDKResources",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    # Plugins import the generated SDK classes from here. Resolve them on first
+    # use so plugin discovery, which imports this module for the resource
+    # container, does not require the generated SDK to be installed.
+    if name in ("AsyncNeMoPlatform", "NeMoPlatform"):
+        import nemo_platform
+
+        return getattr(nemo_platform, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
