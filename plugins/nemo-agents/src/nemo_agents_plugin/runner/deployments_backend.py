@@ -368,22 +368,23 @@ def executor_backend(name: str | None) -> str | None:
 
 
 def require_executor_matches_mode(executor: str | None, mode: DeploymentMode) -> None:
-    """Refuse a container mode that would run somewhere other than it names.
+    """Refuse a container mode that would run on the other compute driver.
 
     ``executor_for_mode`` falls back to ``default_executor``, so asking for k8s
     where none is configured silently lands on docker: the deployment reports
     running while nothing exists in the cluster, and a k8s-only failure cannot
-    reproduce. The backend keys and the deployment modes share a vocabulary, so
-    the mismatch is checkable here rather than discoverable by counting pods.
+    reproduce. The docker and k8s backend keys share a vocabulary with the
+    deployment modes, so that mismatch is checkable here rather than discoverable
+    by counting pods. Only those two backends can contradict a mode; any other
+    backend is a substrate layered over one of them and is accepted by default.
     """
     backend = executor_backend(executor)
-    if backend is None or backend == mode:
+    if backend not in CONTAINER_DEPLOYMENT_MODES or backend == mode:
         return
-    alternative = f", or deploy with deployment_mode {backend!r}" if backend in CONTAINER_DEPLOYMENT_MODES else ""
     raise ValueError(
         f"deployment_mode {mode!r} resolved to executor {executor!r}, which runs on "
         f"{backend!r}. Set 'deployments.{mode}_executor' to an executor whose backend "
-        f"is {mode!r}{alternative}."
+        f"is {mode!r}, or deploy with deployment_mode {backend!r}."
     )
 
 
