@@ -13,6 +13,7 @@ import {
 import {
   Button,
   Flex,
+  Label,
   Select,
   Stack,
   TabsContent,
@@ -357,26 +358,24 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
         </TabsContent>
 
         <TabsContent value="imported-traces" className="items-stretch p-0 pt-density-lg">
-          <Stack gap="density-md">
-            <Text kind="body/regular/sm" color="secondary">
-              Unregistered agents that appear in ingested traces.
-            </Text>
-            {!tracedAgents.isLoading && tracedAgents.names.length === 0 ? (
-              // The min-height gives the panel something to center within; the tab's content
-              // is otherwise only as tall as this sentence.
-              <Flex
-                direction="col"
-                align="center"
-                justify="center"
-                className="min-h-[220px] w-full text-center"
-                data-testid="no-traced-agents"
-              >
-                <Text kind="body/regular/sm" color="subtle" className="max-w-[46ch]">
-                  No traces with agent.name parameter found. You can import traces with the intake
-                  trace import skill to get started.
-                </Text>
-              </Flex>
-            ) : (
+          {!tracedAgents.isLoading && tracedAgents.names.length === 0 ? (
+            // The min-height gives the panel something to center within; the tab's content
+            // is otherwise only as tall as this sentence.
+            <Flex
+              direction="col"
+              align="center"
+              justify="center"
+              className="min-h-[220px] w-full text-center"
+              data-testid="no-traced-agents"
+            >
+              <Text kind="body/regular/md" color="subtle" className="max-w-[64ch]">
+                No traces with agent.name parameter found. You can import traces with the intake
+                trace import skill to get started.
+              </Text>
+            </Flex>
+          ) : (
+            <Stack gap="density-sm">
+              <Label>Unregistered agents that appear in ingested traces</Label>
               <Select
                 aria-label="Agent from imported traces"
                 value={tracedAgent}
@@ -385,8 +384,8 @@ export const NewAgentModal: FC<NewAgentModalProps> = ({ open, onClose, workspace
                 placeholder={tracedAgents.isLoading ? 'Loading...' : 'Select an agent'}
                 items={tracedAgents.names.map((name) => ({ value: name, children: name }))}
               />
-            )}
-          </Stack>
+            </Stack>
+          )}
         </TabsContent>
       </TabsRoot>
     </FormModal>
