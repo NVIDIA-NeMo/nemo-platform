@@ -32,7 +32,11 @@ logger = logging.getLogger(__name__)
 
 JSON_MEDIA_TYPE = "application/vnd.github+json"
 RAW_MEDIA_TYPE = "application/vnd.github.raw"
-_SYMLINK_MODE = "120000"
+
+# Git's blob modes. Anything else a tree can hold is a directory (040000, type
+# "tree"), a submodule (160000, type "commit"), or a symlink (120000) — none of
+# which the contents API serves as the bytes the listing described.
+_REGULAR_FILE_MODES = frozenset({"100644", "100755"})
 
 
 class GithubBackendError(StorageBackendError):
@@ -166,11 +170,16 @@ class GithubStorageImpl(StorageImpl):
         for entry in tree["tree"]:
             if not isinstance(entry, dict) or entry.get("type") != "blob":
                 continue
-            # A symlink is a blob whose content is its target path, but the contents
-            # API serves the target instead — a different size, and possibly a file
-            # outside the directory this fileset is scoped to.
-            if entry.get("mode") == _SYMLINK_MODE:
-                logger.debug("Skipping symlink %r in %s", entry.get("path"), self._repo_slug)
+            # A symlink is also a blob, but one whose content is its target path
+            # while the contents API serves the target itself — a different size, and
+            # possibly a file outside the directory this fileset is scoped to.
+            if entry.get("mode") not in _REGULAR_FILE_MODES:
+                logger.debug(
+                    "Skipping %s in %s: mode %s is not a regular file",
+                    entry.get("path"),
+                    self._repo_slug,
+                    entry.get("mode"),
+                )
                 continue
             relative = entry.get("path")
             if not isinstance(relative, str):

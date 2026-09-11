@@ -217,6 +217,32 @@ class TestListFiles:
         # whole-repo tree here would still hit GitHub's truncation limit.
         assert "/git/trees/abc123:agents/calc?" in session.requests[0][0]
 
+    @pytest.mark.parametrize(
+        ("mode", "entry_type", "served"),
+        [
+            ("100644", "blob", True),
+            ("100755", "blob", True),
+            ("120000", "blob", False),
+            ("160000", "commit", False),
+            ("040000", "tree", False),
+        ],
+        ids=["regular", "executable", "symlink", "submodule", "directory"],
+    )
+    @pytest.mark.asyncio
+    async def test_serves_only_regular_files(self, mode: str, entry_type: str, served: bool):
+        """Only a regular blob is bytes the contents API will return as listed.
+
+        A submodule is a commit, a tree is a directory, and a symlink's size is its
+        target path's length rather than the target's.
+        """
+        session = _session_for(
+            lambda _url: _FakeResponse(json_body=_tree({"path": "thing", "type": entry_type, "size": 7, "mode": mode}))
+        )
+        with patch("nmp.core.files.app.backends.github.get_http_session", return_value=session):
+            files = await _impl().list_files()
+
+        assert [f.path for f in files] == (["thing"] if served else [])
+
     @pytest.mark.asyncio
     async def test_skips_symlinks(self):
         """A symlink's size is its target path's length, but the contents API serves the target.
