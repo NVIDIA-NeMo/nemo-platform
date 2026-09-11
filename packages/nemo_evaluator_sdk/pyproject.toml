@@ -67,8 +67,8 @@ harbor = [
 nemo-platform = [
   "nemo-platform-sdk",
 ]
-# NeMo Fabric HARNESS ADAPTERS for the agent-eval runtimes (FabricAgentRuntime /
-# FabricContainerRuntime). The Fabric SDK itself is a base dependency above; this extra adds the
+# NeMo Fabric HARNESS ADAPTERS for the agent-eval runtime (FabricAgentRuntime, host or
+# sandbox mode). The Fabric SDK itself is a base dependency above; this extra adds the
 # adapters needed to resolve and run a harness.
 #
 # WHY THE ADAPTERS ARE SPLIT OUT: they are the entire weight. Measured against the base SDK,
