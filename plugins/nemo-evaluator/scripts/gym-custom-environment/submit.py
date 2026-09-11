@@ -91,24 +91,30 @@ def _wait_for_job(
     deadline = started_at + JOB_TIMEOUT_SECONDS
     next_progress_at = started_at
     status_history: list[str] = []
+
     while True:
         job = sdk.jobs.retrieve(job_name, workspace=workspace)
         status = str(getattr(job.status, "value", job.status)).lower()
         status_changed = not status_history or status_history[-1] != status
+
         if status_changed:
             status_history.append(status)
+
         now = time.monotonic()
         if progress is not None and (status_changed or now >= next_progress_at):
             progress(f"{status} ({now - started_at:.0f}s elapsed)")
             next_progress_at = now + JOB_PROGRESS_INTERVAL_SECONDS
+
         if status in TERMINAL_JOB_STATUSES:
             return job
+
         if now >= deadline:
             history = " -> ".join(status_history)
             raise TimeoutError(
                 f"job {job_name!r} did not finish within {JOB_TIMEOUT_SECONDS} seconds; "
                 f"last status={status!r}, history={history}"
             )
+
         time.sleep(JOB_POLL_INTERVAL_SECONDS)
 
 
@@ -142,10 +148,15 @@ def _build_job_payload(submission: EvaluationSubmission) -> dict[str, Any]:
     if len(discovered_tasks) != 1:
         raise RuntimeError(f"expected exactly one selected task, got {len(discovered_tasks)}")
 
+    # Bundle the standard Gym reward metric inline so the task image can run it
+    # without relying on a separately published metric package.
     reward_metric = bundle_metric(
         GymRewardMetric(),
         InlineMetricBundlePackager(),
     ).model_dump(mode="json")
+
+    # The selected resources server is discovered from the package during
+    # preparation; no environment-specific name is hard-coded here.
     target = GymRunnerTarget(
         environment=FilesetRef(root=f"{submission.workspace}/{submission.fileset}"),
         agent="simple_agent",
@@ -209,6 +220,8 @@ def _validate_results(
     if len(trials_files) != 1 or len(scores_files) != 1:
         raise RuntimeError(f"expected one trials.jsonl and one scores.jsonl, got {trials_files=} {scores_files=}")
 
+    # This manual workflow deliberately evaluates one task once so evidence is
+    # quick to inspect and inconsistencies have a single source.
     trials = read_jsonl(trials_files[0])
     scores = read_jsonl(scores_files[0])
     if len(trials) != 1 or len(scores) != 1:
@@ -222,10 +235,13 @@ def _validate_results(
     if not output_texts:
         raise RuntimeError(f"trial returned no assistant output text: {trial}")
 
+    # The resources server's custom reward must be finite before comparing it
+    # with the metric output persisted by Evaluator.
     trial_reward = trial.get("metadata", {}).get("reward")
     if not isinstance(trial_reward, int | float) or not math.isfinite(trial_reward):
         raise RuntimeError(f"trial reward is not finite: {trial_reward!r}")
 
+    # Prove that the standard reward metric consumed the same custom reward.
     if score.get("status") != "completed":
         raise RuntimeError(f"metric did not complete: {score}")
     metric_outputs = score.get("outputs", [])
@@ -254,9 +270,12 @@ def submit_and_validate(
     sdk: NeMoPlatform | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> EvaluationResult:
-    """Submit one job, wait for completion, download results, and validate them."""
+    """Run the Evaluator lifecycle and return only after evidence is consistent."""
     submission.evidence_directory.mkdir(parents=True, exist_ok=True)
     platform = sdk or NeMoPlatform(base_url=submission.base_url, max_retries=2)
+
+    # Submit through the SDK's generic route until this plugin endpoint has a
+    # generated typed method.
     payload = _build_job_payload(submission)
     response = _post_evaluator_payload(
         platform,
@@ -270,6 +289,8 @@ def submit_and_validate(
         encoding="utf-8",
     )
 
+    # A failed job's server-side logs are included in the raised exception so a
+    # developer does not need a second command to identify the failing stage.
     job = _wait_for_job(platform, job_name, submission.workspace, progress)
     if job.status.lower() != "completed":
         messages = [
@@ -282,6 +303,8 @@ def submit_and_validate(
         details = "\n".join(messages)
         raise RuntimeError(f"job did not complete: {job.status}\n{details}")
 
+    # Completion alone is insufficient: validate the downloaded trial and score
+    # before reporting that the custom environment worked.
     extraction_directory = _download_results(platform, submission, job_name)
     verification = _validate_results(
         extraction_directory,

@@ -101,7 +101,8 @@ class PrerequisiteChecker:
             )
 
     def _check_cluster_resources(self) -> None:
-        """Require the Platform, OpenSandbox, Secrets, and shared storage."""
+        """Require the installed release and cluster resources used by the job."""
+        # Confirm the selected namespace contains the expected Helm release.
         self._kubectl("get", "namespace", self.settings.namespace)
         self.runner.run(
             [
@@ -115,6 +116,9 @@ class PrerequisiteChecker:
             ],
             output_path=self.settings.paths.evidence / "helm-status.json",
         )
+
+        # The evaluator reaches OpenSandbox through its service and authenticates
+        # with a secret copied into the Platform namespace.
         self._kubectl(
             "get",
             "service",
@@ -129,6 +133,8 @@ class PrerequisiteChecker:
             "-n",
             self.settings.namespace,
         )
+
+        # Sandbox pods need the same registry credentials as the Platform jobs.
         self._kubectl(
             "get",
             "secret",
@@ -137,6 +143,8 @@ class PrerequisiteChecker:
             self.settings.namespace,
         )
 
+        # Environment staging and sandbox execution share this volume, so the
+        # claim must support simultaneous mounts across pods.
         persistent_volume_claim = self.runner.run_json(
             [
                 "kubectl",
@@ -186,6 +194,8 @@ class PrerequisiteChecker:
         """Require Platform and Evaluator settings needed by sandboxed Gym."""
         platform_config = config.get("platform", {})
         evaluator_config = config.get("evaluator", {})
+
+        # First verify that sandboxing is enabled end to end.
         require_prerequisite(
             platform_config.get("sandbox_cluster_capable") is True,
             "Platform sandboxing is disabled",
@@ -202,11 +212,16 @@ class PrerequisiteChecker:
             evaluator_config.get("sandbox_host_provider") == "opensandbox",
             "Evaluator is not configured to use OpenSandbox",
         )
-        # An explicit runtime image can silently run stale code instead of the release-matched image.
+
+        # An explicit runtime image can silently run stale code instead of the
+        # release-matched image.
         require_prerequisite(
             not evaluator_config.get("sandbox_runtime_image"),
             "evaluator.sandbox_runtime_image must be absent or empty",
         )
+
+        # The configured storage and network policy must match resources used by
+        # this workflow, otherwise environment staging or inference will fail.
         require_prerequisite(
             evaluator_config.get("sandbox_job_storage_pvc_claim") == self.settings.job_pvc,
             "Evaluator uses the wrong sandbox storage PVC",
@@ -280,12 +295,15 @@ class PrerequisiteChecker:
             )
 
     def check(self) -> DeploymentImages:
-        """Run every read-only prerequisite check and return resolved images."""
+        """Fail fast through local, cluster, config, deployment, and image checks."""
         self.settings.paths.evidence.mkdir(parents=True, exist_ok=True)
+
         self._check_workstation_tools()
         self._check_cluster_resources()
+
         platform_config = self._load_platform_config()
         images = self._resolve_images(platform_config)
+
         self._check_sandbox_config(platform_config, images)
         self._check_deployment_images(images)
         self._check_published_images(images)

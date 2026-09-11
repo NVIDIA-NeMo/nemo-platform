@@ -79,7 +79,11 @@ class Settings:
         resources_server: str | None = None,
         environment: dict[str, str] | None = None,
     ) -> Settings:
-        """Load inputs and optional overrides, rejecting incomplete custom input."""
+        """Resolve CLI inputs, environment overrides, and unique run resources.
+
+        Custom environments require both a package directory and dataset. When
+        neither is provided, later preparation stages use the bundled example.
+        """
         if (environment_dir is None) != (dataset is None):
             raise ValueError("--environment-dir and --dataset must be supplied together")
         if resources_server is not None and not resources_server.strip():
@@ -90,8 +94,13 @@ class Settings:
         def override(name: str, default: str) -> str:
             return env.get(f"{ENVIRONMENT_PREFIX}{name}", default)
 
+        # Derive repository paths from this file so the script works from any
+        # current working directory.
         asset_root = Path(__file__).resolve().parent
         repo_root = asset_root.parents[3]
+
+        # One identifier ties together local evidence and every temporary
+        # Platform resource, which also makes cleanup ownership unambiguous.
         run_id = f"{datetime.now(UTC):%Y%m%d%H%M%S}-{uuid.uuid4().hex[:6]}"
         default_run_dir = Path(f"/tmp/nmp-gym-custom-environment-{run_id}")
         workspace = override("WORKSPACE", "default")
