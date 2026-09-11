@@ -14,7 +14,7 @@ cached, which is what keeps parquet's access pattern — seek to the tail for th
 between column chunks — from costing a request per seek.
 
 This lives outside ``profiler/`` on purpose: the profiler core knows only the
-:class:`~nemo_datasets_plugin.profiler.file_source.FileSource` seam, and keeping the platform SDK
+:class:`~nemo_profiler_plugin.source.FileSource` seam, and keeping the platform SDK
 out of its import graph is what lets it be used (and tested) standalone.
 """
 
@@ -24,7 +24,7 @@ import io
 from collections import OrderedDict
 from typing import Any, BinaryIO, Callable, Mapping, Protocol
 
-from nemo_datasets_plugin.profiler.file_source import FileEntry
+from nemo_profiler_plugin.source import FileEntry
 
 # Bytes per range request. What a capped profile costs is roughly (one block for the footer) plus
 # (the first row group), so this sets the floor rather than scaling with the file. Measured against
@@ -166,7 +166,7 @@ class FilesetFileSource:
     """Reads the files of a platform fileset without staging them on local disk.
 
     Satisfies the same two-method seam as
-    :class:`~nemo_datasets_plugin.profiler.file_source.LocalFileSource`, so the profiler is
+    :class:`~nemo_profiler_plugin.source.LocalFileSource`, so the profiler is
     unchanged by which one it is handed.
     """
 

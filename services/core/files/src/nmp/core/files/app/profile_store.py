@@ -10,7 +10,7 @@ that, so the endpoints stay about HTTP and the storage shape can move without to
 
 import logging
 
-from nemo_platform_plugin.files.dataset_profile import AnyFilesetProfile
+from nemo_platform_plugin.files.profile import AnyFilesetProfile
 from nmp.common.entities.client import EntityClient, EntityNotFoundError
 from nmp.core.files.entities import FILESET_PROFILE_ENTITY_NAME, Fileset, FilesetProfile
 

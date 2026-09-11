@@ -10,8 +10,8 @@ from types import SimpleNamespace
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from nemo_datasets_plugin.fileset_source import FilesetFileSource, _RangedFile
-from nemo_datasets_plugin.profiler.pipeline import profile
+from nemo_profiler_plugin.dataset.pipeline import profile
+from nemo_profiler_plugin.fileset_source import FilesetFileSource, _RangedFile
 
 
 class _FakeFilesClient:

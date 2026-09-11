@@ -11,7 +11,6 @@ import nemo_profiler_plugin.tasks.profile.run as run_mod
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from nemo_datasets_plugin.profiler.file_source import LocalFileSource
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_results import ResultRef
 from nemo_platform_plugin.jobs.constants import (
@@ -20,6 +19,7 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
     NEMO_JOB_WORKSPACE_ENVVAR,
 )
+from nemo_profiler_plugin.source import LocalFileSource
 
 # The task touches the sdk only through PlatformJobResults and the Files client, both patched below,
 # so a bare object stands in for it.

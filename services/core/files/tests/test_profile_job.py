@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
-from nemo_platform_plugin.files.dataset_profile import Coverage, DatasetProfile
 from nemo_platform_plugin.files.metadata import DatasetMetadataContent, FilesetMetadata
+from nemo_platform_plugin.files.profile import Coverage, DatasetProfile
 from nemo_platform_plugin.files.types import PutFilesetProfileRequest, UpdateFilesetRequest
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.jobs.spec import NAME_PATTERN
@@ -122,7 +122,7 @@ def test_build_platform_spec_targets_profiler_task():
     assert step["config"] == {"workspace": "ws1", "fileset": "fs1"}
     container = step["executor"]["container"]
     assert container["entrypoint"] == ["python", "-m"]
-    assert container["command"] == ["nemo_datasets_plugin.tasks.profile"]
+    assert container["command"] == ["nemo_profiler_plugin.tasks.profile"]
     assert "nmp-cpu-tasks" in container["image"]
 
 
@@ -193,7 +193,7 @@ def test_the_step_config_keys_are_the_ones_the_task_reads():
     profile got an uncapped full scan instead -- over ranged reads, the whole fileset pulled over
     the wire. Reading the task's own resolver is what keeps the two spellings from drifting again.
     """
-    from nemo_datasets_plugin.tasks.profile import run as profile_task
+    from nemo_profiler_plugin.tasks.profile import run as profile_task
 
     config = _build_platform_spec("ws1", "fs1", 25)["steps"][0]["config"]
 

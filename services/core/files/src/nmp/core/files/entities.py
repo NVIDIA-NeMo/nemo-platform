@@ -6,7 +6,7 @@
 from datetime import datetime
 from typing import Any, ClassVar, Dict
 
-from nemo_platform_plugin.files.dataset_profile import AnyFilesetProfile
+from nemo_platform_plugin.files.profile import AnyFilesetProfile
 from nemo_platform_plugin.files.types import FilesetPurpose as FilesetPurpose
 from nmp.common.entities import constants
 from nmp.common.entities.client import EntityBase

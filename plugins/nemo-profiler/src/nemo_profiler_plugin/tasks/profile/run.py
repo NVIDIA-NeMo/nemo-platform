@@ -26,13 +26,10 @@ import os
 import tempfile
 from pathlib import Path
 
-from nemo_datasets_plugin.fileset_source import FilesetFileSource
-from nemo_datasets_plugin.profiler.file_source import FileSource
-from nemo_datasets_plugin.profiler.pipeline import DEFAULT_ROW_BUDGET, profile
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
-from nemo_platform_plugin.files.dataset_profile import DatasetProfile
+from nemo_platform_plugin.files.profile import DatasetProfile
 from nemo_platform_plugin.files.types import PutFilesetProfileRequest
 from nemo_platform_plugin.job_results import PlatformJobResults
 from nemo_platform_plugin.jobs.constants import (
@@ -43,7 +40,8 @@ from nemo_platform_plugin.jobs.constants import (
 )
 from nemo_platform_plugin.sdk_provider import get_platform_sdk
 from nemo_profiler_plugin.dataset.pipeline import DEFAULT_ROW_BUDGET, profile
-from nemo_profiler_plugin.source import FileSource, LocalFileSource
+from nemo_profiler_plugin.fileset_source import FilesetFileSource
+from nemo_profiler_plugin.source import FileSource
 
 logger = logging.getLogger(__name__)
 

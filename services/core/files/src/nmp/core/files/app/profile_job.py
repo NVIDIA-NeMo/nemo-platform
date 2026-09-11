@@ -5,7 +5,7 @@
 
 The Files service does not profile datasets itself. This helper builds a
 one-step CPU job whose container runs the dataset-profiler task
-(``python -m nemo_datasets_plugin.tasks.profile``) over the fileset. The task
+(``python -m nemo_profiler_plugin.tasks.profile``) over the fileset. The task
 writes the resulting ``DatasetProfile`` back through
 ``PUT .../filesets/{name}/profile`` and also publishes it as a job result
 artifact named ``profile``. The profiler ships in the ``nemo-datasets`` plugin,
@@ -31,7 +31,7 @@ from nemo_platform_plugin.jobs.spec import PlatformJobSpec, PlatformJobStepSpec
 logger = logging.getLogger(__name__)
 
 _PROFILE_TASK_IMAGE = "nmp-cpu-tasks"
-_PROFILE_TASK_COMMAND = ["nemo_datasets_plugin.tasks.profile"]
+_PROFILE_TASK_COMMAND = ["nemo_profiler_plugin.tasks.profile"]
 _PROFILE_STEP_NAME = "profile"
 _PROFILE_JOB_SOURCE = "files"
 

@@ -15,8 +15,8 @@ from enum import StrEnum
 from typing import Any, NotRequired, TypedDict
 
 from nemo_platform_plugin.entity_naming import NAME_MAX_LENGTH, NAME_PATTERN, NAME_PATTERN_DESCRIPTION
-from nemo_platform_plugin.files.dataset_profile import AnyFilesetProfile
 from nemo_platform_plugin.files.metadata import FilesetMetadata
+from nemo_platform_plugin.files.profile import AnyFilesetProfile
 from nemo_platform_plugin.files.storage_config import StorageConfig
 from nemo_platform_plugin.schema import Page
 from pydantic import BaseModel, ConfigDict, Field

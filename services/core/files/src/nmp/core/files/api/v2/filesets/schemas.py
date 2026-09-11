@@ -13,7 +13,7 @@ entities to response DTOs, the FilesetFilter schema, and the FilesetPage alias.
 
 from typing import Annotated, Literal, Optional
 
-from nemo_platform_plugin.files.dataset_profile import AnyFilesetProfile
+from nemo_platform_plugin.files.profile import AnyFilesetProfile
 from nemo_platform_plugin.files.types import CacheStatus
 from nemo_platform_plugin.files.types import CreateFilesetRequest as CreateFilesetRequest
 from nemo_platform_plugin.files.types import FilesetFileOutput as FilesetFileOutput
