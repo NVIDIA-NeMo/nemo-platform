@@ -4860,6 +4860,25 @@ components:
           type: string
           title: Name
           description: Name of the model.
+        served_model_name:
+          title: Served Model Name
+          description: Provider model identifier preserved when resolving a ModelRef.
+          type: string
+        ranking_contract:
+          title: Ranking Contract
+          description: Explicit reranking request and response contract selected during
+            preflight.
+          type: string
+          enum:
+          - nim-ranking-v1
+          - hosted-rerank-v1
+          - hosted-ranking-v1
+          - hosted-retrieval-reranking-v1
+        ranking_path:
+          title: Ranking Path
+          description: Explicit reranking route relative to the model's resolved /v1
+            inference-gateway URL.
+          type: string
         api_key_secret:
           allOf:
           - $ref: '#/components/schemas/SecretRef'

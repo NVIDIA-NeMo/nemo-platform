@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import os
 from functools import cached_property
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
 from pydantic.config import JsonDict
@@ -34,6 +34,13 @@ _AUTH_HEADER_PATTERNS: tuple[str, ...] = (
 # and do not end in hyphen.
 _ENTITY_NAME_SEGMENT = r"[a-z](?:[a-z0-9@.+_]|-[a-z0-9@.+_]){1,62}"
 _QUALIFIED_MODEL_REF_PATTERN = rf"^{_ENTITY_NAME_SEGMENT}/{_ENTITY_NAME_SEGMENT}$"
+
+RankingContract: TypeAlias = Literal[
+    "nim-ranking-v1",
+    "hosted-rerank-v1",
+    "hosted-ranking-v1",
+    "hosted-retrieval-reranking-v1",
+]
 
 
 _ModelRefRoot = Annotated[
@@ -122,6 +129,18 @@ class Model(BaseModel):
         default=None,
         description="Direct NIM endpoint URL (http://host:port). Populated when resolved from a ModelRef. "
         "Used by EvalFactory containers that reject path-based URLs (e.g., Haystack NvidiaDocumentEmbedder).",
+    )
+    served_model_name: str | None = Field(
+        default=None,
+        description="Provider model identifier preserved when resolving a ModelRef.",
+    )
+    ranking_contract: RankingContract | None = Field(
+        default=None,
+        description="Explicit reranking request and response contract selected during preflight.",
+    )
+    ranking_path: str | None = Field(
+        default=None,
+        description="Explicit reranking route relative to the model's resolved /v1 inference-gateway URL.",
     )
     api_key_secret: SecretRef | None = Field(
         default=None,

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar, Self
 
+import httpx
 from nemo_evaluator.filesets import (
     FilesetRef,
     download_dataset,
@@ -35,6 +36,7 @@ from nemo_evaluator_sdk.metrics.retrieval import (
     RetrievalPrecisionMetric,
     RetrievalRecallMetric,
 )
+from nemo_evaluator_sdk.retrieval.nim_ranking import NimRankingClient, NimRankingError
 from nemo_evaluator_sdk.values.models import Model, ModelRef
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.retrieval import Retrieval, Truncation
@@ -167,7 +169,6 @@ class RetrieveEvalJob(NemoJob):
         """Compile a CPU task that calls the embedding target through IGW."""
         del workspace, entity_client, job_name, async_sdk, options
         canonical = RetrieveEvalSpec.model_validate(spec.model_dump())
-        environment = []
         secret_refs = [
             (model.api_key_env, model.api_key_secret.root)
             for retrieval in (canonical.target, canonical.baseline)
@@ -175,8 +176,7 @@ class RetrieveEvalJob(NemoJob):
             for model in (retrieval.embeddings, retrieval.reranker)
             if model is not None and model.api_key_secret is not None and model.api_key_env
         ]
-        if secret_refs:
-            environment = build_task_environment(secret_refs)
+        environment = build_task_environment(secret_refs)
         return PlatformJobSpec(
             steps=[
                 PlatformJobStep(
@@ -295,9 +295,16 @@ async def _resolve_retrieval(
             raise ValueError("a platform SDK client is required to resolve the retrieval target")
         embeddings = await PlatformMetricModelResolver(async_sdk.models).resolve_model(embeddings)
     if isinstance(reranker, ModelRef):
+        reranker_ref = reranker.root
         if async_sdk is None:
             raise ValueError("a platform SDK client is required to resolve the retrieval reranker")
         reranker = await PlatformMetricModelResolver(async_sdk.models).resolve_model(reranker)
+        try:
+            reranker = await NimRankingClient(model=reranker, max_retries=0, timeout=15.0).preflight()
+        except (httpx.HTTPError, NimRankingError) as error:
+            raise ValueError(
+                f"Reranker ModelRef '{reranker_ref}' has no compatible ranking endpoint: {error}"
+            ) from error
     return Retrieval(
         embeddings=embeddings,
         reranker=reranker,
