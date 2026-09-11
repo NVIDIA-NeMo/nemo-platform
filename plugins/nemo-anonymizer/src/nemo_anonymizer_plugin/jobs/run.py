@@ -48,7 +48,7 @@ class RunJob(NemoJob):
     spec_schema = AnonymizerStepConfig
 
     @classmethod
-    async def to_spec(
+    async def to_spec(  # ty: ignore[invalid-method-override]
         cls,
         input_spec: BaseModel,  # AnonymizerRequest
         *,
@@ -96,7 +96,7 @@ class RunJob(NemoJob):
             raise AnonymizerInvalidConfigError(str(e)) from e
 
     @classmethod
-    async def compile(
+    async def compile(  # ty: ignore[invalid-method-override]
         cls,
         *,
         workspace: str,

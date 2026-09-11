@@ -407,7 +407,7 @@ class AuditJob(NemoJob):
         )
 
     @classmethod
-    async def compile(
+    async def compile(  # ty: ignore[invalid-method-override]
         cls,
         *,
         workspace: str,

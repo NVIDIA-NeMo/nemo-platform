@@ -200,7 +200,7 @@ class EvaluateJob(NemoJob):
     job_collection_path: ClassVar[str | None] = "/evaluate/jobs"
 
     @classmethod
-    async def compile(
+    async def compile(  # ty: ignore[invalid-method-override]
         cls,
         *,
         workspace: str,
@@ -256,7 +256,7 @@ class EvaluateJob(NemoJob):
         )
 
     @classmethod
-    async def to_spec(
+    async def to_spec(  # ty: ignore[invalid-method-override]
         cls,
         input_spec: BaseModel,
         *,
