@@ -29,7 +29,6 @@ from .model_spec import ModelSpec as ModelSpec
 from .mo_e_config import MoEConfig as MoEConfig
 from .prompt_data import PromptData as PromptData
 from .auth_context import AuthContext as AuthContext
-from .json_web_key import JsonWebKey as JsonWebKey
 from .mamba_config import MambaConfig as MambaConfig
 from .string_filter import StringFilter as StringFilter
 from .backend_format import BackendFormat as BackendFormat
@@ -49,13 +48,6 @@ from .http_validation_error import HTTPValidationError as HTTPValidationError
 from .platform_job_log_page import PlatformJobLogPage as PlatformJobLogPage
 from .sliding_window_config import SlidingWindowConfig as SlidingWindowConfig
 from .model_metadata_content import ModelMetadataContent as ModelMetadataContent
-from .auth_discovery_response import AuthDiscoveryResponse as AuthDiscoveryResponse
-from .oidc_discovery_response import OidcDiscoveryResponse as OidcDiscoveryResponse
 from .dataset_metadata_content import DatasetMetadataContent as DatasetMetadataContent
-from .json_web_key_set_response import JsonWebKeySetResponse as JsonWebKeySetResponse
 from .environment_metadata_content import EnvironmentMetadataContent as EnvironmentMetadataContent
 from .tool_calling_metadata_content import ToolCallingMetadataContent as ToolCallingMetadataContent
-from .workload_token_exchange_response import WorkloadTokenExchangeResponse as WorkloadTokenExchangeResponse
-from .workload_token_exchange_error_response import (
-    WorkloadTokenExchangeErrorResponse as WorkloadTokenExchangeErrorResponse,
-)

@@ -71,6 +71,8 @@ config:
   skip: true
 - resource: [access_keys]
   skip: true
+- resource: [iam]
+  skip: true
 - resource: [models]
   methods:
     list:

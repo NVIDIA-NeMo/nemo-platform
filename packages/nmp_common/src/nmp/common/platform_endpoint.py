@@ -10,6 +10,7 @@ import os
 import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from ipaddress import ip_address
 from pathlib import Path
 from types import MappingProxyType
 from typing import Literal, TypedDict
@@ -69,6 +70,7 @@ def _sync_default_sdk_client(
     event_hooks: _SyncEventHooks | None,
     verify: str | bool | None = None,
     transport: httpx.BaseTransport | None = None,
+    follow_redirects: bool | None = None,
 ) -> httpx.Client:
     kwargs: _SyncClientKwargs = {}
     if timeout is not None:
@@ -79,6 +81,8 @@ def _sync_default_sdk_client(
         kwargs["verify"] = verify
     if transport is not None:
         kwargs["transport"] = transport
+    if follow_redirects is not None:
+        kwargs["follow_redirects"] = follow_redirects
     return ImmutableDefaultHttpxClient(**kwargs)
 
 
@@ -87,8 +91,9 @@ def _sync_uds_sdk_client(
     transport: httpx.BaseTransport,
     timeout: TimeoutTypes | None,
     event_hooks: _SyncEventHooks | None,
+    follow_redirects: bool,
 ) -> httpx.Client:
-    kwargs: _SyncClientKwargs = {"transport": transport, "follow_redirects": True}
+    kwargs: _SyncClientKwargs = {"transport": transport, "follow_redirects": follow_redirects}
     if timeout is not None:
         kwargs["timeout"] = timeout
     if event_hooks is not None:
@@ -102,6 +107,7 @@ def _async_default_sdk_client(
     event_hooks: _AsyncEventHooks | None,
     verify: str | bool | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    follow_redirects: bool | None = None,
 ) -> httpx.AsyncClient:
     kwargs: _AsyncClientKwargs = {}
     if timeout is not None:
@@ -112,6 +118,8 @@ def _async_default_sdk_client(
         kwargs["verify"] = verify
     if transport is not None:
         kwargs["transport"] = transport
+    if follow_redirects is not None:
+        kwargs["follow_redirects"] = follow_redirects
     return ImmutableDefaultAsyncHttpxClient(**kwargs)
 
 
@@ -120,8 +128,9 @@ def _async_uds_sdk_client(
     transport: httpx.AsyncBaseTransport,
     timeout: TimeoutTypes | None,
     event_hooks: _AsyncEventHooks | None,
+    follow_redirects: bool,
 ) -> httpx.AsyncClient:
-    kwargs: _AsyncClientKwargs = {"transport": transport, "follow_redirects": True}
+    kwargs: _AsyncClientKwargs = {"transport": transport, "follow_redirects": follow_redirects}
     if timeout is not None:
         kwargs["timeout"] = timeout
     if event_hooks is not None:
@@ -179,6 +188,7 @@ class PlatformEndpoint:
         http_client: httpx.Client | None = None,
         request_hooks: Iterable[_SyncRequestHook] | None = None,
         verify: str | bool | None = None,
+        follow_redirects: bool | None = None,
     ) -> httpx.Client:
         if http_client is not None:
             if not self.service_endpoints:
@@ -196,13 +206,28 @@ class PlatformEndpoint:
         event_hooks = _sync_event_hooks(request_hooks)
         if self.service_endpoints:
             transport = _SyncPlatformEndpointRoutingTransport(endpoint=self, verify=verify)
-            return _sync_default_sdk_client(transport=transport, timeout=timeout, event_hooks=event_hooks)
+            return _sync_default_sdk_client(
+                transport=transport,
+                timeout=timeout,
+                event_hooks=event_hooks,
+                follow_redirects=follow_redirects,
+            )
         if self.transport == "uds":
             if self.socket_path is None:
                 raise ValueError("UDS endpoint is missing a socket path")
             transport = httpx.HTTPTransport(uds=str(self.socket_path))
-            return _sync_uds_sdk_client(transport=transport, timeout=timeout, event_hooks=event_hooks)
-        return _sync_default_sdk_client(timeout=timeout, event_hooks=event_hooks, verify=verify)
+            return _sync_uds_sdk_client(
+                transport=transport,
+                timeout=timeout,
+                event_hooks=event_hooks,
+                follow_redirects=True if follow_redirects is None else follow_redirects,
+            )
+        return _sync_default_sdk_client(
+            timeout=timeout,
+            event_hooks=event_hooks,
+            verify=verify,
+            follow_redirects=follow_redirects,
+        )
 
     def async_sdk_http_client(
         self,
@@ -211,6 +236,7 @@ class PlatformEndpoint:
         http_client: httpx.AsyncClient | None = None,
         request_hooks: Iterable[_AsyncRequestHook] | None = None,
         verify: str | bool | None = None,
+        follow_redirects: bool | None = None,
     ) -> httpx.AsyncClient:
         if http_client is not None:
             if not self.service_endpoints:
@@ -228,13 +254,28 @@ class PlatformEndpoint:
         event_hooks = _async_event_hooks(request_hooks)
         if self.service_endpoints:
             transport = _AsyncPlatformEndpointRoutingTransport(endpoint=self, verify=verify)
-            return _async_default_sdk_client(transport=transport, timeout=timeout, event_hooks=event_hooks)
+            return _async_default_sdk_client(
+                transport=transport,
+                timeout=timeout,
+                event_hooks=event_hooks,
+                follow_redirects=follow_redirects,
+            )
         if self.transport == "uds":
             if self.socket_path is None:
                 raise ValueError("UDS endpoint is missing a socket path")
             transport = httpx.AsyncHTTPTransport(uds=str(self.socket_path))
-            return _async_uds_sdk_client(transport=transport, timeout=timeout, event_hooks=event_hooks)
-        return _async_default_sdk_client(timeout=timeout, event_hooks=event_hooks, verify=verify)
+            return _async_uds_sdk_client(
+                transport=transport,
+                timeout=timeout,
+                event_hooks=event_hooks,
+                follow_redirects=True if follow_redirects is None else follow_redirects,
+            )
+        return _async_default_sdk_client(
+            timeout=timeout,
+            event_hooks=event_hooks,
+            verify=verify,
+            follow_redirects=follow_redirects,
+        )
 
     def route_request_url(self, url: str | httpx.URL) -> "RoutedPlatformEndpointRequest":
         """Resolve one outgoing SDK URL using this endpoint's fixed routing table."""
@@ -334,6 +375,34 @@ def parse_platform_endpoint(endpoint: str) -> PlatformEndpoint:
     if endpoint.startswith("/"):
         raise ValueError(f"Raw socket paths are not valid endpoint URLs; use unix://{endpoint}")
     raise ValueError(f"Unsupported platform endpoint URL {endpoint!r}; expected http://, https://, or unix://")
+
+
+def require_authorization_header_endpoint(endpoint: PlatformEndpoint, *, purpose: str) -> None:
+    """Require an endpoint safe enough for requests carrying Authorization."""
+    if endpoint.transport == "uds":
+        return
+
+    parsed = httpx.URL(endpoint.connect_base_url)
+    if parsed.scheme == "https":
+        return
+    if parsed.scheme == "http" and _is_loopback_host(parsed.host):
+        return
+
+    raise ValueError(
+        f"{purpose} cannot send Authorization to cleartext remote endpoint "
+        f"{endpoint.connect_base_url!r}; use https://, unix://, or loopback HTTP for local development"
+    )
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    if host is None:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def _parse_unix_socket_path(endpoint: str) -> Path:
