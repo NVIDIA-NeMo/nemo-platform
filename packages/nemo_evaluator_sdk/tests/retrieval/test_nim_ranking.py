@@ -127,6 +127,43 @@ async def test_ranking_client_falls_back_to_model_specific_ranking_route() -> No
 
 
 @pytest.mark.asyncio
+async def test_ranking_client_falls_back_to_model_specific_retrieval_route() -> None:
+    urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        if "/retrieval/" not in request.url.path:
+            return httpx.Response(
+                502,
+                request=request,
+                json={"detail": 'Backend returned 404: {"detail":"Not Found"}'},
+            )
+        return httpx.Response(
+            200,
+            request=request,
+            json={"results": [{"index": 0, "relevance_score": 0.85}]},
+        )
+
+    model = Model(
+        url="https://igw.example.test/v1",
+        name="reranker",
+        served_model_name="publisher/reranker",
+    )
+    ranker = NimRankingClient(model=model, max_retries=0)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        resolved = await ranker.preflight(client=client)
+
+    assert [httpx.URL(url).path for url in urls] == [
+        "/v1/ranking",
+        "/v1/rerank",
+        "/v1/ranking/publisher/reranker",
+        "/v1/retrieval/publisher/reranker/reranking",
+    ]
+    assert resolved.ranking_contract == "hosted-retrieval-reranking-v1"
+    assert resolved.ranking_path == "/retrieval/publisher/reranker/reranking"
+
+
+@pytest.mark.asyncio
 async def test_ranking_client_does_not_fall_back_after_auth_failure() -> None:
     attempts = 0
 
