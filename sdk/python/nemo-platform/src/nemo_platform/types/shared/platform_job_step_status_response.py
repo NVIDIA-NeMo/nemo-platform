@@ -3,6 +3,6 @@
 
 from __future__ import annotations
 
-from nemo_platform_plugin.secrets.types import (
-    SecretCreateParams as SecretCreateParams,
+from nemo_platform_plugin.jobs.schemas import (
+    PlatformJobStepStatusResponse as PlatformJobStepStatusResponse,
 )

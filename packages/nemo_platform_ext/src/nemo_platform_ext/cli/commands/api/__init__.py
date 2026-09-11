@@ -72,14 +72,6 @@ API_TOP_LEVEL_ENTRIES = (
         hidden=True,
     ),
     TopLevelEntry(
-        import_path=f"{__package__}.secrets:app",
-        name="secrets",
-        help="Manage secrets.",
-        panel="Core plugins",
-        kind="group",
-        hidden=False,
-    ),
-    TopLevelEntry(
         import_path=f"{__package__}.workspaces:app",
         name="workspaces",
         help="Manage workspaces.",

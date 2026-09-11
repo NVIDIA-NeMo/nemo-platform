@@ -18,6 +18,7 @@ JOBS = SourceOwnedResource(resource_name="jobs", path_prefixes=("/apis/jobs/v2",
 AUTH = SourceOwnedResource(resource_name="auth", path_prefixes=("/apis/auth/authenticate",))
 ACCESS_KEYS = SourceOwnedResource(resource_name="access_keys", path_prefixes=("/apis/auth/v2/access-keys",))
 IAM = SourceOwnedResource(resource_name="iam", path_prefixes=("/apis/auth/v2/iam", "/apis/auth/v2/authz"))
+SECRETS = SourceOwnedResource(resource_name="secrets", path_prefixes=("/apis/secrets/v2",))
 WIDGETS = SourceOwnedResource(resource_name="widgets", path_prefixes=("/apis/widgets/v2",))
 
 
@@ -30,6 +31,7 @@ def test_default_source_owned_resource_registry_contains_migrated_resources() ->
     assert ACCESS_KEYS in SOURCE_OWNED_RESOURCE_EXCLUSIONS
     assert IAM in SOURCE_OWNED_RESOURCE_EXCLUSIONS
     assert JOBS in SOURCE_OWNED_RESOURCE_EXCLUSIONS
+    assert SECRETS in SOURCE_OWNED_RESOURCE_EXCLUSIONS
 
 
 def test_active_source_owned_resources_only_includes_absent_resources() -> None:

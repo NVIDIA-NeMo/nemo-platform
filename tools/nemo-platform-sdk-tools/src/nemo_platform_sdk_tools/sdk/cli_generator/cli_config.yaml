@@ -292,11 +292,7 @@ config:
   skip: true
 
 - resource: [secrets]
-  methods:
-    create:
-      override: secrets/create.py
-    update:
-      override: secrets/update.py
+  skip: true
 
 # Gateway proxy commands: `name` is a workspace query param, not a resource identifier
 - resource: [inference, gateway, model]

@@ -26,6 +26,7 @@ from nemo_platform._compat import cached_property
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.tls import client_verify_from_env
 from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
+from nemo_platform_plugin.secrets.compat import AsyncSecretsResource, SecretsResource
 
 
 def _should_bootstrap_config(
@@ -228,6 +229,10 @@ class NeMoPlatform(SyncAPIClient):
         from nemo_platform_plugin.client.adapter import client_from_platform
 
         return client_from_platform(self, JobsClient)
+
+    @cached_property
+    def secrets(self) -> SecretsResource:
+        return SecretsResource(self)
 
     def copy(
         self,
@@ -478,6 +483,10 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         from nemo_platform_plugin.client.adapter import client_from_platform
 
         return client_from_platform(self, AsyncJobsClient)
+
+    @cached_property
+    def secrets(self) -> AsyncSecretsResource:
+        return AsyncSecretsResource(self)
 
     def copy(
         self,

@@ -582,27 +582,6 @@ resources:
           results:
             models: {}
             methods: {}
-  secrets:
-    standalone_api: true
-    models:
-      platform_secret_access_response: PlatformSecretAccessResponse
-      platform_secret_create_request: PlatformSecretCreateRequest
-      platform_secret_response: PlatformSecretResponse
-      platform_secret_responses_page: PlatformSecretResponsesPage
-      platform_secret_update_request: PlatformSecretUpdateRequest
-    methods:
-      create: post /apis/secrets/v2/workspaces/{workspace}/secrets
-      list: get /apis/secrets/v2/workspaces/{workspace}/secrets
-      retrieve: get /apis/secrets/v2/workspaces/{workspace}/secrets/{name}
-      update: patch /apis/secrets/v2/workspaces/{workspace}/secrets/{name}
-      delete: delete /apis/secrets/v2/workspaces/{workspace}/secrets/{name}
-      access: get /apis/secrets/v2/workspaces/{workspace}/secrets/{name}/access
-    subresources:
-      admin:
-        models:
-          platform_secret_admin_rotation_response: PlatformSecretAdminRotationResponse
-        methods:
-          rotate_encryption_keys: post /apis/secrets/v2/rotate-encryption-keys
   $shared:
     models:
       validation_error: ValidationError
@@ -629,8 +608,6 @@ resources:
       model_spec: ModelSpec
       platform_job_log: PlatformJobLog
       platform_job_log_page: PlatformJobLogPage
-      oidc_discovery_response: OIDCDiscoveryResponse
-      auth_discovery_response: AuthDiscoveryResponse
       auth_context: AuthContext
       tool_call_config: ToolCallConfig
       model_metadata_content: ModelMetadataContent
@@ -647,26 +624,6 @@ resources:
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat
       finetuning_type: FinetuningType
-      workload_token_exchange_response: WorkloadTokenExchangeResponse
-      workload_token_exchange_error_response: WorkloadTokenExchangeErrorResponse
-      json_web_key: JsonWebKey
-      json_web_key_set_response: JsonWebKeySetResponse
-
-  iam:
-    standalone_api: true
-    subresources:
-      role_bindings:
-        models:
-          date_range_filter: DateRangeFilter
-          role_binding: RoleBinding
-          role_binding_filter: RoleBindingFilter
-          role_binding_param: RoleBindingInput
-          role_bindings_page: RoleBindingsPage
-        methods:
-          list: get /apis/auth/v2/iam/role-bindings
-          create: post /apis/auth/v2/iam/role-bindings
-          retrieve: get /apis/auth/v2/iam/role-bindings/{name}
-          delete: delete /apis/auth/v2/iam/role-bindings/{name}
 
   projects:
     standalone_api: true
@@ -870,31 +827,3 @@ resources:
       retrieve: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}
       update: put /apis/intake/v2/workspaces/{workspace}/experiments/{name}
       delete: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}
-  auth:
-    standalone_api: true
-    models:
-      authenticate_error_response: AuthenticateErrorResponse
-      authenticate_response: AuthenticateResponse
-    methods:
-      authenticate_get: get /apis/auth/authenticate
-      authenticate: post /apis/auth/authenticate
-  access_keys:
-    standalone_api: true
-    models:
-      access_key_create_request: AccessKeyCreateRequest
-      access_key_create_response: AccessKeyCreateResponse
-      access_key_error_response: AccessKeyErrorResponse
-      access_key_list_response: AccessKeyListResponse
-      access_key_metadata_response: AccessKeyMetadataResponse
-      access_key_not_implemented_error_response: AccessKeyNotImplementedErrorResponse
-      access_key_revoke_response: AccessKeyRevokeResponse
-      access_key_rotate_request: AccessKeyRotateRequest
-      access_key_rotate_response: AccessKeyRotateResponse
-      access_key_status_change_response: AccessKeyStatusChangeResponse
-    methods:
-      list: get /apis/auth/v2/access-keys
-      create: post /apis/auth/v2/access-keys
-      delete: delete /apis/auth/v2/access-keys/{jti}
-      suspend: post /apis/auth/v2/access-keys/{jti}/suspend
-      unsuspend: post /apis/auth/v2/access-keys/{jti}/unsuspend
-      rotate: post /apis/auth/v2/access-keys/{jti}/rotate

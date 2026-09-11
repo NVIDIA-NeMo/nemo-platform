@@ -19,15 +19,9 @@ from __future__ import annotations
 
 import os
 from typing import TYPE_CHECKING, Any, Mapping
-from pathlib import Path
 from typing_extensions import Self, override
 
 import httpx
-from nemo_platform_plugin.client.tls import client_verify_from_env
-from nemo_platform_plugin.jobs.client import JobsClient, AsyncJobsClient
-from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
-
-from nemo_platform._base_client import DefaultHttpxClient, DefaultAsyncHttpxClient
 
 from . import _exceptions
 from ._qs import Querystring
@@ -41,6 +35,8 @@ from ._types import (
     not_given,
 )
 from ._utils import (
+    is_given,
+    is_mapping_t,
     get_async_library,
 )
 from ._compat import cached_property
@@ -52,14 +48,18 @@ from ._base_client import (
     SyncAPIClient,
     AsyncAPIClient,
 )
+from nemo_platform._base_client import DefaultAsyncHttpxClient, DefaultHttpxClient
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nemo_platform_plugin.client.tls import client_verify_from_env
+from nemo_platform_plugin.jobs.client import AsyncJobsClient, JobsClient
+from nemo_platform_plugin.secrets.compat import AsyncSecretsResource, SecretsResource
+from pathlib import Path
 
 if TYPE_CHECKING:
-    from .models import ModelsResource, AsyncModelsResource
     from .resources import (
         files,
         intake,
         models,
-        secrets,
         adapters,
         entities,
         projects,
@@ -71,7 +71,7 @@ if TYPE_CHECKING:
     )
     from .filesets.resources import FilesResource, AsyncFilesResource
     from .resources.intake.intake import IntakeResource, AsyncIntakeResource
-    from .resources.secrets.secrets import SecretsResource, AsyncSecretsResource
+    from .models import ModelsResource, AsyncModelsResource
     from .resources.adapters.adapters import AdaptersResource, AsyncAdaptersResource
     from .resources.entities.entities import EntitiesResource, AsyncEntitiesResource
     from .resources.projects.projects import ProjectsResource, AsyncProjectsResource
@@ -312,18 +312,6 @@ class NeMoPlatform(SyncAPIClient):
         return WorkspacesResource(self)
 
     @cached_property
-    def secrets(self) -> SecretsResource:
-        from .resources.secrets import SecretsResource
-
-        return SecretsResource(self)
-
-    @cached_property
-    def jobs(self) -> JobsClient:
-        from nemo_platform_plugin.client.adapter import client_from_platform
-
-        return client_from_platform(self, JobsClient)
-
-    @cached_property
     def projects(self) -> ProjectsResource:
         from .resources.projects import ProjectsResource
 
@@ -495,6 +483,16 @@ class NeMoPlatform(SyncAPIClient):
         instance = resource_cls(self)
         self.__dict__[name] = instance
         return instance
+
+    @cached_property
+    def jobs(self) -> JobsClient:
+        from nemo_platform_plugin.client.adapter import client_from_platform
+
+        return client_from_platform(self, JobsClient)
+
+    @cached_property
+    def secrets(self) -> SecretsResource:
+        return SecretsResource(self)
 
 
 class AsyncNeMoPlatform(AsyncAPIClient):
@@ -702,18 +700,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         return AsyncWorkspacesResource(self)
 
     @cached_property
-    def secrets(self) -> AsyncSecretsResource:
-        from .resources.secrets import AsyncSecretsResource
-
-        return AsyncSecretsResource(self)
-
-    @cached_property
-    def jobs(self) -> AsyncJobsClient:
-        from nemo_platform_plugin.client.adapter import client_from_platform
-
-        return client_from_platform(self, AsyncJobsClient)
-
-    @cached_property
     def projects(self) -> AsyncProjectsResource:
         from .resources.projects import AsyncProjectsResource
 
@@ -886,6 +872,16 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         self.__dict__[name] = instance
         return instance
 
+    @cached_property
+    def jobs(self) -> AsyncJobsClient:
+        from nemo_platform_plugin.client.adapter import client_from_platform
+
+        return client_from_platform(self, AsyncJobsClient)
+
+    @cached_property
+    def secrets(self) -> AsyncSecretsResource:
+        return AsyncSecretsResource(self)
+
 
 class NeMoPlatformWithRawResponse:
     _client: NeMoPlatform
@@ -928,12 +924,6 @@ class NeMoPlatformWithRawResponse:
         from .resources.workspaces import WorkspacesResourceWithRawResponse
 
         return WorkspacesResourceWithRawResponse(self._client.workspaces)
-
-    @cached_property
-    def secrets(self) -> secrets.SecretsResourceWithRawResponse:
-        from .resources.secrets import SecretsResourceWithRawResponse
-
-        return SecretsResourceWithRawResponse(self._client.secrets)
 
     @cached_property
     def projects(self) -> projects.ProjectsResourceWithRawResponse:
@@ -1009,12 +999,6 @@ class AsyncNeMoPlatformWithRawResponse:
         return AsyncWorkspacesResourceWithRawResponse(self._client.workspaces)
 
     @cached_property
-    def secrets(self) -> secrets.AsyncSecretsResourceWithRawResponse:
-        from .resources.secrets import AsyncSecretsResourceWithRawResponse
-
-        return AsyncSecretsResourceWithRawResponse(self._client.secrets)
-
-    @cached_property
     def projects(self) -> projects.AsyncProjectsResourceWithRawResponse:
         from .resources.projects import AsyncProjectsResourceWithRawResponse
 
@@ -1088,12 +1072,6 @@ class NeMoPlatformWithStreamedResponse:
         return WorkspacesResourceWithStreamingResponse(self._client.workspaces)
 
     @cached_property
-    def secrets(self) -> secrets.SecretsResourceWithStreamingResponse:
-        from .resources.secrets import SecretsResourceWithStreamingResponse
-
-        return SecretsResourceWithStreamingResponse(self._client.secrets)
-
-    @cached_property
     def projects(self) -> projects.ProjectsResourceWithStreamingResponse:
         from .resources.projects import ProjectsResourceWithStreamingResponse
 
@@ -1165,12 +1143,6 @@ class AsyncNeMoPlatformWithStreamedResponse:
         from .resources.workspaces import AsyncWorkspacesResourceWithStreamingResponse
 
         return AsyncWorkspacesResourceWithStreamingResponse(self._client.workspaces)
-
-    @cached_property
-    def secrets(self) -> secrets.AsyncSecretsResourceWithStreamingResponse:
-        from .resources.secrets import AsyncSecretsResourceWithStreamingResponse
-
-        return AsyncSecretsResourceWithStreamingResponse(self._client.secrets)
 
     @cached_property
     def projects(self) -> projects.AsyncProjectsResourceWithStreamingResponse:

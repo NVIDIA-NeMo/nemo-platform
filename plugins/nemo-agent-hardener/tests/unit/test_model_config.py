@@ -31,13 +31,13 @@ class _FakeSecrets:
 def _route_secrets_client(monkeypatch: Any) -> None:
     """``build_model_env`` resolves keys through ``client_from_platform(sdk, SecretsClient)``.
 
-    The sdk doubles here carry their client on ``.secrets``, so hand that back directly.
+    The sdk doubles here carry their typed client on ``.mock_secrets``, so hand that back directly.
     """
-    monkeypatch.setattr(_common, "client_from_platform", lambda sdk, _cls: sdk.secrets)
+    monkeypatch.setattr(_common, "client_from_platform", lambda sdk, _cls: sdk.mock_secrets)
 
 
 def _sdk(secrets: dict[str, str]) -> Any:
-    return SimpleNamespace(secrets=_FakeSecrets(secrets))
+    return SimpleNamespace(mock_secrets=_FakeSecrets(secrets))
 
 
 def test_build_model_env_maps_attack_and_analysis_groups() -> None:
@@ -135,9 +135,9 @@ class _Secrets:
 
 
 def _sdk_with(secrets: _Secrets, monkeypatch: Any) -> Any:
-    """An sdk double carrying its typed client on ``.secrets``, per ``_route_secrets_client``."""
+    """An sdk double carrying its typed client on ``.mock_secrets``, per ``_route_secrets_client``."""
     del monkeypatch  # routing is handled by the autouse fixture
-    return SimpleNamespace(secrets=secrets)
+    return SimpleNamespace(mock_secrets=secrets)
 
 
 def _config_double(monkeypatch: Any, dotenv_key: str | None) -> None:
