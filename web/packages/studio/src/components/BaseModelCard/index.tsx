@@ -16,13 +16,14 @@ import { creatorToIcon } from '@nemo/common/src/constants/modelMetadata';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { Badge, Button, Card, Flex, Stack, Tag, Text } from '@nvidia/foundations-react-core';
+import { canFineTuneModel } from '@studio/hooks/useModelCustomizationEligibility';
 import { MessagesSquare, File, Globe } from 'lucide-react';
 import React, { useMemo } from 'react';
 
 export interface BaseModelCardProps {
   model: ModelEntity;
   isChatAvailable?: boolean;
-  showCustomizationBadges?: boolean;
+  showFineTuningBadges?: boolean;
   onClick?: () => void;
 }
 
@@ -46,7 +47,7 @@ const formatContextSize = (contextSize: number): string => {
 export const BaseModelCard = ({
   model,
   isChatAvailable = false,
-  showCustomizationBadges = true,
+  showFineTuningBadges = true,
   onClick,
 }: BaseModelCardProps) => {
   const metadata = useMemo(() => getModelMetadata(model), [model]);
@@ -59,7 +60,7 @@ export const BaseModelCard = ({
   const contextSize = model.spec?.context_size
     ? formatContextSize(model.spec.context_size)
     : undefined;
-  const isFineTuneable = Boolean(model.fileset);
+  const isFineTunable = canFineTuneModel(model);
   const providers = model.model_providers ?? [];
 
   return (
@@ -95,10 +96,10 @@ export const BaseModelCard = ({
             {description}
           </Text>
         )}
-        {showCustomizationBadges && (
+        {showFineTuningBadges && (
           <Flex gap="density-sm">
             {/* Capabilities */}
-            {isFineTuneable && (
+            {isFineTunable && (
               <Badge color="purple" kind="solid">
                 Fine-tunable
               </Badge>

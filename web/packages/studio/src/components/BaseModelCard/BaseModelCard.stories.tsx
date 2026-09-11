@@ -54,7 +54,7 @@ const makeModel = (
 });
 
 /**
- * A well-known Meta model — shows creator icon, description, customizable badge,
+ * A well-known Meta model — shows creator icon, description, fine-tunable badge,
  * and all spec fields.
  */
 export const Default: Story = {
@@ -285,9 +285,9 @@ const customizationSpec = {
 };
 
 const fineTuneableOnlyModel = makeModel({
-  name: 'fine-tuneable-only',
+  name: 'fine-tunable-only',
   workspace: 'meta',
-  description: 'Has a fileset, so the Fine-Tuneable badge renders.',
+  description: 'Has a fileset, so the Fine-tunable badge renders.',
   spec: customizationSpec,
   model_providers: ['default/nvidia-build'],
   fileset: 'meta/llama-checkpoint',
@@ -299,7 +299,7 @@ export const CustomizationBadges: Story = {
   render: () => (
     <div className="flex flex-col gap-6">
       <div>
-        <p className="text-sm text-secondary mb-2">Fine-Tuneable only</p>
+        <p className="text-sm text-secondary mb-2">Fine-tunable only</p>
         <BaseModelCard model={fineTuneableOnlyModel} isChatAvailable />
       </div>
     </div>

@@ -109,7 +109,7 @@ export const CustomizationConfigSidePanel: FC<Props> = ({
           <Text kind="body/semibold/md">Configuration Snapshot</Text>
           <KVPair label="Base Model" value={getBaseModel(job)} />
           <KVPair label="Training Type" value={getFormattedTrainingType(trainingType)} />
-          <KVPair label="Finetuning Type" value={getFormattedTrainingType(finetuningType)} />
+          <KVPair label="Fine-tuning Type" value={getFormattedTrainingType(finetuningType)} />
           <KVPair
             label="Training Options"
             value={

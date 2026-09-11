@@ -36,7 +36,7 @@ describe('BaseModelCard', () => {
       <BaseModelCard
         model={makeModel({ fileset: 'meta/llama-checkpoint' })}
         isChatAvailable
-        showCustomizationBadges={false}
+        showFineTuningBadges={false}
       />
     );
 

@@ -41,6 +41,7 @@ import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsD
 import { ModelPanel, ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { VirtualizedCardGrid } from '@studio/components/VirtualizedCardGrid';
 import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
+import { canFineTuneModel } from '@studio/hooks/useModelCustomizationEligibility';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getWorkspaceBaseModelsRoute } from '@studio/routes/utils';
@@ -57,10 +58,15 @@ const SORT_OPTIONS = [
 
 const TAB_SEARCH_PARAM = 'tab';
 
-const CUSTOMIZABLE_FILTER_ID = 'customizable';
+/**
+ * Serialized into the `filters` search param, so the value is frozen for URL
+ * compatibility even though the UI now says "fine-tunable" throughout. Renaming
+ * it would break links users have already bookmarked or shared.
+ */
+const FINE_TUNABLE_FILTER_ID = 'customizable';
 const FINE_TUNABLE_KEY = 'fine_tunable';
 
-type CustomizableFilterState = Partial<Record<typeof FINE_TUNABLE_KEY, true>>;
+type FineTunableFilterState = Partial<Record<typeof FINE_TUNABLE_KEY, true>>;
 
 /**
  * Column definitions used solely for filter metadata. The columns are never rendered as a table;
@@ -70,18 +76,18 @@ type CustomizableFilterState = Partial<Record<typeof FINE_TUNABLE_KEY, true>>;
 const makeFilterColumns: ComponentProps<typeof DataView.Root<ModelEntity>>['makeColumns'] = ({
   accessor,
 }) => [
-  // Customizable filtering depends on Customizer capabilities, so hide both the
+  // Fine-tunable filtering depends on Customizer capabilities, so hide both the
   // column filter and toolbar checkbox while Customizer is launch-disabled.
   ...(CUSTOMIZER_ENABLED
     ? [
         accessor(() => '', {
-          id: CUSTOMIZABLE_FILTER_ID,
-          header: 'Customizable',
+          id: FINE_TUNABLE_FILTER_ID,
+          header: 'Fine-tunable',
           enableSorting: false,
           meta: {
             filter: {
               type: 'multi-select',
-              label: 'Customizable',
+              label: 'Fine-tunable',
               options: [{ value: FINE_TUNABLE_KEY, label: 'Fine-tunable' }],
             },
           },
@@ -114,7 +120,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
   });
 
   const dataViewState = useStudioDataViewState<
-    Partial<ModelEntityFilterInput> & { [CUSTOMIZABLE_FILTER_ID]?: CustomizableFilterState }
+    Partial<ModelEntityFilterInput> & { [FINE_TUNABLE_FILTER_ID]?: FineTunableFilterState }
   >({
     defaultSort: [{ id: 'name', desc: false }],
   });
@@ -127,23 +133,23 @@ export const WorkspaceBaseModelsRoute: FC = () => {
 
   const nameSearch = dataViewState.apiFilter.searchText;
   const allColumnFilters = dataViewState.apiFilter.filter;
-  const customizableFilter = CUSTOMIZER_ENABLED
-    ? allColumnFilters?.[CUSTOMIZABLE_FILTER_ID]
+  const fineTunableFilter = CUSTOMIZER_ENABLED
+    ? allColumnFilters?.[FINE_TUNABLE_FILTER_ID]
     : undefined;
 
   // Strip the synthetic `customizable` filter from the API filter — the backend doesn't know about it.
   const apiColumnFilters = useMemo(() => {
     if (!allColumnFilters) return undefined;
     const rest = { ...allColumnFilters };
-    delete rest[CUSTOMIZABLE_FILTER_ID];
+    delete rest[FINE_TUNABLE_FILTER_ID];
     return Object.keys(rest).length > 0 ? (rest as Partial<ModelEntityFilterInput>) : undefined;
   }, [allColumnFilters]);
 
-  const customizableFilterActive = !!(
-    customizableFilter && Object.keys(customizableFilter).length > 0
+  const fineTunableFilterActive = !!(
+    fineTunableFilter && Object.keys(fineTunableFilter).length > 0
   );
 
-  const hasActiveFilters = !!nameSearch || !!apiColumnFilters || customizableFilterActive;
+  const hasActiveFilters = !!nameSearch || !!apiColumnFilters || fineTunableFilterActive;
 
   const filter = useMemo<ModelEntityFilterInput | undefined>(() => {
     if (!nameSearch && !apiColumnFilters) return undefined;
@@ -172,41 +178,41 @@ export const WorkspaceBaseModelsRoute: FC = () => {
   });
 
   const visibleModels = useMemo(() => {
-    if (!customizableFilter?.[FINE_TUNABLE_KEY]) return models;
-    return models.filter((model) => Boolean(model.fileset));
-  }, [models, customizableFilter]);
+    if (!fineTunableFilter?.[FINE_TUNABLE_KEY]) return models;
+    return models.filter(canFineTuneModel);
+  }, [models, fineTunableFilter]);
 
-  const liveCustomizableFilter = CUSTOMIZER_ENABLED
-    ? (dataViewState.columnFiltering.state.find((f) => f.id === CUSTOMIZABLE_FILTER_ID)?.value as
-        | CustomizableFilterState
+  const liveFineTunableFilter = CUSTOMIZER_ENABLED
+    ? (dataViewState.columnFiltering.state.find((f) => f.id === FINE_TUNABLE_FILTER_ID)?.value as
+        | FineTunableFilterState
         | undefined)
     : undefined;
-  const customizableChecked = !!liveCustomizableFilter?.[FINE_TUNABLE_KEY];
+  const fineTunableChecked = !!liveFineTunableFilter?.[FINE_TUNABLE_KEY];
 
-  const handleCustomizableToggle = (checked: boolean) => {
+  const handleFineTunableToggle = (checked: boolean) => {
     dataViewState.columnFiltering.set((prev) => {
-      const others = prev.filter((f) => f.id !== CUSTOMIZABLE_FILTER_ID);
+      const others = prev.filter((f) => f.id !== FINE_TUNABLE_FILTER_ID);
       if (!checked) return others;
       return [
         ...others,
         {
-          id: CUSTOMIZABLE_FILTER_ID,
+          id: FINE_TUNABLE_FILTER_ID,
           value: { [FINE_TUNABLE_KEY]: true },
         },
       ];
     });
   };
 
-  const isSweepingForCustomizable =
-    customizableChecked && visibleModels.length === 0 && hasNextPage && !isFetchNextPageError;
+  const isSweepingForFineTunable =
+    fineTunableChecked && visibleModels.length === 0 && hasNextPage && !isFetchNextPageError;
 
   // In the rare case where the user is filtering for customizable models and there are no visible models on the first page,
   // fetch the next page here because the table won't render the virutalized cards, preventing a refetch from happening.
   useEffect(() => {
-    if (isSweepingForCustomizable && !isFetchingNextPage) {
+    if (isSweepingForFineTunable && !isFetchingNextPage) {
       void fetchNextPage();
     }
-  }, [fetchNextPage, isSweepingForCustomizable, isFetchingNextPage]);
+  }, [fetchNextPage, isSweepingForFineTunable, isFetchingNextPage]);
 
   const modelInList = useMemo(
     () => !!modelNameFromPath && models.some((m) => m.name === modelNameFromPath),
@@ -326,12 +332,12 @@ export const WorkspaceBaseModelsRoute: FC = () => {
                   >
                     <Checkbox
                       attributes={{
-                        CheckboxInput: { id: 'base-models-filter-customizable' },
-                        Label: { htmlFor: 'base-models-filter-customizable' },
+                        CheckboxInput: { id: 'base-models-filter-fine-tunable' },
+                        Label: { htmlFor: 'base-models-filter-fine-tunable' },
                       }}
-                      checked={customizableChecked}
-                      slotLabel="Customizable"
-                      onCheckedChange={(checked) => handleCustomizableToggle(!!checked)}
+                      checked={fineTunableChecked}
+                      slotLabel="Fine-tunable"
+                      onCheckedChange={(checked) => handleFineTunableToggle(!!checked)}
                     />
                   </Flex>
                 </Tooltip>
@@ -352,7 +358,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
               data: visibleModels,
               totalCount: visibleModels.length,
               requestStatus:
-                isLoading || isSweepingForCustomizable
+                isLoading || isSweepingForFineTunable
                   ? 'loading'
                   : isError || isFetchNextPageError
                     ? 'error'
@@ -391,7 +397,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
                   <BaseModelCard
                     model={model}
                     isChatAvailable={getModelEntityChatStatus(model) === 'enabled'}
-                    showCustomizationBadges={CUSTOMIZER_ENABLED}
+                    showFineTuningBadges={CUSTOMIZER_ENABLED}
                     onClick={() => handleOpenPanel(model)}
                   />
                 )}
