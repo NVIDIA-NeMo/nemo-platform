@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import os
 from functools import cached_property
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
 from pydantic.config import JsonDict
@@ -40,6 +40,41 @@ RankingContract: TypeAlias = Literal[
     "hosted-rerank-v1",
     "hosted-ranking-v1",
     "hosted-retrieval-reranking-v1",
+]
+
+
+def _require_type_in_json_schema(schema: dict[str, Any]) -> None:
+    """Require the discriminator in serialized inference payloads."""
+    required = schema.setdefault("required", [])
+    if "type" not in required:
+        required.append("type")
+
+
+class RankingInference(BaseModel):
+    """Reranking invocation contract and route.
+
+    Additional inference variants, such as embeddings, join InferenceConfig as new
+    type members rather than adding more fields to Model.
+    """
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra=_require_type_in_json_schema)
+
+    type: Literal["ranking"] = "ranking"
+    contract: RankingContract | None = Field(
+        default=None,
+        description="Explicit reranking request and response contract selected during preflight.",
+        json_schema_extra={"nullable": True},
+    )
+    path: str | None = Field(
+        default=None,
+        description="Explicit reranking route relative to the model's resolved /v1 inference-gateway URL.",
+        json_schema_extra={"nullable": True},
+    )
+
+
+InferenceConfig: TypeAlias = Annotated[
+    RankingInference,
+    Field(discriminator="type"),
 ]
 
 
@@ -133,14 +168,12 @@ class Model(BaseModel):
     served_model_name: str | None = Field(
         default=None,
         description="Provider model identifier preserved when resolving a ModelRef.",
+        json_schema_extra={"nullable": True},
     )
-    ranking_contract: RankingContract | None = Field(
+    inference: InferenceConfig | None = Field(
         default=None,
-        description="Explicit reranking request and response contract selected during preflight.",
-    )
-    ranking_path: str | None = Field(
-        default=None,
-        description="Explicit reranking route relative to the model's resolved /v1 inference-gateway URL.",
+        description="Capability-specific invocation metadata. Ranking is the only variant today.",
+        json_schema_extra={"nullable": True},
     )
     api_key_secret: SecretRef | None = Field(
         default=None,

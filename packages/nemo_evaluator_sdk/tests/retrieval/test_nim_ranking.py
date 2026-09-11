@@ -7,7 +7,7 @@ import math
 import httpx
 import pytest
 from nemo_evaluator_sdk.retrieval.nim_ranking import NimRankingClient, NimRankingError
-from nemo_evaluator_sdk.values.models import Model
+from nemo_evaluator_sdk.values.models import Model, RankingInference
 
 
 @pytest.mark.asyncio
@@ -122,16 +122,17 @@ async def test_ranking_client_falls_back_to_model_specific_ranking_route() -> No
         resolved = await ranker.preflight(client=client)
 
     assert urls[-1] == "https://igw.example.test/v1/ranking/nvidia/qwen3-vl-reranker-8b"
-    assert resolved.ranking_contract == "hosted-ranking-v1"
-    assert resolved.ranking_path == "/ranking/nvidia/qwen3-vl-reranker-8b"
+    assert isinstance(resolved.inference, RankingInference)
+    assert resolved.inference.contract == "hosted-ranking-v1"
+    assert resolved.inference.path == "/ranking/nvidia/qwen3-vl-reranker-8b"
 
 
 @pytest.mark.asyncio
 async def test_ranking_client_falls_back_to_model_specific_retrieval_route() -> None:
-    urls: list[str] = []
+    requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        urls.append(str(request.url))
+        requests.append(request)
         if "/retrieval/" not in request.url.path:
             return httpx.Response(
                 502,
@@ -153,14 +154,21 @@ async def test_ranking_client_falls_back_to_model_specific_retrieval_route() -> 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         resolved = await ranker.preflight(client=client)
 
-    assert [httpx.URL(url).path for url in urls] == [
+    assert [request.url.path for request in requests] == [
         "/v1/ranking",
         "/v1/rerank",
         "/v1/ranking/publisher/reranker",
         "/v1/retrieval/publisher/reranker/reranking",
     ]
-    assert resolved.ranking_contract == "hosted-retrieval-reranking-v1"
-    assert resolved.ranking_path == "/retrieval/publisher/reranker/reranking"
+    assert json.loads(requests[-1].content) == {
+        "model": "publisher/reranker",
+        "query": {"text": "reranker compatibility probe"},
+        "passages": [{"text": "reranker compatibility probe"}],
+        "truncate": "END",
+    }
+    assert isinstance(resolved.inference, RankingInference)
+    assert resolved.inference.contract == "hosted-retrieval-reranking-v1"
+    assert resolved.inference.path == "/retrieval/publisher/reranker/reranking"
 
 
 @pytest.mark.asyncio
@@ -213,6 +221,30 @@ async def test_ranking_client_retries_non_finite_logits() -> None:
 
     assert attempts == 2
     assert ranked == [(0, 0.9)]
+
+
+@pytest.mark.asyncio
+async def test_ranking_client_uses_explicit_ranking_inference() -> None:
+    urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(
+            200,
+            request=request,
+            json={"results": [{"index": 0, "relevance_score": 0.5}]},
+        )
+
+    model = Model(
+        url="https://igw.example.test/v1",
+        name="reranker",
+        served_model_name="publisher/reranker",
+        inference=RankingInference(contract="hosted-rerank-v1", path="/rerank"),
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        await NimRankingClient(model=model, max_retries=0).rank("q", ["only"], client=client)
+
+    assert urls == ["https://igw.example.test/v1/rerank"]
 
 
 @pytest.mark.asyncio

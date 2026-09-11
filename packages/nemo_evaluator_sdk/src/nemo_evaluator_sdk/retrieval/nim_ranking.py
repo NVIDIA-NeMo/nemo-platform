@@ -13,7 +13,7 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 from nemo_evaluator_sdk.constants import PLACEHOLDER_INFERENCE_API_KEY
-from nemo_evaluator_sdk.values.models import Model, RankingContract
+from nemo_evaluator_sdk.values.models import Model, RankingContract, RankingInference
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 __all__ = ["NimRankingClient", "NimRankingError"]
@@ -66,8 +66,11 @@ class NimRankingClient(BaseModel):
         assert self._resolved_path is not None
         return self.model.model_copy(
             update={
-                "ranking_contract": self._resolved_contract,
-                "ranking_path": self._resolved_path,
+                "inference": RankingInference(
+                    type="ranking",
+                    contract=self._resolved_contract,
+                    path=self._resolved_path,
+                )
             }
         )
 
@@ -183,11 +186,12 @@ def _default_path(contract: RankingContract, served_model_name: str | None) -> s
 
 def _ranking_candidates(model: Model) -> list[_RankingCandidate]:
     base = _base_url(model.url)
-    if model.ranking_contract is not None:
-        path = model.ranking_path or _default_path(model.ranking_contract, model.served_model_name)
+    ranking = model.inference if isinstance(model.inference, RankingInference) else None
+    if ranking is not None and ranking.contract is not None:
+        path = ranking.path or _default_path(ranking.contract, model.served_model_name)
         if path is None:
-            raise NimRankingError(f"{model.ranking_contract} requires served_model_name or an explicit ranking_path")
-        return [_RankingCandidate(model.ranking_contract, _route_url(base, path))]
+            raise NimRankingError(f"{ranking.contract} requires served_model_name or an explicit ranking path")
+        return [_RankingCandidate(ranking.contract, _route_url(base, path))]
 
     candidates = [
         _RankingCandidate("nim-ranking-v1", _ranking_url(model.url)),
@@ -217,9 +221,9 @@ def _ranking_payload(
     truncate: str,
 ) -> dict[str, object]:
     model_name = model.served_model_name or model.name
-    if contract == "nim-ranking-v1":
+    if contract in {"nim-ranking-v1", "hosted-retrieval-reranking-v1"}:
         return {
-            "model": model.name,
+            "model": model.name if contract == "nim-ranking-v1" else model_name,
             "query": {"text": query},
             "passages": [{"text": passage} for passage in passages],
             "truncate": truncate,

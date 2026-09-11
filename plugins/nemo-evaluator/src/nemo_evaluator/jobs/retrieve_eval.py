@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -300,7 +301,12 @@ async def _resolve_retrieval(
             raise ValueError("a platform SDK client is required to resolve the retrieval reranker")
         reranker = await PlatformMetricModelResolver(async_sdk.models).resolve_model(reranker)
         try:
-            reranker = await NimRankingClient(model=reranker, max_retries=0, timeout=15.0).preflight()
+            async with asyncio.timeout(15.0):
+                reranker = await NimRankingClient(model=reranker, max_retries=0, timeout=15.0).preflight()
+        except TimeoutError as error:
+            raise ValueError(
+                f"Reranker ModelRef '{reranker_ref}' compatibility preflight exceeded the 15-second deadline"
+            ) from error
         except (httpx.HTTPError, NimRankingError) as error:
             raise ValueError(
                 f"Reranker ModelRef '{reranker_ref}' has no compatible ranking endpoint: {error}"

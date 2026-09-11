@@ -21,7 +21,7 @@ from nemo_evaluator.jobs.retrieve_eval import (
 from nemo_evaluator_sdk.metrics.retrieval import RetrievalNDCGMetric, RetrievalRecallMetric
 from nemo_evaluator_sdk.retrieval.beir import BeirDataset
 from nemo_evaluator_sdk.retrieval.nim_ranking import NimRankingError
-from nemo_evaluator_sdk.values.models import Model, ModelRef
+from nemo_evaluator_sdk.values.models import Model, ModelRef, RankingInference
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, AggregateRangeScore
 from nemo_evaluator_sdk.values.retrieval import Retrieval
@@ -129,7 +129,7 @@ async def test_to_spec_preflights_and_stamps_reranker_model_ref(mocker: MockerFi
         name="reranker",
         served_model_name="publisher/reranker",
     )
-    stamped = resolved.model_copy(update={"ranking_contract": "hosted-rerank-v1", "ranking_path": "/rerank"})
+    stamped = resolved.model_copy(update={"inference": RankingInference(contract="hosted-rerank-v1", path="/rerank")})
     resolve = mocker.patch(
         "nemo_evaluator.jobs.retrieve_eval.PlatformMetricModelResolver.resolve_model",
         new=mocker.AsyncMock(return_value=resolved),
