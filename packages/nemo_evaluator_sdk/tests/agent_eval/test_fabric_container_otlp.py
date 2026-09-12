@@ -15,9 +15,11 @@ import sys
 import time
 from pathlib import Path
 
-from nemo_evaluator_sdk.agent_eval.runtimes.fabric import container_runtime, otlp_receiver
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric import _sandbox_execution as container_runtime
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric import otlp_receiver
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_receiver import EXPORT_SUFFIX, READY_FILENAME
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.otlp_writer import fold_exports, otlp_trace_path
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import SkillSet
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 
 from packages.nemo_evaluator_sdk.tests.agent_eval._otlp_testkit import export, post, span_names
@@ -26,11 +28,18 @@ RECEIVER = Path(otlp_receiver.__file__)
 _TASK = AgentEvalTask(id="t", intent="i", inputs={"instruction": "do it"})
 
 
-def _runtime() -> container_runtime.FabricContainerRuntime:
-    return container_runtime.FabricContainerRuntime(
+def _runtime() -> container_runtime.SandboxExecution:
+    return container_runtime.SandboxExecution(
         config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}},
-        provider=object(),
+        provider=object(),  # type: ignore[arg-type]
         image="img",
+        env={},
+        model=None,
+        timeout_s=600,
+        capture_trajectory=True,
+        trajectory_extra=None,
+        runtime_name="fabric",
+        skills=SkillSet(()),
     )
 
 

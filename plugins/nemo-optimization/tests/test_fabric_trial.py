@@ -320,7 +320,6 @@ def test_fabric_trial_evaluator_invokes_agent_evaluator(monkeypatch: pytest.Monk
         "nemo.optimizer.rep": 0,
     }
     assert "profiles" not in captured["runtime"]
-    assert captured["runtime"]["task_hook"] is None
     assert captured["runtime"]["config"]["models"]["default"]["temperature"] == 0.2
     assert "optimizer" not in captured["runtime"]["config"]
     assert "eval" not in captured["runtime"]["config"]
@@ -332,3 +331,27 @@ def test_fabric_trial_evaluator_invokes_agent_evaluator(monkeypatch: pytest.Monk
     trace_map = json.loads((tmp_path / "out" / "trial_trace_map.json").read_text(encoding="utf-8"))
     assert trace_map[0]["experiment_id"] == "exp-test"
     assert trace_map[0]["row_id"] == "1"
+
+
+def test_fabric_trial_evaluator_rejects_a_removed_run_hook(tmp_path: Path) -> None:
+    """A config written for the retired per-task hook must fail at construction, not run hook-less.
+
+    Silently dropping ``eval.run_hook`` would score an agent whose MCP binding was never set up
+    and report it as the tuned configuration's result.
+    """
+    dataset = tmp_path / "rows.json"
+    dataset.write_text('[{"id": "1", "question": "q?", "answer": "a"}]\n', encoding="utf-8")
+    payload = _payload(dataset)
+    payload["eval"]["run_hook"] = {"type": "mcp_run_binding", "bindings": []}
+
+    with pytest.raises(StudyDriverError, match="eval.run_hook is no longer supported"):
+        FabricTrialEvaluator(
+            payload=payload, metric_names=["average_score"], output_dir=tmp_path / "out", experiment_id="exp"
+        )
+
+
+def test_build_metrics_rejects_a_tool_call_count_evaluator_without_a_tool_name() -> None:
+    from nemo_optimization.backends.optuna.fabric_trial import _build_metrics
+
+    with pytest.raises(StudyDriverError, match="requires a non-empty tool_name"):
+        _build_metrics({}, {"evaluators": {"once": {"_type": "tool_call_count", "expected_calls": 1}}})

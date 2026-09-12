@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
+from nemo_evaluator_sdk.agent_eval.metrics import ToolCallCountMetric
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
-from nemo_evaluator_sdk.agent_eval.runtimes.fabric.hook_loading import FabricTaskHookLoadError, load_fabric_task_hook
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
@@ -49,11 +49,11 @@ class FabricTrialEvaluator:
         self._experiment_id = experiment_id
         self._eval_config = _eval_config(payload)
         fabric_eval = self._eval_config.get("fabric") if isinstance(self._eval_config.get("fabric"), Mapping) else {}
-        run_hook_spec = self._eval_config.get("run_hook")
-        try:
-            self._task_hook = load_fabric_task_hook(run_hook_spec if isinstance(run_hook_spec, Mapping) else None)
-        except FabricTaskHookLoadError as exc:
-            raise StudyDriverError(str(exc)) from exc
+        if self._eval_config.get("run_hook") is not None:
+            raise StudyDriverError(
+                "eval.run_hook is no longer supported: declare MCP servers statically under mcp.servers and "
+                "score any per-run audit with an evaluator."
+            )
         self._fabric_base_dir = _optional_path(
             fabric_eval.get("base_dir") if isinstance(fabric_eval, Mapping) else None
         )
@@ -61,11 +61,9 @@ class FabricTrialEvaluator:
         self._capture_trajectory = bool(
             fabric_eval.get("capture_trajectory", True) if isinstance(fabric_eval, Mapping) else True
         )
-        # Hooks often own per-task sockets/files; default serial when a hook is configured.
-        default_parallelism = 1 if self._task_hook is not None else 4
         general = self._eval_config.get("general")
         general = general if isinstance(general, Mapping) else {}
-        self._parallelism = int(general.get("max_concurrency", default_parallelism))
+        self._parallelism = int(general.get("max_concurrency", 4))
         self._trace_map: list[dict[str, Any]] = []
         # Validate dataset/metrics once at construction so config errors fail before the study loop.
         build_agent_eval_tasks(self._payload)
@@ -94,7 +92,6 @@ class FabricTrialEvaluator:
                 trial_number=trial_number,
                 rep=rep,
             ),
-            task_hook=self._task_hook,
         )
         result = AgentEvaluator().run_sync(
             tasks=tasks,
@@ -237,12 +234,26 @@ def _build_metrics(payload: Mapping[str, Any], eval_config: Mapping[str, Any]) -
         if not isinstance(evaluator, Mapping):
             continue
         evaluator_type = evaluator.get("_type") or evaluator.get("type")
-        if evaluator_type not in {"tunable_rag_evaluator", "tunable-rag-evaluator"}:
+        if evaluator_type in {"tunable_rag_evaluator", "tunable-rag-evaluator"}:
+            metrics.append(_build_tunable_rag_metric(payload, evaluator))
+        elif evaluator_type in {"tool_call_count", "tool-call-count"}:
+            metrics.append(_build_tool_call_count_metric(evaluator))
+        else:
             raise StudyDriverError(f"Unsupported evaluator type for optimize trial path: {evaluator_type!r}")
-        metrics.append(_build_tunable_rag_metric(payload, evaluator))
     if not metrics:
         raise StudyDriverError("No supported eval.evaluators were found.")
     return metrics
+
+
+def _build_tool_call_count_metric(evaluator: Mapping[str, Any]) -> ToolCallCountMetric:
+    tool_name = evaluator.get("tool_name")
+    if not isinstance(tool_name, str) or not tool_name.strip():
+        raise StudyDriverError("tool_call_count evaluator requires a non-empty tool_name.")
+    try:
+        expected_calls = int(evaluator.get("expected_calls", 1))
+    except (TypeError, ValueError) as exc:
+        raise StudyDriverError("tool_call_count evaluator expected_calls must be an integer.") from exc
+    return ToolCallCountMetric(tool_name=tool_name.strip(), expected_calls=expected_calls)
 
 
 def _build_tunable_rag_metric(payload: Mapping[str, Any], evaluator: Mapping[str, Any]) -> TunableRagEvaluatorMetric:

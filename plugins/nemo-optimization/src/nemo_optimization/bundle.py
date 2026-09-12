@@ -180,8 +180,7 @@ def path_references(config: Mapping[str, Any]) -> Iterator[PathReference]:
 
     An explicit key walk, not a scan for path-looking strings: the config is full of strings that
     resemble paths but are not (``models.default.model: nvidia/meta/llama-3.1-8b-instruct``, and
-    ``optimizer.search_space.<param>.path``, which is a dotted overlay target).  Author-supplied
-    hook payloads are the one open-ended shape, so ``run_hook`` is walked by its documented keys.
+    ``optimizer.search_space.<param>.path``, which is a dotted overlay target).
     """
     runtime = config.get("runtime")
     if isinstance(runtime, Mapping):
@@ -204,10 +203,6 @@ def path_references(config: Mapping[str, Any]) -> Iterator[PathReference]:
     if isinstance(fabric, Mapping):
         yield from _optional(fabric.get("base_dir"), "eval.fabric.base_dir", must_exist=True, is_dir=True)
 
-    run_hook = eval_config.get("run_hook")
-    if isinstance(run_hook, Mapping):
-        yield from _run_hook_references(run_hook)
-
 
 def _dataset_reference(dataset: Any) -> Iterator[PathReference]:
     """``eval.general.dataset`` is a path string, or a mapping with ``file_path`` / ``path``."""
@@ -219,25 +214,6 @@ def _dataset_reference(dataset: Any) -> Iterator[PathReference]:
         # A `workspace/fileset#path` dataset is staged separately by the job at run time.
         return
     yield PathReference("eval.general.dataset", value, must_exist=True)
-
-
-def _run_hook_references(run_hook: Mapping[str, Any]) -> Iterator[PathReference]:
-    yield from _optional(run_hook.get("path"), "eval.run_hook.path", must_exist=True)
-    yield from _optional(run_hook.get("agent_src"), "eval.run_hook.agent_src", must_exist=True, is_dir=True)
-    bindings = run_hook.get("bindings")
-    if not isinstance(bindings, list):
-        return
-    for index, binding in enumerate(bindings):
-        if not isinstance(binding, Mapping):
-            continue
-        prefix = f"eval.run_hook.bindings[{index}]"
-        # The executable is resolved on PATH inside the task container, so it only has to not be
-        # an absolute client path; the config files it is handed must ship with the bundle.
-        yield from _optional(binding.get("executable"), f"{prefix}.executable", must_exist=False)
-        config_paths = binding.get("config_paths")
-        if isinstance(config_paths, list):
-            for path_index, config_path in enumerate(config_paths):
-                yield from _optional(config_path, f"{prefix}.config_paths[{path_index}]", must_exist=True)
 
 
 def _optional(value: Any, location: str, *, must_exist: bool, is_dir: bool = False) -> Iterator[PathReference]:
