@@ -59,6 +59,7 @@ Use one workspace per task:
     private/source.atif.json
     private/canonical.atif.json
     private/privacy-audit.json
+    private/{tool-call-inventory,tool-call-plan,tool-access,tool-call-generation}.json
     private/publications/<digest>/
     private/publication-review.json
     private/ground-truth/
@@ -66,6 +67,7 @@ Use one workspace per task:
     safe/privacy.json
     candidate.json
     task/
+      environment/tool-call-fixtures/
     reproducibility.json
     validation.json
     summary.json
@@ -184,6 +186,20 @@ python <skill_dir>/scripts/trace_environment.py review-privacy \
 Never copy a redacted value into a verifier. An image-only user instruction is a
 blocking reason and must remain no_candidate. The scanner cannot establish that
 proprietary code is safe; the contextual reviewer owns that judgment.
+
+### Inventory and resolve tool-call access
+
+When the trace contains tool calls, read `../../docs/trace-derived-fixtures.md`, then select `real`, `mock`, or `none` for every observed function; never silently replace real software with a mock.
+
+```bash
+python <skill_dir>/scripts/trace_environment.py inventory-tool-calls --task-dir <task-dir>
+python <skill_dir>/scripts/trace_environment.py plan-tool-call-access --task-dir <task-dir>
+python <skill_dir>/scripts/trace_environment.py resolve-tool-call-access --task-dir <task-dir> --decisions <decisions.json> --reviewer-kind <agent|human>
+# Only after privacy review, and only when at least one decision is mock:
+python <skill_dir>/scripts/trace_environment.py generate-mock-tool-calls --task-dir <task-dir>
+```
+
+Generated call fixtures are transport-neutral; the current Harbor adapter exposes them as stdio MCP tools. Copy the directory into the task image and merge its `integration.toml` into `task.toml`. Finalization verifies selected mock access is wired in. Treat fixtures as agent-inspectable and let Harbor prove output replay is sufficient when side effects are uncertain.
 
 ## Step 4: inventory ground truth and software requirements
 
