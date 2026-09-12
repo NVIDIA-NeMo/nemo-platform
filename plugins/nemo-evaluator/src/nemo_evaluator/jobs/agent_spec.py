@@ -29,7 +29,7 @@ from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel, SecretRef
 from nemo_evaluator_sdk.values.agents import AgentBase
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 
 class ModelTarget(BaseModel):
@@ -122,6 +122,11 @@ class HarborRunnerTarget(BaseModel):
         "The module must already be importable in the run environment.",
     )
     agent_model_name: str | None = Field(default=None, description="Optional model slug passed to the Harbor agent.")
+    agent_kwargs: dict[str, JsonValue] = Field(
+        default_factory=dict,
+        description="Keyword arguments forwarded to the Harbor agent's constructor, the equivalent of Harbor's "
+        "`--ak key=value`. Recorded in run provenance with credential-looking values redacted.",
+    )
     n_attempts: int = Field(default=1, ge=1, description="Number of attempts Harbor runs per task.")
     n_concurrent_trials: int = Field(default=4, ge=1, description="Maximum concurrent Harbor trials.")
     max_retries: int = Field(default=0, ge=0, description="Harbor per-trial retry attempts on transient failures.")

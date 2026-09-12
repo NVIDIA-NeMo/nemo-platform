@@ -395,6 +395,9 @@ target = HarborRunnerTarget(
 - A secondary reward discovered for one task does not apply to another task.
 
 Use `agent_import_path` for a custom Harbor agent and `agent_model_name` when
-the agent requires a model. The module must be importable in the execution
+the agent requires a model. Pass the agent's constructor arguments as
+`agent_kwargs` (a JSON mapping, Harbor's `--ak key=value`); they are recorded in
+run provenance with credential-looking keys redacted, so prefer the environment
+for secrets. The module must be importable in the execution
 environment. Durable execution additionally requires an execution image and
 runtime that provide Harbor and Docker access.
