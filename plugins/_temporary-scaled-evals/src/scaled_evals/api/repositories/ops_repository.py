@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import psycopg
 
 
@@ -21,6 +23,19 @@ class OperationsRepository:
         self.conn.execute(f"SELECT {EVALUATION_COLUMNS} FROM evaluations WHERE false")
         self.conn.execute("SELECT id FROM evaluation_execution_cleanups WHERE false")
 
+    def heartbeat_service(self, service: str, instance_id: str) -> None:
+        """Record liveness for a scaled-evals background service."""
+        with self.conn.transaction(), self.conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO service_heartbeats (service, instance_id, heartbeat_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (service, instance_id) DO UPDATE
+                SET heartbeat_at = EXCLUDED.heartbeat_at
+                """,
+                (service, instance_id),
+            )
+
     def has_fresh_service_heartbeat(self, service: str, *, stale_seconds: float) -> bool:
         with self.conn.cursor() as cur:
             cur.execute(
@@ -34,7 +49,7 @@ class OperationsRepository:
                 """,
                 (service, stale_seconds),
             )
-            row = cur.fetchone()
+            row = cast(dict[str, Any] | None, cur.fetchone())
         return bool(row and row["is_fresh"])
 
     def evaluation_status_counts(self) -> dict[str, int]:
