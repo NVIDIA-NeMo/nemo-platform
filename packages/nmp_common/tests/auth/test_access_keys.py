@@ -353,8 +353,10 @@ def test_access_key_issuer_service_omits_scope_claim_when_unset(tmp_path):
 @pytest.mark.parametrize("scope", [[], [""], ["  "], ["intake", ""]])
 def test_access_key_create_request_rejects_explicit_empty_scope(scope):
     # An explicitly empty (or blank-only) scope must not silently fall back to the unscoped,
-    # full-access behavior of omitting `scope` entirely.
-    with pytest.raises(ValidationError, match="non-empty service name"):
+    # full-access behavior of omitting `scope` entirely. The OpenAPI-visible `min_length`/`pattern`
+    # field constraints now reject some of these before the custom model_validator's message runs,
+    # so this only asserts rejection, not a specific error message.
+    with pytest.raises(ValidationError):
         AccessKeyCreateRequest(scope=scope)
 
 

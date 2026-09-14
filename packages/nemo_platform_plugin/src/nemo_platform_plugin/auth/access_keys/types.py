@@ -12,13 +12,32 @@ AccessKeyStatus = Literal["ACTIVE", "EXPIRED", "REVOKED", "SUSPENDED", "ROTATING
 AccessKeyReversibleStatus = Literal["ACTIVE", "EXPIRED", "SUSPENDED"]
 AccessKeyEntityType = Literal["USER", "SERVICE_ACCOUNT"]
 ACCESS_KEY_JTI_PATTERN = r"^ak_[0-9a-f]{32}$"
+# A non-blank value once surrounding whitespace is stripped (the OpenAPI-visible mirror of the
+# `.strip()` checks the model_validators below apply; both must stay in sync).
+_NON_BLANK_PATTERN = r"^\s*\S.*$"
+# A service or role name whose stripped form contains no whitespace or ':' (service names are
+# joined into a space-delimited claim such as "intake:read intake:write").
+_SCOPE_ITEM_PATTERN = r"^\s*[^\s:]+\s*$"
 
 
 class AccessKeyWorkspaceGrant(BaseModel):
     """Workspace membership to grant to a newly created access key principal."""
 
-    workspace: str
-    roles: list[str] = Field(default_factory=lambda: ["Editor"])
+    workspace: str = Field(
+        pattern=_NON_BLANK_PATTERN,
+        description="Workspace name. Must not be blank.",
+    )
+    roles: list[str] = Field(
+        default_factory=lambda: ["Editor"],
+        json_schema_extra={
+            "x-schema-default": ["Editor"],
+            # Blank entries are dropped (not rejected) by the model_validator below, but at
+            # least one non-blank role must remain.
+            "contains": {"pattern": _NON_BLANK_PATTERN},
+            "minContains": 1,
+        },
+        description="Roles to grant in the workspace. Defaults to ['Editor'] when omitted.",
+    )
 
     @model_validator(mode="after")
     def _normalize(self) -> Self:
@@ -83,7 +102,8 @@ class AccessKeyCreateRequest(BaseModel):
     )
     scope: list[str] | None = Field(
         default=None,
-        json_schema_extra={"nullable": True},
+        min_length=1,
+        json_schema_extra={"nullable": True, "items": {"type": "string", "pattern": _SCOPE_ITEM_PATTERN}},
         description="Optional service names that restrict this key to read and write access for those services.",
     )
     rotates: str | None = Field(

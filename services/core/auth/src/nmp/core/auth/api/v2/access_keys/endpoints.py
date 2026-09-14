@@ -123,6 +123,21 @@ def get_workspaces_client(
     return AsyncWorkspacesClient.from_client(nemo_client)
 
 
+def _caller_access_key_scope(auth_client: AuthClient) -> list[str] | None:
+    """The calling principal's own Scoped Access Key scope restriction, if any.
+
+    Returns None when the caller is unrestricted — authenticated via an ordinary OIDC
+    session, via internal principal headers, or via an unscoped access key — since none of
+    those should constrain what the caller can create. Otherwise returns the distinct
+    service names from the caller's own restricted `scope` claim (see AIRCORE-987).
+    """
+    resolved = auth_client.resolved_bearer_token
+    if resolved is None or resolved.token_kind != "access_key":
+        return None
+    services = sorted({scope.split(":", 1)[0] for scope in resolved.scopes if ":" in scope})
+    return services or None
+
+
 def get_access_key_issuer(
     auth_client: AuthClient = Depends(get_auth_client),
     registry: AccessKeyRegistry = Depends(get_access_key_registry),
@@ -134,6 +149,7 @@ def get_access_key_issuer(
         registry,
         workspaces_client,
         admin_override=lambda: _is_platform_admin(auth_client),
+        caller_scope=_caller_access_key_scope(auth_client),
     )
 
 

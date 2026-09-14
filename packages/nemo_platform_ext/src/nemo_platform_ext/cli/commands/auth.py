@@ -96,7 +96,10 @@ def _parse_access_key_expires_in(value: str | None) -> tuple[bool, int | None]:
 def _parse_access_key_scope(value: str | None) -> list[str] | None:
     if value is None:
         return None
-    return list(dict.fromkeys(service.strip() for service in value.split(",") if service.strip()))
+    services = list(dict.fromkeys(service.strip() for service in value.split(",") if service.strip()))
+    if not services:
+        raise typer.BadParameter("must contain at least one non-empty service name.", param_hint="--scope")
+    return services
 
 
 def _parse_access_key_workspace_grants(
@@ -107,8 +110,16 @@ def _parse_access_key_workspace_grants(
 
     grants: list[AccessKeyWorkspaceGrant] = []
     for value in values:
+        # partition() on a value with no ':' returns (value, "", ""), so a bare workspace name
+        # (no separator) correctly falls through to the Editor default below.
         workspace, separator, roles_value = value.partition(":")
+        workspace = workspace.strip()
         roles = [role.strip() for role in roles_value.split(",") if role.strip()] if separator else []
+        if not workspace:
+            raise typer.BadParameter(
+                f"Invalid workspace grant {value!r}: workspace name must not be empty.",
+                param_hint="--workspace",
+            )
         if separator and not roles:
             # An explicit ':' with no roles after it (e.g. 'team-a:' or 'team-a:,,') is more
             # likely a typo than a request for the default role; only omitting ':' entirely
@@ -119,7 +130,7 @@ def _parse_access_key_workspace_grants(
             )
         grants.append(
             AccessKeyWorkspaceGrant(
-                workspace=workspace.strip(),
+                workspace=workspace,
                 roles=roles if separator else ["Editor"],
             )
         )

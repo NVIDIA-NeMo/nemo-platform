@@ -531,6 +531,50 @@ def test_auth_access_keys_create_rejects_workspace_grant_with_empty_roles(
     fake_access_keys_client.create_access_key.assert_not_called()
 
 
+@pytest.mark.parametrize("scope_value", ["", " , ", ","])
+def test_auth_access_keys_create_rejects_blank_scope(monkeypatch: pytest.MonkeyPatch, scope_value: str):
+    fake_access_keys_client = MagicMock()
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.core.context.CLIContext.get_client",
+        lambda self: MagicMock(),
+    )
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(
+        app,
+        ["auth", "access-keys", "create", "--scope", scope_value],
+    )
+
+    assert_exit_code(result, 2)
+    assert "non-empty service" in " ".join(result.output.split())
+    fake_access_keys_client.create_access_key.assert_not_called()
+
+
+@pytest.mark.parametrize("workspace_value", ["", "  ", ":Viewer"])
+def test_auth_access_keys_create_rejects_blank_workspace_name(monkeypatch: pytest.MonkeyPatch, workspace_value: str):
+    fake_access_keys_client = MagicMock()
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.core.context.CLIContext.get_client",
+        lambda self: MagicMock(),
+    )
+    monkeypatch.setattr(
+        "nemo_platform_ext.cli.commands.auth.client_from_platform",
+        lambda platform, client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(
+        app,
+        ["auth", "access-keys", "create", "--workspace", workspace_value],
+    )
+
+    assert_exit_code(result, 2)
+    assert "workspace name must not be empty" in " ".join(result.output.split())
+    fake_access_keys_client.create_access_key.assert_not_called()
+
+
 def test_auth_access_keys_create_sends_explicit_null_expiration(monkeypatch: pytest.MonkeyPatch):
     fake_platform_client = MagicMock()
     fake_access_keys_client = MagicMock()
