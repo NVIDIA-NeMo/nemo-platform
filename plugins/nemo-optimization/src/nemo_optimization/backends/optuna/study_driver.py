@@ -42,6 +42,10 @@ logger = logging.getLogger(__name__)
 class StudyDriverError(RuntimeError):
     """Raised when study configuration or execution fails."""
 
+    def __init__(self, message: str, *, trial_count: int = 0) -> None:
+        super().__init__(message)
+        self.trial_count = trial_count
+
 
 @dataclass(frozen=True)
 class MetricSpec:
@@ -82,7 +86,10 @@ def parse_numeric_study_config(optimizer: Mapping[str, Any]) -> NumericStudyConf
     numeric = optimizer.get("numeric")
     if not isinstance(numeric, Mapping):
         raise StudyDriverError("optimizer.numeric must be a mapping.")
-    if not numeric.get("enabled"):
+    enabled = numeric.get("enabled")
+    if not isinstance(enabled, bool):
+        raise StudyDriverError("optimizer.numeric.enabled must be a boolean.")
+    if not enabled:
         raise StudyDriverError("optimizer.numeric.enabled must be true.")
 
     eval_metrics = optimizer.get("eval_metrics")
@@ -120,6 +127,11 @@ def parse_numeric_study_config(optimizer: Mapping[str, Any]) -> NumericStudyConf
                 "Supported values: 'bayesian' (TPE), 'tpe', 'grid'."
             )
 
+    try:
+        search_space = parse_search_space(optimizer)
+    except SearchSpaceError as exc:
+        raise StudyDriverError(str(exc)) from exc
+
     return NumericStudyConfig(
         n_trials=int(numeric.get("n_trials", 20)),
         sampler=sampler_name,
@@ -127,7 +139,7 @@ def parse_numeric_study_config(optimizer: Mapping[str, Any]) -> NumericStudyConf
         target=float(optimizer["target"]) if optimizer.get("target") is not None else None,
         multi_objective_mode=str(optimizer.get("multi_objective_combination_mode", "harmonic")),
         metrics=tuple(metrics),
-        search_space=parse_search_space(optimizer),
+        search_space=search_space,
     )
 
 
@@ -238,7 +250,8 @@ def run_numeric_study(
         n_pruned = sum(1 for t in study.trials if t.state == optuna.trial.TrialState.PRUNED)
         raise StudyDriverError(
             f"Numeric study finished with no completed trials "
-            f"({n_failed} failed, {n_pruned} pruned, {len(study.trials)} total)."
+            f"({n_failed} failed, {n_pruned} pruned, {len(study.trials)} total).",
+            trial_count=len(study.trials),
         )
 
     if len(metric_names) == 1:

@@ -90,6 +90,7 @@ class OptunaBackend:
             )
             result = run_numeric_study(payload, output_dir, evaluator)
         except (CandidateEvaluationError, StudyDriverError) as exc:
+            trial_count = getattr(exc, "trial_count", 0)
             return _failed_numeric_phase_result(
                 payload,
                 backend=self.name,
@@ -97,6 +98,7 @@ class OptunaBackend:
                 ctx=ctx,
                 experiment_id=experiment_id,
                 error=str(exc),
+                trial_count=trial_count if isinstance(trial_count, int) else 0,
                 trial_number_offset=request.trial_number_offset,
             )
         summary = {
@@ -180,6 +182,7 @@ def _failed_numeric_phase_result(
     ctx: JobContext,
     experiment_id: str,
     error: str,
+    trial_count: int,
     trial_number_offset: int,
 ) -> OptimizationPhaseResult:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -189,6 +192,7 @@ def _failed_numeric_phase_result(
         "phase": OptimizationPhase.NUMERIC.value,
         "experiment_id": experiment_id,
         "error": error,
+        "executed_trials": trial_count,
     }
     (output_dir / "numeric_phase_failure.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     ref = ctx.results.save(RESULT_NAME, output_dir)
@@ -197,9 +201,9 @@ def _failed_numeric_phase_result(
         backend=backend,
         status=OptimizationPhaseStatus.FAILED,
         optimized_payload=copy.deepcopy(payload),
-        summary={"experiment_id": experiment_id, "error": error},
+        summary={"experiment_id": experiment_id, "error": error, "executed_trials": trial_count},
         artifacts={"result": ref.model_dump(mode="json")},
-        trial_count=0,
+        trial_count=trial_count,
         trial_number_offset=trial_number_offset,
     )
 
