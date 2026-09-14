@@ -119,6 +119,7 @@ def test_run_numeric_study_writes_configs(tmp_path: Path) -> None:
     assert len(list(tmp_path.glob("config_numeric_trial_*.yml"))) == 4
     optimized = yaml.safe_load((tmp_path / "optimized_config.yml").read_text(encoding="utf-8"))
     assert "optimizer" not in optimized
+    assert result.optimized_payload["optimizer"] == payload["optimizer"]
     assert result.best_trial.params
     # Logical Optuna names must be mapped onto Fabric dotted paths in the export.
     for name, value in result.best_trial.params.items():

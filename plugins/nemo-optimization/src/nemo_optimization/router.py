@@ -22,8 +22,12 @@ from typing import Any
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_context import JobContext
 
+from nemo_optimization.backends.protocol import OptimizationBackend, OptimizationPhase, OptimizationPhaseRequest
 from nemo_optimization.fabric import build_optimize_payload, require_fabric_agent_config
-from nemo_optimization.registry import discover_optimization_backends
+from nemo_optimization.registry import OptimizationBackendDiscoveryError, require_optimization_backend
+from nemo_optimization.search_space import DEFAULT_PROMPT_BACKEND
+
+DEFAULT_NUMERIC_BACKEND = "optuna"
 
 
 class OptimizeRouterError(RuntimeError):
@@ -43,14 +47,13 @@ class OptimizeRouter:
     ) -> dict[str, Any]:
         """Route a Fabric-native optimize study to the selected Tune backend."""
         payload = build_optimize_payload(agent_config=agent_config, optimize_config=optimize_config)
-        backend_name = _select_backend(payload)
-        backends = discover_optimization_backends()
-        backend = backends.get(backend_name)
-        if backend is None:
-            raise OptimizeRouterError(
-                f"Optimization backend {backend_name!r} is not registered. Available backends: {sorted(backends)}"
-            )
-        return backend.run_study(payload, ctx=ctx, sdk=sdk)
+        backend_name, phase = _select_backend(payload)
+        backend = _require_backend(backend_name, phase=phase)
+        return backend.run_phase(
+            OptimizationPhaseRequest(payload=payload, phase=phase),
+            ctx=ctx,
+            sdk=sdk,
+        ).to_result_dict()
 
     @staticmethod
     def dispatch_payload(
@@ -61,12 +64,16 @@ class OptimizeRouter:
     ) -> dict[str, Any]:
         """Route an already-merged Fabric payload (used by tests and future job types)."""
         require_fabric_agent_config(payload, label="optimize payload")
-        backend_name = _select_backend(payload)
-        backend = discover_optimization_backends()[backend_name]
-        return backend.run_study(payload, ctx=ctx, sdk=sdk)
+        backend_name, phase = _select_backend(payload)
+        backend = _require_backend(backend_name, phase=phase)
+        return backend.run_phase(
+            OptimizationPhaseRequest(payload=payload, phase=phase),
+            ctx=ctx,
+            sdk=sdk,
+        ).to_result_dict()
 
 
-def _select_backend(payload: dict[str, Any]) -> str:
+def _select_backend(payload: dict[str, Any]) -> tuple[str, OptimizationPhase]:
     optimizer = payload.get("optimizer")
     if not isinstance(optimizer, dict):
         raise OptimizeRouterError("optimizer section must be a mapping.")
@@ -77,11 +84,27 @@ def _select_backend(payload: dict[str, Any]) -> str:
     prompt_enabled = bool(prompt.get("enabled")) if isinstance(prompt, dict) else False
 
     if prompt_enabled:
-        return "ga"
+        return _backend_name(prompt, default=DEFAULT_PROMPT_BACKEND), OptimizationPhase.PROMPT
     if numeric_enabled:
-        return "optuna"
+        return _backend_name(numeric, default=DEFAULT_NUMERIC_BACKEND), OptimizationPhase.NUMERIC
 
     raise OptimizeRouterError(
         "No Tune backend selected. Set optimizer.numeric.enabled: true for numeric HPO "
         "(optimizer.prompt.enabled is not supported in this release)."
     )
+
+
+def _backend_name(section: dict[str, Any], *, default: str) -> str:
+    raw = section.get("backend", default)
+    if not isinstance(raw, str):
+        raise OptimizeRouterError("Optimizer backend name must be a string.")
+    if not raw.strip():
+        raise OptimizeRouterError("Optimizer backend name must not be empty.")
+    return raw.strip()
+
+
+def _require_backend(backend_name: str, *, phase: OptimizationPhase) -> OptimizationBackend:
+    try:
+        return require_optimization_backend(backend_name, phase=phase)
+    except OptimizationBackendDiscoveryError as exc:
+        raise OptimizeRouterError(str(exc)) from exc

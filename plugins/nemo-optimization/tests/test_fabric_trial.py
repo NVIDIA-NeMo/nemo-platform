@@ -20,13 +20,13 @@ from nemo_evaluator_sdk.values.evidence import (
     CandidateEvidence,
     EvidenceDescriptor,
 )
-from nemo_optimization.backends.optuna.fabric_trial import (
-    FabricTrialEvaluator,
+from nemo_optimization.candidate import CandidateEvaluationError, CandidateEvaluationResult
+from nemo_optimization.fabric_evaluator import (
+    FabricCandidateEvaluator,
     _model_from_fabric,
     build_agent_eval_tasks,
     reduce_agent_eval_scores,
 )
-from nemo_optimization.backends.optuna.study_driver import StudyDriverError
 
 
 def _payload(dataset: Path) -> dict[str, Any]:
@@ -120,7 +120,7 @@ def test_model_from_fabric_rejects_unknown_provider() -> None:
             }
         }
     }
-    with pytest.raises(StudyDriverError, match="unsupported provider 'anthropic'"):
+    with pytest.raises(CandidateEvaluationError, match="unsupported provider 'anthropic'"):
         _model_from_fabric(payload, "judge")
 
 
@@ -238,12 +238,12 @@ def test_reduce_agent_eval_scores_rejects_when_all_failed() -> None:
             outputs=[],
         ),
     ]
-    with pytest.raises(StudyDriverError, match="did not produce"):
+    with pytest.raises(CandidateEvaluationError, match="did not produce"):
         reduce_agent_eval_scores(scores, ["average_score"])
 
 
 def test_reduce_agent_eval_scores_rejects_missing_metric() -> None:
-    with pytest.raises(StudyDriverError, match="did not produce"):
+    with pytest.raises(CandidateEvaluationError, match="did not produce"):
         reduce_agent_eval_scores([], ["average_score"])
 
 
@@ -283,7 +283,10 @@ def test_fabric_trial_evaluator_invokes_agent_evaluator(monkeypatch: pytest.Monk
                 trial_id="1:fabric",
                 metric_type="tunable-rag-evaluator",
                 status=AgentEvalScoreStatus.COMPLETED,
-                outputs=[MetricOutput(name="average_score", value=0.9)],
+                outputs=[
+                    MetricOutput(name="average_score", value=0.9),
+                    MetricOutput(name="reasoning", value="The answer is correct."),
+                ],
             )
             return AgentEvalResult(
                 run_id="r",
@@ -296,24 +299,27 @@ def test_fabric_trial_evaluator_invokes_agent_evaluator(monkeypatch: pytest.Monk
                 work_dir=config.work_dir,
             )
 
-    monkeypatch.setattr("nemo_optimization.backends.optuna.fabric_trial.FabricAgentRuntime", FakeRuntime)
-    monkeypatch.setattr("nemo_optimization.backends.optuna.fabric_trial.AgentEvaluator", FakeAgentEvaluator)
+    monkeypatch.setattr("nemo_optimization.fabric_evaluator.FabricAgentRuntime", FakeRuntime)
+    monkeypatch.setattr("nemo_optimization.fabric_evaluator.AgentEvaluator", FakeAgentEvaluator)
 
-    evaluator = FabricTrialEvaluator(
+    evaluator = FabricCandidateEvaluator(
         payload=_payload(dataset),
         metric_names=["average_score"],
         output_dir=tmp_path / "out",
         experiment_id="exp-test",
     )
 
-    scores = evaluator.evaluate(
+    result = evaluator.evaluate(
         trial_number=7,
         suggestions={"models.default.temperature": 0.2},
         trial_overlay={"metadata": {"name": "trial-007"}},
         rep=0,
     )
 
-    assert scores == {"average_score": 0.9}
+    assert isinstance(result, CandidateEvaluationResult)
+    assert result.aggregate_metrics == {"average_score": 0.9}
+    assert len(result.scores) == 1
+    assert result.reasoning_for_metric("average_score")[0].reasoning == "The answer is correct."
     assert captured["runtime"]["trajectory_extra"] == {
         "nemo.optimizer.experiment_id": "exp-test",
         "nemo.optimizer.trial_number": 7,
