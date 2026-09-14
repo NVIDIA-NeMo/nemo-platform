@@ -113,6 +113,7 @@ class TestTokenClaims:
     [
         (" admins, developers ,, ", ["admins", "developers"]),
         ([" admins ", "", 42, "developers"], ["admins", "developers"]),
+        ({" admins ": {"project": "NeMo"}, "developers": {}, 42: "ignored"}, ["admins", "developers"]),
         (None, []),
     ],
 )
@@ -916,7 +917,80 @@ class TestOpaqueTokenIntrospection:
         with patch.object(http_clients, "shared_async_http_client", return_value=mock_client):
             result = await validator.validate_token("revoked-token")
 
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_invalid_audience_does_not_fall_back_to_introspection(self):
+        """Signed JWT audience failures stay invalid even when opaque introspection is enabled."""
+        validator = self._validator(
+            introspect_opaque_tokens=True,
+            introspection_endpoint="https://sso.example.com/introspect",
+            audience="expected-audience",
+        )
+
+        with patch.object(validator, "_get_jwks_client") as mock_get_jwks:
+            mock_jwks = MagicMock()
+            mock_signing_key = MagicMock()
+            mock_signing_key.key = "test-key"
+            mock_jwks.get_signing_key_from_jwt = AsyncMock(return_value=mock_signing_key)
+            mock_get_jwks.return_value = mock_jwks
+
+            with (
+                patch("jwt.get_unverified_header", return_value={"alg": "RS256"}),
+                patch("jwt.decode", side_effect=jwt.InvalidAudienceError("Invalid audience")),
+                patch.object(http_clients, "shared_async_http_client") as mock_shared_client,
+            ):
+                result = await validator.validate_token("invalid.audience.token")
+
         assert result is None
+        mock_shared_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_jwt_shaped_opaque_token_introspects_after_jwks_failure(self):
+        """Opaque tokens that parse as JWT-like strings still fall back to introspection."""
+        validator = self._validator(
+            introspect_opaque_tokens=True,
+            introspection_endpoint="https://sso.example.com/introspect",
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.content = json.dumps({"active": True, "sub": "user123"}).encode("utf-8")
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        with (
+            patch.object(validator, "_get_jwks_client", side_effect=httpx.HTTPError("Connection failed")),
+            patch.object(http_clients, "shared_async_http_client", return_value=mock_client),
+        ):
+            result = await validator.validate_token("opaque.token.value")
+
+        assert result is not None
+        assert result.subject == "user123"
+        mock_client.post.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_opaque_token_introspection_can_use_separate_client_id(self):
+        """A dedicated introspection client id takes precedence over the public OIDC client id."""
+        validator = self._validator(
+            introspect_opaque_tokens=True,
+            introspection_endpoint="https://sso.example.com/introspect",
+            introspection_client_id="api-client",
+            introspection_client_secret="s3cret",
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.content = json.dumps({"active": True, "sub": "user123"}).encode("utf-8")
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        with patch.object(http_clients, "shared_async_http_client", return_value=mock_client):
+            result = await validator.validate_token("opaque-access-token")
+
+        assert result is not None
+        call_args = mock_client.post.call_args
+        assert call_args[1]["auth"] == ("api-client", "s3cret")
 
     @pytest.mark.asyncio
     async def test_opaque_token_introspection_rejects_mismatched_audience(self):

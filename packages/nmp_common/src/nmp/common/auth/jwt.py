@@ -105,7 +105,8 @@ class JWTValidator:
 
         client = http_clients.shared_async_http_client()
         client_secret = self.config.oidc.introspection_client_secret
-        auth = (self.config.oidc.client_id, client_secret) if client_secret else None
+        client_id = self.config.oidc.introspection_client_id or self.config.oidc.client_id
+        auth = (client_id, client_secret) if client_secret else None
         response = await client.post(
             introspection_endpoint,
             data={"token": token, "token_type_hint": "access_token"},
@@ -199,6 +200,29 @@ class JWTValidator:
         except JsonObjectDeserializationError as exc:
             raise jwt.InvalidTokenError("UserInfo response was not a JSON object") from exc
 
+    async def _resolve_opaque_token(self, token: str) -> token_claims.TokenClaims | None:
+        if self.config.oidc.resolve_opaque_tokens_via_userinfo:
+            if self.config.oidc.audience:
+                logger.warning(
+                    "Skipping UserInfo resolution because oidc.audience is configured and "
+                    "UserInfo responses cannot be checked against it; falling back to "
+                    "introspection if enabled"
+                )
+            else:
+                claims = await self._resolve_via_userinfo(token)
+                if claims is None:
+                    return None
+                return self._claims_extractor.extract(claims)
+        if self.config.oidc.introspect_opaque_tokens:
+            claims = await self._introspect_token(token)
+            if claims is None:
+                return None
+            return self._claims_extractor.extract(claims)
+        return None
+
+    def _opaque_resolution_enabled(self) -> bool:
+        return self.config.oidc.resolve_opaque_tokens_via_userinfo or self.config.oidc.introspect_opaque_tokens
+
     async def _get_jwks_client(self) -> AsyncJWKSClient:
         """Get or create JWKS client for token validation.
 
@@ -230,23 +254,11 @@ class JWTValidator:
                 token_alg = str(token_header.get("alg", "")).lower()
             except jwt.PyJWTError:
                 token_alg = ""
-                if self.config.oidc.resolve_opaque_tokens_via_userinfo:
-                    if self.config.oidc.audience:
-                        logger.warning(
-                            "Skipping UserInfo resolution because oidc.audience is configured and "
-                            "UserInfo responses cannot be checked against it; falling back to "
-                            "introspection if enabled"
-                        )
-                    else:
-                        claims = await self._resolve_via_userinfo(token)
-                        if claims is None:
-                            return None
-                        return self._claims_extractor.extract(claims)
-                if self.config.oidc.introspect_opaque_tokens:
-                    claims = await self._introspect_token(token)
-                    if claims is None:
-                        return None
-                    return self._claims_extractor.extract(claims)
+                opaque_claims = await self._resolve_opaque_token(token)
+                if opaque_claims is not None:
+                    return opaque_claims
+                if self._opaque_resolution_enabled() or token.count(".") != 2:
+                    return None
 
             if token_alg == "none":
                 if not self.config.allow_unsigned_jwt:
@@ -270,35 +282,51 @@ class JWTValidator:
                 )
                 return self._claims_extractor.extract(claims)
 
-            jwks_client = await self._get_jwks_client()
-            signing_key = await jwks_client.get_signing_key_from_jwt(token)
+            try:
+                jwks_client = await self._get_jwks_client()
+                signing_key = await jwks_client.get_signing_key_from_jwt(token)
 
-            # Only validate audience when explicitly configured.
-            # When audience is not set, skip the check so tokens from any
-            # audience are accepted (the issuer + signature checks are still
-            # enforced).
-            audience = [self.config.oidc.audience] if self.config.oidc.audience else None
+                # Only validate audience when explicitly configured.
+                # When audience is not set, skip the check so tokens from any
+                # audience are accepted (the issuer + signature checks are still
+                # enforced).
+                audience = [self.config.oidc.audience] if self.config.oidc.audience else None
 
-            # Build list of allowed issuers
-            allowed_issuers = [self.config.oidc.issuer] + self.config.oidc.additional_issuers
+                # Build list of allowed issuers
+                allowed_issuers = [self.config.oidc.issuer] + self.config.oidc.additional_issuers
 
-            # Decode and validate token (validate issuer manually to support multiple)
-            decode_options: Options = {"require": ["exp", "iat", "sub"]}
-            if audience is None:
-                decode_options["verify_aud"] = False
-            claims = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=["RS256", "ES256"],
-                audience=audience,
-                options=decode_options,
-            )
+                # Decode and validate token (validate issuer manually to support multiple)
+                decode_options: Options = {"require": ["exp", "iat", "sub"]}
+                if audience is None:
+                    decode_options["verify_aud"] = False
+                claims = jwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=["RS256", "ES256"],
+                    audience=audience,
+                    options=decode_options,
+                )
 
-            # Validate issuer manually (PyJWT only supports single issuer)
-            token_issuer = claims.get("iss", "")
-            if token_issuer not in allowed_issuers:
-                logger.warning(f"Invalid token issuer: {token_issuer} not in {allowed_issuers}")
+                # Validate issuer manually (PyJWT only supports single issuer)
+                token_issuer = claims.get("iss", "")
+                if token_issuer not in allowed_issuers:
+                    logger.warning(f"Invalid token issuer: {token_issuer} not in {allowed_issuers}")
+                    return None
+            except jwt.ExpiredSignatureError:
+                logger.warning("Token has expired")
                 return None
+            except jwt.InvalidAudienceError:
+                logger.warning("Invalid token audience")
+                return None
+            except jwt.InvalidIssuerError:
+                logger.warning("Invalid token issuer")
+                return None
+            except jwt.PyJWTError as e:
+                logger.warning(f"JWT validation failed; trying opaque token resolution if configured: {e}")
+                return await self._resolve_opaque_token(token)
+            except httpx.HTTPError as e:
+                logger.error(f"Failed to fetch JWKS; trying opaque token resolution if configured: {e}")
+                return await self._resolve_opaque_token(token)
             return self._claims_extractor.extract(claims)
 
         except jwt.ExpiredSignatureError:

@@ -128,9 +128,14 @@ class OIDCConfig(BaseSettings):
         "Only used when introspect_opaque_tokens is enabled.",
     )
 
+    introspection_client_id: str | None = Field(
+        default=None,
+        description="Client ID used to authenticate RFC 7662 introspection requests. Defaults to client_id when unset.",
+    )
+
     introspection_client_secret: str | None = Field(
         default=None,
-        description="Client secret used to authenticate RFC 7662 introspection requests as client_id. "
+        description="Client secret used to authenticate RFC 7662 introspection requests. "
         "Required by most IdPs when introspect_opaque_tokens is enabled.",
     )
 
