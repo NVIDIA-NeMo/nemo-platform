@@ -85,14 +85,18 @@ Keep `query:` / `passage:` prefixes for embed and
    resulting `eval_beir`; never regenerate it for base vs tuned comparisons.
 5. Confirm the training model entity has a non-null `fileset`. Auto-discovered
    Inference Gateway model entities are endpoints, not trainable checkpoints.
-6. Fine-tune with explicit `training.recipe: bi_encoder` or `cross_encoder` and
+6. Before Automodel, confirm `training.jsonl` has non-empty `neg_doc` lists
+   (`references/sdg.md`). Convert-only Stage 1 leaves `neg_doc: []`; the collator
+   then crashes sampling `train_n_passages - 1` negatives (default 4). Mine first
+   (`enable_mining: true`).
+7. Fine-tune with explicit `training.recipe: bi_encoder` or `cross_encoder` and
    `finetuning_type` `all_weights` or `lora_merged` only.
-7. Default stop after `retrieve-eval` with `baseline` + tuned target, `k: [1,5,10,100]`.
-8. Deploy is opt-in. Automodel writes ONNX at the fileset root (`alternates/hf/`
+8. Default stop after `retrieve-eval` with `baseline` + tuned target, `k: [1,5,10,100]`.
+9. Deploy is opt-in. Automodel writes ONNX at the fileset root (`alternates/hf/`
    for the HF checkpoint) for both `bi_encoder` and `cross_encoder`. Embed: Retriever
    NIM 2.2.0. Rerank: Ranking NIM `llama-nemotron-rerank-1b-v2:1.10.0`. Do not shell
    out to `nemotron embed|rerank export`.
-9. Poll jobs at 60–300s. Parse JSON from **stdout only** (never `2>&1` into `json.load`).
+10. Poll jobs at 60–300s. Parse JSON from **stdout only** (never `2>&1` into `json.load`).
 
 Report absolute and relative nDCG@10, Recall@10, and Recall@100 on the same frozen
 eval set. Prefer at least 100 queries; warn below 50. Treat 15% relative nDCG@10

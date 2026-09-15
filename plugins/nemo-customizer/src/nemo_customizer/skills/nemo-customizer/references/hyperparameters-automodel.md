@@ -197,6 +197,14 @@ and the wrapped `train.json` used by mining. Pass that fileset as
 which is a single JSON document rather than JSONL. The startup log records the
 selected training files.
 
+**Pre-submit:** convert-only Stage 1 leaves `neg_doc: []`. The retrieval collator
+samples `train_n_passages - 1` negatives (default 4) and raises
+`neg_doc must contain at least 1 document to sample N negatives`. Count
+`len(neg_doc)` on a sample of `training.jsonl` (see `nemo-retrieval-recipes`
+`references/sdg.md`). If every row is empty, run `retrieval-prepare` with
+`enable_mining: true` before `automodel submit`. Do not paper over this by
+lowering `train_n_passages`.
+
 The base model must be a model entity with a non-null `fileset`. An Inference
 Gateway auto-discovered entity with only `api_endpoint` cannot be downloaded for
 training.

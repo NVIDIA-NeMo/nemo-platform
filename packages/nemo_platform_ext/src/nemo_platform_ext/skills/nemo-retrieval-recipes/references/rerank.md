@@ -19,8 +19,10 @@ Default stop at Stage 3 (checkpoint / IGW model-ref eval). Stage 4 is part of th
 
 ## Commands
 
-Stage 0+1 is identical to embed; see `sdg.md`. Both stages below read the Stage 1
-`artifacts` fileset directly.
+Stage 0+1 is identical to embed; see `sdg.md`. Run the `sdg.md` pre-submit
+`neg_doc` check before Stage 2 — convert-only JSONL makes `cross_encoder` fail
+the same way as `bi_encoder`. Both stages below read the Stage 1 `artifacts`
+fileset directly.
 
 Register a fileset-backed reranker checkpoint if it does not already exist; an
 Inference Gateway endpoint entity has no fileset and cannot be trained:

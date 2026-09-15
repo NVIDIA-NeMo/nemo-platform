@@ -304,6 +304,31 @@ def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
     assert (staged / "train.json").exists()
 
 
+def test_retrieval_prepare_train_input_copies_corpus_for_mining(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    train_input = ctx.storage.persistent / "mined-train"
+    train_input.mkdir()
+    (train_input / "train.json").write_text(
+        json.dumps({"corpus": {}, "data": [{"question": "q", "pos_doc": ["p"], "neg_doc": []}]}),
+        encoding="utf-8",
+    )
+    corpus = train_input / "corpus"
+    corpus.mkdir()
+    (corpus / "merlin_metadata.json").write_text("{}", encoding="utf-8")
+    (corpus / "train.parquet").write_bytes(b"parq")
+    spec = RetrievalPrepareStepConfig(
+        job_config=RetrievalPrepareJobConfig(train_input_file="mined-train", enable_mining=True),
+        phase="convert",
+    )
+    output = RetrievalPrepareJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=Mock())
+    assert output["exit_code"] == 0
+    staged = ctx.storage.persistent / "stage1_data_prep"
+    assert (staged / "train.json").exists()
+    assert (staged / "corpus" / "merlin_metadata.json").read_text(encoding="utf-8") == "{}"
+    assert (staged / "corpus" / "train.parquet").read_bytes() == b"parq"
+    assert not (staged / "training.jsonl").exists()
+
+
 def test_retrieval_prepare_fails_on_empty_training_split(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     train_input = ctx.storage.persistent / "empty-train"

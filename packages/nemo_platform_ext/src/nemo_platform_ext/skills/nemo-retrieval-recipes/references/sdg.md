@@ -97,7 +97,10 @@ nemo data-designer retrieval-run --workspace default --spec '{
     "quality_judge_model": "nvidia/nemotron-3-nano-30b-a3b",
     "embed_model": "nvidia/nemotron-3-embed-1b"
   },
-  "prepare": {"enable_mining": false}
+  "prepare": {
+    "enable_mining": true,
+    "model": "default/nemotron-3-embed-1b"
+  }
 }'
 ```
 
@@ -105,6 +108,49 @@ Hard-negative mining (`enable_mining: true`) is a GPU step and needs `model` to
 be a model entity with an attached encoder fileset; it loads that staged
 directory with Hugging Face networking disabled. Never mine after conversion
 produced an empty train split.
+
+Convert-only (`enable_mining: false`, the default) writes `training.jsonl` with
+`neg_doc: []`. Automodel `bi_encoder` / `cross_encoder` still samples
+`train_n_passages - 1` negatives (default **4**) and fails with
+`neg_doc must contain at least 1 document to sample N negatives`. Mine before
+any encoder fine-tune. To fill an existing convert-only `train.json` without
+regenerating frozen `eval_beir`, point `train_input_file` at that fileset and
+set `enable_mining: true`. The fileset must still contain sibling `corpus/`
+(`merlin_metadata.json`, `train.parquet`); convert-only artifacts already do.
+Mining fails with `Metadata File for Corpus does not exist` when that directory
+is not staged next to `train.json`.
+
+### Pre-submit: non-empty `neg_doc`
+
+Do not submit Automodel until a sample of `training.jsonl` has enough negatives.
+Download the file (or the first lines) and count `len(neg_doc)`:
+
+```bash
+nemo files download <artifacts> --workspace default \
+  --remote-path training.jsonl -o /tmp/training.jsonl
+python3 - <<'PY'
+import json
+from collections import Counter
+lens, n = Counter(), 0
+with open("/tmp/training.jsonl") as f:
+    for i, line in enumerate(f):
+        obj = json.loads(line)
+        n += 1
+        negs = obj.get("neg_doc") or []
+        lens[len(negs) if isinstance(negs, list) else "bad"] += 1
+        if i >= 199:
+            break
+need = 4  # default train_n_passages=5
+print({"sampled": n, "neg_lens": dict(lens)})
+if lens.get(0, 0) == n:
+    raise SystemExit("empty neg_doc: enable_mining true before Automodel")
+if any(isinstance(k, int) and k < need for k in lens):
+    print("warn: some rows have fewer than", need, "negatives")
+PY
+```
+
+If every sampled row has `neg_doc: []`, stop and mine. Do not lower
+`train_n_passages` to paper over an unmined convert-only fileset.
 
 ## Reuse an existing Stage 0 dump
 

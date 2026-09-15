@@ -173,8 +173,11 @@ def _run_convert(job: RetrievalPrepareJobConfig, output_dir: Path, ctx: JobConte
             raise RuntimeError("Retrieval SDG conversion did not produce a training file")
         train_file = conversion.train_file
 
-    train_file = _stage_train_file(Path(train_file), output_dir)
+    source_train = Path(train_file)
+    train_file = _stage_train_file(source_train, output_dir)
     _assert_nonempty_training_split(train_file)
+    if job.enable_mining:
+        _stage_corpus_for_mining(source_train, output_dir)
 
     if not job.enable_mining:
         inline_path = output_dir / "training.jsonl"
@@ -212,6 +215,21 @@ def _stage_train_file(train_file: Path, output_dir: Path) -> Path:
         shutil.copy2(train_file, dest)
         return dest
     raise FileNotFoundError(f"Training file is not a file: {train_file}")
+
+
+def _stage_corpus_for_mining(train_file: Path, output_dir: Path) -> None:
+    """Copy sibling ``corpus/`` so the miner can load merlin_metadata.json.
+
+    ``train_input_file`` skips conversion, which normally writes that directory.
+    Mining then fails with ``Metadata File for Corpus does not exist``.
+    """
+    src = train_file.parent / "corpus"
+    dest = output_dir / "corpus"
+    if not src.is_dir():
+        return
+    if src.resolve() == dest.resolve():
+        return
+    shutil.copytree(src, dest, dirs_exist_ok=True)
 
 
 def _resolve_generation_input(staged: Path, generation_file: str) -> Path:

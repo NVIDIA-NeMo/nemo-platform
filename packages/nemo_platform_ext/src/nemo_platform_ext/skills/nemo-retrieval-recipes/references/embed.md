@@ -31,13 +31,16 @@ nemo data-designer retrieval-run --workspace default --spec '{
     "quality_judge_model": "nvidia/nemotron-3-nano-30b-a3b",
     "embed_model": "nvidia/nemotron-3-embed-1b"
   },
-  "prepare": {"enable_mining": false}
+  "prepare": {
+    "enable_mining": true,
+    "model": "default/nemotron-3-embed-1b"
+  }
 }'
 ```
 
 Corpus, generation, and split control live in `sdg.md`, including how to reuse a published Stage 0 dump.
 
-Mining needs `enable_mining: true` and `model` as a platform entity with an encoder fileset. Do not mine when convert produced an empty train split.
+Mining needs `enable_mining: true` and `model` as a platform entity with an encoder fileset. Do not mine when convert produced an empty train split. Convert-only filesets leave `neg_doc: []` and Automodel crashes sampling negatives — run the `sdg.md` pre-submit check before Stage 2.
 
 ### Register the trainable base
 

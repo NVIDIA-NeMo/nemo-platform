@@ -192,6 +192,9 @@ class TestLoadPlatformSkills:
         assert "query_counts" in sdg
         assert "must use their exact key sets" in sdg
         assert "training-only" not in skill.content
+        assert "empty neg_doc" in sdg
+        assert "enable_mining: true" in sdg
+        assert "train_n_passages" in sdg
 
     def test_model_selection_benchmark_cache_is_packaged(self):
         skill = load_skills()["nemo-model-selection"]
