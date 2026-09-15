@@ -64,7 +64,7 @@ def load_provider_config(manifest_path: Path) -> ProviderConfig:
         discovery_url=data["discovery_url"],
         nemo_config=manifest_path.parent / data["nemo_config"],
         interactive_user_username=data["interactive_user_identity"]["username"],
-        interactive_user_password=data["interactive_user_identity"]["password"],
+        interactive_user_password=_resolve_interactive_user_password(data["interactive_user_identity"]),
         interactive_user_expected_email=data["interactive_user_identity"]["expected_email"],
         workload_principal_id=data["workload_identity"]["principal_id"],
         workload_expected_groups=list(data["workload_identity"]["expected_groups"]),
@@ -101,6 +101,13 @@ def _load_provider_runtimes(data: dict) -> tuple[ProviderRuntimeConfig, ...]:
         )
         for runtime in data.get("test_runtimes", [])
     )
+
+
+def _resolve_interactive_user_password(identity: dict[str, str]) -> str:
+    password_env_var = identity.get("password_env_var")
+    if password_env_var:
+        return os.environ.get(password_env_var, "")
+    return identity["password"]
 
 
 def _resolve_grant(grant: dict[str, str] | None) -> dict[str, str] | None:

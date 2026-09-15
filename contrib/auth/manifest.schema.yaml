@@ -117,12 +117,18 @@ properties:
     type: object
     required:
       - username
-      - password
       - expected_email
+    oneOf:
+      - required:
+          - password
+      - required:
+          - password_env_var
     properties:
       username:
         type: string
       password:
+        type: string
+      password_env_var:
         type: string
       expected_email:
         type: string

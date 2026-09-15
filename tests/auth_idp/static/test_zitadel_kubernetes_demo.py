@@ -198,7 +198,8 @@ def test_zitadel_manifest_uses_supported_non_password_grants() -> None:
     manifest = _load_yaml(ZITADEL_DIR / "manifest.yaml")
     token_acquisition = manifest["token_acquisition"]
 
-    assert manifest["interactive_user_identity"]["password"] == ""
+    assert "password" not in manifest["interactive_user_identity"]
+    assert manifest["interactive_user_identity"]["password_env_var"] == "ZITADEL_INTERACTIVE_USER_PASSWORD"
     assert "e2e_setup_password_grant" not in token_acquisition
     assert "workload_provider_password_grant" not in token_acquisition
     assert token_acquisition["e2e_setup_grant"] == {
@@ -316,12 +317,16 @@ def test_zitadel_chart_seeds_generated_clients_and_patches_nemo_config() -> None
     assert "login_client_pat" in seed_template
     assert "/management/v1/users/human/_import" in seed_template
     assert "/management/v1/global/users/_by_login_name" in seed_template
+    assert "/management/v1/users/{}/password" in seed_template
+    assert '"noChangeRequired": True' in seed_template
     assert "/management/v1/projects/_search" in seed_template
     assert "/management/v1/projects/{}/apps/_search" in seed_template
     assert values["zitadelDemo"]["interactiveUser"]["userName"] == "nemo-user"
     assert values["zitadelDemo"]["interactiveUser"]["email"] == "nemo-user@example.com"
     assert "password" not in values["zitadelDemo"]["interactiveUser"]
     assert '"interactive_user_password": INTERACTIVE_USER_PASSWORD' in seed_template
+    assert 'missing == {"interactive_user_password"}' in seed_template
+    assert "migrated legacy ZITADEL seed state" in seed_template
     assert "valueFrom:" in seed_template
     assert "secretKeyRef:" in seed_template
     assert "zitadelSecrets.demo.secretName" in seed_template
@@ -382,8 +387,8 @@ def test_zitadel_values_use_generated_secrets_for_sensitive_defaults() -> None:
         },
     ]
     assert values["zitadel"]["postgresql"]["fullnameOverride"] == "zitadel-postgresql"
-    assert values["zitadel"]["postgresql"]["auth"]["password"] == ""
-    assert values["zitadel"]["postgresql"]["auth"]["postgresPassword"] == ""
+    assert "password" not in values["zitadel"]["postgresql"]["auth"]
+    assert "postgresPassword" not in values["zitadel"]["postgresql"]["auth"]
     assert values["zitadel"]["postgresql"]["auth"]["existingSecret"] == "zitadel-postgresql"
     assert values["zitadel"]["postgresql"]["auth"]["secretKeys"] == {
         "adminPasswordKey": "postgres-password",
@@ -400,6 +405,15 @@ def test_zitadel_values_use_generated_secrets_for_sensitive_defaults() -> None:
     assert "$adminPassword" in generated_secrets
     assert "dbname=zitadel sslmode=disable" in generated_secrets
     assert '"helm.sh/hook": pre-install,pre-upgrade' in generated_secrets
+
+
+def test_zitadel_demo_files_avoid_empty_password_placeholders() -> None:
+    manifest = (ZITADEL_DIR / "manifest.yaml").read_text(encoding="utf-8")
+    values = (HELM_DIR / "values.yaml").read_text(encoding="utf-8")
+
+    assert 'password: ""' not in manifest
+    assert 'password: ""' not in values
+    assert 'postgresPassword: ""' not in values
 
 
 def test_zitadel_chart_creates_workload_token_secrets_and_tokenreview_rbac() -> None:

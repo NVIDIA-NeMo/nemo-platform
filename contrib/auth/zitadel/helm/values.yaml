@@ -151,8 +151,6 @@ zitadel:
     auth:
       database: zitadel
       username: zitadel
-      password: ""
-      postgresPassword: ""
       existingSecret: *zitadelPostgresqlSecretName
       secretKeys:
         adminPasswordKey: *zitadelPostgresqlAdminPasswordKey

@@ -15,7 +15,7 @@ principal_contract:
   internal_service_prefix_reserved: "service:"
 interactive_user_identity:
   username: nemo-user
-  password: ""
+  password_env_var: ZITADEL_INTERACTIVE_USER_PASSWORD
   expected_email: nemo-user@example.com
 workload_identity:
   principal_id: svc-nemo

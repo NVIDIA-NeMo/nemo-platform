@@ -201,6 +201,10 @@ data:
             if exc.status == 404:
                 return None
             raise
+        return state
+
+
+    def _validate_complete_state(state):
         missing = REQUIRED_STATE_KEYS - state.keys()
         if missing:
             raise RuntimeError(
@@ -211,6 +215,18 @@ data:
                 )
             )
         return state
+
+
+    def _migrate_state(pat, state):
+        missing = REQUIRED_STATE_KEYS - state.keys()
+        if missing == {"interactive_user_password"}:
+            migrated = dict(state)
+            migrated["interactive_user_id"] = _create_interactive_user(pat)
+            migrated["interactive_user_password"] = INTERACTIVE_USER_PASSWORD
+            _upsert_secret(STATE_SECRET_NAME, migrated)
+            print("migrated legacy ZITADEL seed state in {}".format(STATE_SECRET_NAME), flush=True)
+            return migrated
+        return _validate_complete_state(state)
 
 
     def _upsert_secret(name, values):
@@ -478,9 +494,25 @@ data:
                 raise
             query = urllib.parse.urlencode({"loginName": INTERACTIVE_USER_NAME})
             user = _zitadel_request("GET", "/management/v1/global/users/_by_login_name?{}".format(query), pat)
+            user_id = _user_id(user)
+            _set_interactive_user_password(pat, user_id)
+            return user_id
+        return _user_id(user)
+
+
+    def _user_id(user):
         if "userId" in user:
             return user["userId"]
         return user["user"]["id"]
+
+
+    def _set_interactive_user_password(pat, user_id):
+        _zitadel_request(
+            "POST",
+            "/management/v1/users/{}/password".format(user_id),
+            pat,
+            {"password": INTERACTIVE_USER_PASSWORD, "noChangeRequired": True},
+        )
 
 
     def _add_user_grant(pat, user_id, project_id):
@@ -650,6 +682,7 @@ data:
             _upsert_secret(STATE_SECRET_NAME, state)
             print("seeded ZITADEL project {} and stored {}".format(state["project_id"], STATE_SECRET_NAME), flush=True)
         else:
+            state = _migrate_state(pat, state)
             print("using existing ZITADEL seed state from {}".format(STATE_SECRET_NAME), flush=True)
         _patch_nemo_config(state)
         _restart_nemo_deployments()
