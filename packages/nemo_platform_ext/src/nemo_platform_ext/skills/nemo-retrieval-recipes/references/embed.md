@@ -35,23 +35,41 @@ nemo data-designer retrieval-run --workspace default --spec '{
 }'
 ```
 
-Skip SDG:
-
-```bash
-nemo data-designer retrieval-prepare --spec '{
-  "sdg_input": "hf://nvidia/Retrieval-Synthetic-NVDocs-v1@<revision>/nv_pp_dd_sdg.json",
-  "enable_mining": false
-}'
-```
+Corpus, generation, and split control live in `sdg.md`, including how to reuse a published Stage 0 dump.
 
 Mining needs `enable_mining: true` and `model` as a platform entity with an encoder fileset. Do not mine when convert produced an empty train split.
 
-Stage 2 (dataset fileset holds `training.jsonl` at the root):
+### Register the trainable base
+
+A model entity auto-discovered from Inference Gateway is an endpoint: its
+`fileset` is null and it cannot be trained. Register the checkpoint as a
+fileset-backed entity and confirm the fileset before submitting.
+
+```bash
+nemo files filesets create nemotron-3-embed-1b \
+  --workspace default --purpose model --exist-ok \
+  --storage '{
+    "type":"huggingface",
+    "repo_id":"nvidia/Nemotron-3-Embed-1B-BF16",
+    "repo_type":"model",
+    "revision":"<model-revision>"
+  }'
+nemo models create nemotron-3-embed-1b \
+  --workspace default --exist-ok \
+  --fileset default/nemotron-3-embed-1b \
+  --custom-fields '{"hf_model_id":"nvidia/Nemotron-3-Embed-1B-BF16"}'
+nemo models get nemotron-3-embed-1b --workspace default
+```
+
+Do not submit until the last command reports
+`"fileset": "default/nemotron-3-embed-1b"`.
+
+Stage 2 (`dataset.training` is the Stage 1 `artifacts` fileset):
 
 ```json
 {
   "model": "default/nemotron-3-embed-1b",
-  "dataset": {"training": "default/stage1-prep"},
+  "dataset": {"training": "default/retrieval-stage1-artifacts"},
   "training": {
     "recipe": "bi_encoder",
     "training_type": "sft",
@@ -62,12 +80,14 @@ Stage 2 (dataset fileset holds `training.jsonl` at the root):
 ```
 
 Leave batch/LR unset to take Nemotron retrieval defaults. Do not set `max_steps` with `epochs`.
+Dataset discovery picks `training.jsonl` and ignores the wrapped `train.json`
+beside it; the startup log records which training files it selected.
 
-Stage 3:
+Stage 3 reads the same fileset — the BEIR loader accepts a root containing `eval_beir`:
 
 ```bash
 nemo evaluator retrieve-eval submit --spec '{
-  "dataset": "default/eval-beir",
+  "dataset": "default/retrieval-stage1-artifacts",
   "target": "default/nemotron-3-embed-1b-tuned",
   "baseline": "default/nemotron-3-embed-1b",
   "k": [1, 5, 10, 100]

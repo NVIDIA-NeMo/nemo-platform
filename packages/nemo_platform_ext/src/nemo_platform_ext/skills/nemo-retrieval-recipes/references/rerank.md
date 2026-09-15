@@ -19,12 +19,36 @@ Default stop at Stage 3 (checkpoint / IGW model-ref eval). Stage 4 is part of th
 
 ## Commands
 
+Stage 0+1 is identical to embed; see `sdg.md`. Both stages below read the Stage 1
+`artifacts` fileset directly.
+
+Register a fileset-backed reranker checkpoint if it does not already exist; an
+Inference Gateway endpoint entity has no fileset and cannot be trained:
+
+```bash
+nemo files filesets create llama-nemotron-rerank-1b-v2 \
+  --workspace default --purpose model --exist-ok \
+  --storage '{
+    "type":"huggingface",
+    "repo_id":"nvidia/llama-nemotron-rerank-1b-v2",
+    "repo_type":"model",
+    "revision":"<model-revision>"
+  }'
+nemo models create llama-nemotron-rerank-1b-v2 \
+  --workspace default --exist-ok \
+  --fileset default/llama-nemotron-rerank-1b-v2 \
+  --custom-fields '{"hf_model_id":"nvidia/llama-nemotron-rerank-1b-v2"}'
+nemo models get llama-nemotron-rerank-1b-v2 --workspace default
+```
+
+Do not submit until the model entity reports a non-null fileset.
+
 Stage 2:
 
 ```json
 {
   "model": "default/llama-nemotron-rerank-1b-v2",
-  "dataset": {"training": "default/stage1-prep"},
+  "dataset": {"training": "default/retrieval-stage1-artifacts"},
   "training": {
     "recipe": "cross_encoder",
     "training_type": "sft",
@@ -40,7 +64,7 @@ Stage 3 (two-stage):
 
 ```bash
 nemo evaluator retrieve-eval submit --spec '{
-  "dataset": "default/eval-beir",
+  "dataset": "default/retrieval-stage1-artifacts",
   "target": {
     "embeddings": "default/llama-nemotron-embed-1b-v2",
     "reranker": "default/llama-nemotron-rerank-1b-v2-tuned",

@@ -46,13 +46,22 @@ Chaining generate then prepare is a jobs-service multi-step job (`retrieval-run`
 
 Tiny corpora (one source file / `num_files: 1`) can place every query in the test split and leave train empty. Conversion must fail before mining when `train.json` has no records. Generate with enough documents (50+ recommended) or raise `train_ratio`.
 
+## Stage 1 output
+
+`retrieval-prepare` saves one `artifacts` job result holding `training.jsonl`,
+`eval_beir/` (`corpus.jsonl`, `queries.jsonl`, `qrels/test.tsv`), and the wrapped
+`train.json` that mining consumes. Pass that fileset directly to both consumers:
+Automodel's dataset discovery selects `training.jsonl` and ignores the non-JSONL
+siblings, and the BEIR loader accepts a fileset root containing `eval_beir`.
+Splitting the artifacts into separate training and eval filesets is optional.
+
 ## Previous / Next / artifacts
 
 | Direction | Skill or job | Artifact |
 |---|---|---|
 | Previous | User corpus fileset or `hf://` URI | Raw docs |
 | This stage | `retrieval-generate` → `retrieval-prepare` (or `retrieval-run`) | `generation_result.json`; `eval_beir/corpus.jsonl`, `queries.jsonl`, `qrels/test.tsv`; `training.jsonl` |
-| Next | `nemo-retrieval-recipes`, or `nemo customization automodel submit` with `training.recipe: bi_encoder` (embed) or `cross_encoder` (rerank) | Dataset fileset with `training.jsonl` at the root; freeze `eval_beir` for `retrieve-eval` |
+| Next | `nemo-retrieval-recipes`, or `nemo customization automodel submit` with `training.recipe: bi_encoder` (embed) or `cross_encoder` (rerank) | Stage 1 `artifacts` fileset as `dataset.training` and as the `retrieve-eval` dataset |
 
 Do not regenerate `eval_beir` for base vs fine-tuned comparisons.
 

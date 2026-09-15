@@ -60,12 +60,24 @@ nemo data-designer retrieval-preview --spec '{"generate":{"corpus":"default/my-d
 
 Conversion (CPU) produces `eval_beir/` and training JSON. GPU mining is off by
 default. Skip SDG by pointing `sdg_input` at a fileset containing an existing
-`generation_result.json`, or at
-`hf://nvidia/Retrieval-Synthetic-NVDocs-v1@<revision>`.
+`generation_result.json`. For a differently named dump, put the filename in
+the reference or set `generation_file`. Directories default to
+`generation_result.json`; the job does not guess among JSON files.
 
 ```bash
 nemo data-designer retrieval-prepare --spec '{
   "sdg_input": "default/stage0-out"
+}'
+
+nemo data-designer retrieval-prepare --spec '{
+  "sdg_input": "hf://nvidia/Retrieval-Synthetic-NVDocs-v1@<revision>/nv_pp_dd_sdg.json",
+  "enable_mining": false
+}'
+
+nemo data-designer retrieval-prepare --spec '{
+  "sdg_input": "default/retrieval-synthetic-nvdocs-v1",
+  "generation_file": "nv_pp_dd_sdg.json",
+  "enable_mining": false
 }'
 ```
 
@@ -98,6 +110,26 @@ nemo data-designer retrieval-run --spec '{
 
 This is jobs-service multi-step execution (CPU then optional GPU), not Data Designer
 in-config workflow chaining.
+
+## Use the Stage 1 output
+
+Stage 1 saves one `artifacts` fileset containing `training.jsonl`, `eval_beir/`
+(`corpus.jsonl`, `queries.jsonl`, `qrels/test.tsv`), and the wrapped `train.json`
+that hard-negative mining consumes.
+
+Pass that fileset to both downstream consumers without repackaging it:
+
+- Automodel `dataset.training` — dataset discovery selects `training.jsonl` and
+  ignores the non-JSONL `train.json` beside it.
+- `nemo evaluator retrieve-eval` `dataset` — the BEIR loader accepts either the
+  BEIR directory or a fileset root containing `eval_beir`.
+
+```bash
+nemo files list <artifacts-fileset> --workspace default
+```
+
+Freeze the fileset once base-versus-tuned comparison starts, so both runs score
+against the same `eval_beir` split.
 
 ## SDK
 

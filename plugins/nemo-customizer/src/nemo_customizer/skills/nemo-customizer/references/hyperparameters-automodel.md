@@ -190,12 +190,24 @@ When the resolved recipe is `bi_encoder` or `cross_encoder` (explicit, or `auto`
 
 ### Retrieval data from Stage 1
 
-Previous: Data Designer `retrieval-prepare` / `retrieval-run` fileset with Automodel `training.jsonl` (`query`, `pos_doc`, `neg_doc`). Next after a successful job: `nemo-retrieval-recipes` or `nemo evaluator retrieve-eval submit` on the **frozen** `eval_beir` fileset — not CHAT `evaluate`.
+Previous: the Data Designer `retrieval-prepare` / `retrieval-run` `artifacts`
+fileset, holding `training.jsonl` (`query`, `pos_doc`, `neg_doc`), `eval_beir/`,
+and the wrapped `train.json` used by mining. Pass that fileset as
+`dataset.training`: discovery selects `training.jsonl` and ignores `train.json`,
+which is a single JSON document rather than JSONL. The startup log records the
+selected training files.
+
+The base model must be a model entity with a non-null `fileset`. An Inference
+Gateway auto-discovered entity with only `api_endpoint` cannot be downloaded for
+training.
+
+Next after a successful job: `nemo-retrieval-recipes` or `nemo evaluator
+retrieve-eval submit` on the **frozen** `eval_beir` — not CHAT `evaluate`.
 
 ```json
 {
   "model": "default/nemotron-3-embed-1b",
-  "dataset": {"training": "default/stage1-prep"},
+  "dataset": {"training": "default/retrieval-stage1-artifacts"},
   "training": {
     "recipe": "bi_encoder",
     "training_type": "sft",
