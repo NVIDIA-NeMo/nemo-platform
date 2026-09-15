@@ -72,7 +72,7 @@ describe('CustomizationConfigSidePanel', () => {
 
     expect(screen.getByText('Training Type')).toBeInTheDocument();
     expect(screen.getByText(getFormattedTrainingType('sft'))).toBeInTheDocument();
-    expect(screen.getByText('Finetuning Type')).toBeInTheDocument();
+    expect(screen.getByText('Fine-tuning Type')).toBeInTheDocument();
     expect(screen.getByText(getFormattedTrainingType('lora'))).toBeInTheDocument();
     expect(screen.getByText('Training Options')).toBeInTheDocument();
 

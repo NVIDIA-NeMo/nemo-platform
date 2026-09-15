@@ -14,7 +14,7 @@ export interface CustomizeModelButtonProps {
   workspace: string;
   /**
    * When provided, the button is shown in the per-model context: label becomes
-   * "Customize this Model", a loading spinner is shown while eligibility is
+   * "Fine-tune this Model", a loading spinner is shown while eligibility is
    * being checked, and the button is disabled if the model has no fileset to
    * fine-tune from.
    */
@@ -38,9 +38,9 @@ export const CustomizeModelButton: FC<CustomizeModelButtonProps> = ({ workspace,
       loading={isLoading}
       disabled={!canFineTune}
     >
-      Customize this Model
+      Fine-tune this Model
     </LoadingButton>
   ) : (
-    <CreateButton onClick={goToFineTuning}>Customize a Model</CreateButton>
+    <CreateButton onClick={goToFineTuning}>Fine-tune a Model</CreateButton>
   );
 };

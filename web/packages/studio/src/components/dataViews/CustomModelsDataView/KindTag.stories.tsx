@@ -43,7 +43,7 @@ export const Default: Story = {
 };
 
 export const AllFinetuningTypes: Story = {
-  name: 'All Finetuning Types',
+  name: 'All Fine-tuning Types',
   args: { finetuningType: FinetuningType.lora },
   render: (args) => (
     <Flex gap="density-lg" align="center" wrap="wrap">

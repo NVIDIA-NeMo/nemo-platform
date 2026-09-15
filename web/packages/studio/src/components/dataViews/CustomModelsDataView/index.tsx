@@ -291,7 +291,7 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
       meta: {
         filter: {
           type: 'single-select',
-          label: 'Finetuning Type',
+          label: 'Fine-tuning Type',
           options: FINETUNING_TYPE_FILTER_OPTIONS,
         },
       },

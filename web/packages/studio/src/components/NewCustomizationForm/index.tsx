@@ -196,7 +196,7 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
                   slotFooter={
                     <Flex className="w-full justify-end gap-2">
                       <Button type="submit" disabled={isPending} color="brand">
-                        {isPending ? 'Starting…' : 'Start Fine-Tuning'}
+                        {isPending ? 'Starting…' : 'Start Fine-tuning'}
                       </Button>
                     </Flex>
                   }

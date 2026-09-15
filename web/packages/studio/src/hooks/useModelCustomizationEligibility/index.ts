@@ -13,7 +13,6 @@ export const canFineTuneModel = (model: ModelEntity | null | undefined): boolean
 
 export interface ModelCustomizationEligibility {
   canFineTune: boolean;
-  canCustomize: boolean;
   isLoading: boolean;
 }
 
@@ -30,7 +29,6 @@ export const useModelCustomizationEligibility = (
 
   return {
     canFineTune,
-    canCustomize: canFineTune,
     isLoading: false,
   };
 };
