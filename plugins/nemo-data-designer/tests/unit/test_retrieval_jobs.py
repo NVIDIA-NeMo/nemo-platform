@@ -302,7 +302,8 @@ def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
     staged = ctx.storage.persistent / "stage1_data_prep"
     assert (staged / "eval_beir" / "corpus.jsonl").exists()
     assert (staged / "training.jsonl").exists()
-    assert (staged / "train.json").exists()
+    assert (staged / "additional" / "train.json").exists()
+    assert not (staged / "train.json").exists()
 
 
 def test_retrieval_prepare_train_input_copies_corpus_for_mining(tmp_path: Path) -> None:

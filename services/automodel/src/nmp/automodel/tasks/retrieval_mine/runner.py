@@ -12,7 +12,7 @@ from typing import Any, Literal
 import yaml
 from nemo_platform_plugin.job_context import JobContext
 from nmp.automodel.tasks.retrieval_mine.launch import run_hard_negative_mining
-from nmp.customization_common.retrieval.inline import wrapped_to_inline_jsonl
+from nmp.customization_common.retrieval.inline import move_aux_files_to_additional, wrapped_to_inline_jsonl
 from nmp.customization_common.retrieval.unroll import unroll_training_file
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -141,6 +141,7 @@ def run_mine(
     with training_jsonl.open(encoding="utf-8") as handle:
         if next(handle, None) is None:
             raise ValueError(f"No training rows written to {training_jsonl}")
+    move_aux_files_to_additional(output_dir)
     artifacts = ctx.results.save(name="artifacts", local_path=output_dir)
     return {
         "exit_code": 0,

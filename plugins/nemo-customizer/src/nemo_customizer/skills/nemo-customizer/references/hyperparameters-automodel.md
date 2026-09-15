@@ -191,10 +191,9 @@ When the resolved recipe is `bi_encoder` or `cross_encoder` (explicit, or `auto`
 ### Retrieval data from Stage 1
 
 Previous: the Data Designer `retrieval-prepare` / `retrieval-run` `artifacts`
-fileset, holding `training.jsonl` (`query`, `pos_doc`, `neg_doc`), `eval_beir/`,
-and the wrapped `train.json` used by mining. Pass that fileset as
-`dataset.training`: discovery selects `training.jsonl` and ignores `train.json`,
-which is a single JSON document rather than JSONL.
+fileset, holding `training.jsonl` (`query`, `pos_doc`, `neg_doc`) and `eval_beir/`
+at the root. Wrapped `train.json`, corpus parquet, and mining caches live under
+`additional/`. Pass that fileset as `dataset.training`.
 
 **Pre-submit:** convert-only Stage 1 leaves `neg_doc: []`. The retrieval collator
 samples `train_n_passages - 1` negatives (default 4) and raises

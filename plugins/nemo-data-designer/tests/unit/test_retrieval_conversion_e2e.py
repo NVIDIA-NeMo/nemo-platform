@@ -147,7 +147,8 @@ def test_prepare_job_convert_phase_runs_unmocked(stage0_jsonl: Path, tmp_path: P
     out = persistent / "stage1_data_prep"
     assert (out / "eval_beir" / "corpus.jsonl").exists()
     assert (out / "eval_beir" / "qrels" / "test.tsv").exists()
-    assert (out / "train.json").exists()
+    assert (out / "additional" / "train.json").exists()
+    assert (out / "training.jsonl").exists()
 
     rows = [json.loads(line) for line in (out / "training.jsonl").read_text(encoding="utf-8").splitlines()]
     assert rows

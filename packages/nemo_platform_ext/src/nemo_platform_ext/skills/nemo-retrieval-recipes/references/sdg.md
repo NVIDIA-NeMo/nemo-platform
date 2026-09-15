@@ -177,11 +177,11 @@ nemo data-designer retrieval-prepare --workspace default --spec '{
 
 ## Stage 1 output
 
-One `artifacts` fileset per job, containing `training.jsonl`, `eval_beir/`
-(`corpus.jsonl`, `queries.jsonl`, `qrels/test.tsv`), and the wrapped `train.json`
-that mining consumes. Pass that fileset straight to Automodel as
-`dataset.training` and to `retrieve-eval` as `dataset`: Automodel ignores the
-non-JSONL siblings, and the BEIR loader accepts a root containing `eval_beir`.
+One `artifacts` result per job. At the result root: `training.jsonl` and
+`eval_beir/` (`corpus.jsonl`, `queries.jsonl`, `qrels/test.tsv`). Wrapped
+`train.json`, corpus parquet, mining caches, and miner intermediates go under
+`additional/`. Pass that artifacts fileset to Automodel as `dataset.training`
+and to `retrieve-eval` as `dataset`.
 
 ```bash
 nemo jobs get-status <prepare-job> -f json

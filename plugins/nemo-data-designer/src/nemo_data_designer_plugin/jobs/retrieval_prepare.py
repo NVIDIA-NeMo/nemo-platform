@@ -20,7 +20,7 @@ from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
-from nmp.customization_common.retrieval.inline import wrapped_to_inline_jsonl
+from nmp.customization_common.retrieval.inline import move_aux_files_to_additional, wrapped_to_inline_jsonl
 from nmp.customization_common.service.platform_client import fetch_model_entity
 from pydantic import BaseModel
 
@@ -182,6 +182,7 @@ def _run_convert(job: RetrievalPrepareJobConfig, output_dir: Path, ctx: JobConte
     if not job.enable_mining:
         inline_path = output_dir / "training.jsonl"
         wrapped_to_inline_jsonl(train_file, inline_path, output_dir / "corpus" / "train.parquet")
+        move_aux_files_to_additional(output_dir)
 
     artifacts = ctx.results.save(name="artifacts", local_path=output_dir)
     return {

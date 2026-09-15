@@ -83,8 +83,8 @@ Stage 2 (`dataset.training` is the Stage 1 `artifacts` fileset):
 ```
 
 Leave batch/LR unset to take Nemotron retrieval defaults. Do not set `max_steps` with `epochs`.
-Pass the Stage 1 artifacts fileset as-is: discovery reads `training.jsonl` and
-ignores wrapped `train.json`.
+Pass the Stage 1 artifacts fileset as-is: `training.jsonl` and `eval_beir/` sit
+at the result root; wrapped `train.json` and mining caches are under `additional/`.
 
 Stage 3 reads the same fileset — the BEIR loader accepts a root containing `eval_beir`:
 
