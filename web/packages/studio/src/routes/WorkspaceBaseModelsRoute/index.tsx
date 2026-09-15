@@ -41,6 +41,7 @@ import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsD
 import { ModelPanel, ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { VirtualizedCardGrid } from '@studio/components/VirtualizedCardGrid';
 import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
+import { useModelDeploymentStatus } from '@studio/hooks/useModelDeploymentStatus';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getWorkspaceBaseModelsRoute } from '@studio/routes/utils';
@@ -257,6 +258,12 @@ export const WorkspaceBaseModelsRoute: FC = () => {
   /** Base models can only be deleted when no `model_providers` entries reference them. */
   const allowModelDelete = !!selectedModel && !(selectedModel.model_providers?.length ?? 0);
 
+  // Feeds the panel's Status row, which had no source until the hook started
+  // returning the deployment itself rather than only its status.
+  const { deployment: selectedModelDeployment } = useModelDeploymentStatus(
+    selectedModel ?? undefined
+  );
+
   const sortSelectValue = dataViewState.sorting.state[0]
     ? dataViewState.sorting.state[0].desc
       ? `-${dataViewState.sorting.state[0].id}`
@@ -285,6 +292,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
           ),
         }}
         model={selectedModel ?? undefined}
+        deployment={selectedModelDeployment}
         showCustomizationDetails={CUSTOMIZER_ENABLED}
         defaultTab={tabFromUrl}
         onTabChange={(tab) =>
