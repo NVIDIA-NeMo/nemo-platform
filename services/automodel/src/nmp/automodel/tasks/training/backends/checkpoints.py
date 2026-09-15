@@ -415,9 +415,10 @@ def _onnx_safe_bidirectional_mask():
     """Replace transformers' SDPA bidirectional mask with an ONNX-traceable additive mask."""
     import torch
 
-    def _mask(config=None, input_embeds=None, attention_mask=None, **kwargs):
-        dtype = input_embeds.dtype
-        batch_size, seq_length, _ = input_embeds.shape
+    def _mask(config=None, inputs_embeds=None, attention_mask=None, input_embeds=None, **kwargs):
+        embeds = inputs_embeds if inputs_embeds is not None else input_embeds
+        dtype = embeds.dtype
+        batch_size, seq_length, _ = embeds.shape
         mask = attention_mask[:, None, None, :].expand(batch_size, 1, seq_length, seq_length)
         return (1.0 - mask.to(dtype)) * torch.finfo(dtype).min
 
@@ -514,7 +515,7 @@ def export_onnx(
 
     export_model = _build_export_module(inner, model_type, cfg)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    export_model = export_model.to(device=device, dtype=torch_dtype)
+    export_model = export_model.to(device=device, dtype=torch_dtype).eval()
 
     tokenized = tokenizer(_EXPORT_SAMPLES[model_type], return_tensors="pt", padding=True, truncation=True)
     args = [tokenized["input_ids"].to(device), tokenized["attention_mask"].to(device)]
@@ -565,12 +566,15 @@ def export_onnx(
     tokenizer_dir.mkdir(parents=True, exist_ok=True)
     tokenizer.save_pretrained(tokenizer_dir)
 
+    # ORT verification uses CPUExecutionProvider; compare against a CPU forward
+    # so GPU/CPU kernel drift on 1B encoders does not fail a correct graph.
+    cpu_args = [tensor.detach().cpu() for tensor in args]
     with torch.no_grad():
-        reference = export_model(*args)
+        reference = export_model.to("cpu").eval()(*cpu_args)
     verify_onnx_matches_reference(
         onnx_path=onnx_path,
-        feed={name: tensor.cpu().numpy() for name, tensor in zip(input_names, args)},
-        reference=reference.float().cpu().numpy(),
+        feed={name: tensor.numpy() for name, tensor in zip(input_names, cpu_args)},
+        reference=reference.float().numpy(),
         atol=1e-3,
     )
 
