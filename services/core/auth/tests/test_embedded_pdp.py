@@ -37,7 +37,11 @@ def test_access_key_lifecycle_routes_are_available_to_authenticated_owners(
 
     for action in ["suspend", "unsuspend"]:
         rule = endpoints[f"/apis/auth/v2/access-keys/{{jti}}/{action}"]["post"]
-        assert rule == {"permissions": [], "scopes": []}
+        # No RBAC permission required (self-service: owners manage their own keys), but a
+        # scoped Access Key must carry `auth:write`/`platform:write` to use these routes on
+        # itself, closing the self-escalation gap where a key scoped to e.g. `intake` could
+        # otherwise suspend/unsuspend arbitrary access keys (see AIRCORE-987).
+        assert rule == {"permissions": [], "scopes": ["auth:write", "platform:write"]}
 
 
 @pytest.fixture

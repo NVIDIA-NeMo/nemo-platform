@@ -20,7 +20,10 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyReversibleStatus,
     AccessKeyRotateResponse,
     AccessKeyStatus,
+    AccessKeyWorkspaceGrant,
 )
+from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
+from nemo_platform_plugin.workspaces.types import CreateWorkspaceMemberRequest, UpdateWorkspaceMemberRequest
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.auth.access_keys import (
     LEGACY_ACCESS_KEY_METADATA_VERSION,
@@ -112,6 +115,7 @@ class AccessKeyRegistry:
                 entity_type=key.entity_type,
                 issuer=key.issuer,
                 audiences=key.audiences,
+                scope=key.scope,
                 issued_at=key.created_at,
                 expires_at=key.expires_at,
             )
@@ -218,6 +222,29 @@ class AccessKeyRegistry:
             return _RETRY
 
         return await self._retry_on_conflict(do_attempt, handle_conflict)
+
+    async def get_for_rotation(
+        self, jti: str, principal: str, *, admin_override: AdminOverride | None = None
+    ) -> AccessKeyEntity:
+        """Validate the rotation target (the key referenced by `rotates`) before its replacement is minted.
+
+        Raises AccessKeyValidationError (not AccessKeyNotFoundError) so callers can rely on this
+        failing the create request with a 400 before any new key is issued, rather than silently
+        minting an unrelated key while the referenced rotation target goes unrevoked. `rotates` is
+        scoped to personal keys only: a service-bound predecessor exists independently of any
+        single owner and has no stable non-admin identity to key rotation off of.
+        """
+        try:
+            record = await self._get_owned(jti, principal, admin_override=admin_override)
+        except AccessKeyNotFoundError as exc:
+            raise AccessKeyValidationError(
+                f"rotates references a Scoped Access Key that does not exist or is not owned by the caller: {jti}"
+            ) from exc
+        if record.is_service_account:
+            raise AccessKeyValidationError(
+                "rotates only supports personal Scoped Access Keys without a service account"
+            )
+        return record
 
     async def suspend(
         self, jti: str, principal: str, *, admin_override: AdminOverride | None = None
@@ -469,6 +496,7 @@ class AccessKeyRegistry:
             status=effective_status,
             issuer=record.issuer,
             audiences=list(dict.fromkeys(record.audiences)),
+            scope=list(dict.fromkeys(record.scope)),
             created_at=record.issued_at,
             expires_at=record.expires_at,
             grace_period_expires_at=record.grace_period_expires_at if effective_status == "ROTATING" else None,
@@ -609,12 +637,15 @@ class PersistentAccessKeyIssuer:
         config: AuthConfig,
         principal: Principal,
         registry: AccessKeyRegistry,
+        workspaces_client: AsyncWorkspacesClient,
         *,
         admin_override: AdminOverride | None = None,
+        caller_scope: list[str] | None = None,
     ) -> None:
         self._issuer = AccessKeyIssuerService(config=config, principal=principal)
         self._config = config
         self._registry = registry
+        self._workspaces_client = workspaces_client
         self.principal = principal.id
         # Lets any current PlatformAdmin revoke or suspend a service-bound key;
         # see AdminOverride and AIRCORE-986. Memoized for the lifetime of this issuer
@@ -622,6 +653,11 @@ class PersistentAccessKeyIssuer:
         # pre-check (is_platform_admin) and create_async's own defense-in-depth re-check
         # share a single PDP has_role round trip instead of each paying for one.
         self._admin_override = _memoize_admin_override(admin_override)
+        # The calling principal's own Scoped Access Key scope restriction (if the caller is
+        # itself authenticated via a scope-restricted access key), used by create_async to
+        # prevent that key from minting a broader replacement (see AIRCORE-987). None means the
+        # caller is unrestricted, e.g. an ordinary OIDC session or an unscoped access key.
+        self._caller_scope = frozenset(caller_scope) if caller_scope is not None else None
 
     async def is_platform_admin(self) -> bool:
         """Whether the caller is a current PlatformAdmin.
@@ -632,16 +668,56 @@ class PersistentAccessKeyIssuer:
         """
         return self._admin_override is not None and await self._admin_override()
 
+    def _enforce_caller_scope(self, request: AccessKeyCreateRequest) -> None:
+        """Reject a scope-restricted caller minting a key broader than its own access.
+
+        A caller authenticated via a Scoped Access Key that is itself restricted via `--scope`
+        must not be able to use its `auth`/`platform` scope permission to mint an unscoped
+        (full-privilege) or differently-scoped replacement key for its own principal — that
+        would let a narrowly-scoped, leaked key self-escalate. Callers authenticated via an
+        ordinary OIDC session, or via an unscoped access key, are unaffected (see AIRCORE-987).
+        """
+        if self._caller_scope is None:
+            return
+        requested = set(request.scope or [])
+        if request.scope is None or not requested <= self._caller_scope:
+            raise AccessKeyValidationError(
+                "A Scoped Access Key restricted via --scope can only create replacement keys "
+                f"scoped to a subset of its own scope ({', '.join(sorted(self._caller_scope))})"
+            )
+
     async def create_async(
         self, request: AccessKeyCreateRequest, *, allow_service_account: bool = False
     ) -> AccessKeyCreateResponse:
         self._ensure_enabled()
+        if request.service_account_id is not None and request.rotates is not None:
+            # `rotates` is only meaningful for personal keys: a service-bound predecessor has no
+            # stable non-admin owner identity to correlate rotations against (see
+            # AccessKeyRegistry.get_for_rotation), and allowing the *replacement* to be
+            # service-bound would let a rotation silently change the credential's identity type.
+            raise AccessKeyValidationError(
+                "rotates cannot be combined with service_account_id; rotation is only supported for personal keys"
+            )
         if allow_service_account:
             # Defense-in-depth, mirroring the admin_override re-check that revoke/suspend/
             # unsuspend apply for service-bound keys: don't rely solely on the caller having
             # verified PlatformAdmin status before setting this flag (see AdminOverride).
             if not await self.is_platform_admin():
                 raise AccessKeyValidationError("Service-bound Scoped Access Keys require PlatformAdmin")
+        if request.rotates is not None:
+            # Validate the rotation target before minting its replacement: an invalid `rotates`
+            # (not found, not owned, or service-bound) fails the request up front instead of
+            # silently minting an orphan key while the referenced key goes unrevoked.
+            old_record = await self._registry.get_for_rotation(
+                request.rotates, self.principal, admin_override=self._admin_override
+            )
+            if request.scope is None:
+                # Preserve the predecessor's scope restriction when the caller doesn't request
+                # one explicitly, mirroring rotate_async's convention below, so this generic
+                # create-and-revoke-predecessor path can't silently widen a scoped key back to
+                # unscoped just because --scope was omitted.
+                request = request.model_copy(update={"scope": old_record.scope or None})
+        self._enforce_caller_scope(request)
         key = await self._issuer.create_async(request, allow_service_account=allow_service_account)
         try:
             await self._registry.add(key, owner_principal=self.principal)
@@ -660,7 +736,151 @@ class PersistentAccessKeyIssuer:
                 "access_key_jti": key.jti,
             },
         )
+        # Provision the new key's requested access before revoking its predecessor, so a key
+        # is never left with less access than it had before rotation started.
+        try:
+            applied_grants = await self._grant_workspace_memberships(key, request.workspaces)
+        except Exception:
+            # A key whose requested workspace access could not be provisioned is worse than
+            # useless: the caller would believe --workspace replaced their separate
+            # `nemo workspaces members create` call when it silently didn't. Revoke it and
+            # surface the failure instead of returning a 200 with incomplete access.
+            await self._revoke_after_failed_creation(key.jti, "workspace_grant_failed")
+            raise
+        if request.rotates is not None:
+            try:
+                await self.revoke_async(request.rotates)
+            except Exception:
+                logger.warning(
+                    "Failed to revoke the prior Scoped Access Key after rotation",
+                    extra={
+                        "audit_event": "access_key.rotation_revoke_failed",
+                        "actor_principal": self.principal,
+                        "access_key_jti": key.jti,
+                        "rotated_from_jti": request.rotates,
+                    },
+                    exc_info=True,
+                )
+                # Unlike the workspace-grant case, the new key is fully usable here; the only
+                # thing that failed is retiring the old one. The old key is still active and
+                # untouched, so compensate by revoking the new key and surfacing the failure so
+                # the caller can retry rotation, leaving the untouched predecessor as the
+                # caller's one valid credential in the meantime. That predecessor is the
+                # principal's only remaining credential, so any workspace access already granted
+                # to this request's key must also be unwound — otherwise the principal keeps the
+                # requested access via the predecessor even though rotation failed.
+                await self._rollback_workspace_memberships(key, applied_grants)
+                await self._revoke_after_failed_creation(key.jti, "rotation_revoke_failed")
+                raise
         return key
+
+    async def _revoke_after_failed_creation(self, jti: str, failure_reason: str) -> None:
+        try:
+            await self.revoke_async(jti)
+        except Exception:
+            logger.error(
+                "Failed to compensate for a failed Scoped Access Key creation step by revoking the new key",
+                extra={
+                    "audit_event": "access_key.compensating_revoke_failed",
+                    "actor_principal": self.principal,
+                    "access_key_jti": jti,
+                    "failure_reason": failure_reason,
+                },
+                exc_info=True,
+            )
+
+    async def _grant_workspace_memberships(
+        self,
+        key: AccessKeyCreateResponse,
+        workspaces: list[AccessKeyWorkspaceGrant] | None,
+    ) -> list[tuple[AccessKeyWorkspaceGrant, list[str] | None]]:
+        # Workspace membership is principal-wide, not key-scoped: a partial failure here (e.g.
+        # the 2nd of 3 requested workspaces rejects the grant) must not leave the 1st workspace's
+        # membership behind for a principal whose key we're about to revoke. Track what this call
+        # actually changed so a failure can be unwound precisely, rather than compensating only by
+        # revoking the new key while its already-applied workspace access stays live. Returned to
+        # the caller (rather than only used internally) so a later failure elsewhere in
+        # create_async — e.g. the rotation predecessor-revoke step — can also unwind these grants.
+        applied: list[tuple[AccessKeyWorkspaceGrant, list[str] | None]] = []
+        for grant in workspaces or []:
+            try:
+                prior_roles = await self._get_member_roles(grant.workspace, key.principal)
+                await self._workspaces_client.create_workspace_member(
+                    workspace=grant.workspace,
+                    body=CreateWorkspaceMemberRequest(
+                        principal=key.principal,
+                        roles=grant.roles,
+                    ),
+                )
+                applied.append((grant, prior_roles))
+            except Exception:
+                logger.warning(
+                    "Failed to grant workspace membership to a new Scoped Access Key",
+                    extra={
+                        "audit_event": "access_key.workspace_grant_failed",
+                        "actor_principal": self.principal,
+                        "access_key_jti": key.jti,
+                        "workspace": grant.workspace,
+                        "roles": grant.roles,
+                    },
+                    exc_info=True,
+                )
+                await self._rollback_workspace_memberships(key, applied)
+                raise
+        return applied
+
+    async def _get_member_roles(self, workspace: str, principal: str) -> list[str] | None:
+        """Return a principal's current roles in workspace, or None if not yet a member.
+
+        Fails closed: if the workspace can't be read, the caller must not proceed to grant
+        membership for it, since a later rollback would then have no way to tell "no prior
+        membership" (safe to delete) apart from "read failed" (deleting could destroy a real
+        pre-existing grant). The caller's own exception handling treats this the same as any
+        other grant failure — it stops before mutating this workspace and rolls back whatever
+        earlier grants in the same request already succeeded.
+        """
+        try:
+            members = await self._workspaces_client.list_workspace_members(workspace=workspace)
+        except Exception:
+            logger.warning(
+                "Failed to read prior workspace membership before granting access; "
+                "refusing to grant membership for this workspace since a later rollback "
+                "could not distinguish no prior membership from an unreadable one",
+                extra={"workspace": workspace, "principal": principal},
+                exc_info=True,
+            )
+            raise
+        return next((member.roles for member in members.data if member.principal == principal), None)
+
+    async def _rollback_workspace_memberships(
+        self,
+        key: AccessKeyCreateResponse,
+        applied: list[tuple[AccessKeyWorkspaceGrant, list[str] | None]],
+    ) -> None:
+        for grant, prior_roles in applied:
+            try:
+                if prior_roles is None:
+                    await self._workspaces_client.delete_workspace_member(
+                        workspace=grant.workspace, principal_id=key.principal
+                    )
+                else:
+                    await self._workspaces_client.update_workspace_member(
+                        workspace=grant.workspace,
+                        principal_id=key.principal,
+                        body=UpdateWorkspaceMemberRequest(roles=prior_roles),
+                    )
+            except Exception:
+                logger.error(
+                    "Failed to roll back a workspace membership granted during a failed "
+                    "Scoped Access Key creation; the principal may retain unintended access",
+                    extra={
+                        "audit_event": "access_key.workspace_grant_rollback_failed",
+                        "actor_principal": self.principal,
+                        "access_key_jti": key.jti,
+                        "workspace": grant.workspace,
+                    },
+                    exc_info=True,
+                )
 
     async def list_async(self, *, page: int = 1, page_size: int = 100) -> AccessKeyListResponse:
         self._ensure_enabled()
@@ -766,8 +986,18 @@ class PersistentAccessKeyIssuer:
             name=old_record.key_name,
             description=old_record.description,
             service_account_id=service_account_id,
+            # Preserve the original key's scope restriction; an empty list means the
+            # original key was unscoped, and AccessKeyCreateRequest rejects an explicitly
+            # empty scope, so map that case to None (also unscoped) instead.
+            scope=old_record.scope or None,
             expires_in_seconds=expires_in_seconds,
         )
+        # get_rotatable only checks that jti is owned by self.principal, not that jti's own
+        # scope is within the calling key's scope — a principal can own multiple keys with
+        # different scopes. Without this check, a leaked narrowly-scoped key could rotate a
+        # different, more-privileged key the same principal owns and receive its broader
+        # successor (see AIRCORE-987 and _enforce_caller_scope's create_async use).
+        self._enforce_caller_scope(request)
         new_key = await self._issuer.create_async(request, allow_service_account=allow_service_account)
         try:
             await self._registry.add(new_key, owner_principal=self.principal)

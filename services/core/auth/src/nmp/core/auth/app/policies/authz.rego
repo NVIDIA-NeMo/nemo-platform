@@ -46,10 +46,17 @@ allow := result if {
 # Default deny
 default allow_request := false
 
-# Platform admin bypass - has access to everything (if any principal is a platform admin)
+# Platform admin bypass - has access to everything (if any principal is a platform admin),
+# except a request still has to pass scope_check_passed first. Without this, a PlatformAdmin's
+# own Scoped Access Key restricted via `--scope` would keep full admin access regardless of the
+# key's requested scope, defeating the point of scoping it down (see AIRCORE-987).
+# scope_check_passed is itself a no-op for tokens with no platform scope claims (an ordinary
+# OIDC session, or an unscoped access key), so ordinary admin usage is unaffected.
 allow_request if {
 	applicable_principals := get_applicable_principals
 	count(applicable_principals) > 0
+
+	scope_check_passed
 
 	# Check if any principal is a platform admin
 	some principal in applicable_principals

@@ -13,6 +13,8 @@ from nemo_platform_plugin.auth.access_keys.issuer import (
     AccessKeyOperationNotImplementedError,
 )
 from nemo_platform_plugin.auth.access_keys.types import AccessKeyReversibleStatus
+from nemo_platform_plugin.client.client import AsyncNemoClient
+from nemo_platform_plugin.workspaces.client import AsyncWorkspacesClient
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.auth.access_keys import (
     ACCESS_KEY_JTI_PATTERN,
@@ -20,6 +22,7 @@ from nmp.common.auth.access_keys import (
 )
 from nmp.common.config import get_auth_config
 from nmp.common.entities import EntityConflictError
+from nmp.common.service.dependencies import get_nemo_client
 from nmp.core.auth.app.access_keys import (
     AccessKeyNotFoundError,
     AccessKeyRegistry,
@@ -114,15 +117,39 @@ async def _is_platform_admin(auth_client: AuthClient) -> bool:
     return auth_client.auth_enabled and await auth_client.has_role("system", "PlatformAdmin")
 
 
+def get_workspaces_client(
+    nemo_client: AsyncNemoClient = Depends(get_nemo_client),
+) -> AsyncWorkspacesClient:
+    return AsyncWorkspacesClient.from_client(nemo_client)
+
+
+def _caller_access_key_scope(auth_client: AuthClient) -> list[str] | None:
+    """The calling principal's own Scoped Access Key scope restriction, if any.
+
+    Returns None when the caller is unrestricted — authenticated via an ordinary OIDC
+    session, via internal principal headers, or via an unscoped access key — since none of
+    those should constrain what the caller can create. Otherwise returns the distinct
+    service names from the caller's own restricted `scope` claim (see AIRCORE-987).
+    """
+    resolved = auth_client.resolved_bearer_token
+    if resolved is None or resolved.token_kind != "access_key":
+        return None
+    services = sorted({scope.split(":", 1)[0] for scope in resolved.scopes if ":" in scope})
+    return services or None
+
+
 def get_access_key_issuer(
     auth_client: AuthClient = Depends(get_auth_client),
     registry: AccessKeyRegistry = Depends(get_access_key_registry),
+    workspaces_client: AsyncWorkspacesClient = Depends(get_workspaces_client),
 ) -> PersistentAccessKeyIssuer:
     return PersistentAccessKeyIssuer(
         get_auth_config(),
         auth_client.principal.effective_principal,
         registry,
+        workspaces_client,
         admin_override=lambda: _is_platform_admin(auth_client),
+        caller_scope=_caller_access_key_scope(auth_client),
     )
 
 

@@ -449,29 +449,47 @@ authz:
       post:
         permissions: []
         scopes: []
+    # Scopes here gate against the caller's *own* scoped access-key token, not RBAC: a
+    # personal key restricted via `--scope intake` must not be able to call these endpoints
+    # to mint or manage other access keys (including an unscoped, full-privilege one) for
+    # itself — see AIRCORE-987. `permissions: []` is intentional and unrelated: these routes
+    # are self-service (any authenticated principal manages their own keys, enforced by
+    # ownership checks in the handler), not RBAC-gated.
     /apis/auth/v2/access-keys:
       get:
         permissions: []
-        scopes: []
+        scopes:
+        - auth:read
+        - platform:read
       post:
         permissions: []
-        scopes: []
+        scopes:
+        - auth:write
+        - platform:write
     /apis/auth/v2/access-keys/{jti}:
       delete:
         permissions: []
-        scopes: []
+        scopes:
+        - auth:write
+        - platform:write
     /apis/auth/v2/access-keys/{jti}/suspend:
       post:
         permissions: []
-        scopes: []
+        scopes:
+        - auth:write
+        - platform:write
     /apis/auth/v2/access-keys/{jti}/unsuspend:
       post:
         permissions: []
-        scopes: []
+        scopes:
+        - auth:write
+        - platform:write
     /apis/auth/v2/access-keys/{jti}/rotate:
       post:
         permissions: []
-        scopes: []
+        scopes:
+        - auth:write
+        - platform:write
     /apis/auth/v2/iam/opa-bundle.tar.gz:
       get:
         permissions:

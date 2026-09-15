@@ -427,3 +427,137 @@ test_mixed_scopes_platform_scope_enforced if {
 
     result.allowed == false
 }
+
+# Test scoped Access Key self-escalation via the access-keys endpoints (AIRCORE-987).
+#
+# A Scoped Access Key restricted with `--scope intake` must not be able to call the
+# access-keys endpoints to mint or manage other access keys (including an unscoped,
+# full-privilege one) for its own principal. These tests exercise the real bundled
+# static-authz.yaml config (no `with data.authz.endpoints as ...` override) so a future
+# edit that drops the `auth`/`platform` scopes from these endpoints fails this suite,
+# not just a mocked one.
+
+test_scoped_access_key_cannot_create_access_keys if {
+    result := allow with input as {
+        "principal_id": "user1",
+        "method": "POST",
+        "path": "/apis/auth/v2/access-keys",
+        "scopes": ["intake:read", "intake:write"]
+    }
+
+    result.allowed == false
+}
+
+test_scoped_access_key_cannot_list_access_keys if {
+    result := allow with input as {
+        "principal_id": "user1",
+        "method": "GET",
+        "path": "/apis/auth/v2/access-keys",
+        "scopes": ["intake:read"]
+    }
+
+    result.allowed == false
+}
+
+test_scoped_access_key_cannot_revoke_access_keys if {
+    result := allow with input as {
+        "principal_id": "user1",
+        "method": "DELETE",
+        "path": "/apis/auth/v2/access-keys/ak_00000000000000000000000000000000",
+        "scopes": ["intake:read", "intake:write"]
+    }
+
+    result.allowed == false
+}
+
+test_scoped_access_key_cannot_rotate_access_keys if {
+    result := allow with input as {
+        "principal_id": "user1",
+        "method": "POST",
+        "path": "/apis/auth/v2/access-keys/ak_00000000000000000000000000000000/rotate",
+        "scopes": ["intake:read", "intake:write"]
+    }
+
+    result.allowed == false
+}
+
+test_access_key_scoped_to_auth_can_create_access_keys if {
+    result := allow with input as {
+        "principal_id": "user1",
+        "method": "POST",
+        "path": "/apis/auth/v2/access-keys",
+        "scopes": ["auth:write"]
+    }
+
+    result.allowed == true
+}
+
+test_access_key_scoped_to_platform_can_create_access_keys if {
+    result := allow with input as {
+        "principal_id": "user1",
+        "method": "POST",
+        "path": "/apis/auth/v2/access-keys",
+        "scopes": ["platform:write"]
+    }
+
+    result.allowed == true
+}
+
+test_unscoped_access_key_can_create_access_keys if {
+    # No `scope` claim at all (e.g. an unscoped access key, or a normal OIDC token) is the
+    # optional-scope-mechanism case: the request is authorized on permissions/ownership alone,
+    # same as before this endpoint had any scopes configured.
+    result := allow with input as {
+        "principal_id": "user1",
+        "method": "POST",
+        "path": "/apis/auth/v2/access-keys"
+    }
+
+    result.allowed == true
+}
+
+# Test that a PlatformAdmin's own Scoped Access Key scope restriction is honored (AIRCORE-987).
+#
+# A PlatformAdmin's own personal Scoped Access Key restricted via `--scope intake` must not
+# retain unrestricted platform-admin access outside that scope — otherwise `--scope` would be
+# meaningless for any admin's own key. These tests exercise the real bundled static-authz.yaml
+# config (no `with data.authz.endpoints as ...` override) so a future edit that drops
+# `scope_check_passed` from the platform admin bypass rule fails this suite, not just a mocked
+# one.
+
+test_platform_admin_scoped_access_key_denied_outside_its_scope if {
+    result := allow with input as {
+        "principal_id": "admin1",
+        "method": "GET",
+        "path": "/apis/entities/v2/workspaces/ns1",
+        "scopes": ["intake:read", "intake:write"]
+    }
+    with data.authz.principals as {"admin1": {"workspaces": {"system": ["PlatformAdmin"]}}}
+
+    result.allowed == false
+}
+
+test_platform_admin_scoped_access_key_allowed_within_its_scope if {
+    result := allow with input as {
+        "principal_id": "admin1",
+        "method": "GET",
+        "path": "/apis/entities/v2/workspaces/ns1",
+        "scopes": ["entities:read"]
+    }
+    with data.authz.principals as {"admin1": {"workspaces": {"system": ["PlatformAdmin"]}}}
+
+    result.allowed == true
+}
+
+test_platform_admin_without_platform_scope_claims_keeps_full_bypass if {
+    # No `scope` claim at all (an ordinary OIDC session, or an unscoped access key) is
+    # unaffected — the platform admin bypass still applies without restriction.
+    result := allow with input as {
+        "principal_id": "admin1",
+        "method": "GET",
+        "path": "/apis/entities/v2/workspaces/ns1"
+    }
+    with data.authz.principals as {"admin1": {"workspaces": {"system": ["PlatformAdmin"]}}}
+
+    result.allowed == true
+}
