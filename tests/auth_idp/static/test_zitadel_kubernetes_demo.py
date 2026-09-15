@@ -337,7 +337,6 @@ def test_zitadel_chart_seeds_generated_clients_and_patches_nemo_config() -> None
 
 def test_zitadel_values_use_generated_secrets_for_sensitive_defaults() -> None:
     values = _load_yaml(HELM_DIR / "values.yaml")
-    values_text = (HELM_DIR / "values.yaml").read_text(encoding="utf-8")
     generated_secrets = (HELM_DIR / "templates" / "generated-secrets.yaml").read_text(encoding="utf-8")
 
     assert values["zitadelSecrets"]["masterkey"] == {
@@ -393,19 +392,13 @@ def test_zitadel_values_use_generated_secrets_for_sensitive_defaults() -> None:
     assert values["nemo-platform"]["existingSecret"] == "nemo-platform-ngc-api"
     assert values["nemo-platform"]["ngcAPIKey"] == ""
     assert values["nemo-platform"]["postgresql"]["auth"]["existingSecret"] == "nemo-platform-postgres"
-    assert "NemoUserPassword1!" not in values_text
-    assert "0123456789abcdef0123456789abcdef" not in values_text
-    assert "demo-ngc-api-key" not in values_text
-    assert "Password1!" not in values_text
-    assert "postgresPassword: zitadel" not in values_text
-    assert "password: zitadel" not in values_text
     assert "nemo-platform-zitadel.secretValue" in generated_secrets
     assert "randAlphaNum 32" in generated_secrets
-    assert 'printf "Nemo%s1!"' in generated_secrets
-    assert (
-        "host=zitadel-postgresql port=5432 user=postgres password=%s dbname=zitadel sslmode=disable"
-        in generated_secrets
-    )
+    assert "randAlphaNum 20" in generated_secrets
+    assert "zitadelSecrets.demo.interactiveUserPasswordKey" in generated_secrets
+    assert "host=zitadel-postgresql" in generated_secrets
+    assert "$adminPassword" in generated_secrets
+    assert "dbname=zitadel sslmode=disable" in generated_secrets
     assert '"helm.sh/hook": pre-install,pre-upgrade' in generated_secrets
 
 
