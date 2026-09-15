@@ -300,6 +300,19 @@ def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
     assert (staged / "train.json").exists()
 
 
+def test_retrieval_prepare_fails_on_empty_training_split(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    train_input = ctx.storage.persistent / "empty-train"
+    train_input.mkdir()
+    (train_input / "train.json").write_text(json.dumps({"corpus": {}, "data": []}), encoding="utf-8")
+    spec = RetrievalPrepareStepConfig(
+        job_config=RetrievalPrepareJobConfig(train_input_file="empty-train", enable_mining=False),
+        phase="convert",
+    )
+    with pytest.raises(RuntimeError, match="empty training split"):
+        RetrievalPrepareJob().run(spec.model_dump(mode="json"), ctx=ctx, sdk=Mock())
+
+
 def test_retrieval_prepare_rejects_mine_phase(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     spec = RetrievalPrepareStepConfig(
