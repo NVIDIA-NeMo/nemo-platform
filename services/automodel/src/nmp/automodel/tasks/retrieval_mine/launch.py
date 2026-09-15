@@ -1,22 +1,57 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Launch torch.distributed.run for the hard-negative mining recipe."""
+"""Launch and log plumbing for the hard-negative mining recipe."""
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+import tqdm as tqdm_module
+from tqdm import tqdm as TqdmBar
+
 _MINING_SCRIPT = Path(__file__).with_name("mine_hard_negatives.py")
+logger = logging.getLogger(__name__)
+
+
+class LineTqdm(TqdmBar):
+    """tqdm that writes a full line per refresh.
+
+    Job logs are collected per line, so carriage-return bars arrive as one
+    unreadable record.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("mininterval", 15.0)
+        kwargs.setdefault("file", sys.stderr)
+        kwargs.setdefault("dynamic_ncols", False)
+        kwargs.setdefault("ascii", True)
+        kwargs.setdefault("disable", False)
+        super().__init__(*args, **kwargs)
+
+    def display(self, msg=None, pos=None):
+        self.fp.write(f"{self}\n")
+        self.fp.flush()
+        return True
+
+
+def install_line_tqdm() -> None:
+    """Replace ``tqdm.tqdm`` before the Automodel miner imports it."""
+    tqdm_module.tqdm = LineTqdm  # ty: ignore[invalid-assignment]
 
 
 def run_hard_negative_mining(config_file: Path, nproc_per_node: str | None = None) -> None:
     """Run distributed hard-negative mining with ``config_file`` as the recipe config.
 
     Rank count is ``GPUS_PER_NODE`` when set, otherwise torchrun's ``gpu`` (visible devices).
+
+    Stdout/stderr are inherited so the jobs log sidecar can scrape miner progress.
+    Do not ``capture_output``: that buffers the whole run and hides tqdm/logging
+    until the process exits.
     """
     nproc_per_node = nproc_per_node or os.environ.get("GPUS_PER_NODE") or "gpu"
     cmd = [
@@ -29,7 +64,11 @@ def run_hard_negative_mining(config_file: Path, nproc_per_node: str | None = Non
         "--config",
         str(config_file),
     ]
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-    if result.returncode != 0:
-        detail = result.stderr or result.stdout or f"exit {result.returncode}"
-        raise RuntimeError(f"Hard-negative mining failed: {detail}")
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    logger.info("Launching hard-negative mining: %s", " ".join(cmd))
+    try:
+        subprocess.run(cmd, check=True, env=env)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"Hard-negative mining failed: exit {exc.returncode}") from exc
+    logger.info("Hard-negative mining subprocess exited 0")

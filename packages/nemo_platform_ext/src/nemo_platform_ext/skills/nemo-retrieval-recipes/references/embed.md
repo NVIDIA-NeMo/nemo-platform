@@ -83,8 +83,8 @@ Stage 2 (`dataset.training` is the Stage 1 `artifacts` fileset):
 ```
 
 Leave batch/LR unset to take Nemotron retrieval defaults. Do not set `max_steps` with `epochs`.
-Dataset discovery picks `training.jsonl` and ignores the wrapped `train.json`
-beside it; the startup log records which training files it selected.
+Pass the Stage 1 artifacts fileset as-is: discovery reads `training.jsonl` and
+ignores wrapped `train.json`.
 
 Stage 3 reads the same fileset — the BEIR loader accepts a root containing `eval_beir`:
 
@@ -99,11 +99,10 @@ nemo evaluator retrieve-eval submit --spec '{
 
 ## Stage 4 / deploy
 
-Automodel post-processing exports embedding ONNX (`input_ids`, `attention_mask`
-→ `embeddings`, plus a Matryoshka `dimensions` input when
-`training.retrieval.export.dimensions: true`) and moves HF weights under
-`alternates/hf/`. Set
-`training.retrieval.export.primary: hf` when the target NIM loads PyTorch weights.
+Automodel post-processing exports ONNX at the fileset root and HF weights under
+`alternates/hf/`. Set `training.retrieval.export.primary: hf` when the target NIM
+loads PyTorch weights. Set `training.retrieval.export.dimensions: true` for
+Matryoshka.
 Deploy the **output** model entity (full weights or merged LoRA) with
 `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.0`. Pass `input_type` query vs document.
 Do not run `nemotron embed export`. Unmerged LoRA cannot be served.

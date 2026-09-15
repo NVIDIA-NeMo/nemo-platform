@@ -60,7 +60,8 @@ Stage 2:
 }
 ```
 
-Prompt template must stay `question:{query} \n \n passage:{passage}` (Automodel collator). LoRA merge must use the cross-encoder merge path, not causal-LM merge.
+Prompt template must stay `question:{query} \n \n passage:{passage}`. Do not
+merge LoRA with a causal-LM merge path.
 
 Stage 3 (two-stage):
 
@@ -85,9 +86,9 @@ Do not change `first_stage_k` or the embedding model between baseline and target
 
 ## Stage 4 / deploy
 
-Automodel post-processing exports sequence-classification ONNX (`input_ids`,
-`attention_mask` → `logits`) and moves HF weights under `alternates/hf/`. Deploy
-the output entity with `nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2:1.10.0`.
+Automodel post-processing exports ONNX at the fileset root and HF weights under
+`alternates/hf/`. Deploy the output entity with
+`nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2:1.10.0`.
 Do not run `nemotron rerank export`. Unmerged LoRA cannot be served.
 
 ## Invariants

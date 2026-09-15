@@ -105,20 +105,23 @@ nemo data-designer retrieval-run --workspace default --spec '{
 ```
 
 Hard-negative mining (`enable_mining: true`) is a GPU step and needs `model` to
-be a model entity with an attached encoder fileset; it loads that staged
-directory with Hugging Face networking disabled. Never mine after conversion
+be a model entity with an attached encoder fileset. Never mine after conversion
 produced an empty train split.
+
+Mining embeds every train query and the whole corpus on one GPU, so budget
+roughly an hour for a ~190k-row split at the default batch of 16. Raise
+`mining.query_embedding_batch_size` / `mining.document_embedding_batch_size`
+(64–128 fits a 48 GB card) before assuming a long run is hung.
 
 Convert-only (`enable_mining: false`, the default) writes `training.jsonl` with
 `neg_doc: []`. Automodel `bi_encoder` / `cross_encoder` still samples
 `train_n_passages - 1` negatives (default **4**) and fails with
 `neg_doc must contain at least 1 document to sample N negatives`. Mine before
-any encoder fine-tune. To fill an existing convert-only `train.json` without
+any encoder fine-tune. To fill an existing convert-only split without
 regenerating frozen `eval_beir`, point `train_input_file` at that fileset and
-set `enable_mining: true`. The fileset must still contain sibling `corpus/`
-(`merlin_metadata.json`, `train.parquet`); convert-only artifacts already do.
-Mining fails with `Metadata File for Corpus does not exist` when that directory
-is not staged next to `train.json`.
+set `enable_mining: true`. `nemo files list` must still show `corpus/`
+(convert-only artifacts already do); missing it fails with
+`Metadata File for Corpus does not exist`.
 
 ### Pre-submit: non-empty `neg_doc`
 

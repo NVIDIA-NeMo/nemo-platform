@@ -262,6 +262,7 @@ async def test_retrieval_prepare_compile_adds_gpu_mining_step() -> None:
         "NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH": "/var/run/scratch/job",
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
+        "PYTHONUNBUFFERED": "1",
     }
 
 

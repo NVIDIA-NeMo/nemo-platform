@@ -194,8 +194,7 @@ Previous: the Data Designer `retrieval-prepare` / `retrieval-run` `artifacts`
 fileset, holding `training.jsonl` (`query`, `pos_doc`, `neg_doc`), `eval_beir/`,
 and the wrapped `train.json` used by mining. Pass that fileset as
 `dataset.training`: discovery selects `training.jsonl` and ignores `train.json`,
-which is a single JSON document rather than JSONL. The startup log records the
-selected training files.
+which is a single JSON document rather than JSONL.
 
 **Pre-submit:** convert-only Stage 1 leaves `neg_doc: []`. The retrieval collator
 samples `train_n_passages - 1` negatives (default 4) and raises
