@@ -25,6 +25,7 @@ from nemo_platform_plugin.workspaces.client import WorkspacesClient
 from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.core.auth.service import AuthService
 from nmp.core.files.service import FilesService
+from nmp.core.models.service import ModelsService
 from nmp.testing import ClientContext, create_test_client
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
@@ -34,8 +35,8 @@ DEFAULT_WORKSPACE = "default"
 
 @pytest.fixture(scope="module")
 def client_context() -> Generator[ClientContext, None, None]:
-    """ClientContext with the Auth and Files services and ASGI-backed SDK clients."""
-    with create_test_client(AuthService, FilesService, client_type=ClientContext) as context:
+    """ClientContext with the Auth, Files and Models services and ASGI-backed SDK clients."""
+    with create_test_client(AuthService, FilesService, ModelsService, client_type=ClientContext) as context:
         yield context
 
 
