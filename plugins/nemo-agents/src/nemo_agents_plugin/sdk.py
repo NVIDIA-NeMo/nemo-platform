@@ -51,6 +51,13 @@ Usage (once the SDK hub is wired up)::
 
     # agents.execute jobs
     job = nemo.agents.jobs.execute.create(spec={"agent": "calculator", "input": "What is 2+2?"})
+    # ``image`` runs the agent in a specific container -- typically a
+    # ``nemo agents package`` build carrying the agent's own Fabric adapter.
+    # Omit it and the platform's task image is used, which carries the
+    # first-party adapters.
+    job = nemo.agents.jobs.execute.create(
+        spec={"agent": "calculator", "input": "What is 2+2?", "image": "registry.example/calculator:v1"}
+    )
     job = nemo.agents.jobs.execute.get(job["name"])
     results = nemo.agents.jobs.execute.list_results(job["name"])
 
