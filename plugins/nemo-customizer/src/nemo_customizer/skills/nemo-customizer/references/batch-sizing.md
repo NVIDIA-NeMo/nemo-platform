@@ -84,6 +84,30 @@ Pick the path by whether the **base model fits in ~48 GB on one GPU** (LoRA or f
 
 Output type is **model** (full checkpoint), not adapter. Expect much longer runs than LoRA at the same batch. **Inference:** deploy `default/<output.name>` as a new model entity — full SFT does not hot-reload onto the base model's LoRA deployment.
 
+### Retrieval recipes (`bi_encoder` / `cross_encoder`)
+
+The tables above assume one sequence per sample. Retrieval samples cost more:
+`bi_encoder` encodes the query plus `retrieval.train_n_passages` passages (default
+5, so 6 sequences per sample) at `retrieval.query_max_length` /
+`retrieval.passage_max_length` (512 each) rather than `max_seq_length`.
+
+| Recipe | Default `micro` | Default GBS | `learning_rate` | Sequences per sample |
+|--------|----------------:|------------:|----------------:|---------------------:|
+| `bi_encoder` | 32 | 256 | `1e-5` | `1 + train_n_passages` |
+| `cross_encoder` | 16 | 128 | `3e-6` | `train_n_passages` |
+
+These are applied automatically for unset fields — do not copy them into the job
+JSON unless you intend to override.
+
+**`micro_batch_size` is a quality knob for `bi_encoder`, not just a speed one.**
+The contrastive loss draws in-batch negatives from the local batch and gathers
+across data-parallel ranks, but **not** across gradient-accumulation steps. A
+`micro_batch_size` of 1 therefore trains against the mined negatives alone with
+no in-batch negatives at all, which is a much weaker signal — raising GBS does not
+compensate. When you hit OOM on a bi-encoder, prefer lowering
+`retrieval.train_n_passages` or the passage length before dropping `micro` below
+about 8. `cross_encoder` has no such coupling.
+
 ### `max_seq_length` scaling
 
 Scale **`micro_batch_size`** from the 2048 tables (round down, minimum 1):

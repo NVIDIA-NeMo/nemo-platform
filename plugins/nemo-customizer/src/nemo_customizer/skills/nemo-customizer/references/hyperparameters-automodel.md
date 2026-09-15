@@ -150,8 +150,8 @@ LoRA block is auto-created when `finetuning_type` is `lora` or `lora_merged`.
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `global_batch_size` | `8` (schema) | Encoder recipes rewrite unset values to **128**. Effective batch across all GPUs; **≥48 GB LoRA tables → `batch-sizing.md`** |
-| `micro_batch_size` | `1` (schema) | Encoder recipes rewrite unset values to **4**. **Per GPU**; same SKILL tables for single- and multi-GPU (TP=1) |
+| `global_batch_size` | `8` (schema) | Encoder recipes rewrite unset values (**256** bi-encoder, **128** cross-encoder). Effective batch across all GPUs; **≥48 GB LoRA tables → `batch-sizing.md`** |
+| `micro_batch_size` | `1` (schema) | Encoder recipes rewrite unset values (**32** bi-encoder, **16** cross-encoder). **Per GPU**; same SKILL tables for single- and multi-GPU (TP=1) |
 | `sequence_packing` | `false` | Pack short sequences for throughput (needs compatible data) |
 | `sequence_packing_max_samples` | `1000` | Samples analyzed to estimate the optimal pack size (only when packing) |
 
@@ -181,12 +181,16 @@ When the resolved recipe is `bi_encoder` or `cross_encoder` (explicit, or `auto`
 
 | Field | Schema default | `bi_encoder` | `cross_encoder` |
 |-------|----------------|--------------|-----------------|
-| `batch.global_batch_size` | `8` | `128` | `128` |
-| `batch.micro_batch_size` | `1` | `4` | `4` |
+| `batch.global_batch_size` | `8` | `256` | `128` |
+| `batch.micro_batch_size` | `1` | `32` | `16` |
 | `optimizer.learning_rate` | `5e-6` | `1e-5` | `3e-6` |
 | `optimizer.warmup_steps` | `0` | `5` | `100` |
 
 `optimizer.optimizer: auto` still selects FusedAdam for these recipes and Adam for SFT.
+
+For `bi_encoder`, `micro_batch_size` also sets the in-batch negative pool, so
+lowering it costs retrieval quality rather than just speed — see
+**`batch-sizing.md` § Retrieval recipes** before overriding it.
 
 ### Retrieval data from Stage 1
 

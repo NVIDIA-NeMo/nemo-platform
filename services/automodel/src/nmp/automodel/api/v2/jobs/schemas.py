@@ -179,6 +179,15 @@ class RetrievalParams(BaseModel):
     )
 
 
+# (batch_size, micro_batch_size) per retrieval recipe. bi_encoder takes its
+# in-batch negatives from the micro batch, which accumulation does not widen, so
+# lowering micro costs retrieval quality; cross_encoder scores pairs independently.
+RETRIEVAL_BATCH_DEFAULTS: dict[str, tuple[int, int]] = {
+    "bi_encoder": (256, 32),
+    "cross_encoder": (128, 16),
+}
+
+
 class ParallelismParams(BaseModel):
     """Distributed training parallelism configuration.
 
@@ -351,17 +360,19 @@ class _TrainingBase(BaseModel):
         """Return this training config with its resolved recipe defaults."""
         if recipe == "bi_encoder":
             lr, warmup = 1e-5, 5
+            batch, micro_batch = RETRIEVAL_BATCH_DEFAULTS["bi_encoder"]
         elif recipe == "cross_encoder":
             lr, warmup = 3e-6, 100
+            batch, micro_batch = RETRIEVAL_BATCH_DEFAULTS["cross_encoder"]
         else:
             return self.model_copy(update={"recipe": recipe})
         if getattr(self, "type", None) == "distillation":
             raise ValueError("Knowledge distillation only supports the sft recipe.")
         updates: dict[str, object] = {"recipe": recipe}
         if "batch_size" not in self.model_fields_set:
-            updates["batch_size"] = 128
+            updates["batch_size"] = batch
         if "micro_batch_size" not in self.model_fields_set:
-            updates["micro_batch_size"] = 4
+            updates["micro_batch_size"] = micro_batch
         if "learning_rate" not in self.model_fields_set:
             updates["learning_rate"] = lr
         if "warmup_steps" not in self.model_fields_set:
