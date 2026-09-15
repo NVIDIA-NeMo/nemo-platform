@@ -21,9 +21,12 @@ def _load_yaml(path: Path) -> dict:
 
 
 def _run_zitadel_script(*args: str, env: dict[str, str] | None = None) -> str:
-    process_env = os.environ.copy()
-    if env:
-        process_env.update(env)
+    process_env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("NMP_ZITADEL_K8S_") and key != "NEMO_ZITADEL_STATE_DIR"
+    }
+    process_env.update(env or {})
     completed = subprocess.run(
         [str(ZITADEL_DIR / "run.sh"), *args],
         text=True,
