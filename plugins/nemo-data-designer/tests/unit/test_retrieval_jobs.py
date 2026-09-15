@@ -15,7 +15,11 @@ import pandas as pd
 import pytest
 from nemo_data_designer_plugin.jobs.create import CreateJob
 from nemo_data_designer_plugin.jobs.retrieval_generate import RetrievalGenerateJob
-from nemo_data_designer_plugin.jobs.retrieval_prepare import RetrievalPrepareJob, _materialize_input
+from nemo_data_designer_plugin.jobs.retrieval_prepare import (
+    RetrievalPrepareJob,
+    _materialize_input,
+    _resolve_generation_input,
+)
 from nemo_data_designer_plugin.jobs.retrieval_run import RetrievalRunJob
 from nemo_data_designer_plugin.jobs.retrieval_spec import (
     RetrievalGenerateJobConfig,
@@ -265,7 +269,7 @@ def test_retrieval_prepare_convert_emits_eval_layout(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     sdg = ctx.storage.persistent / "sdg"
     sdg.mkdir()
-    jsonl = sdg / "qa.jsonl"
+    jsonl = sdg / "generation_result.json"
     jsonl.write_text("{}\n", encoding="utf-8")
     train_file = tmp_path / "converted" / "train.json"
     train_file.parent.mkdir()
@@ -402,6 +406,36 @@ def test_prepare_mining_options_are_typed() -> None:
         RetrievalPrepareJobConfig.model_validate(
             {"sdg_input": "default/stage0", "mining": {"hard_neg_margin_type": "relative"}}
         )
+
+
+def test_resolve_generation_input_uses_default_manifest(tmp_path: Path) -> None:
+    manifest = tmp_path / "generation_result.json"
+    manifest.write_text("{}\n", encoding="utf-8")
+    (tmp_path / "nv_pp_dd_sdg.json").write_text("[]\n", encoding="utf-8")
+    assert _resolve_generation_input(tmp_path, "generation_result.json") == manifest
+
+
+def test_resolve_generation_input_uses_named_file(tmp_path: Path) -> None:
+    dump = tmp_path / "nv_pp_dd_sdg.json"
+    dump.write_text("[]\n", encoding="utf-8")
+    assert _resolve_generation_input(tmp_path, "nv_pp_dd_sdg.json") == dump
+
+
+def test_resolve_generation_input_uses_materialized_file(tmp_path: Path) -> None:
+    dump = tmp_path / "nv_pp_dd_sdg.json"
+    dump.write_text("[]\n", encoding="utf-8")
+    assert _resolve_generation_input(dump, "generation_result.json") == dump
+
+
+def test_resolve_generation_input_missing_named_file(tmp_path: Path) -> None:
+    (tmp_path / "other.json").write_text("[]\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="nv_pp_dd_sdg.json"):
+        _resolve_generation_input(tmp_path, "nv_pp_dd_sdg.json")
+
+
+def test_prepare_generation_file_rejects_path_escape() -> None:
+    with pytest.raises(ValidationError, match="generation_file"):
+        RetrievalPrepareJobConfig(sdg_input="default/stage0", generation_file="../secret.json")
 
 
 def test_prepare_rejects_staged_path_that_escapes_job_storage(tmp_path: Path) -> None:

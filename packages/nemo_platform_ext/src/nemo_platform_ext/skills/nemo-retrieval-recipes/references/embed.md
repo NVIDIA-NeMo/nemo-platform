@@ -39,7 +39,7 @@ Skip SDG:
 
 ```bash
 nemo data-designer retrieval-prepare --spec '{
-  "sdg_input": "hf://nvidia/Retrieval-Synthetic-NVDocs-v1@<revision>",
+  "sdg_input": "hf://nvidia/Retrieval-Synthetic-NVDocs-v1@<revision>/nv_pp_dd_sdg.json",
   "enable_mining": false
 }'
 ```

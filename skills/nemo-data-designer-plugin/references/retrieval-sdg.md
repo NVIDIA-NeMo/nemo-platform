@@ -20,7 +20,13 @@ Stage 1 (conversion only; mining is off unless you set `enable_mining`):
 nemo data-designer retrieval-prepare --spec '{"sdg_input":"default/stage0-out"}'
 ```
 
-Skip SDG entirely by pointing `sdg_input` at `hf://nvidia/Retrieval-Synthetic-NVDocs-v1@...` or a fileset that already contains `generation_result.json`.
+Skip SDG entirely by pointing `sdg_input` at a Stage 0 fileset or `hf://` URI. Live generate writes `generation_result.json` (the default `generation_file`). For Hub dumps, name the file on the ref or set `generation_file`:
+
+```bash
+nemo data-designer retrieval-prepare --spec '{"sdg_input":"hf://nvidia/Retrieval-Synthetic-NVDocs-v1@<rev>/nv_pp_dd_sdg.json","enable_mining":false}'
+# or
+nemo data-designer retrieval-prepare --spec '{"sdg_input":"default/retrieval-synthetic-nvdocs-v1","generation_file":"nv_pp_dd_sdg.json","enable_mining":false}'
+```
 
 Model roles resolve through Inference Gateway (`provider` + served model names). Do not set `NVIDIA_API_KEY` on the job.
 

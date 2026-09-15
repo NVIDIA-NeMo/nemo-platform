@@ -156,7 +156,7 @@ def _run_convert(job: RetrievalPrepareJobConfig, output_dir: Path, ctx: JobConte
         )
         from nemo_data_designer_plugin.retrieval.conversion import execute_conversion
 
-        input_path = sdg_root if sdg_root.is_file() else _find_generation_input(sdg_root)
+        input_path = _resolve_generation_input(sdg_root, job.generation_file)
         conversion = execute_conversion(
             input_path=input_path,
             output_dir=output_dir,
@@ -214,14 +214,20 @@ def _stage_train_file(train_file: Path, output_dir: Path) -> Path:
     raise FileNotFoundError(f"Training file is not a file: {train_file}")
 
 
-def _find_generation_input(root: Path) -> Path:
-    manifest = root / "generation_result.json"
-    if manifest.exists():
-        return manifest
-    jsonl = list(root.rglob("*.jsonl"))
-    if jsonl:
-        return jsonl[0]
-    raise FileNotFoundError(f"No generation_result.json or JSONL under {root}")
+def _resolve_generation_input(staged: Path, generation_file: str) -> Path:
+    """Use a materialized file, or the named file inside a Stage 0 directory."""
+    if staged.is_file():
+        return staged
+    candidate = (staged / generation_file).resolve()
+    if not candidate.is_relative_to(staged.resolve()):
+        raise ValueError(f"generation_file escapes Stage 0 directory: {generation_file}")
+    if candidate.is_file():
+        return candidate
+    raise FileNotFoundError(
+        f"Expected Stage 0 file {generation_file!r} under {staged}. "
+        "Live generate writes generation_result.json; skip-SDG dumps set generation_file "
+        "or pass sdg_input as fileset#path / hf://org/dataset@rev/file."
+    )
 
 
 if __name__ == "__main__":

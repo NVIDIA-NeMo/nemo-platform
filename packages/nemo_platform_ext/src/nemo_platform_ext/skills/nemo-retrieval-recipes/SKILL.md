@@ -73,8 +73,8 @@ whose root contains `corpus.jsonl`, `queries.jsonl`, and `qrels/test.tsv`. Keep
    `embed_provider`, not `NVIDIA_API_KEY` on the job.
 2. Dry-run schemas first: `nemo data-designer retrieval-generate --help`,
    `nemo customization automodel explain`, `nemo evaluator retrieve-eval explain`.
-3. Prefer skip-SDG (`hf://nvidia/Retrieval-Synthetic-NVDocs-v1@<rev>` or an existing
-   `generation_result.json` fileset) for a first eval. Live SDG needs a corpus of
+3. Prefer skip-SDG (`hf://nvidia/Retrieval-Synthetic-NVDocs-v1@<rev>/nv_pp_dd_sdg.json`,
+   or a fileset plus `generation_file`) for a first eval. Live SDG needs a corpus of
    **50+ documents**; one file can dump every query into the test split and leave
    train empty (mining then crashes).
 4. Run Stage 0+1 once (`retrieval-run` or generate then prepare). **Freeze**
