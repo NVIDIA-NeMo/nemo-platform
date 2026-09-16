@@ -659,6 +659,23 @@ class TestBuildCtxFromEnv:
 
         assert ctx.results is sentinel
 
+    def test_usage_default_is_platform_reporter(self, tmp_path: Path, monkeypatch) -> None:
+        self._patch_results(monkeypatch)
+        usage = MagicMock(name="PlatformJobUsageReporter")
+        capture = MagicMock(return_value=usage)
+        monkeypatch.setattr(dispatcher_module, "PlatformJobUsageReporter", capture)
+        monkeypatch.setenv("NEMO_JOB_WORKSPACE", "ws")
+        monkeypatch.setenv("NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH", str(tmp_path / "p"))
+        monkeypatch.setenv("NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH", str(tmp_path / "e"))
+        monkeypatch.setenv("NEMO_JOB_ID", "submitted-job-name")
+
+        ctx = build_ctx_from_env(_DEFAULT_SDK)
+
+        assert ctx.usage is usage
+        assert capture.call_args.kwargs["job_name"] == "submitted-job-name"
+        assert capture.call_args.kwargs["workspace"] == "ws"
+        assert capture.call_args.kwargs["jobs_client"].base_url == "http://platform.test"
+
     def test_missing_workspace_raises(self, monkeypatch) -> None:
         monkeypatch.delenv("NEMO_JOB_WORKSPACE", raising=False)
 
