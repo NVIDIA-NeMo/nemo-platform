@@ -1,0 +1,19 @@
+# NeMo Guardrails config for the Iron Swarm Relay reference.
+#
+# A single input flow, `tool call gate`, runs the `tool_call_judge` action
+# (actions.py) for each tool call: every check runs at the tool boundary with the
+# user turn supplied by the context intercepts. The `main` model only needs to
+# exist so LLMRails initializes -- the per-check judge call is made inside the
+# action against the judge model. Prompt policy lives in prompts.yml.
+
+models:
+  - type: main
+    engine: openai
+    model: openai/openai/gpt-5.2
+    parameters:
+      base_url: https://inference-api.nvidia.com/v1
+
+rails:
+  input:
+    flows:
+      - tool call gate
