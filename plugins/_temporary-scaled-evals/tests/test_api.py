@@ -110,7 +110,7 @@ def test_metrics_scrape_does_not_probe_dependencies(monkeypatch) -> None:  # noq
         raise AssertionError("metrics must not run live dependency probes")
 
     monkeypatch.setattr(ops, "_postgres_probe", fail_probe)
-    monkeypatch.setattr(ops.s3, "check_bucket", fail_probe)
+    monkeypatch.setattr(ops.artifacts, "check_bucket", fail_probe)
     monkeypatch.setattr(ops.buildkit, "check_buildkit", fail_probe)
     monkeypatch.setattr(ops.registry, "check_registry", fail_probe)
 
@@ -126,7 +126,7 @@ def test_dependency_checks_skip_disabled_build_services(monkeypatch) -> None:  #
     monkeypatch.setattr(settings, "build_worker_required", False)
     monkeypatch.setattr(ops, "_postgres_probe", lambda: None)
     monkeypatch.setattr(ops, "_schema_probe", lambda: None)
-    monkeypatch.setattr(ops.s3, "check_bucket", lambda: None)
+    monkeypatch.setattr(ops.artifacts, "check_bucket", lambda: None)
 
     def fail_probe() -> None:
         raise AssertionError("disabled dependencies should not be probed")
@@ -148,7 +148,7 @@ def test_dependency_checks_require_fresh_build_worker(monkeypatch) -> None:  # n
     monkeypatch.setattr(settings, "build_worker_required", True)
     monkeypatch.setattr(ops, "_postgres_probe", lambda: None)
     monkeypatch.setattr(ops, "_schema_probe", lambda: None)
-    monkeypatch.setattr(ops.s3, "check_bucket", lambda: None)
+    monkeypatch.setattr(ops.artifacts, "check_bucket", lambda: None)
 
     def stale_worker() -> None:
         raise RuntimeError("no fresh build worker heartbeat")
@@ -166,7 +166,7 @@ def test_dependency_checks_require_compatible_schema(monkeypatch) -> None:  # no
     monkeypatch.setattr(settings, "registry_enabled", False)
     monkeypatch.setattr(settings, "build_worker_required", False)
     monkeypatch.setattr(ops, "_postgres_probe", lambda: None)
-    monkeypatch.setattr(ops.s3, "check_bucket", lambda: None)
+    monkeypatch.setattr(ops.artifacts, "check_bucket", lambda: None)
 
     def drifted_schema() -> None:
         raise RuntimeError('column "current_execution" does not exist')
