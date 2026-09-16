@@ -7,8 +7,8 @@ Every other test touching :func:`discover_agent_optimize_jobs` monkeypatches
 ``discover_jobs``, so a typo or stale path in any strategy plugin's
 ``pyproject.toml`` ``[project.entry-points."nemo.jobs"]`` table would never
 surface as a test failure. This test calls the real, unpatched
-``discover_agent_optimize_jobs()`` so it actually resolves the ``nat`` and
-``prompt-master`` entry points installed in this environment.
+``discover_agent_optimize_jobs()`` so it actually resolves the ``nat`` entry
+point installed in this environment.
 
 That test alone does not guard the bundled wrapper manifest
 (``packages/nemo_platform/pyproject.toml``): that package is a permanent
@@ -37,7 +37,6 @@ from nemo_agent_optimization_plugin.job_base import AgentOptimizeJob
 # to decide whether the plugin is installed in this venv at all.
 _REQUIRED_STRATEGY_MODULES = {
     "nat": "nemo_optimization",
-    "prompt-master": "prompt_master_plugin",
 }
 
 _MISSING_PLUGINS = sorted(
@@ -50,7 +49,6 @@ _WRAPPER_PYPROJECT = _REPO_ROOT / "packages" / "nemo_platform" / "pyproject.toml
 
 _EXPECTED_AGENT_OPTIMIZE_KEYS = {
     "optimization.agent_optimize",
-    "prompt-master.agent_optimize",
 }
 
 

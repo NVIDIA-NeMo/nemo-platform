@@ -68,7 +68,6 @@ line:
 ```bash
 $ nemo agents optimization-strategies list
 nat
-prompt-master
 ```
 
 The list is whatever is installed in the current environment: each name comes

@@ -579,17 +579,6 @@ plugins = [
     "nemo-platform[nemo-safe-synthesizer-plugin]",
     "nemo-platform[nemo-switchyard]",
     "nemo-platform[nemo-unsloth-plugin]",
-    "nemo-platform[prompt-master-plugin]",
-]
-
-# Generated from [tool.bundle-package]; do not edit by hand.
-prompt-master-plugin = [
-  "nemo-agent-optimization-plugin",
-  "nemo-agents-plugin",
-  "nemo-platform-plugin",
-  "pydantic>=2.12.0",
-  "pyyaml>=6.0.3",
-  "typer>=0.20.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -766,7 +755,6 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 "data-designer.retrieval-prepare" = "nemo_data_designer_plugin.jobs.retrieval_prepare:RetrievalPrepareJob"
 "data-designer.retrieval-run" = "nemo_data_designer_plugin.jobs.retrieval_run:RetrievalRunJob"
 "optimization.agent_optimize" = "nemo_optimization.jobs.agent_optimize:NatAgentOptimizeJob"
-"prompt-master.agent_optimize" = "prompt_master_plugin.jobs.optimize:PromptMasterOptimizeJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.optimization.backends"]
@@ -822,7 +810,6 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 insights = "nemo_insights_plugin.skills:skills_dir"
 deployments = "nemo_deployments_plugin.skills:skills_dir"
 customizer = "nemo_customizer.skills:get_skills_path"
-prompt-master = "prompt_master_plugin.skills:skills_dir"
 
 [tool.uv.sources]
 nemo-platform-sdk = { workspace = true }
@@ -879,7 +866,6 @@ switchyard-vendored = { source = "../../plugins/nemo-switchyard/vendor/switchyar
 # Default first-party plugins
 nemo-agents-plugin = { source = "../../plugins/nemo-agents/src/nemo_agents_plugin", module = "nemo_agents_plugin", inherit = { "entry-points" = ["nemo.*", "nat.plugins", "nat.components"] }, force_include = { "../../vendor/claude_code_agent_adapter/src/nat_claude_code_agent_adapter" = "nat_claude_code_agent_adapter", "../../vendor/codex_agent_adapter/src/nat_codex_agent_adapter" = "nat_codex_agent_adapter", "../../vendor/cursor_agent_adapter/src/nat_cursor_agent_adapter" = "nat_cursor_agent_adapter", "../../vendor/hermes_agent_adapter/src/nat_hermes_agent_adapter" = "nat_hermes_agent_adapter", "../../vendor/openclaw_agent_adapter/src/nat_openclaw_agent_adapter" = "nat_openclaw_agent_adapter" } }
 nemo-agent-optimization-plugin = { source = "../../plugins/nemo-agent-optimization/src/nemo_agent_optimization_plugin", module = "nemo_agent_optimization_plugin", inherit = { "entry-points" = ["nemo.*"] } }
-prompt-master-plugin = { source = "../../plugins/prompt-master/src/prompt_master_plugin", module = "prompt_master_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-anonymizer-plugin = { source = "../../plugins/nemo-anonymizer/src/nemo_anonymizer_plugin", module = "nemo_anonymizer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-auditor-plugin = { source = "../../plugins/nemo-auditor/src/nemo_auditor", module = "nemo_auditor", inherit = { "entry-points" = ["nemo.*"] } }
 # Customization router plus its backend contributors. Heavy ML stacks stay in the
