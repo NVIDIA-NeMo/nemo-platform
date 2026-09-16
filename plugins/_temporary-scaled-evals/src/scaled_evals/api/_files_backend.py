@@ -166,7 +166,22 @@ def _files() -> FilesResource:
     return _files_resource()
 
 
-def _workspace() -> str:
+def _workspace(object_key: str | None = None) -> str:  # noqa: ARG001 - key reserved for the entity-owned-workspace seam
+    """Resolve the platform workspace that owns a given artifact's fileset.
+
+    This is the SINGLE indirection point for fileset tenancy, and deliberately so.
+
+    Today every fileset lives in one service workspace (``settings.files_workspace``), and
+    scaled-evals keeps owning its own ``owner_id`` tenancy + upload quotas on top of Files.
+    The end state is different: the scaled-evals evaluation/task becomes a first-class
+    platform *entity* owned by a workspace, and this resolver returns that entity's workspace
+    so Files-native RBAC isolates tenants. When that lands, ONLY this function changes — it
+    will map ``object_key`` (which carries the evaluation/task id) to the owning entity's
+    workspace. The key mapping (``split_key``) and every caller stay untouched.
+
+    ``object_key`` is accepted now (unused) so that future per-entity resolution is a
+    body-only change with no signature churn at the call sites.
+    """
     return _OVERRIDE_WS.get("workspace") or settings.files_workspace
 
 
