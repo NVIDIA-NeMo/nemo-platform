@@ -54,9 +54,15 @@ reviewed independently.
 
 ### Agents
 
-- Normalize usage from non-streaming Fabric results and raw Harbor/NAT trials.
-- Count actual repeated executions rather than aggregate leaderboard records.
-- Leave streaming usage unknown until the stream carries a final usage record.
+- Publish usage carried by the terminal, non-streaming Fabric result for an
+  execute job. Accept provider-native input/output and prompt/completion names.
+- For evaluation suites, sum complete raw Harbor or NAT execution artifacts.
+  Count actual repeated executions rather than aggregate leaderboard records.
+- Include cache reads and cache creation in the input-token total. If an
+  expected execution or either of its token dimensions is absent, leave the
+  batch unknown instead of publishing a partial total.
+- Leave deployed streaming invocations outside job telemetry; they are not
+  scheduled jobs and their usage belongs to request/Intake telemetry.
 
 ### Safe Synthesizer
 
