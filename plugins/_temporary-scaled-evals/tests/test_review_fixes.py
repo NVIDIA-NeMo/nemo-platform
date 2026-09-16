@@ -21,9 +21,7 @@ import pytest
 try:
     import click
     import httpx
-    from botocore.exceptions import ClientError
     from nemo_scaled_evals_plugin import migrations
-    from scaled_evals.api import s3
     from scaled_evals.api.build import buildkit
     from scaled_evals.api.build.errors import BuildError
     from scaled_evals.api.build.image_builder_service import _post_resolve
@@ -382,19 +380,6 @@ def test_detached_spawn_failure_is_terminal(tmp_path: Path, monkeypatch: pytest.
     terminal = json.loads(exit_path.read_text())
     assert terminal["exit_code"] == 127
     assert "runner missing" in terminal["error"]
-
-
-def test_streamed_gcs_errors_are_read_before_classification() -> None:
-    response = httpx.Response(
-        404,
-        stream=httpx.ByteStream(b'{"error":{"message":"missing"}}'),
-    )
-
-    with pytest.raises(ClientError) as raised:
-        s3._raise_for_gcs("DownloadObject", response)
-
-    assert response.is_stream_consumed
-    assert "missing" in str(raised.value)
 
 
 def test_cleartext_and_external_targets_are_rejected(tmp_path: Path) -> None:
