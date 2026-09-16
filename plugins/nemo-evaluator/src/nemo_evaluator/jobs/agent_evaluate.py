@@ -56,6 +56,7 @@ from nemo_evaluator.jobs.gym_sandbox import (
 from nemo_evaluator.jobs.metric_resolution import resolve_metrics_to_inline, to_runtime_bundle
 from nemo_evaluator.jobs.publication import publish_agent_eval_result
 from nemo_evaluator.jobs.result_persistence import persist_agent_eval_result
+from nemo_evaluator.jobs.token_usage import capture_evaluator_request_logs, report_agent_evaluation_usage
 from nemo_evaluator.jobs.utils import as_async_nemo_client, as_nemo_client
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator.task_refs import resolve_agent_eval_tasks
@@ -643,7 +644,14 @@ class AgentEvalJob(NemoJob):
         # Forward whichever identity is present, preferring async when both are — the same
         # precedence the SDK-backed dataset resolver uses.
         evaluator = self._build_evaluator(async_client or client, spec.target)
-        result = evaluator.run_sync(tasks=tasks, trials=spec.trials, target=target, config=run_config)
+        with capture_evaluator_request_logs() as request_logs:
+            result = evaluator.run_sync(tasks=tasks, trials=spec.trials, target=target, config=run_config)
+        report_agent_evaluation_usage(
+            result,
+            request_logs,
+            ctx.usage,
+            include_trial_measurements=not isinstance(spec.target, ModelTarget | AgentTarget),
+        )
 
         files = self._write_result_files(result, ctx.storage.persistent)
         artifact = ctx.results.save(DEFAULT_RESULT_NAME, files.bundle_dir)
