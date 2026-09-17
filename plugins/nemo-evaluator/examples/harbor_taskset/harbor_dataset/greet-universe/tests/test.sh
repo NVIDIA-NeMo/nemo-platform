@@ -37,7 +37,7 @@ format_ok=0.0
 # equal to it and score 1.0.
 if [ ! -r "$EXPECTED_FILE" ]; then
   echo "FAIL: ${EXPECTED_FILE} is missing or unreadable; refusing to score"
-elif [ -f "$OUTPUT" ]; then
+elif [ -f "$OUTPUT" ] && [ ! -L "$OUTPUT" ] && [ ! "$OUTPUT" -ef "$EXPECTED_FILE" ]; then
   format_ok=1.0
   # Byte-for-byte via `cmp`, not `[ "$ACTUAL" = "$EXPECTED" ]`: command substitution
   # strips *every* trailing newline on both sides, so an agent could append blank
