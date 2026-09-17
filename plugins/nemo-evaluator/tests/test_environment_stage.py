@@ -6,10 +6,10 @@ from pathlib import Path
 import httpx
 import pytest
 from nemo_evaluator.jobs.environment_stage import EnvironmentStageJob
-from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
+from nemo_platform_plugin.sdk import NeMoPlatform
 from pytest_mock import MockerFixture
 
 

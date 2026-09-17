@@ -84,6 +84,9 @@ def test_wait_for_platform_job_timeout_still_does_not_emit_client_job_run_event(
     jobs = MagicMock()
     jobs.get_job_status.return_value = _status_response("active")
 
+    # ``time.monotonic`` is one global attribute, so script it per caller: the
+    # waiter's own elapsed reads stay at 0 while the watch loop sees the clock
+    # advance to 4s and then 5s of its 5s deadline.
     watch_clock = iter([0.0, 0.0, 4.0, 5.0])
 
     def monotonic() -> float:

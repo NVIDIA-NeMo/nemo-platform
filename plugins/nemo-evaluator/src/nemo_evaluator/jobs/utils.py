@@ -10,9 +10,9 @@ from typing import TypeVar, overload
 
 import httpx
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
+from nemo_platform_plugin.sdk import AsyncNeMoPlatform, NeMoPlatform
 
 T = TypeVar("T")
 AsyncClientT = TypeVar("AsyncClientT", bound=AsyncNemoClient)

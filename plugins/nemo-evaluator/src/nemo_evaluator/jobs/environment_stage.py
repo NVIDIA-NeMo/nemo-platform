@@ -11,11 +11,11 @@ from pathlib import Path
 from filesets import FilesetFileSystem, FilesetPathError, parse_fileset_ref
 from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.utils import as_nemo_client
-from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.client import NemoClient
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
+from nemo_platform_plugin.sdk import NeMoPlatform
 from pydantic import BaseModel, ConfigDict
 
 #: Read-only tree the Gym host mounts at ``/job/environment``.
