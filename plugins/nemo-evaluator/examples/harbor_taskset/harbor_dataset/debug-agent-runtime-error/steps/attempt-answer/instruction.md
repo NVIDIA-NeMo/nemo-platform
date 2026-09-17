@@ -7,5 +7,6 @@ Attempt to answer with exactly:
 
 Hello, debugger!
 
-The task container deliberately has no Python interpreter, so the agent wrapper
-must report a runtime failure during this step before an answer can be produced.
+The step deliberately has an execution budget too short for an installed agent
+to finish, so Harbor must record an agent timeout before an answer can be
+produced.
