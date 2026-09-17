@@ -137,7 +137,8 @@ Swap `agent_name` (or `agent_import_path`) for your own agent to get a real scor
 - **`agent_name`** — a built-in Harbor agent (for example `"oracle"`, Harbor's reference agent, handy
   as a smoke test that the harness and dataset are wired up).
 - **`agent_import_path`** — your own Harbor agent, e.g. `"my_agent_module:MyAgent"`. Set `agent_dir`
-  as well when it's a loose file rather than an installed package. Overrides `agent_name`.
+  as well for a loose local source tree. Overrides `agent_name`. Platform-submitted jobs do not
+  currently accept `agent_dir`; see [Standalone and submitted custom agents](#standalone-and-submitted-custom-agents).
 - **`agent_model_name`** — the model slug handed to the agent.
 - **`agent_kwargs`** — keyword arguments forwarded to the agent's constructor, the equivalent of
   Harbor's `--ak key=value` flags. Values must be JSON (strings, numbers, booleans, lists, mappings).
@@ -157,8 +158,8 @@ Swap `agent_name` (or `agent_import_path`) for your own agent to get a real scor
   it creates the agent and persists only the template, so the value never reaches `config.json`.
   Provenance records the names, never the values.
 
-The agent fields map one-to-one onto Harbor's `AgentConfig`, which Harbor's agent factory unpacks
-into the agent's constructor:
+The shared agent fields map onto Harbor's `AgentConfig`, which Harbor's agent factory unpacks into
+the agent's constructor. `agent_dir` is an SDK-only local import aid, not an `AgentConfig` field:
 
 ```text
 HarborRunnerTarget / HarborRuntimeConfig
@@ -172,6 +173,11 @@ HarborRunnerTarget / HarborRuntimeConfig
                      Harbor AgentFactory constructs
                      FabricAgent(model_name=..., extra_env=..., **kwargs)
 ```
+
+### Standalone and submitted custom agents
+
+Loose wrapper source through `agent_dir` is supported only by standalone `nemo-evaluator-sdk` runs.
+It is not supported by submitted `nemo-evaluator` plugin jobs.
 
 For example, NeMo Fabric's
 [`FabricAgent`](https://github.com/NVIDIA/NeMo-Fabric/blob/v0.3.0/sdk/python/nemo-fabric-runtime/src/nemo_fabric/integrations/harbor/fabric_agent.py)
@@ -190,12 +196,13 @@ config = HarborRuntimeConfig(
 )
 ```
 
-The same fields appear on the platform job's `HarborRunnerTarget`, the `target` of an
+The fields shared with platform submission appear on `HarborRunnerTarget`, the `target` of an
 `AgentEvalInputSpec` submitted with `nemo evaluator agent-evaluate submit`. Instead of
 `agent_env_from_host`, the platform target takes `env_secrets`, a mapping of environment variable name
 to NeMo Platform secret reference. The service resolves each reference into the job's environment at
 compile time and the job hands Harbor a `${NAME}` template, so the credential appears on neither the
-spec, the run bundle, nor `config.json`:
+spec, the run bundle, nor `config.json`. This installed NeMo Fabric adapter example needs no loose
+source directory:
 
 ```json
 {
@@ -212,6 +219,30 @@ spec, the run bundle, nor `config.json`:
   }
 }
 ```
+
+### Built-in Codex agent
+
+Harbor registers `codex` as a built-in installed agent. It installs the requested Codex CLI version
+inside each task container, so neither an `agent_import_path` nor wrapper-source upload is required.
+For a direct plugin job target:
+
+```python
+from nemo_evaluator.jobs.agent_spec import HarborRunnerTarget
+from nemo_evaluator_sdk import SecretRef
+
+target = HarborRunnerTarget(
+    agent_name="codex",
+    agent_model_name="gpt-5.6-luna",
+    agent_kwargs={"version": "0.153.0"},
+    env_secrets={
+        "OPENAI_API_KEY": SecretRef(root="my-workspace/openai-key"),
+    },
+)
+```
+
+Replace the model and secret reference with values available to your account. The task image needs
+network access and the system tools Harbor's Codex adapter uses to install the CLI. The CLI version
+above is an explicit reproducibility pin, not a platform-wide default.
 
 ## How scoring works
 
