@@ -109,15 +109,6 @@ def _split_provider_id(deployment: DeploymentLike) -> tuple[str, str]:
     return workspace, name
 
 
-def _served_model_name(provider: ModelProvider, model_entity: ModelEntity) -> str | None:
-    """Return the provider model id mapped to this Model Entity."""
-    entity_ref = f"{model_entity.workspace}/{model_entity.name}"
-    for mapping in provider.served_models or ():
-        if mapping.model_entity_id == entity_ref:
-            return mapping.served_model_name
-    return None
-
-
 def _seconds_since_creation(entry_timestamp: datetime | str | None, created_at: datetime | None) -> int | None:
     """Seconds from deployment creation to the entry timestamp, or None if not comparable."""
     if created_at is None or entry_timestamp is None:

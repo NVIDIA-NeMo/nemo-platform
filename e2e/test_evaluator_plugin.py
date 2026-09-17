@@ -60,7 +60,7 @@ from nemo_platform_plugin.models.types import CreateModelEntityRequest
 from nemo_platform_plugin.workspaces.client import WorkspacesClient
 from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.testing import add_mock_provider, short_unique_name, wait_for_model_entity
-from nmp.testing.e2e import cleanup_platform_job, wait_for_platform_job
+from nmp.testing.e2e import wait_for_platform_job
 from nmp.testing.utils import ensure_passthrough_virtual_model
 
 pytestmark = [
@@ -299,13 +299,11 @@ def _create_ready_mock_model(
 
 
 def _cleanup_evaluator_job(sdk: NeMoPlatform, job_name: str) -> None:
-    cleanup_platform_job(
-        sdk,
-        job_name,
-        str(sdk.workspace),
-        timeout=EVALUATOR_JOB_TIMEOUT_SECONDS,
-        poll_interval=EVALUATOR_POLL_INTERVAL_SECONDS,
-    )
+    with suppress(Exception):
+        jobs = client_from_platform(sdk, JobsClient)
+        jobs.cancel_job(name=job_name, workspace=sdk.workspace)
+    with suppress(Exception):
+        jobs.delete_job(name=job_name, workspace=sdk.workspace)
 
 
 def _wait_for_evaluator_job(job: EvaluatorJobResource) -> None:

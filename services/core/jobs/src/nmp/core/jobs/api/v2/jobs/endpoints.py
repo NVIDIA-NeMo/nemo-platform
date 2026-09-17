@@ -585,7 +585,7 @@ async def page_job_logs(
         try:
             filters: dict[str, str] = {
                 "job": name,
-                "job_attempt": str(attempt_id) if attempt_id is not None else job.attempt_id,
+                "job_attempt": str(attempt_id if attempt_id is not None else job.attempt_id),
             }
             if step_id:
                 filters["job_step"] = step_id

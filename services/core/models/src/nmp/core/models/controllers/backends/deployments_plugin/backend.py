@@ -236,20 +236,14 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
             if not volume_removed:
                 volumes_removed = False
         if not volumes_removed:
-            result = DeploymentStatusUpdate(
-                status=ModelDeploymentStatus.DELETING,
-                status_message="Waiting for plugin volume teardown.",
-            )
+            result = DeploymentStatusUpdate(status="DELETING", status_message="Waiting for plugin volume teardown.")
             return apply_deleting_timeout(
                 result,
                 elapsed_seconds=deleting_elapsed_seconds or 0.0,
                 timeout_seconds=self._cfg.deleting_timeout_seconds,
                 deployment_name=name,
             )
-        return DeploymentStatusUpdate(
-            status=ModelDeploymentStatus.DELETED,
-            status_message="Deleted deployments-plugin entities.",
-        )
+        return DeploymentStatusUpdate(status="DELETED", status_message="Deleted deployments-plugin entities.")
 
     async def _complete_deployment_delete(self, workspace: str, deployment_name: str, config_name: str) -> bool:
         """Initiate plugin deployment stop and return True once config can be removed."""

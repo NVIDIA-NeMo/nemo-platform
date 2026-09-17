@@ -25,7 +25,6 @@ from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.workspaces.client import WorkspacesClient
 from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.testing import add_mock_provider, short_unique_name
-from nmp.testing.e2e import cleanup_platform_job
 
 from e2e.auditor.utils import minimal_audit_config, unique_name
 
@@ -61,13 +60,11 @@ def _wait_for_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> str
 
 
 def _cleanup_audit_job(sdk: NeMoPlatform, job_name: str, workspace: str) -> None:
-    cleanup_platform_job(
-        sdk,
-        job_name,
-        workspace,
-        timeout=AUDIT_JOB_TIMEOUT_SECONDS,
-        poll_interval=AUDIT_JOB_POLL_INTERVAL_SECONDS,
-    )
+    with suppress(Exception):
+        jobs = client_from_platform(sdk, JobsClient)
+        jobs.cancel_job(name=job_name, workspace=workspace)
+    with suppress(Exception):
+        jobs.delete_job(name=job_name, workspace=workspace)
 
 
 def _add_mock_provider_or_skip(sdk: NeMoPlatform, workspace: str, name: str) -> str:
