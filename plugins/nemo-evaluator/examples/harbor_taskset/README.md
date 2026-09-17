@@ -15,7 +15,8 @@ Export `OPENAI_API_KEY` before starting Jupyter, and allow task containers to
 reach `api.openai.com`. Set `NMP_BASE_URL`, `NMP_WORKSPACE`, and, if required,
 `NMP_API_KEY` in the notebook environment. The defaults are
 `http://localhost:8080` and `default`; no machine-specific configuration file
-is needed.
+is needed. Non-loopback Platform URLs must use HTTPS because the notebook
+uploads `OPENAI_API_KEY` to Platform Secrets.
 
 ## Run the Evaluation
 
