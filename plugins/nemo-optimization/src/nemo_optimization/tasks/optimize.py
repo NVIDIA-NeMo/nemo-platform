@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Task entrypoint for the nat agent-optimize job (``python -m nemo_optimization.tasks.agent_optimize``)."""
+"""Task entrypoint for the Agents optimize job (``python -m nemo_optimization.tasks.optimize``)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from types import FrameType
 from nemo_platform_plugin.sdk_provider import get_task_sdk
 from nemo_platform_plugin.tasks.dispatcher import run_task
 
-from nemo_optimization.jobs.agent_optimize import NatAgentOptimizeJob
+from nemo_optimization.jobs.optimize import OptimizeJob
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def main() -> int:
     except Exception:
         logger.exception("Failed to build task SDK for agents")
         return 2
-    return run_task(NatAgentOptimizeJob, sdk=sdk)
+    return run_task(OptimizeJob, sdk=sdk)
 
 
 if __name__ == "__main__":

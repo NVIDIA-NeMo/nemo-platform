@@ -48,7 +48,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _WRAPPER_PYPROJECT = _REPO_ROOT / "packages" / "nemo_platform" / "pyproject.toml"
 
 _EXPECTED_AGENT_OPTIMIZE_KEYS = {
-    "optimization.agent_optimize",
+    "optimization.optimize",
 }
 
 
@@ -104,14 +104,16 @@ def test_bundled_wrapper_manifest_declares_every_agent_optimize_entry() -> None:
         "known `make vendor` generator bug silently preserves this table once it exists."
     )
 
+    # Strategy jobs deliberately share no key suffix — discovery is by subclass, not by
+    # name — so the expected keys are listed explicitly rather than pattern-matched.
     jobs = entry_points["nemo.jobs"]
-    agent_optimize_keys = {key for key in jobs if key.endswith(".agent_optimize")}
-    assert agent_optimize_keys == _EXPECTED_AGENT_OPTIMIZE_KEYS, (
-        f"Expected exactly {_EXPECTED_AGENT_OPTIMIZE_KEYS} in {_WRAPPER_PYPROJECT}'s "
-        f'[project.entry-points."nemo.jobs"], got {agent_optimize_keys}.'
+    missing = sorted(_EXPECTED_AGENT_OPTIMIZE_KEYS - set(jobs))
+    assert not missing, (
+        f"Missing {missing} from {_WRAPPER_PYPROJECT}'s [project.entry-points.\"nemo.jobs\"]. "
+        "A built wheel would expose no agent-optimize strategy for them."
     )
 
-    for key in sorted(agent_optimize_keys):
+    for key in sorted(_EXPECTED_AGENT_OPTIMIZE_KEYS):
         target = jobs[key]
         module_name, _, class_name = target.partition(":")
         assert module_name and class_name, f"Malformed entry-point target for {key!r}: {target!r}"

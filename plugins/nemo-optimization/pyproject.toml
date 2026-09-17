@@ -21,12 +21,13 @@ dependencies = [
 ]
 version = "0.0.0"
 
+[project.entry-points."nemo.jobs"]
+# Discovered by `nemo agents optimize` as the `nat` strategy (OptimizeJob.strategy).
+"optimization.optimize" = "nemo_optimization.jobs.optimize:OptimizeJob"
+
 [project.entry-points."nemo.optimization.backends"]
 optuna = "nemo_optimization.backends.optuna.backend:OptunaBackend"
 ga = "nemo_optimization.backends.ga.backend:GaBackend"
-
-[project.entry-points."nemo.jobs"]
-"optimization.agent_optimize" = "nemo_optimization.jobs.agent_optimize:NatAgentOptimizeJob"
 
 [build-system]
 requires = ["hatchling"]
@@ -36,7 +37,6 @@ build-backend = "hatchling.build"
 packages = ["src/nemo_optimization"]
 
 [tool.uv.sources]
-nemo-agent-optimization-plugin = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-platform = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
