@@ -3,9 +3,13 @@
 
 """The contract every agent optimization strategy implements.
 
-A strategy is a job.  This base owns everything normalized — staging the
-bundle, resolving the agent, registering the optimized agent — so a strategy
-plugin implements exactly one method, :meth:`AgentOptimizeJob.optimize`.
+A strategy is a job.  ``compile`` and ``run`` are unimplemented on this base —
+every concrete strategy subclass writes its own, since strategies differ
+enough (fileset-required vs. plain-path configs, what gets staged, what the
+optimized spec looks like) that a shared body papered over real differences.
+This module still ships the pieces most strategies need — staging a bundle,
+resolving an execution profile, fetching the source agent's stored config —
+as plain functions a strategy's own ``compile``/``run`` can call.
 
 Keep this module a leaf: ``discovery`` imports plugin job classes, which
 import this, so importing ``discovery`` (or the router) from here would cycle.
@@ -21,7 +25,6 @@ from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar, cast
 
 import yaml
-from nemo_agent_optimization_plugin.registration import register_optimized_agent
 from nemo_agent_optimization_plugin.schemas.optimize import AgentOptimizeSpec
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -31,14 +34,11 @@ from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
-    EnvironmentVariable,
     ExecutorSpec,
     PlatformJobSpec,
-    PlatformJobStep,
     SubprocessExecutionProviderSpec,
 )
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
-from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nemo_platform_plugin.jobs.exceptions import (
     PlatformJobCompilationError,
     PlatformJobDependencyUnavailableError,
@@ -69,12 +69,6 @@ class AgentOptimizeJob(NemoJob):
     generate_legacy_verbs: ClassVar[bool] = False
     spec_schema: ClassVar[type[BaseModel]] = AgentOptimizeSpec
 
-    #: Module run as ``python -m <task_module>`` inside the job's container or subprocess.
-    #: Each strategy plugin ships one, because the task module names its own job class.
-    task_module: ClassVar[str] = ""
-    #: Image for the cpu (docker / kubernetes_job) fallback.
-    task_image: ClassVar[str] = "nmp-cpu-tasks"
-
     @classmethod
     async def compile(  # ty: ignore[invalid-method-override]
         cls,
@@ -87,85 +81,28 @@ class AgentOptimizeJob(NemoJob):
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
-        del entity_client, job_name, options
-        if not cls.task_module:
-            raise PlatformJobCompilationError(
-                f"{cls.__name__} sets no 'task_module', so there is nothing to run remotely. "
-                "Every AgentOptimizeJob must name the module its plugin ships as the task "
-                "entry point, e.g. 'my_plugin.tasks.agent_optimize'."
-            )
-        spec_dict = spec.model_dump(mode="json")
-        spec_dict["workspace"] = workspace
-        return PlatformJobSpec(
-            steps=[
-                PlatformJobStep(
-                    name="agent-optimize",
-                    executor=await _resolve_executor(
-                        profile=profile or "default",
-                        async_sdk=async_sdk,
-                        task_module=cls.task_module,
-                        task_image=cls.task_image,
-                    ),
-                    config=spec_dict,
-                    environment=[
-                        EnvironmentVariable(
-                            name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-                            value=DEFAULT_JOB_STORAGE_PATH,
-                        ),
-                    ],
-                ),
-            ],
-        )
+        """Compile *spec* into the ``PlatformJobSpec`` the Jobs service submits.
+
+        Every strategy owns this: what must be staged up front (a fileset vs.
+        a plain host path), which execution profile it needs, and what its
+        step config looks like are strategy-specific.  Use
+        :func:`_resolve_executor` to pick a subprocess/cpu executor from the
+        profiles the platform has registered.
+        """
+        raise NotImplementedError(f"{cls.__name__} must override compile() to be remote-capable.")
 
     def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
-        spec = AgentOptimizeSpec.model_validate(config)
-        if sdk is None:
-            raise LocalRunError(
-                "An agent optimization requires a platform SDK to fetch the agent it optimizes "
-                "and to create the optimized one. Set NMP_BASE_URL or pass sdk via "
-                "NemoJobScheduler.run_local(sdk=...)."
-            )
+        """Run the strategy locally or as the remote job's step.
 
-        source_workspace, source_agent = split_agent_ref(spec.agent, workspace=spec.workspace)
-        with _staged_bundle(spec, ctx=ctx, sdk=sdk) as (config_path, bundle_root):
-            optimize_config = _load_yaml(config_path)
-            source_agent_config = fetch_agent_config(spec.agent, workspace=spec.workspace, sdk=sdk)
-            with _bundle_workdir(bundle_root):
-                logger.info("Running agent optimization strategy %s", self.strategy)
-                optimized = self.optimize(
-                    source_agent_config=source_agent_config,
-                    config=optimize_config,
-                    ctx=ctx,
-                    workspace=spec.workspace,
-                    sdk=sdk,
-                )
-
-        return register_optimized_agent(
-            optimized,
-            name=spec.output_agent,
-            source_agent=source_agent,
-            source_workspace=source_workspace,
-            workspace=spec.workspace,
-            sdk=sdk,
-        )
-
-    def optimize(
-        self,
-        *,
-        source_agent_config: dict[str, Any],
-        config: dict[str, Any],
-        ctx: JobContext,
-        workspace: str,
-        sdk: NeMoPlatform,
-    ) -> dict[str, Any]:
-        """Return an optimized ``nemo-agents-spec-v1`` config dict.
-
-        ``source_agent_config`` is the stored config of the agent under test.
-        Treat it as an input: copy it before mutating.  ``config`` is this
-        strategy's own configuration, loaded from the staged bundle, and the
-        process working directory is the bundle root while this runs.
+        Every strategy owns this: what gets staged, how the source agent's
+        config is transformed, and how the optimized result is registered
+        differ enough between strategies that a shared body papered over
+        those differences.  :func:`split_agent_ref`, :func:`fetch_agent_config`,
+        :func:`_staged_bundle`, and :func:`_bundle_workdir` are the pieces most
+        strategies need; :func:`register_optimized_agent` (from
+        ``nemo_agent_optimization_plugin.registration``) publishes the result.
         """
-        raise NotImplementedError
+        raise NotImplementedError(f"{type(self).__name__} must override run().")
 
 
 def _profiles_unavailable(profile: str) -> PlatformJobDependencyUnavailableError:

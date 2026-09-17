@@ -69,7 +69,7 @@ class OptimizeJob(AgentOptimizeJob):
     """Run a Fabric-native numeric optimize study via the Agents optimize job."""
 
     name: ClassVar[str] = "optimize"
-    #: Selects this job from `nemo agents optimize --strategy`.
+    #: Unique name for the agent optimization strategy provided by this job. Selected by `nemo agents optimize --strategy`
     strategy: ClassVar[str] = "nat"
     description: ClassVar[str] = "Optimize a Fabric agent workflow (numeric HPO)."
     container: ClassVar[str] = "cpu-tasks"
@@ -85,7 +85,6 @@ class OptimizeJob(AgentOptimizeJob):
         workspace: str,
         entity_client: object,
         async_sdk: AsyncNeMoPlatform,
-        is_local: bool,
     ) -> AgentOptimizeSpec:
         del entity_client, async_sdk
         payload = input_spec.model_dump(mode="json")
@@ -139,19 +138,8 @@ class OptimizeJob(AgentOptimizeJob):
 
     def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
         spec = AgentOptimizeSpec.model_validate(config)
-        if sdk is None:
-            raise LocalRunError(
-                "An optimize study requires a platform SDK: it fetches the agent it optimizes "
-                "and registers the optimized one."
-            )
         with _staged_bundle(spec, ctx=ctx, sdk=sdk) as (config_path, bundle_root):
             optimize_config = _load_yaml(config_path)
-            if "://" in spec.agent:
-                raise LocalRunError(
-                    "Endpoint URL / URI optimize mode has been removed. Pass a platform-managed "
-                    "agent name (e.g. --agent hermes-optimize-chatonly or "
-                    "--agent default/hermes-optimize-chatonly), not an http(s):// or file:// URL."
-                )
             # The study runs against the Fabric package, but the optimized agent is persisted as
             # the platform spec, so both shapes are needed — from one fetch.
             source_agent_config = fetch_agent_config(spec.agent, workspace=spec.workspace, sdk=sdk)

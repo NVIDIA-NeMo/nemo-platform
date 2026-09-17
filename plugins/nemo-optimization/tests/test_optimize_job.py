@@ -486,17 +486,6 @@ def test_run_resolves_platform_agent_before_dispatch(ctx: JobContext) -> None:
     assert agent_config["models"]["judge"]["model"] == "demo-model"
 
 
-def test_run_rejects_endpoint_agent(ctx: JobContext) -> None:
-    """The endpoint-URL check now runs after the mandatory bundle is staged (fetching the
-    agent and the config are both unconditional now), so a working SDK is required to reach
-    it — it can no longer be exercised with no SDK at all.
-    """
-    sdk = bundle_sdk({"optimize.yml": yaml.safe_dump(MINIMAL_CONFIG)})
-
-    with pytest.raises(LocalRunError, match="Endpoint URL / URI optimize mode has been removed"):
-        OptimizeJob().run(run_payload(agent="http://localhost:8080"), ctx=ctx, sdk=sdk)
-
-
 # ---------------------------------------------------------------------------
 # run — staged (fileset) mode
 # ---------------------------------------------------------------------------
@@ -574,12 +563,10 @@ def test_run_rejects_a_staged_config_missing_from_the_fileset(ctx: JobContext) -
 
 
 def test_run_rejects_a_staged_config_without_an_sdk(ctx: JobContext) -> None:
-    """``sdk`` is now checked once, up front — before the fileset is even touched — because
-    every study fetches the source agent and registers the optimized one. The old assertion
-    matched the fileset-staging helper's own "no sdk" message; that guard is no longer what
-    fires first, so the message (and the code path) is different.
+    """``run()`` no longer checks ``sdk`` up front; a fileset-backed config still needs one to
+    stage the bundle, so the fileset-staging helper's own "no sdk" message is what surfaces.
     """
-    with pytest.raises(LocalRunError, match="requires a platform SDK"):
+    with pytest.raises(LocalRunError, match="Staging optimize-config from a fileset requires a 'sdk"):
         OptimizeJob().run(run_payload(), ctx=ctx)
 
 

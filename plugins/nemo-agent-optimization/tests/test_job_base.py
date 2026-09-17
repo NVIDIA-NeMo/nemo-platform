@@ -1,13 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+"""``AgentOptimizeJob.run``/``compile`` are unimplemented stubs; strategies write their own,
+optionally using the shared helpers below (``split_agent_ref``, ``fetch_agent_config``,
+``_staged_bundle``, ``_bundle_workdir``, ``_load_yaml``), which these tests exercise directly."""
+
+import asyncio
 import contextlib
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from nemo_agent_optimization_plugin import job_base
-from nemo_agent_optimization_plugin.job_base import AgentOptimizeJob
+from nemo_agent_optimization_plugin.job_base import AgentOptimizeJob, fetch_agent_config, split_agent_ref
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.run_dependencies import LocalRunError
@@ -34,119 +39,111 @@ SOURCE = {
 }
 
 
-class _RecordingJob(AgentOptimizeJob):
-    name = "agent_optimize"
-    strategy = "fake"
-
-    def __init__(self) -> None:
-        self.seen: dict[str, Any] = {}
-
-    def optimize(self, *, source_agent_config, config, ctx, workspace, sdk):
-        self.seen = {
-            "source_agent_config": source_agent_config,
-            "config": config,
-            "workspace": workspace,
-            "cwd": Path.cwd(),
-        }
-        return {**source_agent_config, "description": "optimized"}
+class _Bare(AgentOptimizeJob):
+    name: ClassVar[str] = "agent_optimize"
+    strategy: ClassVar[str] = "bare"
 
 
-def _spec(**overrides: Any) -> dict[str, Any]:
-    return {
-        "agent": "my-ws/my-agent",
-        "optimize_config_fileset": "my-ws/bundle",
-        "optimize_config": "configs/optimize.yaml",
-        "output_agent": "my-agent-opt",
-        "workspace": "my-ws",
-        **overrides,
-    }
+def test_the_base_class_run_is_an_unimplemented_stub(ctx: JobContext) -> None:
+    with pytest.raises(NotImplementedError, match="must override run"):
+        _Bare().run({}, ctx=ctx, sdk=object())
 
 
-@pytest.fixture
-def staged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    bundle = tmp_path / "bundle"
-    (bundle / "configs").mkdir(parents=True)
-    (bundle / "configs" / "optimize.yaml").write_text("tuning: {a: 1}\n", encoding="utf-8")
-
-    @contextlib.contextmanager
-    def fake_staged_bundle(spec, *, ctx, sdk):
-        yield bundle / "configs" / "optimize.yaml", bundle
-
-    monkeypatch.setattr(job_base, "_staged_bundle", fake_staged_bundle)
-    return bundle
-
-
-@pytest.fixture
-def registered(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
-    calls: list[dict[str, Any]] = []
-
-    def fake_register(optimized, *, name, source_agent, source_workspace, workspace, sdk):
-        calls.append(
-            {
-                "optimized": optimized,
-                "name": name,
-                "workspace": workspace,
-                "source_agent": source_agent,
-                "source_workspace": source_workspace,
-            }
+def test_the_base_class_compile_is_an_unimplemented_stub() -> None:
+    with pytest.raises(NotImplementedError, match="must override compile"):
+        asyncio.run(
+            _Bare.compile(
+                workspace="my-ws",
+                spec=None,
+                entity_client=None,
+                job_name=None,
+                async_sdk=None,
+            )
         )
-        return {"agent": f"{workspace}/{name}"}
-
-    monkeypatch.setattr(job_base, "register_optimized_agent", fake_register)
-    monkeypatch.setattr(job_base, "fetch_agent_config", lambda agent, *, workspace, sdk: dict(SOURCE))
-    return calls
 
 
-def test_run_hands_the_subclass_the_source_config_and_loaded_yaml(ctx, staged, registered) -> None:
-    job = _RecordingJob()
-    job.run(_spec(), ctx=ctx, sdk=object())
-
-    assert job.seen["source_agent_config"] == SOURCE
-    assert job.seen["config"] == {"tuning": {"a": 1}}
-    assert job.seen["workspace"] == "my-ws"
+def test_split_agent_ref_uses_the_workspace_prefix_when_present() -> None:
+    assert split_agent_ref("other-ws/my-agent", workspace="my-ws") == ("other-ws", "my-agent")
 
 
-def test_run_executes_the_subclass_inside_the_bundle_root(ctx, staged, registered) -> None:
-    job = _RecordingJob()
+def test_split_agent_ref_defaults_to_the_run_workspace() -> None:
+    assert split_agent_ref("my-agent", workspace="my-ws") == ("my-ws", "my-agent")
+
+
+def test_fetch_agent_config_returns_the_stored_config() -> None:
+    class _Sdk:
+        class agents:  # noqa: N801 - matches the SDK's own accessor shape
+            @staticmethod
+            def get(name: str, *, workspace: str) -> dict[str, Any]:
+                assert (workspace, name) == ("my-ws", "my-agent")
+                return {"config": SOURCE}
+
+    assert fetch_agent_config("my-ws/my-agent", workspace="my-ws", sdk=_Sdk()) == SOURCE
+
+
+def test_fetch_agent_config_rejects_an_empty_stored_config() -> None:
+    class _Sdk:
+        class agents:  # noqa: N801 - matches the SDK's own accessor shape
+            @staticmethod
+            def get(name: str, *, workspace: str) -> dict[str, Any]:
+                return {"config": {}}
+
+    with pytest.raises(LocalRunError, match="empty or invalid"):
+        fetch_agent_config("my-ws/my-agent", workspace="my-ws", sdk=_Sdk())
+
+
+def test_load_yaml_expands_env_vars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SOME_VAR", "expanded")
+    config_path = tmp_path / "optimize.yaml"
+    config_path.write_text('tuning: {a: 1, b: "${SOME_VAR}"}\n', encoding="utf-8")
+
+    assert job_base._load_yaml(config_path) == {"tuning": {"a": 1, "b": "expanded"}}
+
+
+def test_load_yaml_rejects_a_non_mapping_document(tmp_path: Path) -> None:
+    config_path = tmp_path / "optimize.yaml"
+    config_path.write_text("- a\n- b\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be a mapping"):
+        job_base._load_yaml(config_path)
+
+
+def test_bundle_workdir_chdirs_for_the_duration_of_the_block(tmp_path: Path) -> None:
     before = Path.cwd()
-    job.run(_spec(), ctx=ctx, sdk=object())
-
-    assert job.seen["cwd"] == staged.resolve()
+    with job_base._bundle_workdir(tmp_path):
+        assert Path.cwd() == tmp_path.resolve()
     assert Path.cwd() == before
 
 
-def test_run_registers_the_subclass_output_as_the_named_agent(ctx, staged, registered) -> None:
-    result = _RecordingJob().run(_spec(), ctx=ctx, sdk=object())
+def test_staged_bundle_yields_the_config_path_and_bundle_root(
+    tmp_path: Path, ctx: JobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle = tmp_path / "bundle"
+    (bundle / "configs").mkdir(parents=True)
+    config_path = bundle / "configs" / "optimize.yaml"
+    config_path.write_text("tuning: {a: 1}\n", encoding="utf-8")
 
-    assert result == {"agent": "my-ws/my-agent-opt"}
-    assert registered[0]["name"] == "my-agent-opt"
-    assert registered[0]["optimized"]["description"] == "optimized"
+    @contextlib.contextmanager
+    def fake_resolve_staged_config(*_args: Any, **_kwargs: Any):
+        yield config_path
 
+    monkeypatch.setattr(
+        "nemo_agents_plugin.jobs.fileset_io.resolve_staged_config",
+        fake_resolve_staged_config,
+    )
 
-def test_run_passes_the_source_agent_identity_to_registration(ctx, staged, registered) -> None:
-    """Registration stages the *source* agent's ETHOS.md, so it needs its name+workspace."""
-    _RecordingJob().run(_spec(agent="other-ws/my-agent"), ctx=ctx, sdk=object())
+    from nemo_agent_optimization_plugin.schemas.optimize import AgentOptimizeSpec
 
-    assert registered[0]["source_agent"] == "my-agent"
-    assert registered[0]["source_workspace"] == "other-ws"
+    spec = AgentOptimizeSpec.model_validate(
+        {
+            "agent": "my-ws/my-agent",
+            "optimize_config_fileset": "my-ws/bundle",
+            "optimize_config": "configs/optimize.yaml",
+            "output_agent": "my-agent-opt",
+            "workspace": "my-ws",
+        }
+    )
 
-
-def test_run_defaults_the_source_workspace_to_the_run_workspace(ctx, staged, registered) -> None:
-    _RecordingJob().run(_spec(agent="my-agent"), ctx=ctx, sdk=object())
-
-    assert registered[0]["source_agent"] == "my-agent"
-    assert registered[0]["source_workspace"] == "my-ws"
-
-
-def test_run_requires_an_sdk(ctx, staged, registered) -> None:
-    with pytest.raises(LocalRunError, match="requires a platform SDK"):
-        _RecordingJob().run(_spec(), ctx=ctx, sdk=None)
-
-
-def test_the_base_class_has_no_default_optimize(ctx) -> None:
-    class Bare(AgentOptimizeJob):
-        name = "agent_optimize"
-        strategy = "bare"
-
-    with pytest.raises(NotImplementedError):
-        Bare().optimize(source_agent_config={}, config={}, ctx=ctx, workspace="my-ws", sdk=object())
+    with job_base._staged_bundle(spec, ctx=ctx, sdk=object()) as (yielded_path, bundle_root):
+        assert yielded_path == config_path
+        assert bundle_root == bundle
