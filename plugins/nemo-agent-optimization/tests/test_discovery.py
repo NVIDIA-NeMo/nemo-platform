@@ -40,7 +40,8 @@ def test_finds_agent_optimize_subclasses_keyed_by_strategy(monkeypatch) -> None:
 
 def test_ignores_jobs_that_are_not_agent_optimize_jobs(monkeypatch) -> None:
     monkeypatch.setattr(
-        discovery, "discover_jobs",
+        discovery,
+        "discover_jobs",
         lambda: {"opt.agent_optimize": _Fake, "other.unrelated": _Unrelated},
     )
     assert discover_agent_optimize_jobs() == {"fake": _Fake}

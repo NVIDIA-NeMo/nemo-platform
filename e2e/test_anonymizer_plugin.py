@@ -39,7 +39,6 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.files.client import FilesClient
 from nemo_platform_plugin.files.types import CreateFilesetRequest
-from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.workspaces.client import WorkspacesClient
 from nemo_platform_plugin.workspaces.types import CreateWorkspaceRequest
 from nmp.testing import MockProviderResponse, add_mock_provider, short_unique_name

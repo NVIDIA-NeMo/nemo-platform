@@ -109,7 +109,7 @@ def test_bundled_wrapper_manifest_declares_every_agent_optimize_entry() -> None:
     jobs = entry_points["nemo.jobs"]
     missing = sorted(_EXPECTED_AGENT_OPTIMIZE_KEYS - set(jobs))
     assert not missing, (
-        f"Missing {missing} from {_WRAPPER_PYPROJECT}'s [project.entry-points.\"nemo.jobs\"]. "
+        f'Missing {missing} from {_WRAPPER_PYPROJECT}\'s [project.entry-points."nemo.jobs"]. '
         "A built wheel would expose no agent-optimize strategy for them."
     )
 
